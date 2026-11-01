@@ -85,16 +85,21 @@ struct DocsTreeView: View {
         }
         .onAppear {
             tree.ensureLoaded()
+            expandFolders(above: state.selectedDocPath, tree: tree)
         }
         .onChange(of: state.selectedDocPath) { _, path in
             tree.treeSelection = nil
-            // Selecting a doc expands the folders above it.
-            if let path {
-                let folders = tree.folders(above: path)
-                if !folders.isEmpty {
-                    window.updateViewState(of: projectID) { $0.expandedDocFolders.formUnion(folders) }
-                }
-            }
+            expandFolders(above: path, tree: tree)
+        }
+    }
+
+    /// Selecting a doc expands the folders above it.
+    private func expandFolders(above path: String?, tree: DocsTreeModel) {
+        guard let path else { return }
+        let folders = tree.folders(above: path)
+        let expanded = FileActions.viewState(window, projectID).expandedDocFolders
+        if !folders.isEmpty, !expanded.isSuperset(of: folders) {
+            window.updateViewState(of: projectID) { $0.expandedDocFolders.formUnion(folders) }
         }
     }
 
