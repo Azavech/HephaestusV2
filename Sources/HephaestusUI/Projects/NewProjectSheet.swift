@@ -58,7 +58,7 @@ struct NewProjectSheet: View {
                 GridRow {
                     label("Name")
                     VStack(alignment: .leading, spacing: 4) {
-                        TextField("Name", text: nameBinding)
+                        TextField("Name", text: nameBinding, prompt: Text(""))
                             .labelsHidden()
                         FieldMessage(text: nameEdited ? ProjectRules.nameMessage(name) : nil)
                     }
@@ -66,7 +66,7 @@ struct NewProjectSheet: View {
                 GridRow {
                     label("Identifier")
                     VStack(alignment: .leading, spacing: 4) {
-                        TextField("Identifier", text: identifierBinding)
+                        TextField("Identifier", text: identifierBinding, prompt: Text(""))
                             .labelsHidden()
                             .font(.system(.body, design: .monospaced))
                             .frame(width: 140)
@@ -97,7 +97,7 @@ struct NewProjectSheet: View {
                     GridRow {
                         label("Folder name")
                         VStack(alignment: .leading, spacing: 4) {
-                            TextField("Folder name", text: folderNameBinding)
+                            TextField("Folder name", text: folderNameBinding, prompt: Text(""))
                                 .labelsHidden()
                             FieldMessage(text: folderNameEdited || nameEdited ? ProjectRules.folderNameMessage(folderName) : nil)
                         }
@@ -171,6 +171,7 @@ struct NewProjectSheet: View {
 
     private var nameBinding: Binding<String> {
         Binding(get: { name }, set: { value in
+            guard value != name else { return }
             name = value
             nameEdited = true
             followName()
@@ -179,6 +180,7 @@ struct NewProjectSheet: View {
 
     private var identifierBinding: Binding<String> {
         Binding(get: { identifier }, set: { value in
+            guard value.uppercased() != identifier else { return }
             identifier = value.uppercased()
             identifierEdited = true
         })
@@ -186,6 +188,7 @@ struct NewProjectSheet: View {
 
     private var folderNameBinding: Binding<String> {
         Binding(get: { folderName }, set: { value in
+            guard value != folderName else { return }
             folderName = value
             folderNameEdited = true
         })

@@ -43,7 +43,7 @@ struct DevicesSettingsPane: View {
                 }
             }
             SettingsRow(label: "Server status") {
-                Text(serverStatus)
+                Text(serverStatus.isEmpty ? " " : serverStatus)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }

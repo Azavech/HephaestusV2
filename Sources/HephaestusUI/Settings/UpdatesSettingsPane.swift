@@ -7,10 +7,6 @@ import UpdaterCore
 struct UpdatesSettingsPane: View {
     @Environment(AppModel.self) private var app
     @State private var message: String?
-    /// `AppModel.updaterStatusCount` when this tab last posted `check`; nil before.
-    @State private var checkCount: Int?
-    /// True when no status answered that `check` within 15 seconds.
-    @State private var notResponding = false
 
     private var settings: HostSettings? { app.localWorkspace.settings }
 
@@ -19,6 +15,9 @@ struct UpdatesSettingsPane: View {
         (15, "Every 15 minutes"), (30, "Every 30 minutes"), (60, "Every hour"), (120, "Every 2 hours"),
         (360, "Every 6 hours"), (1440, "Every day"),
     ]
+
+    /// The text of row 4 of docs/updater.md › About window, shown with a small progress indicator.
+    static let checkingText = "Checking for updates…"
 
     var body: some View {
         SettingsForm {
@@ -41,25 +40,27 @@ struct UpdatesSettingsPane: View {
                 FieldMessage(text: message)
             }
             SettingsRow(label: "Release repository") {
-                Text(releaseRepository)
+                Text(app.updateController.releaseRepository ?? " ")
                     .textSelection(.enabled)
             }
             SettingsRow(label: "") {
                 HStack(spacing: 10) {
-                    Button("Check Now", action: checkNow)
-                        .disabled(app.updateController.unavailableReason != nil)
+                    // Check Now posts `check`; it is disabled while the Updater does not run.
+                    Button("Check Now") {
+                        app.updateController.postCheck()
+                    }
+                    .disabled(!app.updateController.canCheckNow)
                     statusLine
                 }
             }
         }
         .disabled(settings == nil)
-        .onChange(of: app.updaterStatusCount) {
-            notResponding = false
-        }
     }
 
     // MARK: Settings
 
+    /// A change of either setting reaches the Updater through `check` (the UpdateController
+    /// follows `settings.updated`).
     private var autoUpdateBinding: Binding<Bool> {
         Binding(get: { settings?.autoUpdate ?? true }, set: { value in
             Task {
@@ -84,67 +85,21 @@ struct UpdatesSettingsPane: View {
         })
     }
 
-    /// Info.plist key `HephaestusReleaseRepository`.
-    private var releaseRepository: String {
-        Bundle.main.object(forInfoDictionaryKey: "HephaestusReleaseRepository") as? String ?? ""
-    }
+    // MARK: Status line
 
-    // MARK: Check Now
-
-    /// Check Now posts `check`; the status line waits for the status that answers it, at most 15
-    /// seconds.
-    private func checkNow() {
-        app.updateController.postCheck()
-        let count = app.updaterStatusCount
-        checkCount = count
-        notResponding = false
-        Task {
-            try? await Task.sleep(for: .seconds(15))
-            if checkCount == count, app.updaterStatusCount == count {
-                notResponding = true
-            }
-        }
-    }
-
-    /// The text of the About window's update area, rows 1 and 3 to 9, without its controls
-    /// (docs/updater.md › Settings).
-    // DOC-GAP: docs/updater.md › About window row 3 counts from "the app's last check"; the
-    // UpdateController seam exposes no time of the last `check`, so this tab counts from its own
-    // Check Now.
+    /// The text of the About window's update area (rows 1 and 3 to 9) without its controls, or the
+    /// reason while the Updater does not run (docs/updater.md › Settings).
     @ViewBuilder
     private var statusLine: some View {
-        let status = app.updaterStatus
-        let waiting = checkCount == app.updaterStatusCount
-        if let reason = app.updateController.unavailableReason {
-            Text(reason)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        } else if waiting && notResponding {
-            Text("The updater is not responding.")
-        } else if waiting || status.state == .idle || status.state == .checking {
-            HStack(spacing: 6) {
+        let text = app.updateController.settingsStatusLine
+        HStack(spacing: 6) {
+            if text == Self.checkingText {
                 ProgressView()
                     .controlSize(.small)
-                Text("Checking for updates…")
             }
-        } else {
-            Text(Self.text(of: status))
+            Text(text)
+                .foregroundStyle(app.updateController.isRunning ? Color.primary : Color.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    /// Rows 5 to 9 of docs/updater.md › About window.
-    static func text(of status: UpdaterStatus) -> String {
-        switch status.state {
-        case .upToDate:
-            return status.message ?? "No update available"
-        case .available, .downloading, .ready, .installing:
-            guard let version = status.version, let build = status.build else { return "" }
-            return "\(AppVersion(version: version, build: build).display) available"
-        case .error:
-            return status.message ?? ""
-        case .idle, .checking:
-            return "Checking for updates…"
         }
     }
 }

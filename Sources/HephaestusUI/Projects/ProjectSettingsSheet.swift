@@ -89,7 +89,7 @@ struct ProjectSettingsSheet: View {
             GridRow {
                 label("Name")
                 VStack(alignment: .leading, spacing: 4) {
-                    TextField("Name", text: $name)
+                    TextField("Name", text: $name, prompt: Text(""))
                         .labelsHidden()
                     FieldMessage(text: ProjectRules.nameMessage(name))
                 }
