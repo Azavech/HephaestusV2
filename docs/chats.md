@@ -898,9 +898,9 @@ A Haiku call names tickets created without a title, bundles created without a ti
 
 1. Parse stdout as one JSON object. A parse failure, a non-zero exit code or `is_error` true keeps the provisional title.
 2. Take `result`, trim it, and keep its first line.
-3. Remove a leading `Title:` (any letter case) and trim. Default chosen at design time.
+3. Remove a leading `Title:`, `Ticket title:`, `Bundle title:` or `Chat title:` (any letter case) and trim. Default chosen at design time.
 4. Remove surrounding quote characters (`"`, `'`, `“`, `”`, `‘`, `’`, `«`, `»`, `` ` ``) from both ends, repeatedly, and trim.
-5. Remove trailing periods and trim.
+5. Remove trailing periods and trim. Steps 4 and 5 run again, in this order, until neither changes the text: `` `Fix it`. `` and `"Fix it."` both give `Fix it`. Default chosen at design time.
 6. When the text is longer than the maximum, cut it at the last space at or before the maximum (at the maximum when there is no space) and trim. Default chosen at design time.
 7. An empty text keeps the provisional title.
 
