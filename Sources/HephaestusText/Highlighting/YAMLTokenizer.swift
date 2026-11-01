@@ -102,6 +102,10 @@ enum YAMLTokenizer {
         /// The values of the line from `position`: comments, quoted scalars, anchors, aliases,
         /// tags, block indicators, literal and number values. Returns true when the line ends
         /// with a block indicator.
+        ///
+        /// DOC-GAP: docs/code-editor.md › YAML does not say where rules 7 and 8 apply; quoted
+        /// scalars, anchors, aliases and tags are recognized only where a value starts, so that
+        /// `don't`, `a*b` or `hi!` inside a plain scalar stay plain.
         func values(from position: Int, _ sink: inout TokenSink) -> Bool {
             var index = position
             var atScalarStart = true

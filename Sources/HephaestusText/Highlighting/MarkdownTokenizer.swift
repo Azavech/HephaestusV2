@@ -27,6 +27,8 @@ enum MarkdownTokenizer {
             }
             if text.matches("<!--", at: lineStart) {
                 // 3. HTML comment; the rest of its last line gets the inline rules.
+                // DOC-GAP: docs/code-editor.md › Markdown does not say where an unterminated
+                // comment ends; like the fenced code block, it runs to the end of the text.
                 var end = count
                 var position = lineStart + 4
                 while position < count {
