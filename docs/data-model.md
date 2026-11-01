@@ -335,6 +335,7 @@ A new chat takes the settings given to the call that creates it, else the projec
 | ------------- | ------------- | ----------- |
 | `todo`        | `.todo`       | To Do       |
 | `in_progress` | `.inProgress` | In Progress |
+| `review`      | `.review`     | In Review   |
 | `done`        | `.done`       | Done        |
 
 `Author`:

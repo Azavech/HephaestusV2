@@ -222,7 +222,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "list_tickets",
             description: #"""
-            List a project's tickets, optionally only those with one status: todo, in_progress or done.
+            List a project's tickets, optionally only those with one status: todo, in_progress, review or done.
             """#,
             inputSchema: schema(#"""
             {
@@ -235,7 +235,7 @@ extension MCPToolCatalog {
                 "status": {
                   "type": "string",
                   "description": "Only list tickets with this status.",
-                  "enum": ["todo", "in_progress", "done"]
+                  "enum": ["todo", "in_progress", "review", "done"]
                 }
               },
               "required": ["projectID"],
@@ -371,7 +371,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "set_ticket_status",
             description: #"""
-            Set a ticket's status to todo or in_progress. Set in_progress when you start working on a ticket. Only the user can set done, and you cannot change the status of a done ticket.
+            Set a ticket's status to todo, in_progress or review. Set in_progress when you start working on a ticket, and review when you have finished it. Only the user can set done, and you cannot change the status of a done ticket.
             """#,
             inputSchema: schema(#"""
             {
@@ -384,7 +384,7 @@ extension MCPToolCatalog {
                 "status": {
                   "type": "string",
                   "description": "New status.",
-                  "enum": ["todo", "in_progress"]
+                  "enum": ["todo", "in_progress", "review"]
                 }
               },
               "required": ["ticketID", "status"],

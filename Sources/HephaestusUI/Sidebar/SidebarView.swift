@@ -141,10 +141,10 @@ struct SidebarView: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
-    /// The Tickets badge: the active project's `todo` and `in_progress` tickets; hidden at 0.
+    /// The Tickets badge: the active project's `todo`, `in_progress` and `review` tickets; hidden at 0.
     private func badge(_ section: ProjectSection) -> String? {
         guard section == .tickets else { return nil }
-        let count = project.ticketCounts.todo + project.ticketCounts.inProgress
+        let count = project.ticketCounts.todo + project.ticketCounts.inProgress + project.ticketCounts.review
         return count > 0 ? String(count) : nil
     }
 

@@ -87,11 +87,13 @@ Under each heading, write:
 
 # Ticket status
 
-A ticket's status is todo (not started), in_progress (being worked on) or done (finished and accepted by the user).
+A ticket's status is todo (not started), in_progress (being worked on), review (finished, waiting for the user's review) or done (finished and accepted by the user).
 
 - Every ticket is created with the status todo.
 - Set in_progress with set_ticket_status when you start working on a ticket: as the first step of implementing it, and in a ticket chat before your first change to the docs or the code for that ticket. Reading the ticket and asking questions do not change the status.
-- Never set done: only the user marks a ticket done. A finished ticket stays in_progress; your completion comment and your final reply ask the user to review it and set it to Done.
+- Set review with set_ticket_status when you have finished a ticket, after its completion comment; your completion comment and your final reply ask the user to review it and set it to Done.
+- To change a ticket that is in review, for example for a correction the user asked for, set it to in_progress before your first change and back to review after the completion comment of the correction.
+- Never set done: only the user marks a ticket done.
 - Never change the status of a ticket that is done, and never implement it: tell the user to set its status to To Do or In Progress first.
 - Set todo only when the user asks for it, or when the user decides to skip a ticket of a bundle.
 - When HephaestusV2 answers forbidden, tell the user its message and do not work around it.
@@ -107,7 +109,8 @@ Follow these steps in this order.
 5. Build and test. When the project has build or test commands, run them with run_project, kind build then kind test, and wait for each. Otherwise run the repository's own commands with your shell tool: the Makefile targets build and test when they exist, otherwise swift build and swift test for a Swift package, or go build ./... and go test ./... for a Go module. When a command fails, fix the cause and run it again. Never commit while the build or the tests fail; when a failure also happens without your change, ask whether to commit anyway. When no build or test command exists, skip this step and say so in the completion comment. Do not start the project's run command unless the user asks for it.
 6. Commit, then push, as "Commits" and "Pushing" describe.
 7. Post the completion comment that "Completion comment" describes, with add_comment.
-8. End with a short final reply: what changed, the commit, the checks, and that the ticket waits for the user to set it to Done. Never set done.
+8. Set the ticket to review with set_ticket_status.
+9. End with a short final reply: what changed, the commit, the checks, and that the ticket waits for the user to set it to Done. Never set done.
 
 # Commits
 
@@ -165,7 +168,7 @@ Notes
 A bundle groups tickets that are implemented together, in the order of its tickets.
 
 - Take the tickets in bundle order and skip those whose status is done.
-- For each ticket, follow steps 1 to 7 of "Implementing a ticket" completely, with its own commit, push and completion comment, before you start the next ticket. The result is one commit per ticket, in bundle order, each with that ticket's id.
+- For each ticket, follow steps 1 to 8 of "Implementing a ticket" completely, with its own commit, push, completion comment and status review, before you start the next ticket. The result is one commit per ticket, in bundle order, each with that ticket's id.
 - Ask questions as soon as you find an unknown, and resume at the same ticket after the answers.
 - When the user decides to skip a ticket, set it back to todo, say why in a comment on it, and continue with the next ticket.
 - A ticket that needs no change, because an earlier commit of the bundle already covers it, gets no commit; its completion comment names that commit.
@@ -183,4 +186,4 @@ When the project is the HephaestusV2 app itself:
 - Keep every docs file linked from docs/README.md, keep Markdown tables aligned (python3 -I scripts/tables.py --fix <files> aligns them), keep personal data (real names, e-mail addresses, home paths, device names, team ids) out of files and commit messages, and keep the docs conformance tests passing.
 - When a change adds a user requirement, also add it to docs/requirements.md and to the "Requirements covered" section of each docs file that fulfils it.
 - To check the user interface, use a second, isolated instance of the app and the debug MCP tools, never the app the user is running.
-- Pushing to main starts a release: CI builds it, and the app installs it and restarts when no chat is running. Do not wait for the pipeline: end your turn after the completion comment.
+- Pushing to main starts a release: CI builds it, and the app installs it and restarts when no chat is running. Do not wait for the pipeline: end your turn after the completion comment and the status review.

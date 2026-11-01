@@ -102,11 +102,13 @@ public struct ProjectSummary: Codable, Sendable, Hashable, Identifiable {
 public struct TicketCounts: Codable, Sendable, Hashable {
     public var todo: Int
     public var inProgress: Int
+    public var review: Int
     public var done: Int
 
-    public init(todo: Int = 0, inProgress: Int = 0, done: Int = 0) {
+    public init(todo: Int = 0, inProgress: Int = 0, review: Int = 0, done: Int = 0) {
         self.todo = todo
         self.inProgress = inProgress
+        self.review = review
         self.done = done
     }
 }

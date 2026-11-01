@@ -96,12 +96,14 @@ public struct Ticket: Codable, Sendable, Hashable, Identifiable {
 public enum TicketStatus: String, Codable, Sendable, Hashable, CaseIterable {
     case todo
     case inProgress = "in_progress"
+    case review
     case done
 
     public var label: String {
         switch self {
         case .todo: return "To Do"
         case .inProgress: return "In Progress"
+        case .review: return "In Review"
         case .done: return "Done"
         }
     }

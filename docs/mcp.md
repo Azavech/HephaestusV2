@@ -361,7 +361,7 @@ A chat token runs every engine call as the actor `claude` with the chat's id, th
 | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------- |
 | A ticket created by Claude starts as `todo`, has `createdBy: claude` and gets its title from Haiku | tickets.create ([Tickets](tickets.md#tickets-created-by-claude))                 | —           |
 | A description written by Claude, at creation or on update, follows the template                    | tickets.create, tickets.update ([Tickets](tickets.md#template-validation))       | `invalid`   |
-| Claude sets only `todo` and `in_progress`                                                          | Input schema of `set_ticket_status`                                              | `invalid`   |
+| Claude sets only `todo`, `in_progress` and `review`                                                | Input schema of `set_ticket_status`                                              | `invalid`   |
 | Claude never changes the status of a `done` ticket                                                 | tickets.setStatus ([Tickets](tickets.md#status-rules))                           | `forbidden` |
 | A comment added by Claude has `author: claude`                                                     | tickets.addComment ([Tickets](tickets.md#comments))                              | —           |
 | Claude never sets a ticket title at creation, chat settings or project chat defaults               | The tools never send these params ([Engine API](engine-api.md#rules-for-claude)) | —           |
@@ -698,7 +698,7 @@ Input schema:
 Description:
 
 ```text
-List a project's tickets, optionally only those with one status: todo, in_progress or done.
+List a project's tickets, optionally only those with one status: todo, in_progress, review or done.
 ```
 
 Input schema:
@@ -714,7 +714,7 @@ Input schema:
     "status": {
       "type": "string",
       "description": "Only list tickets with this status.",
-      "enum": ["todo", "in_progress", "done"]
+      "enum": ["todo", "in_progress", "review", "done"]
     }
   },
   "required": ["projectID"],
@@ -876,7 +876,7 @@ Input schema:
 ### set_ticket_status
 
 - **Engine call:** tickets.setStatus with `ticketID` and `status`.
-- `done` is not in the enum, so the MCP layer refuses it before the engine is called, with `status: must be one of todo, in_progress.`; the engine's own refusal of `done` for Claude is never reached through this tool.
+- `done` is not in the enum, so the MCP layer refuses it before the engine is called, with `status: must be one of todo, in_progress, review.`; the engine's own refusal of `done` for Claude is never reached through this tool.
 - **Result:** the updated `Ticket`.
 - **Errors:**
   - `invalid`: `status` is `done` or another value (message above).
@@ -885,7 +885,7 @@ Input schema:
 Description:
 
 ```text
-Set a ticket's status to todo or in_progress. Set in_progress when you start working on a ticket. Only the user can set done, and you cannot change the status of a done ticket.
+Set a ticket's status to todo, in_progress or review. Set in_progress when you start working on a ticket, and review when you have finished it. Only the user can set done, and you cannot change the status of a done ticket.
 ```
 
 Input schema:
@@ -901,7 +901,7 @@ Input schema:
     "status": {
       "type": "string",
       "description": "New status.",
-      "enum": ["todo", "in_progress"]
+      "enum": ["todo", "in_progress", "review"]
     }
   },
   "required": ["ticketID", "status"],
@@ -2310,7 +2310,7 @@ The Claude CLI then sends `GET /mcp` to open an SSE stream, receives 405 and con
   "id": 6,
   "result": {
     "content": [
-      {"type": "text", "text": "status: must be one of todo, in_progress."}
+      {"type": "text", "text": "status: must be one of todo, in_progress, review."}
     ],
     "isError": true
   }

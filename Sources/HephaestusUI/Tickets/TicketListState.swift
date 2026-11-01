@@ -5,9 +5,9 @@ import HephaestusCore
 
 /// The ticket list's filters and sort order (`ProjectViewState.ticketList`); not persisted.
 struct TicketListState: Codable, Hashable {
-    /// The status filter: All, To Do, In Progress, Done.
+    /// The status filter: All, To Do, In Progress, In Review, Done.
     enum StatusFilter: String, Codable, Hashable, CaseIterable {
-        case all, todo, inProgress, done
+        case all, todo, inProgress, review, done
 
         /// The segment title.
         var title: String {
@@ -15,6 +15,7 @@ struct TicketListState: Codable, Hashable {
             case .all: return "All"
             case .todo: return "To Do"
             case .inProgress: return "In Progress"
+            case .review: return "In Review"
             case .done: return "Done"
             }
         }
@@ -25,6 +26,7 @@ struct TicketListState: Codable, Hashable {
             case .all: return nil
             case .todo: return .todo
             case .inProgress: return .inProgress
+            case .review: return .review
             case .done: return .done
             }
         }
@@ -104,7 +106,7 @@ struct TicketListState: Codable, Hashable {
     // MARK: Sorting
 
     /// The tickets in the list's sort order: ID by number, Title by localized standard
-    /// comparison, Status in the order todo, in_progress, done, Created by date. Ties keep the
+    /// comparison, Status in the order todo, in_progress, review, done, Created by date. Ties keep the
     /// ticket number order, newest first.
     func sorted(_ tickets: [Ticket]) -> [Ticket] {
         tickets.sorted { a, b in
@@ -138,12 +140,13 @@ struct TicketListState: Codable, Hashable {
         Identifiers.parseTicketID(id)?.number ?? Identifiers.parseBundleID(id)?.number ?? 0
     }
 
-    /// The sort rank of a status: todo, in_progress, done.
+    /// The sort rank of a status: todo, in_progress, review, done.
     static func rank(_ status: TicketStatus) -> Int {
         switch status {
         case .todo: return 0
         case .inProgress: return 1
-        case .done: return 2
+        case .review: return 2
+        case .done: return 3
         }
     }
 }

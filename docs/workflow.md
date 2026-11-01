@@ -142,14 +142,17 @@ The status rules (the same list is in [Status rules](tickets.md#status-rules)):
 
 - Every ticket is created with status `todo`; the user may change it afterwards with the status picker.
 - Claude sets `in_progress` when it starts working on a ticket.
+- Claude sets `review` when it has finished a ticket, after the completion comment. It may switch a ticket between `in_progress` and `review`, for example to make a correction the user asked for.
 - Only the user can set `done`. Claude may never set `done` and may never change the status of a `done` ticket.
 - The user may set any status at any time.
+- A `review` ticket is not done: Implement and Implement All stay enabled for it.
 
 How Claude applies them:
 
 - `set_ticket_status` with `in_progress` is the first step of the implementation workflow; in a bundle it is the first step for each ticket.
 - In a ticket chat started with New Chat, Claude sets `in_progress` before its first change to the docs or the code for that ticket. Reading the ticket and answering questions do not change the status. Default chosen at design time.
-- A finished ticket stays `in_progress`. The completion comment and the final reply ask the user to review it and set it to Done.
+- `set_ticket_status` with `review` follows the completion comment of a finished ticket. The completion comment and the final reply ask the user to review the ticket and set it to Done.
+- To change a `review` ticket, for example for a correction the user asked for, Claude sets it to `in_progress` before its first change, and back to `review` after the completion comment of the correction.
 - Claude sets `todo` only when the user asks for it, or when the user decides to skip a ticket of a bundle. Default chosen at design time.
 - Claude does not implement a `done` ticket. It tells the user to set the status to To Do or In Progress first. Default chosen at design time.
 - When the engine answers `forbidden`, Claude reports the message to the user and does not work around it.
@@ -164,7 +167,7 @@ The steps, in order:
 4. Build and test, with the project's commands or the repository's own commands.
 5. Commit with a conventional commit message `<type>: <summary> (<TICKET-ID>)`, then push.
 6. `add_comment` on the ticket with a summary of what changed, commit hash included.
-7. Never set `done`.
+7. `set_ticket_status` with `review`. Never set `done`.
 
 The workflow starts with Implement, whose first message is `implement-ticket.md`, with `implement_ticket` called from another chat, or when the user asks for the implementation in a ticket chat.
 
@@ -195,7 +198,7 @@ The workflow starts with Implement, whose first message is `implement-ticket.md`
 
 ### Final reply
 
-After the comment, Claude ends with a short reply: what changed, the commit, the checks, and that the ticket waits for the user to set it to Done. Default chosen at design time.
+After the comment and the status `review`, Claude ends with a short reply: what changed, the commit, the checks, and that the ticket waits for the user to set it to Done. Default chosen at design time.
 
 ## Commits
 
@@ -291,7 +294,7 @@ The format of this comment is a default. Default chosen at design time.
 
 - A bundle chat starts with Implement All, whose first message is `implement-bundle.md`, or with `implement_bundle`. The bundle prompt contains every ticket of the bundle; `get_bundle` and `get_ticket` give the current state.
 - Claude takes the tickets in bundle order (the order of `tickets`) and skips the `done` ones. Default chosen at design time.
-- For each ticket, Claude runs steps 1 to 6 of the [implementation workflow](#implementation-workflow) completely, including its own commit, push and completion comment, before starting the next ticket. The result is one commit per ticket, in bundle order, each with that ticket's id.
+- For each ticket, Claude runs steps 1 to 7 of the [implementation workflow](#implementation-workflow) completely, including its own commit, push, completion comment and status `review`, before starting the next ticket. The result is one commit per ticket, in bundle order, each with that ticket's id.
 - Claude asks questions as soon as it finds an unknown, and resumes at the same ticket after the answers.
 - When the user decides to skip a ticket, Claude sets it back to `todo`, comments why, and continues with the next ticket. Default chosen at design time.
 - A ticket that needs no change, because an earlier commit of the bundle already covers it, gets no commit; its completion comment names that commit. Default chosen at design time.
@@ -314,7 +317,7 @@ When the project is HephaestusV2 itself (the registered project whose git remote
 | 1    | User                          | Sends feedback with the ladybug, or creates or opens a ticket of the HephaestusV2 project.                                                                                                          | [Feedback](feedback.md), [Tickets and bundles](tickets.md)          |
 | 2    | Claude, feedback chat         | Clarifies with questions and creates the ticket: `todo`, named by Haiku, screenshot attached.                                                                                                       | [Feedback](feedback.md)                                             |
 | 3    | User                          | Clicks Implement, or Implement All on a bundle.                                                                                                                                                     | [Ticket chats and Implement](tickets.md#ticket-chats-and-implement) |
-| 4    | Claude, ticket chat           | Sets `in_progress`, updates the docs, updates the code to match, builds and tests, commits, pushes to `main` and comments.                                                                          | [Implementation workflow](#implementation-workflow)                 |
+| 4    | Claude, ticket chat           | Sets `in_progress`, updates the docs, updates the code to match, builds and tests, commits, pushes to `main`, comments and sets `review`.                                                           | [Implementation workflow](#implementation-workflow)                 |
 | 5    | GitHub Actions, `release.yml` | Checks for personal data and checks the docs, runs `swift test`, computes the version, builds and signs the app, and publishes the release `v<version>` with `HephaestusV2.zip` and `release.json`. | [CI](ci.md)                                                         |
 | 6    | Updater                       | Finds the release (10 s after launch, every `updateCheckIntervalMinutes`, or on Check Now), downloads and verifies it, and reports it ready.                                                        | [Updater](updater.md)                                               |
 | 7    | App                           | Restarts on the new version as soon as no chat is running and no editor is unsaved, or at once with Restart Now.                                                                                    | [Updater](updater.md)                                               |
@@ -323,7 +326,7 @@ When the project is HephaestusV2 itself (the registered project whose git remote
 - The loop needs a release build (build number above 0) with `autoUpdate` on, `HEPHAESTUS_DISABLE_UPDATER` not set and a writable app folder. With `autoUpdate` off, step 7 happens from the About window's Install button.
 - The commit must be pushed to `main` of the release repository.
 - A failing pipeline publishes no release. The running version stays, and the failure shows on the repository's Actions page.
-- Claude does not wait for the pipeline: it ends its turn after the completion comment. Default chosen at design time.
+- Claude does not wait for the pipeline: it ends its turn after the completion comment and the status `review`. Default chosen at design time.
 - The restart stops the Claude processes. Transcripts are kept, and the next message of a chat resumes its Claude session ([Chats](chats.md)).
 - Docs changed and pushed without a ticket are not turned into code automatically. A ticket that lists the changed sections under Docs starts the loop. Default chosen at design time.
 
@@ -426,7 +429,7 @@ Notes
 - None
 ```
 
-7. Claude's final reply summarizes the change and asks the user to review `DEMO-7` and set it to Done. The ticket stays `in_progress` until the user does.
+7. Claude sets `DEMO-7` to `review`. Its final reply summarizes the change and asks the user to review `DEMO-7` and set it to Done. The ticket stays `review` until the user does.
 
 ## Requirements covered
 

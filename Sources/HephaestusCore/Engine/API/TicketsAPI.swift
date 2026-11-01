@@ -72,7 +72,7 @@ public enum TicketsSetStatus: EngineMethod {
     public static let name = "tickets.setStatus"
     public struct Params: Codable, Sendable, Hashable {
         public var ticketID: TicketID
-        /// `todo`, `in_progress` or `done`, decoded as a string and checked by the handler.
+        /// `todo`, `in_progress`, `review` or `done`, decoded as a string and checked by the handler.
         public var status: String
 
         public init(ticketID: TicketID, status: String) {

@@ -308,7 +308,7 @@ struct MCPServerHTTPTests {
             let port = try await Self.port(engine)
             let token = await engine.tokens.externalToken
             let cases: [(String, String, String)] = [
-                ("set_ticket_status", #"{"ticketID":"HEPH-12","status":"done"}"#, "status: must be one of todo, in_progress."),
+                ("set_ticket_status", #"{"ticketID":"HEPH-12","status":"done"}"#, "status: must be one of todo, in_progress, review."),
                 ("ask_questions", #"{"questions":[]}"#, "Only the chat's own Claude can ask questions."),
                 ("open_in_app", #"{"target":{"kind":"doc","projectID":"HEPH"}}"#, "target.path: required for kind doc."),
                 ("create_project", #"{"path":"relative","name":"X","identifier":"XX"}"#, "path: use an absolute path or a path starting with ~/."),

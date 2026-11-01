@@ -71,22 +71,28 @@ The statuses ([TicketStatus](data-model.md#ticket-file)):
 
 - `todo`: not started. Every ticket starts here.
 - `in_progress`: Claude or the user is working on it.
+- `review`: finished, waiting for the user's review. Shown as In Review.
 - `done`: finished and accepted by the user.
+
+The statuses are listed in this order everywhere: To Do, In Progress, In Review, Done.
 
 The rules (the same list is in [Claude workflow](workflow.md#ticket-status)):
 
 - Every ticket is created with status `todo`; the user may change it afterwards with the status picker.
 - Claude sets `in_progress` when it starts working on a ticket.
+- Claude sets `review` when it has finished a ticket, after the completion comment. It may switch a ticket between `in_progress` and `review`, for example to make a correction the user asked for.
 - Only the user can set `done`. Claude may never set `done` and may never change the status of a `done` ticket.
 - The user may set any status at any time.
+- A `review` ticket is not done: Implement and Implement All stay enabled for it.
 
 Status changes requested by Claude:
 
-| Current status | Set `todo`  | Set `in_progress` | Set `done`  |
-| -------------- | ----------- | ----------------- | ----------- |
-| `todo`         | no change   | allowed           | `forbidden` |
-| `in_progress`  | allowed     | no change         | `forbidden` |
-| `done`         | `forbidden` | `forbidden`       | `forbidden` |
+| Current status | Set `todo`  | Set `in_progress` | Set `review` | Set `done`  |
+| -------------- | ----------- | ----------------- | ------------ | ----------- |
+| `todo`         | no change   | allowed           | allowed      | `forbidden` |
+| `in_progress`  | allowed     | no change         | allowed      | `forbidden` |
+| `review`       | allowed     | allowed           | no change    | `forbidden` |
+| `done`         | `forbidden` | `forbidden`       | `forbidden`  | `forbidden` |
 
 - The user, from any device, may make every change in this table, including leaving `done`.
 - The status changes only through `tickets.setStatus` (MCP tool `set_ticket_status`); `tickets.update` has no status parameter. The engine applies the rules for every caller: local windows, remote devices, chats and external Claude sessions.
@@ -152,23 +158,23 @@ The Tickets section (sidebar, ⌘2) shows the tickets of the selected project on
 
 ### Ticket list
 
-Header bar, from left to right, on one row when the list is wide enough for all its controls. Otherwise the header takes two lines: the status filter alone on the first line, filling the header's width with its four segments sharing that width, and the text filter and the two buttons on the second line.
+Header bar, from left to right, on one row when the list is wide enough for all its controls. Otherwise the header takes two lines: the status filter alone on the first line, filling the header's width with its five segments sharing that width, and the text filter and the two buttons on the second line.
 
 | Control                      | Behaviour                                                                                                                                         |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status filter                | Segmented control All, To Do, In Progress, Done. Starts at All.                                                                                   |
+| Status filter                | Segmented control All, To Do, In Progress, In Review, Done. Starts at All.                                                                        |
 | Text filter                  | Search field, placeholder `Filter`. A ticket matches when every whitespace-separated term appears in its id, title or description, ignoring case. |
 | Create Bundle from Selection | Enabled when at least one ticket is selected. Opens the [ticket picker sheet](#ticket-picker-sheet) with the selection checked.                   |
 | New Ticket (+)               | Opens the [New Ticket sheet](#new-ticket-sheet).                                                                                                  |
 
 The text filter's matching fields and the placeholder are defaults. Default chosen at design time.
 
-| Column  | Content                                                                        | Sort order                    |
-| ------- | ------------------------------------------------------------------------------ | ----------------------------- |
-| ID      | Ticket id, monospaced                                                          | By number                     |
-| Title   | One line, truncated with an ellipsis                                           | Localized standard comparison |
-| Status  | Capsule: To Do gray, In Progress blue, Done green                              | `todo`, `in_progress`, `done` |
-| Created | Date with abbreviated month and short time, in the user's locale and time zone | By date                       |
+| Column  | Content                                                                        | Sort order                              |
+| ------- | ------------------------------------------------------------------------------ | --------------------------------------- |
+| ID      | Ticket id, monospaced                                                          | By number                               |
+| Title   | One line, truncated with an ellipsis                                           | Localized standard comparison           |
+| Status  | Capsule: To Do gray, In Progress blue, In Review orange, Done green            | `todo`, `in_progress`, `review`, `done` |
+| Created | Date with abbreviated month and short time, in the user's locale and time zone | By date                                 |
 
 The capsule colors and the date format are defaults. Default chosen at design time.
 
@@ -177,16 +183,16 @@ The capsule colors and the date format are defaults. Default chosen at design ti
 - The list starts sorted by ID, newest first. Clicking a column header sorts by that column; clicking it again reverses the order. Default chosen at design time.
 - Filters and sort order are kept per window and per project in `ProjectViewState.ticketList` while the window is open; `debug_ui_state` encodes them, and they are never persisted. Default chosen at design time.
 - Selection: click, ⌘-click and ⇧-click; ⌘A selects every visible ticket. With one ticket selected the detail shows it; with several it shows `<n> Tickets Selected` and a Create Bundle from Selection button; with none it shows `No Ticket Selected`. Default chosen at design time.
-- The sidebar badge of Tickets is the number of `todo` and `in_progress` tickets of the selected project (`ticketCounts` of its ProjectSummary). It is hidden at 0. Default chosen at design time.
+- The sidebar badge of Tickets is the number of `todo`, `in_progress` and `review` tickets of the selected project (`ticketCounts` of its ProjectSummary). It is hidden at 0. Default chosen at design time.
 - Context menu, acting on the selected rows (right-clicking a row that is not selected selects it first):
 
-| Item                                  | Enabled when                | Action                                                                                    |
-| ------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------- |
-| Implement                             | One ticket that is not done | Same as the Implement button ([Ticket chats and Implement](#ticket-chats-and-implement)). |
-| Set Status ▸ To Do, In Progress, Done | At least one ticket         | `tickets.setStatus` for each selected ticket.                                             |
-| Create Bundle from Selection…         | At least one ticket         | Opens the ticket picker sheet with the selection checked.                                 |
-| Copy ID                               | At least one ticket         | Copies the ids, one per line (also ⌘C).                                                   |
-| Delete…                               | At least one ticket         | Confirmation, then `tickets.delete` for each ([Deleting](#deleting)).                     |
+| Item                                             | Enabled when                | Action                                                                                    |
+| ------------------------------------------------ | --------------------------- | ----------------------------------------------------------------------------------------- |
+| Implement                                        | One ticket that is not done | Same as the Implement button ([Ticket chats and Implement](#ticket-chats-and-implement)). |
+| Set Status ▸ To Do, In Progress, In Review, Done | At least one ticket         | `tickets.setStatus` for each selected ticket.                                             |
+| Create Bundle from Selection…                    | At least one ticket         | Opens the ticket picker sheet with the selection checked.                                 |
+| Copy ID                                          | At least one ticket         | Copies the ids, one per line (also ⌘C).                                                   |
+| Delete…                                          | At least one ticket         | Confirmation, then `tickets.delete` for each ([Deleting](#deleting)).                     |
 
 The context menu is a default. Default chosen at design time.
 
@@ -203,7 +209,7 @@ The empty-state texts are defaults. Default chosen at design time.
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | ID      | Monospaced and selectable, with a copy button.                                                                                                                                                                                                                                             |
 | Title   | Inline text field. Return, or moving the focus away, saves with `tickets.update`. Esc restores the stored title. An empty title is not saved and the stored title comes back.                                                                                                              |
-| Status  | Pop-up menu To Do, In Progress, Done. A choice calls `tickets.setStatus` at once.                                                                                                                                                                                                          |
+| Status  | Pop-up menu To Do, In Progress, In Review, Done. A choice calls `tickets.setStatus` at once.                                                                                                                                                                                               |
 | Dates   | `Created <date> by You` or `Created <date> by Claude`, with the date in the format of the list's Created column, then `· Updated <relative time>`: `Updated just now` less than a minute after the change, then for example `Updated 5 minutes ago`; the text is updated every 30 seconds. |
 | Bundles | `In bundles: HEPH-B2, HEPH-B5`, each id opening that bundle. Hidden when the ticket is in no bundle.                                                                                                                                                                                       |
 | Tabs    | Details, and `Chats (<n>)` where n is the number of chats listed in the Chats tab.                                                                                                                                                                                                         |
@@ -321,7 +327,7 @@ Implement:
 3. The UI calls `chats.implementTicket` with the ticket id and no settings, so the chat uses the project's `chatDefaults`, or else the host's `defaultChatSettings`. The composer changes them afterwards. Default chosen at design time.
 4. The engine creates a chat of kind `ticket` with `ticket: <ID>`, appends its id to the ticket's `chats` (emitting `ticket.updated`), starts Claude with the ticket prompt, and sends the `implement-ticket.md` message as the first user message ([Chats](chats.md)).
 5. The Chats tab selects the new chat. Implement from the list's context menu first selects the ticket and its Chats tab.
-6. Claude follows the [implementation workflow](workflow.md#implementation-workflow): it sets the status to `in_progress`, reads the ticket, asks questions, changes the docs and then the code, builds and tests, commits and pushes, and comments. The ticket stays `in_progress` until the user sets `done`.
+6. Claude follows the [implementation workflow](workflow.md#implementation-workflow): it sets the status to `in_progress`, reads the ticket, asks questions, changes the docs and then the code, builds and tests, commits and pushes, comments, and sets the status to `review`. The ticket stays `review` until the user sets `done`.
 
 `implement_ticket`, called by Claude from another chat, goes through the same engine check (the `conflict` of step 1) and steps 4 and 6, and changes no window's selection. Default chosen at design time.
 
@@ -392,7 +398,7 @@ Create Bundle from Selection, New Bundle and Add Tickets… use this sheet.
 1. Implement All is in the bar of the bundle's Chats tab and in the bundle list's context menu. It is enabled when the bundle has at least one ticket that is not `done`; a listed id without a ticket file does not count, as it cannot be implemented. While disabled, its tooltip reads `All tickets of this bundle are done.` or `This bundle has no tickets.`. `chats.implementBundle` fails in that case with `conflict` and `<ID> has no ticket left to implement.`. It is also disabled while the CLI of the window's device is unavailable, with the tooltip `Claude CLI is not available on <device name>.` Default chosen at design time.
 2. The same active-chat alert as for Implement is shown when a chat of the bundle is active.
 3. The UI calls `chats.implementBundle` with the bundle id. The engine creates a chat of kind `bundle` with `bundle: <ID>`, appends its id to the bundle's `chats` (emitting `bundle.updated`), starts Claude with the bundle prompt, which contains every ticket of the bundle, and sends the `implement-bundle.md` message as the first user message ([Chats](chats.md)). Implement All from the bundle list's context menu first selects the bundle and its Chats tab, which then selects the new chat.
-4. Claude implements the bundle's tickets one after the other in bundle order and skips the `done` ones. It sets each ticket to `in_progress` when it starts it, and gives each one its own commit, push and completion comment ([Claude workflow](workflow.md#bundles)). The Tickets tab shows the status changes as they happen.
+4. Claude implements the bundle's tickets one after the other in bundle order and skips the `done` ones. It sets each ticket to `in_progress` when it starts it, gives each one its own commit, push and completion comment, and sets it to `review` after that comment ([Claude workflow](workflow.md#bundles)). The Tickets tab shows the status changes as they happen.
 
 ## Deleting
 
@@ -422,7 +428,7 @@ The confirmation texts, and keeping the chats of a deleted ticket or bundle, are
 | Create a ticket                   | Yes; any description; optional title | Yes (`create_ticket`); template validated; never a title                                                             |
 | Edit a title                      | Yes                                  | Yes (`update_ticket`)                                                                                                |
 | Edit a description                | Yes                                  | Yes (`update_ticket`); template validated                                                                            |
-| Change the status                 | Any status at any time               | `todo` or `in_progress` only; never on a `done` ticket                                                               |
+| Change the status                 | Any status at any time               | `todo`, `in_progress` or `review` only; never on a `done` ticket                                                     |
 | Delete a ticket                   | Yes                                  | Yes (`delete_ticket`)                                                                                                |
 | Add a comment                     | Yes                                  | Yes (`add_comment`)                                                                                                  |
 | Edit or delete a comment          | Yes, any comment                     | Yes (`update_comment`, `delete_comment`)                                                                             |
@@ -436,33 +442,33 @@ Users on remote devices have the same rights as the local user.
 
 Every error is `{code, message}` ([Engine API](engine-api.md)). The message texts below are defaults. Default chosen at design time.
 
-| Condition                                                                                                                       | Code          | Message                                                         |
-| ------------------------------------------------------------------------------------------------------------------------------- | ------------- | --------------------------------------------------------------- |
-| Malformed ticket id                                                                                                             | `invalid`     | `"<value>" is not a valid ticket id.`                           |
-| Malformed bundle id                                                                                                             | `invalid`     | `"<value>" is not a valid bundle id.`                           |
-| Ticket's project or file does not exist                                                                                         | `notFound`    | `Ticket <ID> not found.`                                        |
-| Bundle's project or file does not exist                                                                                         | `notFound`    | `Bundle <ID> not found.`                                        |
-| Ticket file cannot be decoded                                                                                                   | `internal`    | `Ticket file <ID>.yml cannot be read: <reason>.`                |
-| Empty description                                                                                                               | `invalid`     | `The description must not be empty.`                            |
-| Description written by Claude does not follow the template                                                                      | `invalid`     | See [Template validation](#template-validation).                |
-| Invalid title                                                                                                                   | `invalid`     | `Title must be 1 to 200 characters on one line.`                |
-| Unknown status value                                                                                                            | `invalid`     | `Unknown status "<value>". Use todo, in_progress or done.`      |
-| Claude requests `done`                                                                                                          | `forbidden`   | `Only the user can mark a ticket as done.`                      |
-| Claude changes the status of a `done` ticket                                                                                    | `forbidden`   | `<ID> is done; only the user can change its status.`            |
-| Comment without text and without attachments                                                                                    | `invalid`     | `A comment needs text or at least one attachment.`              |
-| Unknown comment                                                                                                                 | `notFound`    | `Comment <id> not found.`                                       |
-| Unknown ticket attachment                                                                                                       | `notFound`    | `Attachment <id> not found.`                                    |
-| File larger than 20 MiB                                                                                                         | `invalid`     | `<name> is larger than 20 MB.`                                  |
-| Files of one request larger than 20 MiB together                                                                                | `invalid`     | `The attachments of one request exceed 20 MB.`                  |
-| Path given by Claude is not a readable regular file                                                                             | `invalid`     | `<path> is not a readable file.`                                |
-| `attachments.read` path not of the form `attachments/<TICKET-ID>/<file>` or `chats/<CHAT-ID>/<file>`, or outside `.hephaestus/` | `forbidden`   | `The path is outside the attachments folder.`                   |
-| `attachments.read` file missing                                                                                                 | `notFound`    | `Attachment file <path> not found.`                             |
-| Bundle ticket of another project                                                                                                | `invalid`     | `<ID> does not belong to project <IDENT>.`                      |
-| Ticket listed twice in a bundle                                                                                                 | `invalid`     | `<ID> is listed more than once.`                                |
-| `bundles.create` without tickets                                                                                                | `invalid`     | `A bundle needs at least one ticket.`                           |
-| `chats.implementTicket` on a `done` ticket                                                                                      | `conflict`    | `<ID> is done; set it to To Do or In Progress to implement it.` |
-| `chats.implementBundle` with no ticket that is not `done`                                                                       | `conflict`    | `<ID> has no ticket left to implement.`                         |
-| A file cannot be moved to the Trash                                                                                             | `unavailable` | `<path> cannot be moved to the Trash: <reason>.`                |
+| Condition                                                                                                                       | Code          | Message                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------ |
+| Malformed ticket id                                                                                                             | `invalid`     | `"<value>" is not a valid ticket id.`                              |
+| Malformed bundle id                                                                                                             | `invalid`     | `"<value>" is not a valid bundle id.`                              |
+| Ticket's project or file does not exist                                                                                         | `notFound`    | `Ticket <ID> not found.`                                           |
+| Bundle's project or file does not exist                                                                                         | `notFound`    | `Bundle <ID> not found.`                                           |
+| Ticket file cannot be decoded                                                                                                   | `internal`    | `Ticket file <ID>.yml cannot be read: <reason>.`                   |
+| Empty description                                                                                                               | `invalid`     | `The description must not be empty.`                               |
+| Description written by Claude does not follow the template                                                                      | `invalid`     | See [Template validation](#template-validation).                   |
+| Invalid title                                                                                                                   | `invalid`     | `Title must be 1 to 200 characters on one line.`                   |
+| Unknown status value                                                                                                            | `invalid`     | `Unknown status "<value>". Use todo, in_progress, review or done.` |
+| Claude requests `done`                                                                                                          | `forbidden`   | `Only the user can mark a ticket as done.`                         |
+| Claude changes the status of a `done` ticket                                                                                    | `forbidden`   | `<ID> is done; only the user can change its status.`               |
+| Comment without text and without attachments                                                                                    | `invalid`     | `A comment needs text or at least one attachment.`                 |
+| Unknown comment                                                                                                                 | `notFound`    | `Comment <id> not found.`                                          |
+| Unknown ticket attachment                                                                                                       | `notFound`    | `Attachment <id> not found.`                                       |
+| File larger than 20 MiB                                                                                                         | `invalid`     | `<name> is larger than 20 MB.`                                     |
+| Files of one request larger than 20 MiB together                                                                                | `invalid`     | `The attachments of one request exceed 20 MB.`                     |
+| Path given by Claude is not a readable regular file                                                                             | `invalid`     | `<path> is not a readable file.`                                   |
+| `attachments.read` path not of the form `attachments/<TICKET-ID>/<file>` or `chats/<CHAT-ID>/<file>`, or outside `.hephaestus/` | `forbidden`   | `The path is outside the attachments folder.`                      |
+| `attachments.read` file missing                                                                                                 | `notFound`    | `Attachment file <path> not found.`                                |
+| Bundle ticket of another project                                                                                                | `invalid`     | `<ID> does not belong to project <IDENT>.`                         |
+| Ticket listed twice in a bundle                                                                                                 | `invalid`     | `<ID> is listed more than once.`                                   |
+| `bundles.create` without tickets                                                                                                | `invalid`     | `A bundle needs at least one ticket.`                              |
+| `chats.implementTicket` on a `done` ticket                                                                                      | `conflict`    | `<ID> is done; set it to To Do or In Progress to implement it.`    |
+| `chats.implementBundle` with no ticket that is not `done`                                                                       | `conflict`    | `<ID> has no ticket left to implement.`                            |
+| A file cannot be moved to the Trash                                                                                             | `unavailable` | `<path> cannot be moved to the Trash: <reason>.`                   |
 
 ## Keyboard shortcuts
 
@@ -490,7 +496,7 @@ Shortcuts of this document. All global shortcuts are listed in [UI](ui.md).
 - R20: A ticket has a unique id made of the project identifier and a number, for example `HEPH-12`.
 - R21: A ticket has a description.
 - R22: A ticket has a creation date.
-- R23: A ticket has a status: todo, in progress or done.
+- R23: A ticket has a status: todo, in progress, in review or done.
 - R24: A ticket has a comment section.
 - R25: Files can be added to the comments.
 - R26: Image files are shown as images.

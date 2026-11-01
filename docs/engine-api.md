@@ -545,18 +545,18 @@ Events: ticket.updated.
 
 Swift type `TicketsSetStatus` · actors: user, claude · result: [Ticket](data-model.md#ticket-file)
 
-| Param    | Type     | Required | Description                                                                                                                                                        |
-| -------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| ticketID | TicketID | yes      | Ticket id.                                                                                                                                                         |
-| status   | String   | yes      | `todo`, `in_progress` or `done`. Decoded as a string and checked by the handler, so an unknown value gets the message of [Tickets and bundles](tickets.md#errors). |
+| Param    | Type     | Required | Description                                                                                                                                                                  |
+| -------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ticketID | TicketID | yes      | Ticket id.                                                                                                                                                                   |
+| status   | String   | yes      | `todo`, `in_progress`, `review` or `done`. Decoded as a string and checked by the handler, so an unknown value gets the message of [Tickets and bundles](tickets.md#errors). |
 
 - A user may set any status at any time.
-- Claude may set `todo` or `in_progress`, never `done`, and never changes the status of a ticket whose status is `done` ([Tickets and bundles](tickets.md#status-rules)).
+- Claude may set `todo`, `in_progress` or `review`, never `done`, and never changes the status of a ticket whose status is `done` ([Tickets and bundles](tickets.md#status-rules)).
 - Setting the current status changes nothing.
 
 | Error     | When                                                                                                                                                       |
 | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| invalid   | ticketID is malformed; status is not one of the three values.                                                                                              |
+| invalid   | ticketID is malformed; status is not one of the four values.                                                                                               |
 | notFound  | No such ticket.                                                                                                                                            |
 | forbidden | Claude sets `done` (`Only the user can mark a ticket as done.`); Claude changes a `done` ticket (`HEPH-12 is done; only the user can change its status.`). |
 
@@ -1902,7 +1902,7 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
       "costUSD": 18.4,
       "ownCostUSD": 16.25,
       "subprojectIDs": ["SITE"],
-      "ticketCounts": {"done": 7, "inProgress": 1, "todo": 4},
+      "ticketCounts": {"done": 7, "inProgress": 1, "review": 2, "todo": 4},
       "type": "swiftApplication"
     },
     {
@@ -1913,7 +1913,7 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
       "costUSD": 2.15,
       "ownCostUSD": 2.15,
       "subprojectIDs": [],
-      "ticketCounts": {"done": 0, "inProgress": 0, "todo": 2},
+      "ticketCounts": {"done": 0, "inProgress": 0, "review": 0, "todo": 2},
       "type": "none"
     }
   ],
@@ -1966,6 +1966,7 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
 | ---------- | ---- | -------- | ---------------------------------- |
 | todo       | Int  | yes      | Tickets with status `todo`.        |
 | inProgress | Int  | yes      | Tickets with status `in_progress`. |
+| review     | Int  | yes      | Tickets with status `review`.      |
 | done       | Int  | yes      | Tickets with status `done`.        |
 
 ### ProjectDetail
@@ -2106,7 +2107,7 @@ String enum: `projects`, `tickets`, `bundles`, `docs`, `code`, `chats`, `skills`
 | skills   | `skill:<name>`                   | Skill name           | Skill description                 | skill           |
 | web      | `web:<projectID>:<tabID>`        | Tab title            | Tab URL                           | webTab          |
 
-Status labels are To Do, In Progress and Done. `<chat kind>` is the stored kind: `project`, `ticket`, `bundle` or `feedback`. A skill whose description is empty has no subtitle. Clients highlight every query term in `title` and `snippet` themselves, case-insensitively. Default chosen at design time.
+Status labels are To Do, In Progress, In Review and Done. `<chat kind>` is the stored kind: `project`, `ticket`, `bundle` or `feedback`. A skill whose description is empty has no subtitle. Clients highlight every query term in `title` and `snippet` themselves, case-insensitively. Default chosen at design time.
 
 ```json
 [

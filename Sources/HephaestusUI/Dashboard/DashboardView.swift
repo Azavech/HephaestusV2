@@ -84,6 +84,7 @@ struct DashboardView: View {
             HStack(alignment: .top, spacing: 24) {
                 count(counts.todo, "To Do")
                 count(counts.inProgress, "In Progress")
+                count(counts.review, "In Review")
                 count(counts.done, "Done")
             }
         }

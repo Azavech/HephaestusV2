@@ -156,7 +156,7 @@ extension Engine {
         try ActorRules.requireNotDone(params.status, actor)
         let id = try normalizedTicketID(params.ticketID)
         guard let status = TicketStatus(rawValue: params.status) else {
-            throw EngineError(.invalid, "Unknown status \"\(params.status)\". Use todo, in_progress or done.")
+            throw EngineError(.invalid, "Unknown status \"\(params.status)\". Use todo, in_progress, review or done.")
         }
         let old = try existingTicket(id)
         try ActorRules.requireNotDoneTicket(old, actor)

@@ -199,6 +199,7 @@ struct DomainState {
             switch ticket.status {
             case .todo: counts.todo += 1
             case .inProgress: counts.inProgress += 1
+            case .review: counts.review += 1
             case .done: counts.done += 1
             }
         }

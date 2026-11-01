@@ -33,7 +33,7 @@ enum TicketFormat {
     }
 }
 
-/// The status capsule: To Do gray, In Progress blue, Done green.
+/// The status capsule: To Do gray, In Progress blue, In Review orange, Done green.
 struct StatusCapsule: View {
     let status: TicketStatus
 
@@ -59,6 +59,7 @@ struct StatusCapsule: View {
         switch status {
         case .todo: return .gray
         case .inProgress: return .blue
+        case .review: return .orange
         case .done: return .green
         }
     }
