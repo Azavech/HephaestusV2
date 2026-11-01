@@ -9,6 +9,7 @@ extension Engine {
     /// starts with `startFileWatching()`.
     func loadProjects() async {
         let loaded = loadRegisteredProjects()
+        domain.startupLoadDone = true
         log.info(.engine, "loaded \(loaded.count) project(s)")
     }
 
@@ -58,8 +59,9 @@ extension Engine {
             id = project.id
             newlyLoaded.append(id)
             log.info(.storage, "loaded project \(id) at \(rootPath)")
-            if !loaded.chats.isEmpty {
-                chatsDidLoad(loaded.chats.keys.sorted { $0.uuidString < $1.uuidString })
+            if domain.startupLoadDone {
+                // The transcripts of the projects loaded at startup are scanned by core-claude.
+                Task.detached { [weak self] in await self?.scanChatTranscripts(of: id) }
             }
         }
         for entry in domain.project(id)?.subprojects ?? [] {

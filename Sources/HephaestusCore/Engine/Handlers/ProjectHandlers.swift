@@ -251,7 +251,18 @@ extension Engine {
         for run in stoppedRuns {
             stopRun(run.runID)
         }
-        await terminateChatProcesses(unloaded.chatIDs)
+        // docs/skills.md › Generation: projects.remove deletes Runtime/plugins/<projectID>/.
+        for projectID in unloaded.projectIDs where domain.projects[projectID] == nil {
+            let plugin = dataDirectory.pluginFolder(projectID: projectID)
+            if FileManager.default.fileExists(atPath: plugin.path) {
+                do {
+                    try FileManager.default.removeItem(at: plugin)
+                } catch {
+                    log.warn(.skills, "\(plugin.path) cannot be deleted: \(error.localizedDescription)")
+                }
+            }
+        }
+        await terminateChatProcesses(inProjects: unloaded.projectIDs)
         await watchedProjectRootsDidChange()
         return Empty()
     }

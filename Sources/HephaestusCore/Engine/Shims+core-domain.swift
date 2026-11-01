@@ -11,28 +11,33 @@ extension ChatManager {
     }
 }
 
-// SHIM(core-claude): delete at integration — not in the cross-key contracts; ui.open needs the
-// driving device of a chat (docs/engine-api.md › Chat metadata in the API).
+// SHIM(core-claude): delete at integration — the driving device of a chat, for ui.open
+// (docs/engine-api.md › Chat metadata in the API).
 extension ChatManager {
     /// The device id of the user that last drove the chat since the engine started; nil when
     /// unknown.
-    func drivingDevice(of chatID: ChatID) -> String? {
+    func drivingDeviceID(of chatID: ChatID) -> String? {
         nil
     }
 }
 
-// SHIM(core-claude): delete at integration — not in the cross-key contracts.
+// SHIM(core-claude): delete at integration.
 extension Engine {
-    /// `projects.remove` and the deletion of a project file terminate the Claude processes of
-    /// the chats of the removed projects: SIGTERM, then SIGKILL 5 s later (docs/chats.md ›
-    /// Idle termination and quitting). Called after the chats left `domain`.
-    func terminateChatProcesses(_ chatIDs: [ChatID]) async {}
+    /// `projects.remove` and the unloading of projects terminate the Claude processes of their
+    /// chats: SIGTERM, then SIGKILL 5 s later (docs/chats.md › Idle termination and quitting).
+    /// Called after the projects left `domain`.
+    func terminateChatProcesses(inProjects projectIDs: [ProjectID]) async {}
 
-    /// Chat metadata was loaded with a project (at launch, by projects.open or projects.create,
-    /// or when a project file appears): the transcripts are replayed once to find incomplete
-    /// question sets and to cancel pending permission requests (docs/data-model.md › Loading,
-    /// step 4).
-    func chatsDidLoad(_ chatIDs: [ChatID]) {}
+    /// A project loaded after startup (projects.create, projects.open, a project file that
+    /// appeared): its transcripts are replayed once to find incomplete question sets and to
+    /// cancel pending permission requests (docs/data-model.md › Loading, step 4).
+    func scanChatTranscripts(of projectID: ProjectID) async {}
+
+    /// The environment of child processes: the login-shell environment captured at launch,
+    /// without any `HEPHAESTUS_*` variable (docs/architecture.md › Child processes, rule 1).
+    func childProcessEnvironment() async -> [String: String] {
+        appEnvironmentForTools()
+    }
 }
 
 // SHIM(core-files): delete at integration — not in the cross-key contracts.

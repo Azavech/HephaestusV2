@@ -19,7 +19,7 @@ extension Engine {
         case .user, .system:
             deviceID = params.deviceID
         case .claude:
-            deviceID = actor.chat.flatMap { chats.drivingDevice(of: $0) }
+            deviceID = actor.chat.flatMap { chats.drivingDeviceID(of: $0) }
         }
         emit(UIOpenEvent.self, UIOpenEvent.Payload(target: target, deviceID: deviceID), origin: actor)
         return Empty()

@@ -139,7 +139,7 @@ struct ProjectsTests {
             let parent = h.projects.appendingPathComponent("Parent")
             let child = parent.appendingPathComponent("apps/child")
             try writeFile(projectYAML(id: "CHILD", name: "Child"), to: child.appendingPathComponent(".hephaestus/project.yml"))
-            try await h.connection.call(ProjectsOpen.self, .init(rootPath: child.path))
+            _ = try await h.connection.call(ProjectsOpen.self, .init(rootPath: child.path))
             try writeFile(projectYAML(id: "PAR", name: "Parent", subprojects: ["apps/child", "missing"]),
                           to: parent.appendingPathComponent(".hephaestus/project.yml"))
             let detail = try await h.connection.call(ProjectsOpen.self, .init(rootPath: parent.path))

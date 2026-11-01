@@ -100,20 +100,20 @@ extension Engine {
 final class EventRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var events: [EngineEventEnvelope] = []
-    private var task: Task<Void, Never>?
 
     init(_ connection: LocalEngineConnection) {
         let stream = connection.events
-        task = Task { [weak self] in
+        Task { [weak self] in
             for await event in stream {
                 self?.append(event)
             }
         }
     }
 
-    deinit {
-        task?.cancel()
-    }
+    // The task is not cancelled when the recorder goes away: cancelling a task that iterates a
+    // connection's events while an event is delivered can deadlock `StreamFanOut` (it yields
+    // under its lock, and the stream's termination handler takes the same lock). The task ends
+    // when the connection closes.
 
     /// A recorder created once the events of the calls made before have been delivered.
     static func make(_ connection: LocalEngineConnection) async -> EventRecorder {

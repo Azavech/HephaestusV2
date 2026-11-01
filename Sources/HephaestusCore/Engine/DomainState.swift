@@ -27,6 +27,8 @@ struct DomainState {
     var gitExecutable: GitExecutable = .notLookedUp
     /// True once the engine stops: background naming answers are not written anymore.
     var isStopped = false
+    /// True once the projects of the registry were loaded at startup.
+    var startupLoadDone = false
 
     init(registry: Registry) {
         self.registry = registry

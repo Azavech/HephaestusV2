@@ -103,6 +103,20 @@ extension Engine {
         domain.setProject(project)
     }
 
+    /// Writes the project.yml of a loaded project, keeps it in memory and emits
+    /// `project.updated` with `origin`; returns the new ProjectDetail. For the methods of other
+    /// areas that change a project file (skills.setEnabled, skill renames and deletes).
+    /// Fails with `notFound` when the project is not loaded.
+    @discardableResult
+    func saveProject(_ project: Project, origin: Actor) throws -> ProjectDetail {
+        guard domain.isLoaded(project.id) else {
+            throw EngineError.notFound("Project", project.id)
+        }
+        try saveProject(project)
+        emitProjectUpdated(project.id, origin: origin)
+        return projectDetail(project.id)!
+    }
+
     /// Writes a project.yml that is not loaded yet.
     func writeProjectFile(_ project: Project, in folder: ProjectFolder) throws {
         try record(folder.projectFile) { try ProjectFileStore.write(project, to: folder) }
@@ -224,12 +238,14 @@ extension Engine {
 
     // MARK: Child process environment
 
-    /// The environment of project runs and tools: the login-shell environment without any
-    /// `HEPHAESTUS_*` variable (docs/architecture.md › Child processes, rule 1).
-    // DEPENDENCY(core-claude): the login-shell environment is captured by the Claude CLI
-    // background tasks (`startClaudeBackgroundTasks`), which expose no accessor yet; until
-    // integration the app's own environment, without `HEPHAESTUS_*`, is used.
-    func childProcessEnvironment() -> [String: String] {
+    /// The app's own environment without any `HEPHAESTUS_*` variable: the environment of the
+    /// `git` calls that build a ProjectDetail synchronously, and of the shim of
+    /// `childProcessEnvironment()` until integration.
+    // DOC-GAP: docs/architecture.md › Child processes runs tools with the captured login-shell
+    // environment, which core-claude provides through the async `childProcessEnvironment()`;
+    // a ProjectDetail is built synchronously with the change it describes, so its `git` call
+    // uses the app's environment (without `HEPHAESTUS_*`).
+    func appEnvironmentForTools() -> [String: String] {
         ProcessEnvironment.withoutHephaestusVariables(ProcessInfo.processInfo.environment)
     }
 
@@ -237,11 +253,11 @@ extension Engine {
     /// tree or without an `origin` remote (docs/engine-api.md › ProjectDetail).
     func gitRemoteURL(root: String) -> String? {
         if domain.gitExecutable == .notLookedUp {
-            domain.gitExecutable = GitTool.lookUp(environment: childProcessEnvironment())
+            domain.gitExecutable = GitTool.lookUp(environment: appEnvironmentForTools())
         }
         guard case .found(let git) = domain.gitExecutable else { return nil }
         guard let result = GitTool.run(git, ["config", "--get", "remote.origin.url"], in: root,
-                                       environment: childProcessEnvironment()),
+                                       environment: appEnvironmentForTools()),
               result.status == 0 else { return nil }
         let url = String(decoding: result.output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         return url.isEmpty ? nil : url

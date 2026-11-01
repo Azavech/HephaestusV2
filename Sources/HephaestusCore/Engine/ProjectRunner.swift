@@ -55,6 +55,9 @@ final class ProjectRunner {
 extension Engine {
     /// docs/engine-api.md › projects.run.
     func projectsRun(_ params: ProjectsRun.Params, _ actor: Actor) async throws -> RunResult {
+        // The environment is awaited first, so that nothing suspends between the conflict check
+        // and the registration of the run.
+        let environment = await childProcessEnvironment()
         let projectID = try loadedProjectID(params.projectID)
         let commands = loaded(projectID).project.commands
         let command: String?
@@ -72,7 +75,7 @@ extension Engine {
         guard runs.running(projectID: projectID, kind: params.kind) == nil else {
             throw EngineError(.conflict, "A \(params.kind.rawValue) of \(projectID) is already running.")
         }
-        let run = try startRun(projectID: projectID, kind: params.kind, command: command)
+        let run = try startRun(projectID: projectID, kind: params.kind, command: command, environment: environment)
         emit(RunStartedEvent.self, run.info, origin: actor)
         guard params.wait else {
             return RunResult(run: run.info)
@@ -140,11 +143,12 @@ extension Engine {
     /// without `HEPHAESTUS_*`, standard input on `/dev/null`, standard output and standard error
     /// merged into one pipe, as the leader of a new process group (docs/projects.md › Run
     /// commands).
-    private func startRun(projectID: ProjectID, kind: RunKind, command: String) throws -> ProjectRunner.Run {
+    private func startRun(projectID: ProjectID, kind: RunKind, command: String,
+                          environment: [String: String]) throws -> ProjectRunner.Run {
         // Standard error is opened on `/dev/fd/1` after standard output became the pipe, so
         // both write into the same pipe in the order the process writes.
         let request = ChildProcessRequest(executable: "/bin/zsh", arguments: ["-c", command],
-                                          environment: childProcessEnvironment(), currentDirectory: loaded(projectID).rootPath,
+                                          environment: environment, currentDirectory: loaded(projectID).rootPath,
                                           standardInput: .null, standardOutput: .pipe, standardError: .appendToFile("/dev/fd/1"))
         let process: ChildProcess
         do {

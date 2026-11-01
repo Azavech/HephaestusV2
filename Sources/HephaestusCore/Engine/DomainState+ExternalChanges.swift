@@ -180,7 +180,7 @@ extension Engine {
         let folder = ProjectFolder(root: URL(fileURLWithPath: root, isDirectory: true))
         let path = folder.projectFile.standardizedFileURL.path
         guard let id = domain.projectID(atRoot: root) else {
-            projectFileAppeared(root: root)
+            loadAppearedProject(root: root)
             return
         }
         switch readChangedFile(path) {
@@ -192,8 +192,8 @@ extension Engine {
             emitProjectsRemoved(unloaded.projectIDs, origin: .system)
             loadRegisteredProjects()
             emitProjectsChanged(origin: .system)
-            let chatIDs = unloaded.chatIDs
-            Task { [weak self] in await self?.terminateChatProcesses(chatIDs) }
+            let removedIDs = unloaded.projectIDs
+            Task { [weak self] in await self?.terminateChatProcesses(inProjects: removedIDs) }
         case .data(let data):
             let new: Project
             do {
@@ -211,16 +211,13 @@ extension Engine {
             domain.setProject(new)
             var listChanged = new.name != old.name
             var removedIDs: [ProjectID] = []
-            var removedChats: [ChatID] = []
             if new.subprojects != old.subprojects {
                 listChanged = true
                 // Sub projects no longer listed are unloaded; newly listed ones are loaded.
                 for (childID, child) in domain.projects where child.parentID == id {
                     let stillListed = new.subprojects.contains { DomainPaths.subprojectRoot(parent: root, entry: $0) == child.rootPath }
                     guard !stillListed, domain.isLoaded(childID) else { continue }
-                    let unloaded = unloadTree(childID)
-                    removedIDs += unloaded.projectIDs
-                    removedChats += unloaded.chatIDs
+                    removedIDs += unloadTree(childID).projectIDs
                 }
                 loadTree(rootPath: root, parentID: domain.projects[id]?.parentID)
                 if !removedIDs.isEmpty {
@@ -229,8 +226,9 @@ extension Engine {
             }
             emitProjectUpdated(id, origin: .system)
             emitProjectsRemoved(removedIDs, origin: .system)
-            if !removedChats.isEmpty {
-                Task { [weak self] in await self?.terminateChatProcesses(removedChats) }
+            if !removedIDs.isEmpty {
+                let unloadedIDs = removedIDs
+                Task { [weak self] in await self?.terminateChatProcesses(inProjects: unloadedIDs) }
             }
             if new.webTabs != old.webTabs {
                 emitWebTabsUpdated(id, origin: .system)
@@ -244,9 +242,19 @@ extension Engine {
         }
     }
 
-    /// A project file appearing in a registered folder (a registry entry, or a listed sub project
-    /// folder of a loaded project) loads that project, with `projects.changed`.
-    private func projectFileAppeared(root: String) {
+    /// `.hephaestus/project.yml` appeared in a registered folder (a registry entry, or a listed
+    /// sub project folder of a loaded project) whose project is not loaded: the project loads,
+    /// with its sub projects, and `projects.changed` is emitted (docs/data-model.md › Reactions).
+    /// A folder that is not registered, or whose project is already loaded, is ignored.
+    func projectFileAppeared(root: URL) async {
+        let rootPath = DomainPaths.standardize(root.path)
+        guard domain.projectID(atRoot: rootPath) == nil else { return }
+        loadAppearedProject(root: rootPath)
+        await watchedProjectRootsDidChange()
+    }
+
+    /// Loads the project of a registered folder whose project file appeared.
+    private func loadAppearedProject(root: String) {
         let parentID: ProjectID?
         if let listingParent = loadedParentListing(root) {
             parentID = listingParent
@@ -379,17 +387,14 @@ extension Engine {
         domain.registry = new
         let newRoots = Set(domain.registeredRootPaths())
         var removedIDs: [ProjectID] = []
-        var removedChats: [ChatID] = []
         for root in oldRoots.subtracting(newRoots).sorted() {
             guard let id = domain.projectID(atRoot: root), domain.projects[id]?.parentID == nil else { continue }
-            let unloaded = unloadTree(id)
-            removedIDs += unloaded.projectIDs
-            removedChats += unloaded.chatIDs
+            removedIDs += unloadTree(id).projectIDs
         }
         emitProjectsRemoved(removedIDs, origin: .system)
         loadRegisteredProjects()
         emitProjectsChanged(origin: .system)
-        await terminateChatProcesses(removedChats)
+        await terminateChatProcesses(inProjects: removedIDs)
         await watchedProjectRootsDidChange()
     }
 
