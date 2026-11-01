@@ -40,7 +40,7 @@ struct UpdatesSettingsPane: View {
                 FieldMessage(text: message)
             }
             SettingsRow(label: "Release repository") {
-                Text(app.updateController.releaseRepository ?? " ")
+                Text(app.updateController.releaseRepository.isEmpty ? " " : app.updateController.releaseRepository)
                     .textSelection(.enabled)
             }
             SettingsRow(label: "") {

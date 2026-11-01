@@ -75,7 +75,7 @@ struct LoadingAndExternalChangesTests {
     func ticketChanges() async throws {
         try await withDomainEngine(prepare: Self.prepareTree) { h in
             let data = h.projects.appendingPathComponent("Heph/.hephaestus")
-            let events = await EventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h.connection)
             // The engine's own write is ignored.
             _ = try await h.connection.call(TicketsUpdate.self, .init(ticketID: "HEPH-1", title: "Own"))
             await events.wait(for: TicketUpdatedEvent.name)
@@ -133,7 +133,7 @@ struct LoadingAndExternalChangesTests {
         try await withDomainEngine(prepare: Self.prepareTree) { h in
             let data = h.projects.appendingPathComponent("Heph/.hephaestus")
             _ = try await h.connection.call(TicketsDelete.self, .init(ticketID: "HEPH-10"))
-            let events = await EventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h.connection)
             await h.engine.projectDataFilesChanged(projectID: "HEPH", paths: [".hephaestus/ticket/HEPH-10.yml"])
             #expect(await events.settle().isEmpty)
             try FileManager.default.removeItem(at: data.appendingPathComponent("bundle/HEPH-B1.yml"))
@@ -153,7 +153,7 @@ struct LoadingAndExternalChangesTests {
     func projectFileChanges() async throws {
         try await withDomainEngine(prepare: Self.prepareTree) { h in
             let file = h.projects.appendingPathComponent("Heph/.hephaestus/project.yml")
-            let events = await EventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h.connection)
             try writeFile(projectYAML(id: "HEPH", name: "Renamed", subprojects: ["site", "missing", "broken"], extra: """
                 nextTicketNumber: 3
                 webTabs:
@@ -189,7 +189,7 @@ struct LoadingAndExternalChangesTests {
         try await withDomainEngine(prepare: Self.prepareTree) { h in
             let file = h.projects.appendingPathComponent("Heph/.hephaestus/project.yml")
             let saved = try Data(contentsOf: file)
-            let events = await EventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h.connection)
             try FileManager.default.removeItem(at: file)
             await h.engine.projectDataFilesChanged(projectID: "HEPH", paths: [".hephaestus"])
             await events.wait(for: ProjectsChangedEvent.name)
@@ -222,7 +222,7 @@ struct LoadingAndExternalChangesTests {
     func registryChanges() async throws {
         try await withDomainEngine(prepare: Self.prepareTree) { h in
             let directory = DataDirectory(url: h.folder.appendingPathComponent("Data"))
-            let events = await EventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h.connection)
             try writeFile(projectYAML(id: "NEW", name: "New"), to: h.projects.appendingPathComponent("New/.hephaestus/project.yml"))
             try writeFile(registryYAML([h.path("New"), h.path("Heph")]), to: directory.registryFile)
             await h.engine.registryFileChanged()
@@ -247,7 +247,7 @@ struct LoadingAndExternalChangesTests {
     func settingsChanges() async throws {
         try await withDomainEngine { h in
             let directory = DataDirectory(url: h.folder.appendingPathComponent("Data"))
-            let events = await EventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h.connection)
             _ = try await h.connection.call(SettingsUpdate.self, .init(autoUpdate: false))
             await events.wait(for: SettingsUpdatedEvent.name)
             events.clear()
@@ -270,7 +270,7 @@ struct LoadingAndExternalChangesTests {
     func links() async throws {
         try await withDomainEngine(prepare: Self.prepareTree) { h in
             let chatID = UUID()
-            let events = await EventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h.connection)
             try await h.engine.linkChat(chatID, toTicket: "heph-1")
             try await h.engine.linkChat(chatID, toTicket: "HEPH-1")
             try await h.engine.linkChat(chatID, toBundle: "HEPH-B1")

@@ -35,7 +35,7 @@ extension Engine {
         let rootsBefore = watchedRootsState()
         processDataFileChanges(absolute)
         if watchedRootsState() != rootsBefore {
-            await watchedProjectRootsDidChange()
+            updateFileWatching()
         }
     }
 
@@ -202,8 +202,7 @@ extension Engine {
             emitProjectsRemoved(unloaded.projectIDs, origin: .system)
             loadRegisteredProjects()
             emitProjectsChanged(origin: .system)
-            let removedIDs = unloaded.projectIDs
-            Task { [weak self] in await self?.terminateChatProcesses(inProjects: removedIDs) }
+            terminateChatProcesses(inProjects: unloaded.projectIDs)
         case .data(let data):
             let new: Project
             do {
@@ -237,8 +236,7 @@ extension Engine {
             emitProjectUpdated(id, origin: .system)
             emitProjectsRemoved(removedIDs, origin: .system)
             if !removedIDs.isEmpty {
-                let unloadedIDs = removedIDs
-                Task { [weak self] in await self?.terminateChatProcesses(inProjects: unloadedIDs) }
+                terminateChatProcesses(inProjects: removedIDs)
             }
             if new.webTabs != old.webTabs {
                 emitWebTabsUpdated(id, origin: .system)
@@ -262,7 +260,7 @@ extension Engine {
         let rootsBefore = watchedRootsState()
         loadAppearedProject(root: rootPath)
         if watchedRootsState() != rootsBefore {
-            await watchedProjectRootsDidChange()
+            updateFileWatching()
         }
     }
 
@@ -407,8 +405,8 @@ extension Engine {
         emitProjectsRemoved(removedIDs, origin: .system)
         loadRegisteredProjects()
         emitProjectsChanged(origin: .system)
-        await terminateChatProcesses(inProjects: removedIDs)
-        await watchedProjectRootsDidChange()
+        terminateChatProcesses(inProjects: removedIDs)
+        updateFileWatching()
     }
 
     /// settings.yml changed outside the engine: the values apply as if set with

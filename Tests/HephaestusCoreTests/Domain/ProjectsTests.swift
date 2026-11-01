@@ -10,7 +10,7 @@ struct ProjectsTests {
     @Test("projects.create writes the project file and .gitignore, registers the root and emits the events")
     func createTopLevel() async throws {
         try await withDomainEngine { h in
-            let events = await EventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h.connection)
             let detail = try await h.connection.call(ProjectsCreate.self, .init(
                 rootPath: h.path("Website/./sub/.."), name: "  Website  ", identifier: "web", createDirectory: true))
             #expect(detail.project.id == "WEB")
@@ -80,7 +80,7 @@ struct ProjectsTests {
     func createSubProjects() async throws {
         try await withDomainEngine { h in
             try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
-            let events = await EventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h.connection)
             let site = try await h.create("Heph/site", name: "Website", identifier: "SITE")
             #expect(site.parentID == "HEPH")
             #expect(await events.wait(for: ProjectsChangedEvent.name) == ["project.updated", "project.updated", "projects.changed"])
@@ -109,7 +109,7 @@ struct ProjectsTests {
             let website = h.projects.appendingPathComponent("Website")
             try writeFile(projectYAML(id: "WEB", name: "Website"), to: website.appendingPathComponent(".hephaestus/project.yml"))
             try writeFile(ticketYAML(id: "WEB-3", title: "Open me"), to: website.appendingPathComponent(".hephaestus/ticket/WEB-3.yml"))
-            let events = await EventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h.connection)
             let detail = try await h.connection.call(ProjectsOpen.self, .init(rootPath: website.path + "/"))
             #expect(detail.project.id == "WEB" && detail.rootPath == website.path && detail.parentID == nil)
             #expect(try readFile(website.appendingPathComponent(".hephaestus/.gitignore")) == "chats/\n")
@@ -179,7 +179,7 @@ struct ProjectsTests {
     func update() async throws {
         try await withDomainEngine { h in
             try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
-            let events = await EventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h.connection)
             let detail = try await h.connection.call(ProjectsUpdate.self, .init(
                 projectID: "heph", docsPath: "documentation/", commands: ProjectCommands(build: "  make build ", run: "  ", test: nil),
                 chatDefaults: .set(ChatSettings(model: "opus", effort: .xhigh))))
@@ -236,7 +236,7 @@ struct ProjectsTests {
             try await h.create("Heph/site/blog", name: "Blog", identifier: "BLOG")
             try await h.create("Other", name: "Other", identifier: "OTH")
             try await h.ticket("SITE")
-            let events = await EventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h.connection)
             _ = try await h.connection.call(ProjectsRemove.self, .init(projectID: "SITE"))
             #expect(await events.wait(for: ProjectsChangedEvent.name)
                 == ["project.removed", "project.removed", "project.updated", "projects.changed"])
@@ -287,7 +287,7 @@ struct ProjectsTests {
             try writeFile(registryYAML([first, second]), to: directory.registryFile)
         }) { h in
             #expect(try await h.connection.call(ProjectsList.self).map(\.name) == ["First"])
-            let events = await EventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h.connection)
             _ = try await h.connection.call(ProjectsRemove.self, .init(projectID: "SAME"))
             await events.wait(for: ProjectsChangedEvent.name)
             let list = try await h.connection.call(ProjectsList.self)

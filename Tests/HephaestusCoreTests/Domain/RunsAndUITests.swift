@@ -16,7 +16,7 @@ struct RunsAndUITests {
     func waitedRun() async throws {
         try await withDomainEngine { h in
             try await Self.project(h, build: "echo out; echo err >&2; pwd; env | grep -c '^HEPHAESTUS_'; exit 3")
-            let events = await EventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h.connection)
             let result = try await h.connection.call(ProjectsRun.self, .init(projectID: "HEPH", kind: .build, wait: true))
             #expect(result.exitCode == 3)
             #expect(result.run.kind == .build && result.run.projectID == "HEPH" && result.run.command == result.run.command)
@@ -38,7 +38,7 @@ struct RunsAndUITests {
     func stopRun() async throws {
         try await withDomainEngine { h in
             try await Self.project(h, run: "sleep 30", test: "true")
-            let events = await EventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h.connection)
             let started = try await h.connection.call(ProjectsRun.self, .init(projectID: "HEPH", kind: .run, wait: false))
             #expect(started.exitCode == nil && started.outputTail == "")
             #expect(try await h.connection.call(SnapshotGet.self).runs == [started.run])
@@ -63,7 +63,7 @@ struct RunsAndUITests {
             #expect(result.exitCode == nil)
             #expect(result.outputTail == "begin\n")
             #expect(try await h.connection.call(SnapshotGet.self).runs.map(\.runID) == [result.run.runID])
-            let events = await EventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h.connection)
             _ = try await h.connection.call(ProjectsRemove.self, .init(projectID: "HEPH"))
             await events.wait(for: RunFinishedEvent.name)
             #expect(events.names.last == "run.finished")
@@ -148,7 +148,7 @@ struct RunsAndUITests {
             try writeFile("# Docs", to: h.projects.appendingPathComponent("Heph/docs/index.md"))
             try FileManager.default.createDirectory(at: h.projects.appendingPathComponent("Heph/Sources"), withIntermediateDirectories: true)
             let tab = try await h.connection.call(WebTabsOpen.self, .init(projectID: "HEPH", url: "https://example.com"))
-            let events = await EventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h.connection)
             _ = try await h.connection.call(UIOpen.self, .init(target: .ticket(ticketID: "heph-1"), deviceID: "D1"))
             await events.wait(for: UIOpenEvent.name)
             #expect(try events.all[0].payload(UIOpenEvent.self) == .init(target: .ticket(ticketID: "HEPH-1"), deviceID: "D1"))

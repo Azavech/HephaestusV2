@@ -83,8 +83,11 @@ struct DevicesSettingsPane: View {
         }
         Task {
             do {
-                try await app.engine.renameDevice(to: name)
-                storedName = name
+                try await app.engine.renameDevice(to: name ?? "")
+                // The local connection's DeviceInfo is not refreshed by a rename: the name is
+                // read again from the device identity service.
+                storedName = await app.engine.deviceNameSetting()
+                app.localWorkspace.deviceInfo = await app.engine.localDeviceInfo()
                 nameMessage = nil
             } catch {
                 nameMessage = errorMessage(error)

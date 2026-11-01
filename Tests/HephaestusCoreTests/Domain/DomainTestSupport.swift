@@ -97,7 +97,7 @@ extension Engine {
 }
 
 /// Collects the events of a connection from the moment it is created.
-final class EventRecorder: @unchecked Sendable {
+final class DomainEventRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var events: [EngineEventEnvelope] = []
 
@@ -116,9 +116,9 @@ final class EventRecorder: @unchecked Sendable {
     // when the connection closes.
 
     /// A recorder created once the events of the calls made before have been delivered.
-    static func make(_ connection: LocalEngineConnection) async -> EventRecorder {
+    static func make(_ connection: LocalEngineConnection) async -> DomainEventRecorder {
         try? await Task.sleep(for: .milliseconds(100))
-        return EventRecorder(connection)
+        return DomainEventRecorder(connection)
     }
 
     private func append(_ event: EngineEventEnvelope) {

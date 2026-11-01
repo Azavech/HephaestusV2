@@ -50,8 +50,8 @@ extension Engine {
         // DOC-GAP: docs/search.md › File list runs git with the login-shell environment; until
         // the capture and the tools lookup are done, code search walks the folders as it does
         // without git (docs/architecture.md › Child processes, rule 5).
-        if scopes.contains(.code), let executable = claudeCLI.gitPath, let environment = claudeCLI.loginEnvironment {
-            git = SearchGit(executable: executable, environment: ProcessEnvironment.withoutHephaestusVariables(environment))
+        if scopes.contains(.code), let executable = files.tools.git {
+            git = SearchGit(executable: executable, environment: files.tools.environment)
         }
         var input = SearchInput(terms: terms, scopes: scopes, limit: limit, projects: projects,
                                 skillsLibrary: scopes.contains(.skills) ? skillsLibraryFolder : nil, git: git)

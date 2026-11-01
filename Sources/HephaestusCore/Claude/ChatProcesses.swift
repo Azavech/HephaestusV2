@@ -643,11 +643,12 @@ extension Engine {
 
     /// `projects.remove`, and a project unloaded after an external change: the chat processes of
     /// these projects are terminated, SIGTERM then SIGKILL 5 s later (docs/chats.md › Idle
-    /// termination and quitting).
-    func terminateChatProcesses(inProjects projectIDs: Set<ProjectID>) {
-        for (chatID, runtime) in chats.runtimes {
-            let projectID = runtime.projectID ?? domain.chat(chatID)?.projectID
-            guard let projectID, projectIDs.contains(projectID) else { continue }
+    /// termination and quitting). Called after the projects left `domain`: the project of each
+    /// chat is the one recorded at launch.
+    func terminateChatProcesses(inProjects projectIDs: [ProjectID]) {
+        let projectIDs = Set(projectIDs)
+        for runtime in chats.runtimes.values {
+            guard let projectID = runtime.projectID, projectIDs.contains(projectID) else { continue }
             runtime.pendingMessages = []
             if let process = runtime.process, !process.exited {
                 terminateChatProcess(process)

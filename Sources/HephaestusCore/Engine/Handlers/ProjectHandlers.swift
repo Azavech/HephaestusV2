@@ -104,7 +104,7 @@ extension Engine {
             emitProjectUpdated(parentID, origin: actor)
         }
         emitProjectsChanged(origin: actor)
-        await watchedProjectRootsDidChange()
+        updateFileWatching()
         return projectDetail(identifier)!
     }
 
@@ -170,7 +170,7 @@ extension Engine {
         }
         emitProjectUpdated(project.id, origin: actor)
         emitProjectsChanged(origin: actor)
-        await watchedProjectRootsDidChange()
+        updateFileWatching()
         return projectDetail(project.id)!
     }
 
@@ -262,8 +262,8 @@ extension Engine {
                 }
             }
         }
-        await terminateChatProcesses(inProjects: unloaded.projectIDs)
-        await watchedProjectRootsDidChange()
+        terminateChatProcesses(inProjects: unloaded.projectIDs)
+        updateFileWatching()
         return Empty()
     }
 
