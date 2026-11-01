@@ -80,6 +80,9 @@ public actor Engine {
     private var handlers: [String: Registration] = [:]
     private var subscribers: [UUID: AsyncStream<Data>.Continuation] = [:]
     private var lifecycle = Lifecycle.created
+    /// The number of events emitted so far; a sync session's forwarding counts against it
+    /// (Sync/SyncServerConnection.swift).
+    private(set) var emittedEventCount = 0
     /// True once `shutdown()` began: background work drops its results.
     var hasStopped: Bool { lifecycle == .stopped }
 
@@ -285,6 +288,7 @@ public actor Engine {
             log.error(.engine, "event \(E.name) cannot be encoded: \(error)")
             return
         }
+        emittedEventCount += 1
         for continuation in subscribers.values {
             continuation.yield(data)
         }

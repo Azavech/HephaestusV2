@@ -111,6 +111,8 @@ final class SyncServerConnection: @unchecked Sendable {
     private var sealer: FrameSealer?
     private var opener: FrameOpener?
     private var pump: Task<Void, Never>?
+    /// How far the session's subscription has been forwarded to the send queue.
+    let eventProgress = SyncEventProgress()
     /// The start of the last request received: the next request starts after it, so that the
     /// requests start in the order they are received.
     private var lastRequestStart: Task<Void, Never>?
@@ -458,6 +460,7 @@ final class SyncServerConnection: @unchecked Sendable {
         deadline = nil
         pump?.cancel()
         pump = nil
+        eventProgress.finish()
         lastRequestStart = nil
         if !sent {
             socket.cancel()
@@ -509,19 +512,25 @@ extension Engine {
     /// does and queues the `welcome`; the events emitted afterwards follow it in order.
     func startSyncSession(_ connection: SyncServerConnection) {
         let events = subscribe()
+        let start = emittedEventCount
+        connection.eventProgress.start(at: start)
         connection.sendWelcome(device: deviceInfo, snapshot: snapshot())
         let pump = Task(priority: .medium) {
-            await self.forwardSyncEvents(events, to: connection)
+            await self.forwardSyncEvents(events, from: start, to: connection)
         }
         connection.setPump(pump)
     }
 
-    /// Forwards a session's subscription on the actor, so that the events emitted while a
-    /// request is handled are queued before its response.
-    private func forwardSyncEvents(_ events: AsyncStream<Data>, to connection: SyncServerConnection) async {
+    /// Forwards a session's subscription, which receives the events emitted after the `start`th,
+    /// and records how many events have been queued.
+    private func forwardSyncEvents(_ events: AsyncStream<Data>, from start: Int, to connection: SyncServerConnection) async {
+        var forwarded = start
         for await envelope in events {
             connection.enqueueEvent(envelope)
+            forwarded += 1
+            connection.eventProgress.advance(to: forwarded)
         }
+        connection.eventProgress.finish()
     }
 
     /// Starts one request of a remote device and returns once its dispatch began; the request
@@ -545,9 +554,58 @@ extension Engine {
             outcome = .failure(EngineError.internalError(error))
         }
         let place = connection.requestCompleted()
-        // Lets the event forwarding of this session, queued on the actor when the call emitted,
-        // run before the response is queued.
-        await Task.yield()
+        // The response is queued once the session forwarded every event emitted so far, those
+        // of this call included, however late its forwarding task runs.
+        await connection.eventProgress.wait(until: emittedEventCount)
         connection.enqueueResponse(place: place, id: id, method: method, outcome: outcome)
+    }
+}
+
+/// How many engine events a sync session has queued for sending, counted like
+/// `Engine.emittedEventCount`, so that a response waits for the events emitted before it
+/// (docs/remote.md › Event delivery). Waits end at once before the session started and after it
+/// ended.
+final class SyncEventProgress: @unchecked Sendable {
+    private let lock = NSLock()
+    private var forwarded: Int?
+    private var ended = false
+    private var waiters: [(target: Int, continuation: CheckedContinuation<Void, Never>)] = []
+
+    /// The session subscribed after `count` events were emitted.
+    func start(at count: Int) {
+        advance(to: count)
+    }
+
+    /// The events up to the `count`th are queued.
+    func advance(to count: Int) {
+        let ready = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+            forwarded = count
+            let ready = waiters.filter { $0.target <= count }.map(\.continuation)
+            waiters.removeAll { $0.target <= count }
+            return ready
+        }
+        ready.forEach { $0.resume() }
+    }
+
+    /// The session ended: no event is queued any more.
+    func finish() {
+        let all = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+            ended = true
+            defer { waiters.removeAll() }
+            return waiters.map(\.continuation)
+        }
+        all.forEach { $0.resume() }
+    }
+
+    /// Returns once the events up to the `count`th are queued, or the session is not running.
+    func wait(until count: Int) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let now = lock.withLock { () -> Bool in
+                guard !ended, let forwarded, forwarded < count else { return true }
+                waiters.append((count, continuation))
+                return false
+            }
+            if now { continuation.resume() }
+        }
     }
 }
