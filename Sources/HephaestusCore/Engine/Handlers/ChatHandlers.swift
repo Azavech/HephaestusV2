@@ -48,80 +48,389 @@ extension Engine {
         }
     }
 
-    // STUB: core-claude — docs/engine-api.md › chats.list.
+    // MARK: Lists
+
+    /// `chats.list`: every chat of the project, all kinds, sorted by `updated` descending.
     func chatsList(_ params: ChatsList.Params, _ actor: Actor) async throws -> [ChatMeta] {
-        throw EngineError.notImplemented(ChatsList.name)
+        let projectID = try loadedProjectID(params.projectID)
+        return domain.chats(of: projectID)
+            .filter { !chats.deleting.contains($0.id) }
+            .map { meta -> ChatMeta in
+                var meta = meta
+                meta.state = chats.state(of: meta.id)
+                return meta
+            }
+            .sorted { $0.updated > $1.updated }
     }
 
-    // STUB: core-claude — docs/engine-api.md › chats.get.
+    /// `chats.get`: the metadata and every item after replaying the transcript; without a live
+    /// process the pending permission requests are cancelled (docs/chats.md › Cancellation).
     func chatsGet(_ params: ChatsGet.Params, _ actor: Actor) async throws -> ChatTranscript {
-        throw EngineError.notImplemented(ChatsGet.name)
+        _ = try requireChat(params.chatID)
+        let items = try loadTranscript(params.chatID)
+        return ChatTranscript(meta: try requireChat(params.chatID), items: items)
     }
 
-    // STUB: core-claude — docs/engine-api.md › chats.create.
+    // MARK: Creation
+
+    /// `chats.create` (docs/engine-api.md › chats.create).
     func chatsCreate(_ params: ChatsCreate.Params, _ actor: Actor) async throws -> ChatMeta {
         try ActorRules.requireNoSourcePath(params.message?.attachments, actor)
-        throw EngineError.notImplemented(ChatsCreate.name)
+        let projectID = try Engine.projectIdentifier(params.projectID)
+        var ticketID: TicketID?
+        var bundleID: BundleID?
+        switch params.kind {
+        case .feedback:
+            throw EngineError.invalid("kind", "feedback chats are created by chats.createFeedback")
+        case .project:
+            guard params.ticketID == nil else { throw EngineError.invalid("ticketID", "only a ticket chat has a ticket") }
+            guard params.bundleID == nil else { throw EngineError.invalid("bundleID", "only a bundle chat has a bundle") }
+        case .ticket:
+            guard let value = params.ticketID else { throw EngineError.invalid("ticketID", "a ticket chat needs its ticket") }
+            guard params.bundleID == nil else { throw EngineError.invalid("bundleID", "only a bundle chat has a bundle") }
+            ticketID = try Engine.validated { try ModelRules.ticketID(value) }
+            guard Identifiers.projectID(of: ticketID!) == projectID else {
+                throw EngineError(.invalid, "\(ticketID!) does not belong to project \(projectID).")
+            }
+        case .bundle:
+            guard let value = params.bundleID else { throw EngineError.invalid("bundleID", "a bundle chat needs its bundle") }
+            guard params.ticketID == nil else { throw EngineError.invalid("ticketID", "only a ticket chat has a ticket") }
+            bundleID = try Engine.validated { try ModelRules.bundleID(value) }
+            guard Identifiers.projectID(of: bundleID!) == projectID else {
+                throw EngineError(.invalid, "\(bundleID!) does not belong to project \(projectID).")
+            }
+        }
+        if let settings = params.settings { try Engine.validated { try settings.validate() } }
+        func checkTargets() throws -> (Project, URL) {
+            guard let project = domain.project(projectID), let root = domain.projectRoot(projectID) else {
+                throw EngineError.notFound("Project", projectID)
+            }
+            if let ticketID, domain.ticket(ticketID) == nil { throw EngineError.notFound("Ticket", ticketID) }
+            if let bundleID, domain.bundle(bundleID) == nil { throw EngineError.notFound("Bundle", bundleID) }
+            return (project, root)
+        }
+        let (_, root) = try checkTargets()
+        let prepared = try params.message.map { try prepareMessage($0, projectRoot: root) }
+        if params.message != nil { _ = try await requireClaudeCLI() }
+        let sender = await senderName(actor)
+        let (project, _) = try checkTargets()
+
+        let meta = try createChat(kind: params.kind, project: project, ticketID: ticketID, bundleID: bundleID,
+                                  settings: params.settings, origin: actor)
+        if let message = params.message {
+            recordDrivingDevice(meta.id, actor)
+            let stored = try storeChatAttachments(prepared ?? [], chatID: meta.id)
+            try sendChatMessage(meta.id, text: message.text, attachments: stored, sender: sender, origin: actor)
+        }
+        return try requireChat(meta.id)
     }
 
-    // STUB: core-claude — docs/engine-api.md › chats.send.
-    func chatsSend(_ params: ChatsSend.Params, _ actor: Actor) async throws -> Empty {
-        try ActorRules.requireNoSourcePath(params.message.attachments, actor)
-        throw EngineError.notImplemented(ChatsSend.name)
+    /// Creates a chat: a new id, `New Chat`, `sessionStarted` false, the settings given, else the
+    /// project's `chatDefaults`, else the host's `defaultChatSettings`; writes its metadata file
+    /// (`chat.updated`), then links it to its ticket or bundle (docs/data-model.md › Changes that
+    /// touch several files).
+    private func createChat(kind: ChatKind, project: Project, ticketID: TicketID?, bundleID: BundleID?, settings chosen: ChatSettings?,
+                            origin: Actor) throws -> ChatMeta {
+        let now = ISODate.now()
+        let meta = ChatMeta(id: UUID(), kind: kind, ticketID: ticketID, bundleID: bundleID, created: now, updated: now,
+                            settings: chosen ?? project.chatDefaults ?? settings.defaultChatSettings, projectID: project.id)
+        let saved = try saveChatMeta(meta, origin: origin)
+        chats.scannedChats.insert(meta.id)
+        chats.hasTextMessage[meta.id] = false
+        if let ticketID { try linkChat(meta.id, toTicket: ticketID) }
+        if let bundleID { try linkChat(meta.id, toBundle: bundleID) }
+        return saved
     }
 
-    // STUB: core-claude — docs/engine-api.md › chats.interrupt.
-    func chatsInterrupt(_ params: ChatsInterrupt.Params, _ actor: Actor) async throws -> Empty {
-        throw EngineError.notImplemented(ChatsInterrupt.name)
-    }
-
-    // STUB: core-claude — docs/engine-api.md › chats.updateSettings.
-    func chatsUpdateSettings(_ params: ChatsUpdateSettings.Params, _ actor: Actor) async throws -> ChatMeta {
-        throw EngineError.notImplemented(ChatsUpdateSettings.name)
-    }
-
-    // STUB: core-claude — docs/engine-api.md › chats.rename.
-    func chatsRename(_ params: ChatsRename.Params, _ actor: Actor) async throws -> ChatMeta {
-        throw EngineError.notImplemented(ChatsRename.name)
-    }
-
-    // STUB: core-claude — docs/engine-api.md › chats.delete.
-    func chatsDelete(_ params: ChatsDelete.Params, _ actor: Actor) async throws -> Empty {
-        throw EngineError.notImplemented(ChatsDelete.name)
-    }
-
-    // STUB: core-claude — docs/engine-api.md › chats.answerPermission.
-    func chatsAnswerPermission(_ params: ChatsAnswerPermission.Params, _ actor: Actor) async throws -> Empty {
-        throw EngineError.notImplemented(ChatsAnswerPermission.name)
-    }
-
-    // STUB: core-claude — docs/engine-api.md › chats.postQuestions; the question rules are
-    // `ModelRules.questions`.
-    func chatsPostQuestions(_ params: ChatsPostQuestions.Params, _ actor: Actor) async throws -> QuestionSet {
-        try ActorRules.requireOwnChat(params.chatID, actor)
-        throw EngineError.notImplemented(ChatsPostQuestions.name)
-    }
-
-    // STUB: core-claude — docs/engine-api.md › chats.answerQuestion.
-    func chatsAnswerQuestion(_ params: ChatsAnswerQuestion.Params, _ actor: Actor) async throws -> Empty {
-        throw EngineError.notImplemented(ChatsAnswerQuestion.name)
-    }
-
-    // STUB: core-claude — docs/engine-api.md › chats.implementTicket.
+    /// `chats.implementTicket` (docs/engine-api.md › chats.implementTicket).
     func chatsImplementTicket(_ params: ChatsImplementTicket.Params, _ actor: Actor) async throws -> ChatMeta {
         try ActorRules.requireNoChatSettings(params.settings, actor)
-        throw EngineError.notImplemented(ChatsImplementTicket.name)
+        let ticketID = try Engine.validated { try ModelRules.ticketID(params.ticketID) }
+        if let settings = params.settings { try Engine.validated { try settings.validate() } }
+        func checkTicket() throws -> Ticket {
+            guard let ticket = domain.ticket(ticketID) else { throw EngineError.notFound("Ticket", ticketID) }
+            guard ticket.status != .done else {
+                throw EngineError(.conflict, "\(ticketID) is done; set it to To Do or In Progress to implement it.")
+            }
+            return ticket
+        }
+        _ = try checkTicket()
+        _ = try await requireClaudeCLI()
+        let sender = await senderName(actor)
+        let ticket = try checkTicket()
+        guard let projectID = ticket.projectID, let project = domain.project(projectID) else { throw EngineError.notFound("Ticket", ticketID) }
+        let meta = try createChat(kind: .ticket, project: project, ticketID: ticketID, bundleID: nil, settings: params.settings, origin: actor)
+        recordDrivingDevice(meta.id, actor)
+        let text = Prompts.render(Prompts.text(.implementTicket), ["ticketID": ticketID, "ticketTitle": ticket.title])
+        try sendChatMessage(meta.id, text: text, attachments: [], sender: sender, origin: actor)
+        return try requireChat(meta.id)
     }
 
-    // STUB: core-claude — docs/engine-api.md › chats.implementBundle.
+    /// `chats.implementBundle` (docs/engine-api.md › chats.implementBundle).
     func chatsImplementBundle(_ params: ChatsImplementBundle.Params, _ actor: Actor) async throws -> ChatMeta {
         try ActorRules.requireNoChatSettings(params.settings, actor)
-        throw EngineError.notImplemented(ChatsImplementBundle.name)
+        let bundleID = try Engine.validated { try ModelRules.bundleID(params.bundleID) }
+        if let settings = params.settings { try Engine.validated { try settings.validate() } }
+        func checkBundle() throws -> TicketBundle {
+            guard let bundle = domain.bundle(bundleID) else { throw EngineError.notFound("Bundle", bundleID) }
+            // DOC-GAP: docs/engine-api.md › chats.implementBundle counts the tickets that are not
+            // done; an id whose ticket no longer exists is not a ticket left to implement.
+            guard bundle.ticketIDs.contains(where: { domain.ticket($0).map { $0.status != .done } ?? false }) else {
+                throw EngineError(.conflict, "\(bundleID) has no ticket left to implement.")
+            }
+            return bundle
+        }
+        _ = try checkBundle()
+        _ = try await requireClaudeCLI()
+        let sender = await senderName(actor)
+        let bundle = try checkBundle()
+        guard let projectID = bundle.projectID, let project = domain.project(projectID) else { throw EngineError.notFound("Bundle", bundleID) }
+        let meta = try createChat(kind: .bundle, project: project, ticketID: nil, bundleID: bundleID, settings: params.settings, origin: actor)
+        recordDrivingDevice(meta.id, actor)
+        let text = Prompts.render(Prompts.text(.implementBundle), [
+            "bundleID": bundleID, "bundleTitle": bundle.title, "bundleTicketIDs": bundle.ticketIDs.joined(separator: ", "),
+        ])
+        try sendChatMessage(meta.id, text: text, attachments: [], sender: sender, origin: actor)
+        return try requireChat(meta.id)
     }
 
-    // STUB: core-claude — docs/engine-api.md › chats.createFeedback.
+    /// `chats.createFeedback` (docs/engine-api.md › chats.createFeedback, docs/chats.md ›
+    /// Feedback message).
     func chatsCreateFeedback(_ params: ChatsCreateFeedback.Params, _ actor: Actor) async throws -> ChatMeta {
         try ActorRules.requireNoSourcePath([params.screenshot], actor)
-        throw EngineError.notImplemented(ChatsCreateFeedback.name)
+        let projectID = try Engine.projectIdentifier(params.projectID)
+        // DOC-GAP: docs/engine-api.md › chats.createFeedback lists the screenshot errors without
+        // messages; they use the form `<param>: <reason>.` and the attachment size message.
+        guard params.screenshot.contentType == "image/png" else { throw EngineError.invalid("screenshot", "use a PNG image (image/png)") }
+        guard let base64 = params.screenshot.dataBase64 else { throw EngineError.invalid("screenshot", "give its content in dataBase64") }
+        guard let screenshot = Data(base64Encoded: base64) else { throw EngineError.invalid("screenshot", "dataBase64 is not valid base64") }
+        guard screenshot.count <= ChatAttachments.maximumSize else {
+            throw EngineError(.invalid, "\(params.screenshot.name) is larger than 20 MB.")
+        }
+        if let settings = params.settings { try Engine.validated { try settings.validate() } }
+        if let contextProject = params.context.projectID, Identifiers.normalizedProjectID(contextProject) == nil {
+            throw EngineError.invalid("context.projectID", "use 2 to 8 letters A–Z")
+        }
+        func checkProject() throws -> Project {
+            guard let project = domain.project(projectID) else { throw EngineError.notFound("Project", projectID) }
+            return project
+        }
+        _ = try checkProject()
+        _ = try await requireClaudeCLI()
+        let sender = await senderName(actor)
+        let project = try checkProject()
+        let meta = try createChat(kind: .feedback, project: project, ticketID: nil, bundleID: nil, settings: params.settings, origin: actor)
+        recordDrivingDevice(meta.id, actor)
+        let stored = try storeChatAttachments([ChatAttachments.Prepared(name: "screenshot.png", contentType: "image/png", data: screenshot)],
+                                              chatID: meta.id)
+        let folder = try chatFolder(meta)
+        let contextProjectName = params.context.projectID.flatMap { Identifiers.normalizedProjectID($0) }.flatMap { domain.project($0)?.name }
+        let text = Engine.feedbackMessage(comment: params.comment, context: params.context, projectName: contextProjectName,
+                                          screenshotPath: folder.attachmentFile(path: stored[0].0.path).path)
+        try sendChatMessage(meta.id, text: text, attachments: stored, sender: sender, origin: actor)
+        return try requireChat(meta.id)
+    }
+
+    // MARK: Messages and settings
+
+    /// `chats.send` (docs/engine-api.md › chats.send).
+    func chatsSend(_ params: ChatsSend.Params, _ actor: Actor) async throws -> Empty {
+        try ActorRules.requireNoSourcePath(params.message.attachments, actor)
+        let meta = try requireChat(params.chatID)
+        let prepared = try prepareMessage(params.message, projectRoot: try chatFolder(meta).root)
+        _ = try await requireClaudeCLI()
+        let sender = await senderName(actor)
+        _ = try requireChat(params.chatID)
+        recordDrivingDevice(params.chatID, actor)
+        let stored = try storeChatAttachments(prepared, chatID: params.chatID)
+        try sendChatMessage(params.chatID, text: params.message.text, attachments: stored, sender: sender, origin: actor)
+        return Empty()
+    }
+
+    /// `chats.interrupt`: the stop sequence in the states starting, running and
+    /// waitingPermission; nothing in the others.
+    func chatsInterrupt(_ params: ChatsInterrupt.Params, _ actor: Actor) async throws -> Empty {
+        _ = try requireChat(params.chatID)
+        let name = await senderName(actor)
+        _ = try requireChat(params.chatID)
+        interruptChat(params.chatID, deviceName: name, origin: actor)
+        return Empty()
+    }
+
+    /// `chats.updateSettings` (docs/chats.md › Changing settings).
+    func chatsUpdateSettings(_ params: ChatsUpdateSettings.Params, _ actor: Actor) async throws -> ChatMeta {
+        try Engine.validated { try params.settings.validate() }
+        var meta = try requireChat(params.chatID)
+        let old = meta.settings
+        var new = old
+        new.model = params.settings.model
+        new.effort = params.settings.effort
+        new.permissionMode = params.settings.permissionMode
+        new.ultracode = params.settings.ultracode
+        guard new != old else { return meta }
+        meta.settings = new
+        let saved = try saveChatMeta(meta, origin: actor)
+        applyChatSettingsLive(params.chatID, old: old, new: new)
+        return saved
+    }
+
+    /// `chats.rename`: the title is trimmed, one line of 1 to 100 characters.
+    func chatsRename(_ params: ChatsRename.Params, _ actor: Actor) async throws -> ChatMeta {
+        let title = try Engine.validated { try ModelRules.chatTitle(params.title) }
+        var meta = try requireChat(params.chatID)
+        guard meta.title != title else { return meta }
+        meta.title = title
+        return try saveChatMeta(meta, origin: actor)
+    }
+
+    /// `chats.delete` (docs/chats.md › Persistence): the process is terminated (SIGTERM, SIGKILL
+    /// 5 s later) and its token revoked, the chat leaves its ticket's or bundle's `chats`, and its
+    /// metadata, transcript and attachment folder go to the Trash. From the start, the lines of
+    /// the terminating process are ignored.
+    func chatsDelete(_ params: ChatsDelete.Params, _ actor: Actor) async throws -> Empty {
+        let chatID = params.chatID
+        let meta = try requireChat(chatID)
+        let folder = try chatFolder(meta)
+        chats.deleting.insert(chatID)
+        defer { chats.deleting.remove(chatID) }
+        if let runtime = chats.runtimes.removeValue(forKey: chatID) {
+            runtime.idleTask?.cancel()
+            runtime.deltaTask?.cancel()
+            runtime.pendingMessages = []
+            if let process = runtime.process, !process.exited {
+                process.cancelTimers()
+                terminateChatProcess(process)
+                process.log.close()
+            }
+        }
+        await tokens.revokeChatToken(chatID: chatID)
+        try? FileManager.default.removeItem(at: dataDirectory.mcpConfigFile(chatID: chatID))
+        chats.openQuestionSets[chatID] = nil
+        chats.drivingDevices[chatID] = nil
+        chats.scannedChats.remove(chatID)
+        chats.hasTextMessage[chatID] = nil
+        chats.reportedStates[chatID] = nil
+        unlinkChat(chatID)
+        try moveChatItemToTrash(folder.chatMetaFile(chatID))
+        try moveChatItemToTrash(folder.transcriptFile(chatID))
+        try moveChatItemToTrash(folder.chatAttachmentsFolder(chatID))
+        domain.removeChat(chatID)
+        emit(ChatDeletedEvent.self, .init(projectID: meta.projectID, chatID: chatID), origin: actor)
+        return Empty()
+    }
+
+    // MARK: Permissions and questions
+
+    /// `chats.answerPermission` (docs/chats.md › Answer).
+    func chatsAnswerPermission(_ params: ChatsAnswerPermission.Params, _ actor: Actor) async throws -> Empty {
+        _ = try requireChat(params.chatID)
+        let name = await senderName(actor)
+        _ = try requireChat(params.chatID)
+        recordDrivingDevice(params.chatID, actor)
+        try answerChatPermission(params.chatID, requestID: params.requestID, decision: params.decision, message: params.message,
+                                 deviceName: name, origin: actor)
+        return Empty()
+    }
+
+    /// `chats.postQuestions` (docs/chats.md › Posting questions).
+    func chatsPostQuestions(_ params: ChatsPostQuestions.Params, _ actor: Actor) async throws -> QuestionSet {
+        try ActorRules.requireOwnChat(params.chatID, actor)
+        try Engine.validated { try ModelRules.questions(params.questions) }
+        let questions = params.questions.map { question in
+            Question(label: question.label, question: ModelRules.normalizedLineBreaks(question.question),
+                     options: question.options.map {
+                         QuestionOption(label: $0.label.trimmingCharacters(in: .whitespacesAndNewlines), description: $0.description)
+                     },
+                     recommended: question.recommended.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        _ = try requireChat(params.chatID)
+        try ensureChatScanned(params.chatID)
+        guard chats.openQuestionSets[params.chatID] == nil else {
+            throw EngineError(.conflict, "Questions are already waiting for answers in this chat.")
+        }
+        let setID = UUID()
+        let item = QuestionsItem(id: setID.uuidString, created: ISODate.now(), questionSetID: setID, questions: questions)
+        try appendChatItem(.questions(item), chatID: params.chatID, origin: actor)
+        chats.openQuestionSets[params.chatID] = item
+        emitChatUpdated(params.chatID, origin: actor)
+        return QuestionSet(questionSetID: setID, chatID: params.chatID, questions: questions)
+    }
+
+    /// `chats.answerQuestion` (docs/chats.md › Answering).
+    func chatsAnswerQuestion(_ params: ChatsAnswerQuestion.Params, _ actor: Actor) async throws -> Empty {
+        let chatID = params.chatID
+        let answer = ModelRules.normalizedLineBreaks(params.answer.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard (1...10_000).contains(answer.count) else {
+            // DOC-GAP: docs/engine-api.md › chats.answerQuestion gives no message for this rule.
+            throw EngineError.invalid("answer", "use 1 to 10,000 characters")
+        }
+        func check() throws -> (set: QuestionsItem, completes: Bool) {
+            _ = try requireChat(chatID)
+            try ensureChatScanned(chatID)
+            let set = try questionSet(params.questionSetID, chatID: chatID)
+            guard let first = set.questions.first(where: { set.answers[$0.label] == nil })?.label else {
+                throw EngineError(.conflict, "These questions were already answered.")
+            }
+            guard params.label == first else {
+                throw EngineError(.invalid, "Answer question \(first) first.")
+            }
+            let remaining = set.questions.filter { set.answers[$0.label] == nil }.count
+            return (set, remaining == 1)
+        }
+        var (set, completes) = try check()
+        var sender = ""
+        if completes {
+            _ = try await requireClaudeCLI()
+            sender = await senderName(actor)
+            (set, completes) = try check()
+        }
+        recordDrivingDevice(chatID, actor)
+        set.answers[params.label] = answer
+        if completes { set.completed = true }
+        try appendChatItem(.questions(set), chatID: chatID, op: .update, origin: actor)
+        if completes {
+            chats.openQuestionSets[chatID] = nil
+            try sendChatMessage(chatID, text: Engine.answersMessage(set), attachments: [], sender: sender, origin: actor)
+        } else {
+            chats.openQuestionSets[chatID] = set
+        }
+        return Empty()
+    }
+
+    /// The question set `questionSetID` of a chat: the open one, or one of the transcript;
+    /// `conflict` when it is completed, `notFound` when the chat has none with this id.
+    private func questionSet(_ questionSetID: UUID, chatID: ChatID) throws -> QuestionsItem {
+        if let open = chats.openQuestionSets[chatID], open.questionSetID == questionSetID { return open }
+        for item in try loadTranscript(chatID) {
+            guard case .questions(let set) = item, set.questionSetID == questionSetID else { continue }
+            if set.completed { throw EngineError(.conflict, "These questions were already answered.") }
+            return set
+        }
+        throw EngineError.notFound("Question set", questionSetID.uuidString)
+    }
+
+    // MARK: Helpers
+
+    /// A project identifier received from a client or Claude, uppercased; `invalid` otherwise.
+    static func projectIdentifier(_ value: String) throws -> ProjectID {
+        guard let id = Identifiers.normalizedProjectID(value) else { throw EngineError.invalid("projectID", "use 2 to 8 letters A–Z") }
+        return id
+    }
+
+    /// The identifier of a loaded project; `invalid` or `notFound`.
+    private func loadedProjectID(_ value: String) throws -> ProjectID {
+        let id = try Engine.projectIdentifier(value)
+        guard domain.project(id) != nil else { throw EngineError.notFound("Project", id) }
+        return id
+    }
+
+    /// Runs a write rule check and turns its ValidationError into the EngineError of the call.
+    @discardableResult
+    static func validated<T>(_ body: () throws -> T) throws -> T {
+        do {
+            return try body()
+        } catch let error as ValidationError {
+            throw EngineError(error)
+        }
     }
 }
