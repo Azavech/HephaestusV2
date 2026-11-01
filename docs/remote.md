@@ -125,7 +125,7 @@ The record is written as raw DNS-SD TXT data, each `key=value` string preceded b
 | Several results with the same `id` (one per network interface) | Merged into one device. Connections use the endpoint of the first result received. |
 | A result disappears                                            | The device leaves the Nearby list at once and its online status is recomputed.     |
 
-When the browser fails with `kDNSServiceErr_PolicyDenied` (-65570), the local network permission is denied ([Local network permission](#local-network-permission)). A browser that fails, for this or any other reason, is cancelled and logged, its results are dropped so that the Nearby list empties and online statuses are recomputed, and browsing starts again 5 s later. The interpretation rules and the restart are Default chosen at design time.
+When the browser reports `kDNSServiceErr_PolicyDenied` (-65570), in state `waiting` or `failed`, the local network permission is denied ([Local network permission](#local-network-permission)). A browser that fails, for this or any other reason, or that waits with `kDNSServiceErr_PolicyDenied`, is cancelled and logged, its results are dropped so that the Nearby list empties and online statuses are recomputed, and browsing starts again 5 s later. A browser that waits for another reason is left running. The interpretation rules and the restart are Default chosen at design time.
 
 TXT data is not authenticated. A device's identity is proven by the handshake and checked against the `welcome` ([Client checks](#client-checks)).
 
