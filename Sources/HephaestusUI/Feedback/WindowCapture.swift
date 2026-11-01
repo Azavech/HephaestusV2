@@ -92,10 +92,12 @@ enum WindowCapture {
 
     private static func render(_ root: NSView, of window: NSWindow, onePixelPerPoint: Bool) -> Image? {
         guard let bitmap = bitmap(of: root, onePixelPerPoint: onePixelPerPoint) else { return nil }
+        let panes = frostedPanes(in: root)
         let overlays = overlayWindows(of: window)
-        if !overlays.isEmpty, let context = NSGraphicsContext(bitmapImageRep: bitmap) {
+        if !panes.isEmpty || !overlays.isEmpty, let context = NSGraphicsContext(bitmapImageRep: bitmap) {
             NSGraphicsContext.saveGraphicsState()
             NSGraphicsContext.current = context
+            fill(panes, of: root)
             for overlay in overlays {
                 guard let overlayRoot = overlay.contentView?.superview ?? overlay.contentView, !overlayRoot.bounds.isEmpty,
                       let image = Self.bitmap(of: overlayRoot, onePixelPerPoint: onePixelPerPoint)
@@ -108,6 +110,30 @@ enum WindowCapture {
         }
         guard let png = bitmap.representation(using: .png, properties: [:]) else { return nil }
         return Image(png: png, width: bitmap.pixelsWide, height: bitmap.pixelsHigh)
+    }
+
+    /// Step 2: the visible views of the root that blend with what is behind the window (the frosted
+    /// sidebar and inspector panes); `cacheDisplay` leaves their area transparent.
+    private static func frostedPanes(in view: NSView) -> [NSVisualEffectView] {
+        if let effect = view as? NSVisualEffectView, effect.blendingMode == .behindWindow {
+            return effect.isHiddenOrHasHiddenAncestor || effect.visibleRect.isEmpty ? [] : [effect]
+        }
+        return view.subviews.flatMap { frostedPanes(in: $0) }
+    }
+
+    /// Step 2: fills each pane's visible area behind the rendered pixels with the window
+    /// background colour of the pane's appearance, so the pane shows opaque in the PNG.
+    private static func fill(_ panes: [NSVisualEffectView], of root: NSView) {
+        for pane in panes {
+            var rect = pane.convert(pane.visibleRect, to: root)
+            if root.isFlipped {
+                rect.origin.y = root.bounds.height - rect.maxY
+            }
+            pane.effectiveAppearance.performAsCurrentDrawingAppearance {
+                NSColor.windowBackgroundColor.setFill()
+                rect.fill(using: .destinationOver)
+            }
+        }
     }
 
     /// Step 2: the view rendered with `cacheDisplay`, at the backing scale or at 1 pixel per point.

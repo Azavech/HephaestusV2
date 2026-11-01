@@ -41,6 +41,13 @@ body {
   cursor: default;
 }
 
+/* In the inspector the page shows the frosted material behind it (docs/chats.md › Web view and
+   bridge). */
+html.transparent,
+html.transparent body {
+  background: transparent;
+}
+
 button,
 .chrome {
   -webkit-user-select: none;

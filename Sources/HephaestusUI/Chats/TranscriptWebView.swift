@@ -17,9 +17,11 @@ struct TranscriptInput {
 struct TranscriptWebView: NSViewRepresentable {
     let controller: TranscriptController
     let input: TranscriptInput
+    /// In the inspector: no background, so the frosted material shows through.
+    var transparent = false
 
     func makeNSView(context: Context) -> TranscriptWKWebView {
-        controller.makeWebView()
+        controller.makeWebView(transparent: transparent)
     }
 
     func updateNSView(_ view: TranscriptWKWebView, context: Context) {
@@ -88,8 +90,10 @@ final class TranscriptController {
         self.projectID = projectID
     }
 
-    /// A new page; SwiftUI makes one each time the transcript appears.
-    func makeWebView() -> TranscriptWKWebView {
+    /// A new page; SwiftUI makes one each time the transcript appears. A transparent page draws no
+    /// background: the web view's is off and the class `transparent` on the page's root element
+    /// clears the page's (docs/chats.md › Web view and bridge).
+    func makeWebView(transparent: Bool = false) -> TranscriptWKWebView {
         ready = false
         shownGeneration = nil
         let configuration = WKWebViewConfiguration()
@@ -97,6 +101,11 @@ final class TranscriptController {
         configuration.setURLSchemeHandler(schemeHandler, forURLScheme: ResourceSchemeHandler.fileScheme)
         configuration.setURLSchemeHandler(schemeHandler, forURLScheme: ResourceSchemeHandler.attachmentScheme)
         configuration.userContentController.add(TranscriptMessageProxy(controller: self), name: Self.messageHandlerName)
+        if transparent {
+            configuration.userContentController.addUserScript(WKUserScript(
+                source: "document.documentElement.classList.add('transparent');",
+                injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         let view = TranscriptWKWebView(frame: .zero, configuration: configuration)
         // WebKit can draw the page's background beyond the web view's bounds, over the views
         // next to the transcript.
@@ -106,7 +115,12 @@ final class TranscriptController {
         view.uiDelegate = view
         view.allowsMagnification = false
         view.allowsBackForwardNavigationGestures = false
-        view.underPageBackgroundColor = .textBackgroundColor
+        if transparent {
+            view.setValue(false, forKey: "drawsBackground")
+            view.underPageBackgroundColor = .clear
+        } else {
+            view.underPageBackgroundColor = .textBackgroundColor
+        }
         webView = view
         if let page = Self.pageURL {
             view.pageURL = page

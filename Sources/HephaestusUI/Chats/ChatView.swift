@@ -18,6 +18,9 @@ struct ChatView: View {
     var showsHeader = true
     /// Inside a chat window, Open in New Window is hidden.
     var isInChatWindow = false
+    /// In the inspector, the view and its transcript draw no background, so the inspector's frosted
+    /// material shows through (docs/chats.md › Chat view).
+    var isInInspector = false
     /// Incremented to put the keyboard focus in the composer.
     var focusRequest = 0
     /// A draft shown by New Chat puts the keyboard focus in its composer when it appears.
@@ -26,21 +29,24 @@ struct ChatView: View {
     var onCreated: (ChatMeta) -> Void = { _ in }
 
     /// An existing chat.
-    init(chatID: String, workspace: DeviceWorkspace, showsHeader: Bool = true, isInChatWindow: Bool = false) {
+    init(chatID: String, workspace: DeviceWorkspace, showsHeader: Bool = true, isInChatWindow: Bool = false,
+         isInInspector: Bool = false) {
         self.chatID = chatID
         self.draft = nil
         self.workspace = workspace
         self.showsHeader = showsHeader
         self.isInChatWindow = isInChatWindow
+        self.isInInspector = isInInspector
     }
 
     /// A draft chat: its composer has the keyboard focus, and its first Send calls `chats.create`.
-    init(draft: DraftChat, workspace: DeviceWorkspace, showsHeader: Bool = true, focusRequest: Int = 0,
-         focusesComposer: Bool = true, onCreated: @escaping (ChatMeta) -> Void) {
+    init(draft: DraftChat, workspace: DeviceWorkspace, showsHeader: Bool = true, isInInspector: Bool = false,
+         focusRequest: Int = 0, focusesComposer: Bool = true, onCreated: @escaping (ChatMeta) -> Void) {
         self.chatID = nil
         self.draft = draft
         self.workspace = workspace
         self.showsHeader = showsHeader
+        self.isInInspector = isInInspector
         self.focusRequest = focusRequest
         self.focusesComposer = focusesComposer
         self.onCreated = onCreated
@@ -48,8 +54,8 @@ struct ChatView: View {
 
     var body: some View {
         ChatViewContent(chatID: chatID, draft: draft, workspace: workspace, showsHeader: showsHeader,
-                        isInChatWindow: isInChatWindow, focusRequest: focusRequest, focusesComposer: focusesComposer,
-                        onCreated: onCreated)
+                        isInChatWindow: isInChatWindow, isInInspector: isInInspector, focusRequest: focusRequest,
+                        focusesComposer: focusesComposer, onCreated: onCreated)
             .id(chatID ?? draft?.id.uuidString ?? "")
     }
 }
@@ -91,6 +97,7 @@ private struct ChatViewContent: View {
     let workspace: DeviceWorkspace
     let showsHeader: Bool
     let isInChatWindow: Bool
+    let isInInspector: Bool
     let focusRequest: Int
     let focusesComposer: Bool
     let onCreated: (ChatMeta) -> Void
@@ -99,10 +106,11 @@ private struct ChatViewContent: View {
     @Environment(AppModel.self) private var app
 
     init(chatID: String?, draft: DraftChat?, workspace: DeviceWorkspace, showsHeader: Bool, isInChatWindow: Bool,
-         focusRequest: Int, focusesComposer: Bool, onCreated: @escaping (ChatMeta) -> Void) {
+         isInInspector: Bool, focusRequest: Int, focusesComposer: Bool, onCreated: @escaping (ChatMeta) -> Void) {
         self.workspace = workspace
         self.showsHeader = showsHeader
         self.isInChatWindow = isInChatWindow
+        self.isInInspector = isInInspector
         self.focusRequest = focusRequest
         self.focusesComposer = focusesComposer
         self.onCreated = onCreated
@@ -127,7 +135,7 @@ private struct ChatViewContent: View {
                 ComposerView(model: model)
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(isInInspector ? Color.clear : Color(nsColor: .windowBackgroundColor))
         .background(ChatWindowReader(reference: model.windowReference))
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             model.drop(providers)
@@ -166,7 +174,8 @@ private struct ChatViewContent: View {
                 }
             } else if let state = workspace.transcripts[chatID] {
                 TranscriptWebView(controller: model.transcript,
-                                  input: TranscriptInput(state: state, context: model.renderContext, placeholder: model.placeholder))
+                                  input: TranscriptInput(state: state, context: model.renderContext, placeholder: model.placeholder),
+                                  transparent: isInInspector)
             } else {
                 ProgressView()
                     .controlSize(.small)
@@ -174,7 +183,8 @@ private struct ChatViewContent: View {
             }
         } else {
             TranscriptWebView(controller: model.transcript,
-                              input: TranscriptInput(state: TranscriptState(), context: model.renderContext, placeholder: model.placeholder))
+                              input: TranscriptInput(state: TranscriptState(), context: model.renderContext, placeholder: model.placeholder),
+                              transparent: isInInspector)
         }
     }
 

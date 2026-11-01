@@ -69,6 +69,8 @@ A main window opens with the sidebar at its default width and the inspector at `
 
 The sidebar, the centre column and the inspector are the three panes of one `NSSplitView` with plain panes (SwiftUI `HSplitView`, or an `NSSplitView` wrapped with `NSViewRepresentable`); ⌃⌘S, ⌥⌘0 and the widths of the table above act on these panes. `NavigationSplitView` and the `.inspector` modifier are not used: the in-process capture of [Screenshot capture](feedback.md#screenshot-capture) leaves a `NavigationSplitView` sidebar column transparent and draws the text of an `.inspector` column without its vibrancy, while `HSplitView` panes render as shown (checked on macOS 27.2). Default chosen at design time.
 
+The sidebar pane and the inspector pane are frosted: each is drawn over an `NSVisualEffectView` with the material `.sidebar` and the blending mode `.behindWindow`, so the desktop and the windows behind the app show through them, blurred, as in the sidebars of Finder or Music. The material follows the light and dark appearance and the window's active state (`.followsWindowActiveState`), and macOS makes it opaque when Reduce Transparency is on. The text and controls of the panes are drawn over the material without vibrancy. The centre column, the console drawer, the toolbar and the status bar keep their opaque backgrounds. The capture of [Screenshot capture](feedback.md#screenshot-capture) cannot render what is behind the window, so it fills the frosted areas with an opaque colour close to the material. The state and the absence of vibrancy are Default chosen at design time.
+
 The welcome view and the reconnect view replace the sidebar, the content, the console drawer and the inspector ([Empty states](#empty-states)). The search panel ([Search panel](search.md#search-panel)) and the update-ready banner ([Update-ready banner](updater.md#update-ready-banner)) are drawn over the columns.
 
 ## Toolbar
@@ -116,6 +118,7 @@ The segment icons, the dot in the Device title, the 240-point truncation and the
 
 - Exactly one section is selected per window. The selection is kept when the window switches project or device.
 - The centre column shows the selected section for the active project. Switching project shows the same section of the new project, with the selections the window last used in that project ([WindowState](#windowstate)).
+- The sidebar's background is the frosted material of [Main window layout](#main-window-layout), under the section list and the footer.
 - The sidebar footer shows the active project's identifier and a `gearshape` button that opens [Project settings](projects.md#project-settings).
 - View ▸ Hide Sidebar (⌃⌘S) or dragging the divider to the window edge collapses the sidebar; its visibility persists per window.
 
@@ -128,6 +131,7 @@ The inspector is the project chat panel in the right column ([Where chats appear
 - A new main window shows it. The toolbar's Project Chat button and View ▸ Show Project Chat / Hide Project Chat (⌥⌘0) toggle it; its visibility persists per window, and so does the width the user sets by dragging its divider ([Main window layout](#main-window-layout)).
 - Header: a pop-up button listing the active project's chats of kind `project`, most recently updated first, each with its title and the state indicator of [Where chats appear](chats.md#where-chats-appear), where the SF Symbol `progress.indicator` stands for the spinner, which cannot animate in a menu; a `New Chat` button (`plus.bubble`); an `Open in New Window` button (`macwindow.badge.plus`), disabled while a draft is shown, that opens the selected chat in a [chat window](#windows).
 - Body: the chat view of the selected chat ([Chat view](chats.md#chat-view)).
+- Background: the frosted material of [Main window layout](#main-window-layout), behind the whole column: the header, the transcript, the pinned cards, the status line and the composer. The chat view draws no background of its own there and the transcript's web view is transparent ([Web view and bridge](chats.md#web-view-and-bridge)); the message bubbles, the cards and the composer's field keep their backgrounds.
 - The selected chat is kept per project and per window (`ProjectViewState.inspectorChatID`). Without a selection, the most recently updated project chat is selected. When the selected chat is deleted, the next most recently updated project chat is selected. With no project chat, the inspector shows a draft chat ([Draft chats](chats.md#draft-chats)).
 - New Chat (the inspector button, the toolbar button, File ▸ New Chat ⌥⌘N) shows the inspector when it is hidden, shows a new draft chat in it (`inspectorShowsDraft`) and puts the keyboard focus in its composer. The draft is stored as a chat only at its first Send ([Draft chats](chats.md#draft-chats)).
 - Ticket, bundle and feedback chats are not listed in the inspector; they appear in the Chats section and on their ticket or bundle.
@@ -707,3 +711,4 @@ A window chosen for a `ui.open` event is ordered front; it becomes key only when
 - R56: A feedback feature is reached by tapping a ladybug icon at the bottom right of the status bar.
 - R57: Feedback can be started from pretty much anywhere in the app.
 - R64: The chat window takes that name.
+- R102: The main window's sidebar and inspector are translucent and frosted, like the sidebars of native macOS apps such as Music.

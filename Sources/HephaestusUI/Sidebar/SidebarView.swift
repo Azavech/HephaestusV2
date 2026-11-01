@@ -63,7 +63,7 @@ struct SidebarView: View {
             Divider()
             footer
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(FrostedPaneBackground())
     }
 
     private func row(_ section: ProjectSection) -> some View {

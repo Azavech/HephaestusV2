@@ -678,7 +678,9 @@ The Effort menu button shows `Effort: <UI label>`. Items whose value is not in t
 
 ### Web view and bridge
 
-The transcript of a chat view is one `WKWebView` loading the bundled `chat.html`, `chat.css` and `chat.js` (`Sources/HephaestusUI/Resources/`), so the text of every bubble is selectable as one document. Swift renders each item to an HTML fragment (Markdown through the HephaestusText HTML renderer, with the rules of [Documentation viewer](documentation-viewer.md)), and `chat.js` places the fragments. The page runs no other script and never navigates. Its context menu keeps Copy, Copy Link, Copy Image and Look Up, as the doc preview's ([Preview web view](documentation-viewer.md#preview-web-view)). The bridge and the context menu are Default chosen at design time.
+The transcript of a chat view is one `WKWebView` loading the bundled `chat.html`, `chat.css` and `chat.js` (`Sources/HephaestusUI/Resources/`), so the text of every bubble is selectable as one document. Swift renders each item to an HTML fragment (Markdown through the HephaestusText HTML renderer, with the rules of [Documentation viewer](documentation-viewer.md)), and `chat.js` places the fragments. The page runs no other script, except the user script of the inspector's transparent background below, and never navigates. Its context menu keeps Copy, Copy Link, Copy Image and Look Up, as the doc preview's ([Preview web view](documentation-viewer.md#preview-web-view)). The bridge and the context menu are Default chosen at design time.
+
+In the inspector the transcript has a transparent background, so that the inspector's frosted material shows through it ([Inspector](ui.md#inspector)): the web view draws no background (`drawsBackground` false, `underPageBackgroundColor` clear), and a user script injected at document start adds the class `transparent` to the page's root element, for which `chat.css` makes the `html` and `body` backgrounds transparent. The bubbles, cards and buttons keep their backgrounds. In the other chat views the page keeps the opaque page background of `chat.css`. The user script is Default chosen at design time.
 
 Calls from Swift (`evaluateJavaScript`) on the global object `HephaestusChat`:
 
@@ -801,6 +803,8 @@ New Chat (⌥⌘N, or a New Chat button) shows a draft: an empty chat view whose
 ### Chat view
 
 From top to bottom: the header, the transcript, the pinned permission card, the pinned questions card, the status line ([Chat states](#chat-states)), the composer. The pinned cards take at most half of the view's height and scroll inside.
+
+The chat view's background is the window background colour, except in the inspector, where it draws none and shows the inspector's frosted material, with a transparent transcript ([Web view and bridge](#web-view-and-bridge)).
 
 Header (in the Chats section, the ticket and bundle Chats tabs and chat windows; the inspector shows its picker instead):
 
@@ -1444,3 +1448,4 @@ Follow "Implementing a bundle": take the tickets in this order, skip those that 
 - R97: One of the ways to answer is a recommended answer.
 - R98: The user can answer however they want.
 - R100: Under Problem, Current Behavior, Expected and Change, Claude explains the problem, the current behaviour, the expected behaviour and what should change.
+- R102: The main window's sidebar and inspector are translucent and frosted, like the sidebars of native macOS apps such as Music.

@@ -41,9 +41,9 @@ struct ProjectChatPanel: View {
             header(shown: shown)
             Divider()
             if let shown {
-                ChatView(chatID: shown, workspace: workspace, showsHeader: false)
+                ChatView(chatID: shown, workspace: workspace, showsHeader: false, isInInspector: true)
             } else if let draft, draft.projectID == projectID {
-                ChatView(draft: draft, workspace: workspace, showsHeader: false, focusRequest: focusRequest,
+                ChatView(draft: draft, workspace: workspace, showsHeader: false, isInInspector: true, focusRequest: focusRequest,
                          focusesComposer: viewState.inspectorShowsDraft) { meta in
                     createdChatID = meta.id.uuidString
                     window.updateViewState(of: projectID) {
@@ -56,7 +56,7 @@ struct ProjectChatPanel: View {
                 Color.clear
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(FrostedPaneBackground())
         .onChange(of: window.pendingSectionCommand, initial: true) { _, command in
             guard command == .focusInspectorComposer else { return }
             window.pendingSectionCommand = nil
