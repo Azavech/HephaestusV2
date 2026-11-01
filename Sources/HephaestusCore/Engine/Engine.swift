@@ -138,10 +138,11 @@ public actor Engine {
 
     /// docs/architecture.md › Shutdown, steps 1 to 3 and 5: the child processes end (SIGTERM, then
     /// SIGKILL 3 s later, the quit items of the chats written first) and the engine waits for
-    /// them; then the MCP server, the sync server, Bonjour and the file watchers close; every
-    /// subscription finishes; engine.log closes and the data directory lock is released. Step 4
-    /// (telling the Updater) belongs to `AppModel`. Calling it again does nothing.
-    public func shutdown() async {
+    /// them; then the MCP server, the sync server, Bonjour and the file watchers close; then
+    /// `beforeClosingLog` runs (step 4, telling the Updater, belongs to `AppModel`); every
+    /// subscription finishes; engine.log closes and the data directory lock is released. Calling
+    /// it again does nothing.
+    public func shutdown(beforeClosingLog: @Sendable () async -> Void = {}) async {
         guard lifecycle != .stopped else { return }
         lifecycle = .stopped
         async let chatProcesses: Void = stopChatProcesses()
@@ -154,6 +155,7 @@ public actor Engine {
         stopDeviceBrowsing()
         await stopFileWatching()
         await stopSkillsLibraryWatching()
+        await beforeClosingLog()
 
         for continuation in subscribers.values {
             continuation.finish()

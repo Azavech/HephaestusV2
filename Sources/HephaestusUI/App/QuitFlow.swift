@@ -144,11 +144,9 @@ extension AppModel {
     }
 
     /// docs/architecture.md › Shutdown: closes the remote connections, shuts the engine down (child
-    /// processes, servers, Bonjour, file watching, engine.log, the lock), tells the Updater that the
-    /// app quits, then lets AppKit terminate with status 0.
-    // DOC-GAP: docs/architecture.md › Shutdown tells the Updater (step 4) between the servers
-    // (step 3) and engine.log (step 5), but `Engine.shutdown()` runs steps 1 to 3 and 5 together;
-    // `app.quitting` is posted right after it.
+    /// processes, servers, Bonjour, file watching), tells the Updater that the app quits (step 4)
+    /// before the engine closes engine.log and releases the lock (step 5), then lets AppKit
+    /// terminate with status 0.
     func beginShutdown() {
         guard !isShuttingDown else { return }
         isShuttingDown = true
@@ -157,11 +155,17 @@ extension AppModel {
             for workspace in workspaces.values where !workspace.isLocal {
                 workspace.close()
             }
-            await engine.shutdown()
-            if !appQuittingPosted {
-                updateController.appWillQuit(restart: false, activate: activate)
+            await engine.shutdown {
+                await self.tellUpdaterAppQuits(activate: activate)
             }
             NSApp.reply(toApplicationShouldTerminate: true)
+        }
+    }
+
+    /// Shutdown step 4: `app.quitting` without a restart, unless the restart sequence posted it.
+    private func tellUpdaterAppQuits(activate: Bool) {
+        if !appQuittingPosted {
+            updateController.appWillQuit(restart: false, activate: activate)
         }
     }
 
