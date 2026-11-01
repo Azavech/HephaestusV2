@@ -341,11 +341,14 @@ extension Engine {
         try ActorRules.requireOwnChat(params.chatID, actor)
         try Engine.validated { try ModelRules.questions(params.questions) }
         let questions = params.questions.map { question in
-            Question(label: question.label, question: ModelRules.normalizedLineBreaks(question.question),
-                     options: question.options.map {
-                         QuestionOption(label: $0.label.trimmingCharacters(in: .whitespacesAndNewlines), description: $0.description)
-                     },
-                     recommended: question.recommended.trimmingCharacters(in: .whitespacesAndNewlines))
+            let recommended = question.recommended.trimmingCharacters(in: .whitespacesAndNewlines)
+            let options = question.options.map {
+                QuestionOption(label: $0.label.trimmingCharacters(in: .whitespacesAndNewlines), description: $0.description)
+            }
+            // The recommended option goes first; the others keep their relative order.
+            let first = options.filter { $0.label == recommended }
+            return Question(label: question.label, question: ModelRules.normalizedLineBreaks(question.question),
+                            options: first + options.filter { $0.label != recommended }, recommended: recommended)
         }
         _ = try requireChat(params.chatID)
         try ensureChatScanned(params.chatID)

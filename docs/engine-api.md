@@ -1007,7 +1007,7 @@ Called by the MCP tool `ask_questions`, which fills `chatID` from its token. The
 | chatID    | ChatID     | yes      | Chat id; must be the actor's chatID.                                                                                                                                                                                                                                                                                                                    |
 | questions | [Question] | yes      | 1–26 questions labelled `A`, `B`, `C` and so on, in order; each has non-empty text, 2 to 10 options whose labels are non-empty single lines of at most 200 characters, distinct ignoring case, and `recommended` equal to the label of one of its options ([Data model](data-model.md#questions-item), messages in [Workflow](workflow.md#validation)). |
 
-Creates a question set (new UUID, no answers, not completed) and adds a `questions` item. When the turn ends, the chat's state becomes `waitingAnswers`.
+Moves each question's recommended option to the first place of its `options`, the other options keeping their relative order ([Chats](chats.md#posting-questions)), then creates a question set (new UUID, no answers, not completed) and adds a `questions` item. The stored item and the returned QuestionSet have the options in this order. When the turn ends, the chat's state becomes `waitingAnswers`.
 
 | Error     | When                                                                                                                   |
 | --------- | ---------------------------------------------------------------------------------------------------------------------- |

@@ -553,7 +553,7 @@ Claude never invents unknowns: it asks with the MCP tool `ask_questions`, which 
 
 A chat has at most one question set that is not completed; posting another fails with `conflict` (`Questions are already waiting for answers in this chat.`). The MCP tool checks its own schema first ([MCP](mcp.md#question-rules)).
 
-The engine adds a `questions` item {questionSetID (new uppercase UUID), questions, answers `{}`, completed false} and returns the `QuestionSet`. When the turn that posted it ends, the state becomes waitingAnswers. Example of `questions`:
+Once the set passes these rules, the engine moves each question's recommended option to the first place of its `options`; the other options keep their relative order. Claude's prompts have no rule about the place of the recommended option: the engine does the reordering. The engine then adds a `questions` item {questionSetID (new uppercase UUID), questions in this order, answers `{}`, completed false} and returns the `QuestionSet` with the same order, so the pinned questions card, the transcript's Questions card and every other device list the recommended option first. When the turn that posted it ends, the state becomes waitingAnswers. Example of `questions`:
 
 ```json
 [

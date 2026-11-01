@@ -204,6 +204,29 @@ struct ChatInteractionTests {
         }
     }
 
+    @Test("Questions: the recommended option is stored and returned first, the others in their order")
+    func recommendedFirst() async throws {
+        try await withChatEngine { bed in
+            let chat = try await bed.createChat(message: "Plan")
+            #expect(await bed.waitForState(chat.id, .idle))
+            let question = Question(label: "A", question: "Which language?",
+                                    options: [QuestionOption(label: "Java"), QuestionOption(label: "Go"),
+                                              QuestionOption(label: "Rust", description: "Entry API."), QuestionOption(label: "None")],
+                                    recommended: "Rust")
+            let set = try await bed.engine.call(ChatsPostQuestions.self, .init(chatID: chat.id, questions: [question]),
+                                                actor: .claude(chatID: chat.id.uuidString))
+            let expected = [QuestionOption(label: "Rust", description: "Entry API."), QuestionOption(label: "Java"),
+                            QuestionOption(label: "Go"), QuestionOption(label: "None")]
+            #expect(set.questions[0].options == expected)
+            #expect(set.questions[0].recommended == "Rust")
+            let stored = try await bed.transcript(chat.id).compactMap { item -> QuestionsItem? in
+                if case .questions(let questions) = item { return questions }
+                return nil
+            }.first
+            #expect(stored?.questions[0].options == expected)
+        }
+    }
+
     @Test("Text deltas are coalesced to one chat.delta per 50 ms and dropped by the final item")
     func deltas() async throws {
         let launcher = FakeClaudeLauncher()

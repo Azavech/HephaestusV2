@@ -1265,7 +1265,7 @@ Input schema:
 
 ### ask_questions
 
-- **Engine call:** chats.postQuestions with `chatID` = the calling chat and `questions` as given ([Engine API](engine-api.md#chatspostquestions)).
+- **Engine call:** chats.postQuestions with `chatID` = the calling chat and `questions` as given ([Engine API](engine-api.md#chatspostquestions)). The engine stores and returns each question with its recommended option moved to the first place of `options`, the other options keeping their relative order.
 - **Availability:** chat tokens only. With the external token the call fails before argument validation with `Only the chat's own Claude can ask questions.`, the message of chats.postQuestions for that case. The tool is listed for every token. Default chosen at design time.
 - **Result:** plain text, not JSON ([Text returned to Claude](#text-returned-to-claude)).
 - **Errors:**
@@ -1359,7 +1359,7 @@ Claude then ends its turn ([Workflow](workflow.md#asking)).
 
 #### Answers
 
-The app shows the questions one at a time, the recommended option marked `Recommended` and preselected, with a free-text field `Answer another way` ([Chats](chats.md)). The user answers them one by one (chats.answerQuestion). When the last one is answered, the engine sends Claude one user message: `Answers:`, then one line `<label>: <answer>` per question in label order, `<answer>` being the label of the chosen option or the text the user typed ([Workflow](workflow.md#answers-message)). For example:
+The app shows the questions one at a time, the recommended option listed first, marked `Recommended` and preselected, with a free-text field `Answer another way` ([Chats](chats.md)). The user answers them one by one (chats.answerQuestion). When the last one is answered, the engine sends Claude one user message: `Answers:`, then one line `<label>: <answer>` per question in label order, `<answer>` being the label of the chosen option or the text the user typed ([Workflow](workflow.md#answers-message)). For example:
 
 ```text
 Answers:
