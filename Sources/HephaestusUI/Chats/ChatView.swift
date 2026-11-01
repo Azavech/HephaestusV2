@@ -27,26 +27,34 @@ struct ChatView: View {
     var focusesComposer = false
     /// Called with the chat that a draft's first Send created.
     var onCreated: (ChatMeta) -> Void = { _ in }
+    /// The items of the window linked to the inspector chat (docs/chats.md › Linked items).
+    var linkedItems: [LinkedItem] = []
+    var onUnlink: ((LinkedItemRef) -> Void)?
 
     /// An existing chat.
     init(chatID: String, workspace: DeviceWorkspace, showsHeader: Bool = true, isInChatWindow: Bool = false,
-         isInInspector: Bool = false) {
+         isInInspector: Bool = false, linkedItems: [LinkedItem] = [], onUnlink: ((LinkedItemRef) -> Void)? = nil) {
         self.chatID = chatID
         self.draft = nil
         self.workspace = workspace
         self.showsHeader = showsHeader
         self.isInChatWindow = isInChatWindow
         self.isInInspector = isInInspector
+        self.linkedItems = linkedItems
+        self.onUnlink = onUnlink
     }
 
     /// A draft chat: its composer has the keyboard focus, and its first Send calls `chats.create`.
     init(draft: DraftChat, workspace: DeviceWorkspace, showsHeader: Bool = true, isInInspector: Bool = false,
-         focusRequest: Int = 0, focusesComposer: Bool = true, onCreated: @escaping (ChatMeta) -> Void) {
+         focusRequest: Int = 0, focusesComposer: Bool = true, linkedItems: [LinkedItem] = [],
+         onUnlink: ((LinkedItemRef) -> Void)? = nil, onCreated: @escaping (ChatMeta) -> Void) {
         self.chatID = nil
         self.draft = draft
         self.workspace = workspace
         self.showsHeader = showsHeader
         self.isInInspector = isInInspector
+        self.linkedItems = linkedItems
+        self.onUnlink = onUnlink
         self.focusRequest = focusRequest
         self.focusesComposer = focusesComposer
         self.onCreated = onCreated
@@ -55,7 +63,7 @@ struct ChatView: View {
     var body: some View {
         ChatViewContent(chatID: chatID, draft: draft, workspace: workspace, showsHeader: showsHeader,
                         isInChatWindow: isInChatWindow, isInInspector: isInInspector, focusRequest: focusRequest,
-                        focusesComposer: focusesComposer, onCreated: onCreated)
+                        focusesComposer: focusesComposer, linkedItems: linkedItems, onUnlink: onUnlink, onCreated: onCreated)
             .id(chatID ?? draft?.id.uuidString ?? "")
     }
 }
@@ -100,19 +108,24 @@ private struct ChatViewContent: View {
     let isInInspector: Bool
     let focusRequest: Int
     let focusesComposer: Bool
+    let linkedItems: [LinkedItem]
+    let onUnlink: ((LinkedItemRef) -> Void)?
     let onCreated: (ChatMeta) -> Void
     @State private var model: ChatViewModel
     @State private var cardsHeight: CGFloat = 0
     @Environment(AppModel.self) private var app
 
     init(chatID: String?, draft: DraftChat?, workspace: DeviceWorkspace, showsHeader: Bool, isInChatWindow: Bool,
-         isInInspector: Bool, focusRequest: Int, focusesComposer: Bool, onCreated: @escaping (ChatMeta) -> Void) {
+         isInInspector: Bool, focusRequest: Int, focusesComposer: Bool, linkedItems: [LinkedItem],
+         onUnlink: ((LinkedItemRef) -> Void)?, onCreated: @escaping (ChatMeta) -> Void) {
         self.workspace = workspace
         self.showsHeader = showsHeader
         self.isInChatWindow = isInChatWindow
         self.isInInspector = isInInspector
         self.focusRequest = focusRequest
         self.focusesComposer = focusesComposer
+        self.linkedItems = linkedItems
+        self.onUnlink = onUnlink
         self.onCreated = onCreated
         _model = State(initialValue: ChatViewModel(workspace: workspace, chatID: chatID, draft: draft))
     }
@@ -142,6 +155,7 @@ private struct ChatViewContent: View {
         }
         .onAppear {
             model.onCreated = onCreated
+            model.onUnlink = onUnlink
             model.appear(app: app, focusComposer: focusesComposer)
         }
         .onDisappear {
@@ -149,6 +163,9 @@ private struct ChatViewContent: View {
         }
         .onChange(of: focusRequest) {
             model.composerFocusRequest += 1
+        }
+        .onChange(of: linkedItems, initial: true) {
+            model.linkedItems = linkedItems
         }
         .task(id: workspace.connectionGeneration) {
             model.ensureLoaded()

@@ -6,7 +6,7 @@ import SwiftUI
 /// `DeviceWorkspace.drafts`, that of a draft in its view.
 ///
 /// ```
-/// [image.png ×] [build.log ×]                     attachment chips
+/// [☑ DEMO-12 ×] [image.png ×] [build.log ×]  linked and attachment chips
 /// Message Claude…                                 text, 1–10 lines
 /// (paperclip)  Opus 5.5 ▾   Effort: High ▾   Ask Every Time ▾   ■  ↑
 /// ```
@@ -19,9 +19,15 @@ struct ComposerView: View {
             ClaudeStatusBanner(workspace: workspace)
             VStack(alignment: .leading, spacing: 6) {
                 let attachments = model.composer.attachments
-                if !attachments.isEmpty {
+                let linkedItems = model.linkedItems
+                if !attachments.isEmpty || !linkedItems.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
+                            ForEach(linkedItems) { item in
+                                ComposerLinkedItemChip(item: item) {
+                                    model.unlink(item)
+                                }
+                            }
                             ForEach(Array(attachments.enumerated()), id: \.offset) { index, upload in
                                 ComposerAttachmentChip(upload: upload) {
                                     model.removeAttachment(at: index)
@@ -107,6 +113,37 @@ struct ComposerView: View {
             .accessibilityLabel("Send")
         }
         .font(.callout)
+    }
+}
+
+/// A linked item chip (docs/chats.md › Linked items): the symbol of the item's sidebar section,
+/// its short name and an unlink button; the tooltip is the item's text.
+struct ComposerLinkedItemChip: View {
+    let item: LinkedItem
+    let unlink: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: item.ref.section.symbol)
+                .frame(width: 22, height: 22)
+                .foregroundStyle(.secondary)
+            Text(item.name)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: 160, alignment: .leading)
+            Button(action: unlink) {
+                Image(systemName: "xmark")
+                    .font(.caption2.weight(.semibold))
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Unlink \(item.name)")
+        }
+        .font(.caption)
+        .padding(.leading, 4)
+        .padding(.trailing, 6)
+        .padding(.vertical, 3)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.12)))
+        .help(item.text)
     }
 }
 

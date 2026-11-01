@@ -35,16 +35,29 @@ struct ProjectChatPanel: View {
         return projectChats.first?.id.uuidString
     }
 
+    /// The items open in the centre column that the user did not unlink (docs/ui.md › Inspector).
+    private var linkedItems: [LinkedItem] {
+        LinkedItems.linked(state: viewState, section: window.section, tickets: workspace.tickets[projectID] ?? [:],
+                           bundles: workspace.bundles[projectID] ?? [:], chats: workspace.chats,
+                           webTabs: workspace.webTabs[projectID] ?? [])
+    }
+
+    private func unlink(_ ref: LinkedItemRef) {
+        window.updateViewState(of: projectID) { $0.unlinkedItems.insert(ref.key) }
+    }
+
     var body: some View {
         let shown = shownChatID
+        let linked = linkedItems
         VStack(spacing: 0) {
             header(shown: shown)
             Divider()
             if let shown {
-                ChatView(chatID: shown, workspace: workspace, showsHeader: false, isInInspector: true)
+                ChatView(chatID: shown, workspace: workspace, showsHeader: false, isInInspector: true,
+                         linkedItems: linked, onUnlink: unlink)
             } else if let draft, draft.projectID == projectID {
                 ChatView(draft: draft, workspace: workspace, showsHeader: false, isInInspector: true, focusRequest: focusRequest,
-                         focusesComposer: viewState.inspectorShowsDraft) { meta in
+                         focusesComposer: viewState.inspectorShowsDraft, linkedItems: linked, onUnlink: unlink) { meta in
                     createdChatID = meta.id.uuidString
                     window.updateViewState(of: projectID) {
                         $0.inspectorChatID = meta.id.uuidString

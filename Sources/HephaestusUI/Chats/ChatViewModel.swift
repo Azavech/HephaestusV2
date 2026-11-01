@@ -57,6 +57,11 @@ final class ChatViewModel {
 
     var composerFocusRequest = 0
     var isCreating = false
+    /// The items of the window linked to the inspector chat; empty in every other chat view
+    /// (docs/chats.md › Linked items).
+    var linkedItems: [LinkedItem] = []
+    /// Unlinks an item: set by the inspector.
+    @ObservationIgnored var onUnlink: ((LinkedItemRef) -> Void)?
 
     // MARK: Cards
 
@@ -205,11 +210,14 @@ final class ChatViewModel {
 
     // MARK: Composer actions
 
-    /// Send: `chats.send`, or `chats.create` for a draft; sending clears the text and the chips.
+    /// Send: `chats.send`, or `chats.create` for a draft; sending clears the text and the
+    /// attachment chips. The message starts with the `Open in the app:` lines of the linked items,
+    /// which stay linked.
     func send() {
         guard canSend else { return }
         let sent = composer
-        let message = ChatMessageInput(text: sent.text, attachments: sent.attachments.isEmpty ? nil : sent.attachments)
+        let text = LinkedItems.messageText(sent.text, linked: linkedItems)
+        let message = ChatMessageInput(text: text, attachments: sent.attachments.isEmpty ? nil : sent.attachments)
         composer = ComposerDraft()
         Task {
             do {
@@ -244,6 +252,11 @@ final class ChatViewModel {
                 alert(.failure("Stop", error))
             }
         }
+    }
+
+    /// × on a linked item chip.
+    func unlink(_ item: LinkedItem) {
+        onUnlink?(item.ref)
     }
 
     /// A menu change: `chats.updateSettings` at once for an existing chat; in a draft it changes

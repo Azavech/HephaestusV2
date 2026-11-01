@@ -205,6 +205,9 @@ struct ProjectViewState {
     var inspectorChatID: String?
     /// True while the inspector shows a draft opened with New Chat.
     var inspectorShowsDraft = false
+    /// Items open in the shown section that the user unlinked from the inspector chat, as
+    /// `LinkedItemRef.key` values; an item leaves it as soon as it is no longer open.
+    var unlinkedItems: Set<String> = []
     /// Open editor tabs in order, with their buffers. Buffers are never encoded: a tab encodes its
     /// path only, and docBuffer and skillEditor are left out (docs/architecture.md › WindowState).
     var editorTabs: [EditorTabState] = []
@@ -262,7 +265,7 @@ struct ProjectViewState {
 
 extension ProjectViewState: @MainActor Codable {
     enum CodingKeys: String, CodingKey {
-        case selectedTicketIDs, selectedBundleID, selectedChatID, inspectorChatID, inspectorShowsDraft, editorTabs,
+        case selectedTicketIDs, selectedBundleID, selectedChatID, inspectorChatID, inspectorShowsDraft, unlinkedItems, editorTabs,
              selectedEditorPath, selectedDocPath, docMode, selectedWebTabID, selectedSkillName, consoleRunID,
              expandedCodeFolders, selectedTreePath, expandedDocFolders, ticketList, ticketTab, bundleList, bundleTab,
              chatsTabSelection, chatsTabDrafts, commentDrafts
@@ -276,6 +279,7 @@ extension ProjectViewState: @MainActor Codable {
         selectedChatID = try c.decodeIfPresent(String.self, forKey: .selectedChatID)
         inspectorChatID = try c.decodeIfPresent(String.self, forKey: .inspectorChatID)
         inspectorShowsDraft = try c.decodeIfPresent(Bool.self, forKey: .inspectorShowsDraft) ?? false
+        unlinkedItems = Set(try c.decodeIfPresent([String].self, forKey: .unlinkedItems) ?? [])
         editorTabs = try c.decodeIfPresent([EditorTabState].self, forKey: .editorTabs) ?? []
         selectedEditorPath = try c.decodeIfPresent(String.self, forKey: .selectedEditorPath)
         selectedDocPath = try c.decodeIfPresent(String.self, forKey: .selectedDocPath)
@@ -322,6 +326,7 @@ extension ProjectViewState: @MainActor Codable {
             try c.encode(chatsTabSelection, forKey: .chatsTabSelection)
             try c.encode(chatsTabDrafts.sorted(), forKey: .chatsTabDrafts)
             try c.encode(commentDrafts, forKey: .commentDrafts)
+            try c.encode(unlinkedItems.sorted(), forKey: .unlinkedItems)
         }
     }
 }

@@ -195,6 +195,7 @@ Each message written to stdin is one line of compact UTF-8 JSON ending with `\n`
 - The `text` block is left out when the text sent is empty. The content is the `text` block followed by the `image` blocks in attachment order.
 - `uuid` is the `id` of the message's `user` item; the CLI reports what it does with the message under this id ([Turn tracking](#turn-tracking)). Default chosen at design time.
 - The `user` item stores the message text without the `Attached files:` lines ([Data model](data-model.md#user-item)).
+- A message sent from the inspector starts with the `Open in the app:` lines of its [linked items](#linked-items); the engine handles them as the rest of the text.
 - Its `sender` is the name of the device of a `user` actor ([Request handling](remote.md#request-handling)), `Claude` for a `claude` actor, and the main device's name for the `system` actor. Default chosen at design time.
 
 ### Session and resume
@@ -643,23 +644,24 @@ The Effort menu button shows `Effort: <UI label>`, in every composer and at ever
 ## Composer
 
 ```
-┌───────────────────────────────────────────────────────────────────┐
-│ [image.png ×] [build.log ×]                     attachment chips  │
-│ Message Claude…                                 text, 1–10 lines  │
-│ (paperclip)  Opus 5.5 ▾   Effort: High ▾   Ask Every Time ▾   ■  ↑ │
-└───────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│ [☑ DEMO-12 ×] [image.png ×] [build.log ×]  linked and attachment chips │
+│ Message Claude…                                 text, 1–10 lines       │
+│ (paperclip)  Opus 5.5 ▾   Effort: High ▾   Ask Every Time ▾   ■  ↑     │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
-| Control          | Behaviour                                                                                                                                                  |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Text field       | Multi-line, grows from 1 to 10 visible lines, then scrolls. Placeholder `Message Claude…`. Return sends; Shift-Return inserts a line break.                |
-| Attachment chips | One chip per attachment: a thumbnail for images or a file icon, the name and the size, and a remove button (×).                                            |
-| Attach button    | SF Symbol `paperclip`. Opens an open panel for files (multiple selection, no folders).                                                                     |
-| Model menu       | [Model](#model).                                                                                                                                           |
-| Effort menu      | [Effort](#effort).                                                                                                                                         |
-| Permissions menu | [Permission mode](#permission-mode).                                                                                                                       |
-| Stop (■)         | SF Symbol `stop.fill`, shown left of Send only while the chat is running; calls `chats.interrupt`.                                                         |
-| Send (↑)         | SF Symbol `arrow.up.circle.fill`. Enabled when the text is not blank or there is an attachment, the window's device is connected and the CLI is available. |
+| Control           | Behaviour                                                                                                                                                                                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Text field        | Multi-line, grows from 1 to 10 visible lines, then scrolls. Placeholder `Message Claude…`. Return sends; Shift-Return inserts a line break.                                                                                          |
+| Linked item chips | Only in the inspector: one chip per item linked from the window ([Linked items](#linked-items)), before the attachment chips in the same row: the SF Symbol of the item's sidebar section, its short name, and an unlink button (×). |
+| Attachment chips  | One chip per attachment: a thumbnail for images or a file icon, the name and the size, and a remove button (×).                                                                                                                      |
+| Attach button     | SF Symbol `paperclip`. Opens an open panel for files (multiple selection, no folders).                                                                                                                                               |
+| Model menu        | [Model](#model).                                                                                                                                                                                                                     |
+| Effort menu       | [Effort](#effort).                                                                                                                                                                                                                   |
+| Permissions menu  | [Permission mode](#permission-mode).                                                                                                                                                                                                 |
+| Stop (■)          | SF Symbol `stop.fill`, shown left of Send only while the chat is running; calls `chats.interrupt`.                                                                                                                                   |
+| Send (↑)          | SF Symbol `arrow.up.circle.fill`. Enabled when the text is not blank or there is an attachment, the window's device is connected and the CLI is available.                                                                           |
 
 - The controls row stays on one line. When it does not fit the composer's width, the Model, Effort and Permissions menus are replaced by one menu button with the SF Symbol `slider.horizontal.3` holding the submenus Model (with its Ultracode toggle), Effort and Permissions, followed by the red `Allow All` capsule while that mode is selected. Default chosen at design time.
 
@@ -673,6 +675,34 @@ The Effort menu button shows `Effort: <UI label>`, in every composer and at ever
 - When the CLI of the window's device is unavailable and `checking` is false, a banner above the composer shows the error. In a window showing This Mac it is `ClaudeStatus.error` with an `Open Settings` button that opens Settings on General. In a window showing a remote device it is `Claude CLI is not available on <device name>: <ClaudeStatus.error>`, without a button, because the Settings window edits only This Mac ([Settings window](ui.md#settings-window)).
 - When the window's device is disconnected, the composer is disabled and its placeholder is `Not connected to <device name>`.
 - The unsent text and attachments of an existing chat are kept in memory in `DeviceWorkspace.drafts` by chat id ([UI](ui.md#deviceworkspace)); those of a draft chat stay in its view. They are not persisted.
+
+### Linked items
+
+The composer of the inspector's chat, or of its draft, shows the items open in the centre column of its window ([Inspector](ui.md#inspector)) as linked item chips. Chat windows, the Chats section and the Chats tabs of tickets and bundles link nothing.
+
+| Item      | Chip symbol                               | Short name              | `<item>`                                                              |
+| --------- | ----------------------------------------- | ----------------------- | --------------------------------------------------------------------- |
+| Ticket    | `checklist`                               | the ticket id           | `ticket <id> “<title>”`                                               |
+| Bundle    | `shippingbox`                             | the bundle id           | `bundle <id> “<title>”`                                               |
+| Chat      | `bubble.left.and.bubble.right`            | the chat's title        | `chat “<title>” (<chat id>)`                                          |
+| Code file | `chevron.left.forwardslash.chevron.right` | the file name           | `code file <project path>`                                            |
+| Docs file | `doc.text`                                | the file name           | `docs file <project path>`                                            |
+| Web tab   | `globe`                                   | the title, else the URL | `web tab “<title>” <url>`, or `web tab <url>` when the title is empty |
+| Skill     | `wand.and.stars`                          | the skill's name        | `skill <name>`                                                        |
+
+- The chip symbol is the SF Symbol of the item's [sidebar section](ui.md#sidebar); the chip's tooltip is `<item>`.
+- × unlinks the item: its chip disappears and Send no longer names it, for as long as it stays open ([Inspector](ui.md#inspector)).
+- Send puts at the start of the message text one line `Open in the app: <item>` per linked item, in chip order, then a blank line, then the typed text; the blank line is left out when the typed text is empty. The lines are part of the message: the `user` item stores them and the transcript shows them ([User messages](#user-messages)).
+- The items stay linked after Send, so every message sent while they are open names them.
+- Linked items alone do not enable Send: Send keeps the rule of the [Composer](#composer) table.
+- When the call fails, the typed text comes back without the `Open in the app:` lines.
+
+```text
+Open in the app: ticket DEMO-12 “Fix the login form”
+Open in the app: ticket DEMO-14 “Remember the last account”
+
+Can these two be done in one bundle?
+```
 
 ## Transcript view
 
@@ -1450,3 +1480,4 @@ Follow "Implementing a bundle": take the tickets in this order, skip those that 
 - R98: The user can answer however they want.
 - R100: Under Problem, Current Behavior, Expected and Change, Claude explains the problem, the current behaviour, the expected behaviour and what should change.
 - R102: The main window's sidebar and inspector are translucent and frosted, like the sidebars of native macOS apps such as Music.
+- R103: The project chat in the inspector knows which items the user has open in the main window.

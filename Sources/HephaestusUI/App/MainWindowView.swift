@@ -184,6 +184,11 @@ private struct ProjectColumns: View {
                     .frame(minWidth: 300, maxWidth: 600, maxHeight: .infinity)
             }
         }
+        // An item unlinked from the inspector chat is linked again once it is no longer open,
+        // whether the inspector is shown or not (docs/ui.md › Inspector).
+        .onChange(of: state.viewState.openItems(in: state.section)) {
+            state.updateViewState(of: project.id) { $0.forgetClosedUnlinkedItems(in: state.section) }
+        }
     }
 }
 
