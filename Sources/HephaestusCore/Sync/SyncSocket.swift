@@ -20,8 +20,11 @@ struct SyncTimings: Sendable {
     var clientSilence: TimeInterval = 30
     /// Server: nothing received from an open session for this long cancels it.
     var serverSilence: TimeInterval = 45
-    /// Both: the wait for the peer's close frame after sending one.
+    /// Both: the wait for the peer's close frame once this side's close frame was sent.
     var closeWait: TimeInterval = 2
+    /// Both: a close frame not sent yet, or a failed connection still receiving, is given up
+    /// after this long without a frame sent or a receive completed.
+    var closeLimit: TimeInterval = 10
     /// Client: the delays before successive attempts, the last one repeated.
     var backoff: [TimeInterval] = [1, 2, 4, 8, 16, 30]
     /// Server: the bind attempts and the delay between them.
@@ -40,10 +43,13 @@ struct SyncTimings: Sendable {
 /// sessions and by `RemoteEngineConnection` (docs/remote.md › Transport). Every method must be
 /// called on `queue`, and the handler is called on it. Pings and pongs are reported as received
 /// frames; close frames follow docs/remote.md › Closing a connection: the closing side sends its
-/// code, then cancels when the peer's close frame arrives or after the close wait; a side that
-/// receives a close frame cancels. No frame is reported after a close frame was sent or received.
-/// A connection that fails while a receive is pending keeps receiving the messages delivered with
-/// the error, so that the peer's close frame is reported before the end.
+/// code, then cancels when the peer's close frame arrives or the close wait after its close frame
+/// was sent; a side that receives a close frame cancels. No frame is reported after a close frame
+/// was sent or received. A connection that fails while a receive is pending keeps receiving the
+/// messages delivered with the error, so that the peer's close frame is reported before the end.
+/// On a slow machine, or behind data that the peer reads slowly, Network.framework can take
+/// longer than the close wait to send or deliver a frame, so no timer races it: the close limit
+/// only ends a close frame or a failed connection that made no progress for its whole length.
 final class SyncSocket: @unchecked Sendable {
     enum Input {
         /// The WebSocket is open.
@@ -63,6 +69,7 @@ final class SyncSocket: @unchecked Sendable {
     let connection: NWConnection
     let queue: DispatchQueue
     private let closeWait: TimeInterval
+    private let closeLimit: TimeInterval
     private var handler: ((Input) -> Void)?
     /// Keeps the socket alive from `start` until the connection ended, so that a close frame's
     /// wait and cancel complete after its owner released it.
@@ -72,7 +79,10 @@ final class SyncSocket: @unchecked Sendable {
     private(set) var isReady = false
     /// True once a close frame was sent or received.
     private(set) var isClosing = false
-    private var closeSent = false
+    /// True once Network.framework reported the close frame of `close` sent.
+    private var closeFrameSent = false
+    /// When a frame was last sent, or, after a failure, a receive last completed.
+    private var lastProgress = DispatchTime.now()
     /// True once the connection ended.
     private(set) var hasEnded = false
     /// Bytes handed to the connection whose sending has not completed.
@@ -83,10 +93,11 @@ final class SyncSocket: @unchecked Sendable {
     /// receives delivered no more messages.
     private var failure: NWError?
 
-    init(connection: NWConnection, queue: DispatchQueue, closeWait: TimeInterval) {
+    init(connection: NWConnection, queue: DispatchQueue, closeWait: TimeInterval, closeLimit: TimeInterval) {
         self.connection = connection
         self.queue = queue
         self.closeWait = closeWait
+        self.closeLimit = closeLimit
     }
 
     /// TCP with WebSocket version 13, no TLS, no subprotocol, automatic pongs and the frame limit
@@ -133,7 +144,8 @@ final class SyncSocket: @unchecked Sendable {
     }
 
     /// Sends a close frame with `code` and an empty reason, then cancels when the peer's close
-    /// frame arrives or after the close wait. Without an open WebSocket it cancels at once.
+    /// frame arrives or the close wait after the frame was sent, or when no frame was sent for
+    /// the close limit before it. Without an open WebSocket it cancels at once.
     func close(_ code: SyncCloseCode) {
         guard !isClosing, !hasEnded else { return }
         isClosing = true
@@ -141,14 +153,21 @@ final class SyncSocket: @unchecked Sendable {
             connection.cancel()
             return
         }
-        closeSent = true
         let metadata = NWProtocolWebSocket.Metadata(opcode: .close)
         metadata.closeCode = code.webSocketCode
         let context = NWConnection.ContentContext(identifier: "close", metadata: [metadata])
-        connection.send(content: nil, contentContext: context, isComplete: true, completion: .contentProcessed { _ in })
-        queue.asyncAfter(deadline: .now() + closeWait) { [weak self] in
-            self?.connection.cancel()
-        }
+        // The close wait starts once the frame was sent: cancelling earlier drops it, with the
+        // frames queued before it, and the peer sees 1006.
+        lastProgress = .now()
+        connection.send(content: nil, contentContext: context, isComplete: true, completion: .contentProcessed { [weak self] error in
+            guard let self, error == nil, !self.hasEnded else { return }
+            self.closeFrameSent = true
+            self.queue.asyncAfter(deadline: .now() + self.closeWait) { [weak self] in
+                self?.connection.cancel()
+            }
+        })
+        // A frame that cannot be sent, behind data that the peer no longer reads.
+        endWithoutProgress(while: { !$0.closeFrameSent }) { $0.connection.cancel() }
     }
 
     /// Cancels the connection without a close frame.
@@ -186,7 +205,20 @@ final class SyncSocket: @unchecked Sendable {
         unsentBytes += count
         connection.send(content: data, contentContext: context, isComplete: true, completion: .contentProcessed { [weak self] _ in
             self?.unsentBytes -= count
+            self?.lastProgress = .now()
         })
+    }
+
+    /// Runs `action` once nothing progressed for the close limit while `waiting` holds.
+    private func endWithoutProgress(while waiting: @escaping (SyncSocket) -> Bool, _ action: @escaping (SyncSocket) -> Void) {
+        queue.asyncAfter(deadline: lastProgress + closeLimit) { [weak self] in
+            guard let self, !self.hasEnded, waiting(self) else { return }
+            if DispatchTime.now() >= self.lastProgress + self.closeLimit {
+                action(self)
+            } else {
+                self.endWithoutProgress(while: waiting, action)
+            }
+        }
     }
 
     private func stateChanged(_ state: NWConnection.State) {
@@ -205,11 +237,11 @@ final class SyncSocket: @unchecked Sendable {
                 return
             }
             // The receives may still deliver messages, the peer's close frame among them: end
-            // when they deliver no more, or after the close wait.
+            // when they deliver no more. However slow they are, they are not cut short; the close
+            // limit only ends a receive that never completes.
             failure = error
-            queue.asyncAfter(deadline: .now() + closeWait) { [weak self] in
-                self?.end(error)
-            }
+            lastProgress = .now()
+            endWithoutProgress(while: { _ in true }) { $0.end(error) }
         case .cancelled:
             end(nil)
         default:
@@ -222,6 +254,9 @@ final class SyncSocket: @unchecked Sendable {
         connection.receiveMessage { [weak self] content, context, isComplete, error in
             guard let self else { return }
             self.isReceiving = false
+            if self.failure != nil {
+                self.lastProgress = .now()
+            }
             let metadata = context?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata
             if let metadata, error == nil || isComplete {
                 self.received(metadata, content: content ?? Data())

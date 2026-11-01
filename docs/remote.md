@@ -663,24 +663,25 @@ Network.framework delivers incoming pings to receive requests even when it answe
 
 ## Timeouts and limits
 
-| Name                      | Value                                                   | Side and effect             |
-| ------------------------- | ------------------------------------------------------- | --------------------------- |
-| Connect                   | 10 s from the start of the connection to WebSocket open | Client: failure, `waiting`. |
-| Hello deadline            | 10 s from accepting the TCP connection                  | Server: close 4006.         |
-| Challenge deadline        | 10 s after sending `hello`                              | Client: close 4006.         |
-| Auth deadline             | 10 s after sending `challenge`                          | Server: close 4006.         |
-| Welcome deadline          | 30 s after sending `auth`                               | Client: close 4006.         |
-| Ping interval             | 15 s                                                    | Client.                     |
-| Client silence limit      | 30 s                                                    | Client: cancel, `waiting`.  |
-| Server silence limit      | 45 s                                                    | Server: cancel.             |
-| Close wait                | 2 s                                                     | Both.                       |
-| Backoff                   | 1, 2, 4, 8, 16, 30 s, then 30 s                         | Client.                     |
-| Bind retries              | 5 attempts, 1 s apart                                   | Server.                     |
-| Handshake message         | 4,096 bytes                                             | Both: close 1009.           |
-| Session message plaintext | 33,554,432 bytes                                        | Both: close 1009.           |
-| Send queue                | 67,108,864 bytes                                        | Server: close 4009.         |
-| Request id                | 1 to 9,007,199,254,740,991                              | Client.                     |
-| Counter                   | 0 to 2^64 − 1 per direction                             | Both.                       |
+| Name                      | Value                                                    | Side and effect             |
+| ------------------------- | -------------------------------------------------------- | --------------------------- |
+| Connect                   | 10 s from the start of the connection to WebSocket open  | Client: failure, `waiting`. |
+| Hello deadline            | 10 s from accepting the TCP connection                   | Server: close 4006.         |
+| Challenge deadline        | 10 s after sending `hello`                               | Client: close 4006.         |
+| Auth deadline             | 10 s after sending `challenge`                           | Server: close 4006.         |
+| Welcome deadline          | 30 s after sending `auth`                                | Client: close 4006.         |
+| Ping interval             | 15 s                                                     | Client.                     |
+| Client silence limit      | 30 s                                                     | Client: cancel, `waiting`.  |
+| Server silence limit      | 45 s                                                     | Server: cancel.             |
+| Close wait                | 2 s after the close frame was sent                       | Both: cancel.               |
+| Close limit               | 10 s without a frame sent (closing) or received (failed) | Both: cancel.               |
+| Backoff                   | 1, 2, 4, 8, 16, 30 s, then 30 s                          | Client.                     |
+| Bind retries              | 5 attempts, 1 s apart                                    | Server.                     |
+| Handshake message         | 4,096 bytes                                              | Both: close 1009.           |
+| Session message plaintext | 33,554,432 bytes                                         | Both: close 1009.           |
+| Send queue                | 67,108,864 bytes                                         | Server: close 4009.         |
+| Request id                | 1 to 9,007,199,254,740,991                               | Client.                     |
+| Counter                   | 0 to 2^64 − 1 per direction                              | Both.                       |
 
 Every value in this table except the ping interval, the backoff and the 32 MiB message limit is Default chosen at design time. When the hello deadline expires before the WebSocket upgrade completed, the server cancels the TCP connection without a close frame.
 
@@ -707,9 +708,9 @@ Codes 1000–1011 are RFC 6455 codes; 4001–4009 are private codes of this prot
 
 ### Closing a connection
 
-The closing side sends a close frame with its code, then cancels the connection when the peer's close frame arrives or after 2 s. A side that receives a close frame cancels its connection. No frame is processed after a close frame was sent or received.
+The closing side sends a close frame with its code, then cancels the connection when the peer's close frame arrives or 2 s after its close frame was sent (the close wait). The close wait starts when Network.framework reports the frame sent, not when the app hands it over: on a busy machine, or behind data that the peer reads slowly, sending can take longer than the close wait, and cancelling first drops the frame with the frames queued before it, so the peer would see 1006. While the close frame waits to be sent, the connection is cancelled only when none of the frames before it was sent for 10 s (the close limit), as with a peer that stopped reading. A side that receives a close frame cancels its connection. No frame is processed after a close frame was sent or received.
 
-Network.framework answers a received close frame by itself, before the app has read it, so the closing side can end the TCP connection first. The receiving side's connection then fails, and its receives still deliver the messages it had received, the close frame last, each together with that error. A connection that fails while a receive is pending keeps receiving until a receive returns no complete message or the close frame; a message delivered with an error is processed like any other, and a close frame delivered with an error counts as received: its code, not 1006, decides the phase.
+Network.framework answers a received close frame by itself, before the app has read it, so the closing side can end the TCP connection first. The receiving side's connection then fails, and its receives still deliver the messages it had received, the close frame last, each together with that error. A connection that fails while a receive is pending keeps receiving until a receive returns no complete message or the close frame, however long the receives take, and ends when no receive completed for 10 s (the close limit); a message delivered with an error is processed like any other, and a close frame delivered with an error counts as received: its code, not 1006, decides the phase.
 
 ## Client state machine
 

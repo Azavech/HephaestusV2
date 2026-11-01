@@ -149,7 +149,7 @@ public actor SyncServer {
     }
 
     /// Stops advertising, closes every connection with 1001, then cancels the listener; returns
-    /// once the connections ended (each within the close wait).
+    /// once the connections ended (each within the close limit).
     func stop() async {
         generation += 1
         let stopping = listener

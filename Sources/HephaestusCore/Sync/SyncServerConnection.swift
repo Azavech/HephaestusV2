@@ -126,7 +126,7 @@ final class SyncServerConnection: @unchecked Sendable {
     init(connection: NWConnection, environment: SyncServerEnvironment, engine: Engine) {
         let queue = DispatchQueue(label: "HephaestusV2.sync.session")
         timings = environment.timingsBox.value
-        socket = SyncSocket(connection: connection, queue: queue, closeWait: timings.closeWait)
+        socket = SyncSocket(connection: connection, queue: queue, closeWait: timings.closeWait, closeLimit: timings.closeLimit)
         self.environment = environment
         self.engine = engine
         if let (host, port) = SyncAddress.hostPort(of: connection.endpoint) {

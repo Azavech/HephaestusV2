@@ -559,7 +559,7 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
         }
         stage = .connecting
         let connection = NWConnection(to: .url(url), using: SyncSocket.parameters(ipv4Only: isBonjour))
-        let socket = SyncSocket(connection: connection, queue: queue, closeWait: timings.closeWait)
+        let socket = SyncSocket(connection: connection, queue: queue, closeWait: timings.closeWait, closeLimit: timings.closeLimit)
         self.socket = socket
         socket.start { [weak self] input in
             guard let self, self.attemptID == id else { return }

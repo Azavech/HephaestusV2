@@ -142,8 +142,9 @@ final class RawPeer: @unchecked Sendable {
     private let lock = NSLock()
     private var inbox: [RawInput] = []
 
-    init(connection: NWConnection) {
-        socket = SyncSocket(connection: connection, queue: DispatchQueue(label: "test.raw"), closeWait: 0.5)
+    init(connection: NWConnection, closeLimit: TimeInterval = SyncTimings.fast.closeLimit) {
+        socket = SyncSocket(connection: connection, queue: DispatchQueue(label: "test.raw"), closeWait: SyncTimings.fast.closeWait,
+                            closeLimit: closeLimit)
         socket.queue.async { [weak self] in
             self?.socket.start { [weak self] input in
                 let raw: RawInput?
@@ -165,9 +166,9 @@ final class RawPeer: @unchecked Sendable {
     }
 
     /// A client of the sync server on 127.0.0.1:`port`.
-    convenience init(port: Int) {
+    convenience init(port: Int, closeLimit: TimeInterval = SyncTimings.fast.closeLimit) {
         let url = URL(string: "ws://127.0.0.1:\(port)/")!
-        self.init(connection: NWConnection(to: .url(url), using: SyncSocket.parameters()))
+        self.init(connection: NWConnection(to: .url(url), using: SyncSocket.parameters()), closeLimit: closeLimit)
     }
 
     /// The next input other than `ready`, or nil after `timeout`.
@@ -202,6 +203,19 @@ final class RawPeer: @unchecked Sendable {
             }
         }
         return nil
+    }
+
+    /// The local and the remote port of the connection, once it is ready.
+    var ports: (local: Int?, remote: Int?) {
+        get async {
+            await withCheckedContinuation { continuation in
+                socket.queue.async {
+                    let path = self.socket.connection.currentPath
+                    continuation.resume(returning: (SyncAddress.hostPort(of: path?.localEndpoint)?.port,
+                                                    SyncAddress.hostPort(of: path?.remoteEndpoint)?.port))
+                }
+            }
+        }
     }
 
     func waitReady(timeout: Duration = .seconds(5)) async -> Bool {
