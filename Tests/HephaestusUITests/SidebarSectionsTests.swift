@@ -9,15 +9,15 @@ import Testing
 @MainActor
 @Suite("Sidebar sections")
 struct SidebarSectionsTests {
-    @Test("The listed rows are Tickets to Skills; Project Settings is pinned apart")
+    @Test("The listed rows are Tickets to Costs; Project Settings is pinned apart")
     func listedAndPinned() {
-        #expect(ProjectSection.listed == [.tickets, .bundles, .chats, .code, .docs, .web, .skills])
+        #expect(ProjectSection.listed == [.tickets, .bundles, .chats, .code, .docs, .web, .skills, .costs])
         #expect(ProjectSection.allCases.last == .settings)
         #expect(ProjectSection.settings.title == "Project Settings")
         #expect(ProjectSection.settings.symbol == "gearshape")
     }
 
-    @Test("⌘1 to ⌘7 select the listed sections and ⇧⌘, selects Project Settings")
+    @Test("⌘1 to ⌘8 select the listed sections and ⇧⌘, selects Project Settings")
     func shortcuts() {
         for (index, section) in ProjectSection.listed.enumerated() {
             #expect(section.shortcut.key == KeyEquivalent(Character(String(index + 1))))

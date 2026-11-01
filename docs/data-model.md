@@ -101,7 +101,7 @@ public enum JSONValue: Codable, Sendable, Hashable {
 
 ### JSON form in the engine API
 
-The engine API sends these types as JSON objects with the same keys and value rules, except that dates follow [JSON encoding](engine-api.md#json-encoding): the format of [Dates](#dates) for a date with whole seconds, which every date stored in these files has, and milliseconds for a date with a fraction. UUIDs are uppercase strings, absent optional values are `null`, `schema` is included, and unknown keys appear next to the known keys. `ChatMeta` adds two keys that are never stored, `projectID` and `state` ([Chat metadata file](#chat-metadata-file)). Types that exist only in the API are defined in [Engine API](engine-api.md).
+The engine API sends these types as JSON objects with the same keys and value rules, except that dates follow [JSON encoding](engine-api.md#json-encoding): the format of [Dates](#dates) for a date with whole seconds, which every date stored in these files has, and milliseconds for a date with a fraction. UUIDs are uppercase strings, absent optional values are `null`, `schema` is included, and unknown keys appear next to the known keys. `ChatMeta` adds three keys that are never stored, `projectID`, `state` and `costUSD` ([Chat metadata file](#chat-metadata-file)). Types that exist only in the API are defined in [Engine API](engine-api.md).
 
 ## Project folder layout
 
@@ -127,7 +127,7 @@ The engine API sends these types as JSON objects with the same keys and value ru
 
 ## Project file
 
-`.hephaestus/project.yml` holds the project's identity, type, counters, documentation folder, sub projects, commands, web tabs, enabled skills and chat defaults. Swift type `Project`.
+`.hephaestus/project.yml` holds the project's identity, type, counters, documentation folder, sub projects, commands, web tabs, enabled skills, chat defaults and the costs of its deleted chats. Swift type `Project`.
 
 | Swift name       | Key                | Type                  | Required | Default  | Rules                                                                                                                                        |
 | ---------------- | ------------------ | --------------------- | -------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -144,6 +144,7 @@ The engine API sends these types as JSON objects with the same keys and value ru
 | webTabs          | `webTabs`          | `[WebTab]`            | no       | `[]`     | Web tabs in tab strip order. Tab `id`s are unique within the project.                                                                        |
 | skills           | `skills`           | `[String]`            | no       | `[]`     | Names of library skills enabled in this project, in the order they were enabled, without duplicates. See [Enabled skills](#enabled-skills).  |
 | chatDefaults     | `chatDefaults`     | `ChatSettings?`       | no       | `null`   | Settings of new chats of this project; `null` uses the host's `defaultChatSettings` ([Chat settings](#chat-settings)).                       |
+| deletedChats     | `deletedChats`     | `[DeletedChat]`       | no       | `[]`     | The costs of the project's deleted chats, in deletion order. See [Deleted chat](#deleted-chat).                                              |
 | unknownKeys      | —                  | `[String: JSONValue]` | —        | `[:]`    | [Unknown keys](#unknown-keys).                                                                                                               |
 
 ### Sub project entries
@@ -190,6 +191,23 @@ Swift type `WebTab`, one element of the key `webTabs` of the project file. Tabs,
 | locked      | `locked` | `Bool`                | no       | `false` | A locked tab cannot be closed ([Web tabs](web-tabs.md)).                                                                                                                                                                             |
 | unknownKeys | —        | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                                                                                                                                       |
 
+### Deleted chat
+
+Swift type `DeletedChat`, one element of the key `deletedChats` of the project file. `chats.delete` appends one for a deleted chat that has a cost, so that the cost stays in the project's totals ([Costs](costs.md#deleted-chats)). Nothing else changes the list.
+
+| Swift name  | Key       | Type                  | Required | Default | Rules                                                                                            |
+| ----------- | --------- | --------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------ |
+| id          | `id`      | `ChatID`              | yes      | —       | The deleted chat's id. Unique within the list.                                                   |
+| title       | `title`   | `String`              | no       | `""`    | The chat's title when it was deleted.                                                            |
+| kind        | `kind`    | `ChatKind`            | yes      | —       | The chat's [kind](#chat-kinds).                                                                  |
+| ticketID    | `ticket`  | `TicketID?`           | no       | `null`  | The chat's `ticket`.                                                                             |
+| bundleID    | `bundle`  | `BundleID?`           | no       | `null`  | The chat's `bundle`.                                                                             |
+| costUSD     | `costUSD` | `Double`              | yes      | —       | The chat's cost in US dollars when it was deleted ([Chat cost](costs.md#chat-cost)); at least 0. |
+| deleted     | `deleted` | `Date`                | yes      | —       | Deletion time.                                                                                   |
+| unknownKeys | —         | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                   |
+
+The keys and their rules are design-time choices. Default chosen at design time.
+
 ### Project file examples
 
 A complete project file:
@@ -227,6 +245,14 @@ chatDefaults:
   effort: high
   permissionMode: manual
   ultracode: false
+deletedChats:
+- id: 5B8C2D4E-6F7A-4B9C-8D1E-2F3A4B5C6D7E
+  title: Plan the release
+  kind: ticket
+  ticket: HEPH-9
+  bundle: null
+  costUSD: 1.2475
+  deleted: 2026-10-31T16:20:00Z
 ```
 
 A minimal project file; every other key takes its default, so its type is `none`:
@@ -469,23 +495,24 @@ chats:
 
 `.hephaestus/chats/<CHAT-ID>.yml` holds the metadata of one chat; its transcript is the [chat transcript file](#chat-transcript-file) next to it. Swift type `ChatMeta`.
 
-| Swift name     | Key              | Type                                   | Required | Default                 | Rules                                                                                                                                                                            |
-| -------------- | ---------------- | -------------------------------------- | -------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| schema         | `schema`         | `Int`                                  | no       | `1`                     | See [Keys and values](#keys-and-values).                                                                                                                                         |
-| id             | `id`             | `ChatID`                               | yes      | —                       | Equals the file name without `.yml`. Also the Claude CLI session id.                                                                                                             |
-| title          | `title`          | `String`                               | no       | `New Chat`              | `New Chat` until Haiku names the chat. Single line, 1–100 characters ([Chats](chats.md)).                                                                                        |
-| kind           | `kind`           | `ChatKind`                             | yes      | —                       | See [Chat kinds](#chat-kinds).                                                                                                                                                   |
-| ticketID       | `ticket`         | `TicketID?`                            | no       | `null`                  | See [Chat kinds](#chat-kinds).                                                                                                                                                   |
-| bundleID       | `bundle`         | `BundleID?`                            | no       | `null`                  | See [Chat kinds](#chat-kinds).                                                                                                                                                   |
-| created        | `created`        | `Date`                                 | yes      | —                       | Creation time. Never changed.                                                                                                                                                    |
-| updated        | `updated`        | `Date`                                 | no       | `created`               | Set to the current time whenever the file is written: when the metadata changes, when a user message is sent and when a turn ends. Default chosen at design time.                |
-| settings       | `settings`       | `ChatSettings`                         | no       | `ChatSettings` defaults | Current settings of the chat ([Chat settings](#chat-settings)).                                                                                                                  |
-| sessionStarted | `sessionStarted` | `Bool`                                 | no       | `false`                 | `true` once the Claude CLI has created the session; later launches resume it ([Chats](chats.md)).                                                                                |
-| projectID      | `projectID`      | `ProjectID`                            | —        | `""`                    | Runtime only: the project whose folder holds the file. Never written to the file and ignored when read from it; always present in the engine API. Default chosen at design time. |
-| state          | `state`          | [`ChatState`](engine-api.md#chatstate) | —        | `idle`                  | Runtime only: never written to the file and ignored when read from it; always present in the engine API.                                                                         |
-| unknownKeys    | —                | `[String: JSONValue]`                  | —        | `[:]`                   | [Unknown keys](#unknown-keys).                                                                                                                                                   |
+| Swift name     | Key              | Type                                   | Required | Default                 | Rules                                                                                                                                                                                                                                   |
+| -------------- | ---------------- | -------------------------------------- | -------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| schema         | `schema`         | `Int`                                  | no       | `1`                     | See [Keys and values](#keys-and-values).                                                                                                                                                                                                |
+| id             | `id`             | `ChatID`                               | yes      | —                       | Equals the file name without `.yml`. Also the Claude CLI session id.                                                                                                                                                                    |
+| title          | `title`          | `String`                               | no       | `New Chat`              | `New Chat` until Haiku names the chat. Single line, 1–100 characters ([Chats](chats.md)).                                                                                                                                               |
+| kind           | `kind`           | `ChatKind`                             | yes      | —                       | See [Chat kinds](#chat-kinds).                                                                                                                                                                                                          |
+| ticketID       | `ticket`         | `TicketID?`                            | no       | `null`                  | See [Chat kinds](#chat-kinds).                                                                                                                                                                                                          |
+| bundleID       | `bundle`         | `BundleID?`                            | no       | `null`                  | See [Chat kinds](#chat-kinds).                                                                                                                                                                                                          |
+| created        | `created`        | `Date`                                 | yes      | —                       | Creation time. Never changed.                                                                                                                                                                                                           |
+| updated        | `updated`        | `Date`                                 | no       | `created`               | Set to the current time whenever the file is written: when the metadata changes, when a user message is sent and when a turn ends. Default chosen at design time.                                                                       |
+| settings       | `settings`       | `ChatSettings`                         | no       | `ChatSettings` defaults | Current settings of the chat ([Chat settings](#chat-settings)).                                                                                                                                                                         |
+| sessionStarted | `sessionStarted` | `Bool`                                 | no       | `false`                 | `true` once the Claude CLI has created the session; later launches resume it ([Chats](chats.md)).                                                                                                                                       |
+| projectID      | `projectID`      | `ProjectID`                            | —        | `""`                    | Runtime only: the project whose folder holds the file. Never written to the file and ignored when read from it; always present in the engine API. Default chosen at design time.                                                        |
+| state          | `state`          | [`ChatState`](engine-api.md#chatstate) | —        | `idle`                  | Runtime only: never written to the file and ignored when read from it; always present in the engine API.                                                                                                                                |
+| costUSD        | `costUSD`        | `Double?`                              | —        | `null`                  | Runtime only: the chat's cost ([Chat cost](costs.md#chat-cost)), null when the chat has no cost or its transcript has not been replayed yet. Never written to the file and ignored when read from it; always present in the engine API. |
+| unknownKeys    | —                | `[String: JSONValue]`                  | —        | `[:]`                   | [Unknown keys](#unknown-keys).                                                                                                                                                                                                          |
 
-The storage layer sets `projectID` after decoding a file, and the engine sets `state` from the chat's process.
+The storage layer sets `projectID` after decoding a file, the engine sets `state` from the chat's process and `costUSD` from the chat's transcript.
 
 ### Chat kinds
 
@@ -762,6 +789,8 @@ The persisted form of a question set posted with the MCP tool `ask_questions` ([
 | costUSD    | `costUSD`    | `Double?` | no       | `null`  | Cost in US dollars reported by the CLI (`total_cost_usd`), when reported.       |
 | isError    | `isError`    | `Bool`    | no       | `false` | `true` when the turn ended with an error (CLI `is_error`).                      |
 | summary    | `summary`    | `String?` | no       | `null`  | Short text shown in the result footer; [Chats](chats.md) defines what fills it. |
+
+The chat's cost is derived from the `costUSD` values of its result items ([Chat cost](costs.md#chat-cost)).
 
 ### Transcript example
 
@@ -1226,3 +1255,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R41: A project's data is stored in `.hephaestus/project.yml`.
 - R42: A project's tickets are stored in `.hephaestus/ticket/<ticket id>.yml`.
 - R104: A project has a type: None, Go service or Swift application.
+- R105: A project shows how much it has cost: its total, sub projects included, and the cost of each of its chats, deleted chats included.

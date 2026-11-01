@@ -206,7 +206,7 @@ extension Engine {
     /// read (docs/engine-api.md › ProjectDetail).
     func projectDetail(_ id: ProjectID) -> ProjectDetail? {
         guard let loaded = domain.projects[id] else { return nil }
-        let subprojects = domain.childIDs(of: id).compactMap { domain.summary($0) }
+        let subprojects = domain.childIDs(of: id).compactMap { projectSummary($0) }
         return ProjectDetail(project: loaded.project, rootPath: loaded.rootPath, parentID: loaded.parentID,
                              subprojects: subprojects, gitRemoteURL: gitRemoteURL(root: loaded.rootPath))
     }
@@ -219,7 +219,35 @@ extension Engine {
 
     /// `projects.changed` with the complete `projects.list` result.
     func emitProjectsChanged(origin: Actor) {
-        emit(ProjectsChangedEvent.self, domain.projectSummaries(), origin: origin)
+        emit(ProjectsChangedEvent.self, projectSummaries(), origin: origin)
+    }
+
+    /// The `projects.list` result: every loaded project, depth first, with its costs.
+    func projectSummaries() -> [ProjectSummary] {
+        domain.loadedProjectIDs().compactMap(projectSummary)
+    }
+
+    /// The ProjectSummary of a loaded project with its own cost and its total
+    /// (docs/costs.md › Project totals).
+    func projectSummary(_ id: ProjectID) -> ProjectSummary? {
+        guard var summary = domain.summary(id) else { return nil }
+        summary.ownCostUSD = ownCostUSD(id)
+        summary.costUSD = domain.descendants(of: id).reduce(summary.ownCostUSD) { $0 + ownCostUSD($1) }
+        return summary
+    }
+
+    /// The costs of a project's chats, a chat without a cost counting 0, plus those of its
+    /// deleted chats.
+    func ownCostUSD(_ id: ProjectID) -> Double {
+        let chatsCost = domain.chats(of: id).reduce(0) { $0 + (chats.costs[$1.id]?.costUSD ?? 0) }
+        return chatsCost + (domain.project(id)?.deletedChatsCostUSD ?? 0)
+    }
+
+    /// A chat's cost changed: `chat.updated`, then `projects.changed` for the new totals
+    /// (docs/costs.md › Live updates).
+    func emitChatCostChanged(_ chatID: ChatID, origin: Actor) {
+        emitChatUpdated(chatID, origin: origin)
+        emitProjectsChanged(origin: origin)
     }
 
     /// `webTabs.updated` with every tab of the project.
@@ -232,6 +260,7 @@ extension Engine {
     func apiChatMeta(_ meta: ChatMeta) -> ChatMeta {
         var copy = meta
         copy.state = chats.state(of: meta.id)
+        copy.costUSD = chats.costs[meta.id]?.costUSD
         return copy
     }
 }

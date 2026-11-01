@@ -1966,7 +1966,7 @@ Input schema:
         "section": {
           "type": "string",
           "description": "Project section to show.",
-          "enum": ["tickets", "bundles", "chats", "code", "docs", "web", "skills", "settings"]
+          "enum": ["tickets", "bundles", "chats", "code", "docs", "web", "skills", "costs", "settings"]
         }
       },
       "required": ["kind"],
@@ -2147,7 +2147,7 @@ Input schema:
         "section": {
           "type": "string",
           "description": "Project section to show.",
-          "enum": ["tickets", "bundles", "chats", "code", "docs", "web", "skills", "settings"]
+          "enum": ["tickets", "bundles", "chats", "code", "docs", "web", "skills", "costs", "settings"]
         }
       },
       "required": ["kind"],

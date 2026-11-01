@@ -21,6 +21,10 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     /// Runtime only: never written to the file and ignored when read from it; always present
     /// in the engine API.
     public var state: ChatState
+    /// Runtime only: the chat's cost in US dollars (docs/costs.md › Chat cost); nil without a
+    /// cost. Never written to the file and ignored when read from it; always present in the
+    /// engine API.
+    public var costUSD: Double?
     public var unknownKeys: [String: JSONValue]
 
     /// The title of a chat that Haiku has not named yet.
@@ -29,7 +33,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     public init(schema: Int = 1, id: ChatID, title: String = ChatMeta.defaultTitle, kind: ChatKind,
                 ticketID: TicketID? = nil, bundleID: BundleID? = nil, created: Date, updated: Date? = nil,
                 settings: ChatSettings = ChatSettings(), sessionStarted: Bool = false, projectID: ProjectID = "",
-                state: ChatState = .idle, unknownKeys: [String: JSONValue] = [:]) {
+                state: ChatState = .idle, costUSD: Double? = nil, unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
         self.id = id
         self.title = title
@@ -42,13 +46,14 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         self.sessionStarted = sessionStarted
         self.projectID = projectID
         self.state = state
+        self.costUSD = costUSD
         self.unknownKeys = unknownKeys
     }
 
     static let fileKeys: Set<String> = [
         "schema", "id", "title", "kind", "ticket", "bundle", "created", "updated", "settings", "sessionStarted",
     ]
-    static let runtimeKeys: Set<String> = ["projectID", "state"]
+    static let runtimeKeys: Set<String> = ["projectID", "state", "costUSD"]
 
     public init(from decoder: Decoder) throws {
         let c = try ModelDecodingContainer(decoder)
@@ -67,9 +72,11 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         if c.isYAML {
             projectID = ""
             state = .idle
+            costUSD = nil
         } else {
             projectID = try c.value("projectID", default: "")
             state = try c.value("state", default: .idle)
+            costUSD = try c.optional("costUSD")
         }
         unknownKeys = try c.unknownKeys(known: Self.fileKeys.union(Self.runtimeKeys))
         if let problem = ChatMeta.kindProblem(kind: kind, ticketID: ticketID, bundleID: bundleID) {
@@ -92,6 +99,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         if !c.isYAML {
             try c.encode(projectID, "projectID")
             try c.encode(state, "state")
+            try c.encodeOptional(costUSD, "costUSD")
         }
         try c.encodeUnknownKeys(unknownKeys, known: Self.fileKeys.union(Self.runtimeKeys))
     }

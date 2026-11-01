@@ -15,12 +15,14 @@ public struct Project: Codable, Sendable, Hashable {
     public var webTabs: [WebTab]
     public var skills: [String]
     public var chatDefaults: ChatSettings?
+    /// The costs of the deleted chats, in deletion order (docs/costs.md › Deleted chats).
+    public var deletedChats: [DeletedChat]
     public var unknownKeys: [String: JSONValue]
 
     public init(schema: Int = 1, id: ProjectID, name: String, created: Date, type: ProjectType = .none, nextTicketNumber: Int = 1,
                 nextBundleNumber: Int = 1, docsPath: String = "docs", subprojects: [String] = [],
                 commands: ProjectCommands = ProjectCommands(), webTabs: [WebTab] = [], skills: [String] = [],
-                chatDefaults: ChatSettings? = nil, unknownKeys: [String: JSONValue] = [:]) {
+                chatDefaults: ChatSettings? = nil, deletedChats: [DeletedChat] = [], unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
         self.id = id
         self.name = name
@@ -34,12 +36,13 @@ public struct Project: Codable, Sendable, Hashable {
         self.webTabs = webTabs
         self.skills = skills
         self.chatDefaults = chatDefaults
+        self.deletedChats = deletedChats
         self.unknownKeys = unknownKeys
     }
 
     static let knownKeys: Set<String> = [
         "schema", "id", "name", "created", "type", "nextTicketNumber", "nextBundleNumber", "docsPath",
-        "subprojects", "commands", "webTabs", "skills", "chatDefaults",
+        "subprojects", "commands", "webTabs", "skills", "chatDefaults", "deletedChats",
     ]
 
     public init(from decoder: Decoder) throws {
@@ -59,6 +62,7 @@ public struct Project: Codable, Sendable, Hashable {
         skills = try c.value("skills", default: [])
         try c.checkAll("skills", skills, Identifiers.isSkillName, "skill name")
         chatDefaults = try c.optional("chatDefaults")
+        deletedChats = try c.value("deletedChats", default: [])
         unknownKeys = try c.unknownKeys(known: Self.knownKeys)
     }
 
@@ -77,6 +81,7 @@ public struct Project: Codable, Sendable, Hashable {
         try c.encode(webTabs, "webTabs")
         try c.encode(skills, "skills")
         try c.encodeOptional(chatDefaults, "chatDefaults")
+        try c.encode(deletedChats, "deletedChats")
         try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
     }
 
@@ -102,6 +107,72 @@ public struct Project: Codable, Sendable, Hashable {
         }
         try ModelRules.noDuplicates(skills, field: "skills")
         try chatDefaults?.validate()
+        try ModelRules.noDuplicates(deletedChats.map(\.id), field: "deletedChats") { "Chat \($0.uuidString) is listed more than once." }
+        for chat in deletedChats {
+            try chat.validate()
+        }
+    }
+
+    /// The cost of the deleted chats (docs/costs.md › Project totals).
+    public var deletedChatsCostUSD: Double {
+        deletedChats.reduce(0) { $0 + $1.costUSD }
+    }
+}
+
+/// One element of the key `deletedChats` of the project file (docs/data-model.md › Deleted chat).
+public struct DeletedChat: Codable, Sendable, Hashable, Identifiable {
+    public var id: ChatID
+    public var title: String
+    public var kind: ChatKind
+    /// Key `ticket`.
+    public var ticketID: TicketID?
+    /// Key `bundle`.
+    public var bundleID: BundleID?
+    public var costUSD: Double
+    public var deleted: Date
+    public var unknownKeys: [String: JSONValue]
+
+    public init(id: ChatID, title: String = "", kind: ChatKind, ticketID: TicketID? = nil, bundleID: BundleID? = nil,
+                costUSD: Double, deleted: Date, unknownKeys: [String: JSONValue] = [:]) {
+        self.id = id
+        self.title = title
+        self.kind = kind
+        self.ticketID = ticketID
+        self.bundleID = bundleID
+        self.costUSD = costUSD
+        self.deleted = deleted
+        self.unknownKeys = unknownKeys
+    }
+
+    static let knownKeys: Set<String> = ["id", "title", "kind", "ticket", "bundle", "costUSD", "deleted"]
+
+    public init(from decoder: Decoder) throws {
+        let c = try ModelDecodingContainer(decoder)
+        id = try c.required("id")
+        title = try c.value("title", default: "")
+        kind = try c.required("kind")
+        ticketID = try c.optional("ticket")
+        bundleID = try c.optional("bundle")
+        costUSD = try c.required("costUSD")
+        deleted = try c.requiredDate("deleted")
+        unknownKeys = try c.unknownKeys(known: Self.knownKeys)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = ModelEncodingContainer(encoder)
+        try c.encode(id, "id")
+        try c.encode(title, "title")
+        try c.encode(kind, "kind")
+        try c.encodeOptional(ticketID, "ticket")
+        try c.encodeOptional(bundleID, "bundle")
+        try c.encode(costUSD, "costUSD")
+        try c.encodeDate(deleted, "deleted")
+        try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
+    }
+
+    /// The write rules of the field table: a cost of at least 0.
+    public func validate() throws {
+        guard costUSD >= 0, costUSD.isFinite else { throw ValidationError.invalid("costUSD", "use an amount of at least 0") }
     }
 }
 

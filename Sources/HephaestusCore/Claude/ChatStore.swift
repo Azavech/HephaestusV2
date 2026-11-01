@@ -10,6 +10,7 @@ extension Engine {
     func chatMeta(_ chatID: ChatID) -> ChatMeta? {
         guard var meta = domain.chat(chatID) else { return nil }
         meta.state = chats.state(of: chatID)
+        meta.costUSD = chats.costs[chatID]?.costUSD
         return meta
     }
 
@@ -43,6 +44,7 @@ extension Engine {
             throw EngineError.storage(error)
         }
         meta.state = chats.state(of: meta.id)
+        meta.costUSD = chats.costs[meta.id]?.costUSD
         domain.upsertChat(meta)
         chats.reportedStates[meta.id] = meta.state
         emit(ChatUpdatedEvent.self, meta, origin: origin)
@@ -87,6 +89,11 @@ extension Engine {
         }
         chats.runtimes[chatID]?.deltas.drop(item.id)
         emit(ChatItemEvent.self, .init(chatID: chatID, item: item), origin: origin)
+        // A chat that is not scanned yet gets its cost from the whole transcript when it is.
+        if op == .add, case .result(let result) = item, let cost = result.costUSD, chats.scannedChats.contains(chatID) {
+            chats.costs[chatID, default: ChatCost()].add(cost)
+            emitChatCostChanged(chatID, origin: origin)
+        }
     }
 
     /// Appends an item from a background step; a failure is logged.
@@ -126,13 +133,20 @@ extension Engine {
                 appendChatItemLogging(.permissionRequest(request), chatID: chatID, op: .update)
             }
         }
-        recordScan(chatID, items: items)
+        if recordScan(chatID, items: items) {
+            emitChatCostChanged(chatID, origin: .system)
+        }
         return items
     }
 
-    /// Records the question set that is not completed and whether a user message has text.
-    private func recordScan(_ chatID: ChatID, items: [ChatItem]) {
+    /// Records the question set that is not completed, whether a user message has text and the
+    /// chat's cost; returns whether the cost changed.
+    @discardableResult
+    private func recordScan(_ chatID: ChatID, items: [ChatItem]) -> Bool {
         chats.scannedChats.insert(chatID)
+        let cost = ChatCost(items: items)
+        let costChanged = chats.costs[chatID]?.costUSD != cost.costUSD
+        chats.costs[chatID] = cost
         var open: QuestionsItem?
         var hasText = false
         for item in items {
@@ -144,6 +158,7 @@ extension Engine {
         }
         chats.openQuestionSets[chatID] = open
         chats.hasTextMessage[chatID] = hasText
+        return costChanged
     }
 
     /// Replays the transcript once when the engine has not done it since it started.
@@ -190,8 +205,11 @@ extension Engine {
                 appendChatItemLogging(.permissionRequest(request), chatID: chatID, op: .update)
             }
         }
-        recordScan(chatID, items: items)
-        reportChatState(chatID)
+        if recordScan(chatID, items: items) {
+            emitChatCostChanged(chatID, origin: .system)
+        } else {
+            reportChatState(chatID)
+        }
     }
 
     // MARK: Trash

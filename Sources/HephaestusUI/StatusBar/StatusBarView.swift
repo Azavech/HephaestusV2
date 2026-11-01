@@ -76,6 +76,7 @@ struct StatusBarView: View {
                 if case .main(let window) = context {
                     middleGroup(window)
                     Spacer(minLength: 16)
+                    costsItem(window)
                 }
                 ladybug
             }
@@ -126,6 +127,28 @@ struct StatusBarView: View {
             .help(message)
         case .stopped:
             EmptyView()
+        }
+    }
+
+    // MARK: Right: costs
+
+    /// The active project's total, sub projects included; a click selects the Costs section
+    /// (docs/costs.md › Status bar item).
+    @ViewBuilder
+    private func costsItem(_ window: WindowState) -> some View {
+        if let projectID = window.projectID, let project = workspace?.project(projectID) {
+            Button {
+                window.section = .costs
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "dollarsign.circle")
+                    Text(CostBreakdown.amount(project.costUSD))
+                        .monospacedDigit()
+                }
+            }
+            .buttonStyle(.plain)
+            .help("Cost of \(project.name), sub projects included")
+            separator
         }
     }
 

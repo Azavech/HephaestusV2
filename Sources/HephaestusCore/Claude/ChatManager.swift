@@ -41,6 +41,8 @@ final class ChatManager {
     var deleting: Set<ChatID> = []
     /// Whether a chat already has a user message with text, which started its naming.
     var hasTextMessage: [ChatID: Bool] = [:]
+    /// The cost of each scanned chat (docs/costs.md › Chat cost).
+    var costs: [ChatID: ChatCost] = [:]
     /// The last state reported by `chat.updated`, per chat.
     var reportedStates: [ChatID: ChatState] = [:]
     var timings = ChatTimings()

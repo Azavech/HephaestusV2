@@ -809,7 +809,7 @@ Chat states and their transitions, Claude processes, CLI flags, the stream-json 
 
 ### Chat metadata in the API
 
-Every ChatMeta returned by a method or carried by chat.updated has two fields computed by the engine and never written to `chats/<chatID>.yml`. They are the runtime keys `projectID` and `state` of [ChatMeta](data-model.md#chat-metadata-file).
+Every ChatMeta returned by a method or carried by chat.updated has three fields computed by the engine and never written to `chats/<chatID>.yml`. They are the runtime keys `projectID`, `state` and `costUSD` of [ChatMeta](data-model.md#chat-metadata-file). The engine emits chat.updated when the chat's `costUSD` changes, followed by projects.changed, since the `ownCostUSD` and `costUSD` of its project and of the project's ancestors change with it ([Live updates](costs.md#live-updates)).
 
 The **driving device** of a chat is the device of the user actor that last called `chats.create` with a message, `chats.send`, `chats.answerQuestion`, `chats.answerPermission`, `chats.implementTicket`, `chats.implementBundle` or `chats.createFeedback` for it since the engine started; it is kept in memory only. A `ui.open` call made by that chat's Claude targets it. Default chosen at design time.
 
@@ -962,16 +962,18 @@ Swift type `ChatsDelete` · actors: user · result: [Empty](#empty)
 Steps ([Chats](chats.md#persistence)):
 
 1. Terminate the chat's Claude process when it runs and revoke its MCP token.
-2. Remove the chat id from `chats` of its ticket or bundle.
-3. Move `chats/<chatID>.yml`, `chats/<chatID>.jsonl` and the folder `chats/<chatID>/` to the Trash of the main device.
+2. When the chat has a cost ([Chat cost](costs.md#chat-cost)), append a [DeletedChat](data-model.md#deleted-chat) entry to `deletedChats` of the project's project.yml, with the current time as `deleted`.
+3. Remove the chat id from `chats` of its ticket or bundle.
+4. Move `chats/<chatID>.yml`, `chats/<chatID>.jsonl` and the folder `chats/<chatID>/` to the Trash of the main device.
 
 | Error       | When                                 |
 | ----------- | ------------------------------------ |
 | invalid     | chatID is not a UUID.                |
 | notFound    | No such chat.                        |
 | unavailable | A file cannot be moved to the Trash. |
+| internal    | project.yml cannot be written.       |
 
-Events: ticket.updated or bundle.updated, chat.deleted.
+Events: project.updated when an entry was appended to `deletedChats`, ticket.updated or bundle.updated, chat.deleted.
 
 ### chats.answerPermission
 
@@ -1897,6 +1899,8 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
       "id": "HEPH",
       "name": "Hephaestus V2",
       "rootPath": "/Users/example/Developer/HephaestusV2",
+      "costUSD": 18.4,
+      "ownCostUSD": 16.25,
       "subprojectIDs": ["SITE"],
       "ticketCounts": {"done": 7, "inProgress": 1, "todo": 4},
       "type": "swiftApplication"
@@ -1906,6 +1910,8 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
       "name": "Website",
       "parentID": "HEPH",
       "rootPath": "/Users/example/Developer/HephaestusV2/site",
+      "costUSD": 2.15,
+      "ownCostUSD": 2.15,
       "subprojectIDs": [],
       "ticketCounts": {"done": 0, "inProgress": 0, "todo": 2},
       "type": "none"
@@ -1942,15 +1948,17 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
 
 ### ProjectSummary
 
-| Field         | Type         | Required | Description                                                                   |
-| ------------- | ------------ | -------- | ----------------------------------------------------------------------------- |
-| id            | ProjectID    | yes      | Project identifier.                                                           |
-| name          | String       | yes      | Display name.                                                                 |
-| type          | ProjectType  | yes      | [Project type](data-model.md#project-type).                                   |
-| rootPath      | String       | yes      | Standardized absolute path of the project folder on the main device.          |
-| parentID      | ProjectID    | no       | Identifier of the parent; absent for a top-level project.                     |
-| subprojectIDs | [ProjectID]  | yes      | Identifiers of the loaded direct sub projects, in the order of `subprojects`. |
-| ticketCounts  | TicketCounts | yes      | Number of tickets per status.                                                 |
+| Field         | Type         | Required | Description                                                                                         |
+| ------------- | ------------ | -------- | --------------------------------------------------------------------------------------------------- |
+| id            | ProjectID    | yes      | Project identifier.                                                                                 |
+| name          | String       | yes      | Display name.                                                                                       |
+| type          | ProjectType  | yes      | [Project type](data-model.md#project-type).                                                         |
+| rootPath      | String       | yes      | Standardized absolute path of the project folder on the main device.                                |
+| parentID      | ProjectID    | no       | Identifier of the parent; absent for a top-level project.                                           |
+| subprojectIDs | [ProjectID]  | yes      | Identifiers of the loaded direct sub projects, in the order of `subprojects`.                       |
+| ticketCounts  | TicketCounts | yes      | Number of tickets per status.                                                                       |
+| ownCostUSD    | Double       | yes      | Cost of the project's own chats and deleted chats ([Project totals](costs.md#project-totals)).      |
+| costUSD       | Double       | yes      | Own cost plus the own costs of every loaded descendant ([Project totals](costs.md#project-totals)). |
 
 ### TicketCounts
 
@@ -2172,7 +2180,7 @@ public enum NavigationTarget: Codable, Sendable, Hashable {
 
 ### ProjectSection
 
-String enum of the sidebar sections: `tickets`, `bundles`, `chats`, `code`, `docs`, `web`, `skills`, `settings` ([Sidebar](ui.md#sidebar)). The Swift name avoids SwiftUI's `Section`. Default chosen at design time.
+String enum of the sidebar sections: `tickets`, `bundles`, `chats`, `code`, `docs`, `web`, `skills`, `costs`, `settings` ([Sidebar](ui.md#sidebar)). The Swift name avoids SwiftUI's `Section`. Default chosen at design time.
 
 ### AttachmentUpload
 
@@ -2603,3 +2611,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R43: Any remote sees in real time the changes made anywhere.
 - R88 (partly): Only the user can mark a ticket done.
 - R104: A project has a type: None, Go service or Swift application.
+- R105: A project shows how much it has cost: its total, sub projects included, and the cost of each of its chats, deleted chats included.

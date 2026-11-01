@@ -1,4 +1,4 @@
-// OWNER: ui-shell — the sidebar: the eight sections and the project footer (docs/ui.md › Sidebar).
+// OWNER: ui-shell — the sidebar: the nine sections and the project footer (docs/ui.md › Sidebar).
 import AppKit
 import HephaestusCore
 import SwiftUI
@@ -18,6 +18,7 @@ extension ProjectSection {
         case .docs: return "Docs"
         case .web: return "Web"
         case .skills: return "Skills"
+        case .costs: return "Costs"
         case .settings: return "Project Settings"
         }
     }
@@ -32,11 +33,12 @@ extension ProjectSection {
         case .docs: return "doc.text"
         case .web: return "globe"
         case .skills: return "wand.and.stars"
+        case .costs: return "dollarsign.circle"
         case .settings: return "gearshape"
         }
     }
 
-    /// Its shortcut: ⌘1 to ⌘7 in the View menu, ⇧⌘, for Project ▸ Project Settings….
+    /// Its shortcut: ⌘1 to ⌘8 in the View menu, ⇧⌘, for Project ▸ Project Settings….
     var shortcut: KeyboardShortcut {
         switch self {
         case .tickets: return KeyboardShortcut("1", modifiers: .command)
@@ -46,6 +48,7 @@ extension ProjectSection {
         case .docs: return KeyboardShortcut("5", modifiers: .command)
         case .web: return KeyboardShortcut("6", modifiers: .command)
         case .skills: return KeyboardShortcut("7", modifiers: .command)
+        case .costs: return KeyboardShortcut("8", modifiers: .command)
         case .settings: return KeyboardShortcut(",", modifiers: [.command, .shift])
         }
     }

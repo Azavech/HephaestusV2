@@ -78,9 +78,14 @@ public struct ProjectSummary: Codable, Sendable, Hashable, Identifiable {
     /// Identifiers of the loaded direct sub projects, in the order of `subprojects`.
     public var subprojectIDs: [ProjectID]
     public var ticketCounts: TicketCounts
+    /// Cost of the project's own chats and deleted chats (docs/costs.md › Project totals).
+    public var ownCostUSD: Double
+    /// Own cost plus the own costs of every loaded descendant.
+    public var costUSD: Double
 
     public init(id: ProjectID, name: String, type: ProjectType = .none, rootPath: String, parentID: ProjectID? = nil,
-                subprojectIDs: [ProjectID] = [], ticketCounts: TicketCounts = TicketCounts()) {
+                subprojectIDs: [ProjectID] = [], ticketCounts: TicketCounts = TicketCounts(), ownCostUSD: Double = 0,
+                costUSD: Double = 0) {
         self.id = id
         self.name = name
         self.type = type
@@ -88,6 +93,8 @@ public struct ProjectSummary: Codable, Sendable, Hashable, Identifiable {
         self.parentID = parentID
         self.subprojectIDs = subprojectIDs
         self.ticketCounts = ticketCounts
+        self.ownCostUSD = ownCostUSD
+        self.costUSD = costUSD
     }
 }
 
@@ -410,6 +417,7 @@ public enum ProjectSection: String, Codable, Sendable, Hashable, CaseIterable {
     case docs
     case web
     case skills
+    case costs
     case settings
 
     public init(from decoder: Decoder) throws {

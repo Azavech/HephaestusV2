@@ -31,7 +31,7 @@ extension Engine {
 
     /// docs/engine-api.md › projects.list: every loaded project and sub project, depth first.
     func projectsList(_ params: Empty, _ actor: Actor) async throws -> [ProjectSummary] {
-        domain.projectSummaries()
+        projectSummaries()
     }
 
     /// docs/engine-api.md › projects.get.

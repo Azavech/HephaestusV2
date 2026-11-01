@@ -55,11 +55,7 @@ extension Engine {
         let projectID = try loadedProjectID(params.projectID)
         return domain.chats(of: projectID)
             .filter { !chats.deleting.contains($0.id) }
-            .map { meta -> ChatMeta in
-                var meta = meta
-                meta.state = chats.state(of: meta.id)
-                return meta
-            }
+            .map(apiChatMeta)
             .sorted { $0.updated > $1.updated }
     }
 
@@ -289,6 +285,9 @@ extension Engine {
         let chatID = params.chatID
         let meta = try requireChat(chatID)
         let folder = try chatFolder(meta)
+        // The cost is known once the transcript has been replayed (docs/costs.md › Deleted chats).
+        try? ensureChatScanned(chatID)
+        let cost = chats.costs[chatID]?.costUSD
         chats.deleting.insert(chatID)
         defer { chats.deleting.remove(chatID) }
         if let runtime = chats.runtimes.removeValue(forKey: chatID) {
@@ -303,6 +302,14 @@ extension Engine {
         }
         await tokens.revokeChatToken(chatID: chatID)
         try? FileManager.default.removeItem(at: dataDirectory.mcpConfigFile(chatID: chatID))
+        if let cost, domain.isLoaded(meta.projectID) {
+            var project = loaded(meta.projectID).project
+            project.deletedChats.append(DeletedChat(id: chatID, title: meta.title, kind: meta.kind, ticketID: meta.ticketID,
+                                                    bundleID: meta.bundleID, costUSD: cost, deleted: ISODate.now()))
+            try saveProject(project)
+            emitProjectUpdated(meta.projectID, origin: actor)
+        }
+        chats.costs[chatID] = nil
         chats.openQuestionSets[chatID] = nil
         chats.drivingDevices[chatID] = nil
         chats.scannedChats.remove(chatID)

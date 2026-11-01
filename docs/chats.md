@@ -384,7 +384,7 @@ A `result` line becomes a `result` item:
 | `isError`    | `is_error`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `summary`    | null when `is_error` is false; else `Stopped by the user.` for the first `result` after Stop ([Stopping a turn](#stopping-a-turn)), whose `errors` hold only a diagnostic of the CLI such as `[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=null` (Default chosen at design time); else `result` when `subtype` is `success`, else the `errors` strings joined with `\n`, else the `subtype` (`error_during_execution`, `error_max_turns`, `error_max_budget_usd`, `error_max_structured_output_retries`) |
 
-Then the CLI turn closes ([Turn tracking](#turn-tracking)). `queued_turn_count` is not used: Claude Code 2.1.309 sends 0 even when messages wait in its queue.
+The engine derives the chat's cost from the `costUSD` values of its `result` items ([Chat cost](costs.md#chat-cost)). Then the CLI turn closes ([Turn tracking](#turn-tracking)). `queued_turn_count` is not used: Claude Code 2.1.309 sends 0 even when messages wait in its queue.
 
 ### Turn tracking
 
@@ -957,7 +957,7 @@ A Haiku call names tickets created without a title, bundles created without a ti
 - The line `chats/` of `.hephaestus/.gitignore` keeps all three out of git.
 - The metadata file is rewritten atomically when the title, settings, links or `sessionStarted` change, when a user message is added and when a turn ends; each rewrite sets `updated` and emits `chat.updated`.
 - Each new item appends an `add` line; replacing an item (a permission decision or cancellation, an answer) appends an `update` line. The transcript is never rewritten; loading replays it as [Data model](data-model.md#replay) specifies.
-- `chats.delete` terminates the process, removes the chat id from its ticket's or bundle's `chats`, and moves the metadata file, the transcript and the attachment folder to the Trash ([Engine API](engine-api.md#chatsdelete)). Claude's own session files are left untouched. From the moment `chats.delete` starts, the engine ignores every line the chat's terminating process still writes, adds no item, writes no file and emits no event for that chat.
+- `chats.delete` terminates the process, keeps the chat's cost in the project's `deletedChats` ([Deleted chats](costs.md#deleted-chats)), removes the chat id from its ticket's or bundle's `chats`, and moves the metadata file, the transcript and the attachment folder to the Trash ([Engine API](engine-api.md#chatsdelete)). Claude's own session files are left untouched. From the moment `chats.delete` starts, the engine ignores every line the chat's terminating process still writes, adds no item, writes no file and emits no event for that chat.
 - `ChatMeta`, as returned by the API, is the metadata plus `projectID` and `state` ([Engine API](engine-api.md#chat-metadata-in-the-api)).
 
 ## Chat methods

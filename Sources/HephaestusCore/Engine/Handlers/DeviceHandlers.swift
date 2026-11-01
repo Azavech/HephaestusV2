@@ -15,7 +15,7 @@ extension Engine {
     /// the device, the `projects.list` result, the `skills.list` result (empty when the library
     /// cannot be read), the host settings, the running runs and the Claude CLI status.
     func snapshot() -> Snapshot {
-        Snapshot(device: deviceInfo, projects: domain.projectSummaries(), skills: skillSummaries(), settings: settings,
+        Snapshot(device: deviceInfo, projects: projectSummaries(), skills: skillSummaries(), settings: settings,
                  runs: runs.runningRuns(), claude: claudeCLI.status)
     }
 }
