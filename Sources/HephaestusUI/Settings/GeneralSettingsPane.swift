@@ -28,15 +28,19 @@ struct GeneralSettingsPane: View {
             SettingsRow(label: "Claude CLI status") {
                 claudeStatusLine
             }
-            let chatSettings = settings?.defaultChatSettings ?? ChatSettings()
+            let menus = ChatSettingsMenus(settings: settings?.defaultChatSettings ?? ChatSettings(), models: workspace.models,
+                                          change: applyChatSettings)
             SettingsRow(label: "Default model") {
-                ModelMenu(settings: chatSettings, models: workspace.models, change: applyChatSettings)
+                ChatModelMenuButton(menus: menus)
+                    .fixedSize()
             }
             SettingsRow(label: "Default effort") {
-                EffortMenu(settings: chatSettings, models: workspace.models, change: applyChatSettings)
+                ChatEffortMenuButton(menus: menus)
+                    .fixedSize()
             }
             SettingsRow(label: "Default permissions") {
-                PermissionsMenu(settings: chatSettings, change: applyChatSettings)
+                ChatPermissionsMenuButton(menus: menus)
+                    .fixedSize()
                 FieldMessage(text: chatSettingsMessage)
             }
             SettingsRow(label: "Feedback project") {

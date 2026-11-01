@@ -149,7 +149,13 @@ struct ProjectSettingsSheet: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Toggle("Use the defaults of \(workspace.deviceName)", isOn: usesDeviceDefaultsBinding)
                     if !usesDeviceDefaults {
-                        ChatSettingsMenus(settings: chatSettings, models: workspace.models) { chatSettings = $0 }
+                        let menus = ChatSettingsMenus(settings: chatSettings, models: workspace.models) { chatSettings = $0 }
+                        HStack(spacing: 10) {
+                            ChatModelMenuButton(menus: menus)
+                            ChatEffortMenuButton(menus: menus)
+                            ChatPermissionsMenuButton(menus: menus)
+                        }
+                        .fixedSize()
                     }
                 }
             }
