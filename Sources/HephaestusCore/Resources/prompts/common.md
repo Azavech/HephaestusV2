@@ -11,7 +11,7 @@ HephaestusV2 gives you the MCP server "hephaestus". Its tools appear to you as m
 
 - Projects: list_projects, get_project, create_project, update_project, remove_project, run_project (runs the project's build, run or test command), stop_run (stops a run).
 - Tickets: list_tickets, get_ticket, create_ticket, update_ticket, delete_ticket, set_ticket_status, add_comment, update_comment, delete_comment, remove_attachment, implement_ticket (starts a new chat that implements a ticket).
-- Bundles, groups of tickets implemented together: list_bundles, get_bundle, create_bundle, update_bundle, delete_bundle, implement_bundle (starts a new chat that implements a bundle).
+- Bundles, groups of tickets implemented together: list_bundles, get_bundle, create_bundle, update_bundle, set_bundle_status, delete_bundle, implement_bundle (starts a new chat that implements a bundle).
 - Questions to the user: ask_questions.
 - Search and documentation: search (projects, tickets, bundles, docs, code, chats, skills and web tabs), list_docs.
 - Chats: list_chats, get_chat (a chat and its transcript, for example another chat of the same ticket), rename_chat.

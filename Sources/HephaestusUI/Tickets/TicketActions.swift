@@ -55,6 +55,16 @@ struct StatusCapsule: View {
             .fixedSize()
     }
 
+    /// The capsule of a bundle status, in the colour of the ticket status of the same name
+    /// (docs/tickets.md › Bundle status rules).
+    init(status: BundleStatus) {
+        self.status = status.capsuleStatus
+    }
+
+    init(status: TicketStatus) {
+        self.status = status
+    }
+
     /// The colour of a status, also used by the segments of `BundleProgressBar`.
     static func color(of status: TicketStatus) -> Color {
         switch status {
@@ -181,9 +191,25 @@ enum TicketActions {
 
     // MARK: Bundles
 
+    /// Set Status ▸ of the bundle list and the Status pop-up of the bundle header:
+    /// `bundles.setStatus`; a failure shows `<item title> failed`.
+    static func setBundleStatus(_ status: BundleStatus, of bundleID: String, workspace: DeviceWorkspace,
+                                window: WindowState, itemTitle: String = "Set Status") async {
+        do {
+            _ = try await workspace.call(BundlesSetStatus.self, BundlesSetStatus.Params(bundleID: bundleID, status: status.rawValue))
+        } catch {
+            window.alert = .failure(itemTitle, error)
+        }
+    }
+
     /// Whether Implement All is enabled, and its tooltip while disabled.
     static func implementAllAvailability(of bundle: TicketBundle, workspace: DeviceWorkspace,
                                          projectID: String) -> (enabled: Bool, help: String?) {
+        // A started or finished bundle waits for the user to set it back to To Do
+        // (docs/tickets.md › Bundle status rules).
+        if bundle.status != .todo {
+            return (false, "Set the status to To Do to implement this bundle.")
+        }
         if bundle.ticketIDs.isEmpty {
             return (false, "This bundle has no tickets.")
         }
@@ -249,6 +275,17 @@ enum TicketActions {
         for _ in 0..<40 {
             if condition() { return }
             try? await Task.sleep(for: .milliseconds(50))
+        }
+    }
+}
+
+extension BundleStatus {
+    /// The ticket status whose capsule colour and label a bundle status shares.
+    var capsuleStatus: TicketStatus {
+        switch self {
+        case .todo: return .todo
+        case .inProgress: return .inProgress
+        case .done: return .done
         }
     }
 }

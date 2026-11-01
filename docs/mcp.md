@@ -14,7 +14,7 @@ HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server th
 | JSON-RPC methods  | `initialize`, `ping`, `tools/list`, `tools/call`; every notification is accepted and ignored                                                             |
 | Server name       | `hephaestus`, in `serverInfo` and as the server's key in Claude's MCP configuration, so Claude names the tools `mcp__hephaestus__<tool>`                 |
 | Authentication    | `Authorization: Bearer <token>` with a chat token or the external token                                                                                  |
-| Tools             | The 42 tools of the [tool catalogue](#tool-catalogue), plus 3 [debug tools](#debug-tools) when `HEPHAESTUS_DEBUG_TOOLS=1`                                |
+| Tools             | The 43 tools of the [tool catalogue](#tool-catalogue), plus 3 [debug tools](#debug-tools) when `HEPHAESTUS_DEBUG_TOOLS=1`                                |
 
 Every tool call runs an engine method ([Engine API](engine-api.md)) with the actor `claude`. The engine validates it exactly as it validates a call from the UI or from a remote device and emits the same events, so every client, local or remote, shows the change live.
 
@@ -357,18 +357,20 @@ The engine reads and copies each file; a path that is missing, unreadable or not
 
 A chat token runs every engine call as the actor `claude` with the chat's id, the external token as `claude` with chatID `external` ([Engine API](engine-api.md#actors)). The engine enforces the rules below whatever the token, and the events it emits carry the origin `{actor: claude, chatID}`, so every client knows who made a change.
 
-| Rule                                                                                               | Enforced by                                                                      | Failure     |
-| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------- |
-| A ticket created by Claude starts as `todo`, has `createdBy: claude` and gets its title from Haiku | tickets.create ([Tickets](tickets.md#tickets-created-by-claude))                 | —           |
-| A description written by Claude, at creation or on update, follows the template                    | tickets.create, tickets.update ([Tickets](tickets.md#template-validation))       | `invalid`   |
-| Claude sets only `todo`, `in_progress`, `review` and `done`                                        | Input schema of `set_ticket_status`                                              | `invalid`   |
-| Claude never changes the status of a `done` ticket                                                 | tickets.setStatus ([Tickets](tickets.md#status-rules))                           | `forbidden` |
-| A comment added by Claude has `author: claude`                                                     | tickets.addComment ([Tickets](tickets.md#comments))                              | —           |
-| Claude never sets a ticket title at creation, chat settings or project chat defaults               | The tools never send these params ([Engine API](engine-api.md#rules-for-claude)) | —           |
-| Only the chat's own Claude asks questions                                                          | `ask_questions`, chats.postQuestions                                             | `forbidden` |
-| A feedback chat is linked to the ticket it creates                                                 | tickets.create ([Feedback](feedback.md#resulting-ticket))                        | —           |
-| Claude never unlocks a web tab, so it never closes a locked tab                                    | webTabs.update, webTabs.close ([Engine API](engine-api.md#rules-for-claude))     | `forbidden` |
-| A chat never removes the project it belongs to                                                     | projects.remove ([Engine API](engine-api.md#rules-for-claude))                   | `forbidden` |
+| Rule                                                                                               | Enforced by                                                                                        | Failure                |
+| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ---------------------- |
+| A ticket created by Claude starts as `todo`, has `createdBy: claude` and gets its title from Haiku | tickets.create ([Tickets](tickets.md#tickets-created-by-claude))                                   | —                      |
+| A description written by Claude, at creation or on update, follows the template                    | tickets.create, tickets.update ([Tickets](tickets.md#template-validation))                         | `invalid`              |
+| Claude sets only `todo`, `in_progress`, `review` and `done`                                        | Input schema of `set_ticket_status`                                                                | `invalid`              |
+| Claude never changes the status of a `done` ticket                                                 | tickets.setStatus ([Tickets](tickets.md#status-rules))                                             | `forbidden`            |
+| Claude sets a bundle only to `todo` and `in_progress`                                              | Input schema of `set_bundle_status`; bundles.setStatus ([Tickets](tickets.md#bundle-status-rules)) | `invalid`, `forbidden` |
+| Claude never changes the status of a `done` bundle                                                 | bundles.setStatus ([Tickets](tickets.md#bundle-status-rules))                                      | `forbidden`            |
+| A comment added by Claude has `author: claude`                                                     | tickets.addComment ([Tickets](tickets.md#comments))                                                | —                      |
+| Claude never sets a ticket title at creation, chat settings or project chat defaults               | The tools never send these params ([Engine API](engine-api.md#rules-for-claude))                   | —                      |
+| Only the chat's own Claude asks questions                                                          | `ask_questions`, chats.postQuestions                                                               | `forbidden`            |
+| A feedback chat is linked to the ticket it creates                                                 | tickets.create ([Feedback](feedback.md#resulting-ticket))                                          | —                      |
+| Claude never unlocks a web tab, so it never closes a locked tab                                    | webTabs.update, webTabs.close ([Engine API](engine-api.md#rules-for-claude))                       | `forbidden`            |
+| A chat never removes the project it belongs to                                                     | projects.remove ([Engine API](engine-api.md#rules-for-claude))                                     | `forbidden`            |
 
 The tools are not limited to the calling chat's project: a chat may read and change every project of the device. Default chosen at design time. The MCP server asks the user nothing itself; the Claude CLI asks before tool calls according to the chat's permission mode and the app shows those requests ([Chats](chats.md)). The workflow Claude follows with these tools is in [Workflow](workflow.md).
 
@@ -400,6 +402,7 @@ The table lists every tool in the order of `tools/list`. "Required inputs" holds
 | `get_bundle`        | `bundleID`                      | —                                | bundles.get              | TicketBundle     |
 | `create_bundle`     | `projectID`, `ticketIDs`        | `title`                          | bundles.create           | TicketBundle     |
 | `update_bundle`     | `bundleID`                      | `title`, `ticketIDs`             | bundles.update           | TicketBundle     |
+| `set_bundle_status` | `bundleID`, `status`            | —                                | bundles.setStatus        | TicketBundle     |
 | `delete_bundle`     | `bundleID`                      | —                                | bundles.delete           | `{}`             |
 | `implement_bundle`  | `bundleID`                      | —                                | chats.implementBundle    | ChatMeta         |
 | `ask_questions`     | `questions`                     | —                                | chats.postQuestions      | text             |
@@ -1210,6 +1213,42 @@ Input schema:
 }
 ```
 
+### set_bundle_status
+
+- **Engine call:** bundles.setStatus with `bundleID` and `status`.
+- Another value than the two of the enum, `done` included, is refused by the MCP layer before the engine is called, with `status: must be one of todo, in_progress.`.
+- **Result:** the updated `TicketBundle`.
+- **Errors:**
+  - `invalid`: `status` is not one of the enum's values (message above).
+  - Those of bundles.setStatus ([Engine API](engine-api.md#bundlessetstatus)): no such bundle (`notFound`), a `done` bundle (`forbidden`).
+
+Description:
+
+```text
+Set a bundle's status to todo or in_progress. Implement All and implement_bundle set in_progress themselves. Only the user sets done, and you cannot change the status of a done bundle.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "bundleID": {
+      "type": "string",
+      "description": "Bundle id, for example HEPH-B2."
+    },
+    "status": {
+      "type": "string",
+      "description": "New status.",
+      "enum": ["todo", "in_progress"]
+    }
+  },
+  "required": ["bundleID", "status"],
+  "additionalProperties": false
+}
+```
+
 ### delete_bundle
 
 - **Engine call:** bundles.delete with `bundleID`.
@@ -1241,9 +1280,10 @@ Input schema:
 ### implement_bundle
 
 - **Engine call:** chats.implementBundle with `bundleID`. `settings` is never sent, so the chat uses the project's `chatDefaults`, else the host's `defaultChatSettings`.
+- The engine sets the bundle's status to `in_progress` when it creates the chat ([Tickets](tickets.md#bundle-status-rules)).
 - As for `implement_ticket`, the new chat runs on its own and no window changes its selection.
 - **Result:** the `ChatMeta` of the new chat.
-- **Errors:** Those of chats.implementBundle ([Engine API](engine-api.md#chatsimplementbundle)): no such bundle (`notFound`), a bundle with no ticket left that is not done, an empty bundle included (`conflict`, `<ID> has no ticket left to implement.`), Claude CLI not available (`unavailable`).
+- **Errors:** Those of chats.implementBundle ([Engine API](engine-api.md#chatsimplementbundle)): no such bundle (`notFound`), a bundle whose status is `in_progress` or `done` (`conflict`, `<ID> is in progress; set it to To Do to implement it.` or `<ID> is done; set it to To Do to implement it.`), a bundle with no ticket left that is not done, an empty bundle included (`conflict`, `<ID> has no ticket left to implement.`), Claude CLI not available (`unavailable`).
 
 Description:
 
@@ -2424,3 +2464,4 @@ Unauthorized: missing or invalid bearer token.
 - R104: A project has a type: None, Go service or Swift application.
 - R108: The user moves between the questions of a set, answers them in any order and can change an answer until every question has one.
 - R109: The user can skip a question; Claude then leaves that point out and mentions it in its reply.
+- R110: A bundle has a status: todo, in progress or done; Implement All sets it to in progress and is disabled until the user sets it back to To Do.

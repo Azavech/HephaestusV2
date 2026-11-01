@@ -124,9 +124,9 @@ extension Engine {
     /// Creates a chat: a new id, `New Chat`, `sessionStarted` false, the settings given, else the
     /// project's `chatDefaults`, else the host's `defaultChatSettings`; writes its metadata file
     /// (`chat.updated`), then links it to its ticket or bundle (docs/data-model.md › Changes that
-    /// touch several files).
+    /// touch several files). A given `bundleStatus` is set on the bundle in the same write.
     private func createChat(kind: ChatKind, project: Project, ticketID: TicketID?, bundleID: BundleID?, settings chosen: ChatSettings?,
-                            origin: Actor) throws -> ChatMeta {
+                            bundleStatus: BundleStatus? = nil, origin: Actor) throws -> ChatMeta {
         let now = ISODate.now()
         let meta = ChatMeta(id: UUID(), kind: kind, ticketID: ticketID, bundleID: bundleID, created: now, updated: now,
                             settings: chosen ?? project.chatDefaults ?? settings.defaultChatSettings, projectID: project.id)
@@ -134,7 +134,7 @@ extension Engine {
         chats.scannedChats.insert(meta.id)
         chats.hasTextMessage[meta.id] = false
         if let ticketID { try linkChat(meta.id, toTicket: ticketID, origin: origin) }
-        if let bundleID { try linkChat(meta.id, toBundle: bundleID, origin: origin) }
+        if let bundleID { try linkChat(meta.id, toBundle: bundleID, status: bundleStatus, origin: origin) }
         return saved
     }
 
@@ -169,6 +169,13 @@ extension Engine {
         if let settings = params.settings { try Engine.validated { try settings.validate() } }
         func checkBundle() throws -> TicketBundle {
             guard let bundle = domain.bundle(bundleID) else { throw EngineError.notFound("Bundle", bundleID) }
+            // A started or finished bundle waits for the user to set it back to To Do
+            // (docs/tickets.md › Bundle status rules).
+            switch bundle.status {
+            case .todo: break
+            case .inProgress: throw EngineError(.conflict, "\(bundleID) is in progress; set it to To Do to implement it.")
+            case .done: throw EngineError(.conflict, "\(bundleID) is done; set it to To Do to implement it.")
+            }
             // An id whose ticket no longer exists is not a ticket left to implement
             // (docs/engine-api.md › chats.implementBundle, errors).
             guard bundle.ticketIDs.contains(where: { domain.ticket($0).map { $0.status != .done } ?? false }) else {
@@ -181,7 +188,8 @@ extension Engine {
         let sender = senderName(actor)
         let bundle = try checkBundle()
         guard let projectID = bundle.projectID, let project = domain.project(projectID) else { throw EngineError.notFound("Bundle", bundleID) }
-        let meta = try createChat(kind: .bundle, project: project, ticketID: nil, bundleID: bundleID, settings: params.settings, origin: actor)
+        let meta = try createChat(kind: .bundle, project: project, ticketID: nil, bundleID: bundleID, settings: params.settings,
+                                  bundleStatus: .inProgress, origin: actor)
         recordDrivingDevice(meta.id, actor)
         let text = Prompts.render(Prompts.text(.implementBundle), [
             "bundleID": bundleID, "bundleTitle": bundle.title, "bundleTicketIDs": bundle.ticketIDs.joined(separator: ", "),

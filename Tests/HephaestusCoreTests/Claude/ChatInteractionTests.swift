@@ -342,6 +342,32 @@ struct ChatInteractionTests {
         }
     }
 
+    @Test("Implement All and implement_bundle set the bundle to in_progress; an in_progress or done bundle is refused; done is never set")
+    func implementBundleStatus() async throws {
+        try await withChatEngine { bed in
+            try await bed.writeTicket(Ticket(id: "DEMO-1", title: "One", created: ISODate.now(), description: "Problem"))
+            try await bed.writeTicket(Ticket(id: "DEMO-2", title: "Two", created: ISODate.now(), description: "Problem"))
+            try await bed.writeBundle(TicketBundle(id: "DEMO-B1", title: "Polish", created: ISODate.now(), ticketIDs: ["DEMO-1"]))
+            try await bed.writeBundle(TicketBundle(id: "DEMO-B2", title: "Docs", created: ISODate.now(), ticketIDs: ["DEMO-2"]))
+            let chat = try await bed.connection.call(ChatsImplementBundle.self, .init(bundleID: "DEMO-B1"))
+            let started = try ProjectFileStore.readBundle(at: bed.folder.bundleFile("DEMO-B1"), projectID: "DEMO")
+            #expect(started.status == .inProgress && started.chatIDs == [chat.id])
+            #expect(await engineError { try await bed.connection.call(ChatsImplementBundle.self, .init(bundleID: "DEMO-B1")) }
+                == EngineError(.conflict, "DEMO-B1 is in progress; set it to To Do to implement it."))
+            // implement_bundle: the same method with a claude actor.
+            _ = try await bed.engine.call(ChatsImplementBundle.self, .init(bundleID: "DEMO-B2"), actor: .claude(chatID: chat.id.uuidString))
+            #expect(try ProjectFileStore.readBundle(at: bed.folder.bundleFile("DEMO-B2"), projectID: "DEMO").status == .inProgress)
+            // Every ticket done: the bundle stays in_progress.
+            _ = try await bed.connection.call(TicketsSetStatus.self, .init(ticketID: "DEMO-2", status: "done"))
+            #expect(try await bed.connection.call(BundlesGet.self, .init(bundleID: "DEMO-B2")).status == .inProgress)
+            _ = try await bed.connection.call(BundlesSetStatus.self, .init(bundleID: "DEMO-B1", status: "done"))
+            #expect(await engineError { try await bed.connection.call(ChatsImplementBundle.self, .init(bundleID: "DEMO-B1")) }
+                == EngineError(.conflict, "DEMO-B1 is done; set it to To Do to implement it."))
+            _ = try await bed.connection.call(BundlesSetStatus.self, .init(bundleID: "DEMO-B1", status: "todo"))
+            #expect(try await bed.connection.call(ChatsImplementBundle.self, .init(bundleID: "DEMO-B1")).bundleID == "DEMO-B1")
+        }
+    }
+
     @Test("Feedback: the message of docs/chats.md › Feedback message with the screenshot as its image")
     func feedback() async throws {
         try await withChatEngine { bed in

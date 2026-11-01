@@ -476,6 +476,7 @@ Swift type `Attachment`. It describes one file stored inside the project's `.hep
 | schema      | `schema`  | `Int`                 | no       | `1`       | See [Keys and values](#keys-and-values).                                                                                                                                                                                                                       |
 | id          | `id`      | `BundleID`            | yes      | —         | Bundle id ([Ids](#ids)). Equals the file name without `.yml`; its identifier part equals the project's `id`.                                                                                                                                                   |
 | title       | `title`   | `String`              | yes      | —         | Single line, 1–200 characters. Default chosen at design time. Naming with Haiku: [Tickets](tickets.md).                                                                                                                                                        |
+| status      | `status`  | `BundleStatus`        | no       | `todo`    | Who may set which status, and when Implement All sets `in_progress`: [Tickets](tickets.md#bundle-status-rules).                                                                                                                                                |
 | created     | `created` | `Date`                | yes      | —         | Creation time. Never changed.                                                                                                                                                                                                                                  |
 | updated     | `updated` | `Date`                | no       | `created` | Set to the current time by every engine write of the file. Default chosen at design time.                                                                                                                                                                      |
 | ticketIDs   | `tickets` | `[TicketID]`          | no       | `[]`      | Tickets of the same project in implementation order, without duplicates. A ticket may belong to several bundles. Default chosen at design time. Deleting a ticket removes its id from every bundle of the project; an id whose ticket file is missing is kept. |
@@ -487,6 +488,7 @@ Swift type `Attachment`. It describes one file stored inside the project's `.hep
 schema: 1
 id: HEPH-B2
 title: Polish before v0.5.0
+status: in_progress
 created: 2026-10-31T16:00:00Z
 updated: 2026-10-31T16:05:00Z
 tickets:
@@ -495,6 +497,14 @@ tickets:
 chats:
 - 1D2C3B4A-5968-4776-A5B4-C3D2E1F0A9B8
 ```
+
+`BundleStatus`:
+
+| Value         | Swift case    | UI label    |
+| ------------- | ------------- | ----------- |
+| `todo`        | `.todo`       | To Do       |
+| `in_progress` | `.inProgress` | In Progress |
+| `done`        | `.done`       | Done        |
 
 ## Chat metadata file
 
@@ -1263,3 +1273,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R105: A project shows how much it has cost: its total, sub projects included, and the cost of each of its chats, deleted chats included.
 - R108: The user moves between the questions of a set, answers them in any order and can change an answer until every question has one.
 - R109: The user can skip a question; Claude then leaves that point out and mentions it in its reply.
+- R110: A bundle has a status: todo, in progress or done; Implement All sets it to in progress and is disabled until the user sets it back to To Do.

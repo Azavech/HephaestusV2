@@ -640,6 +640,33 @@ extension MCPToolCatalog {
             handling: .forward
         ),
         MCPToolDefinition(
+            name: "set_bundle_status",
+            description: #"""
+            Set a bundle's status to todo or in_progress. Implement All and implement_bundle set in_progress themselves. Only the user sets done, and you cannot change the status of a done bundle.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "bundleID": {
+                  "type": "string",
+                  "description": "Bundle id, for example HEPH-B2."
+                },
+                "status": {
+                  "type": "string",
+                  "description": "New status.",
+                  "enum": ["todo", "in_progress"]
+                }
+              },
+              "required": ["bundleID", "status"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "bundles.setStatus",
+            handling: .forward
+        ),
+        MCPToolDefinition(
             name: "delete_bundle",
             description: #"""
             Delete a bundle. Its tickets are not changed.

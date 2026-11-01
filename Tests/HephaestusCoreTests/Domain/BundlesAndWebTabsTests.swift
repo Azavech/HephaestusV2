@@ -87,6 +87,58 @@ struct BundlesAndWebTabsTests {
         }
     }
 
+    @Test("A new bundle is todo, a bundle file without a status reads as todo, and the status is written to the file")
+    func bundleStatusStorage() async throws {
+        try await withDomainEngine { h in
+            try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
+            try await h.ticket("HEPH")
+            let bundle = try await h.connection.call(BundlesCreate.self, .init(projectID: "HEPH", title: "Bundle", ticketIDs: ["HEPH-1"]))
+            #expect(bundle.status == .todo)
+            let folder = ProjectFolder(root: URL(fileURLWithPath: h.path("Heph")))
+            _ = try await h.connection.call(BundlesSetStatus.self, .init(bundleID: "heph-b1", status: "in_progress"))
+            let text = try String(contentsOf: folder.bundleFile("HEPH-B1"), encoding: .utf8)
+            #expect(text.contains("\nstatus: in_progress\n"))
+            #expect(try ProjectFileStore.readBundle(at: folder.bundleFile("HEPH-B1"), projectID: "HEPH").status == .inProgress)
+            try writeFile("schema: 1\nid: HEPH-B1\ntitle: Bundle\ncreated: 2026-10-31T16:00:00Z\ntickets: [HEPH-1]\n",
+                          to: folder.bundleFile("HEPH-B1"))
+            await h.engine.projectDataFilesChanged(projectID: "HEPH", paths: [".hephaestus/bundle/HEPH-B1.yml"])
+            #expect(try await h.connection.call(BundlesGet.self, .init(bundleID: "HEPH-B1")).status == .todo)
+        }
+    }
+
+    @Test("bundles.setStatus: the user sets any status; Claude sets todo and in_progress, never done, never on a done bundle")
+    func setBundleStatus() async throws {
+        try await withDomainEngine { h in
+            try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
+            try await h.ticket("HEPH")
+            _ = try await h.connection.call(BundlesCreate.self, .init(projectID: "HEPH", title: "Bundle", ticketIDs: ["HEPH-1"]))
+            let events = await DomainEventRecorder.make(h)
+            let started = try await h.call(BundlesSetStatus.self, .init(bundleID: "HEPH-B1", status: "in_progress"), as: h.claude)
+            #expect(started.status == .inProgress)
+            #expect(await events.wait(for: BundleUpdatedEvent.name) == ["bundle.updated"])
+            #expect(try events.all[0].payload(BundleUpdatedEvent.self).status == .inProgress)
+            events.clear()
+            _ = try await h.call(BundlesSetStatus.self, .init(bundleID: "HEPH-B1", status: "in_progress"), as: h.claude)
+            #expect(await events.settle().isEmpty)
+            #expect(try await h.call(BundlesSetStatus.self, .init(bundleID: "HEPH-B1", status: "todo"), as: h.claude).status == .todo)
+            #expect(await events.wait(for: BundleUpdatedEvent.name) == ["bundle.updated"])
+            #expect(await engineError { try await h.call(BundlesSetStatus.self, .init(bundleID: "HEPH-B1", status: "done"), as: h.claude) }
+                == EngineError(.forbidden, "Only the user can set HEPH-B1 to done."))
+            #expect(await engineError { try await h.connection.call(BundlesSetStatus.self, .init(bundleID: "HEPH-B1", status: "review")) }
+                == EngineError(.invalid, "Unknown status \"review\". Use todo, in_progress or done."))
+            #expect(await engineError { try await h.connection.call(BundlesSetStatus.self, .init(bundleID: "HEPH-B9", status: "todo")) }
+                == EngineError(.notFound, "Bundle HEPH-B9 not found."))
+            events.clear()
+            #expect(try await h.connection.call(BundlesSetStatus.self, .init(bundleID: "HEPH-B1", status: "done")).status == .done)
+            #expect(await events.wait(for: BundleUpdatedEvent.name) == ["bundle.updated"])
+            for status in ["todo", "in_progress", "done"] {
+                #expect(await engineError { try await h.call(BundlesSetStatus.self, .init(bundleID: "HEPH-B1", status: status), as: h.claude) }
+                    == EngineError(.forbidden, "HEPH-B1 is done; only the user can change its status."))
+            }
+            #expect(try await h.connection.call(BundlesSetStatus.self, .init(bundleID: "HEPH-B1", status: "todo")).status == .todo)
+        }
+    }
+
     @Test("bundles.delete moves the file to the Trash and keeps the tickets")
     func deleteBundle() async throws {
         try await withDomainEngine { h in

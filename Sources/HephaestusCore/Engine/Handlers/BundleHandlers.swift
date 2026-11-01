@@ -15,6 +15,9 @@ extension Engine {
         register(BundlesUpdate.self, actors: [.user, .claude]) { [unowned self] params, actor in
             try await self.bundlesUpdate(params, actor)
         }
+        register(BundlesSetStatus.self, actors: [.user, .claude]) { [unowned self] params, actor in
+            try await self.bundlesSetStatus(params, actor)
+        }
         register(BundlesDelete.self, actors: [.user, .claude]) { [unowned self] params, actor in
             try await self.bundlesDelete(params, actor)
         }
@@ -87,6 +90,23 @@ extension Engine {
             domain.pendingBundleNames[old.id] = nil
         }
         guard new != old else { return old }
+        new.updated = ISODate.now()
+        try saveBundle(new)
+        emit(BundleUpdatedEvent.self, new, origin: actor)
+        return new
+    }
+
+    /// docs/engine-api.md › bundles.setStatus and docs/tickets.md › Bundle status rules.
+    func bundlesSetStatus(_ params: BundlesSetStatus.Params, _ actor: Actor) async throws -> TicketBundle {
+        let id = try normalizedBundleID(params.bundleID)
+        guard let status = BundleStatus(rawValue: params.status) else {
+            throw EngineError(.invalid, "Unknown status \"\(params.status)\". Use todo, in_progress or done.")
+        }
+        let old = try existingBundle(id)
+        try ActorRules.requireBundleStatusChange(old, to: status, actor)
+        guard old.status != status else { return old }
+        var new = old
+        new.status = status
         new.updated = ISODate.now()
         try saveBundle(new)
         emit(BundleUpdatedEvent.self, new, origin: actor)

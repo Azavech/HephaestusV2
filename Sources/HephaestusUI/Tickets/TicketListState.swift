@@ -156,7 +156,7 @@ struct TicketListState: Codable, Hashable {
 struct BundleListState: Codable, Hashable {
     /// The sorted column.
     enum SortColumn: String, Codable, Hashable, CaseIterable {
-        case id, title, progress, created
+        case id, title, status, progress, created
     }
 
     /// The list starts sorted by ID, newest first.

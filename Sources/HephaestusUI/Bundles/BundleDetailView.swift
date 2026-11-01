@@ -55,8 +55,8 @@ struct BundleDetailView: View {
 
     // MARK: Header
 
-    /// ID, the inline title field, `Created <date> · Updated <relative time>`, and the segmented progress bar
-    /// with `<done> of <total> done`.
+    /// ID, the inline title field, `Created <date> · Updated <relative time>`, the Status row, and the
+    /// segmented progress bar with `<done> of <total> done`.
     private func header(_ bundle: TicketBundle) -> some View {
         let progress = BundleProgress.of(bundle, tickets: workspace.tickets[projectID] ?? [:])
         return VStack(alignment: .leading, spacing: 6) {
@@ -77,6 +77,28 @@ struct BundleDetailView: View {
                 Text("Created \(TicketFormat.created(bundle.created)) · Updated \(TicketFormat.relative(bundle.updated, now: context.date))")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 6) {
+                Text("Status")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Picker("Status", selection: Binding(
+                    get: { bundle.status },
+                    set: { status in
+                        Task {
+                            await TicketActions.setBundleStatus(status, of: bundle.id, workspace: workspace, window: window,
+                                                                itemTitle: "Status")
+                        }
+                    }
+                )) {
+                    ForEach(BundleStatus.allCases, id: \.self) { status in
+                        Text(status.label).tag(status)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .fixedSize()
+                .disabled(!window.isConnected)
             }
             HStack(spacing: 10) {
                 BundleProgressBar(progress: progress)

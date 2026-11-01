@@ -52,6 +52,18 @@ enum ActorRules {
         throw EngineError(.forbidden, "\(ticket.id) is done; only the user can change its status.")
     }
 
+    /// bundles.setStatus: claude never changes the status of a `done` bundle and never sets
+    /// `done` (docs/tickets.md › Bundle status rules).
+    static func requireBundleStatusChange(_ bundle: TicketBundle, to status: BundleStatus, _ actor: Actor) throws {
+        guard actor.kind == .claude else { return }
+        if bundle.status == .done {
+            throw EngineError(.forbidden, "\(bundle.id) is done; only the user can change its status.")
+        }
+        if status == .done {
+            throw EngineError(.forbidden, "Only the user can set \(bundle.id) to done.")
+        }
+    }
+
     /// projects.remove: the project of the calling chat, or one of its ancestors, is refused.
     static let ownProjectRemoval = EngineError(.forbidden, "A chat cannot remove the project it belongs to.")
 }

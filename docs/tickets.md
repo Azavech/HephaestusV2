@@ -103,7 +103,36 @@ Status changes requested by Claude:
 - Setting the current status again succeeds, returns the ticket, writes nothing and emits no event. Default chosen at design time.
 - The engine does not check the tests before Claude sets `done`; only the prompt carries that rule ([Claude workflow](workflow.md#ticket-status)).
 - Any change by Claude to a `done` ticket, setting `done` again included, fails with `forbidden` and `<ID> is done; only the user can change its status.`. Default chosen at design time.
-- No status is set automatically: Implement and Implement All start a chat, and Claude sets `in_progress` itself as the first step of its workflow ([Claude workflow](workflow.md#implementation-workflow)).
+- No ticket status is set automatically: Implement and Implement All start a chat, and Claude sets `in_progress` itself as the first step of its workflow ([Claude workflow](workflow.md#implementation-workflow)). Implement All sets only the bundle's status ([Bundle status rules](#bundle-status-rules)).
+
+### Bundle status rules
+
+A bundle has its own status ([BundleStatus](data-model.md#bundle-file)):
+
+- `todo`: not started. Every bundle starts here, and a bundle file without a status reads as `todo`.
+- `in_progress`: its implementation has started.
+- `done`: finished and accepted by the user.
+
+The bundle statuses are listed in this order everywhere: To Do, In Progress, Done. Their capsules have the colours of the ticket capsules: To Do gray, In Progress blue, Done green.
+
+- Implement All and `implement_bundle` (`chats.implementBundle`) set the bundle to `in_progress` when they start its implementation ([Implement All](#implement-all)).
+- Implement All is disabled while the bundle is `in_progress` or `done`. Nothing resets the status automatically: Implement All becomes available again only when the user sets the bundle back to To Do.
+- Only the user sets `done`. The engine never sets `done`, even when every ticket of the bundle is done.
+- The user, from any device, may set any status at any time, with the Status pop-up of the bundle detail header or Set Status ▸ of the bundle list ([Bundles section](#bundles-section)).
+- Claude may set `todo` and `in_progress` with `set_bundle_status`, never `done`, and never changes the status of a `done` bundle.
+
+Status changes requested by Claude:
+
+| Current status | Set `todo`  | Set `in_progress` | Set `done`  |
+| -------------- | ----------- | ----------------- | ----------- |
+| `todo`         | no change   | allowed           | `forbidden` |
+| `in_progress`  | allowed     | no change         | `forbidden` |
+| `done`         | `forbidden` | `forbidden`       | `forbidden` |
+
+- The status changes only through `bundles.setStatus` (MCP tool `set_bundle_status`) and `chats.implementBundle`; `bundles.update` has no status parameter. The engine applies the rules for every caller.
+- Setting the current status again succeeds, returns the bundle, writes nothing and emits no event. Default chosen at design time.
+- Claude setting `done` fails with `forbidden` and `Only the user can set <ID> to done.`. Any other change by Claude to a `done` bundle fails with `forbidden` and `<ID> is done; only the user can change its status.`. Default chosen at design time.
+- Every status change emits `bundle.updated` and reaches every window and remote device ([Live updates](#live-updates)).
 
 ## Titles and naming
 
@@ -358,20 +387,21 @@ The fields are defined in [Data model](data-model.md#bundle-file). The order of 
 - Deleting a ticket removes its id from every bundle, each of which emits `bundle.updated`.
 - A bundle created without a title gets a provisional title made of its ticket titles joined with `, ` in bundle order, cut to its first 60 characters and trimmed, since a title may not end with white space ([Text](data-model.md#text)). Default chosen at design time.
 - Haiku then names the bundle in the background from the ticket titles with the `naming-bundle.md` prompt ([Chats](chats.md)), with at most 60 characters. As for tickets, a title changed in the meantime is never overwritten and a failed call is not retried.
-- A bundle has no status. Its progress is the number of its tickets that are `done` out of all its tickets. The [segmented progress bar](#segmented-progress-bar) also shows how its other tickets are split between the statuses.
+- A bundle has a status, To Do, In Progress or Done, separate from the statuses of its tickets ([Bundle status rules](#bundle-status-rules)). Its progress is the number of its tickets that are `done` out of all its tickets. The [segmented progress bar](#segmented-progress-bar) also shows how its other tickets are split between the statuses.
 
 ### Bundles section
 
 The Bundles section (⌘3) shows the bundles of the selected project in a list on the left and the selected bundle on the right, with the same divider as the Tickets section. Default chosen at design time.
 
 - The list header has a New Bundle (+) button, which opens the ticket picker sheet with no ticket checked.
-- Columns: ID, Title, Progress (the [segmented progress bar](#segmented-progress-bar) followed by `<done>/<total>`) and Created, with the widths of the ticket list's columns, Progress taking the rule of Status. The list starts sorted by ID, newest first. The columns sort as the ticket list's do, Progress by the share of done tickets; equal values keep the ID order, newest first. The sort order is kept per window and per project while the window is open (`ProjectViewState.bundleList`, [WindowState](ui.md#windowstate)). Default chosen at design time.
-- The context menu of a bundle has Implement All and Delete…. Default chosen at design time.
+- Columns: ID, Title, Status (the bundle's status as a capsule: To Do gray, In Progress blue, Done green), Progress (the [segmented progress bar](#segmented-progress-bar) followed by `<done>/<total>`) and Created, with the widths of the ticket list's columns, Progress taking the rule of Status. The list starts sorted by ID, newest first. The columns sort as the ticket list's do, Status in the order `todo`, `in_progress`, `done` and Progress by the share of done tickets; equal values keep the ID order, newest first. The sort order is kept per window and per project while the window is open (`ProjectViewState.bundleList`, [WindowState](ui.md#windowstate)). Default chosen at design time.
+- The context menu of a bundle has Implement All, Set Status ▸ To Do, In Progress, Done, which calls `bundles.setStatus` for the bundle, and Delete…. A failure of Set Status ▸ shows the alert `Set Status failed` ([UI](ui.md#principles)). Default chosen at design time.
 - With no bundles the list shows `No Bundles`, the text `Select tickets in Tickets and choose Create Bundle from Selection, or create a bundle here.`, and a New Bundle button. With no bundle selected the detail shows `No Bundle Selected`. Default chosen at design time.
 
 | Element             | Behaviour                                                                                                                                                                                                                                                                                                                             |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Header              | ID, inline title field (same behaviour as the ticket title), `Created <date> · Updated <relative time>` with the relative time of the ticket detail's Dates, and the [segmented progress bar](#segmented-progress-bar) followed by `<done> of <total> done`.                                                                          |
+| Header              | ID, inline title field (same behaviour as the ticket title), `Created <date> · Updated <relative time>` with the relative time of the ticket detail's Dates, a Status row, and the [segmented progress bar](#segmented-progress-bar) followed by `<done> of <total> done`.                                                            |
+| Status row          | Under the dates: the label `Status` and a pop-up menu To Do, In Progress, Done showing the bundle's status ([Bundle status rules](#bundle-status-rules)). A choice calls `bundles.setStatus` at once; a failure shows the alert `Status failed` ([UI](ui.md#principles)).                                                             |
 | Tabs                | `Tickets (<n>)` and `Chats (<n>)`.                                                                                                                                                                                                                                                                                                    |
 | Tickets tab         | Table with ID, Title and Status in bundle order, with the widths of the ticket list's columns. Dragging rows reorders the bundle with `bundles.update`; a failure shows the alert `Reorder failed` ([UI](ui.md#principles)).                                                                                                          |
 | Tickets tab actions | Add Tickets… opens the ticket picker sheet. Remove from Bundle (context menu or ⌫) removes the selected rows with `bundles.update`, without confirmation; the tickets are not deleted. Show Ticket (context menu or double-click) opens the ticket in the Tickets section. Set Status ▸ acts as in the ticket list.                   |
@@ -410,10 +440,10 @@ Create Bundle from Selection, New Bundle and Add Tickets… use this sheet.
 
 ### Implement All
 
-1. Implement All is in the bar of the bundle's Chats tab and in the bundle list's context menu. It is enabled when the bundle has at least one ticket that is not `done`; a listed id without a ticket file does not count, as it cannot be implemented. While disabled, its tooltip reads `All tickets of this bundle are done.` or `This bundle has no tickets.`. `chats.implementBundle` fails in that case with `conflict` and `<ID> has no ticket left to implement.`. It is also disabled while the CLI of the window's device is unavailable, with the tooltip `Claude CLI is not available on <device name>.` Default chosen at design time.
+1. Implement All is in the bar of the bundle's Chats tab and in the bundle list's context menu. It is disabled while the bundle's status is `in_progress` or `done` ([Bundle status rules](#bundle-status-rules)), with the tooltip `Set the status to To Do to implement this bundle.`; `chats.implementBundle` fails in that case with `conflict` and `<ID> is in progress; set it to To Do to implement it.` or `<ID> is done; set it to To Do to implement it.`. Otherwise it is enabled when the bundle has at least one ticket that is not `done`; a listed id without a ticket file does not count, as it cannot be implemented. While disabled, its tooltip reads `All tickets of this bundle are done.` or `This bundle has no tickets.`. `chats.implementBundle` fails in that case with `conflict` and `<ID> has no ticket left to implement.`. It is also disabled while the CLI of the window's device is unavailable, with the tooltip `Claude CLI is not available on <device name>.` Default chosen at design time.
 2. The same active-chat alert as for Implement is shown when a chat of the bundle is active.
-3. The UI calls `chats.implementBundle` with the bundle id. The engine creates a chat of kind `bundle` with `bundle: <ID>`, appends its id to the bundle's `chats` (emitting `bundle.updated`), starts Claude with the bundle prompt, which contains every ticket of the bundle, and sends the `implement-bundle.md` message as the first user message ([Chats](chats.md)). Implement All from the bundle list's context menu first selects the bundle and its Chats tab, which then selects the new chat.
-4. Claude implements the bundle's tickets one after the other in bundle order and skips the `done` ones. It sets each ticket to `in_progress` when it starts it, gives each one its own commit, push and completion comment, and sets it to `done` or `review` after that comment ([Claude workflow](workflow.md#bundles)). The Tickets tab shows the status changes as they happen.
+3. The UI calls `chats.implementBundle` with the bundle id. The engine creates a chat of kind `bundle` with `bundle: <ID>`, appends its id to the bundle's `chats` and sets the bundle's status to `in_progress` (one write, emitting `bundle.updated`), starts Claude with the bundle prompt, which contains every ticket of the bundle, and sends the `implement-bundle.md` message as the first user message ([Chats](chats.md)). Implement All from the bundle list's context menu first selects the bundle and its Chats tab, which then selects the new chat.
+4. Claude implements the bundle's tickets one after the other in bundle order and skips the `done` ones. It sets each ticket to `in_progress` when it starts it, gives each one its own commit, push and completion comment, and sets it to `done` or `review` after that comment ([Claude workflow](workflow.md#bundles)). The Tickets tab shows the status changes as they happen. The bundle stays `in_progress` until the user changes its status.
 
 ## Deleting
 
@@ -449,6 +479,7 @@ The confirmation texts, and keeping the chats of a deleted ticket or bundle, are
 | Edit or delete a comment          | Yes, any comment                     | Yes (`update_comment`, `delete_comment`)                                                                             |
 | Add or remove ticket attachments  | Yes                                  | Adds them as `attachments` of `create_ticket` and `add_comment`; removes ticket attachments with `remove_attachment` |
 | Create, update or delete a bundle | Yes                                  | Yes (`create_bundle`, `update_bundle`, `delete_bundle`)                                                              |
+| Change a bundle's status          | Any status at any time               | `todo` or `in_progress` (`set_bundle_status`); never `done`; never on a `done` bundle                                |
 | Implement a ticket or a bundle    | Yes                                  | Yes (`implement_ticket`, `implement_bundle`)                                                                         |
 
 Users on remote devices have the same rights as the local user.
@@ -481,6 +512,11 @@ Every error is `{code, message}` ([Engine API](engine-api.md)). The message text
 | Ticket listed twice in a bundle                                                                                                 | `invalid`     | `<ID> is listed more than once.`                                   |
 | `bundles.create` without tickets                                                                                                | `invalid`     | `A bundle needs at least one ticket.`                              |
 | `chats.implementTicket` on a `done` ticket                                                                                      | `conflict`    | `<ID> is done; set it to To Do or In Progress to implement it.`    |
+| Unknown bundle status value                                                                                                     | `invalid`     | `Unknown status "<value>". Use todo, in_progress or done.`         |
+| Claude sets a bundle to `done`                                                                                                  | `forbidden`   | `Only the user can set <ID> to done.`                              |
+| Claude changes the status of a `done` bundle                                                                                    | `forbidden`   | `<ID> is done; only the user can change its status.`               |
+| `chats.implementBundle` on an `in_progress` bundle                                                                              | `conflict`    | `<ID> is in progress; set it to To Do to implement it.`            |
+| `chats.implementBundle` on a `done` bundle                                                                                      | `conflict`    | `<ID> is done; set it to To Do to implement it.`                   |
 | `chats.implementBundle` with no ticket that is not `done`                                                                       | `conflict`    | `<ID> has no ticket left to implement.`                            |
 | A file cannot be moved to the Trash                                                                                             | `unavailable` | `<path> cannot be moved to the Trash: <reason>.`                   |
 
@@ -523,3 +559,4 @@ Shortcuts of this document. All global shortcuts are listed in [UI](ui.md).
 - R86: When Claude creates a ticket, its status is todo.
 - R88 (partly): Claude marks a ticket done only when every test of its Testing section has passed; otherwise the user does.
 - R99: When Claude creates a ticket, its description has the headings Problem, Current Behavior, Expected, Change, Testing and Docs, in this order.
+- R110: A bundle has a status: todo, in progress or done; Implement All sets it to in progress and is disabled until the user sets it back to To Do.

@@ -65,6 +65,22 @@ public enum BundlesUpdate: EngineMethod {
     public typealias Result = TicketBundle
 }
 
+/// `bundles.setStatus`. Actors: user, claude.
+public enum BundlesSetStatus: EngineMethod {
+    public static let name = "bundles.setStatus"
+    public struct Params: Codable, Sendable, Hashable {
+        public var bundleID: BundleID
+        /// `todo`, `in_progress` or `done`, decoded as a string and checked by the handler.
+        public var status: String
+
+        public init(bundleID: BundleID, status: String) {
+            self.bundleID = bundleID
+            self.status = status
+        }
+    }
+    public typealias Result = TicketBundle
+}
+
 /// `bundles.delete`. Actors: user, claude.
 public enum BundlesDelete: EngineMethod {
     public static let name = "bundles.delete"

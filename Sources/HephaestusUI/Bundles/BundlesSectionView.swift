@@ -7,6 +7,7 @@ import SwiftUI
 struct BundleRow: Identifiable, Hashable {
     var id: String
     var title: String
+    var status: BundleStatus = .todo
     var progress: BundleProgress
     var created: Date
 
@@ -76,7 +77,7 @@ struct BundlesSectionView: View {
         let tickets = workspace.tickets[projectID] ?? [:]
         let rows = (workspace.bundles[projectID] ?? [:]).values.map { bundle in
             let progress = BundleProgress.of(bundle, tickets: tickets)
-            return BundleRow(id: bundle.id, title: bundle.title, progress: progress, created: bundle.created)
+            return BundleRow(id: bundle.id, title: bundle.title, status: bundle.status, progress: progress, created: bundle.created)
         }
         return Self.sorted(rows, by: sort)
     }
@@ -85,7 +86,8 @@ struct BundlesSectionView: View {
         (window.projectStates[key]?.bundleList ?? BundleListState()).tableSort
     }
 
-    /// ID by number, Title by localized standard comparison, Progress by the share of done
+    /// ID by number, Title by localized standard comparison, Status in the order todo,
+    /// in_progress, done, Progress by the share of done
     /// tickets, Created by date; ties keep the bundle number order, newest first
     /// (docs/tickets.md › Bundles section).
     static func sorted(_ rows: [BundleRow], by sort: ItemTableSort) -> [BundleRow] {
@@ -94,6 +96,10 @@ struct BundlesSectionView: View {
             switch sort.columnID {
             case "title":
                 order = a.title.localizedStandardCompare(b.title)
+            case "status":
+                let left = BundleStatus.allCases.firstIndex(of: a.status) ?? 0
+                let right = BundleStatus.allCases.firstIndex(of: b.status) ?? 0
+                order = left == right ? .orderedSame : (left < right ? .orderedAscending : .orderedDescending)
             case "progress":
                 let left = a.total == 0 ? 0 : Double(a.done) / Double(a.total)
                 let right = b.total == 0 ? 0 : Double(b.done) / Double(b.total)
@@ -188,6 +194,11 @@ struct BundlesSectionView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .help(row.title))
         },
+        ItemTableColumn(id: "status", title: "Status", minWidth: 24, sizing: .content,
+                        contentWidth: { _ in StatusCapsule.maxWidth }) { row in
+            AnyView(StatusCapsule(status: row.status)
+                .frame(maxWidth: .infinity, alignment: .leading))
+        },
         ItemTableColumn(id: "progress", title: "Progress", minWidth: 24, sizing: .content,
                         contentWidth: { Self.progressWidth($0) }) { row in
             AnyView(HStack(spacing: Self.progressSpacing) {
@@ -227,6 +238,11 @@ struct BundlesSectionView: View {
             .action("Implement All", enabled: availability.enabled && window.isConnected) {
                 TicketActions.implementAllFromList(bundleID: bundleID, workspace: workspace, window: window, projectID: projectID)
             },
+            .submenu("Set Status", enabled: window.isConnected, BundleStatus.allCases.map { status in
+                .action(status.label) {
+                    Task { await TicketActions.setBundleStatus(status, of: bundleID, workspace: workspace, window: window) }
+                }
+            }),
             .separator,
             .action("Delete…", enabled: window.isConnected, keyEquivalent: "\u{8}", modifiers: .command) {
                 Task { await TicketActions.deleteBundle(bundleID, workspace: workspace, window: window) }

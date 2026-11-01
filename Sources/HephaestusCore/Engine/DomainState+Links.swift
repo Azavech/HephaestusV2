@@ -19,11 +19,13 @@ extension Engine {
 
     /// Appends a chat to the `chats` of a bundle, without duplicates, writes the bundle file and
     /// emits `bundle.updated` with the caller's actor as origin. Fails with `notFound` when the
-    /// bundle is not loaded.
-    func linkChat(_ chatID: ChatID, toBundle bundleID: BundleID, origin: Actor) throws {
+    /// bundle is not loaded. A given `status` is set in the same write (docs/engine-api.md ›
+    /// chats.implementBundle).
+    func linkChat(_ chatID: ChatID, toBundle bundleID: BundleID, status: BundleStatus? = nil, origin: Actor) throws {
         var bundle = try existingBundle(bundleID)
-        guard !bundle.chatIDs.contains(chatID) else { return }
-        bundle.chatIDs.append(chatID)
+        guard !bundle.chatIDs.contains(chatID) || (status != nil && status != bundle.status) else { return }
+        if !bundle.chatIDs.contains(chatID) { bundle.chatIDs.append(chatID) }
+        if let status { bundle.status = status }
         bundle.updated = ISODate.now()
         try saveBundle(bundle)
         emit(BundleUpdatedEvent.self, bundle, origin: origin)

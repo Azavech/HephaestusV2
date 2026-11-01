@@ -115,7 +115,7 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | Engine-internal work and tests         | system                                          |
 
 - **user** may call every method except `chats.postQuestions`. Local and remote users have the same rights.
-- **claude** may call only the 42 methods that MCP tools map to (the Actors column says "claude"), with the rules below. Any other method fails with `forbidden` before its params are decoded.
+- **claude** may call only the 43 methods that MCP tools map to (the Actors column says "claude"), with the rules below. Any other method fails with `forbidden` before its params are decoded.
 - **system** may call every method, without restrictions.
 
 ### Rules for Claude
@@ -124,6 +124,7 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | tickets.create                               | `title` must be absent: Haiku always names the tickets Claude creates.                                                                                                                 | forbidden |
 | tickets.create, tickets.update               | `description` must follow the ticket template ([Tickets and bundles](tickets.md#template-validation)), at creation and on update.                                                      | invalid   |
+| bundles.setStatus                            | Setting `done` is refused, and so is changing the status of a bundle whose status is `done`.                                                                                           | forbidden |
 | tickets.setStatus                            | Changing the status of a ticket whose status is `done` is refused.                                                                                                                     | forbidden |
 | projects.update                              | `chatDefaults` must be absent.                                                                                                                                                         | forbidden |
 | chats.implementTicket, chats.implementBundle | `settings` must be absent; the new chat uses the project's defaults.                                                                                                                   | forbidden |
@@ -141,14 +142,14 @@ A failed call returns an [EngineError](#engineerror) `{code, message}`.
 
 ### Error codes
 
-| Code        | Meaning                                                                                                                                                                                                                    |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| notFound    | The method, or an object named by the params, does not exist: project, ticket, bundle, chat, comment, attachment, run, file, directory, skill, web tab, question set or permission request.                                |
-| invalid     | The params do not decode or break a validation rule.                                                                                                                                                                       |
-| conflict    | The call clashes with the current state: an id or a file already exists, a file changed since `expectedModified`, a run is already running, a question set is waiting or already completed, a ticket to implement is done. |
-| forbidden   | The actor may not do this: a method or param not open to the actor, a ticket status rule, a locked web tab, a protected path.                                                                                              |
-| unavailable | A required service is missing: the Claude CLI, the Trash, the skills library folder, or the connection to the device.                                                                                                      |
-| internal    | Unexpected failure: file system error, process start failure, encoding failure.                                                                                                                                            |
+| Code        | Meaning                                                                                                                                                                                                                                                                  |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| notFound    | The method, or an object named by the params, does not exist: project, ticket, bundle, chat, comment, attachment, run, file, directory, skill, web tab, question set or permission request.                                                                              |
+| invalid     | The params do not decode or break a validation rule.                                                                                                                                                                                                                     |
+| conflict    | The call clashes with the current state: an id or a file already exists, a file changed since `expectedModified`, a run is already running, a question set is waiting or already completed, a ticket to implement is done, a bundle to implement is in progress or done. |
+| forbidden   | The actor may not do this: a method or param not open to the actor, a ticket or bundle status rule, a locked web tab, a protected path.                                                                                                                                  |
+| unavailable | A required service is missing: the Claude CLI, the Trash, the skills library folder, or the connection to the device.                                                                                                                                                    |
+| internal    | Unexpected failure: file system error, process start failure, encoding failure.                                                                                                                                                                                          |
 
 ### Dispatcher errors
 
@@ -206,6 +207,7 @@ The first column lists every engine method; it is the list the docs conformance 
 | `bundles.get`              | BundlesGet              | bundleID                                                   | TicketBundle     | user, claude |
 | `bundles.create`           | BundlesCreate           | projectID, title?, ticketIDs                               | TicketBundle     | user, claude |
 | `bundles.update`           | BundlesUpdate           | bundleID, title?, ticketIDs?                               | TicketBundle     | user, claude |
+| `bundles.setStatus`        | BundlesSetStatus        | bundleID, status                                           | TicketBundle     | user, claude |
 | `bundles.delete`           | BundlesDelete           | bundleID                                                   | Empty            | user, claude |
 | `chats.list`               | ChatsList               | projectID                                                  | [ChatMeta]       | user, claude |
 | `chats.get`                | ChatsGet                | chatID                                                     | ChatTranscript   | user, claude |
@@ -785,6 +787,27 @@ An id that the bundle already lists is accepted even when its ticket file is mis
 
 Events: bundle.updated.
 
+### bundles.setStatus
+
+Swift type `BundlesSetStatus` · actors: user, claude · result: [TicketBundle](data-model.md#bundle-file)
+
+| Param    | Type     | Required | Description                                                                                                                                                        |
+| -------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| bundleID | BundleID | yes      | Bundle id.                                                                                                                                                         |
+| status   | String   | yes      | `todo`, `in_progress` or `done`. Decoded as a string and checked by the handler, so an unknown value gets the message of [Tickets and bundles](tickets.md#errors). |
+
+- A user may set any status at any time.
+- Claude may set `todo` and `in_progress`, never `done`, and never changes the status of a bundle whose status is `done` ([Tickets and bundles](tickets.md#bundle-status-rules)).
+- Setting the current status changes nothing.
+
+| Error     | When                                                                                                                                                     |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid   | bundleID is malformed; status is not one of the three values.                                                                                            |
+| notFound  | No such bundle.                                                                                                                                          |
+| forbidden | Claude changes a `done` bundle (`HEPH-B2 is done; only the user can change its status.`); Claude sets `done` (`Only the user can set HEPH-B2 to done.`). |
+
+Events: bundle.updated.
+
 ### bundles.delete
 
 Swift type `BundlesDelete` · actors: user, claude · result: [Empty](#empty)
@@ -1071,15 +1094,15 @@ Swift type `ChatsImplementBundle` · actors: user, claude · result: [ChatMeta](
 | bundleID | BundleID     | yes      | Bundle to implement.                                                                                   |
 | settings | ChatSettings | no       | Default: the project's `chatDefaults`, else the host `defaultChatSettings`. Must be absent for claude. |
 
-Creates a chat of kind bundle in the bundle's project, linked to the bundle, then sends the message of the prompt `implement-bundle.md` as its first user message, with `sender` the name of the actor's device, or `Claude` for a claude actor ([Data model](data-model.md#user-item)) ([Chats](chats.md#implement-and-feedback-chats)).
+Creates a chat of kind bundle in the bundle's project, linked to the bundle, and sets the bundle's status to `in_progress` in the same write of the bundle file ([Tickets and bundles](tickets.md#bundle-status-rules)), then sends the message of the prompt `implement-bundle.md` as its first user message, with `sender` the name of the actor's device, or `Claude` for a claude actor ([Data model](data-model.md#user-item)) ([Chats](chats.md#implement-and-feedback-chats)).
 
-| Error       | When                                                                                                                                                                           |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| invalid     | bundleID is malformed; settings invalid.                                                                                                                                       |
-| notFound    | No such bundle.                                                                                                                                                                |
-| conflict    | The bundle lists no existing ticket that is not done, which includes an empty bundle and one whose other tickets no longer exist (`HEPH-B2 has no ticket left to implement.`). |
-| forbidden   | The actor is claude and settings is present (`Claude cannot choose chat settings.`).                                                                                           |
-| unavailable | The Claude CLI is not available.                                                                                                                                               |
+| Error       | When                                                                                                                                                                                                                                                                                                                                              |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid     | bundleID is malformed; settings invalid.                                                                                                                                                                                                                                                                                                          |
+| notFound    | No such bundle.                                                                                                                                                                                                                                                                                                                                   |
+| conflict    | The bundle's status is `in_progress` (`HEPH-B2 is in progress; set it to To Do to implement it.`) or `done` (`HEPH-B2 is done; set it to To Do to implement it.`); the bundle lists no existing ticket that is not done, which includes an empty bundle and one whose other tickets no longer exist (`HEPH-B2 has no ticket left to implement.`). |
+| forbidden   | The actor is claude and settings is present (`Claude cannot choose chat settings.`).                                                                                                                                                                                                                                                              |
+| unavailable | The Claude CLI is not available.                                                                                                                                                                                                                                                                                                                  |
 
 Events: chat.updated, bundle.updated, then the events of `chats.send`.
 
@@ -2615,3 +2638,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R105: A project shows how much it has cost: its total, sub projects included, and the cost of each of its chats, deleted chats included.
 - R108: The user moves between the questions of a set, answers them in any order and can change an answer until every question has one.
 - R109: The user can skip a question; Claude then leaves that point out and mentions it in its reply.
+- R110: A bundle has a status: todo, in progress or done; Implement All sets it to in progress and is disabled until the user sets it back to To Do.

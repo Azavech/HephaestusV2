@@ -310,7 +310,7 @@ The format of this comment is a default. Default chosen at design time.
 - When the user decides to skip a ticket, Claude sets it back to `todo`, comments why, and continues with the next ticket. Default chosen at design time.
 - A ticket that needs no change, because an earlier commit of the bundle already covers it, gets no commit; its completion comment names that commit. Default chosen at design time.
 - The final reply lists each ticket with its commit hash, or with `skipped` and the reason. Default chosen at design time.
-- The bundle itself has no status. Claude sets each of its tickets to `done` or `review` as [Ticket status](#ticket-status) says.
+- The bundle has its own status ([Bundle status rules](tickets.md#bundle-status-rules)): Implement All and `implement_bundle` set it to `in_progress`, and only the user sets it to `done`, even when every ticket is done. Claude may set it to `todo` or `in_progress` with `set_bundle_status`, never to `done`, and never changes a `done` bundle. Claude sets each of the bundle's tickets to `done` or `review` as [Ticket status](#ticket-status) says.
 
 ## Project and feedback chats
 
@@ -354,6 +354,8 @@ When the project is HephaestusV2 itself (the registered project whose git remote
 | `ask_questions` needs a chat token                                                | MCP server                             | see [MCP](mcp.md) |
 | A `done` ticket is not implemented                                                | `chats.implementTicket`                | `conflict`        |
 | A bundle is implemented only when one of its tickets is not `done`                | `chats.implementBundle`                | `conflict`        |
+| A bundle is implemented only when its status is `todo`                            | `chats.implementBundle`                | `conflict`        |
+| Claude never sets a bundle to `done` and never changes a `done` bundle            | `bundles.setStatus`                    | `forbidden`       |
 
 The engine does not check the other rules (never invent, docs first, build and test, the tests that allow `done`, commits, pushing and the completion comment); only the prompts carry them. A ticket file that Claude edits with its own file tools reaches the engine as an external change with the actor `system` ([Data model](data-model.md#external-changes)); the template and status rules are not applied to it. Only the prompt rule `Never create, edit or delete files inside a .hephaestus folder yourself` prevents it. The error messages of the ticket rules are in [Errors](tickets.md#errors).
 
@@ -471,3 +473,4 @@ Notes
 - R101: Under Docs, Claude lists all docs files and paragraphs relevant to the issue.
 - R108: The user moves between the questions of a set, answers them in any order and can change an answer until every question has one.
 - R109: The user can skip a question; Claude then leaves that point out and mentions it in its reply.
+- R110: A bundle has a status: todo, in progress or done; Implement All sets it to in progress and is disabled until the user sets it back to To Do.
