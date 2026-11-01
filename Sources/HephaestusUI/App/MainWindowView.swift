@@ -1,5 +1,6 @@
 // OWNER: ui-shell — the main window: its root and state, its layout and empty states
 // (docs/ui.md › Main window layout, › Empty states, › Persistence).
+import AppKit
 import HephaestusCore
 import SwiftUI
 
@@ -10,6 +11,7 @@ struct MainWindowRoot: View {
     @Environment(AppModel.self) private var app
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.dismiss) private var dismiss
     @SceneStorage("windowState") private var storedState: String?
     @State private var state: WindowState?
 
@@ -30,6 +32,12 @@ struct MainWindowRoot: View {
         .onAppear {
             app.captureWindowActions(openWindow: openWindow, openSettings: openSettings)
             guard state == nil else { return }
+            // A restart whose saved windows hold no main window: SwiftUI still opens one at
+            // launch, which closes at once (docs/ui.md › Windows, windowsAtRestart).
+            if requestID == nil, app.takeSuppressedLaunchWindow() {
+                dismiss()
+                return
+            }
             let newState = app.makeMainWindowState(requestID: requestID, restoredJSON: storedState)
             app.registerMainWindow(newState)
             state = newState
@@ -166,6 +174,7 @@ private struct ProjectColumns: View {
             if state.sidebarVisible {
                 SidebarView(window: state, workspace: workspace, project: project)
                     .frame(minWidth: 160, idealWidth: 200, maxWidth: 280, maxHeight: .infinity)
+                    .background(SidebarCollapseByDragging(state: state))
             }
             CentreColumn(state: state, workspace: workspace, project: project)
                 .frame(minWidth: 540, maxWidth: .infinity, maxHeight: .infinity)
@@ -239,6 +248,105 @@ private struct SectionContent: View {
                 WebSectionView(window: state, workspace: workspace, projectID: projectID)
             case .skills:
                 SkillsSectionView(window: state, workspace: workspace, projectID: projectID)
+            }
+        }
+    }
+}
+
+/// Dragging the sidebar's divider to the window edge collapses the sidebar (docs/ui.md ›
+/// Sidebar): the split view item of the sidebar pane may collapse, and a collapse that remains
+/// when the drag ends hides the sidebar (`sidebarVisible`, persisted per window).
+private struct SidebarCollapseByDragging: NSViewRepresentable {
+    let state: WindowState
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> ProbeView {
+        let view = ProbeView()
+        view.coordinator = context.coordinator
+        return view
+    }
+
+    func updateNSView(_ view: ProbeView, context: Context) {
+        context.coordinator.state = state
+        view.attach()
+    }
+
+    static func dismantleNSView(_ view: ProbeView, coordinator: Coordinator) {
+        coordinator.detach()
+    }
+
+    /// Finds the split view item of the pane it is in once it is in a window.
+    final class ProbeView: NSView {
+        weak var coordinator: Coordinator?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            attach()
+        }
+
+        func attach() {
+            guard window != nil else { return }
+            coordinator?.attach(to: self)
+        }
+    }
+
+    @MainActor
+    final class Coordinator {
+        weak var state: WindowState?
+        private weak var item: NSSplitViewItem?
+        private var observation: NSKeyValueObservation?
+        private var waitingForMouseUp = false
+
+        /// The `HSplitView` is an `NSSplitView` whose delegate is an `NSSplitViewController`; the
+        /// sidebar's item becomes collapsible.
+        func attach(to view: NSView) {
+            var current = view.superview
+            while let candidate = current, !(candidate is NSSplitView) {
+                current = candidate.superview
+            }
+            guard let splitView = current as? NSSplitView,
+                  let controller = splitView.delegate as? NSSplitViewController,
+                  let item = controller.splitViewItems.first(where: { view.isDescendant(of: $0.viewController.view) }) else { return }
+            guard item !== self.item else { return }
+            detach()
+            self.item = item
+            item.canCollapse = true
+            observation = item.observe(\.isCollapsed, options: [.new]) { [weak self] _, _ in
+                MainActor.assumeIsolated {
+                    self?.collapseChanged()
+                }
+            }
+        }
+
+        func detach() {
+            observation?.invalidate()
+            observation = nil
+            item = nil
+        }
+
+        /// The divider moves past half the minimum width while the mouse is down; the sidebar is
+        /// hidden only when it is still collapsed once the drag ends.
+        private func collapseChanged() {
+            guard !waitingForMouseUp else { return }
+            waitingForMouseUp = true
+            checkAfterDrag()
+        }
+
+        private func checkAfterDrag() {
+            guard NSEvent.pressedMouseButtons & 1 == 0 else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                    MainActor.assumeIsolated {
+                        self?.checkAfterDrag()
+                    }
+                }
+                return
+            }
+            waitingForMouseUp = false
+            if item?.isCollapsed == true {
+                state?.sidebarVisible = false
             }
         }
     }

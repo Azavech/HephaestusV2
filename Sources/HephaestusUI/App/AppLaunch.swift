@@ -75,13 +75,15 @@ extension AppModel {
         return model
     }
 
-    /// Reads and deletes `windowsAtRestart`; nil when the key is absent or the process neither
-    /// reads nor writes window state (docs/ui.md › Windows).
+    /// Reads and deletes `windowsAtRestart`; nil when the key is absent or cannot be decoded, or
+    /// when the process neither reads nor writes window state (docs/ui.md › Windows).
     private static func takeWindowsAtRestart(_ environment: LaunchEnvironment) -> [RestartWindowRecord]? {
         guard environment.restoresWindowState,
               let data = UserDefaults.standard.data(forKey: windowsAtRestartDefaultsKey) else { return nil }
         UserDefaults.standard.removeObject(forKey: windowsAtRestartDefaultsKey)
-        return (try? JSONDecoder().decode([RestartWindowRecord].self, from: data)) ?? []
+        // DOC-GAP: docs/ui.md › Windows does not cover an unreadable `windowsAtRestart`; it counts
+        // as absent, so macOS restoration or the default main window applies.
+        return try? JSONDecoder().decode([RestartWindowRecord].self, from: data)
     }
 
     private static func writeToStandardError(_ message: String) {
