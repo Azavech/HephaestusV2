@@ -68,6 +68,12 @@ func withDomainEngine<T>(prepare: (DataDirectory, URL) throws -> Void = { _, _ i
         // call them are tested in Files/, and their files.changed events would mix with the
         // events these tests expect.
         await engine.stopFileWatching()
+        // The startup scan of the chat transcripts runs in child tasks and may emit chat.updated;
+        // under load it would land among the events of the test.
+        let deadline = ContinuousClock.now + .seconds(20)
+        while !(await engine.testChatScansFinished), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
         let connection = await LocalEngineConnection(engine: engine)
         let harness = DomainHarness(engine: engine, connection: connection, folder: folder, projects: projects, trash: trash)
         do {
@@ -94,6 +100,14 @@ extension Engine {
     /// The in-memory project data, for checks.
     var testDomain: DomainState {
         domain
+    }
+
+    /// True once the startup scan of every chat of the loaded projects has been applied, with
+    /// its chat.updated.
+    var testChatScansFinished: Bool {
+        domain.loadedProjectIDs().allSatisfy { projectID in
+            domain.chats(of: projectID).allSatisfy { chats.scannedChats.contains($0.id) }
+        }
     }
 }
 

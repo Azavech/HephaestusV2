@@ -492,20 +492,22 @@ struct MCPServerHTTPTests {
     @Test("Separate connections are handled concurrently; a call outlives its client")
     func concurrency() async throws {
         try await withStandaloneServer { server in
-            server.engine.delay = .milliseconds(800)
+            server.engine.delay = .seconds(3)
             let slow = try await RawConnection(port: server.port)
             await slow.send(RawConnection.post(MCPHTTP.toolCall("list_projects"), token: server.externalToken))
-            try await Task.sleep(for: .milliseconds(100))
+            #expect(await eventually(timeout: .seconds(10)) { server.engine.calls.map(\.method) == ["projects.list"] })
 
-            let start = ContinuousClock.now
+            // The ping is answered while the slow call still runs.
             let reply = try await MCPHTTP.post(port: server.port, token: server.externalToken, #"{"jsonrpc":"2.0","id":2,"method":"ping"}"#)
             #expect(reply.status == 200)
-            #expect(ContinuousClock.now - start < .milliseconds(600))
+            @Sendable func slowCallEnded() -> Bool {
+                server.log.entries.contains { $0.message.hasPrefix("tools/call list_projects by external: ok in ") }
+            }
+            #expect(!slowCallEnded())
 
             slow.cancel()
-            try await Task.sleep(for: .milliseconds(1_200))
+            #expect(await eventually(timeout: .seconds(15)) { slowCallEnded() })
             #expect(server.engine.calls.map(\.method) == ["projects.list"])
-            #expect(server.log.entries.contains { $0.message.hasPrefix("tools/call list_projects by external: ok in ") })
         }
     }
 

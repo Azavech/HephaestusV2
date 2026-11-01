@@ -121,7 +121,11 @@ struct ChatTurnTests {
     func stopWithQueuedMessages() async throws {
         let launcher = FakeClaudeLauncher()
         launcher.chatScript = FakeClaudeLauncher.silentChat()
-        try await withChatEngine(launcher: launcher) { bed in
+        // A stop step long enough for a loaded test run to deliver the result before the SIGINT
+        // a missing result would cause; the check below waits past it.
+        var timings = testChatTimings()
+        timings.stopStep = .seconds(2)
+        try await withChatEngine(launcher: launcher, chatTimings: timings) { bed in
             let chat = try await bed.createChat(message: Self.messageA)
             let process = try #require(await launcher.chatProcess())
             let a = try await Self.uuid(process, Self.messageA)
@@ -135,6 +139,7 @@ struct ChatTurnTests {
             let c = try await Self.uuid(process, "Reply with only the letter C.")
             process.emit(FakeClaudeLauncher.lifecycleLine(b, "queued"))
             process.emit(FakeClaudeLauncher.lifecycleLine(c, "queued"))
+            let interrupted = ContinuousClock.now
             _ = try await bed.connection.call(ChatsInterrupt.self, .init(chatID: chat.id))
             let interrupt = try #require(await process.line { $0.contains(#""subtype":"interrupt""#) })
             let requestID = try #require(FakeClaudeLauncher.requestID(of: interrupt))
@@ -151,7 +156,7 @@ struct ChatTurnTests {
             #expect(stopped?.isError == true)
             #expect(stopped?.summary == "Stopped by the user.")
             // B and C still wait: the chat stays running, and the result stops the signal sequence.
-            try await Task.sleep(for: .milliseconds(500))
+            try await Task.sleep(until: interrupted + timings.stopStep + .milliseconds(500))
             #expect(await bed.state(chat.id) == .running)
             #expect(process.receivedSignals.isEmpty)
             // The CLI runs B and C together as one CLI turn.

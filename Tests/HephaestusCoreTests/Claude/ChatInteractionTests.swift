@@ -215,21 +215,29 @@ struct ChatInteractionTests {
             let reply = FakeClaudeLauncher.textReply(messageID: "msg_S", text: "unused")
             process.emit(reply[0])
             process.emit(reply[1])
+            let start = ContinuousClock.now
             for index in 0..<20 {
                 process.emit(#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"\#(index),"}},"parent_tool_use_id":null,"api_message_id":"msg_S"}"#)
             }
-            try await Task.sleep(for: .milliseconds(300))
-            let deltas = await bed.events.named("chat.delta").compactMap { try? $0.payload(ChatDeltaEvent.self) }
-            #expect(deltas.count >= 2 && deltas.count <= 4)
-            #expect(deltas.allSatisfy { $0.itemID == "msg_S#0" && $0.kind == .text && $0.chatID == chat.id })
-            #expect(deltas.map(\.append).joined() == (0..<20).map { "\($0)," }.joined())
+            let text = (0..<20).map { "\($0)," }.joined()
+            @Sendable func deltas() async -> [ChatDeltaEvent.Payload] {
+                await bed.events.named("chat.delta").compactMap { try? $0.payload(ChatDeltaEvent.self) }
+            }
+            #expect(await eventually(timeout: .seconds(10)) { await deltas().map(\.append).joined() == text })
+            // The first delta goes out at once and each later one at least 50 ms after the one
+            // before: at most one more than the 50 ms periods since the first line was written.
+            let periods = Int((ContinuousClock.now - start) / .milliseconds(50))
+            let streamed = await deltas()
+            #expect(streamed.count >= 2 && streamed.count <= 1 + periods)
+            #expect(streamed.allSatisfy { $0.itemID == "msg_S#0" && $0.kind == .text && $0.chatID == chat.id })
+            #expect(streamed.map(\.append).joined() == text)
             // A delta followed at once by the final item is not sent.
             process.emit(#"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"end"}},"parent_tool_use_id":null,"api_message_id":"msg_S"}"#)
             process.emit(#"{"type":"assistant","message":{"id":"msg_S","content":[{"type":"text","text":"done"}]},"parent_tool_use_id":null}"#)
             #expect(await bed.waitForItem(chat.id) { $0.id == "msg_S#0" } != nil)
             try await Task.sleep(for: .milliseconds(150))
             let after = await bed.events.named("chat.delta").count
-            #expect(after <= deltas.count + 1)
+            #expect(after <= streamed.count + 1)
         }
     }
 
