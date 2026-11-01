@@ -1,6 +1,6 @@
 # Data model
 
-HephaestusV2 stores everything in plain files: each project's `.hephaestus/` folder holds its project file, tickets, bundles, attachments and chats; the device data directory holds the device identity, the registered projects, host settings, secrets and paired devices; the skills library holds one folder per skill. This page is the contract for all of them: the exact YAML and JSON formats with complete examples, the Swift model types with every field, validation rules, id allocation, atomic writes, preservation of unknown keys, and the engine's reaction when another program changes a file. Within HephaestusV2 only the engine reads and writes these files, each device's engine its own data directory and the projects registered on it; windows and remote devices receive the same types as JSON through the [Engine API](engine-api.md).
+HephaestusV2 stores everything in plain files: each project's `.hephaestus/` folder holds its project file, tickets, bundles, attachments and chats; the device data directory holds the device identity, the registered projects, host settings, secrets, paired devices and the last known plan usage; the skills library holds one folder per skill. This page is the contract for all of them: the exact YAML and JSON formats with complete examples, the Swift model types with every field, validation rules, id allocation, atomic writes, preservation of unknown keys, and the engine's reaction when another program changes a file. Within HephaestusV2 only the engine reads and writes these files, each device's engine its own data directory and the projects registered on it; windows and remote devices receive the same types as JSON through the [Engine API](engine-api.md).
 
 ## Files at a glance
 
@@ -18,6 +18,7 @@ HephaestusV2 stores everything in plain files: each project's `.hephaestus/` fol
 | Settings file      | `<data dir>/settings.yml`                                                   | `HostSettings`                | YAML                           | [Settings file](#settings-file)                 |
 | Secrets file       | `<data dir>/secrets.json`                                                   | `Secrets`                     | JSON                           | [Secrets file](#secrets-file)                   |
 | Remotes file       | `<data dir>/remotes.yml`                                                    | `RemotesFile`                 | YAML                           | [Remotes file](#remotes-file)                   |
+| Plan usage file    | `<data dir>/plan-usage.yml`                                                 | `PlanUsage`                   | YAML                           | [Plan usage file](#plan-usage-file)             |
 | Skill file         | `<skills library>/<name>/SKILL.md`                                          | `SkillFrontmatter` and body   | Markdown with YAML frontmatter | [Skill file](#skill-file)                       |
 
 `<data dir>` is `~/Library/Application Support/HephaestusV2/`, or the folder named by the environment variable `HEPHAESTUS_DATA_DIR` ([Architecture](architecture.md)). `<skills library>` is the folder named by the setting `skillsLibraryPath`, else `<data dir>/Skills`.
@@ -892,17 +893,18 @@ allowed-tools: Bash(git log:*), Read
 
 ## Device data directory
 
-| Path             | Content                                                                                                                                                                                                                                                                                                                                                                     | Section                         |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| `device.yml`     | This device's id and name.                                                                                                                                                                                                                                                                                                                                                  | [Device file](#device-file)     |
-| `registry.yml`   | Root paths of the top-level projects.                                                                                                                                                                                                                                                                                                                                       | [Registry file](#registry-file) |
-| `settings.yml`   | Host settings.                                                                                                                                                                                                                                                                                                                                                              | [Settings file](#settings-file) |
-| `secrets.json`   | Pairing code, MCP external token and the pairing codes of paired devices; file mode 0600. Not in the Keychain: ad-hoc signed builds change identity on every update and the Keychain would prompt each time.                                                                                                                                                                | [Secrets file](#secrets-file)   |
-| `remotes.yml`    | Paired remote devices.                                                                                                                                                                                                                                                                                                                                                      | [Remotes file](#remotes-file)   |
-| `Skills/`        | Default skills library.                                                                                                                                                                                                                                                                                                                                                     | [Skill file](#skill-file)       |
-| `Runtime/`       | Generated files, safe to delete: `Runtime/plugins/<projectID>/` ([Skills](skills.md)), `Runtime/mcp/<chatID>.json` ([Chats](chats.md)), `Runtime/screenshots/` ([MCP](mcp.md)), `Runtime/claude-cwd/`, the empty working directory of the naming calls and the models probe ([Chats](chats.md#models)). The engine regenerates them as needed and never reads them as data. | —                               |
-| `Logs/`          | `engine.log`, `claude-<chatID>.log` with the stderr of each chat's Claude process, and `claude-<chatID>.stdout.jsonl` with `HEPHAESTUS_DEBUG_TOOLS=1` ([Architecture](architecture.md), [Chats](chats.md#exit-handling-and-logs)).                                                                                                                                          | —                               |
-| `<file>.invalid` | A device file that was invalid at launch, set aside.                                                                                                                                                                                                                                                                                                                        | [Loading](#loading)             |
+| Path             | Content                                                                                                                                                                                                                                                                                                                                                                     | Section                             |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `device.yml`     | This device's id and name.                                                                                                                                                                                                                                                                                                                                                  | [Device file](#device-file)         |
+| `registry.yml`   | Root paths of the top-level projects.                                                                                                                                                                                                                                                                                                                                       | [Registry file](#registry-file)     |
+| `settings.yml`   | Host settings.                                                                                                                                                                                                                                                                                                                                                              | [Settings file](#settings-file)     |
+| `secrets.json`   | Pairing code, MCP external token and the pairing codes of paired devices; file mode 0600. Not in the Keychain: ad-hoc signed builds change identity on every update and the Keychain would prompt each time.                                                                                                                                                                | [Secrets file](#secrets-file)       |
+| `remotes.yml`    | Paired remote devices.                                                                                                                                                                                                                                                                                                                                                      | [Remotes file](#remotes-file)       |
+| `plan-usage.yml` | The last known weekly usage of the Claude plan; absent until the engine knows a first value.                                                                                                                                                                                                                                                                                | [Plan usage file](#plan-usage-file) |
+| `Skills/`        | Default skills library.                                                                                                                                                                                                                                                                                                                                                     | [Skill file](#skill-file)           |
+| `Runtime/`       | Generated files, safe to delete: `Runtime/plugins/<projectID>/` ([Skills](skills.md)), `Runtime/mcp/<chatID>.json` ([Chats](chats.md)), `Runtime/screenshots/` ([MCP](mcp.md)), `Runtime/claude-cwd/`, the empty working directory of the naming calls and the models probe ([Chats](chats.md#models)). The engine regenerates them as needed and never reads them as data. | —                                   |
+| `Logs/`          | `engine.log`, `claude-<chatID>.log` with the stderr of each chat's Claude process, and `claude-<chatID>.stdout.jsonl` with `HEPHAESTUS_DEBUG_TOOLS=1` ([Architecture](architecture.md), [Chats](chats.md#exit-handling-and-logs)).                                                                                                                                          | —                                   |
+| `<file>.invalid` | A device file that was invalid at launch, set aside.                                                                                                                                                                                                                                                                                                                        | [Loading](#loading)                 |
 
 The engine creates the directory and its missing subfolders at launch. One process at a time uses a data directory: it holds an exclusive `flock` on the directory while it runs ([Architecture](architecture.md)).
 
@@ -1058,6 +1060,36 @@ remotes:
   lastConnected: 2026-10-31T14:03:00Z
 ```
 
+## Plan usage file
+
+`<data dir>/plan-usage.yml` keeps the engine's plan usage, the newest weekly usage of the Claude account it knows ([Engine API › Plan usage](engine-api.md#plan-usage)), so that the status bar shows it after a restart, before any chat runs ([Weekly usage](ui.md#weekly-usage)). The engine writes it each time it replaces the value; the file does not exist before the first value. Swift type `PlanUsage`, which the engine API sends too.
+
+| Swift name            | Key                     | Type                  | Required | Default | Rules                                                                                                                                                               |
+| --------------------- | ----------------------- | --------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| schema                | `schema`                | `Int`                 | no       | `1`     | See [Keys and values](#keys-and-values).                                                                                                                            |
+| utilization           | `utilization`           | `Double`              | yes      | —       | The fraction of the week's limit used, usually 0 to 1: a number of 0 or more.                                                                                       |
+| resetsAt              | `resetsAt`              | `Date`                | yes      | —       | When the weekly window resets. A value whose `resetsAt` has passed is hidden.                                                                                       |
+| status                | `status`                | `String`              | yes      | —       | The CLI's `status`, `allowed`, `allowed_warning` or `rejected`: one line, not empty.                                                                                |
+| overageStatus         | `overageStatus`         | `String?`             | no       | `null`  | The CLI's `overageStatus`: one line, not empty.                                                                                                                     |
+| overageDisabledReason | `overageDisabledReason` | `String?`             | no       | `null`  | The CLI's `overageDisabledReason`, for example `out_of_credits`: one line, not empty.                                                                               |
+| isUsingOverage        | `isUsingOverage`        | `Bool?`               | no       | `null`  | The CLI's `isUsingOverage`.                                                                                                                                         |
+| received              | `received`              | `Date`                | yes      | —       | When the engine that read the `rate_limit_event` line received it; the newest value is the one with the latest `received` ([Plan usage](engine-api.md#plan-usage)). |
+| unknownKeys           | —                       | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                                                                      |
+
+The values come from the CLI's `rate_limit_event` lines ([Chats › Plan usage](chats.md#plan-usage)).
+
+```yaml
+# <data dir>/plan-usage.yml
+schema: 1
+utilization: 0.68
+resetsAt: 2026-11-05T13:00:00Z
+status: allowed
+overageStatus: rejected
+overageDisabledReason: out_of_credits
+isUsingOverage: false
+received: 2026-10-31T14:02:41Z
+```
+
 ## Id allocation
 
 ### Ticket and bundle numbers
@@ -1107,7 +1139,7 @@ Every other rule of the field tables (lengths, ranges, single-line values, uniqu
 
 The engine keeps the keys it does not know, so a file written by a newer version or extended by hand keeps them when this version rewrites it.
 
-- These types keep unknown keys in `unknownKeys`: `Project`, `ProjectCommands`, `WebTab`, `ChatSettings`, `Ticket`, `Comment`, `Attachment`, `TicketBundle`, `ChatMeta`, `DeviceRecord`, `Registry`, `HostSettings`, `Secrets`, `RemotesFile`, `RemoteDevice`. `SkillFrontmatter` keeps them in `extraFrontmatter`. Chat items do not keep unknown keys: transcripts are never rewritten.
+- These types keep unknown keys in `unknownKeys`: `Project`, `ProjectCommands`, `WebTab`, `ChatSettings`, `Ticket`, `Comment`, `Attachment`, `TicketBundle`, `ChatMeta`, `DeviceRecord`, `Registry`, `HostSettings`, `Secrets`, `RemotesFile`, `RemoteDevice`, `PlanUsage`. `SkillFrontmatter` keeps them in `extraFrontmatter`. Chat items do not keep unknown keys: transcripts are never rewritten.
 - Decoding stores every key of the mapping that is not in the type's table, with its value converted to `JSONValue`.
 - Encoding writes them after the known keys, sorted by key in Unicode code point order, nested values as decoded.
 - A mutation changes known fields only; `unknownKeys` stays as read.
@@ -1196,7 +1228,7 @@ When a step fails, the engine stops and the call fails. Files written by the ear
 At launch the engine:
 
 1. Creates the data directory and its missing subfolders.
-2. Reads `device.yml`, `secrets.json`, `settings.yml`, `registry.yml` and `remotes.yml`. A missing file is created with its defaults: a new device id, a new pairing code and external token, empty lists. An invalid file is renamed to `<file>.invalid`, replacing an older one, logged as an error, and recreated with its defaults. Default chosen at design time.
+2. Reads `device.yml`, `secrets.json`, `settings.yml`, `registry.yml` and `remotes.yml`. A missing file is created with its defaults: a new device id, a new pairing code and external token, empty lists. An invalid file is renamed to `<file>.invalid`, replacing an older one, logged as an error, and recreated with its defaults. Then it reads `plan-usage.yml`, which is never created at launch: a missing file gives no plan usage, and an invalid one is renamed to `plan-usage.yml.invalid`, replacing an older one, logged as an error, and gives no plan usage. Default chosen at design time.
 3. Loads the projects of the registry in order, each followed by its sub projects, depth first in `subprojects` order. A project is skipped and logged when its project file is missing or invalid, or when its identifier is already used by a loaded project. A project skipped because its identifier is used is tried again, in registry order, each time a project is unloaded or unregistered. Default chosen at design time.
 4. Loads every ticket, bundle and chat metadata file of each loaded project. An invalid ticket or bundle file is skipped and logged, and loads once it becomes valid ([External changes](#external-changes)); an invalid chat metadata file is skipped and logged until the next launch. For each loaded chat the engine replays its transcript once, in a child task, to find whether it holds a question set that is not completed, which sets the chat's state to `waitingAnswers` ([Chats](chats.md#chat-states)) with `chat.updated`, and to cancel its pending permission requests ([Chats](chats.md#cancellation)); the items are not kept. Until the scan of a chat ends its state is `idle`. Clients read the items with `chats.get`. Default chosen at design time.
 5. Deletes leftover temporary files in the folders it reads.
@@ -1212,7 +1244,7 @@ Files change without the engine: git checkouts and merges, text editors, another
 
 - One FSEvents stream per registered top-level project root, with file-level events. Sub projects lie inside their parent's root and share its stream, which also produces `files.changed` ([Code editor](code-editor.md)).
 - Files in `.hephaestus/chats/` are not reloaded: the engine is their only writer ([Engine API](engine-api.md)).
-- One FSEvents stream on the data directory for `settings.yml` and `registry.yml`. `device.yml`, `secrets.json` and `remotes.yml` are read at launch only; a change made to one of them while the app runs is overwritten by the engine's next write of that file. Default chosen at design time.
+- One FSEvents stream on the data directory for `settings.yml` and `registry.yml`. `device.yml`, `secrets.json`, `remotes.yml` and `plan-usage.yml` are read at launch only; a change made to one of them while the app runs is overwritten by the engine's next write of that file. Default chosen at design time.
 - The skills library is watched as defined in [Skills](skills.md).
 - Attachment files and temporary files are not reloaded as data.
 
@@ -1259,6 +1291,7 @@ The type is chosen by the end of the path:
 | `/registry.yml`                  | `Registry`                                             | —                                         |
 | `/settings.yml`                  | `HostSettings`                                         | —                                         |
 | `/remotes.yml`                   | `RemotesFile`                                          | —                                         |
+| `/plan-usage.yml`                | `PlanUsage`                                            | —                                         |
 | `/secrets.json`                  | `Secrets`                                              | —                                         |
 | `/SKILL.md`                      | `SkillFrontmatter` (the block is the frontmatter only) | `name` equals the folder name in the path |
 
@@ -1277,3 +1310,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R109: The user can skip a question; Claude then leaves that point out and mentions it in its reply.
 - R110: A bundle has a status: todo, in progress or done; Implement All sets it to in progress and is disabled until the user sets it back to To Do.
 - R111: Implement All runs one ticket chat per ticket, one at a time, coordinated by the bundle chat that started them, and pushes once at the end.
+- R112: Main windows show the Claude plan's weekly usage in the status bar as a small round progress indicator; a click shows the percentage used, when the week resets and the overage status.

@@ -652,6 +652,17 @@ The Engine API's own limits keep results and events under 32 MiB ([Limits](engin
 
 After the `welcome`, a message with an unknown `type`, a known `type` in the wrong direction, or a `response` whose id matches no pending call is ignored and logged. The client ignores events with an unknown name, and events whose data does not decode as the event's type. During the handshake, any unexpected message closes the connection with 1002.
 
+### Plan usage sharing
+
+The plan usage belongs to the Claude account, which is the same on every device, so the engines of connected devices share the newest value ([Engine API › Plan usage](engine-api.md#plan-usage)). The protocol has no message of its own for it: the app that holds the connections carries the value with Engine API calls and events.
+
+1. A workspace stores a plan usage from its snapshot (`planUsage` of [Snapshot](engine-api.md#snapshot)) and from every `planUsage.updated` event ([UI](ui.md#event-handling)).
+2. Each time a workspace stores a plan usage or a snapshot, `AppModel` takes the newest value its open workspaces hold: the one with the latest `received`, values whose reset time has passed left out.
+3. It calls `claude.reportPlanUsage` with that value on every other connected workspace whose value is absent or has an earlier `received`, This Mac's workspace included. A failed call is ignored; the next stored value or snapshot repeats the step.
+4. An engine that keeps the value emits `planUsage.updated` to all its clients: its own windows and every remote device connected to it, whose apps apply step 2 in turn.
+
+An engine keeps a reported value only when it is newer than its own, so the values converge and the calls stop. A value travels along every connection, in either direction: when Studio shows MacBook and MacBook shows Mini, a chat run on Mini updates the windows of all three. Devices without any connection between them do not share. Default chosen at design time.
+
 ## Keepalive
 
 | Rule                        | Value                                                                                                                                                   |
@@ -798,11 +809,11 @@ The server keeps no event history. A session starts from the snapshot of its `we
 
 ### Event kinds
 
-| Kind   | Events                                                                                                                                                                                                                                                                                                   | Applying the same event twice                                                                                         |
-| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| State  | `projects.changed`, `project.updated`, `project.removed`, `ticket.updated`, `ticket.deleted`, `bundle.updated`, `bundle.deleted`, `chat.updated`, `chat.deleted`, `chat.item`, `files.changed`, `webTabs.updated`, `skills.changed`, `run.started`, `run.finished`, `settings.updated`, `claude.updated` | Same result: each carries the complete new value of what it names, a deletion, or (`files.changed`) a reload request. |
-| Stream | `chat.delta`, `run.output`                                                                                                                                                                                                                                                                               | Appends twice: applied once, on arrival.                                                                              |
-| Action | `ui.open`                                                                                                                                                                                                                                                                                                | Acts twice: applied once, on arrival.                                                                                 |
+| Kind   | Events                                                                                                                                                                                                                                                                                                                        | Applying the same event twice                                                                                         |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| State  | `projects.changed`, `project.updated`, `project.removed`, `ticket.updated`, `ticket.deleted`, `bundle.updated`, `bundle.deleted`, `chat.updated`, `chat.deleted`, `chat.item`, `files.changed`, `webTabs.updated`, `skills.changed`, `run.started`, `run.finished`, `settings.updated`, `claude.updated`, `planUsage.updated` | Same result: each carries the complete new value of what it names, a deletion, or (`files.changed`) a reload request. |
+| Stream | `chat.delta`, `run.output`                                                                                                                                                                                                                                                                                                    | Appends twice: applied once, on arrival.                                                                              |
+| Action | `ui.open`                                                                                                                                                                                                                                                                                                                     | Acts twice: applied once, on arrival.                                                                                 |
 
 ### Seeding calls and the replay rule
 
@@ -1067,3 +1078,4 @@ func frame(_ json: String, key: SymmetricKey, counter: UInt64) throws -> Data {
 - R6: Its first level chooses the Main Device: this Mac or another Mac, whose projects the window then shows.
 - R43: Any remote sees in real time the changes made anywhere.
 - R44: Working from a remote is as if the remote were the one working.
+- R112: Main windows show the Claude plan's weekly usage in the status bar as a small round progress indicator; a click shows the percentage used, when the week resets and the overage status.

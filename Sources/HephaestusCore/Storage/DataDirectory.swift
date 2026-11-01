@@ -22,6 +22,7 @@ public struct DataDirectory: Sendable, Hashable {
     public var settingsFile: URL { url.appendingPathComponent("settings.yml") }
     public var secretsFile: URL { url.appendingPathComponent("secrets.json") }
     public var remotesFile: URL { url.appendingPathComponent("remotes.yml") }
+    public var planUsageFile: URL { url.appendingPathComponent("plan-usage.yml") }
 
     /// `<file>.invalid`: a device file found invalid at launch, set aside.
     public func invalidCopy(of file: URL) -> URL {

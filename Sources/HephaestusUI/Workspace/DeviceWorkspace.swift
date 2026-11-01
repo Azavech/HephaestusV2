@@ -61,6 +61,12 @@ final class DeviceWorkspace {
     var settings: HostSettings?
     var claudeStatus: ClaudeStatus?
     var models: [ClaudeModel] = []
+    /// The device's plan usage, from the snapshot and `planUsage.updated` (docs/ui.md › Weekly
+    /// usage).
+    var planUsage: PlanUsage?
+    /// Called each time the workspace stores a plan usage or a snapshot: `AppModel` shares the
+    /// newest plan usage (docs/remote.md › Plan usage sharing).
+    @ObservationIgnored var planUsageStored: (@MainActor () -> Void)?
     /// Every project of the device, sub projects included, in `projects.list` order.
     var projects: [ProjectSummary] = []
     var skills: [SkillSummary] = []

@@ -8,17 +8,20 @@ public struct DeviceFiles: Sendable, Hashable {
     public var settings: HostSettings
     public var registry: Registry
     public var remotes: RemotesFile
+    /// nil when `plan-usage.yml` is missing or was invalid.
+    public var planUsage: PlanUsage?
 }
 
-/// Loading and writing of `device.yml`, `secrets.json`, `settings.yml`, `registry.yml` and
-/// `remotes.yml` (docs/data-model.md › Loading, step 2).
+/// Loading and writing of `device.yml`, `secrets.json`, `settings.yml`, `registry.yml`,
+/// `remotes.yml` and `plan-usage.yml` (docs/data-model.md › Loading, step 2).
 public enum DeviceFileStore {
-    /// Reads the five device files in the order of docs/data-model.md › Loading. A missing
+    /// Reads the device files in the order of docs/data-model.md › Loading. A missing
     /// file is created with its defaults (a new device id, a new pairing code and external
     /// token, empty lists). An invalid file is renamed to `<file>.invalid`, replacing an older
     /// one, logged as an error, and recreated with its defaults. `secrets.json` gets the mode
     /// 0600 when its mode differs, and is written again when its pairing code or external
-    /// token was missing.
+    /// token was missing. `plan-usage.yml` is not created: a missing or invalid one gives no
+    /// plan usage.
     public static func loadAll(_ directory: DataDirectory, log: LogSink?) throws -> DeviceFiles {
         let device = try loadYAML(DeviceRecord.self, at: directory.deviceFile, in: directory, log: log,
                                   makeDefault: DeviceRecord.newDevice)
@@ -32,7 +35,9 @@ public enum DeviceFileStore {
         }
         let remotes = try loadYAML(RemotesFile.self, at: directory.remotesFile, in: directory, log: log,
                                    makeDefault: { RemotesFile() })
-        return DeviceFiles(device: device, secrets: secrets, settings: settings, registry: registry, remotes: remotes)
+        let planUsage = try loadPlanUsage(directory, log: log)
+        return DeviceFiles(device: device, secrets: secrets, settings: settings, registry: registry, remotes: remotes,
+                           planUsage: planUsage)
     }
 
     // MARK: Writing
@@ -55,6 +60,11 @@ public enum DeviceFileStore {
     @discardableResult
     public static func write(_ remotes: RemotesFile, to directory: DataDirectory) throws -> String {
         try ProjectFileStore.writeYAML(remotes, to: directory.remotesFile)
+    }
+
+    @discardableResult
+    public static func write(_ planUsage: PlanUsage, to directory: DataDirectory) throws -> String {
+        try ProjectFileStore.writeYAML(planUsage, to: directory.planUsageFile)
     }
 
     /// Writes `secrets.json` with mode 0600.
@@ -89,6 +99,20 @@ public enum DeviceFileStore {
             let value = makeDefault()
             try ProjectFileStore.writeYAML(value, to: url)
             return value
+        }
+    }
+
+    /// Reads `plan-usage.yml`: nil when it is missing; an invalid file is set aside as
+    /// `plan-usage.yml.invalid`, logged, and gives nil.
+    public static func loadPlanUsage(_ directory: DataDirectory, log: LogSink?) throws -> PlanUsage? {
+        let url = directory.planUsageFile
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        do {
+            return try ProjectFileStore.decodeYAML(PlanUsage.self, at: url)
+        } catch let error as StorageError {
+            guard case .invalidFile = error else { throw error }
+            try setAside(url, in: directory, reason: error.reason, log: log, recreated: false)
+            return nil
         }
     }
 
@@ -143,11 +167,11 @@ public enum DeviceFileStore {
     }
 
     /// Renames an invalid device file to `<file>.invalid`, replacing an older one, and logs it.
-    static func setAside(_ url: URL, in directory: DataDirectory, reason: String, log: LogSink?) throws {
+    static func setAside(_ url: URL, in directory: DataDirectory, reason: String, log: LogSink?, recreated: Bool = true) throws {
         let invalid = directory.invalidCopy(of: url)
         guard Darwin.rename(url.path, invalid.path) == 0 else {
             throw StorageError.writeFailed(path: invalid.path, reason: String(cString: strerror(errno)))
         }
-        log?.error(.storage, "\(url.path) is invalid (\(reason)); set aside as \(invalid.lastPathComponent) and recreated")
+        log?.error(.storage, "\(url.path) is invalid (\(reason)); set aside as \(invalid.lastPathComponent)\(recreated ? " and recreated" : "")")
     }
 }

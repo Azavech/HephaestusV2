@@ -100,7 +100,7 @@ public enum EngineMethods {
         ChatsUpdateSettings.self, ChatsRename.self, ChatsDelete.self, ChatsAnswerPermission.self,
         ChatsPostQuestions.self, ChatsAnswerQuestion.self, ChatsImplementTicket.self, ChatsImplementBundle.self,
         ChatsCreateFeedback.self,
-        ClaudeModels.self, ClaudeStatusMethod.self,
+        ClaudeModels.self, ClaudeStatusMethod.self, ClaudePlanUsage.self, ClaudeReportPlanUsage.self,
         FilesList.self, FilesRead.self, FilesWrite.self, FilesCreate.self, FilesRename.self, FilesTrash.self,
         DocsList.self,
         FSBrowse.self,

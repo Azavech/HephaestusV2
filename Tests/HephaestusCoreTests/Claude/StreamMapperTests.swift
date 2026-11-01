@@ -80,12 +80,14 @@ struct StreamMapperTests {
         #expect(replay[21].outputs == [.delta(itemID: "msg_011CgbN9DUEEzm4yYRLnxmCV#0", kind: .text, text: "done")])
         // Line 28 is the result that closes the CLI turn.
         #expect(replay[27].outputs.last.map { if case .result = $0 { return true } else { return false } } == true)
+        // Line 16: the weekly window of the rate_limit_event is the plan usage.
+        #expect(replay[15].outputs == [.planUsage(Self.fixturePlanUsage)])
         // Ignored lines are logged, stream events are not.
         let logged = all.compactMap { output -> String? in
             if case .ignored(let text) = output { return text }
             return nil
         }
-        #expect(logged == ["ignored system/status", "ignored rate_limit_event", "ignored system/task_summary", "ignored system/status",
+        #expect(logged == ["ignored system/status", "ignored system/task_summary", "ignored system/status",
                            "ignored system/post_turn_summary"])
         for number in [3, 4, 13, 14, 15, 20, 21, 24, 25, 26] {
             #expect(replay[number - 1].outputs.isEmpty, "line \(number)")
@@ -127,6 +129,42 @@ struct StreamMapperTests {
         let text = Self.deltas(all, itemID: "msg_011CgbNBQVp7hM3Fkm45qGrN#1")
         #expect(text.kinds == [.text])
         #expect(text.text.hasPrefix("Not done: the Write to"))
+        // Line 29: the same plan usage as line 16 of stream-bash-allowed.jsonl.
+        #expect(replay[28].outputs == [.planUsage(Self.fixturePlanUsage)])
+    }
+
+    /// The plan usage of the rate_limit_event lines of both captures.
+    static let fixturePlanUsage = PlanUsage(utilization: 0.68, resetsAt: ISODate.date(from: "2026-11-01T20:00:00Z")!, status: "allowed",
+                                            overageStatus: "rejected", overageDisabledReason: "out_of_credits", isUsingOverage: false,
+                                            received: date)
+
+    @Test("rate_limit_event: the seven_day window, the status and the overage fields; other windows are not read")
+    func rateLimitEvent() throws {
+        var mapper = try Self.mapper()
+        func map(_ info: String) -> [MapperOutput] {
+            mapper.map(Data(#"{"type":"rate_limit_event","rate_limit_info":\#(info),"uuid":"u","session_id":"s"}"#.utf8))
+        }
+        let full = #"{"status":"rejected","resetsAt":1793520000,"rateLimitType":"five_hour","utilization":1.2,"#
+            + #""unifiedWindows":{"five_hour":{"utilization":1.2,"resetsAt":1793520000},"seven_day":{"utilization":1,"resetsAt":1793880000}},"#
+            + #""overageStatus":"allowed_warning","overageDisabledReason":"org_level_disabled","isUsingOverage":true}"#
+        #expect(map(full) == [.planUsage(PlanUsage(utilization: 1, resetsAt: Date(timeIntervalSince1970: 1_793_880_000), status: "rejected",
+                                                   overageStatus: "allowed_warning", overageDisabledReason: "org_level_disabled",
+                                                   isUsingOverage: true, received: Self.date))])
+        // The overage fields are optional; a field of the wrong type or an empty string counts as absent.
+        let bare = #"{"status":"allowed","unifiedWindows":{"seven_day":{"utilization":0.25,"resetsAt":1793880000}},"#
+            + #""overageStatus":"","isUsingOverage":"yes"}"#
+        #expect(map(bare) == [.planUsage(PlanUsage(utilization: 0.25, resetsAt: Date(timeIntervalSince1970: 1_793_880_000),
+                                                   status: "allowed", received: Self.date))])
+        // Without the weekly window, its numbers or the status, the line is ignored and logged.
+        for info in [#"{"status":"allowed","unifiedWindows":{"five_hour":{"utilization":0.5,"resetsAt":1793880000}}}"#,
+                     #"{"status":"allowed","utilization":0.5,"resetsAt":1793880000}"#,
+                     #"{"status":"allowed","unifiedWindows":{"seven_day":{"utilization":"0.5","resetsAt":1793880000}}}"#,
+                     #"{"status":"allowed","unifiedWindows":{"seven_day":{"utilization":-0.1,"resetsAt":1793880000}}}"#,
+                     #"{"status":"allowed","unifiedWindows":{"seven_day":{"utilization":0.5}}}"#,
+                     #"{"unifiedWindows":{"seven_day":{"utilization":0.5,"resetsAt":1793880000}}}"#] {
+            #expect(map(info) == [.ignored("ignored rate_limit_event")], "\(info)")
+        }
+        #expect(mapper.map(Data(#"{"type":"rate_limit_event"}"#.utf8)) == [.ignored("ignored rate_limit_event")])
     }
 
     @Test("Session start item: model name rules, permission labels and Ultracode")

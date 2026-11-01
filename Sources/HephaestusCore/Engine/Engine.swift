@@ -37,6 +37,9 @@ public actor Engine {
     let computerName: String
     /// `settings.yml`.
     var settings: HostSettings
+    /// The newest plan usage known, `plan-usage.yml` at launch, hidden once its reset time has
+    /// passed (Claude/PlanUsageUpdates.swift).
+    var planUsage: PlanUsage?
     /// The engine's own writes, recognized by the file watchers (docs/data-model.md › External
     /// changes).
     let ownWrites = OwnWrites()
@@ -114,6 +117,7 @@ public actor Engine {
         self.device = files.device
         self.computerName = Engine.readComputerName()
         self.settings = files.settings
+        self.planUsage = files.planUsage
         self.domain = DomainState(registry: files.registry)
         self.titleNamer = HaikuTitleNamer()
         self.skillsPlugins = SkillsPluginGenerator()

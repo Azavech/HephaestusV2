@@ -13,9 +13,10 @@ extension Engine {
 
     /// `snapshot.get`, built in one step on the actor, so no event falls between its parts:
     /// the device, the `projects.list` result, the `skills.list` result (empty when the library
-    /// cannot be read), the host settings, the running runs and the Claude CLI status.
+    /// cannot be read), the host settings, the running runs, the Claude CLI status and the plan
+    /// usage.
     func snapshot() -> Snapshot {
         Snapshot(device: deviceInfo, projects: projectSummaries(), skills: skillSummaries(), settings: settings,
-                 runs: runs.runningRuns(), claude: claudeCLI.status)
+                 runs: runs.runningRuns(), claude: claudeCLI.status, planUsage: visiblePlanUsage())
     }
 }

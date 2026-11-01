@@ -311,6 +311,8 @@ extension Engine {
             // Steps 4 and 5.
             process.turns.resultReceived()
             if !process.turns.isWorking { chatTurnEnded(chatID, runtime: runtime, process: process) }
+        case .planUsage(let usage):
+            receivePlanUsage(usage)
         case .ignored(let text):
             process.log.appendLine(text)
         case .invalid(let reason):

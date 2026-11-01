@@ -54,15 +54,18 @@ public struct Snapshot: Codable, Sendable, Hashable {
     public var runs: [RunInfo]
     /// The current CLI status.
     public var claude: ClaudeStatus
+    /// The plan usage; nil when none is known or its reset time has passed.
+    public var planUsage: PlanUsage?
 
     public init(device: DeviceInfo, projects: [ProjectSummary], skills: [SkillSummary], settings: HostSettings,
-                runs: [RunInfo], claude: ClaudeStatus) {
+                runs: [RunInfo], claude: ClaudeStatus, planUsage: PlanUsage? = nil) {
         self.device = device
         self.projects = projects
         self.skills = skills
         self.settings = settings
         self.runs = runs
         self.claude = claude
+        self.planUsage = planUsage
     }
 }
 
@@ -573,6 +576,17 @@ public struct ClaudeStatus: Codable, Sendable, Hashable {
     /// The status while detection is not finished: `{"available": false, "checking": true}`
     /// (docs/chats.md › Version and status, first row).
     public static let detecting = ClaudeStatus(available: false, checking: true)
+}
+
+/// The result of `claude.planUsage` and `claude.reportPlanUsage` (docs/engine-api.md ›
+/// PlanUsageState).
+public struct PlanUsageState: Codable, Sendable, Hashable {
+    /// The engine's plan usage; nil when none is known or its reset time has passed.
+    public var usage: PlanUsage?
+
+    public init(usage: PlanUsage? = nil) {
+        self.usage = usage
+    }
 }
 
 /// A skill of the library, as listed (docs/engine-api.md › SkillSummary).

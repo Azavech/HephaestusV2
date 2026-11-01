@@ -233,6 +233,12 @@ public enum ClaudeUpdatedEvent: EngineEvent {
     }
 }
 
+/// `planUsage.updated`: the engine's plan usage was replaced (docs/engine-api.md › Plan usage).
+public enum PlanUsageUpdatedEvent: EngineEvent {
+    public static let name = "planUsage.updated"
+    public typealias Payload = PlanUsage
+}
+
 /// `ui.open`: `ui.open` was called.
 public enum UIOpenEvent: EngineEvent {
     public static let name = "ui.open"
@@ -256,7 +262,7 @@ public enum EngineEvents {
         ChatUpdatedEvent.self, ChatDeletedEvent.self, ChatItemEvent.self, ChatDeltaEvent.self,
         FilesChangedEvent.self, WebTabsUpdatedEvent.self, SkillsChangedEvent.self,
         RunStartedEvent.self, RunOutputEvent.self, RunFinishedEvent.self,
-        SettingsUpdatedEvent.self, ClaudeUpdatedEvent.self, UIOpenEvent.self,
+        SettingsUpdatedEvent.self, ClaudeUpdatedEvent.self, PlanUsageUpdatedEvent.self, UIOpenEvent.self,
     ]
 }
 
@@ -283,6 +289,7 @@ public enum DecodedEngineEvent: Sendable, Hashable {
     case runFinished(RunFinishedEvent.Payload)
     case settingsUpdated(HostSettings)
     case claudeUpdated(ClaudeUpdatedEvent.Payload)
+    case planUsageUpdated(PlanUsage)
     case uiOpen(UIOpenEvent.Payload)
     case unknown(name: String)
 }
@@ -311,6 +318,7 @@ extension EngineEventEnvelope {
         case RunFinishedEvent.name: return .runFinished(try payload(RunFinishedEvent.self))
         case SettingsUpdatedEvent.name: return .settingsUpdated(try payload(SettingsUpdatedEvent.self))
         case ClaudeUpdatedEvent.name: return .claudeUpdated(try payload(ClaudeUpdatedEvent.self))
+        case PlanUsageUpdatedEvent.name: return .planUsageUpdated(try payload(PlanUsageUpdatedEvent.self))
         case UIOpenEvent.name: return .uiOpen(try payload(UIOpenEvent.self))
         default: return .unknown(name: name)
         }

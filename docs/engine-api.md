@@ -1,6 +1,6 @@
 # Engine API
 
-The engine API is the single interface to everything a device's engine owns: projects, sub projects, tickets, bundles, chats, files, docs, web tabs, skills, runs and host settings. Local windows, remote devices and Claude (through the MCP server) call the same named methods with JSON params and JSON results, and all of them receive the same stream of named events, so every client sees every change live wherever it was made, and a remote window works as if it were the main device itself. This document is the contract for every method (params, result, errors, allowed actors, events emitted), every event, every API-only type, the JSON conventions and the Swift shape of the API. Persisted types (Project, ProjectCommands, WebTab, ChatSettings, Ticket, Comment, Attachment, TicketBundle, ChatMeta, ChatItem, Question, HostSettings) are defined in [Data model](data-model.md); the transports are described in [Remote devices](remote.md) and [MCP server](mcp.md).
+The engine API is the single interface to everything a device's engine owns: projects, sub projects, tickets, bundles, chats, files, docs, web tabs, skills, runs, host settings and the Claude plan usage. Local windows, remote devices and Claude (through the MCP server) call the same named methods with JSON params and JSON results, and all of them receive the same stream of named events, so every client sees every change live wherever it was made, and a remote window works as if it were the main device itself. This document is the contract for every method (params, result, errors, allowed actors, events emitted), every event, every API-only type, the JSON conventions and the Swift shape of the API. Persisted types (Project, ProjectCommands, WebTab, ChatSettings, Ticket, Comment, Attachment, TicketBundle, ChatMeta, ChatItem, Question, HostSettings, PlanUsage) are defined in [Data model](data-model.md); the transports are described in [Remote devices](remote.md) and [MCP server](mcp.md).
 
 ## Overview
 
@@ -225,6 +225,8 @@ The first column lists every engine method; it is the list the docs conformance 
 | `chats.createFeedback`     | ChatsCreateFeedback     | projectID, comment, screenshot, context, settings?         | ChatMeta         | user         |
 | `claude.models`            | ClaudeModels            | none                                                       | [ClaudeModel]    | user         |
 | `claude.status`            | ClaudeStatusMethod      | none                                                       | ClaudeStatus     | user         |
+| `claude.planUsage`         | ClaudePlanUsage         | none                                                       | PlanUsageState   | user         |
+| `claude.reportPlanUsage`   | ClaudeReportPlanUsage   | usage                                                      | PlanUsageState   | user         |
 | `files.list`               | FilesList               | projectID, path                                            | [FileEntry]      | user         |
 | `files.read`               | FilesRead               | projectID, path                                            | FileContent      | user         |
 | `files.write`              | FilesWrite              | projectID, path, text, expectedModified?                   | FileContent      | user         |
@@ -268,7 +270,7 @@ Params: none. Errors: dispatcher errors only. Events: none.
 
 Swift type `SnapshotGet` · actors: user · result: [Snapshot](#snapshot)
 
-Returns the device-level state a client starts from: the device, every project summary, the skill summaries, the host settings, the running runs and the Claude CLI status. The engine builds it in one step on its actor, so no event falls between its parts. Per-project data (tickets, bundles, chats, files, docs, web tabs) is not part of it: a client loads it with the list methods when it shows a project, then keeps it current with events.
+Returns the device-level state a client starts from: the device, every project summary, the skill summaries, the host settings, the running runs, the Claude CLI status and the plan usage. The engine builds it in one step on its actor, so no event falls between its parts. Per-project data (tickets, bundles, chats, files, docs, web tabs) is not part of it: a client loads it with the list methods when it shows a project, then keeps it current with events.
 
 Params: none. Errors: dispatcher errors only. Events: none.
 
@@ -1152,6 +1154,46 @@ Locates the CLI again, runs `--version` and returns the new status ([Chats](chat
 
 Params: none. Errors: dispatcher errors only. Events: claude.updated when the status differs from the previous one.
 
+### Plan usage
+
+The engine keeps one plan usage: the newest weekly usage of the Claude account that it knows, a [PlanUsage](data-model.md#plan-usage-file). The account is the same on every device, so the engines of connected devices share the newest value ([Plan usage sharing](remote.md#plan-usage-sharing)).
+
+| Source                                                                                             | Rule                                                                                                                                                                                                                                                        |
+| -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A `rate_limit_event` line of one of the engine's chats ([Chats › Plan usage](chats.md#plan-usage)) | Always replaces the kept value. Its `received` is the current time, or one second after the kept value's `received` when the current time is not later, so a value the engine reads itself is the newest it knows whatever the clocks of the other devices. |
+| A value reported by another device with `claude.reportPlanUsage`                                   | Replaces the kept value when the engine has none, or when the reported `received` is later than the kept one; a reported value whose reset time has passed is never kept. Otherwise the engine keeps its value, writes nothing and emits nothing.           |
+| Launch                                                                                             | The value of `plan-usage.yml`, when the file exists and is valid ([Loading](data-model.md#loading)).                                                                                                                                                        |
+
+- A replacement writes `plan-usage.yml` ([Plan usage file](data-model.md#plan-usage-file)), then emits `planUsage.updated` with the new value. A failed write is logged as an error; the value is still kept in memory and the event emitted.
+- A value whose `resetsAt` is not later than the current time is hidden: `snapshot.get`, `claude.planUsage` and `claude.reportPlanUsage` leave it out. No event marks the moment the reset time passes; clients hide the value at that time themselves ([Status bar](ui.md#status-bar)).
+- The kept value is never cleared, only replaced.
+
+These rules are Default chosen at design time.
+
+### claude.planUsage
+
+Swift type `ClaudePlanUsage` · actors: user · result: [PlanUsageState](#planusagestate)
+
+Returns the engine's plan usage, without a value when none is known or when its reset time has passed ([Plan usage](#plan-usage)).
+
+Params: none. Errors: dispatcher errors only. Events: none.
+
+### claude.reportPlanUsage
+
+Swift type `ClaudeReportPlanUsage` · actors: user · result: [PlanUsageState](#planusagestate)
+
+Gives the engine a plan usage received from another device's engine ([Plan usage sharing](remote.md#plan-usage-sharing)). The engine keeps it when it is newer than its own value ([Plan usage](#plan-usage)) and returns its plan usage after the call.
+
+| Param | Type      | Required | Description                                           |
+| ----- | --------- | -------- | ----------------------------------------------------- |
+| usage | PlanUsage | yes      | The value as the other engine returned or emitted it. |
+
+| Error   | When                                                                                 |
+| ------- | ------------------------------------------------------------------------------------ |
+| invalid | `usage` breaks a write rule of the [Plan usage file](data-model.md#plan-usage-file). |
+
+Events: planUsage.updated when the engine keeps the value.
+
 ## Files
 
 Paths are project paths. The file browser and the editor are described in [Code editor](code-editor.md); docs use the same methods ([Documentation viewer](documentation-viewer.md)).
@@ -1701,28 +1743,29 @@ Every event travels as an [EngineEventEnvelope](#engineeventenvelope) `{name, or
 
 ### Event list
 
-| Event            | Swift type           | Data                                                  | Emitted when                                                                                                                                                     |
-| ---------------- | -------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| projects.changed | ProjectsChangedEvent | [ProjectSummary]: the complete `projects.list` result | The result of `projects.list` changed: a project was created, opened, removed, renamed, loaded or unloaded, its sub projects changed, or a ticket count changed. |
-| project.updated  | ProjectUpdatedEvent  | ProjectDetail                                         | A project's project.yml was written or reloaded, or its `gitRemoteURL` changed ([ProjectDetail](#projectdetail)).                                                |
-| project.removed  | ProjectRemovedEvent  | {projectID}                                           | A project was unregistered or its project.yml disappeared.                                                                                                       |
-| ticket.updated   | TicketUpdatedEvent   | Ticket                                                | A ticket was created, changed or reloaded.                                                                                                                       |
-| ticket.deleted   | TicketDeletedEvent   | {projectID, ticketID}                                 | A ticket was deleted or its file disappeared.                                                                                                                    |
-| bundle.updated   | BundleUpdatedEvent   | TicketBundle                                          | A bundle was created, changed or reloaded.                                                                                                                       |
-| bundle.deleted   | BundleDeletedEvent   | {projectID, bundleID}                                 | A bundle was deleted or its file disappeared.                                                                                                                    |
-| chat.updated     | ChatUpdatedEvent     | ChatMeta, with `projectID` and `state`                | A chat was created, or its metadata or state changed.                                                                                                            |
-| chat.deleted     | ChatDeletedEvent     | {projectID, chatID}                                   | A chat was deleted.                                                                                                                                              |
-| chat.item        | ChatItemEvent        | {chatID, item ChatItem}                               | A transcript item was added, or replaced (same `id`).                                                                                                            |
-| chat.delta       | ChatDeltaEvent       | {chatID, itemID, kind, append}                        | Claude streams text, thinking or tool input. Not persisted.                                                                                                      |
-| files.changed    | FilesChangedEvent    | {projectID, paths [String]}                           | Files changed under a project root.                                                                                                                              |
-| webTabs.updated  | WebTabsUpdatedEvent  | {projectID, tabs [WebTab]}                            | A project's web tabs changed.                                                                                                                                    |
-| skills.changed   | SkillsChangedEvent   | [SkillSummary]: the complete `skills.list` result     | The skills library changed, including files inside a skill.                                                                                                      |
-| run.started      | RunStartedEvent      | RunInfo                                               | A run started; the origin is the actor that started it.                                                                                                          |
-| run.output       | RunOutputEvent       | {runID, projectID, text}                              | A run produced output.                                                                                                                                           |
-| run.finished     | RunFinishedEvent     | {runID, projectID, exitCode}                          | A run ended.                                                                                                                                                     |
-| settings.updated | SettingsUpdatedEvent | HostSettings                                          | Host settings changed.                                                                                                                                           |
-| claude.updated   | ClaudeUpdatedEvent   | {status ClaudeStatus, models [ClaudeModel]}           | The Claude CLI status or the model list changed.                                                                                                                 |
-| ui.open          | UIOpenEvent          | {target NavigationTarget, deviceID?}                  | `ui.open` was called.                                                                                                                                            |
+| Event             | Swift type            | Data                                                  | Emitted when                                                                                                                                                     |
+| ----------------- | --------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| projects.changed  | ProjectsChangedEvent  | [ProjectSummary]: the complete `projects.list` result | The result of `projects.list` changed: a project was created, opened, removed, renamed, loaded or unloaded, its sub projects changed, or a ticket count changed. |
+| project.updated   | ProjectUpdatedEvent   | ProjectDetail                                         | A project's project.yml was written or reloaded, or its `gitRemoteURL` changed ([ProjectDetail](#projectdetail)).                                                |
+| project.removed   | ProjectRemovedEvent   | {projectID}                                           | A project was unregistered or its project.yml disappeared.                                                                                                       |
+| ticket.updated    | TicketUpdatedEvent    | Ticket                                                | A ticket was created, changed or reloaded.                                                                                                                       |
+| ticket.deleted    | TicketDeletedEvent    | {projectID, ticketID}                                 | A ticket was deleted or its file disappeared.                                                                                                                    |
+| bundle.updated    | BundleUpdatedEvent    | TicketBundle                                          | A bundle was created, changed or reloaded.                                                                                                                       |
+| bundle.deleted    | BundleDeletedEvent    | {projectID, bundleID}                                 | A bundle was deleted or its file disappeared.                                                                                                                    |
+| chat.updated      | ChatUpdatedEvent      | ChatMeta, with `projectID` and `state`                | A chat was created, or its metadata or state changed.                                                                                                            |
+| chat.deleted      | ChatDeletedEvent      | {projectID, chatID}                                   | A chat was deleted.                                                                                                                                              |
+| chat.item         | ChatItemEvent         | {chatID, item ChatItem}                               | A transcript item was added, or replaced (same `id`).                                                                                                            |
+| chat.delta        | ChatDeltaEvent        | {chatID, itemID, kind, append}                        | Claude streams text, thinking or tool input. Not persisted.                                                                                                      |
+| files.changed     | FilesChangedEvent     | {projectID, paths [String]}                           | Files changed under a project root.                                                                                                                              |
+| webTabs.updated   | WebTabsUpdatedEvent   | {projectID, tabs [WebTab]}                            | A project's web tabs changed.                                                                                                                                    |
+| skills.changed    | SkillsChangedEvent    | [SkillSummary]: the complete `skills.list` result     | The skills library changed, including files inside a skill.                                                                                                      |
+| run.started       | RunStartedEvent       | RunInfo                                               | A run started; the origin is the actor that started it.                                                                                                          |
+| run.output        | RunOutputEvent        | {runID, projectID, text}                              | A run produced output.                                                                                                                                           |
+| run.finished      | RunFinishedEvent      | {runID, projectID, exitCode}                          | A run ended.                                                                                                                                                     |
+| settings.updated  | SettingsUpdatedEvent  | HostSettings                                          | Host settings changed.                                                                                                                                           |
+| claude.updated    | ClaudeUpdatedEvent    | {status ClaudeStatus, models [ClaudeModel]}           | The Claude CLI status or the model list changed.                                                                                                                 |
+| planUsage.updated | PlanUsageUpdatedEvent | PlanUsage                                             | The engine's plan usage was replaced ([Plan usage](#plan-usage)).                                                                                                |
+| ui.open           | UIOpenEvent           | {target NavigationTarget, deviceID?}                  | `ui.open` was called.                                                                                                                                            |
 
 ### Event payloads
 
@@ -1895,14 +1938,15 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
 
 ### Snapshot
 
-| Field    | Type             | Required | Description                                                      |
-| -------- | ---------------- | -------- | ---------------------------------------------------------------- |
-| device   | DeviceInfo       | yes      | The engine's device.                                             |
-| projects | [ProjectSummary] | yes      | The `projects.list` result.                                      |
-| skills   | [SkillSummary]   | yes      | The `skills.list` result; empty when the library cannot be read. |
-| settings | HostSettings     | yes      | The `settings.get` result.                                       |
-| runs     | [RunInfo]        | yes      | The running runs, ordered by `started`.                          |
-| claude   | ClaudeStatus     | yes      | The current CLI status.                                          |
+| Field     | Type             | Required | Description                                                                                         |
+| --------- | ---------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| device    | DeviceInfo       | yes      | The engine's device.                                                                                |
+| projects  | [ProjectSummary] | yes      | The `projects.list` result.                                                                         |
+| skills    | [SkillSummary]   | yes      | The `skills.list` result; empty when the library cannot be read.                                    |
+| settings  | HostSettings     | yes      | The `settings.get` result.                                                                          |
+| runs      | [RunInfo]        | yes      | The running runs, ordered by `started`.                                                             |
+| claude    | ClaudeStatus     | yes      | The current CLI status.                                                                             |
+| planUsage | PlanUsage        | no       | The plan usage; absent when none is known or its reset time has passed ([Plan usage](#plan-usage)). |
 
 ```json
 {
@@ -1918,6 +1962,16 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
     "id": "9F1C2A4E-0B7D-4E21-8C3A-5D6E7F809A1B",
     "name": "Studio",
     "protocolVersion": 1
+  },
+  "planUsage": {
+    "isUsingOverage": false,
+    "overageDisabledReason": "out_of_credits",
+    "overageStatus": "rejected",
+    "received": "2026-10-31T14:02:41Z",
+    "resetsAt": "2026-11-05T13:00:00Z",
+    "schema": 1,
+    "status": "allowed",
+    "utilization": 0.68
   },
   "projects": [
     {
@@ -2381,6 +2435,30 @@ The field set is a design-time choice. Default chosen at design time.
 ]
 ```
 
+### PlanUsageState
+
+| Field | Type      | Required | Description                                                                                                                                                     |
+| ----- | --------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| usage | PlanUsage | no       | The engine's plan usage ([Plan usage file](data-model.md#plan-usage-file)); absent when none is known or its reset time has passed ([Plan usage](#plan-usage)). |
+
+```json
+[
+  {
+    "usage": {
+      "isUsingOverage": null,
+      "overageDisabledReason": null,
+      "overageStatus": "allowed",
+      "received": "2026-10-31T14:02:41Z",
+      "resetsAt": "2026-11-05T13:00:00Z",
+      "schema": 1,
+      "status": "allowed_warning",
+      "utilization": 0.83
+    }
+  },
+  {}
+]
+```
+
 ### SkillSummary
 
 | Field       | Type   | Required | Description                                            |
@@ -2641,3 +2719,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R108: The user moves between the questions of a set, answers them in any order and can change an answer until every question has one.
 - R109: The user can skip a question; Claude then leaves that point out and mentions it in its reply.
 - R110: A bundle has a status: todo, in progress or done; Implement All sets it to in progress and is disabled until the user sets it back to To Do.
+- R112: Main windows show the Claude plan's weekly usage in the status bar as a small round progress indicator; a click shows the percentage used, when the week resets and the overage status.

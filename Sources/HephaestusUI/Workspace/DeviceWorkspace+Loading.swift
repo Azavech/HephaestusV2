@@ -39,6 +39,7 @@ extension DeviceWorkspace {
         deviceInfo = snapshot.device
         settings = snapshot.settings
         claudeStatus = snapshot.claude
+        planUsage = snapshot.planUsage
         skills = snapshot.skills
         replaceProjects(snapshot.projects)
         let running = Set(snapshot.runs.map(\.runID.uuidString))
@@ -55,6 +56,7 @@ extension DeviceWorkspace {
             runs[info.runID.uuidString] = RunState(info: info, starter: nil, knownFromSnapshotAt: Date())
         }
         hasSnapshot = true
+        planUsageStored?()
     }
 
     /// `chats.list` of one project, under the replay rule: its result replaces the chats of the

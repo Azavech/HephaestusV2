@@ -443,6 +443,9 @@ public final class AppModel {
     /// Routes the events of a workspace to the windows: `ui.open`, removed projects, deleted
     /// chats, tickets and bundles, and the waiting chats of the Dock badge.
     private func observe(_ workspace: DeviceWorkspace) {
+        workspace.planUsageStored = { [weak self] in
+            self?.sharePlanUsage()
+        }
         let events = workspace.events()
         tasks.append(Task { [weak self, weak workspace] in
             for await event in events {
@@ -450,6 +453,21 @@ public final class AppModel {
                 self.handle(event, from: workspace)
             }
         })
+    }
+
+    /// docs/remote.md › Plan usage sharing, steps 2 and 3: the newest plan usage of the open
+    /// workspaces, values whose reset time has passed left out, is reported to every connected
+    /// workspace whose value is absent or older. A failed call is ignored.
+    func sharePlanUsage() {
+        let now = Date()
+        let values = workspaces.values.compactMap(\.planUsage).filter { !$0.hasExpired(at: now) }
+        guard let newest = values.max(by: { $0.received < $1.received }) else { return }
+        for workspace in workspaces.values where workspace.isConnected && workspace.hasSnapshot {
+            if let value = workspace.planUsage, value.received >= newest.received { continue }
+            Task {
+                _ = try? await workspace.call(ClaudeReportPlanUsage.self, .init(usage: newest))
+            }
+        }
     }
 
     private func handle(_ event: WorkspaceEvent, from workspace: DeviceWorkspace) {

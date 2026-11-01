@@ -66,6 +66,8 @@ struct StatusBarView: View {
     let workspace: DeviceWorkspace?
     @Environment(AppModel.self) private var app
     @State private var chatsPopoverShown = false
+    /// The time the Weekly usage item is drawn for, set again at the reset time of the plan usage.
+    @State private var usageClock = Date()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -76,6 +78,7 @@ struct StatusBarView: View {
                 if case .main(let window) = context {
                     middleGroup(window)
                     Spacer(minLength: 16)
+                    WeeklyUsageItem(usage: workspace?.planUsage, now: usageClock)
                     costsItem(window)
                 }
                 ladybug
@@ -86,6 +89,14 @@ struct StatusBarView: View {
         .frame(height: 26)
         .font(.system(size: 11))
         .background(Color(nsColor: .windowBackgroundColor))
+        .task(id: workspace?.planUsage?.resetsAt) {
+            // The Weekly usage item disappears at the reset time without waiting for an event
+            // (docs/ui.md › Weekly usage).
+            usageClock = Date()
+            guard let resetsAt = workspace?.planUsage?.resetsAt, resetsAt > usageClock else { return }
+            try? await Task.sleep(for: .seconds(resetsAt.timeIntervalSince(usageClock)))
+            usageClock = Date()
+        }
     }
 
     // MARK: Left: device state, remotes, MCP

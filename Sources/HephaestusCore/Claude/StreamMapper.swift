@@ -34,6 +34,9 @@ enum MapperOutput: Sendable, Hashable {
     /// A `result` line: its item; the CLI turn closes. The items of the finalized blocks come
     /// before.
     case result(ResultItem)
+    /// A `rate_limit_event` line with the weekly window: the engine's new plan usage
+    /// (docs/chats.md › Plan usage). `received` is the mapper's `now`.
+    case planUsage(PlanUsage)
     /// An ignored line to log in the chat's log file: `ignored <type>` or `ignored <type>/<subtype>`.
     case ignored(String)
     /// A line that is not a JSON object with a `type`: logged and skipped.
@@ -106,6 +109,9 @@ struct StreamMapper {
                 return [.invalid("command_lifecycle without command_uuid or state")]
             }
             return [.commandState(uuid: uuid, state: state)]
+        case "rate_limit_event":
+            guard let usage = planUsage(line) else { return [.ignored("ignored rate_limit_event")] }
+            return [.planUsage(usage)]
         default: return [.ignored("ignored \(type)")]
         }
     }
@@ -402,6 +408,27 @@ struct StreamMapper {
                               costUSD: line["total_cost_usd"]?.claudeDouble, isError: isError, summary: summary)
         outputs.append(.result(item))
         return outputs
+    }
+
+    // MARK: rate_limit_event
+
+    /// docs/chats.md › Plan usage: the weekly window `seven_day` of `rate_limit_info`, its status
+    /// and overage fields; nil when the window or the status is missing. An optional field of the
+    /// wrong type, or a string that is empty or holds a line break, counts as absent.
+    func planUsage(_ line: [String: JSONValue]) -> PlanUsage? {
+        func text(_ value: JSONValue?) -> String? {
+            guard let value = value?.stringValue, !value.isEmpty, !ModelRules.containsLineBreak(value) else { return nil }
+            return value
+        }
+        guard let info = line["rate_limit_info"]?.objectValue,
+              let week = info["unifiedWindows"]?.objectValue?["seven_day"]?.objectValue,
+              let utilization = week["utilization"]?.claudeDouble, utilization >= 0,
+              let resetsAt = week["resetsAt"]?.claudeDouble,
+              let status = text(info["status"])
+        else { return nil }
+        return PlanUsage(utilization: utilization, resetsAt: Date(timeIntervalSince1970: resetsAt).truncatedToSeconds, status: status,
+                         overageStatus: text(info["overageStatus"]), overageDisabledReason: text(info["overageDisabledReason"]),
+                         isUsingOverage: info["isUsingOverage"]?.claudeBool, received: now())
     }
 
     // MARK: Helpers
