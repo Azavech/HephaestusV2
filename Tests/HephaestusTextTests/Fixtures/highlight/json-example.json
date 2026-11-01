@@ -1,0 +1,10 @@
+{
+  "name": "value",
+  "escapes": "a\"b\\c\/d\be\ff\ng\rh\ti\u00e9j \x \u12 end",
+  "number": -12.5e+3,
+  "numbers": [0, 1, -0, 10, 01, 1.5, 1e5, 1E-5, 2., -, -a, 1.e5],
+  "literals": [true, false, null, trueish, nullable, xtrue, true_],
+  "nested" : { "key"
+    : "value" },
+  "unterminated": "abc
+}

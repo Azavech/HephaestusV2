@@ -1,0 +1,52 @@
+%YAML 1.2
+%TAG ! tag:example.com,2000:
+---
+# Comment
+name: Example  # trailing comment
+url: http://example.com/a#b
+quoted: "a \"b\" \n \x41 \u00e9 \q"
+single: 'it''s # not a comment'
+"quoted key": 1
+'single key': 2
+key with spaces: value
+key : spaced colon
+nested:
+  - item
+  - - nested
+    - true
+  - key: value
+    other: null
+  -
+anchors: &anchor value
+alias: *anchor
+merge: &base {a: 1}
+tagged: !!str 42
+local: !local value
+flow: [1, two, true, ~, -1.5, 0x1F, "q", 'r', &a b, *a]
+map: {a: 1, b: false, c: [x, null]}
+literal: |
+  line one # not a comment
+  key: not a key
+
+  after blank
+folded: >-
+  folded text
+keep: |+2 # comment
+  kept
+strip: |-1
+  stripped
+not block: |x
+numbers: [0, 12, -3, +4, 1.5, 1_000, 6.02e23, .5, -.5e3, 0o17, 0b101, 0xFF, .inf, -.Inf, +.INF, .NaN, .nan]
+not numbers: [1.2.3, 012, 0x, 1e, .Nan, inf, 1_000x]
+literals: [True, FALSE, Null, NULL, null, ~, yes]
+not literal: true story
+time: 12:30
+- - sequence after key
+plain line
+"unterminated
+...
+---
+document: two
+--- # after marker
+--- |
+  block after marker
