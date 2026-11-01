@@ -17,6 +17,8 @@ struct InlineTitleField: View {
     let save: (String) async -> Bool
 
     @State private var text = ""
+    /// The title being saved, so that Return followed by a focus change saves once.
+    @State private var saving: String?
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -32,6 +34,7 @@ struct InlineTitleField: View {
                 }
             }
             .onChange(of: stored) { _, newValue in
+                saving = nil
                 if !focused {
                     text = newValue
                 }
@@ -50,8 +53,11 @@ struct InlineTitleField: View {
             return
         }
         text = trimmed
+        guard trimmed != saving else { return }
+        saving = trimmed
         Task {
             if await !save(trimmed) {
+                saving = nil
                 text = stored
             }
         }

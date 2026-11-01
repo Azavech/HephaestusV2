@@ -130,6 +130,10 @@ struct ItemTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.ID
             let wanted = IndexSet(shownRows.indices.filter { parent.selection.contains(shownRows[$0].id) })
             if table.selectedRowIndexes != wanted {
                 table.selectRowIndexes(wanted, byExtendingSelection: false)
+                // A selection made elsewhere (navigation, a new ticket) is scrolled into view.
+                if let first = wanted.first {
+                    table.scrollRowToVisible(first)
+                }
             }
         }
 

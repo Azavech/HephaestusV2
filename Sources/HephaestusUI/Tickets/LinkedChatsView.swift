@@ -194,7 +194,7 @@ struct LinkedChatsView: View {
                         Button("Rename…") {
                             renameText = meta.title
                             renamingID = meta.id.uuidString
-                            renameFocused = true
+                            DispatchQueue.main.async { renameFocused = true }
                         }
                         .disabled(!window.isConnected)
                         Divider()
@@ -217,6 +217,9 @@ struct LinkedChatsView: View {
                     .focused($renameFocused)
                     .onSubmit { rename(meta) }
                     .onExitCommand { renamingID = nil }
+                    .onChange(of: renameFocused) { _, focused in
+                        if !focused { renamingID = nil }
+                    }
             } else {
                 Text(meta.title)
                     .lineLimit(1)
