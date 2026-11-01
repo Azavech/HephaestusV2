@@ -188,4 +188,36 @@ struct PromptAndNamingTests {
         ], answers: ["B": "two\nlines", "A": "Do nothing and beep"], completed: true)
         #expect(Engine.answersMessage(set) == "Answers:\nA: Do nothing and beep\nB: two\nlines")
     }
+
+    @Test("At most 2 naming calls run at once; the others wait in first-in first-out order")
+    func namingQueue() async {
+        let queue = NamingQueue(limit: 2)
+        await queue.acquire()
+        await queue.acquire()
+        let order = OrderLog()
+        let third = Task {
+            await queue.acquire()
+            order.append(3)
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+        let fourth = Task {
+            await queue.acquire()
+            order.append(4)
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(order.values.isEmpty)
+        await queue.release()
+        await third.value
+        #expect(order.values == [3])
+        await queue.release()
+        await fourth.value
+        #expect(order.values == [3, 4])
+    }
+}
+
+final class OrderLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [Int] = []
+    func append(_ value: Int) { lock.withLock { items.append(value) } }
+    var values: [Int] { lock.withLock { items } }
 }
