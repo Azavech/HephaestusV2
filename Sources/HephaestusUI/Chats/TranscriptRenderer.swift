@@ -251,11 +251,11 @@ enum TranscriptRenderer {
                 if option.label == question.recommended {
                     line += " (recommended)"
                 }
-                html += "<li>\(escape(line))</li>"
+                html += "<li>\(symbolText(line))</li>"
             }
             html += "</ul>"
             if let answer = set.answers[question.label] {
-                html += "<div class=\"answer\">\(escape("Answer: " + answer))</div>"
+                html += "<div class=\"answer\">\(symbolText("Answer: " + answer))</div>"
             } else {
                 html += "<div class=\"answer pending\">Not answered yet</div>"
             }
@@ -272,10 +272,18 @@ enum TranscriptRenderer {
 
     // MARK: Helpers
 
-    /// Markdown inside an element of the class `md` (docs/documentation-viewer.md › Styling).
+    /// Markdown inside an element of the class `md` (docs/documentation-viewer.md › Styling), with
+    /// the SF Symbols of this Mac (docs/chats.md › Links, images and files).
     static func markdown(_ text: String, context: TranscriptRenderContext) -> String {
-        let options = MarkdownRenderOptions(baseDirectory: "", projectRootPath: context.projectRootPath, stripFrontMatter: false)
+        let options = MarkdownRenderOptions(baseDirectory: "", projectRootPath: context.projectRootPath, stripFrontMatter: false,
+                                            isSymbolAvailable: SFSymbols.isAvailable)
         return "<div class=\"md\">" + MarkdownHTMLRenderer.render(text, options: options) + "</div>"
+    }
+
+    /// Plain text, escaped, in which each SF Symbol marker of this Mac is drawn
+    /// (docs/documentation-viewer.md › SF Symbol markers).
+    static func symbolText(_ text: String) -> String {
+        MarkdownSymbolMarkers.html(text, isSymbolAvailable: SFSymbols.isAvailable)
     }
 
     /// A fenced code block whose fence is longer than any backtick run of the code.

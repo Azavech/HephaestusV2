@@ -144,13 +144,13 @@ private struct MarkdownInlinesView: View {
     var body: some View {
         let segments = MarkdownInlineSegments.split(inlines)
         if segments.count == 1, case .text(let runs) = segments[0] {
-            Text(MarkdownAttributed.string(runs)).font(font)
+            MarkdownAttributed.text(runs).font(font)
         } else {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
                     switch segment {
                     case .text(let runs):
-                        Text(MarkdownAttributed.string(runs)).font(font)
+                        MarkdownAttributed.text(runs).font(font)
                     case .image(let source, let alt, let title):
                         MarkdownImageView(source: source, alt: alt, title: title)
                     }
@@ -188,38 +188,60 @@ private enum MarkdownInlineSegments {
     }
 }
 
-/// Inlines as an attributed string for `Text`: emphasis, strong, code, strikethrough and links.
+/// Inlines as a `Text`: emphasis, strong, code, strikethrough and links as attributes of the text,
+/// and each SF Symbol as its image followed by a space and its name
+/// (docs/documentation-viewer.md › SF Symbol markers).
 enum MarkdownAttributed {
-    static func string(_ inlines: [MarkdownInline]) -> AttributedString {
-        var result = AttributedString()
-        append(inlines, intent: [], link: nil, to: &result)
+    static func text(_ inlines: [MarkdownInline]) -> Text {
+        var builder = Builder()
+        builder.append(inlines, intent: [], link: nil)
+        builder.flush()
+        guard var result = builder.parts.first else { return Text(verbatim: "") }
+        for part in builder.parts.dropFirst() {
+            result = Text("\(result)\(part)")
+        }
         return result
     }
 
-    private static func append(_ inlines: [MarkdownInline], intent: InlinePresentationIntent, link: URL?,
-                               to result: inout AttributedString) {
-        for inline in inlines {
-            switch inline {
-            case .text(let text):
-                result.append(run(text, intent: intent, link: link))
-            case .code(let code):
-                result.append(run(code, intent: intent.union(.code), link: link))
-            case .emphasis(let content):
-                append(content, intent: intent.union(.emphasized), link: link, to: &result)
-            case .strong(let content):
-                append(content, intent: intent.union(.stronglyEmphasized), link: link, to: &result)
-            case .strikethrough(let content):
-                append(content, intent: intent.union(.strikethrough), link: link, to: &result)
-            case .link(let destination, _, let content):
-                append(content, intent: intent, link: MarkdownLinkURL.url(for: destination), to: &result)
-            case .image(_, let alt, _):
-                // Images inside a link or another run are shown by their alt text.
-                result.append(run(alt, intent: intent, link: link))
-            case .softBreak:
-                result.append(run(" ", intent: intent, link: link))
-            case .lineBreak:
-                result.append(run("\n", intent: intent, link: link))
+    /// The parts of the text: attributed runs and symbol images.
+    private struct Builder {
+        var parts: [Text] = []
+        var current = AttributedString()
+
+        mutating func append(_ inlines: [MarkdownInline], intent: InlinePresentationIntent, link: URL?) {
+            for inline in inlines {
+                switch inline {
+                case .text(let text):
+                    current.append(MarkdownAttributed.run(text, intent: intent, link: link))
+                case .code(let code):
+                    current.append(MarkdownAttributed.run(code, intent: intent.union(.code), link: link))
+                case .emphasis(let content):
+                    append(content, intent: intent.union(.emphasized), link: link)
+                case .strong(let content):
+                    append(content, intent: intent.union(.stronglyEmphasized), link: link)
+                case .strikethrough(let content):
+                    append(content, intent: intent.union(.strikethrough), link: link)
+                case .link(let destination, _, let content):
+                    append(content, intent: intent, link: MarkdownLinkURL.url(for: destination))
+                case .image(_, let alt, _):
+                    // Images inside a link or another run are shown by their alt text.
+                    current.append(MarkdownAttributed.run(alt, intent: intent, link: link))
+                case .symbol(let name):
+                    flush()
+                    parts.append(Text(Image(systemName: name)))
+                    current.append(MarkdownAttributed.run(" " + name, intent: intent, link: link))
+                case .softBreak:
+                    current.append(MarkdownAttributed.run(" ", intent: intent, link: link))
+                case .lineBreak:
+                    current.append(MarkdownAttributed.run("\n", intent: intent, link: link))
+                }
             }
+        }
+
+        mutating func flush() {
+            guard !current.characters.isEmpty else { return }
+            parts.append(Text(current))
+            current = AttributedString()
         }
     }
 
@@ -450,7 +472,7 @@ private struct MarkdownTableView: View {
         case .right?: frameAlignment = .trailing
         default: frameAlignment = .leading
         }
-        return Text(MarkdownAttributed.string(cell))
+        return MarkdownAttributed.text(cell)
             .font(.system(size: markdownBaseSize, weight: header ? .semibold : .regular))
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
@@ -471,13 +493,15 @@ enum MarkdownBlockCache {
         var baseDirectory: String
         var projectRootPath: String?
         var stripFrontMatter: Bool
+        /// SF Symbol markers are read; every caller that reads them asks the same Mac.
+        var readsSymbols: Bool
     }
 
     private static var entries: [Key: [MarkdownBlock]] = [:]
 
     static func blocks(_ markdown: String, options: MarkdownRenderOptions) -> [MarkdownBlock] {
         let key = Key(markdown: markdown, baseDirectory: options.baseDirectory, projectRootPath: options.projectRootPath,
-                      stripFrontMatter: options.stripFrontMatter)
+                      stripFrontMatter: options.stripFrontMatter, readsSymbols: options.isSymbolAvailable != nil)
         if let blocks = entries[key] {
             return blocks
         }

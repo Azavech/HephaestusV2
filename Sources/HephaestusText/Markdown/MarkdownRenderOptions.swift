@@ -1,18 +1,23 @@
 import Foundation
 
 /// Options of the Markdown renderers (docs/documentation-viewer.md › Renderer).
-public struct MarkdownRenderOptions: Sendable, Equatable {
+public struct MarkdownRenderOptions: Sendable {
     /// Project path of the folder the text belongs to; "" for the project root.
     public var baseDirectory: String
     /// Absolute path of the project root on the main device; recognizes absolute paths and file URLs.
     public var projectRootPath: String?
     /// Removes a leading YAML front matter block before parsing.
     public var stripFrontMatter: Bool
+    /// Draws the SF Symbol markers whose name it accepts; nil leaves `sf:` images refused
+    /// (docs/documentation-viewer.md › SF Symbol markers).
+    public var isSymbolAvailable: (@Sendable (String) -> Bool)?
 
-    public init(baseDirectory: String = "", projectRootPath: String? = nil, stripFrontMatter: Bool = false) {
+    public init(baseDirectory: String = "", projectRootPath: String? = nil, stripFrontMatter: Bool = false,
+                isSymbolAvailable: (@Sendable (String) -> Bool)? = nil) {
         self.baseDirectory = baseDirectory
         self.projectRootPath = projectRootPath
         self.stripFrontMatter = stripFrontMatter
+        self.isSymbolAvailable = isSymbolAvailable
     }
 }
 

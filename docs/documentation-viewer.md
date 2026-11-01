@@ -151,15 +151,18 @@ The Markdown renderers live in HephaestusText (`Sources/HephaestusText/Markdown/
 swift-markdown 0.9 does not attach the GFM autolink extension, so HephaestusText finds extended URL autolinks itself, in text outside links: `www.`, `http://` and `https://` followed by a valid domain, with the rules of cmark-gfm's extension ported to Swift (the characters allowed before `www.`, the domain check, and the trailing punctuation, unbalanced `)` and entity reference left out of the link). E-mail addresses are not detected and stay text, as e-mail autolinks render ([HTML output](#html-output)). Default chosen at design time.
 
 ```swift
-public struct MarkdownRenderOptions: Sendable, Equatable {
+public struct MarkdownRenderOptions: Sendable {
     /// Project path of the folder the text belongs to; "" for the project root.
     public var baseDirectory: String
     /// Absolute path of the project root on the main device; recognizes absolute paths and file URLs.
     public var projectRootPath: String?
     /// Removes a leading YAML front matter block before parsing.
     public var stripFrontMatter: Bool
+    /// Draws the SF Symbol markers whose name it accepts; nil leaves `sf:` images refused.
+    public var isSymbolAvailable: (@Sendable (String) -> Bool)?
 
-    public init(baseDirectory: String = "", projectRootPath: String? = nil, stripFrontMatter: Bool = false)
+    public init(baseDirectory: String = "", projectRootPath: String? = nil, stripFrontMatter: Bool = false,
+                isSymbolAvailable: (@Sendable (String) -> Bool)? = nil)
 }
 
 public enum MarkdownHTMLRenderer {
@@ -172,13 +175,13 @@ public enum MarkdownBlockRenderer {
 }
 ```
 
-| Caller                                                                 | `baseDirectory`  | `projectRootPath`        | `stripFrontMatter` |
-| ---------------------------------------------------------------------- | ---------------- | ------------------------ | ------------------ |
-| Doc preview                                                            | the doc's folder | the project's `rootPath` | true               |
-| Chat transcript ([Chats](chats.md#web-view-and-bridge))                | `""`             | the project's `rootPath` | false              |
-| Ticket descriptions and comments ([Tickets](tickets.md#ticket-detail)) | `""`             | the project's `rootPath` | false              |
+| Caller                                                                 | `baseDirectory`  | `projectRootPath`        | `stripFrontMatter` | `isSymbolAvailable`                                                                     |
+| ---------------------------------------------------------------------- | ---------------- | ------------------------ | ------------------ | --------------------------------------------------------------------------------------- |
+| Doc preview                                                            | the doc's folder | the project's `rootPath` | true               | nil                                                                                     |
+| Chat transcript ([Chats](chats.md#web-view-and-bridge))                | `""`             | the project's `rootPath` | false              | the symbols of the Mac that shows the window ([Chats](chats.md#links-images-and-files)) |
+| Ticket descriptions and comments ([Tickets](tickets.md#ticket-detail)) | `""`             | the project's `rootPath` | false              | nil                                                                                     |
 
-Other callers state their options in their own document. The output depends only on the text and the options: the same input always gives the same bytes.
+Other callers state their options in their own document. The output depends only on the text and the options: the same input always gives the same bytes, as long as `isSymbolAvailable` gives the same answers.
 
 ### Front matter
 
@@ -234,6 +237,8 @@ The unsupported list, the omitted comments and the inline attributes rendering a
 | Link with a refused destination           | its content only, without `<a>`                                                                                                                                                                                                                         |
 | Image with a loadable source              | `<img src="…" alt="…" loading="lazy">`, with ` title="…"` after `alt` when the image has a title ([Images](#images))                                                                                                                                    |
 | Image with a refused source               | `<span class="md-image-blocked" title="Image not loaded">`, the escaped alt text, `</span>`                                                                                                                                                             |
+| SF Symbol marker of an available symbol   | `<span class="md-symbol"><span class="md-symbol-icon" data-symbol="…"></span>`, the escaped name, `</span>`; the `data-symbol` value is the name ([SF Symbol markers](#sf-symbol-markers))                                                              |
+| SF Symbol marker of another name          | its source text as written, escaped ([SF Symbol markers](#sf-symbol-markers))                                                                                                                                                                           |
 | URL autolink, extended URL autolink       | `<a href="…">…</a>`; a `www.` autolink gets the destination `http://www.…`                                                                                                                                                                              |
 | E-mail autolink, extended e-mail autolink | the escaped address as text                                                                                                                                                                                                                             |
 | Inline HTML                               | its escaped source as text; inline HTML that starts with `<!--` is omitted                                                                                                                                                                              |
@@ -369,6 +374,27 @@ The renderer only filters; what a click does is decided when the link is activat
 
 Query and fragment of a project image are dropped. Loading remote images is a design-time choice. Default chosen at design time.
 
+An image whose source has the scheme `sf` is an [SF Symbol marker](#sf-symbol-markers) when the options have `isSymbolAvailable`. Only the chat transcript and the pinned questions card set it ([Chats](chats.md#links-images-and-files)): in the doc preview, ticket descriptions and comments an `sf:` image is refused, as the table says.
+
+### SF Symbol markers
+
+An SF Symbol marker is an image whose source has the scheme `sf` (any letter case), for example `![](sf:line.3.horizontal.decrease.circle)`. Its name is the source after the first `:`. The renderers read markers only when the options have `isSymbolAvailable`.
+
+- When `isSymbolAvailable` returns true for the name, the marker becomes `.symbol(name)` in the block model and the symbol HTML of [HTML output](#html-output): an element with the class `md-symbol-icon` that the page draws as the icon, followed by the name ([Chats](chats.md#links-images-and-files)). The alt text and the title are not shown.
+- Otherwise the marker becomes `.text` with its Markdown source as written, for example `![](sf:no.such.symbol)`.
+- `MarkdownSymbolMarkers` finds markers in plain text, such as the option labels of questions, with the same two rules. In plain text a marker is `![`, an alt text without `[`, `]` or line break, `](`, `sf:` in any letter case, a name of one or more characters other than `(`, `)` and white space, and `)`.
+
+```swift
+public enum MarkdownSymbolMarkers {
+    /// The plain text as `.text` and `.symbol` inlines.
+    public static func inlines(in text: String, isSymbolAvailable: (String) -> Bool) -> [MarkdownInline]
+    /// The plain text as HTML: escaped text and the symbol HTML of HTML output.
+    public static func html(_ text: String, isSymbolAvailable: (String) -> Bool) -> String
+}
+```
+
+The marker syntax is the user's choice; the plain-text form and the HTML are Default chosen at design time.
+
 ### Path resolution
 
 Images and links to project files resolve a reference R (without scheme, or a `file` URL) to a project path. Default chosen at design time.
@@ -398,9 +424,9 @@ Raw HTML is always escaped ([Architecture](architecture.md#security-overview)):
 
 1. Every text and attribute value is escaped as in [HTML output](#html-output).
 2. HTML blocks and inline HTML never become markup: they are written as escaped text; HTML comments are left out.
-3. The renderer writes only the elements `p`, `h1`–`h6`, `hr`, `blockquote`, `ul`, `ol`, `li`, `input`, `div`, `pre`, `code`, `span`, `button`, `table`, `thead`, `tbody`, `tr`, `th`, `td`, `a`, `img`, `em`, `strong`, `del` and `br`, and only the attributes `id` (headings), `class` (the fixed `md-…` and `tok-…` names of this document), `start` (`ol`), `type`, `disabled` and `checked` (`input`), `type` (`button`), `href` and `title` (`a`), `src`, `alt`, `title` and `loading` (`img`), `data-lang` (`code`). It never writes `style` or event handler attributes.
+3. The renderer writes only the elements `p`, `h1`–`h6`, `hr`, `blockquote`, `ul`, `ol`, `li`, `input`, `div`, `pre`, `code`, `span`, `button`, `table`, `thead`, `tbody`, `tr`, `th`, `td`, `a`, `img`, `em`, `strong`, `del` and `br`, and only the attributes `id` (headings), `class` (the fixed `md-…` and `tok-…` names of this document), `start` (`ol`), `type`, `disabled` and `checked` (`input`), `type` (`button`), `href` and `title` (`a`), `src`, `alt`, `title` and `loading` (`img`), `data-lang` (`code`), `data-symbol` (`span`). It never writes `style` or event handler attributes.
 4. Link destinations and image sources pass the tables of [Links](#links) and [Images](#images); a refused one never reaches an attribute.
-5. Heading ids contain only letters, marks, numbers, connector punctuation and `-`; language labels only the characters of [Code blocks](#code-blocks).
+5. Heading ids contain only letters, marks, numbers, connector punctuation and `-`; language labels only the characters of [Code blocks](#code-blocks); a `data-symbol` value only a name that `isSymbolAvailable` accepted, escaped.
 6. The pages that show rendered HTML run only their bundled script, set a Content Security Policy, never navigate and accept only the messages they define ([Preview web view](#preview-web-view), [Chats](chats.md#web-view-and-bridge)).
 
 HephaestusTextTests render the fixture pairs `Tests/HephaestusTextTests/Fixtures/markdown/<name>.md` and `<name>.html` and compare the output byte for byte. A pair is rendered with `baseDirectory` `docs`, `projectRootPath` `/Users/example/Developer/App` (the options of the path resolution examples) and `stripFrontMatter` true, as the doc preview renders; a file `<name>.options.json` next to the pair replaces any of these three values. The fixtures cover every row of the HTML output table, the example above, the heading anchor examples, the path resolution examples, and hostile input: `<script>` blocks, `javascript:` and `data:` links and images, `onerror=` inside raw HTML, and quotes in titles and alt texts. Default chosen at design time.
@@ -448,6 +474,7 @@ public indirect enum MarkdownInline: Sendable, Equatable {
     case strikethrough([MarkdownInline])
     case link(destination: String, title: String?, content: [MarkdownInline]) // accepted destinations only
     case image(source: MarkdownImageSource, alt: String, title: String?)
+    case symbol(String)                  // an SF Symbol marker of an available symbol: its name
     case softBreak
     case lineBreak
 }
@@ -509,6 +536,7 @@ Web views never read files directly: project files and attachments are loaded th
 
 - Percent-encoding: each path component is UTF-8 encoded and every byte outside `A`–`Z`, `a`–`z`, `0`–`9`, `-`, `.`, `_` and `~` is written as `%` and two uppercase hexadecimal digits; the components are joined with `/`. Example: `docs/my notes/flow chart.png` → `hephaestus-file://project/docs/my%20notes/flow%20chart.png`.
 - The project is not part of the URL: every web view that shows rendered Markdown belongs to one project, and its handler knows it.
+- The chat transcript also loads the icons of [SF Symbol markers](#sf-symbol-markers) through a third scheme, `hephaestus-symbol`, whose handler draws them on the Mac that shows the window without an engine call ([Chats](chats.md#links-images-and-files)). The doc preview does not register it.
 
 ### Scheme handler
 
@@ -585,3 +613,4 @@ The Docs section works the same in a window that shows a remote device ([Remote 
 - R15: A project has documentation: many Markdown files, generally in the `docs` folder of its code folder.
 - R16: The documentation can be viewed and edited.
 - R67: Each bubble renders Markdown.
+- R114: Claude marks each SF Symbol it names, and the chat transcript and the pinned questions card show the marker as the symbol's icon followed by its name.

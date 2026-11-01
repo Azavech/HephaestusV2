@@ -57,6 +57,7 @@ public indirect enum MarkdownInline: Sendable, Equatable {
     case strikethrough([MarkdownInline])
     case link(destination: String, title: String?, content: [MarkdownInline]) // accepted destinations only
     case image(source: MarkdownImageSource, alt: String, title: String?)
+    case symbol(String)                  // an SF Symbol marker of an available symbol: its name
     case softBreak
     case lineBreak
 }

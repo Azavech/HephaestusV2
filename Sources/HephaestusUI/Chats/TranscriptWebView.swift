@@ -102,6 +102,7 @@ final class TranscriptController {
         let schemeHandler = ResourceSchemeHandler(connection: connection, projectID: projectID())
         configuration.setURLSchemeHandler(schemeHandler, forURLScheme: ResourceSchemeHandler.fileScheme)
         configuration.setURLSchemeHandler(schemeHandler, forURLScheme: ResourceSchemeHandler.attachmentScheme)
+        configuration.setURLSchemeHandler(SymbolSchemeHandler(), forURLScheme: SymbolSchemeHandler.scheme)
         configuration.userContentController.add(TranscriptMessageProxy(controller: self), name: Self.messageHandlerName)
         if transparent {
             configuration.userContentController.addUserScript(WKUserScript(

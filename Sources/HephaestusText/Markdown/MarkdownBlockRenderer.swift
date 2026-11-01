@@ -9,7 +9,7 @@ public enum MarkdownBlockRenderer {
         let source = options.stripFrontMatter ? FrontMatter.strip(markdown) : markdown
         // Smart punctuation is off: the text is CommonMark's.
         let document = Document(parsing: source, options: [.disableSmartOpts])
-        var converter = MarkdownConverter(options: options)
+        var converter = MarkdownConverter(options: options, source: source)
         return converter.blocks(document.children)
     }
 }
@@ -63,9 +63,13 @@ enum CodeBlockLanguage {
 struct MarkdownConverter {
     let options: MarkdownRenderOptions
     private var anchors = HeadingAnchors()
+    /// The parsed text, kept only when SF Symbol markers are read: an unavailable marker shows
+    /// its source as written.
+    private let sourceLines: MarkdownSourceLines?
 
-    init(options: MarkdownRenderOptions) {
+    init(options: MarkdownRenderOptions, source: String) {
         self.options = options
+        self.sourceLines = options.isSymbolAvailable == nil ? nil : MarkdownSourceLines(source)
     }
 
     mutating func blocks<S: Sequence>(_ children: S) -> [MarkdownBlock] where S.Element == Markup {
@@ -198,6 +202,10 @@ struct MarkdownConverter {
                 result.append(contentsOf: self.link(destination: link.destination ?? "", title: link.title,
                                                     content: inlines(link.children, inLink: true)))
             case let image as Image:
+                if let isSymbolAvailable = options.isSymbolAvailable, let name = MarkdownSymbolMarkers.name(ofSource: image.source ?? "") {
+                    result.append(symbolMarker(image, name: name, isSymbolAvailable: isSymbolAvailable))
+                    continue
+                }
                 let source = MarkdownLinks.imageSource(image.source ?? "", options: options)
                 result.append(.image(source: source, alt: Self.altText(image.children), title: Self.nonEmpty(image.title)))
             case is SoftBreak:
@@ -217,6 +225,18 @@ struct MarkdownConverter {
         }
         flush()
         return Self.mergingTexts(result)
+    }
+
+    /// An SF Symbol marker: `.symbol` for an available name, else its Markdown source as written
+    /// (docs/documentation-viewer.md › SF Symbol markers).
+    private func symbolMarker(_ image: Image, name: String, isSymbolAvailable: (String) -> Bool) -> MarkdownInline {
+        if isSymbolAvailable(name) {
+            return .symbol(name)
+        }
+        if let range = image.range, let text = sourceLines?.text(in: range) {
+            return .text(text)
+        }
+        return .text(image.format())
     }
 
     /// A link with an accepted destination; a refused one becomes its content.

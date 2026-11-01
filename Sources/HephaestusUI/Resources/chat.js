@@ -52,6 +52,14 @@
         icons[i].appendChild(iconElement(icons[i].getAttribute("data-icon")));
       }
     }
+    // SF Symbol markers: the icon is the text color through a mask that holds the symbol's image
+    // (docs/chats.md › Links, images and files).
+    var symbols = element.querySelectorAll(".md-symbol-icon[data-symbol]");
+    for (var j = 0; j < symbols.length; j++) {
+      var mask = 'url("hephaestus-symbol://symbol/' + encodeURIComponent(symbols[j].getAttribute("data-symbol")) + '")';
+      symbols[j].style.webkitMaskImage = mask;
+      symbols[j].style.maskImage = mask;
+    }
   }
 
   // MARK: Page structure

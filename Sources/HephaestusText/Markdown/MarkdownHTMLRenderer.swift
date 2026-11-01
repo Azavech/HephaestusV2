@@ -224,6 +224,12 @@ struct HTMLWriter {
                 output += " title=\"\(Self.escaped(title))\""
             }
             output += " loading=\"lazy\">"
+        case .symbol(let name):
+            // An SF Symbol marker: the page draws the icon of `data-symbol`, followed by the name
+            // (docs/documentation-viewer.md › SF Symbol markers).
+            let escapedName = Self.escaped(name)
+            output += "<span class=\"md-symbol\"><span class=\"md-symbol-icon\" data-symbol=\"\(escapedName)\"></span>"
+            output += "\(escapedName)</span>"
         case .softBreak:
             output += "\n"
         case .lineBreak:

@@ -1,5 +1,6 @@
 // OWNER: ui-chats — the pinned questions card (docs/chats.md › Pinned questions card).
 import HephaestusCore
+import HephaestusText
 import SwiftUI
 
 /// The navigation rules of the questions card (docs/chats.md › Pinned questions card).
@@ -78,6 +79,9 @@ struct QuestionsCard: View {
                 .buttonStyle(.borderless)
             }
             MarkdownView(markdown: question.question)
+                .transformEnvironment(\.markdownContext) { context in
+                    context.options.isSymbolAvailable = SFSymbols.isAvailable
+                }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
             VStack(alignment: .leading, spacing: 6) {
@@ -136,7 +140,7 @@ struct QuestionsCard: View {
             }
             VStack(alignment: .leading, spacing: 1) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(option.label)
+                    symbolText(option.label)
                         .bold()
                     if option.label == question.recommended {
                         Text("Recommended")
@@ -149,7 +153,7 @@ struct QuestionsCard: View {
                     }
                 }
                 if let description = option.description, !description.isEmpty {
-                    Text(description)
+                    symbolText(description)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -159,6 +163,12 @@ struct QuestionsCard: View {
         .onTapGesture {
             model.questionChoice = choice
         }
+    }
+
+    /// Plain text in which each SF Symbol marker of this Mac shows the symbol's image followed by a
+    /// space and its name.
+    private func symbolText(_ text: String) -> Text {
+        MarkdownAttributed.text(MarkdownSymbolMarkers.inlines(in: text, isSymbolAvailable: SFSymbols.isAvailable))
     }
 
     /// `Answer another way` with a multi-line field of 1 to 6 visible lines; a click on its line

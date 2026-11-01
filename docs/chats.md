@@ -622,8 +622,8 @@ While the chat has a question set that is not completed, a native SwiftUI card i
 
 - Header `Question <label> (<position> of <count>)`, where `<position>` is the displayed question's place in the set counting from 1, for example `Question A (1 of 1)` or `Question B (2 of 3)`.
 - At the top right, previous and next arrow buttons, then a minimize button, a chevron pointing down. The arrows display the previous and the next question of the set, in label order, answered or not; they wrap at neither end: the previous arrow is disabled on the first question and the next arrow on the last one.
-- The question text rendered as Markdown.
-- One row per option: a radio button, then the label in bold and the description in secondary text. A click anywhere in the row (the radio button, the label, the `Recommended` tag, the description or the empty space) chooses the option. The label and the description are not selectable as text. The recommended option carries a `Recommended` tag.
+- The question text rendered as Markdown ([Block model](documentation-viewer.md#block-model)) with the `isSymbolAvailable` of [Links, images and files](#links-images-and-files): an SF Symbol marker of an available symbol shows the symbol's image (`Image(systemName:)`) followed by a space and its name, inline in the text; any other marker shows its text unchanged.
+- One row per option: a radio button, then the label in bold and the description in secondary text. The label and the description are plain text in which each SF Symbol marker of an available symbol shows the symbol's image followed by a space and its name ([SF Symbol markers](documentation-viewer.md#sf-symbol-markers)). A click anywhere in the row (the radio button, the label, the `Recommended` tag, the description or the empty space) chooses the option. The label and the description are not selectable as text. The recommended option carries a `Recommended` tag.
 - The header and the question text are selectable (`textSelection(.enabled)`); the texts of the option rows are not.
 - A last radio row `Answer another way` with a multi-line text field (1 to 6 visible lines). A click on the radio button, the label `Answer another way` or the empty part of its line chooses this row; the field stays editable, and typing in it selects this row; Return inserts a line break.
 - Selection when a question is displayed: a question without an answer appears with its recommended option selected and an empty field. An answered question appears with its answer selected: the option whose label equals the answer, or else `Answer another way` with the answer as its text; a skipped question thus shows `Answer another way` with the text `Skipped`.
@@ -791,6 +791,7 @@ Messages to Swift (`window.webkit.messageHandlers.hephaestus.postMessage`):
 
 - `<duration>` from `durationMs`: below 60 s, one decimal and ` s` (`3.5 s`); below one hour, `<m> min <s> s` (`2 min 5 s`); else `<h> h <m> min` (`1 h 2 min`).
 - `<cost>`: `< $0.01` below 0.01, else `$` and two decimals (`$0.42`). These formats are Default chosen at design time.
+- SF Symbol markers ([Links, images and files](#links-images-and-files)) are drawn as the symbol's icon followed by its name in the `user`, `assistant` and `thinking` bubbles, in the streaming bubbles, and in the `questions` card: in its question texts, which are Markdown, and in its option lines and answers, which are plain text ([SF Symbol markers](documentation-viewer.md#sf-symbol-markers)). The other items show a marker as its text.
 - Hovering a bubble shows its `created` time as a tooltip and a Copy button that copies its Markdown source.
 - `chat.css` follows the light and dark appearance (`prefers-color-scheme`); code colors are those of the [Code editor](code-editor.md).
 
@@ -830,6 +831,9 @@ Generic rule: the first of the input fields `command`, `file_path`, `path`, `pat
 - A link click that fails, such as a failed `webTabs.open`, shows the alert `Open Link failed`; a file of the transcript that cannot be read shows the alert `Open failed` ([Principles](ui.md#principles)). Default chosen at design time.
 - Images use URLs `hephaestus-attachment://attachment/<percent-encoded path relative to .hephaestus/>`, served by a `WKURLSchemeHandler` that calls `attachments.read` for the chat's project through the window's engine connection; results are cached per window.
 - Clicking an image opens the [image viewer](tickets.md#image-viewer). Clicking another file opens it with Quick Look on a temporary copy, as for ticket attachments ([Tickets](tickets.md#showing-attachments)).
+- An SF Symbol marker is a Markdown image whose source has the scheme `sf`, for example `![](sf:line.3.horizontal.decrease.circle)` ([SF Symbol markers](documentation-viewer.md#sf-symbol-markers)). The transcript renders Markdown with `isSymbolAvailable` true for a name when `NSImage(systemSymbolName:accessibilityDescription:)` gives an image for it on the Mac that shows the window. A marker of such a name is drawn as the symbol's icon followed by its name; any other marker shows its text unchanged, for example `![](sf:no.such.symbol)`.
+- The icon is the `md-symbol-icon` element of the marker: 1.25em wide and 1em high, 0.25em before the name, filled with the color of the text around it through a mask that holds the symbol's image, scaled to fit and centered. `chat.js` sets that mask to `hephaestus-symbol://symbol/<name>`, the name encoded with `encodeURIComponent`, and the page's Content Security Policy allows `hephaestus-symbol:` images. Default chosen at design time.
+- `SymbolSchemeHandler`, registered for `hephaestus-symbol` on the transcript web view only, answers a GET whose host is `symbol` with a PNG of the symbol named by the percent-decoded path without its leading `/`, drawn from `NSImage(systemSymbolName:accessibilityDescription:)` at 48 points and scale 2. The response has status 200, `Content-Type: image/png`, `Content-Length` and `Access-Control-Allow-Origin: *`, since WebKit loads mask images in CORS mode. It makes no engine call, so a window showing a remote device draws the symbols of its own Mac. A name without symbol fails with `URLError(.fileDoesNotExist)` and a malformed URL with `URLError(.noPermissionsToReadFile)`. Default chosen at design time.
 
 ### Selection and copying
 
@@ -1411,6 +1415,10 @@ close_chat closes the chat you run in. After the call, finish your reply: when y
 
 Close a project chat only when the user asks for it.
 
+# SF Symbols
+
+When you name an SF Symbol in a reply or in ask_questions, write it as ![](sf:<name>), for example ![](sf:line.3.horizontal.decrease.circle): HephaestusV2 shows the symbol's icon followed by its name there.
+
 # When the project is HephaestusV2
 
 When the project is the HephaestusV2 app itself:
@@ -1599,3 +1607,4 @@ Follow "Implementing a bundle" as its orchestrator: take the tickets in this ord
 - R111: Implement All runs one ticket chat per ticket, one at a time, coordinated by the bundle chat that started them, and pushes once at the end.
 - R112: Main windows show the Claude plan's weekly usage in the status bar as a small round progress indicator; a click shows the percentage used, when the week resets and the overage status.
 - R113: Claude can close the chat it runs in when the user asks or its work is finished; a closed chat shows `This conversation is over` in place of its composer until the user reopens it.
+- R114: Claude marks each SF Symbol it names, and the chat transcript and the pinned questions card show the marker as the symbol's icon followed by its name.

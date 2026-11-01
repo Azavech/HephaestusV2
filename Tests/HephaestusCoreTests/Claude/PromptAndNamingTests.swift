@@ -207,6 +207,20 @@ struct PromptAndNamingTests {
         #expect(section.contains("Close a project chat only when the user asks for it."))
     }
 
+    @Test("The rendered common prompt tells Claude to write an SF Symbol as ![](sf:<name>)")
+    func sfSymbolPrompt() throws {
+        let rule = "# SF Symbols\n\nWhen you name an SF Symbol in a reply or in ask_questions, write it as ![](sf:<name>), "
+            + "for example ![](sf:line.3.horizontal.decrease.circle): HephaestusV2 shows the symbol's icon followed by its name there.\n\n"
+        let values = ["projectName": "Hephaestus V2", "projectID": "HEPH", "projectRoot": "/Users/example/Developer/HephaestusV2",
+                      "deviceName": "Studio", "docsPath": "docs", "projectCommands": "- build: make build"]
+        let common = Prompts.render(Prompts.text(.common), values)
+        let range = try #require(common.range(of: rule))
+        #expect(common[range.upperBound...].hasPrefix("# When the project is HephaestusV2"))
+        for kind in [ChatKind.project, .ticket, .bundle, .feedback] {
+            #expect(Prompts.systemPrompt(kind: kind, values: values).contains(rule), "\(kind)")
+        }
+    }
+
     @Test("Naming inputs: the label line, then the text cut at 4,000 characters")
     func namingInputs() {
         #expect(HaikuTitleNamer.input(for: .ticket(description: "Problem\nX")) == "Ticket description:\nProblem\nX")

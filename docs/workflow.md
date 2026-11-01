@@ -322,6 +322,10 @@ The format of this comment is a default. Default chosen at design time.
 - Claude implements the new ticket in the feedback chat only when the user asks, and then follows the implementation workflow. Default chosen at design time.
 - Claude closes the chat it runs in with `close_chat` when the user asks for it, and when the work of the chat is finished: in a ticket chat once it has set the ticket to `done`, in a bundle chat once every ticket has been implemented or skipped and the push is done, in a feedback chat once it has created the ticket. It closes a project chat only when the user asks. After the call it finishes its reply; the chat closes when the turn ends, and the user can reopen it ([Chats](chats.md#closing-a-chat)).
 
+## SF Symbols
+
+When Claude names an SF Symbol in a reply or in `ask_questions`, it writes it as `![](sf:<name>)`, for example `![](sf:line.3.horizontal.decrease.circle)`. The chat transcript and the pinned questions card show such a marker as the symbol's icon followed by its name ([Chats](chats.md#links-images-and-files)); ticket descriptions, comments and docs do not draw it.
+
 ## Self-update loop
 
 When the project is HephaestusV2 itself (the registered project whose git remote is the app's release repository, Info.plist key `HephaestusReleaseRepository`), a pushed change reaches the running app without manual steps:
@@ -480,3 +484,4 @@ Notes
 - R110: A bundle has a status: todo, in progress or done; Implement All sets it to in progress and is disabled until the user sets it back to To Do.
 - R111: Implement All runs one ticket chat per ticket, one at a time, coordinated by the bundle chat that started them, and pushes once at the end.
 - R113: Claude can close the chat it runs in when the user asks or its work is finished; a closed chat shows `This conversation is over` in place of its composer until the user reopens it.
+- R114: Claude marks each SF Symbol it names, and the chat transcript and the pinned questions card show the marker as the symbol's icon followed by its name.
