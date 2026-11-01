@@ -33,6 +33,8 @@ struct PairedDevicesTable: View {
             TableColumn("Name") { row in
                 Text(app.deviceName(row.device.id.uuidString))
             }
+            // DOC-GAP: docs/ui.md › Devices writes the address `host:port`; an IPv6 host is written
+            // in brackets, as the Add Device sheet's address syntax reads it.
             TableColumn("Address") { row in
                 Text(AddDeviceSheet.formatAddress(host: row.device.host, port: row.device.port))
                     .font(.system(.body, design: .monospaced))

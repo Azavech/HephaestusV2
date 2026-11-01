@@ -81,6 +81,10 @@ struct RunState: Identifiable {
 /// Apart from `clear()`, the text only grows at its end and loses lines at its start, so a view
 /// can follow it incrementally with `firstLineNumber`, `lineCount`, `lines(from:)`, `partial`,
 /// `dropped` and `clearCount`.
+// DOC-GAP: docs/projects.md › Console keeps "the last 20,000 lines" without saying whether the
+// dropped-output line and the unfinished last line count; the dropped-output line does not, the
+// unfinished line does. "Every other two-character ESC sequence" removes ESC and the next
+// character only, so the third character of a sequence such as `ESC ( B` stays.
 struct ConsoleBuffer {
     /// Lines kept, the dropped-output line excluded.
     static let lineLimit = 20_000
