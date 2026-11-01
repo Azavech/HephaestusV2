@@ -25,11 +25,11 @@ struct CachedModel: Sendable, Hashable {
 
 /// Durations of the Claude CLI service; tests shorten them.
 struct ClaudeCLITimings: Sendable {
-    /// `--version`, docs/chats.md › Version and status.
-    var versionTimeout: Duration = .seconds(10)
-    /// The CLI lookup in the login shell (candidate 4 of docs/chats.md › Locating the CLI), with
-    /// the 10 s of the environment capture.
-    var loginShellTimeout: Duration = .seconds(10)
+    /// `--version`, docs/chats.md › Version and status: it only ends a CLI that hangs.
+    var versionTimeout: Duration = .seconds(30)
+    /// The CLI lookup in the login shell (candidate 4 of docs/chats.md › Locating the CLI): it
+    /// only ends a shell that hangs.
+    var loginShellTimeout: Duration = .seconds(30)
     /// The models probe (docs/chats.md › Models).
     var probeTimeout: Duration = .seconds(30)
     /// SIGKILL after the SIGTERM of a timeout (docs/chats.md › Signals).

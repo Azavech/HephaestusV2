@@ -63,7 +63,7 @@ The engine uses the first candidate that applies:
 | 3     | `~/.local/bin/claude`, `/opt/homebrew/bin/claude`, `/usr/local/bin/claude` | one of them is an executable file; the first such file in this order |
 | 4     | output of `/bin/zsh -lic 'command -v claude'`                              | its last non-empty line is the absolute path of an executable file   |
 
-When candidate 1 or 2 is set but is not an executable file, the CLI is unavailable and the later candidates are not tried. Candidate 4 runs with the 10 s timeout of the [environment capture](#environment); a run that times out does not apply. Default chosen at design time.
+When candidate 1 or 2 is set but is not an executable file, the CLI is unavailable and the later candidates are not tried. Candidate 4 runs with a timeout of 30 s; a run that times out does not apply. Default chosen at design time.
 
 ### Environment
 
@@ -71,7 +71,7 @@ After the engine starts, it runs `/bin/zsh -lic 'env -0'` once, with a timeout o
 
 ### Version and status
 
-The engine computes `ClaudeStatus` {available, checking, path?, version?, error?} after the environment capture at engine start, whenever the setting `claudePath` changes, and on every `claude.status` call ([Engine API](engine-api.md#claudestatus)): it locates the CLI, runs `<path> --version` with a timeout of 10 s, and takes as version the first match of `[0-9]+(\.[0-9]+)+` in its standard output.
+The engine computes `ClaudeStatus` {available, checking, path?, version?, error?} after the environment capture at engine start, whenever the setting `claudePath` changes, and on every `claude.status` call ([Engine API](engine-api.md#claudestatus)): it locates the CLI, runs `<path> --version` with a timeout of 30 s, and takes as version the first match of `[0-9]+(\.[0-9]+)+` in its standard output. The timeouts of candidate 4 and of `--version` only end a shell or a CLI that hangs: on a busy or slow machine, where starting the login shell or the CLI takes several seconds, the CLI is still found and its version read, `checking` staying true meanwhile. Default chosen at design time.
 
 | Outcome                                                    | available | path | version | error                                                                              |
 | ---------------------------------------------------------- | --------- | ---- | ------- | ---------------------------------------------------------------------------------- |
