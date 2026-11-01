@@ -216,6 +216,7 @@ extension Engine {
             }
             recordApplied(path, data)
             guard let old = domain.project(id), new != old else { return }
+            let summariesBefore = projectSummaries()
             domain.setProject(new)
             var listChanged = new.name != old.name
             var removedIDs: [ProjectID] = []
@@ -243,7 +244,8 @@ extension Engine {
             if new.skills != old.skills {
                 regenerateSkillsPlugin(id)
             }
-            if listChanged {
+            // A changed `type` or `deletedChats` alters the summaries too (docs/data-model.md › Reactions).
+            if listChanged || projectSummaries() != summariesBefore {
                 emitProjectsChanged(origin: .system)
             }
         }

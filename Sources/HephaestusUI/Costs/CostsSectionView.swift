@@ -6,6 +6,7 @@ import SwiftUI
 /// project and one per descendant, each with its lines. Built from the workspace's data only.
 struct CostBreakdown: Equatable {
     struct Line: Equatable, Identifiable {
+        var source: CostSource
         /// The chat id.
         var id: UUID
         var title: String
@@ -54,18 +55,32 @@ struct CostBreakdown: Equatable {
         let chatsByProject = Dictionary(grouping: chats, by: \.projectID)
         totalUSD = root.costUSD
         groups = members.map { summary, depth in
-            var lines = (chatsByProject[summary.id] ?? []).map { chat in
-                Line(id: chat.id, title: chat.title, kind: Self.kind(chat.kind, ticketID: chat.ticketID, bundleID: chat.bundleID),
-                     costUSD: chat.costUSD, deleted: false, updated: chat.updated)
-            }
-            if showDeleted {
-                lines += (deletedChats[summary.id] ?? []).map { chat in
-                    Line(id: chat.id, title: chat.title, kind: Self.kind(chat.kind, ticketID: chat.ticketID, bundleID: chat.bundleID),
-                         costUSD: chat.costUSD, deleted: true, updated: chat.deleted)
-                }
+            let lines = CostSource.allCases.flatMap { source in
+                Self.lines(source, chats: chatsByProject[summary.id] ?? [], deletedChats: deletedChats[summary.id] ?? [],
+                           showDeleted: showDeleted)
             }
             return Group(project: summary, depth: depth, subtotalUSD: summary.ownCostUSD, lines: lines.sorted(by: Self.order),
                          loading: deletedChats[summary.id] == nil)
+        }
+    }
+
+    /// The lines of one cost source in a project's group (docs/costs.md › Cost sources).
+    static func lines(_ source: CostSource, chats: [ChatMeta], deletedChats: [DeletedChat], showDeleted: Bool) -> [Line] {
+        switch source {
+        case .claudeChats:
+            var lines = chats.map { chat in
+                Line(source: source, id: chat.id, title: chat.title,
+                     kind: kind(chat.kind, ticketID: chat.ticketID, bundleID: chat.bundleID),
+                     costUSD: chat.costUSD, deleted: false, updated: chat.updated)
+            }
+            if showDeleted {
+                lines += deletedChats.map { chat in
+                    Line(source: source, id: chat.id, title: chat.title,
+                         kind: kind(chat.kind, ticketID: chat.ticketID, bundleID: chat.bundleID),
+                         costUSD: chat.costUSD, deleted: true, updated: chat.deleted)
+                }
+            }
+            return lines
         }
     }
 

@@ -25,18 +25,25 @@ struct ChatCostTests {
         #expect(cost.costUSD == 0.5)
     }
 
-    @Test("Totals: own chats, chats without a cost, deleted chats and sub projects")
+    @Test("Totals: own chats, chats without a cost, deleted chats and sub projects at any depth")
     func totals() async throws {
         let chatA = UUID()
         let chatB = UUID()
         let chatC = UUID()
+        let chatD = UUID()
         let deleted = DeletedChat(id: UUID(), title: "Old", kind: .project, costUSD: 1, deleted: ISODate.now())
+        let deletedInCore = DeletedChat(id: UUID(), title: "Gone", kind: .project, costUSD: 0.125, deleted: ISODate.now())
         try await withChatEngine(prepare: { folder, _ in
             try ProjectFileStore.write(Project(id: "DEMO", name: "Demo", created: ISODate.now(), subprojects: ["api"],
                                                deletedChats: [deleted]), to: folder)
+            // DEMO › API › CORE: the grandchild's costs reach DEMO's total.
             let api = ProjectFolder(root: folder.root.appendingPathComponent("api", isDirectory: true))
             try FileManager.default.createDirectory(at: api.root, withIntermediateDirectories: true)
-            try ProjectFileStore.write(Project(id: "API", name: "Api", created: ISODate.now()), to: api)
+            try ProjectFileStore.write(Project(id: "API", name: "Api", created: ISODate.now(), subprojects: ["core"]), to: api)
+            let core = ProjectFolder(root: api.root.appendingPathComponent("core", isDirectory: true))
+            try FileManager.default.createDirectory(at: core.root, withIntermediateDirectories: true)
+            try ProjectFileStore.write(Project(id: "CORE", name: "Core", created: ISODate.now(), deletedChats: [deletedInCore]),
+                                       to: core)
             let writer = JSONLinesWriter()
             try ProjectFileStore.write(ChatMeta(id: chatA, kind: .project, created: ISODate.now()), to: folder)
             for cost in [0.5, 0.75] {
@@ -45,22 +52,37 @@ struct ChatCostTests {
             try ProjectFileStore.write(ChatMeta(id: chatB, kind: .project, created: ISODate.now()), to: folder)
             try ProjectFileStore.write(ChatMeta(id: chatC, kind: .project, created: ISODate.now()), to: api)
             try writer.append(TranscriptLine(op: .add, item: Self.result(0.25)), to: api.transcriptFile(chatC))
+            try ProjectFileStore.write(ChatMeta(id: chatD, kind: .project, created: ISODate.now()), to: core)
+            try writer.append(TranscriptLine(op: .add, item: Self.result(0.5)), to: core.transcriptFile(chatD))
         }) { bed in
             let deadline = ContinuousClock.now + waitLimit
             var projects = try await bed.connection.call(ProjectsList.self)
-            while projects.first?.costUSD != 2, ContinuousClock.now < deadline {
+            while projects.first?.costUSD != 2.625, ContinuousClock.now < deadline {
                 try await Task.sleep(for: .milliseconds(20))
                 projects = try await bed.connection.call(ProjectsList.self)
             }
+            #expect(projects.map(\.id) == ["DEMO", "API", "CORE"])
             let demo = try #require(projects.first { $0.id == "DEMO" })
             let api = try #require(projects.first { $0.id == "API" })
+            let core = try #require(projects.first { $0.id == "CORE" })
             #expect(demo.ownCostUSD == 1.75)
-            #expect(demo.costUSD == 2)
-            #expect(api.ownCostUSD == 0.25 && api.costUSD == 0.25)
+            #expect(api.ownCostUSD == 0.25)
+            #expect(core.ownCostUSD == 0.625 && core.costUSD == 0.625)
+            // API: 0.25 + CORE's 0.625; DEMO: 1.75 + API's 0.25 + CORE's 0.625.
+            #expect(api.costUSD == 0.875)
+            #expect(demo.costUSD == 2.625)
             let chats = try await bed.connection.call(ChatsList.self, .init(projectID: "DEMO"))
             #expect(chats.first { $0.id == chatA }?.costUSD == 0.75)
             #expect(chats.first { $0.id == chatB }.map { $0.costUSD == nil } == true)
-            #expect(try await bed.connection.call(ProjectsGet.self, .init(projectID: "DEMO")).subprojects.first?.costUSD == 0.25)
+            #expect(try await bed.connection.call(ProjectsGet.self, .init(projectID: "DEMO")).subprojects.first?.costUSD == 0.875)
+            // The own cost is the sum of the amounts per cost source.
+            for id in ["DEMO", "API", "CORE"] {
+                var perSource = 0.0
+                for source in CostSource.allCases {
+                    perSource += await bed.engine.ownCostUSD(id, source: source)
+                }
+                #expect(perSource == projects.first { $0.id == id }?.ownCostUSD)
+            }
         }
     }
 

@@ -4,13 +4,13 @@ Every project shows how much it has cost: its total, sub projects included, and 
 
 ## Cost sources
 
-A cost source is a kind of item that costs money. Each line of the [Costs section](#costs-section) belongs to one source. Claude chats are the only source today.
+A cost source is a kind of item that costs money. Each line of the [Costs section](#costs-section) belongs to one source, and a project's own cost is the sum of its amounts per source ([Project totals](#project-totals)). Claude chats are the only source today.
 
-| Source       | Line                                    | Cost                    |
-| ------------ | --------------------------------------- | ----------------------- |
-| Claude chats | a chat of the project, or a deleted one | [Chat cost](#chat-cost) |
+| Source       | Key           | Line                                    | Cost                    | Amount of a project                                                                       |
+| ------------ | ------------- | --------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
+| Claude chats | `claudeChats` | a chat of the project, or a deleted one | [Chat cost](#chat-cost) | the costs of its chats, a chat without a cost counting 0, plus those of its deleted chats |
 
-A later source adds a row to this table, its lines to the section and its amounts to the [project totals](#project-totals). Default chosen at design time.
+The key names the source in the code: `CostSource` in HephaestusCore ([Architecture](architecture.md#hephaestuscore-folders)) lists the sources, the engine adds a project's own cost source by source, and the Costs section builds the lines of each group source by source, each line carrying its source. A later source adds a row to this table, a case to `CostSource`, its lines to the section and its amounts to the [project totals](#project-totals). Default chosen at design time.
 
 ## Chat cost
 
@@ -29,10 +29,10 @@ The engine computes the cost when it replays the transcript ([Loading](data-mode
 
 ## Project totals
 
-| Amount   | Definition                                                                                                                       | In the API                                                     |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| Own cost | the costs of the project's chats, a chat without a cost counting 0, plus the costs of its [deleted chats](#deleted-chats)        | `ownCostUSD` of [ProjectSummary](engine-api.md#projectsummary) |
-| Total    | the project's own cost plus the own costs of all its loaded descendants, at any depth ([Sub projects](projects.md#sub-projects)) | `costUSD` of [ProjectSummary](engine-api.md#projectsummary)    |
+| Amount   | Definition                                                                                                                                                                               | In the API                                                     |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Own cost | the sum of the project's amounts per [cost source](#cost-sources): today the costs of its chats, a chat without a cost counting 0, plus the costs of its [deleted chats](#deleted-chats) | `ownCostUSD` of [ProjectSummary](engine-api.md#projectsummary) |
+| Total    | the project's own cost plus the own costs of all its loaded descendants, at any depth ([Sub projects](projects.md#sub-projects))                                                         | `costUSD` of [ProjectSummary](engine-api.md#projectsummary)    |
 
 - A chat's cost belongs to the project whose folder holds the chat. A sub project's chats never count in the own cost of its parent, only in the parent's total.
 - A sub project that is removed or no longer loaded leaves the totals of its ancestors; one that is added or opened enters them.

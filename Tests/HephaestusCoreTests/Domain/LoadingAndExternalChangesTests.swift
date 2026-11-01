@@ -183,6 +183,30 @@ struct LoadingAndExternalChangesTests {
             #expect(try events.all[1].payload(ProjectRemovedEvent.self).projectID == "SITE")
             #expect(try await h.connection.call(ProjectsList.self).map(\.id) == ["HEPH", "BLOG", "WEB"])
             #expect(try events.all[0].payload(ProjectUpdatedEvent.self).subprojects.map(\.id) == ["BLOG"])
+
+            // A changed deletedChats list changes the costs of the summaries: projects.changed follows.
+            events.clear()
+            try writeFile(projectYAML(id: "HEPH", name: "Renamed", subprojects: ["blog"], extra: """
+                deletedChats:
+                  - id: \(UUID().uuidString)
+                    title: Old
+                    kind: project
+                    costUSD: 1.5
+                    deleted: 2026-10-31T16:20:00Z
+                """), to: file)
+            await h.engine.projectDataFilesChanged(projectID: "HEPH", paths: [".hephaestus/project.yml"])
+            await events.wait(for: ProjectsChangedEvent.name)
+            #expect(events.names == ["project.updated", "projects.changed"])
+            let heph = try #require(try events.all[1].payload(ProjectsChangedEvent.self).first { $0.id == "HEPH" })
+            #expect(heph.ownCostUSD == 1.5 && heph.costUSD == 1.5)
+
+            // So does a changed type.
+            events.clear()
+            try writeFile(projectYAML(id: "HEPH", name: "Renamed", subprojects: ["blog"], extra: "type: goService\n"), to: file)
+            await h.engine.projectDataFilesChanged(projectID: "HEPH", paths: [".hephaestus/project.yml"])
+            await events.wait(for: ProjectsChangedEvent.name)
+            #expect(events.names == ["project.updated", "projects.changed"])
+            #expect(try events.all[1].payload(ProjectsChangedEvent.self).first { $0.id == "HEPH" }?.type == .goService)
         }
     }
 

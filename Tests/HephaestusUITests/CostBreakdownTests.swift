@@ -60,6 +60,10 @@ struct CostBreakdownTests {
         #expect(shown.groups[0].lines[1].deleted && shown.groups[0].lines[1].kind == "Bundle DEMO-B1")
         // The subtotal includes the deleted chats whether they are shown or not.
         #expect(shown.groups[0].subtotalUSD == hidden.groups[0].subtotalUSD)
+        // Every line belongs to a cost source: Claude chats are the only one.
+        #expect(shown.groups.flatMap(\.lines).allSatisfy { $0.source == .claudeChats })
+        #expect(CostBreakdown.lines(.claudeChats, chats: chats.filter { $0.projectID == "DEMO" }, deletedChats: deleted["DEMO"]!,
+                                    showDeleted: true).count == 5)
     }
 
     @Test("Amounts: $0.00 for 0, < $0.01 below a cent, else two decimals")

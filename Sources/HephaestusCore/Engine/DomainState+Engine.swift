@@ -236,11 +236,19 @@ extension Engine {
         return summary
     }
 
-    /// The costs of a project's chats, a chat without a cost counting 0, plus those of its
-    /// deleted chats.
+    /// A project's own cost: the sum of its amounts per cost source (docs/costs.md › Cost sources).
     func ownCostUSD(_ id: ProjectID) -> Double {
-        let chatsCost = domain.chats(of: id).reduce(0) { $0 + (chats.costs[$1.id]?.costUSD ?? 0) }
-        return chatsCost + (domain.project(id)?.deletedChatsCostUSD ?? 0)
+        CostSource.allCases.reduce(0) { $0 + ownCostUSD(id, source: $1) }
+    }
+
+    /// A project's amount of one cost source, its sub projects excluded.
+    func ownCostUSD(_ id: ProjectID, source: CostSource) -> Double {
+        switch source {
+        case .claudeChats:
+            // Its chats, a chat without a cost counting 0, plus its deleted chats.
+            let chatsCost = domain.chats(of: id).reduce(0) { $0 + (chats.costs[$1.id]?.costUSD ?? 0) }
+            return chatsCost + (domain.project(id)?.deletedChatsCostUSD ?? 0)
+        }
     }
 
     /// A chat's cost changed: `chat.updated`, then `projects.changed` for the new totals
