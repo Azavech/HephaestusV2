@@ -355,7 +355,7 @@ struct RemoteConnectionTests {
     func addDeviceAttempts() async throws {
         // Outside the ephemeral range, so that no other test's listener takes the port once the
         // server stops.
-        let server = try await FakeSyncServer(port: try unusedTestPort())
+        let server = try await withUnusedTestPort { try await FakeSyncServer(port: $0) }
         defer { server.stop() }
         try await withTestEngine { remote, _, _ in
             let local = await remote.localDeviceInfo()

@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import Network
 
 /// The repository root: the folder holding `Package.swift`, found by walking up from this file
 /// (docs/ci.md › Docs conformance tests).
@@ -93,6 +94,20 @@ func unusedTestPort() throws -> Int {
         }
     }
     throw TestPorts.NoFreePort()
+}
+
+/// The result of `bind` with the first port of `unusedTestPort()` that is still free when `bind`
+/// binds it: another process can take a port between the check and the bind, and `bind` then
+/// throws `Address already in use`.
+func withUnusedTestPort<T>(_ bind: (Int) async throws -> T) async throws -> T {
+    for _ in 0..<9 {
+        do {
+            return try await bind(try unusedTestPort())
+        } catch let error as NWError where error == .posix(.EADDRINUSE) {
+            continue
+        }
+    }
+    return try await bind(try unusedTestPort())
 }
 
 private enum TestPorts {
