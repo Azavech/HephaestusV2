@@ -101,12 +101,13 @@ struct RemoteConnectionTests {
         let server = try await FakeSyncServer()
         defer { server.stop() }
         try await withPairedConnection(server: server, code: SyncCryptoTests.code) { connection, _, _ in
+            let phases = connection.phaseUpdates
             let peer = try #require(await server.nextPeer())
             var script = self.script
             script.proofText = "cQpkmCMXJWkVibDhSVYhOrADuuHpqr3ufQtH0J_qEiE="
             _ = try await peer.answerHello(script)
             #expect(await peer.closeCode() == 1002)
-            let phase = await phase(of: connection) { $0.isWaiting }
+            let phase = await firstElement(of: phases) { $0.isWaiting }
             #expect(phase?.message == "The connection to Studio failed (code 1002).")
             #expect(phase?.nextAttempt != nil)
         }
@@ -117,11 +118,12 @@ struct RemoteConnectionTests {
         let server = try await FakeSyncServer()
         defer { server.stop() }
         try await withPairedConnection(server: server, code: SyncCryptoTests.code) { connection, _, _ in
+            let phases = connection.phaseUpdates
             let peer = try #require(await server.nextPeer())
             guard case .text? = await peer.next() else { throw SyncTestError("no hello") }
             peer.sendText(String(repeating: " ", count: 4_097 - 2) + "{}")
             #expect(await peer.closeCode() == 1009)
-            let phase = await phase(of: connection) { $0.isWaiting }
+            let phase = await firstElement(of: phases) { $0.isWaiting }
             #expect(phase?.message == "The connection to Studio failed (code 1009).")
         }
     }
@@ -131,12 +133,13 @@ struct RemoteConnectionTests {
         let server = try await FakeSyncServer()
         defer { server.stop() }
         try await withPairedConnection(server: server, code: SyncCryptoTests.code) { connection, _, _ in
+            let phases = connection.phaseUpdates
             let peer = try #require(await server.nextPeer())
             var script = self.script
             script.device = DeviceInfo(id: "6B1D3F0A-5C2E-4E8B-9A7D-2F4C6E8A0B1C", name: "Other", appVersion: "0.4.0", build: 1)
             _ = try await peer.serverHandshake(script, snapshot: fakeSnapshot(device: script.device))
             #expect(await peer.closeCode() == 1000)
-            let phase = await phase(of: connection) { $0.isWaiting }
+            let phase = await firstElement(of: phases) { $0.isWaiting }
             #expect(phase?.message == "Another device answered at 127.0.0.1:\(server.port).")
             #expect(connection.deviceInfo == nil)
         }
@@ -149,10 +152,11 @@ struct RemoteConnectionTests {
         var timings = SyncTimings.fast
         timings.challengeDeadline = 0.3
         try await withPairedConnection(server: server, code: SyncCryptoTests.code, timings: timings) { connection, _, log in
+            let phases = connection.phaseUpdates
             let peer = try #require(await server.nextPeer())
             guard case .text? = await peer.next() else { throw SyncTestError("no hello") }
             #expect(await peer.closeCode() == 4006)
-            let phase = await phase(of: connection) { $0.isWaiting }
+            let phase = await firstElement(of: phases) { $0.isWaiting }
             #expect(phase?.message == "Studio did not answer.")
             #expect(log.entries.map(\.message).contains("connection to Studio ended, code 4006; next attempt in 0.1 s"))
         }
@@ -163,10 +167,11 @@ struct RemoteConnectionTests {
         let server = try await FakeSyncServer()
         defer { server.stop() }
         try await withPairedConnection(server: server, code: SyncCryptoTests.code) { connection, _, _ in
+            let phases = connection.phaseUpdates
             let peer = try #require(await server.nextPeer())
             guard case .text? = await peer.next() else { throw SyncTestError("no hello") }
             peer.close(.unsupportedProtocol)
-            let incompatible = await phase(of: connection) { $0.isWaiting }
+            let incompatible = await firstElement(of: phases) { $0.isWaiting }
             #expect(incompatible?.message == "Studio uses another version of the sync protocol. Update HephaestusV2 on both Macs.")
             let retry = try #require(await server.nextPeer())
             guard case .text? = await retry.next() else { throw SyncTestError("no hello") }
@@ -188,13 +193,14 @@ struct RemoteConnectionTests {
             let peer = try #require(await server.nextPeer())
             var keys = try await peer.serverHandshake(script, snapshot: fakeSnapshot(device: Self.mainInfo))
             #expect(await phase(of: connection) { $0 == .connected } == .connected)
+            let phases = connection.phaseUpdates
             async let call = engineError { try await connection.call(SettingsGet.self) }
             guard case .binary(let frame)? = await peer.next() else { throw SyncTestError("no request") }
             _ = try keys.opener.open(frame)
             peer.sendBinary(try keys.sealer.seal(Data(#"{"error":{"code":"internal","message":"x"},"id":1,"result":{},"type":"response"}"#.utf8)))
             #expect(await call == EngineError(.unavailable, "Not connected to Studio."))
             #expect(await peer.closeCode() == 1002)
-            #expect(await phase(of: connection) { $0.isWaiting }?.message == "The connection to Studio failed (code 1002).")
+            #expect(await firstElement(of: phases) { $0.isWaiting }?.message == "The connection to Studio failed (code 1002).")
         }
     }
 
@@ -232,8 +238,9 @@ struct RemoteConnectionTests {
             let lost = EngineEventEnvelope(name: SkillsChangedEvent.name, origin: .system, data: [])
             peer.sendBinary(try keys.sealer.seal(SyncMessageBytes.event(envelope: try EngineJSON.encode(lost))))
             try await Task.sleep(for: .milliseconds(100))
+            let phases = connection.phaseUpdates
             peer.cancel()
-            #expect(await phase(of: connection) { $0.isWaiting }?.message == "The connection to Studio was lost.")
+            #expect(await firstElement(of: phases) { $0.isWaiting }?.message == "The connection to Studio was lost.")
 
             let retry = try #require(await server.nextPeer(timeout: .seconds(3)))
             var retryKeys = try await retry.serverHandshake(script, snapshot: fakeSnapshot(device: Self.mainInfo))
