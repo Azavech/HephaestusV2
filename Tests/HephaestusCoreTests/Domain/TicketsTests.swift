@@ -101,7 +101,7 @@ struct TicketsTests {
                 try await h.call(TicketsCreate.self, .init(projectID: "HEPH", description: "Problem\nExpected\n"), as: h.claude)
             }
             #expect(notTemplate == EngineError(.invalid, "Description does not follow the ticket template: heading \"Current Behavior\" "
-                + "is missing or out of order. Use the headings Problem, Current Behavior, Expected, Change, Docs in this order, "
+                + "is missing or out of order. Use the headings Problem, Current Behavior, Expected, Change, Testing, Docs in this order, "
                 + "each alone on its line."))
             let ticket = try await h.call(TicketsCreate.self, .init(projectID: "HEPH", description: templateDescription), as: h.claude)
             #expect(ticket.createdBy == .claude && ticket.status == .todo)
@@ -192,7 +192,7 @@ struct TicketsTests {
         }
     }
 
-    @Test("Status rules: the user sets any status; Claude sets todo, in_progress and review, never done, and never changes a done ticket")
+    @Test("Status rules: the user and Claude set any status; Claude never changes a done ticket")
     func status() async throws {
         try await withDomainEngine { h in
             try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
@@ -211,14 +211,13 @@ struct TicketsTests {
             #expect(try events.all[1].payload(ProjectsChangedEvent.self)[0].ticketCounts == TicketCounts(review: 1))
             #expect(try await h.call(TicketsSetStatus.self, .init(ticketID: "HEPH-1", status: "in_progress"), as: h.claude).status == .inProgress)
             #expect(try await h.call(TicketsSetStatus.self, .init(ticketID: "HEPH-1", status: "review"), as: h.claude).status == .review)
-            #expect(await engineError { try await h.call(TicketsSetStatus.self, .init(ticketID: "HEPH-1", status: "done"), as: h.claude) }
-                == EngineError(.forbidden, "Only the user can mark a ticket as done."))
-            #expect(try await h.connection.call(TicketsSetStatus.self, .init(ticketID: "HEPH-1", status: "done")).status == .done)
+            #expect(try await h.call(TicketsSetStatus.self, .init(ticketID: "HEPH-1", status: "done"), as: h.claude).status == .done)
             for status in ["todo", "in_progress", "review", "done"] {
-                let expected = status == "done" ? "Only the user can mark a ticket as done." : "HEPH-1 is done; only the user can change its status."
                 #expect(await engineError { try await h.call(TicketsSetStatus.self, .init(ticketID: "HEPH-1", status: status), as: h.claude) }
-                    == EngineError(.forbidden, expected))
+                    == EngineError(.forbidden, "HEPH-1 is done; only the user can change its status."))
             }
+            #expect(try await h.connection.call(TicketsSetStatus.self, .init(ticketID: "HEPH-1", status: "review")).status == .review)
+            #expect(try await h.connection.call(TicketsSetStatus.self, .init(ticketID: "HEPH-1", status: "done")).status == .done)
             #expect(try await h.connection.call(TicketsSetStatus.self, .init(ticketID: "HEPH-1", status: "todo")).status == .todo)
             #expect(await engineError { try await h.connection.call(TicketsSetStatus.self, .init(ticketID: "HEPH-1", status: "In Progress")) }
                 == EngineError(.invalid, "Unknown status \"In Progress\". Use todo, in_progress, review or done."))

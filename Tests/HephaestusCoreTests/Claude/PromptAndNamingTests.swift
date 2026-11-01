@@ -25,6 +25,10 @@ struct PromptAndNamingTests {
         Change
         Make Command-W skip locked tabs in the docs and in the web tab strip.
 
+        Testing
+        - Claude: a test presses Command-W on a locked tab and checks that the tab stays open.
+        - User: press Command-W on a locked tab and see the beep and the tooltip.
+
         Docs
         - [web-tabs.md › Locking](docs/web-tabs.md#locking)
         """

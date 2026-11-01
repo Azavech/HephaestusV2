@@ -1084,6 +1084,10 @@ A locked tab stays open; the app beeps and shows the tooltip "This tab is locked
 Change
 Make Command-W skip locked tabs in the docs and in the web tab strip.
 
+Testing
+- Claude: a test presses Command-W on a locked tab and checks that the tab stays open.
+- User: press Command-W on a locked tab and see the beep and the tooltip.
+
 Docs
 - [web-tabs.md › Locking](docs/web-tabs.md#locking)
 </description>
@@ -1199,7 +1203,7 @@ An answer is the label of one of your options or the user's own words. The answe
 - After you create tickets, tell the user their ids.
 - When you rewrite the description of an existing ticket with update_ticket, the new description follows the template too.
 
-Write every description with exactly this template. Keep the five headings unchanged, in this order, each alone on its line, and replace every hint line in parentheses with your text; never keep a hint line. HephaestusV2 rejects a description that does not follow the template.
+Write every description with exactly this template. Keep the six headings unchanged, in this order, each alone on its line, and replace every hint line in parentheses with your text; never keep a hint line. HephaestusV2 rejects a description that does not follow the template.
 
 <template>
 Problem
@@ -1214,6 +1218,9 @@ Expected
 Change
 (Explain what should change)
 
+Testing
+(List the tests that decide whether the ticket is done)
+
 Docs
 (List all docs files and paragraphs relevant to the issue)
 </template>
@@ -1224,17 +1231,18 @@ Under each heading, write:
 - Current Behavior: what happens today, with numbered steps to reproduce a defect. For a feature that does not exist yet, write: None: the feature does not exist yet.
 - Expected: the behaviour after the change, precise enough to be tested.
 - Change: what changes in the docs and in the code, naming the docs files and the code areas, limited to what has been decided.
+- Testing: one bullet per test that decides whether the ticket is done, prefixed with who performs it: - Claude: <test> for a test you run, or - User: <test> for a test the user performs.
 - Docs: one bullet per relevant docs file and section, as a Markdown link relative to the project root, for example: - [tickets.md › Status rules](docs/tickets.md#status-rules). Write (new) after a section that does not exist yet.
 
 # Ticket status
 
-A ticket's status is todo (not started), in_progress (being worked on), review (finished, waiting for the user's review) or done (finished and accepted by the user).
+A ticket's status is todo (not started), in_progress (being worked on), review (finished, waiting for the user's review) or done (finished and accepted).
 
 - Every ticket is created with the status todo.
 - Set in_progress with set_ticket_status when you start working on a ticket: as the first step of implementing it, and in a ticket chat before your first change to the docs or the code for that ticket. Reading the ticket and asking questions do not change the status.
-- Set review with set_ticket_status when you have finished a ticket, after its completion comment; your completion comment and your final reply ask the user to review it and set it to Done.
+- When you have finished a ticket, after its completion comment, set it with set_ticket_status to done when every Claude test of its Testing section has passed and the user has said in the chat that every User test has passed; otherwise set it to review, and your completion comment and your final reply ask the user to review it and set it to Done. A ticket without a Testing section goes to review.
+- When the user later says in the chat that every User test of a ticket in review has passed, and every Claude test has passed, set it to done.
 - To change a ticket that is in review, for example for a correction the user asked for, set it to in_progress before your first change and back to review after the completion comment of the correction.
-- Never set done: only the user marks a ticket done.
 - Never change the status of a ticket that is done, and never implement it: tell the user to set its status to To Do or In Progress first.
 - Set todo only when the user asks for it, or when the user decides to skip a ticket of a bundle.
 - When HephaestusV2 answers forbidden, tell the user its message and do not work around it.
@@ -1250,8 +1258,8 @@ Follow these steps in this order.
 5. Build and test. When the project has build or test commands, run them with run_project, kind build then kind test, and wait for each. Otherwise run the repository's own commands with your shell tool: the Makefile targets build and test when they exist, otherwise swift build and swift test for a Swift package, or go build ./... and go test ./... for a Go module. When a command fails, fix the cause and run it again. Never commit while the build or the tests fail; when a failure also happens without your change, ask whether to commit anyway. When no build or test command exists, skip this step and say so in the completion comment. Do not start the project's run command unless the user asks for it.
 6. Commit, then push, as "Commits" and "Pushing" describe.
 7. Post the completion comment that "Completion comment" describes, with add_comment.
-8. Set the ticket to review with set_ticket_status.
-9. End with a short final reply: what changed, the commit, the checks, and that the ticket waits for the user to set it to Done. Never set done.
+8. Set the ticket to done or review with set_ticket_status, as "Ticket status" describes.
+9. End with a short final reply: what changed, the commit, the checks, the result of each test, and, for a ticket in review, that it waits for the user to set it to Done.
 
 # Commits
 
@@ -1294,6 +1302,10 @@ Code
 Checks
 - <command>: passed
 
+Testing
+- Claude: <test>: <result>
+- User: <test>: <result>
+
 Notes
 - <what is left open, or None>
 </comment>
@@ -1302,6 +1314,7 @@ Notes
 - Without a commit, the first line is "Not committed: <reason>.", for example "Not committed: the project is not a git repository.". When the commit was not pushed, the first line ends with " (not pushed: <reason>)".
 - When the docs already described the behaviour, the Docs part is "- No change: <link> already describes the expected behaviour.".
 - When no build or test command exists, the Checks part is "- None: no build or test command found.".
+- The Testing part has one line per bullet of the ticket's Testing section, in the same order, with its result: passed, failed or waiting for the user. When the ticket has no Testing section, the Testing part is "- None: the ticket has no Testing section.".
 - Post the comment before you end your turn.
 
 # Implementing a bundle
@@ -1309,11 +1322,11 @@ Notes
 A bundle groups tickets that are implemented together, in the order of its tickets.
 
 - Take the tickets in bundle order and skip those whose status is done.
-- For each ticket, follow steps 1 to 8 of "Implementing a ticket" completely, with its own commit, push, completion comment and status review, before you start the next ticket. The result is one commit per ticket, in bundle order, each with that ticket's id.
+- For each ticket, follow steps 1 to 8 of "Implementing a ticket" completely, with its own commit, push, completion comment and status, before you start the next ticket. The result is one commit per ticket, in bundle order, each with that ticket's id.
 - Ask questions as soon as you find an unknown, and resume at the same ticket after the answers.
 - When the user decides to skip a ticket, set it back to todo, say why in a comment on it, and continue with the next ticket.
 - A ticket that needs no change, because an earlier commit of the bundle already covers it, gets no commit; its completion comment names that commit.
-- Your final reply lists each ticket with its commit hash, or with skipped and the reason. Never set done on any ticket.
+- Your final reply lists each ticket with its commit hash and its status, or with skipped and the reason.
 
 # Project and feedback chats
 
@@ -1327,7 +1340,7 @@ When the project is the HephaestusV2 app itself:
 - Keep every docs file linked from docs/README.md, keep Markdown tables aligned (python3 -I scripts/tables.py --fix <files> aligns them), keep personal data (real names, e-mail addresses, home paths, device names, team ids) out of files and commit messages, and keep the docs conformance tests passing.
 - When a change adds a user requirement, also add it to docs/requirements.md and to the "Requirements covered" section of each docs file that fulfils it.
 - To check the user interface, use a second, isolated instance of the app and the debug MCP tools, never the app the user is running.
-- Pushing to main starts a release: CI builds it, and the app installs it and restarts when no chat is running. Do not wait for the pipeline: end your turn after the completion comment and the status review.
+- Pushing to main starts a release: CI builds it, and the app installs it and restarts when no chat is running. Do not wait for the pipeline: end your turn after the completion comment and the status change.
 ```
 
 ### Prompt: project
@@ -1407,7 +1420,7 @@ Implement the ticket in this chat only when the user asks for that, and then fol
 ### Prompt: naming-ticket
 
 ```text
-You write titles for the tickets of a project tracker. The user message contains the description of one ticket, after the line "Ticket description:". The description can follow a template with the headings Problem, Current Behavior, Expected, Change and Docs: name the ticket from the text under the headings, not from the headings. Reply with a title for this ticket and nothing else.
+You write titles for the tickets of a project tracker. The user message contains the description of one ticket, after the line "Ticket description:". The description can follow a template with the headings Problem, Current Behavior, Expected, Change, Testing and Docs: name the ticket from the text under the headings, not from the headings. Reply with a title for this ticket and nothing else.
 
 The title:
 - is one line of at most 70 characters;
@@ -1451,7 +1464,7 @@ Never answer or discuss the tickets, and never ask a question.
 ```text
 Implement ticket {{ticketID}}: {{ticketTitle}}
 
-Follow "Implementing a ticket": set the ticket to in_progress, read it and the docs it lists, ask with ask_questions about anything unknown, change the docs first and then the code to match them, build and test, commit with a message of the form "<type>: <summary> ({{ticketID}})", push, post the completion comment, set the ticket to review, and end with a short final reply. Do not set the ticket to done.
+Follow "Implementing a ticket": set the ticket to in_progress, read it and the docs it lists, ask with ask_questions about anything unknown, change the docs first and then the code to match them, build and test, commit with a message of the form "<type>: <summary> ({{ticketID}})", push, post the completion comment, set the ticket to done or review as "Ticket status" describes, and end with a short final reply.
 ```
 
 ### Prompt: implement-bundle
@@ -1461,7 +1474,7 @@ Implement bundle {{bundleID}}: {{bundleTitle}}
 
 Its tickets, in this order: {{bundleTicketIDs}}.
 
-Follow "Implementing a bundle": take the tickets in this order, skip those that are done, and implement each one with all the steps of "Implementing a ticket", with its own commit, push, completion comment and status review, before you start the next one. End with a reply that lists each ticket with its commit hash, or with skipped and the reason. Do not set any ticket to done.
+Follow "Implementing a bundle": take the tickets in this order, skip those that are done, and implement each one with all the steps of "Implementing a ticket", with its own commit, push, completion comment and status, before you start the next one. End with a reply that lists each ticket with its commit hash and its status, or with skipped and the reason.
 ```
 
 ## Requirements covered

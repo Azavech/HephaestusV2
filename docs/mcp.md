@@ -361,7 +361,7 @@ A chat token runs every engine call as the actor `claude` with the chat's id, th
 | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------- |
 | A ticket created by Claude starts as `todo`, has `createdBy: claude` and gets its title from Haiku | tickets.create ([Tickets](tickets.md#tickets-created-by-claude))                 | —           |
 | A description written by Claude, at creation or on update, follows the template                    | tickets.create, tickets.update ([Tickets](tickets.md#template-validation))       | `invalid`   |
-| Claude sets only `todo`, `in_progress` and `review`                                                | Input schema of `set_ticket_status`                                              | `invalid`   |
+| Claude sets only `todo`, `in_progress`, `review` and `done`                                        | Input schema of `set_ticket_status`                                              | `invalid`   |
 | Claude never changes the status of a `done` ticket                                                 | tickets.setStatus ([Tickets](tickets.md#status-rules))                           | `forbidden` |
 | A comment added by Claude has `author: claude`                                                     | tickets.addComment ([Tickets](tickets.md#comments))                              | —           |
 | Claude never sets a ticket title at creation, chat settings or project chat defaults               | The tools never send these params ([Engine API](engine-api.md#rules-for-claude)) | —           |
@@ -762,7 +762,7 @@ Input schema:
 Description:
 
 ```text
-Create a ticket in a project. It starts as todo and its title is generated from the description. The description must use this template, the five headings alone on their lines and in this order:
+Create a ticket in a project. It starts as todo and its title is generated from the description. The description must use this template, the six headings alone on their lines and in this order:
 
 Problem
 (Explain the problem)
@@ -775,6 +775,9 @@ Expected
 
 Change
 (Explain what should change)
+
+Testing
+(List the tests that decide whether the ticket is done)
 
 Docs
 (List all docs files and paragraphs relevant to the issue)
@@ -876,16 +879,17 @@ Input schema:
 ### set_ticket_status
 
 - **Engine call:** tickets.setStatus with `ticketID` and `status`.
-- `done` is not in the enum, so the MCP layer refuses it before the engine is called, with `status: must be one of todo, in_progress, review.`; the engine's own refusal of `done` for Claude is never reached through this tool.
+- Another value than the four of the enum is refused by the MCP layer before the engine is called, with `status: must be one of todo, in_progress, review, done.`.
+- The engine accepts `done` from Claude without checking the tests; the description carries the rule ([Tickets](tickets.md#status-rules)).
 - **Result:** the updated `Ticket`.
 - **Errors:**
-  - `invalid`: `status` is `done` or another value (message above).
+  - `invalid`: `status` is not one of the enum's values (message above).
   - Those of tickets.setStatus ([Engine API](engine-api.md#ticketssetstatus)): no such ticket (`notFound`), a `done` ticket (`forbidden`).
 
 Description:
 
 ```text
-Set a ticket's status to todo, in_progress or review. Set in_progress when you start working on a ticket, and review when you have finished it. Only the user can set done, and you cannot change the status of a done ticket.
+Set a ticket's status to todo, in_progress, review or done. Set in_progress when you start working on a ticket. When you have finished it, set done if every Claude test of its Testing section has passed and the user has said that every User test has passed, otherwise review. You cannot change the status of a done ticket.
 ```
 
 Input schema:
@@ -901,7 +905,7 @@ Input schema:
     "status": {
       "type": "string",
       "description": "New status.",
-      "enum": ["todo", "in_progress", "review"]
+      "enum": ["todo", "in_progress", "review", "done"]
     }
   },
   "required": ["ticketID", "status"],
@@ -2200,7 +2204,7 @@ The server writes these messages to `Logs/engine.log` with the component `mcp`, 
 - The server listens on `127.0.0.1` only: other machines, remote devices included, cannot reach it.
 - Every request needs a 256-bit bearer token, compared in constant time. Chat tokens live as long as their Claude process; the files holding tokens have mode 0600; tokens are never logged.
 - Requests carrying an `Origin` header are refused with 403 and no CORS header is ever sent, so web pages, those of the app's own web tabs included, cannot call the server.
-- The [actor rules](#actor-rules) hold whatever the token: Claude never sets `done` and never changes the status of a `done` ticket.
+- The [actor rules](#actor-rules) hold whatever the token: Claude never changes the status of a `done` ticket.
 - The debug tools exist only when debug tools are enabled; then every holder of a token of that process can capture its windows.
 - Attachment paths may name any file the app can read; the Claude CLI asks the user before the call according to the chat's permission mode ([Chats](chats.md)).
 - The security model of the whole app is in [Architecture](architecture.md#security-overview).
@@ -2301,7 +2305,7 @@ The Claude CLI then sends `GET /mcp` to open an SSE stream, receives 405 and con
 ### Refused status
 
 ```json
-{"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "set_ticket_status", "arguments": {"ticketID": "HEPH-12", "status": "done"}}}
+{"jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": {"name": "set_ticket_status", "arguments": {"ticketID": "HEPH-12", "status": "finished"}}}
 ```
 
 ```json
@@ -2310,7 +2314,7 @@ The Claude CLI then sends `GET /mcp` to open an SSE stream, receives 405 and con
   "id": 6,
   "result": {
     "content": [
-      {"type": "text", "text": "status: must be one of todo, in_progress, review."}
+      {"type": "text", "text": "status: must be one of todo, in_progress, review, done."}
     ],
     "isError": true
   }

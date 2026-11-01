@@ -35,11 +35,14 @@ Expected
 Change
 (Explain what should change)
 
+Testing
+(List the tests that decide whether the ticket is done)
+
 Docs
 (List all docs files and paragraphs relevant to the issue)
 ```
 
-- Tickets created by Claude must follow this template. The engine validates it as described in [Template validation](#template-validation). What Claude writes in each section is in [Claude workflow](workflow.md#writing-tickets).
+- Tickets created by Claude must follow this template. Under Testing, Claude lists the tests that decide whether the ticket is done ([Claude workflow](workflow.md#writing-tickets)). The engine validates it as described in [Template validation](#template-validation). What Claude writes in each section is in [Claude workflow](workflow.md#writing-tickets).
 - A description that Claude writes later with `update_ticket` is validated the same way. Default chosen at design time.
 - The description field of the New Ticket sheet starts with exactly this text. Descriptions written by the user are not validated: the user may keep, change or replace the template.
 
@@ -48,9 +51,9 @@ Docs
 The engine checks a description written by Claude in four steps:
 
 1. Split the description into lines at LF, CRLF or CR.
-2. A line is a heading line for heading H when it matches `^\s*#*\s*H\s*:?\s*$`, where H is one of `Problem`, `Current Behavior`, `Expected`, `Change`, `Docs`. The heading is alone on its line and may have leading `#` characters and one trailing `:`. Letter case is ignored. Default chosen at design time.
+2. A line is a heading line for heading H when it matches `^\s*#*\s*H\s*:?\s*$`, where H is one of `Problem`, `Current Behavior`, `Expected`, `Change`, `Testing`, `Docs`. The heading is alone on its line and may have leading `#` characters and one trailing `:`. Letter case is ignored. Default chosen at design time.
 3. Scan the lines from first to last with an index k that starts at 0 in the heading list above. Each line that is a heading line for heading k adds 1 to k. Other lines, including heading lines out of order, are skipped.
-4. The description is valid when k reaches 5. The text between the headings is not checked.
+4. The description is valid when k reaches 6. The text between the headings is not checked.
 
 | Line                   | Heading line for |
 | ---------------------- | ---------------- |
@@ -58,12 +61,13 @@ The engine checks a description written by Claude in four steps:
 | `## Problem`           | Problem          |
 | `Current Behavior:`    | Current Behavior |
 | `### current behavior` | Current Behavior |
+| `Testing:`             | Testing          |
 | `**Problem**`          | none             |
 | `Problem: tabs close`  | none             |
 | `1. Expected`          | none             |
 | `Current Behaviour`    | none             |
 
-An invalid description fails with `invalid` and the message `Description does not follow the ticket template: heading "<H>" is missing or out of order. Use the headings Problem, Current Behavior, Expected, Change, Docs in this order, each alone on its line.`, where `<H>` is heading k when the scan ends. Default chosen at design time.
+An invalid description fails with `invalid` and the message `Description does not follow the ticket template: heading "<H>" is missing or out of order. Use the headings Problem, Current Behavior, Expected, Change, Testing, Docs in this order, each alone on its line.`, where `<H>` is heading k when the scan ends. Default chosen at design time.
 
 ## Status rules
 
@@ -72,7 +76,7 @@ The statuses ([TicketStatus](data-model.md#ticket-file)):
 - `todo`: not started. Every ticket starts here.
 - `in_progress`: Claude or the user is working on it.
 - `review`: finished, waiting for the user's review. Shown as In Review.
-- `done`: finished and accepted by the user.
+- `done`: finished and accepted: by the user, or by Claude when every test of the ticket has passed.
 
 The statuses are listed in this order everywhere: To Do, In Progress, In Review, Done.
 
@@ -80,8 +84,8 @@ The rules (the same list is in [Claude workflow](workflow.md#ticket-status)):
 
 - Every ticket is created with status `todo`; the user may change it afterwards with the status picker.
 - Claude sets `in_progress` when it starts working on a ticket.
-- Claude sets `review` when it has finished a ticket, after the completion comment. It may switch a ticket between `in_progress` and `review`, for example to make a correction the user asked for.
-- Only the user can set `done`. Claude may never set `done` and may never change the status of a `done` ticket.
+- When Claude has finished a ticket, after the completion comment, it sets `done` when every Claude test of the ticket's Testing section has passed and the user has said in the chat that every User test has passed; otherwise it sets `review`. A ticket without a Testing section goes to `review`. Claude may switch a ticket between `in_progress` and `review`, for example to make a correction the user asked for.
+- Claude may never change the status of a `done` ticket.
 - The user may set any status at any time.
 - A `review` ticket is not done: Implement and Implement All stay enabled for it.
 
@@ -89,15 +93,16 @@ Status changes requested by Claude:
 
 | Current status | Set `todo`  | Set `in_progress` | Set `review` | Set `done`  |
 | -------------- | ----------- | ----------------- | ------------ | ----------- |
-| `todo`         | no change   | allowed           | allowed      | `forbidden` |
-| `in_progress`  | allowed     | no change         | allowed      | `forbidden` |
-| `review`       | allowed     | allowed           | no change    | `forbidden` |
+| `todo`         | no change   | allowed           | allowed      | allowed     |
+| `in_progress`  | allowed     | no change         | allowed      | allowed     |
+| `review`       | allowed     | allowed           | no change    | allowed     |
 | `done`         | `forbidden` | `forbidden`       | `forbidden`  | `forbidden` |
 
 - The user, from any device, may make every change in this table, including leaving `done`.
 - The status changes only through `tickets.setStatus` (MCP tool `set_ticket_status`); `tickets.update` has no status parameter. The engine applies the rules for every caller: local windows, remote devices, chats and external Claude sessions.
 - Setting the current status again succeeds, returns the ticket, writes nothing and emits no event. Default chosen at design time.
-- A request for `done` by Claude fails with `forbidden` and `Only the user can mark a ticket as done.`; any other change by Claude to a `done` ticket fails with `forbidden` and `<ID> is done; only the user can change its status.`. Default chosen at design time.
+- The engine does not check the tests before Claude sets `done`; only the prompt carries that rule ([Claude workflow](workflow.md#ticket-status)).
+- Any change by Claude to a `done` ticket, setting `done` again included, fails with `forbidden` and `<ID> is done; only the user can change its status.`. Default chosen at design time.
 - No status is set automatically: Implement and Implement All start a chat, and Claude sets `in_progress` itself as the first step of its workflow ([Claude workflow](workflow.md#implementation-workflow)).
 
 ## Titles and naming
@@ -327,7 +332,7 @@ Implement:
 3. The UI calls `chats.implementTicket` with the ticket id and no settings, so the chat uses the project's `chatDefaults`, or else the host's `defaultChatSettings`. The composer changes them afterwards. Default chosen at design time.
 4. The engine creates a chat of kind `ticket` with `ticket: <ID>`, appends its id to the ticket's `chats` (emitting `ticket.updated`), starts Claude with the ticket prompt, and sends the `implement-ticket.md` message as the first user message ([Chats](chats.md)).
 5. The Chats tab selects the new chat. Implement from the list's context menu first selects the ticket and its Chats tab.
-6. Claude follows the [implementation workflow](workflow.md#implementation-workflow): it sets the status to `in_progress`, reads the ticket, asks questions, changes the docs and then the code, builds and tests, commits and pushes, comments, and sets the status to `review`. The ticket stays `review` until the user sets `done`.
+6. Claude follows the [implementation workflow](workflow.md#implementation-workflow): it sets the status to `in_progress`, reads the ticket, asks questions, changes the docs and then the code, builds and tests, commits and pushes, comments, and sets the status to `done` when every test of the ticket has passed, otherwise to `review`. A `review` ticket stays there until the user sets `done`.
 
 `implement_ticket`, called by Claude from another chat, goes through the same engine check (the `conflict` of step 1) and steps 4 and 6, and changes no window's selection. Default chosen at design time.
 
@@ -408,7 +413,7 @@ Create Bundle from Selection, New Bundle and Add Tickets… use this sheet.
 1. Implement All is in the bar of the bundle's Chats tab and in the bundle list's context menu. It is enabled when the bundle has at least one ticket that is not `done`; a listed id without a ticket file does not count, as it cannot be implemented. While disabled, its tooltip reads `All tickets of this bundle are done.` or `This bundle has no tickets.`. `chats.implementBundle` fails in that case with `conflict` and `<ID> has no ticket left to implement.`. It is also disabled while the CLI of the window's device is unavailable, with the tooltip `Claude CLI is not available on <device name>.` Default chosen at design time.
 2. The same active-chat alert as for Implement is shown when a chat of the bundle is active.
 3. The UI calls `chats.implementBundle` with the bundle id. The engine creates a chat of kind `bundle` with `bundle: <ID>`, appends its id to the bundle's `chats` (emitting `bundle.updated`), starts Claude with the bundle prompt, which contains every ticket of the bundle, and sends the `implement-bundle.md` message as the first user message ([Chats](chats.md)). Implement All from the bundle list's context menu first selects the bundle and its Chats tab, which then selects the new chat.
-4. Claude implements the bundle's tickets one after the other in bundle order and skips the `done` ones. It sets each ticket to `in_progress` when it starts it, gives each one its own commit, push and completion comment, and sets it to `review` after that comment ([Claude workflow](workflow.md#bundles)). The Tickets tab shows the status changes as they happen.
+4. Claude implements the bundle's tickets one after the other in bundle order and skips the `done` ones. It sets each ticket to `in_progress` when it starts it, gives each one its own commit, push and completion comment, and sets it to `done` or `review` after that comment ([Claude workflow](workflow.md#bundles)). The Tickets tab shows the status changes as they happen.
 
 ## Deleting
 
@@ -438,7 +443,7 @@ The confirmation texts, and keeping the chats of a deleted ticket or bundle, are
 | Create a ticket                   | Yes; any description; optional title | Yes (`create_ticket`); template validated; never a title                                                             |
 | Edit a title                      | Yes                                  | Yes (`update_ticket`)                                                                                                |
 | Edit a description                | Yes                                  | Yes (`update_ticket`); template validated                                                                            |
-| Change the status                 | Any status at any time               | `todo`, `in_progress` or `review` only; never on a `done` ticket                                                     |
+| Change the status                 | Any status at any time               | Any status, `done` only when every test of the ticket has passed (prompt rule); never on a `done` ticket             |
 | Delete a ticket                   | Yes                                  | Yes (`delete_ticket`)                                                                                                |
 | Add a comment                     | Yes                                  | Yes (`add_comment`)                                                                                                  |
 | Edit or delete a comment          | Yes, any comment                     | Yes (`update_comment`, `delete_comment`)                                                                             |
@@ -463,7 +468,6 @@ Every error is `{code, message}` ([Engine API](engine-api.md)). The message text
 | Description written by Claude does not follow the template                                                                      | `invalid`     | See [Template validation](#template-validation).                   |
 | Invalid title                                                                                                                   | `invalid`     | `Title must be 1 to 200 characters on one line.`                   |
 | Unknown status value                                                                                                            | `invalid`     | `Unknown status "<value>". Use todo, in_progress, review or done.` |
-| Claude requests `done`                                                                                                          | `forbidden`   | `Only the user can mark a ticket as done.`                         |
 | Claude changes the status of a `done` ticket                                                                                    | `forbidden`   | `<ID> is done; only the user can change its status.`               |
 | Comment without text and without attachments                                                                                    | `invalid`     | `A comment needs text or at least one attachment.`                 |
 | Unknown comment                                                                                                                 | `notFound`    | `Comment <id> not found.`                                          |
@@ -517,5 +521,5 @@ Shortcuts of this document. All global shortcuts are listed in [UI](ui.md).
 - R32: A bundle implements all its tickets at once through a chat section.
 - R62: When Claude creates a ticket, a small Haiku model names it.
 - R86: When Claude creates a ticket, its status is todo.
-- R88 (partly): Only the user can mark a ticket done.
-- R99: When Claude creates a ticket, its description has the headings Problem, Current Behavior, Expected, Change and Docs, in this order.
+- R88 (partly): Claude marks a ticket done only when every test of its Testing section has passed; otherwise the user does.
+- R99: When Claude creates a ticket, its description has the headings Problem, Current Behavior, Expected, Change, Testing and Docs, in this order.

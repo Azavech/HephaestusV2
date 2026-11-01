@@ -124,7 +124,7 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | tickets.create                               | `title` must be absent: Haiku always names the tickets Claude creates.                                                                                                                 | forbidden |
 | tickets.create, tickets.update               | `description` must follow the ticket template ([Tickets and bundles](tickets.md#template-validation)), at creation and on update.                                                      | invalid   |
-| tickets.setStatus                            | Status `done` is refused; changing the status of a ticket whose status is `done` is refused.                                                                                           | forbidden |
+| tickets.setStatus                            | Changing the status of a ticket whose status is `done` is refused.                                                                                                                     | forbidden |
 | projects.update                              | `chatDefaults` must be absent.                                                                                                                                                         | forbidden |
 | chats.implementTicket, chats.implementBundle | `settings` must be absent; the new chat uses the project's defaults.                                                                                                                   | forbidden |
 | chats.postQuestions                          | Only the chat's own Claude may call it: the actor's chatID must equal the `chatID` param; the external token is refused.                                                               | forbidden |
@@ -551,14 +551,14 @@ Swift type `TicketsSetStatus` · actors: user, claude · result: [Ticket](data-m
 | status   | String   | yes      | `todo`, `in_progress`, `review` or `done`. Decoded as a string and checked by the handler, so an unknown value gets the message of [Tickets and bundles](tickets.md#errors). |
 
 - A user may set any status at any time.
-- Claude may set `todo`, `in_progress` or `review`, never `done`, and never changes the status of a ticket whose status is `done` ([Tickets and bundles](tickets.md#status-rules)).
+- Claude may set any status, and never changes the status of a ticket whose status is `done` ([Tickets and bundles](tickets.md#status-rules)). It sets `done` only when every test of the ticket has passed; the engine does not check this.
 - Setting the current status changes nothing.
 
-| Error     | When                                                                                                                                                       |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| invalid   | ticketID is malformed; status is not one of the four values.                                                                                               |
-| notFound  | No such ticket.                                                                                                                                            |
-| forbidden | Claude sets `done` (`Only the user can mark a ticket as done.`); Claude changes a `done` ticket (`HEPH-12 is done; only the user can change its status.`). |
+| Error     | When                                                                                      |
+| --------- | ----------------------------------------------------------------------------------------- |
+| invalid   | ticketID is malformed; status is not one of the four values.                              |
+| notFound  | No such ticket.                                                                           |
+| forbidden | Claude changes a `done` ticket (`HEPH-12 is done; only the user can change its status.`). |
 
 Events: ticket.updated, projects.changed.
 
@@ -2610,7 +2610,7 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 
 - R40: In a project chat, Claude does anything else the user wants.
 - R43: Any remote sees in real time the changes made anywhere.
-- R88 (partly): Only the user can mark a ticket done.
+- R88 (partly): Claude marks a ticket done only when every test of its Testing section has passed; otherwise the user does.
 - R104: A project has a type: None, Go service or Swift application.
 - R105: A project shows how much it has cost: its total, sub projects included, and the cost of each of its chats, deleted chats included.
 - R108: The user moves between the questions of a set, answers them in any order and can change an answer until every question has one.

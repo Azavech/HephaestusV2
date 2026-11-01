@@ -129,8 +129,6 @@ struct DispatcherTests {
                 == EngineError(.forbidden, "Claude cannot choose chat settings."))
             #expect(await call(WebTabsUpdate.self, .init(projectID: "HEPH", tabID: UUID(), locked: false))
                 == EngineError(.forbidden, "Only the user can unlock a tab."))
-            #expect(await call(TicketsSetStatus.self, .init(ticketID: "HEPH-1", status: "done"))
-                == EngineError(.forbidden, "Only the user can mark a ticket as done."))
             let questions = ChatsPostQuestions.Params(chatID: Self.chatID, questions: [])
             #expect(await call(ChatsPostQuestions.self, questions, Self.external)
                 == EngineError(.forbidden, "Only the chat's own Claude can ask questions."))

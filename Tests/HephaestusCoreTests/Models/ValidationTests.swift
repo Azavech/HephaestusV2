@@ -78,7 +78,7 @@ struct IdentifierTests {
 struct TicketTemplateTests {
     @Test("Heading lines of docs/tickets.md › Template validation", arguments: [
         ("Problem", "Problem"), ("## Problem", "Problem"), ("Current Behavior:", "Current Behavior"),
-        ("### current behavior", "Current Behavior"), ("  Docs  ", "Docs"), ("#Expected:", "Expected"),
+        ("### current behavior", "Current Behavior"), ("Testing:", "Testing"), ("  Docs  ", "Docs"), ("#Expected:", "Expected"),
     ])
     func headingLines(_ line: String, _ heading: String) {
         #expect(TicketTemplate.headingIndex(of: line).map { TicketTemplate.headings[$0] } == heading)
@@ -92,7 +92,7 @@ struct TicketTemplateTests {
     @Test("The template itself and a filled description are valid")
     func validDescriptions() throws {
         try TicketTemplate.validate(TicketTemplate.text)
-        let filled = "## Problem\r\nTabs close.\r\nCurrent Behavior:\rStep.\nExpected\nStay.\nchange\nDo it.\n# Docs\n- x\n"
+        let filled = "## Problem\r\nTabs close.\r\nCurrent Behavior:\rStep.\nExpected\nStay.\nchange\nDo it.\nTesting\n- User: try it.\n# Docs\n- x\n"
         try TicketTemplate.validate(filled)
     }
 
@@ -100,12 +100,14 @@ struct TicketTemplateTests {
     func invalidDescriptions() {
         let message = TicketTemplate.validationMessage(missing: "Expected")
         #expect(message == "Description does not follow the ticket template: heading \"Expected\" is missing or out of order. "
-            + "Use the headings Problem, Current Behavior, Expected, Change, Docs in this order, each alone on its line.")
+            + "Use the headings Problem, Current Behavior, Expected, Change, Testing, Docs in this order, each alone on its line.")
         #expect(throws: ValidationError(field: "description", message: message)) {
             try TicketTemplate.validate("Problem\nCurrent Behavior\nChange\nDocs\n")
         }
         #expect(TicketTemplate.missingHeading(in: "Docs\nChange\nExpected\nCurrent Behavior\nProblem") == "Current Behavior")
         #expect(TicketTemplate.missingHeading(in: "") == "Problem")
+        #expect(TicketTemplate.missingHeading(in: "Problem\nCurrent Behavior\nExpected\nChange\nDocs\n") == "Testing")
+        #expect(TicketTemplate.missingHeading(in: "Problem\nCurrent Behavior\nExpected\nChange\nDocs\nTesting\n") == "Docs")
     }
 
     @Test("The provisional title")

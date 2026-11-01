@@ -115,6 +115,9 @@ Expected
 Change
 (Explain what should change)
 
+Testing
+(List the tests that decide whether the ticket is done)
+
 Docs
 (List all docs files and paragraphs relevant to the issue)
 ```
@@ -125,6 +128,7 @@ Docs
 | Current Behavior | What happens today, with numbered steps to reproduce a defect. For a feature that does not exist yet: `None: the feature does not exist yet.`                                                                                        |
 | Expected         | The behaviour after the change, precise enough to be tested.                                                                                                                                                                         |
 | Change           | What changes in the docs and in the code, naming the docs files and code areas, limited to what has been decided.                                                                                                                    |
+| Testing          | One bullet per test that decides whether the ticket is done, prefixed with who performs it: `- Claude: <test>` for a test Claude runs, `- User: <test>` for a test the user performs.                                                |
 | Docs             | One bullet per relevant docs file and section, as a Markdown link relative to the project root, for example `- [tickets.md › Status rules](docs/tickets.md#status-rules)`. A section that does not exist yet is followed by `(new)`. |
 
 The content rules of this table are defaults. Default chosen at design time.
@@ -142,8 +146,8 @@ The status rules (the same list is in [Status rules](tickets.md#status-rules)):
 
 - Every ticket is created with status `todo`; the user may change it afterwards with the status picker.
 - Claude sets `in_progress` when it starts working on a ticket.
-- Claude sets `review` when it has finished a ticket, after the completion comment. It may switch a ticket between `in_progress` and `review`, for example to make a correction the user asked for.
-- Only the user can set `done`. Claude may never set `done` and may never change the status of a `done` ticket.
+- When Claude has finished a ticket, after the completion comment, it sets `done` when every Claude test of the ticket's Testing section has passed and the user has said in the chat that every User test has passed; otherwise it sets `review`. A ticket without a Testing section goes to `review`. Claude may switch a ticket between `in_progress` and `review`, for example to make a correction the user asked for.
+- Claude may never change the status of a `done` ticket.
 - The user may set any status at any time.
 - A `review` ticket is not done: Implement and Implement All stay enabled for it.
 
@@ -151,7 +155,9 @@ How Claude applies them:
 
 - `set_ticket_status` with `in_progress` is the first step of the implementation workflow; in a bundle it is the first step for each ticket.
 - In a ticket chat started with New Chat, Claude sets `in_progress` before its first change to the docs or the code for that ticket. Reading the ticket and answering questions do not change the status. Default chosen at design time.
-- `set_ticket_status` with `review` follows the completion comment of a finished ticket. The completion comment and the final reply ask the user to review the ticket and set it to Done.
+- `set_ticket_status` with `done` or `review` follows the completion comment of a finished ticket. For a `review` ticket, the completion comment and the final reply ask the user to review the ticket and set it to Done.
+- When the user later says in the chat that every User test of a `review` ticket has passed, and every Claude test has passed, Claude sets it to `done`.
+- The engine does not check the tests: Claude applies this rule itself.
 - To change a `review` ticket, for example for a correction the user asked for, Claude sets it to `in_progress` before its first change, and back to `review` after the completion comment of the correction.
 - Claude sets `todo` only when the user asks for it, or when the user decides to skip a ticket of a bundle. Default chosen at design time.
 - Claude does not implement a `done` ticket. It tells the user to set the status to To Do or In Progress first. Default chosen at design time.
@@ -167,7 +173,7 @@ The steps, in order:
 4. Build and test, with the project's commands or the repository's own commands.
 5. Commit with a conventional commit message `<type>: <summary> (<TICKET-ID>)`, then push.
 6. `add_comment` on the ticket with a summary of what changed, commit hash included.
-7. `set_ticket_status` with `review`. Never set `done`.
+7. `set_ticket_status` with `done` when every Claude test of the ticket has passed and the user has said in the chat that every User test has passed; otherwise with `review`.
 
 The workflow starts with Implement, whose first message is `implement-ticket.md`, with `implement_ticket` called from another chat, or when the user asks for the implementation in a ticket chat.
 
@@ -198,7 +204,7 @@ The workflow starts with Implement, whose first message is `implement-ticket.md`
 
 ### Final reply
 
-After the comment and the status `review`, Claude ends with a short reply: what changed, the commit, the checks, and that the ticket waits for the user to set it to Done. Default chosen at design time.
+After the comment and the status, Claude ends with a short reply: what changed, the commit, the checks, the result of each test, and, for a `review` ticket, that it waits for the user to set it to Done. Default chosen at design time.
 
 ## Commits
 
@@ -278,6 +284,10 @@ Code
 Checks
 - <command>: passed
 
+Testing
+- Claude: <test>: <result>
+- User: <test>: <result>
+
 Notes
 - <what is left open, or None>
 ```
@@ -286,6 +296,7 @@ Notes
 - Without a commit, the first line is `Not committed: <reason>.`, for example `Not committed: the project is not a git repository.`. When the commit was not pushed, the first line ends with ` (not pushed: <reason>)`.
 - When the docs already described the behaviour, the Docs part reads `- No change: <link> already describes the expected behaviour.`.
 - When no build or test command exists, the Checks part reads `- None: no build or test command found.`.
+- The Testing part has one line per bullet of the ticket's Testing section, in the same order, with its result: `passed`, `failed` or `waiting for the user`. When the ticket has no Testing section, it reads `- None: the ticket has no Testing section.`.
 - Claude posts the comment before it ends its turn, so the comment exists before an update can restart the app.
 
 The format of this comment is a default. Default chosen at design time.
@@ -294,12 +305,12 @@ The format of this comment is a default. Default chosen at design time.
 
 - A bundle chat starts with Implement All, whose first message is `implement-bundle.md`, or with `implement_bundle`. The bundle prompt contains every ticket of the bundle; `get_bundle` and `get_ticket` give the current state.
 - Claude takes the tickets in bundle order (the order of `tickets`) and skips the `done` ones. Default chosen at design time.
-- For each ticket, Claude runs steps 1 to 7 of the [implementation workflow](#implementation-workflow) completely, including its own commit, push, completion comment and status `review`, before starting the next ticket. The result is one commit per ticket, in bundle order, each with that ticket's id.
+- For each ticket, Claude runs steps 1 to 7 of the [implementation workflow](#implementation-workflow) completely, including its own commit, push, completion comment and status, before starting the next ticket. The result is one commit per ticket, in bundle order, each with that ticket's id.
 - Claude asks questions as soon as it finds an unknown, and resumes at the same ticket after the answers.
 - When the user decides to skip a ticket, Claude sets it back to `todo`, comments why, and continues with the next ticket. Default chosen at design time.
 - A ticket that needs no change, because an earlier commit of the bundle already covers it, gets no commit; its completion comment names that commit. Default chosen at design time.
 - The final reply lists each ticket with its commit hash, or with `skipped` and the reason. Default chosen at design time.
-- The bundle itself has no status, and Claude never sets `done` on any of its tickets.
+- The bundle itself has no status. Claude sets each of its tickets to `done` or `review` as [Ticket status](#ticket-status) says.
 
 ## Project and feedback chats
 
@@ -317,16 +328,16 @@ When the project is HephaestusV2 itself (the registered project whose git remote
 | 1    | User                          | Sends feedback with the ladybug, or creates or opens a ticket of the HephaestusV2 project.                                                                                                          | [Feedback](feedback.md), [Tickets and bundles](tickets.md)          |
 | 2    | Claude, feedback chat         | Clarifies with questions and creates the ticket: `todo`, named by Haiku, screenshot attached.                                                                                                       | [Feedback](feedback.md)                                             |
 | 3    | User                          | Clicks Implement, or Implement All on a bundle.                                                                                                                                                     | [Ticket chats and Implement](tickets.md#ticket-chats-and-implement) |
-| 4    | Claude, ticket chat           | Sets `in_progress`, updates the docs, updates the code to match, builds and tests, commits, pushes to `main`, comments and sets `review`.                                                           | [Implementation workflow](#implementation-workflow)                 |
+| 4    | Claude, ticket chat           | Sets `in_progress`, updates the docs, updates the code to match, builds and tests, commits, pushes to `main`, comments and sets `done` or `review`.                                                 | [Implementation workflow](#implementation-workflow)                 |
 | 5    | GitHub Actions, `release.yml` | Checks for personal data and checks the docs, runs `swift test`, computes the version, builds and signs the app, and publishes the release `v<version>` with `HephaestusV2.zip` and `release.json`. | [CI](ci.md)                                                         |
 | 6    | Updater                       | Finds the release (10 s after launch, every `updateCheckIntervalMinutes`, or on Check Now), downloads and verifies it, and reports it ready.                                                        | [Updater](updater.md)                                               |
 | 7    | App                           | Restarts on the new version as soon as no chat is running and no editor is unsaved, or at once with Restart Now.                                                                                    | [Updater](updater.md)                                               |
-| 8    | User                          | Checks the change and sets the ticket to Done.                                                                                                                                                      | [Status rules](tickets.md#status-rules)                             |
+| 8    | User                          | Checks the change and sets a `review` ticket to Done.                                                                                                                                               | [Status rules](tickets.md#status-rules)                             |
 
 - The loop needs a release build (build number above 0) with `autoUpdate` on, `HEPHAESTUS_DISABLE_UPDATER` not set and a writable app folder. With `autoUpdate` off, step 7 happens from the About window's Install button.
 - The commit must be pushed to `main` of the release repository.
 - A failing pipeline publishes no release. The running version stays, and the failure shows on the repository's Actions page.
-- Claude does not wait for the pipeline: it ends its turn after the completion comment and the status `review`. Default chosen at design time.
+- Claude does not wait for the pipeline: it ends its turn after the completion comment and the status change. Default chosen at design time.
 - The restart stops the Claude processes. Transcripts are kept, and the next message of a chat resumes its Claude session ([Chats](chats.md)).
 - Docs changed and pushed without a ticket are not turned into code automatically. A ticket that lists the changed sections under Docs starts the loop. Default chosen at design time.
 
@@ -337,7 +348,6 @@ When the project is HephaestusV2 itself (the registered project whose git remote
 | Descriptions written by Claude follow the template                                | `tickets.create`, `tickets.update`     | `invalid`         |
 | New tickets start as `todo`                                                       | `tickets.create` (no status parameter) | none              |
 | Tickets created without a title are named by Haiku                                | `tickets.create`                       | none              |
-| Claude never sets `done`                                                          | `tickets.setStatus`                    | `forbidden`       |
 | Claude never changes the status of a `done` ticket                                | `tickets.setStatus`                    | `forbidden`       |
 | Questions are labelled in order, with 2 to 10 options and exactly one recommended | `chats.postQuestions`                  | `invalid`         |
 | A chat has at most one unanswered question set                                    | `chats.postQuestions`                  | `conflict`        |
@@ -345,7 +355,7 @@ When the project is HephaestusV2 itself (the registered project whose git remote
 | A `done` ticket is not implemented                                                | `chats.implementTicket`                | `conflict`        |
 | A bundle is implemented only when one of its tickets is not `done`                | `chats.implementBundle`                | `conflict`        |
 
-The engine does not check the other rules (never invent, docs first, build and test, commits, pushing and the completion comment); only the prompts carry them. A ticket file that Claude edits with its own file tools reaches the engine as an external change with the actor `system` ([Data model](data-model.md#external-changes)); the template and status rules are not applied to it. Only the prompt rule `Never create, edit or delete files inside a .hephaestus folder yourself` prevents it. The error messages of the ticket rules are in [Errors](tickets.md#errors).
+The engine does not check the other rules (never invent, docs first, build and test, the tests that allow `done`, commits, pushing and the completion comment); only the prompts carry them. A ticket file that Claude edits with its own file tools reaches the engine as an external change with the actor `system` ([Data model](data-model.md#external-changes)); the template and status rules are not applied to it. Only the prompt rule `Never create, edit or delete files inside a .hephaestus folder yourself` prevents it. The error messages of the ticket rules are in [Errors](tickets.md#errors).
 
 ## Worked example
 
@@ -404,6 +414,10 @@ When the database is unreachable, GET /health answers 503 Service Unavailable wi
 Change
 Document both answers of GET /health in a new Health section of docs/http.md, then make the health handler check the database connection and answer from the result.
 
+Testing
+- Claude: make test passes, with a test of each answer of GET /health.
+- User: stop the database and check that GET /health answers 503 with the body down.
+
 Docs
 - [http.md › Health](docs/http.md#health) (new)
 ```
@@ -425,11 +439,15 @@ Checks
 - make build: passed
 - make test: passed
 
+Testing
+- Claude: make test passes, with a test of each answer of GET /health: passed
+- User: stop the database and check that GET /health answers 503 with the body down: waiting for the user
+
 Notes
 - None
 ```
 
-7. Claude sets `DEMO-7` to `review`. Its final reply summarizes the change and asks the user to review `DEMO-7` and set it to Done. The ticket stays `review` until the user does.
+7. The User test is still waiting, so Claude sets `DEMO-7` to `review`. Its final reply summarizes the change and asks the user to review `DEMO-7` and set it to Done. The ticket stays `review` until the user does.
 
 ## Requirements covered
 
@@ -440,7 +458,7 @@ Notes
 - R83: Claude regenerates the code from the updated docs, then the docs and the code are committed and pushed.
 - R84: GitHub CI then rebuilds the app.
 - R87: When Claude starts working on a ticket, its status changes to in progress.
-- R88 (partly): Only the user can mark a ticket done.
+- R88 (partly): Claude marks a ticket done only when every test of its Testing section has passed; otherwise the user does.
 - R89: Claude implements a ticket by first changing the docs.
 - R90: Claude then updates the code to match the docs.
 - R91: Claude then commits with a message of the form `<type>: <summary>`, the type being fix, feat and so on.

@@ -223,7 +223,7 @@ sessionStarted: true
 | Rule                                                                                                                                  | Defined in                                     |
 | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | `status` is `todo` and `createdBy` is `claude`                                                                                        | [Workflow](workflow.md)                        |
-| the description contains the five template headings in order                                                                          | [Workflow](workflow.md), [Tickets](tickets.md) |
+| the description contains the six template headings in order                                                                           | [Workflow](workflow.md), [Tickets](tickets.md) |
 | Claude gives no title: the ticket gets a provisional title, then the title chosen by Haiku (`ticket.updated`)                         | [Tickets](tickets.md), [Chats](chats.md)       |
 | the screenshot path becomes an attachment upload with `sourcePath`; the file is copied into `.hephaestus/attachments/<TICKET-ID>/`    | [Engine API](engine-api.md#attachmentupload)   |
 | when the chat's `ticket` is null, the ticket's `chats` is `[<chat id>]` and the chat's `ticket` is set to the new id (`chat.updated`) | [Engine API](engine-api.md#ticketscreate)      |
@@ -253,6 +253,10 @@ description: |
 
   Change
   Keep the lock icon of a locked tab when the tab strip reorders tabs.
+
+  Testing
+  - Claude: a test moves a locked tab in the tab strip and checks that it is still locked.
+  - User: drag a locked tab to another position and see its lock icon.
 
   Docs
   - [web-tabs.md › Locking](docs/web-tabs.md#locking)

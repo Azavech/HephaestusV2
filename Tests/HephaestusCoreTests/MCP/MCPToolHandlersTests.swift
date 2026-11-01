@@ -43,8 +43,8 @@ struct MCPToolHandlersTests {
     @Test("A validation failure never reaches the engine")
     func validationFirst() async throws {
         let engine = RecordedEngine()
-        let result = try await Self.call(Self.handlers(engine), "set_ticket_status", #"{"ticketID":"HEPH-12","status":"done"}"#)
-        #expect(result == .failure(MCPToolError(code: .invalid, message: "status: must be one of todo, in_progress, review.")))
+        let result = try await Self.call(Self.handlers(engine), "set_ticket_status", #"{"ticketID":"HEPH-12","status":"finished"}"#)
+        #expect(result == .failure(MCPToolError(code: .invalid, message: "status: must be one of todo, in_progress, review, done.")))
         #expect(engine.calls.isEmpty)
     }
 

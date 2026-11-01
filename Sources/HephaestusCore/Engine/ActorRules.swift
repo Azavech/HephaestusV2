@@ -46,12 +46,6 @@ enum ActorRules {
     /// The message of chats.postQuestions and of `ask_questions` with the external token.
     static let ownChatOnly = EngineError(.forbidden, "Only the chat's own Claude can ask questions.")
 
-    /// tickets.setStatus: claude never sets `done`.
-    static func requireNotDone(_ status: String, _ actor: Actor) throws {
-        guard actor.kind == .claude, status == TicketStatus.done.rawValue else { return }
-        throw EngineError(.forbidden, "Only the user can mark a ticket as done.")
-    }
-
     /// tickets.setStatus: claude never changes the status of a `done` ticket.
     static func requireNotDoneTicket(_ ticket: Ticket, _ actor: Actor) throws {
         guard actor.kind == .claude, ticket.status == .done else { return }

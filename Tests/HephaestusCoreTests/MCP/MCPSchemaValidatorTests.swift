@@ -39,7 +39,7 @@ struct MCPSchemaValidatorTests {
         ("run_project", #"{"projectID":"HEPH","kind":"run","timeoutSeconds":0}"#, "timeoutSeconds: must be at least 1."),
         ("run_project", #"{"projectID":"HEPH","kind":"run","timeoutSeconds":1701}"#, "timeoutSeconds: must be at most 1700."),
         ("move_web_tab", #"{"projectID":"HEPH","tabID":"x","toIndex":-1}"#, "toIndex: must be at least 0."),
-        ("set_ticket_status", #"{"ticketID":"HEPH-12","status":"done"}"#, "status: must be one of todo, in_progress, review."),
+        ("set_ticket_status", #"{"ticketID":"HEPH-12","status":"finished"}"#, "status: must be one of todo, in_progress, review, done."),
         ("update_project", #"{"projectID":"HEPH","commands":"make"}"#, "commands: must be an object."),
         ("update_project", #"{"projectID":"HEPH","commands":{"deploy":"x"}}"#, "commands.deploy: unknown argument."),
         ("update_project", #"{"projectID":"HEPH","commands":{"build":7}}"#, "commands.build: must be a string."),

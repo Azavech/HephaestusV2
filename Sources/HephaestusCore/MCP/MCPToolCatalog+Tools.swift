@@ -271,7 +271,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "create_ticket",
             description: #"""
-            Create a ticket in a project. It starts as todo and its title is generated from the description. The description must use this template, the five headings alone on their lines and in this order:
+            Create a ticket in a project. It starts as todo and its title is generated from the description. The description must use this template, the six headings alone on their lines and in this order:
 
             Problem
             (Explain the problem)
@@ -284,6 +284,9 @@ extension MCPToolCatalog {
 
             Change
             (Explain what should change)
+
+            Testing
+            (List the tests that decide whether the ticket is done)
 
             Docs
             (List all docs files and paragraphs relevant to the issue)
@@ -371,7 +374,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "set_ticket_status",
             description: #"""
-            Set a ticket's status to todo, in_progress or review. Set in_progress when you start working on a ticket, and review when you have finished it. Only the user can set done, and you cannot change the status of a done ticket.
+            Set a ticket's status to todo, in_progress, review or done. Set in_progress when you start working on a ticket. When you have finished it, set done if every Claude test of its Testing section has passed and the user has said that every User test has passed, otherwise review. You cannot change the status of a done ticket.
             """#,
             inputSchema: schema(#"""
             {
@@ -384,7 +387,7 @@ extension MCPToolCatalog {
                 "status": {
                   "type": "string",
                   "description": "New status.",
-                  "enum": ["todo", "in_progress", "review"]
+                  "enum": ["todo", "in_progress", "review", "done"]
                 }
               },
               "required": ["ticketID", "status"],

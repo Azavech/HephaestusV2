@@ -387,6 +387,10 @@ description: |
   Change
   Make Command-W use the tab strip's close action, which checks the lock.
 
+  Testing
+  - Claude: a test presses Command-W on a locked tab and checks that the tab stays open.
+  - User: press Command-W on a locked tab and see the beep and the tooltip.
+
   Docs
   - [web-tabs.md › Locking](docs/web-tabs.md#locking)
   - [ui.md › Closing tabs and windows](docs/ui.md#closing-tabs-and-windows)

@@ -153,7 +153,6 @@ extension Engine {
 
     /// docs/engine-api.md › tickets.setStatus and docs/tickets.md › Status rules.
     func ticketsSetStatus(_ params: TicketsSetStatus.Params, _ actor: Actor) async throws -> Ticket {
-        try ActorRules.requireNotDone(params.status, actor)
         let id = try normalizedTicketID(params.ticketID)
         guard let status = TicketStatus(rawValue: params.status) else {
             throw EngineError(.invalid, "Unknown status \"\(params.status)\". Use todo, in_progress, review or done.")

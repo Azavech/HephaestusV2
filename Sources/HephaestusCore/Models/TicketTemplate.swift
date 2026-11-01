@@ -3,8 +3,8 @@ import Foundation
 /// The ticket description template, its validation and the provisional title
 /// (docs/tickets.md › Description template, Template validation, Titles and naming).
 public enum TicketTemplate {
-    /// The five headings, in order.
-    public static let headings = ["Problem", "Current Behavior", "Expected", "Change", "Docs"]
+    /// The six headings, in order.
+    public static let headings = ["Problem", "Current Behavior", "Expected", "Change", "Testing", "Docs"]
 
     /// The text the New Ticket sheet starts with.
     public static let text = """
@@ -19,6 +19,9 @@ public enum TicketTemplate {
 
         Change
         (Explain what should change)
+
+        Testing
+        (List the tests that decide whether the ticket is done)
 
         Docs
         (List all docs files and paragraphs relevant to the issue)
@@ -60,7 +63,7 @@ public enum TicketTemplate {
     /// The message of an invalid description.
     public static func validationMessage(missing heading: String) -> String {
         "Description does not follow the ticket template: heading \"\(heading)\" is missing or out of order. "
-            + "Use the headings Problem, Current Behavior, Expected, Change, Docs in this order, each alone on its line."
+            + "Use the headings Problem, Current Behavior, Expected, Change, Testing, Docs in this order, each alone on its line."
     }
 
     /// Checks a description written by Claude; fails with `invalid` and the message of

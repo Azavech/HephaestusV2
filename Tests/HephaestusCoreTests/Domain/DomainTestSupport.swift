@@ -207,6 +207,9 @@ let templateDescription = """
     Change
     Check the lock.
 
+    Testing
+    - User: press Command-W on a locked tab.
+
     Docs
     - docs/web-tabs.md
     """
