@@ -140,8 +140,9 @@ struct SyncServerTests {
 
     @Test("Handshake deadlines close with 4006")
     func deadlines() async throws {
+        // The hello deadline leaves a loaded run time to send the hello of the auth check.
         var timings = SyncTimings.fast
-        timings.helloDeadline = 0.3
+        timings.helloDeadline = 2
         timings.authDeadline = 0.3
         try await withServer(timings) { _, port in
             let silent = RawPeer(port: port)

@@ -345,9 +345,10 @@ struct SyncLoopbackTests {
             let localEvents = mainLocal.events
             await main.emit(HugeEvent.self, String(repeating: "b", count: 33_554_432), origin: .system)
             await main.emit(SkillsChangedEvent.self, [], origin: .system)
-            let remoteEvent = try #require(await firstElement(of: remoteEvents))
+            // Other events of the engines' background work may come first.
+            let remoteEvent = try #require(await firstElement(of: remoteEvents) { $0.name == SkillsChangedEvent.name })
             #expect(remoteEvent.data == [])
-            let local = try #require(await firstElement(of: localEvents))
+            let local = try #require(await firstElement(of: localEvents) { $0.name == SkillsChangedEvent.name })
             #expect(local.data.stringValue?.count == 33_554_432)
             let logText = try String(contentsOf: main.dataDirectory.engineLogFile, encoding: .utf8)
             #expect(logText.contains("WARN sync: event skills.changed of 33554520 bytes not sent to \(remote.deviceID)"))
