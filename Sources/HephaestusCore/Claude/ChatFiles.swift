@@ -1,0 +1,242 @@
+import Darwin
+import Foundation
+
+/// The attachments of chat messages, stored in the chat's attachment folder `chats/<chat id>/`
+/// (docs/data-model.md › Attachments, docs/engine-api.md › AttachmentUpload).
+enum ChatAttachments {
+    /// 20 MiB per file once decoded and for all the attachments of one request together.
+    static let maximumSize = 20 * 1024 * 1024
+    /// docs/chats.md › User messages: images of at most 5,000,000 bytes become image blocks.
+    static let maximumImageBlockSize = 5_000_000
+    /// The content types sent to Claude as image blocks.
+    static let imageBlockTypes: Set<String> = ["image/png", "image/jpeg", "image/gif", "image/webp"]
+
+    /// An upload checked and decoded, ready to be stored.
+    struct Prepared: Sendable {
+        var name: String
+        var contentType: String
+        var data: Data
+    }
+
+    /// Checks and reads the uploads of one request (docs/engine-api.md › AttachmentUpload):
+    /// exactly one of `dataBase64` and `sourcePath`, valid base64, a readable regular file, at
+    /// most 20 MiB each and together. `sourcePath` is resolved against `projectRoot`.
+    static func prepare(_ uploads: [AttachmentUpload], projectRoot: URL) throws -> [Prepared] {
+        var prepared: [Prepared] = []
+        var total = 0
+        for (index, upload) in uploads.enumerated() {
+            let data: Data
+            switch (upload.dataBase64, upload.sourcePath) {
+            case (let base64?, nil):
+                guard let decoded = Data(base64Encoded: base64) else {
+                    throw EngineError.invalid("attachments[\(index)]", "dataBase64 is not valid base64")
+                }
+                data = decoded
+            case (nil, let source?):
+                let path = source.hasPrefix("/") ? source : projectRoot.appendingPathComponent(source).path
+                var info = stat()
+                guard stat(path, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG, let contents = FileManager.default.contents(atPath: path) else {
+                    throw EngineError(.invalid, "\(source) is not a readable file.")
+                }
+                data = contents
+            default:
+                throw EngineError.invalid("attachments[\(index)]", "give exactly one of dataBase64 and sourcePath")
+            }
+            guard data.count <= maximumSize else {
+                throw EngineError(.invalid, "\(upload.name) is larger than 20 MB.")
+            }
+            total += data.count
+            prepared.append(Prepared(name: upload.name, contentType: upload.contentType, data: data))
+        }
+        guard total <= maximumSize else {
+            throw EngineError(.invalid, "The attachments of one request exceed 20 MB.")
+        }
+        return prepared
+    }
+
+    /// The stored name of an upload: `/`, `:` and control characters replaced by `_`, `file`
+    /// when nothing is left, and the part before the extension shortened so that the stored file
+    /// name `<UUID>-<name>` has at most 255 UTF-8 bytes.
+    static func storedName(_ name: String) -> String {
+        var cleaned = String(name.unicodeScalars.map { scalar -> Character in
+            scalar == "/" || scalar == ":" || scalar.properties.generalCategory == .control ? "_" : Character(scalar)
+        })
+        if cleaned.isEmpty { cleaned = "file" }
+        let limit = 255 - 37
+        guard cleaned.utf8.count > limit else { return cleaned }
+        let ext = (cleaned as NSString).pathExtension
+        var base = ext.isEmpty ? cleaned : String(cleaned.dropLast(ext.count + 1))
+        let suffix = ext.isEmpty ? "" : "." + ext
+        while !base.isEmpty, (base + suffix).utf8.count > limit {
+            base.removeLast()
+        }
+        var result = base + suffix
+        while result.utf8.count > limit { result.removeLast() }
+        return result.isEmpty ? "file" : result
+    }
+
+    /// Writes one file in the chat's attachment folder and returns its Attachment.
+    static func store(name: String, contentType: String, data: Data, chatID: ChatID, folder: ProjectFolder,
+                      ownWrites: OwnWrites) throws -> Attachment {
+        let id = UUID()
+        let storedName = storedName(name)
+        let attachment = Attachment(id: id, name: storedName, path: Attachment.chatPath(chatID: chatID, id: id, name: storedName),
+                                    contentType: Attachment.contentType(given: contentType, name: storedName), size: data.count)
+        let url = folder.attachmentFile(path: attachment.path)
+        let digest = try AtomicFile.write(data, to: url)
+        ownWrites.recordWrite(path: url.path, sha256: digest)
+        return attachment
+    }
+
+    /// The extension of a tool-result image: png, jpg, gif or webp.
+    // DOC-GAP: docs/chats.md › Tool results lists four extensions; another media type takes the
+    // preferred extension of its type, else `bin`.
+    static func imageExtension(_ mediaType: String) -> String {
+        switch mediaType {
+        case "image/png": return "png"
+        case "image/jpeg": return "jpg"
+        case "image/gif": return "gif"
+        case "image/webp": return "webp"
+        default:
+            let subtype = mediaType.split(separator: "/").last.map(String.init) ?? ""
+            return subtype.isEmpty ? "bin" : subtype
+        }
+    }
+}
+
+/// An append-only log file shared by the engine and the reading threads of one chat process:
+/// `Logs/claude-<chat id>.log` and, with debug tools, `Logs/claude-<chat id>.stdout.jsonl`.
+final class AppendFile: @unchecked Sendable {
+    private let lock = NSLock()
+    private var descriptor: Int32
+
+    /// docs/chats.md › Exit handling and logs: a log larger than 10 MB at launch is emptied first.
+    static let rotationSize = 10 * 1024 * 1024
+
+    /// Opens `url` for appending, creating it and its folder; with `emptyAbove`, a file larger
+    /// than that is emptied first.
+    init(url: URL, emptyAbove: Int? = nil) {
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var flags = O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC
+        if let emptyAbove, let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber,
+           size.intValue > emptyAbove {
+            flags |= O_TRUNC
+        }
+        descriptor = open(url.path, flags, 0o644)
+    }
+
+    func append(_ data: Data) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard descriptor >= 0 else { return }
+        data.withUnsafeBytes { buffer in
+            var offset = 0
+            while offset < buffer.count {
+                let written = Darwin.write(descriptor, buffer.baseAddress! + offset, buffer.count - offset)
+                if written > 0 {
+                    offset += written
+                } else if written < 0 && errno == EINTR {
+                    continue
+                } else {
+                    break
+                }
+            }
+        }
+    }
+
+    func appendLine(_ text: String) {
+        append(Data((text + "\n").utf8))
+    }
+
+    func close() {
+        lock.lock()
+        defer { lock.unlock() }
+        if descriptor >= 0 {
+            Darwin.close(descriptor)
+            descriptor = -1
+        }
+    }
+
+    deinit {
+        if descriptor >= 0 { Darwin.close(descriptor) }
+    }
+}
+
+/// The standard error of a chat process: appended to its log, with its last non-empty line and
+/// whether it reported a missing session (docs/chats.md › Session and resume).
+final class StderrTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private var pending = ""
+    private var lastLine: String?
+    private var missingSession = false
+    let finished = Latch()
+
+    static let missingSessionText = "No conversation found with session ID"
+
+    func append(_ data: Data) {
+        let text = String(decoding: data, as: UTF8.self)
+        lock.lock()
+        defer { lock.unlock() }
+        pending += text
+        if pending.contains(Self.missingSessionText) { missingSession = true }
+        var lines = pending.components(separatedBy: "\n")
+        pending = lines.removeLast()
+        if let last = lines.map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) }).last(where: { !$0.isEmpty }) {
+            lastLine = last
+        }
+        if pending.count > 100_000 {
+            pending = String(pending.suffix(100_000))
+        }
+    }
+
+    /// The last non-empty line of standard error, the unterminated last line included.
+    var lastNonEmptyLine: String? {
+        lock.withLock {
+            let rest = pending.trimmingCharacters(in: .whitespacesAndNewlines)
+            return rest.isEmpty ? lastLine : rest
+        }
+    }
+
+    var reportedMissingSession: Bool { lock.withLock { missingSession } }
+}
+
+/// A one-shot signal that tasks wait for.
+final class Latch: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isOpen = false
+    private var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+
+    func open() {
+        lock.lock()
+        isOpen = true
+        let waiting = waiters
+        waiters = [:]
+        lock.unlock()
+        waiting.values.forEach { $0.resume() }
+    }
+
+    private func removeWaiter(_ id: UUID) -> CheckedContinuation<Void, Never>? {
+        lock.withLock { waiters.removeValue(forKey: id) }
+    }
+
+    /// Waits until the latch opens, at most `limit` when given.
+    func wait(atMost limit: Duration? = nil) async {
+        let id = UUID()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            if isOpen {
+                lock.unlock()
+                continuation.resume()
+                return
+            }
+            waiters[id] = continuation
+            lock.unlock()
+            if let limit {
+                Task.detached { [self] in
+                    try? await Task.sleep(for: limit)
+                    removeWaiter(id)?.resume()
+                }
+            }
+        }
+    }
+}

@@ -60,7 +60,7 @@ struct DispatcherTests {
             let info = try await engine.call(DeviceInfoMethod.self, Empty(), actor: .system)
             #expect(info.id == engine.deviceID)
             let questions = ChatsPostQuestions.Params(chatID: Self.chatID, questions: [])
-            #expect(await engineError { try await engine.call(ChatsPostQuestions.self, questions, actor: .system) }?.code == .unavailable)
+            #expect(await engineError { try await engine.call(ChatsPostQuestions.self, questions, actor: .system) }?.code == .invalid)
         }
     }
 
@@ -145,7 +145,7 @@ struct DispatcherTests {
                 == EngineError(.forbidden, "Only the chat's own Claude can ask questions."))
             #expect(await call(ChatsPostQuestions.self, questions, .claude(chatID: UUID().uuidString))
                 == EngineError(.forbidden, "Only the chat's own Claude can ask questions."))
-            #expect(await call(ChatsPostQuestions.self, questions)?.code == .unavailable)
+            #expect(await call(ChatsPostQuestions.self, questions)?.code == .invalid)
         }
     }
 
