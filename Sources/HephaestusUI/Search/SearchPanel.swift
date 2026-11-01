@@ -9,6 +9,8 @@ struct SearchPanel: View {
     let workspace: DeviceWorkspace
     @State private var controller: SearchController
     @State private var host = SearchPanelHost()
+    /// The height of the window that shows the panel, once the panel is in it.
+    @State private var windowHeight: CGFloat?
 
     /// The card's width, and its height limit as a fraction of the window height.
     static let width: CGFloat = 720
@@ -25,10 +27,10 @@ struct SearchPanel: View {
             // A card centered horizontally, 8 pt below the toolbar, 720 pt wide (the window width
             // minus 32 pt when the window is narrower), at most 70 % of the window height.
             let width = max(0, min(Self.width, proxy.size.width - 32))
-            let windowHeight = host.view?.window?.frame.height ?? proxy.size.height
-            SearchPanelCard(window: window, controller: controller, maxHeight: windowHeight * Self.heightFraction)
+            let maxHeight = (windowHeight ?? proxy.size.height) * Self.heightFraction
+            SearchPanelCard(window: window, controller: controller, maxHeight: maxHeight)
                 .frame(width: width)
-                .background(SearchPanelHostView(host: host))
+                .background(SearchPanelHostView(host: host) { windowHeight = $0 })
                 .frame(width: proxy.size.width, alignment: .top)
                 .padding(.top, 8)
         }
@@ -86,15 +88,55 @@ final class SearchPanelHost {
 
 private struct SearchPanelHostView: NSViewRepresentable {
     let host: SearchPanelHost
+    /// Called with the window's height when the view enters a window and when the window resizes.
+    let windowHeightChanged: (CGFloat) -> Void
 
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
+    func makeNSView(context: Context) -> WindowHeightView {
+        let view = WindowHeightView()
+        view.onHeightChange = windowHeightChanged
         host.view = view
         return view
     }
 
-    func updateNSView(_ view: NSView, context: Context) {
+    func updateNSView(_ view: WindowHeightView, context: Context) {
+        view.onHeightChange = windowHeightChanged
         host.view = view
+    }
+}
+
+/// A view that reports the height of its window's frame.
+final class WindowHeightView: NSView {
+    var onHeightChange: ((CGFloat) -> Void)?
+    private var resizeObserver: NSObjectProtocol?
+    private var reportedHeight: CGFloat?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let resizeObserver {
+            NotificationCenter.default.removeObserver(resizeObserver)
+            self.resizeObserver = nil
+        }
+        guard let window else { return }
+        resizeObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResizeNotification, object: window,
+                                                                queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.report() }
+        }
+        // Reported after the current SwiftUI update.
+        DispatchQueue.main.async { [weak self] in
+            self?.report()
+        }
+    }
+
+    private func report() {
+        guard let height = window?.frame.height, height != reportedHeight else { return }
+        reportedHeight = height
+        onHeightChange?(height)
+    }
+
+    deinit {
+        if let resizeObserver {
+            NotificationCenter.default.removeObserver(resizeObserver)
+        }
     }
 }
 
