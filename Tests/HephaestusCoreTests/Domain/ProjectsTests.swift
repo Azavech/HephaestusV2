@@ -45,6 +45,31 @@ struct ProjectsTests {
             #expect(service.project.type == .goService)
             #expect(try ProjectFileStore.readProject(ProjectFolder(root: URL(fileURLWithPath: h.path("Api")))).type == .goService)
             #expect(try await h.connection.call(ProjectsList.self).map(\.type) == [.none, .goService])
+            #expect(try await h.connection.call(ProjectsGet.self, .init(projectID: "API")).project.type == .goService)
+        }
+    }
+
+    @Test("create_project, update_project and get_project set and return the type through the engine")
+    func typeThroughMCP() async throws {
+        try await withDomainEngine { h in
+            let engine = h.engine
+            let handlers = MCPToolHandlers(engineCall: { method, params, actor in
+                try await engine.dispatch(method: method, params: params, actor: actor)
+            }, debugUI: nil, homeDirectory: "/Users/example")
+            func call(_ tool: String, _ arguments: String) async throws -> String {
+                let definition = try #require(MCPToolCatalog.tool(named: tool, debugTools: false))
+                return try await handlers.call(definition, arguments: try jsonValue(arguments), actor: h.claude).get()
+            }
+            func type(_ projectID: ProjectID) async throws -> ProjectType {
+                let text = try await call("get_project", #"{"projectID":"\#(projectID)"}"#)
+                return try EngineJSON.decoder().decode(ProjectsGet.Result.self, from: Data(text.utf8)).project.type
+            }
+            _ = try await call("create_project", #"{"path":"\#(h.path("Api"))","name":"Api","identifier":"API","type":"goService"}"#)
+            #expect(try await type("API") == .goService)
+            _ = try await call("update_project", #"{"projectID":"API","type":"swiftApplication"}"#)
+            #expect(try await type("API") == .swiftApplication)
+            _ = try await call("create_project", #"{"path":"\#(h.path("Web"))","name":"Web","identifier":"WEB"}"#)
+            #expect(try await type("WEB") == .none)
         }
     }
 
