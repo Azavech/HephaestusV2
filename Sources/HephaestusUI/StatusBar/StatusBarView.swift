@@ -191,7 +191,7 @@ struct StatusBarView: View {
     /// already shows that run (docs/ui.md › Console drawer).
     private func runItem(_ run: RunState, window: WindowState) -> some View {
         Button {
-            if window.consoleVisible && window.viewState.consoleRunID == run.id {
+            if window.consoleVisible && window.consoleRun?.id == run.id {
                 window.consoleVisible = false
             } else {
                 window.consoleVisible = true

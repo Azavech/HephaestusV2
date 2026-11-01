@@ -297,12 +297,12 @@ private struct ProjectCommands: View {
         .keyboardShortcut(".", modifiers: .command)
         .disabled(window?.runningRuns.isEmpty ?? true)
         Button("Clear Console") {
-            if let window, let runID = window.viewState.consoleRunID {
-                window.workspace?.runs[runID]?.clear()
+            if let window, let run = window.consoleRun {
+                window.workspace?.runs[run.id]?.clear()
             }
         }
         .keyboardShortcut("k", modifiers: .command)
-        .disabled(!(window?.consoleVisible ?? false) || window?.viewState.consoleRunID == nil)
+        .disabled(!(window?.consoleVisible ?? false) || window?.consoleRun == nil)
         Divider()
         Button("New Sub Project…") {
             if let window, let projectID = window.projectID {
