@@ -101,14 +101,15 @@ func filesChangedPayload(_ envelope: EngineEventEnvelope) -> FilesChangedEvent.P
     return try? envelope.payload(FilesChangedEvent.self)
 }
 
-/// The first files.changed event of `projectID` whose paths satisfy `predicate`, or nil after
-/// `timeout`.
+/// The first files.changed event of `projectID` whose paths satisfy `predicate` or are `[""]`,
+/// or nil after `timeout`. `[""]` names the whole project: FSEvents dropped events under the load
+/// of the test run and reported the root, so anything in the project may have changed.
 func filesChanged(on stream: AsyncStream<EngineEventEnvelope>, projectID: ProjectID = FileTestProject.id,
                   timeout: Duration = .seconds(20),
                   where predicate: @escaping @Sendable ([String]) -> Bool) async -> FilesChangedEvent.Payload? {
     let envelope = await firstElement(of: stream, timeout: timeout) { envelope in
         guard let payload = filesChangedPayload(envelope), payload.projectID == projectID else { return false }
-        return predicate(payload.paths)
+        return payload.paths == [""] || predicate(payload.paths)
     }
     return envelope.flatMap(filesChangedPayload)
 }

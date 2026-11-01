@@ -10,7 +10,7 @@ struct TicketsTests {
     func create() async throws {
         try await withDomainEngine { h in
             try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
-            let events = await DomainEventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h)
             let ticket = try await h.connection.call(TicketsCreate.self, .init(
                 projectID: "heph", title: "  Show the build number ", description: "Line one\r\nLine two\rLine three"))
             #expect(ticket.id == "HEPH-1")
@@ -119,7 +119,7 @@ struct TicketsTests {
         try await withDomainEngine { h in
             try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
             let ticket = try await h.call(TicketsCreate.self, .init(projectID: "HEPH", description: templateDescription), as: h.claude)
-            let events = await DomainEventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h)
             await h.engine.startTicketNaming(ticket.id, provisional: ticket.title, description: ticket.description,
                                              namer: FixedTitleNamer(title: "Keep locked web tabs open"))
             await events.wait(for: TicketUpdatedEvent.name)
@@ -153,7 +153,7 @@ struct TicketsTests {
             let meta = ChatMeta(id: chatID, title: "Feedback", kind: .feedback, created: ISODate.now(), projectID: "HEPH")
             await h.engine.testUpsertChat(meta)
             let chat = Actor.claude(chatID: chatID.uuidString)
-            let events = await DomainEventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h)
             let first = try await h.call(TicketsCreate.self, .init(projectID: "HEPH", description: templateDescription), as: chat)
             #expect(first.chatIDs == [chatID])
             #expect(await events.wait(for: ChatUpdatedEvent.name)
@@ -173,7 +173,7 @@ struct TicketsTests {
         try await withDomainEngine { h in
             try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
             let ticket = try await h.ticket("HEPH")
-            let events = await DomainEventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h)
             let updated = try await h.connection.call(TicketsUpdate.self, .init(ticketID: "heph-1", title: " New title ", description: "New"))
             #expect(updated.title == "New title" && updated.description == "New")
             #expect(updated.updated >= ticket.updated)
@@ -197,7 +197,7 @@ struct TicketsTests {
         try await withDomainEngine { h in
             try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
             try await h.ticket("HEPH")
-            let events = await DomainEventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h)
             let progress = try await h.call(TicketsSetStatus.self, .init(ticketID: "HEPH-1", status: "in_progress"), as: h.claude)
             #expect(progress.status == .inProgress)
             #expect(await events.wait(for: ProjectsChangedEvent.name) == ["ticket.updated", "projects.changed"])
@@ -231,7 +231,7 @@ struct TicketsTests {
             _ = try await h.connection.call(BundlesCreate.self, .init(projectID: "HEPH", title: "Other", ticketIDs: ["HEPH-2"]))
             let chatID = UUID()
             _ = try await h.engine.linkChat(chatID, toTicket: "HEPH-1")
-            let events = await DomainEventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h)
             _ = try await h.connection.call(TicketsDelete.self, .init(ticketID: "HEPH-1"))
             #expect(await events.wait(for: ProjectsChangedEvent.name) == ["bundle.updated", "ticket.deleted", "projects.changed"])
             #expect(try events.all[0].payload(BundleUpdatedEvent.self).ticketIDs == ["HEPH-2"])
@@ -264,7 +264,7 @@ struct TicketsTests {
             try await h.ticket("HEPH")
             #expect(await engineError { try await h.connection.call(TicketsAddComment.self, .init(ticketID: "HEPH-1", text: "  ")) }
                 == EngineError(.invalid, "A comment needs text or at least one attachment."))
-            let events = await DomainEventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h)
             let withText = try await h.connection.call(TicketsAddComment.self, .init(ticketID: "HEPH-1", text: "First\r\nline"))
             let comment = try #require(withText.comments.first)
             #expect(comment.author == .user && comment.text == "First\nline" && comment.updated == nil)
@@ -316,7 +316,7 @@ struct TicketsTests {
             let missing = UUID()
             #expect(await engineError { try await h.connection.call(TicketsRemoveAttachment.self, .init(ticketID: "HEPH-1", attachmentID: missing)) }
                 == EngineError(.notFound, "Attachment \(missing.uuidString) not found."))
-            let events = await DomainEventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h)
             let removed = try await h.call(TicketsRemoveAttachment.self, .init(ticketID: "HEPH-1", attachmentID: attachment.id), as: h.claude)
             #expect(removed.attachments.isEmpty)
             #expect(await events.wait(for: TicketUpdatedEvent.name) == ["ticket.updated"])

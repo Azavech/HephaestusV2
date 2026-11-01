@@ -14,7 +14,7 @@ struct BundlesAndWebTabsTests {
             try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
             try await h.ticket("HEPH", "First ticket")
             try await h.ticket("HEPH", "Second ticket")
-            let events = await DomainEventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h)
             let bundle = try await h.connection.call(BundlesCreate.self, .init(projectID: "HEPH", ticketIDs: ["heph-2", "HEPH-1"]))
             #expect(bundle.id == "HEPH-B1")
             #expect(bundle.ticketIDs == ["HEPH-2", "HEPH-1"])
@@ -71,7 +71,7 @@ struct BundlesAndWebTabsTests {
                           to: h.projects.appendingPathComponent("Heph/.hephaestus/bundle/HEPH-B1.yml"))
             await h.engine.projectDataFilesChanged(projectID: "HEPH", paths: [".hephaestus/bundle/HEPH-B1.yml"])
             #expect(try await h.connection.call(BundlesGet.self, .init(bundleID: "HEPH-B1")).ticketIDs == ["HEPH-1", "HEPH-2", "HEPH-3"])
-            let events = await DomainEventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h)
             let reordered = try await h.connection.call(BundlesUpdate.self, .init(bundleID: "HEPH-B1", title: "Renamed",
                                                                                 ticketIDs: ["HEPH-3", "HEPH-1"]))
             #expect(reordered.title == "Renamed" && reordered.ticketIDs == ["HEPH-3", "HEPH-1"])
@@ -93,7 +93,7 @@ struct BundlesAndWebTabsTests {
             try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
             try await h.ticket("HEPH")
             _ = try await h.connection.call(BundlesCreate.self, .init(projectID: "HEPH", title: "Bundle", ticketIDs: ["HEPH-1"]))
-            let events = await DomainEventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h)
             _ = try await h.call(BundlesDelete.self, .init(bundleID: "HEPH-B1"), as: h.claude)
             #expect(await events.wait(for: BundleDeletedEvent.name) == ["bundle.deleted"])
             #expect(try events.all[0].payload(BundleDeletedEvent.self) == .init(projectID: "HEPH", bundleID: "HEPH-B1"))
@@ -110,7 +110,7 @@ struct BundlesAndWebTabsTests {
             try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
             try await h.ticket("HEPH", "Fix tabs")
             let bundle = try await h.connection.call(BundlesCreate.self, .init(projectID: "HEPH", ticketIDs: ["HEPH-1"]))
-            let events = await DomainEventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h)
             await h.engine.startBundleNaming(bundle.id, provisional: bundle.title,
                                              tickets: [NamingSubject.TicketTitle(id: "HEPH-1", title: "Fix tabs")],
                                              namer: FixedTitleNamer(title: "Tab fixes"))
@@ -131,7 +131,7 @@ struct BundlesAndWebTabsTests {
     func openTabs() async throws {
         try await withDomainEngine { h in
             try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
-            let events = await DomainEventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h)
             let github = try await h.connection.call(WebTabsOpen.self, .init(projectID: "HEPH", url: "  https://github.com/pulls "))
             #expect(github.title == "github.com" && github.url == "https://github.com/pulls" && !github.locked)
             #expect(await events.wait(for: ProjectUpdatedEvent.name) == ["webTabs.updated", "project.updated"])
@@ -170,7 +170,7 @@ struct BundlesAndWebTabsTests {
                 == EngineError(.forbidden, "Only the user can unlock a tab."))
             let unlocked = try await h.connection.call(WebTabsUpdate.self, .init(projectID: "HEPH", tabID: locked.id, locked: false))
             #expect(!unlocked.locked)
-            let events = await DomainEventRecorder.make(h.connection)
+            let events = await DomainEventRecorder.make(h)
             _ = try await h.connection.call(WebTabsUpdate.self, .init(projectID: "HEPH", tabID: locked.id, title: "Repo"))
             #expect(await events.settle().isEmpty)
 

@@ -442,7 +442,20 @@ struct SkillsEngineTests {
     func watcher() async throws {
         try await withSkillsEngine { _, connection, library, _ in
             let events = connection.events
-            try await Task.sleep(for: .milliseconds(100))
+            // A first skill, written again every 2 seconds until skills.changed reports it: the
+            // stream is running.
+            let primer = Task {
+                for _ in 0..<10 {
+                    try writeSkill("primer", in: library, description: "Primer.")
+                    try await Task.sleep(for: .seconds(2))
+                }
+            }
+            let primed = await firstEvent(named: SkillsChangedEvent.name, on: events, timeout: .seconds(20))
+            primer.cancel()
+            _ = try #require(primed)
+            try FileManager.default.removeItem(at: library.appendingPathComponent("primer"))
+            #expect(try #require(await firstEvent(named: SkillsChangedEvent.name, on: events, timeout: .seconds(10)))
+                .payload(SkillsChangedEvent.self).isEmpty)
             try writeSkill("outside", in: library, description: "Written elsewhere.")
             let event = try #require(await firstEvent(named: SkillsChangedEvent.name, on: events, timeout: .seconds(10)))
             #expect(event.origin == .system)

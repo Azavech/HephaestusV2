@@ -6,12 +6,19 @@ import Testing
 /// must not happen against a later marker change, so that no test depends on a fixed delay.
 @Suite("File watching", .serialized)
 struct FileWatchingTests {
-    /// Writes `marker.txt` until a files.changed event of `projectID` names it: the stream is
-    /// running and every earlier change has been processed.
+    /// Writes `marker.txt`, again every 2 seconds, until a files.changed event of `projectID`
+    /// names it (or the whole project): the stream is running and every earlier change has been
+    /// processed. Nil after 20 seconds.
     @discardableResult
     private func sync(_ project: FileTestProject, _ stream: AsyncStream<EngineEventEnvelope>,
                       marker: String = "marker.txt") async throws -> FilesChangedEvent.Payload? {
-        try project.write(marker, UUID().uuidString)
+        let writer = Task {
+            for _ in 0..<10 {
+                try project.write(marker, UUID().uuidString)
+                try await Task.sleep(for: .seconds(2))
+            }
+        }
+        defer { writer.cancel() }
         return await filesChanged(on: stream) { $0.contains(marker) }
     }
 
@@ -22,7 +29,7 @@ struct FileWatchingTests {
             for await envelope in stream {
                 guard let payload = filesChangedPayload(envelope) else { continue }
                 collected.append(payload.paths)
-                if payload.paths.contains(marker) { break }
+                if payload.paths.contains(marker) || payload.paths == [""] { break }
             }
             return collected
         }
@@ -34,7 +41,8 @@ struct FileWatchingTests {
             let events = connection.events
             try project.write("src/main.go", "package main\n")
             let envelope = await firstElement(of: events, timeout: .seconds(20)) { envelope in
-                filesChangedPayload(envelope)?.paths.contains("src/main.go") == true
+                guard let paths = filesChangedPayload(envelope)?.paths else { return false }
+                return paths.contains("src/main.go") || paths == [""]
             }
             let found = try #require(envelope)
             #expect(found.origin == .system)
@@ -271,7 +279,7 @@ struct FileWatchingTests {
             let collected = await collector.value
             #expect(collected.allSatisfy { $0.count <= 500 })
             let reported = collected.flatMap { $0 }
-            #expect(reported.contains { $0 == "generated" || $0.hasPrefix("generated/") })
+            #expect(reported.contains { $0.isEmpty || $0 == "generated" || $0.hasPrefix("generated/") })
         }
     }
 

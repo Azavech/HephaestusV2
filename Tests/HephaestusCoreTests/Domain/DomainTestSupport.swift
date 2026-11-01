@@ -95,26 +95,27 @@ extension Engine {
     }
 }
 
-/// Collects the events of a connection from the moment it is created.
+/// Collects the events the engine emits from the moment the recorder subscribes. It subscribes
+/// to the engine itself: the events of the calls that returned before are never recorded, even
+/// when the connection has not delivered them yet.
 final class DomainEventRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var events: [EngineEventEnvelope] = []
 
-    init(_ connection: LocalEngineConnection) {
-        let stream = connection.events
+    private init(_ stream: AsyncStream<Data>) {
         Task { [weak self] in
-            for await event in stream {
+            for await data in stream {
+                guard let event = try? EngineJSON.decode(EngineEventEnvelope.self, from: data) else { continue }
                 self?.append(event)
             }
         }
     }
 
-    // The task ends when the connection closes.
+    // The task ends when the engine stops.
 
-    /// A recorder created once the events of the calls made before have been delivered.
-    static func make(_ connection: LocalEngineConnection) async -> DomainEventRecorder {
-        try? await Task.sleep(for: .milliseconds(100))
-        return DomainEventRecorder(connection)
+    /// A recorder of the events emitted after the calls made before.
+    static func make(_ harness: DomainHarness) async -> DomainEventRecorder {
+        DomainEventRecorder(await harness.engine.subscribe())
     }
 
     private func append(_ event: EngineEventEnvelope) {
