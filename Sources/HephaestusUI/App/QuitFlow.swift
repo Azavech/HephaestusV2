@@ -14,8 +14,13 @@ extension AppModel {
             beginShutdown()
             return .terminateLater
         }
+        guard !quitChecksPending else { return .terminateLater }
+        quitChecksPending = true
         Task {
-            if await runQuitChecks(restartVersion: nil) {
+            let confirmed = await runQuitChecks(restartVersion: nil)
+            quitChecksPending = false
+            // A SIGTERM or SIGINT received during the checks ends their alerts and quits anyway.
+            if confirmed || skipsQuitConfirmations {
                 beginShutdown()
             } else {
                 NSApp.reply(toApplicationShouldTerminate: false)
@@ -24,10 +29,30 @@ extension AppModel {
         return .terminateLater
     }
 
-    /// SIGTERM and SIGINT are handled like Quit without its confirmation alerts.
+    /// SIGTERM and SIGINT are handled like Quit without its confirmation alerts: every open sheet
+    /// and modal alert is ended first (each counts as cancelled), since AppKit does not terminate
+    /// while a window shows a sheet. A Quit whose checks are running goes on to the shutdown.
     func terminateWithoutConfirmation() {
         skipsQuitConfirmations = true
+        endModalUI()
+        guard !quitChecksPending else { return }
         requestTermination()
+    }
+
+    /// Ends the app-modal session and every sheet, the innermost first.
+    private func endModalUI() {
+        if NSApp.modalWindow != nil {
+            NSApp.abortModal()
+        }
+        for _ in 0..<8 {
+            let parents = NSApp.windows.filter { $0.attachedSheet != nil && $0.attachedSheet?.attachedSheet == nil }
+            guard !parents.isEmpty else { return }
+            for window in parents {
+                if let sheet = window.attachedSheet {
+                    window.endSheet(sheet, returnCode: .abort)
+                }
+            }
+        }
     }
 
     /// Calls `NSApp.terminate` from a run loop block. Called from a main-queue job (a signal

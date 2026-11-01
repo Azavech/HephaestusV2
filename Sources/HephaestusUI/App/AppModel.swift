@@ -44,12 +44,7 @@ public final class AppModel {
     /// Last active project per device, persisted in `UserDefaults`.
     private(set) var lastProjectIDByDevice: [String: String]
     /// The last status received from the Updater.
-    var updaterStatus = UpdaterStatus.initial {
-        didSet { updaterStatusCount += 1 }
-    }
-    /// The number of statuses received, an unchanged status included: a status received after a
-    /// `check` answers it (docs/updater.md › About window, › Settings).
-    private(set) var updaterStatusCount = 0
+    var updaterStatus = UpdaterStatus.initial
 
     // MARK: Local-only services (docs/architecture.md › Local-only services)
 
@@ -78,6 +73,9 @@ public final class AppModel {
     /// True when the termination skips the confirmations: SIGTERM, SIGINT, a restart for an update.
     @ObservationIgnored var skipsQuitConfirmations = false
     @ObservationIgnored var isShuttingDown = false
+    /// True while the quit checks of a Quit run (`applicationShouldTerminate` answered
+    /// `terminateLater`).
+    @ObservationIgnored var quitChecksPending = false
     /// True once `app.quitting` was posted for this termination.
     @ObservationIgnored var appQuittingPosted = false
     @ObservationIgnored private var openWindowAction: OpenWindowAction?
