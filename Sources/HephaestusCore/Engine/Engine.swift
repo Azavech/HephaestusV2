@@ -265,9 +265,11 @@ public actor Engine {
     }
 
     /// Params: empty data, or JSON `null`, count as `{}` (docs/engine-api.md › JSON encoding).
+    /// Only the JSON whitespace around the value is skipped, so that large params are not copied.
     private static func decodeParams<P: Decodable>(_ type: P.Type, from data: Data) throws -> P {
-        let trimmed = data.filter { ![0x20, 0x09, 0x0A, 0x0D].contains($0) }
-        if trimmed.isEmpty || trimmed == Data("null".utf8) {
+        func isWhitespace(_ byte: UInt8) -> Bool { byte == 0x20 || byte == 0x09 || byte == 0x0A || byte == 0x0D }
+        let value = data.drop(while: isWhitespace)
+        if value.isEmpty || value.starts(with: "null".utf8) && value.dropFirst(4).allSatisfy(isWhitespace) {
             return try EngineJSON.decode(type, from: Data("{}".utf8))
         }
         return try EngineJSON.decode(type, from: data)
