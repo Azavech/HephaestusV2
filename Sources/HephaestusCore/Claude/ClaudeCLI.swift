@@ -54,8 +54,9 @@ final class ClaudeCLI {
     var status = ClaudeStatus.detecting
     /// The models of the last `initialize` response since the engine started, nil before.
     var initializeModels: [CachedModel]?
-    /// The login-shell environment, nil until the capture has finished.
-    var environment: [String: String]?
+    /// The captured login-shell environment, nil until the capture has finished
+    /// (docs/chats.md › Environment). Child processes get it without any `HEPHAESTUS_*` variable.
+    var loginEnvironment: [String: String]?
     var timings = ClaudeCLITimings()
     /// The probe, naming calls, `--version` and the CLI lookup in the login shell, for the shutdown.
     let helpers = HelperProcessRegistry()
@@ -155,7 +156,7 @@ extension Engine {
 
     /// Records the captured environment and wakes the calls waiting for it.
     private func environmentCaptured(_ environment: [String: String]) {
-        claudeCLI.environment = environment
+        claudeCLI.loginEnvironment = environment
         let waiters = claudeCLI.environmentWaiters
         claudeCLI.environmentWaiters = []
         waiters.forEach { $0.resume() }
@@ -164,13 +165,13 @@ extension Engine {
     /// The login-shell environment without any `HEPHAESTUS_*` variable, for the child processes
     /// the engine starts (docs/architecture.md › Child processes, rule 1); waits for the capture.
     func childProcessEnvironment() async -> [String: String] {
-        if let environment = claudeCLI.environment {
+        if let environment = claudeCLI.loginEnvironment {
             return ProcessEnvironment.withoutHephaestusVariables(environment)
         }
         if !claudeCLI.stopped {
             await withCheckedContinuation { claudeCLI.environmentWaiters.append($0) }
         }
-        return ProcessEnvironment.withoutHephaestusVariables(claudeCLI.environment ?? ProcessInfo.processInfo.environment)
+        return ProcessEnvironment.withoutHephaestusVariables(claudeCLI.loginEnvironment ?? ProcessInfo.processInfo.environment)
     }
 
     // MARK: Status
@@ -180,7 +181,7 @@ extension Engine {
     /// starting another one; otherwise the status after locating the CLI again and running
     /// `--version` (docs/engine-api.md › claude.status).
     func claudeStatusForCall() async -> ClaudeStatus {
-        if claudeCLI.status.checking || claudeCLI.environment == nil {
+        if claudeCLI.status.checking || claudeCLI.loginEnvironment == nil {
             return claudeCLI.status
         }
         let generation = claudeCLI.detectionGeneration
@@ -345,7 +346,7 @@ extension Engine {
             timer.cancel()
         }
         let status = claudeCLI.status
-        guard status.available, let path = status.path, let environment = claudeCLI.environment else {
+        guard status.available, let path = status.path, let environment = claudeCLI.loginEnvironment else {
             // DOC-GAP: the docs give no message for `unavailable` here; it is the status error, or
             // a sentence saying the CLI is still being checked.
             throw EngineError(.unavailable, status.error ?? "The Claude CLI is not available yet; it is still being checked.")
