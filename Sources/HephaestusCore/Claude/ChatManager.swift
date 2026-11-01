@@ -141,7 +141,7 @@ final class ChatProcess {
     /// Launched with `--resume`.
     let resumed: Bool
     /// The MCP port written in its configuration file.
-    let mcpPort: Int
+    var mcpPort: Int
     var mapper: StreamMapper
     let log: AppendFile
     let stdoutCapture: AppendFile?

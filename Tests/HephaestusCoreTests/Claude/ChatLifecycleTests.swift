@@ -147,8 +147,11 @@ struct ChatLifecycleTests {
             #expect(await process.line { $0.contains("effortLevel") }?.contains(#""settings":{"effortLevel":"max"}"#) == true)
             #expect(await process.line { $0.contains(#""ultracode":true"#) } != nil)
             #expect(!process.writtenLines.contains { $0.contains("set_permission_mode") })
-            // An unchanged call writes nothing.
-            #expect(try await bed.connection.call(ChatsUpdateSettings.self, .init(chatID: chat.id, settings: new)) == updated)
+            // An unchanged call writes nothing and sends nothing.
+            let written = process.writtenLines.count
+            let unchanged = try await bed.connection.call(ChatsUpdateSettings.self, .init(chatID: chat.id, settings: new))
+            #expect(unchanged.settings == new)
+            #expect(process.writtenLines.count == written)
             // A refused setting adds the warning item.
             process.onLine = { process, line in
                 guard line.contains("set_permission_mode"), let id = FakeClaudeLauncher.requestID(of: line) else { return }
