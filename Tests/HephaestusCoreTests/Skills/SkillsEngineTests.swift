@@ -486,12 +486,21 @@ struct SkillsEngineTests {
                 #expect(FileManager.default.fileExists(atPath: library.appendingPathComponent("old/SKILL.md").path))
 
                 let events = connection.events
-                try await Task.sleep(for: .milliseconds(500))
-                try writeSkill("outside", in: newLibrary, description: "Outside.")
-                let event = try #require(await firstElement(of: events, timeout: .seconds(10)) {
+                // Written again every 2 seconds until skills.changed reports it: the new stream may
+                // start after the first write.
+                let writer = Task {
+                    for _ in 0..<10 {
+                        try writeSkill("outside", in: newLibrary, description: "Outside.")
+                        try await Task.sleep(for: .seconds(2))
+                    }
+                }
+                let seen = await firstElement(of: events, timeout: .seconds(20)) {
                     $0.name == SkillsChangedEvent.name && $0.origin == .system
                         && ((try? $0.payload(SkillsChangedEvent.self).map(\.name)) ?? []).contains("outside")
-                })
+                }
+                writer.cancel()
+                _ = await writer.result
+                let event = try #require(seen)
                 #expect(try event.payload(SkillsChangedEvent.self).map(\.name) == ["new", "outside"])
 
                 _ = try await connection.call(SettingsUpdate.self, .init(skillsLibraryPath: .clear))

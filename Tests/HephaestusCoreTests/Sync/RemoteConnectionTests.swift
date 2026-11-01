@@ -261,12 +261,6 @@ struct RemoteConnectionTests {
             let peer = try #require(await server.nextPeer())
             var keys = try await peer.serverHandshake(script, snapshot: fakeSnapshot(device: Self.mainInfo))
             #expect(await phase(of: connection) { $0 == .connected } == .connected)
-            let held = [EngineEventEnvelope(name: SkillsChangedEvent.name, origin: .system, data: []),
-                        EngineEventEnvelope(name: SettingsUpdatedEvent.name, origin: .system, data: try EngineJSON.jsonValue(HostSettings()))]
-            for envelope in held {
-                peer.sendBinary(try keys.sealer.seal(SyncMessageBytes.event(envelope: try EngineJSON.encode(envelope))))
-            }
-            try await Task.sleep(for: .milliseconds(100))
             let order = Collected<String>()
             let events = connection.events
             let consumer = Task {
@@ -274,11 +268,25 @@ struct RemoteConnectionTests {
                     order.append(envelope.name)
                 }
             }
+            defer { consumer.cancel() }
+            let held = [EngineEventEnvelope(name: SkillsChangedEvent.name, origin: .system, data: []),
+                        EngineEventEnvelope(name: SettingsUpdatedEvent.name, origin: .system, data: try EngineJSON.jsonValue(HostSettings()))]
+            for envelope in held {
+                peer.sendBinary(try keys.sealer.seal(SyncMessageBytes.event(envelope: try EngineJSON.encode(envelope))))
+            }
+            // A response sent after the events: once its call returned, the client has them.
+            async let settings = connection.call(SettingsGet.self)
+            guard case .binary(let frame)? = await peer.next(timeout: .seconds(30)) else { throw SyncTestError("no request") }
+            guard case .int(let id)? = try #require(SyncMessageCheck.jsonObject(try keys.opener.open(frame)))["id"] else {
+                throw SyncTestError("bad request")
+            }
+            peer.sendBinary(try keys.sealer.seal(SyncMessageBytes.response(id: id, result: try EngineJSON.encode(HostSettings()))))
+            #expect(try await settings == HostSettings())
+            #expect(order.values.isEmpty)
+
             #expect(try await connection.call(SnapshotGet.self).device == Self.mainInfo)
-            order.append("returned")
-            try await Task.sleep(for: .milliseconds(300))
-            consumer.cancel()
-            #expect(order.values == ["returned", SkillsChangedEvent.name, SettingsUpdatedEvent.name])
+            #expect(await eventually(timeout: .seconds(10)) { order.values.count == held.count })
+            #expect(order.values == [SkillsChangedEvent.name, SettingsUpdatedEvent.name])
         }
     }
 
@@ -290,10 +298,13 @@ struct RemoteConnectionTests {
         timings.pingInterval = 0.2
         timings.clientSilence = 0.6
         try await withPairedConnection(server: server, code: SyncCryptoTests.code, timings: timings) { connection, _, _ in
+            // Recorded before the welcome: the session lasts 0.6 s, less than a loaded machine can
+            // take to look at it.
+            let recorder = PhaseRecorder(connection)
             let peer = try #require(await server.nextPeer())
             _ = try await peer.serverHandshake(script, snapshot: fakeSnapshot(device: Self.mainInfo))
-            #expect(await phase(of: connection) { $0 == .connected } == .connected)
-            let lost = await phase(of: connection) { $0.isWaiting }
+            #expect(await eventually(timeout: .seconds(20)) { recorder.phases(from: { $0 == .connected }).contains { $0.isWaiting } })
+            let lost = recorder.phases(from: { $0 == .connected }).first { $0.isWaiting }
             #expect(lost?.message == "The connection to Studio was lost.")
             // Cancelled without a close frame.
             #expect(await peer.closeCode() == SyncCloseCode.abnormalClosure)
@@ -326,14 +337,15 @@ struct RemoteConnectionTests {
             listener.cancel()
             held.values.forEach { $0.cancel() }
         }
+        // A connect timeout of 3 s leaves a loaded machine time to accept the TCP connection first.
         var timings = SyncTimings.fast
-        timings.connect = 0.4
+        timings.connect = 3
         try await withTestEngine { remote, _, _ in
             let device = try storePairing(on: remote, deviceID: Self.mainID, port: port, code: SyncCryptoTests.code)
             let connection = RemoteEngineConnection(device: device, local: await remote.localDeviceInfo(), pairedDevices: remote.pairedDevices,
                                                     browser: remote.deviceBrowser, log: MemoryLog(), timings: timings)
             defer { connection.close() }
-            let phase = await phase(of: connection) { $0.isWaiting }
+            let phase = await phase(of: connection, timeout: .seconds(20)) { $0.isWaiting }
             #expect(phase?.message == "Can't reach Studio.")
             #expect(!held.values.isEmpty)
         }
@@ -373,7 +385,7 @@ struct RemoteConnectionTests {
 
             // Nothing listens: the sheet shows the refusal and nothing more is saved.
             server.stop()
-            try await Task.sleep(for: .milliseconds(100))
+            #expect(await eventually(timeout: .seconds(20)) { await refusesConnections(port: server.port) })
             await #expect(throws: AddDeviceFailure(message:
                 "127.0.0.1:\(server.port) is not accepting connections. Check that remote devices are allowed in Settings > Devices on 127.0.0.1:\(server.port).")) {
                 _ = try await RemoteEngineConnection.attempt(.address(host: "127.0.0.1", port: server.port), code: SyncCryptoTests.code,

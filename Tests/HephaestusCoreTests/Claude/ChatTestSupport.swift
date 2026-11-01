@@ -145,7 +145,8 @@ func testChatTimings() -> ChatTimings {
     timings.idleCloseGrace = .milliseconds(200)
     timings.controlRequestTimeout = .seconds(5)
     timings.shutdownGrace = .milliseconds(500)
-    timings.outputGrace = .milliseconds(100)
+    // The fake's output ends with its exit: the grace only gives a loaded machine time to read it.
+    timings.outputGrace = .seconds(10)
     return timings
 }
 

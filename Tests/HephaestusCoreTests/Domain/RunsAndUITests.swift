@@ -59,7 +59,8 @@ struct RunsAndUITests {
     func timeout() async throws {
         try await withDomainEngine { h in
             try await Self.project(h, build: "echo begin; sleep 30")
-            let result = try await h.connection.call(ProjectsRun.self, .init(projectID: "HEPH", kind: .build, wait: true, timeoutSeconds: 1))
+            // The timeout leaves a loaded machine time to start the shell and read its first line.
+            let result = try await h.connection.call(ProjectsRun.self, .init(projectID: "HEPH", kind: .build, wait: true, timeoutSeconds: 5))
             #expect(result.exitCode == nil)
             #expect(result.outputTail == "begin\n")
             #expect(try await h.connection.call(SnapshotGet.self).runs.map(\.runID) == [result.run.runID])

@@ -17,8 +17,8 @@ final class RecordedEngine: @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [Call] = []
     private var answers: [String: Result<String, EngineError>] = [:]
-    /// Waited for before answering, when set.
-    var delay: Duration?
+    /// Waited for before answering, when set: calls last until the test opens it.
+    var gate: Gate?
 
     var calls: [Call] {
         lock.lock()
@@ -40,11 +40,42 @@ final class RecordedEngine: @unchecked Sendable {
                 recorded.append(Call(method: method, params: value, actor: actor))
                 return answers[method]
             }
-            if let delay { try? await Task.sleep(for: delay) }
+            if let gate { await gate.wait() }
             switch answer ?? .success("{}") {
             case .success(let text): return Data(text.utf8)
             case .failure(let error): throw error
             }
+        }
+    }
+}
+
+/// Holds whoever waits until the test opens it.
+final class Gate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            if isOpen {
+                lock.unlock()
+                continuation.resume()
+            } else {
+                waiters.append(continuation)
+                lock.unlock()
+            }
+        }
+    }
+
+    func open() {
+        lock.lock()
+        isOpen = true
+        let waiting = waiters
+        waiters = []
+        lock.unlock()
+        for waiter in waiting {
+            waiter.resume()
         }
     }
 }
@@ -242,7 +273,9 @@ final class RawConnection: @unchecked Sendable {
     private var buffer = Data()
     private var closed = false
 
-    init(port: Int) async throws {
+    /// `initial` is handed to the connection before it is ready, so that the server receives it
+    /// right after accepting the connection, however long this task takes to resume.
+    init(port: Int, sending initial: String? = nil) async throws {
         connection = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: UInt16(port))!, using: .tcp)
         let ready: Bool = await withCheckedContinuation { continuation in
             let resumed = Flag()
@@ -257,6 +290,9 @@ final class RawConnection: @unchecked Sendable {
                 }
             }
             connection.start(queue: DispatchQueue(label: "test.raw"))
+            if let initial {
+                connection.send(content: Data(initial.utf8), completion: .contentProcessed { _ in })
+            }
         }
         guard ready else { throw EngineError(.unavailable, "Cannot connect to 127.0.0.1:\(port).") }
         receiveLoop()

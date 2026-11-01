@@ -225,6 +225,11 @@ actor NamingQueue {
         self.limit = limit
     }
 
+    /// The calls waiting for a slot.
+    var waitingCount: Int {
+        waiters.count
+    }
+
     func acquire() async {
         if running < limit {
             running += 1

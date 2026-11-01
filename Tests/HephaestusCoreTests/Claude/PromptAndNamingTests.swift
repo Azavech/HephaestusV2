@@ -208,12 +208,12 @@ struct PromptAndNamingTests {
             await queue.acquire()
             order.append(3)
         }
-        try? await Task.sleep(for: .milliseconds(50))
+        #expect(await eventually(timeout: .seconds(20)) { await queue.waitingCount == 1 })
         let fourth = Task {
             await queue.acquire()
             order.append(4)
         }
-        try? await Task.sleep(for: .milliseconds(50))
+        #expect(await eventually(timeout: .seconds(20)) { await queue.waitingCount == 2 })
         #expect(order.values.isEmpty)
         await queue.release()
         await third.value

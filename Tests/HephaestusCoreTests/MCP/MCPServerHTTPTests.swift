@@ -473,26 +473,30 @@ struct MCPServerHTTPTests {
 
     @Test("A connection idle for the idle timeout is closed, before or inside a request")
     func idleTimeout() async throws {
-        try await withStandaloneServer(idleTimeout: .milliseconds(300)) { server in
+        // The bytes of a request are handed over before the connection is ready, so that they
+        // reach the server within the idle timeout even when this task resumes late.
+        try await withStandaloneServer(idleTimeout: .seconds(1)) { server in
             let silent = try await RawConnection(port: server.port)
-            #expect(await silent.closedByServer(timeout: .seconds(5)))
+            #expect(await silent.closedByServer(timeout: .seconds(10)))
             #expect(silent.received.isEmpty)
 
-            let partial = try await RawConnection(port: server.port)
-            await partial.send("POST /mcp HTTP/1.1\r\nContent-Length: 10\r\n")
-            #expect(await partial.closedByServer(timeout: .seconds(5)))
+            let partial = try await RawConnection(port: server.port, sending: "POST /mcp HTTP/1.1\r\nContent-Length: 10\r\n")
+            #expect(await partial.closedByServer(timeout: .seconds(10)))
 
-            let between = try await RawConnection(port: server.port)
-            await between.send(RawConnection.post(#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#, token: server.externalToken))
+            let between = try await RawConnection(port: server.port, sending: RawConnection.post(#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#,
+                                                                                                 token: server.externalToken))
             #expect(await between.response()?.status == 200)
-            #expect(await between.closedByServer(timeout: .seconds(5)))
+            #expect(await between.closedByServer(timeout: .seconds(10)))
         }
     }
 
     @Test("Separate connections are handled concurrently; a call outlives its client")
     func concurrency() async throws {
         try await withStandaloneServer { server in
-            server.engine.delay = .seconds(3)
+            // The slow call lasts until the gate opens, however fast the machine is.
+            let gate = Gate()
+            defer { gate.open() }
+            server.engine.gate = gate
             let slow = try await RawConnection(port: server.port)
             await slow.send(RawConnection.post(MCPHTTP.toolCall("list_projects"), token: server.externalToken))
             #expect(await eventually(timeout: .seconds(10)) { server.engine.calls.map(\.method) == ["projects.list"] })
@@ -505,7 +509,9 @@ struct MCPServerHTTPTests {
             }
             #expect(!slowCallEnded())
 
+            // The client goes away before the call ends; the call still completes.
             slow.cancel()
+            gate.open()
             #expect(await eventually(timeout: .seconds(15)) { slowCallEnded() })
             #expect(server.engine.calls.map(\.method) == ["projects.list"])
         }
@@ -632,9 +638,11 @@ struct MCPServerHTTPTests {
             let log = MemoryLog()
             let tokens = MCPTokenStore(secrets: SecretsStore(directory: DataDirectory(url: folder), secrets: Secrets()))
             let server = MCPServer(tokens: tokens, debugTools: false, appVersion: "1.0", log: log)
-            await server.configure(retryInterval: .milliseconds(300))
+            // The holder releases the port once the first attempt failed; the 4 others, one second
+            // apart, leave it time to do so on a slow machine.
+            await server.configure(retryInterval: .seconds(1))
             Task {
-                try? await Task.sleep(for: .milliseconds(450))
+                _ = await eventually(timeout: .seconds(30)) { log.entries.contains { $0.level == .warn } }
                 holder.cancel()
             }
             await server.start(port: busy, engineCall: RecordedEngine().engineCall)
@@ -653,9 +661,10 @@ struct MCPServerHTTPTests {
             let idle = try await RawConnection(port: oldPort)
             let busy = try await RawConnection(port: oldPort)
             let body = #"{"jsonrpc":"2.0","id":1,"method":"ping"}"#
-            let request = RawConnection.post(body, token: server.externalToken)
+            // The interim response shows that the server read the head and waits for the body.
+            let request = RawConnection.post(body, token: server.externalToken, extra: ["Expect: 100-continue"])
             await busy.send(String(request.dropLast(body.utf8.count)))
-            try await Task.sleep(for: .milliseconds(200))
+            #expect(try #require(await busy.response()).status == 100)
 
             let states = await server.server.stateUpdates()
             await server.server.move(to: 0)

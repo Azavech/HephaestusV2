@@ -105,7 +105,7 @@ struct ChatTurnTests {
             process.emit(FakeClaudeLauncher.lifecycleLine(b, "completed"))
             try await Task.sleep(for: .milliseconds(100))
             #expect(await bed.state(chat.id) == .idle)
-            #expect(await Self.reportedStates(bed, chat.id).last == .idle)
+            #expect(await eventually(timeout: .seconds(10)) { await Self.reportedStates(bed, chat.id).last == .idle })
             let texts = try await bed.transcript(chat.id).compactMap { item -> String? in
                 if case .assistant(let assistant) = item { return assistant.text }
                 return nil

@@ -176,19 +176,25 @@ struct FileWatchingTests {
             #expect(await filesChanged(on: events) { $0.contains("single.txt") } != nil)
             #expect(ContinuousClock.now - start >= .milliseconds(290))
 
-            // Changes every 50 ms for 6 s never leave 300 ms of quiet, even when the load of the
+            // Changes every 20 ms for 6 s never leave 300 ms of quiet, even when the load of the
             // test run delays the writer: the first event comes 2 s after the first change, long
-            // before the changes stop.
+            // before the changes stop. The writer is a thread of its own, so that tasks blocking
+            // the cooperative pool do not hold it back.
             start = ContinuousClock.now
-            let writer = Task {
-                for index in 0..<120 {
-                    try project.write("busy/\(index).txt", "x")
-                    try await Task.sleep(for: .milliseconds(50))
+            let stop = Collected<Bool>()
+            let stopped = Collected<Bool>()
+            let writer = Thread {
+                for index in 0..<300 where stop.values.isEmpty {
+                    try? project.write("busy/\(index).txt", "x")
+                    Thread.sleep(forTimeInterval: 0.02)
                 }
+                stopped.append(true)
             }
+            writer.start()
             let first = await filesChanged(on: events) { $0.contains { $0.hasPrefix("busy") } }
             let elapsed = ContinuousClock.now - start
-            writer.cancel()
+            stop.append(true)
+            #expect(await eventually(timeout: .seconds(10)) { !stopped.values.isEmpty })
             #expect(first != nil)
             #expect(elapsed >= .milliseconds(1900))
             #expect(elapsed < .milliseconds(5500))

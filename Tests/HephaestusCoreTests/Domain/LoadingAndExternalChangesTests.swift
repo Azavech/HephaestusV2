@@ -96,6 +96,7 @@ struct LoadingAndExternalChangesTests {
             // A title change without a status change emits no projects.changed.
             try writeFile(ticketYAML(id: "HEPH-1", title: "Edited again", status: "in_progress"), to: data.appendingPathComponent("ticket/HEPH-1.yml"))
             await h.engine.projectDataFilesChanged(projectID: "HEPH", paths: [".hephaestus/ticket/HEPH-1.yml"])
+            await events.wait(for: TicketUpdatedEvent.name)
             #expect(await events.settle() == ["ticket.updated"])
 
             // An invalid file keeps the loaded version; the next engine write replaces it.
@@ -108,7 +109,7 @@ struct LoadingAndExternalChangesTests {
             #expect(try ProjectFileStore.readTicket(at: data.appendingPathComponent("ticket/HEPH-1.yml"), projectID: "HEPH").status == .todo)
 
             // The never-loaded HEPH-4 loads once valid; a new file loads; a deleted file is removed.
-            await events.wait(for: TicketUpdatedEvent.name, count: 1)
+            await events.wait(for: ProjectsChangedEvent.name, count: 1)
             _ = await events.settle()
             events.clear()
             try writeFile(ticketYAML(id: "HEPH-4", title: "Fixed"), to: data.appendingPathComponent("ticket/HEPH-4.yml"))
@@ -145,6 +146,7 @@ struct LoadingAndExternalChangesTests {
             events.clear()
             try writeFile("schema: 1\nid: HEPH-B2\ntitle: Renamed\ncreated: 2026-10-31T16:00:00Z\n", to: data.appendingPathComponent("bundle/HEPH-B2.yml"))
             await h.engine.projectDataFilesChanged(projectID: "HEPH", paths: [".hephaestus/bundle/HEPH-B2.yml"])
+            await events.wait(for: BundleUpdatedEvent.name)
             #expect(await events.settle() == ["bundle.updated"])
         }
     }

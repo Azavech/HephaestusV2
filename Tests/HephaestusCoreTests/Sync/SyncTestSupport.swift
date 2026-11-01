@@ -4,17 +4,13 @@ import Network
 @testable import HephaestusCore
 
 extension SyncTimings {
-    /// Short timings for loopback tests.
+    /// Short timings for loopback tests: the ping, the close wait, the backoff and the bind
+    /// retries. The connect timeout, the handshake deadlines and the silence limits keep their
+    /// standard values, so that a loaded machine does not run into them; the tests of those
+    /// limits set their own.
     static var fast: SyncTimings {
         var timings = SyncTimings()
-        timings.connect = 3
-        timings.helloDeadline = 3
-        timings.challengeDeadline = 3
-        timings.authDeadline = 3
-        timings.welcomeDeadline = 3
         timings.pingInterval = 0.25
-        timings.clientSilence = 2
-        timings.serverSilence = 3
         timings.closeWait = 0.5
         timings.backoff = [0.1, 0.2, 0.4]
         timings.bindAttempts = 2
@@ -65,6 +61,58 @@ func pair(_ remote: Engine, with main: Engine, log: LogSink = MemoryLog(), code:
 func phase(of connection: RemoteEngineConnection, timeout: Duration = .seconds(5),
            where predicate: @escaping @Sendable (RemoteConnectionPhase) -> Bool) async -> RemoteConnectionPhase? {
     await firstElement(of: connection.phaseUpdates, timeout: timeout, where: predicate)
+}
+
+/// True when a TCP connection to 127.0.0.1:`port` is refused: the listener that held the port
+/// is gone.
+func refusesConnections(port: Int) async -> Bool {
+    let connection = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(integerLiteral: UInt16(port)), using: .tcp)
+    defer { connection.cancel() }
+    return await withCheckedContinuation { continuation in
+        let once = Flag()
+        connection.stateUpdateHandler = { state in
+            switch state {
+            case .waiting(let error), .failed(let error):
+                if once.claim() { continuation.resume(returning: error == .posix(.ECONNREFUSED)) }
+            case .ready, .cancelled:
+                if once.claim() { continuation.resume(returning: false) }
+            default:
+                break
+            }
+        }
+        connection.start(queue: DispatchQueue(label: "test.refusal"))
+    }
+}
+
+/// Every phase of a connection from its creation on, so that a test sees a phase that lasted
+/// less than the time this task took to look.
+final class PhaseRecorder: @unchecked Sendable {
+    private let collected = Collected<RemoteConnectionPhase>()
+    private let task: Task<Void, Never>
+
+    init(_ connection: RemoteEngineConnection) {
+        let stream = connection.phaseUpdates
+        let collected = self.collected
+        task = Task {
+            for await phase in stream {
+                collected.append(phase)
+            }
+        }
+    }
+
+    deinit {
+        task.cancel()
+    }
+
+    var phases: [RemoteConnectionPhase] {
+        collected.values
+    }
+
+    /// The phases from the first one that satisfies `start` on; empty while there is none.
+    func phases(from start: (RemoteConnectionPhase) -> Bool) -> ArraySlice<RemoteConnectionPhase> {
+        let all = phases[...]
+        return all.drop { !start($0) }
+    }
 }
 
 /// Waits until `condition` holds, polling; false after `timeout`.

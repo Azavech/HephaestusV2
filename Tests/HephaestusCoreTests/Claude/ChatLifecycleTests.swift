@@ -113,8 +113,9 @@ struct ChatLifecycleTests {
 
     @Test("Messages go to the live process; after an exit the next message resumes the session")
     func secondMessageAndResume() async throws {
+        // The idle timeout leaves a loaded machine time to write the second message first.
         var timings = testChatTimings()
-        timings.idleTimeout = .milliseconds(300)
+        timings.idleTimeout = .seconds(2)
         try await withChatEngine(chatTimings: timings) { bed in
             let chat = try await bed.createChat(message: "One")
             let first = try #require(await bed.launcher.chatProcess())
@@ -125,8 +126,8 @@ struct ChatLifecycleTests {
             // Idle termination: standard input closed; the fake exits.
             _ = await first.waitForExit()
             #expect(first.isInputClosed)
-            try await Task.sleep(for: .milliseconds(200))
-            #expect(!FileManager.default.fileExists(atPath: bed.dataDirectory.mcpConfigFile(chatID: chat.id).path))
+            let configFile = bed.dataDirectory.mcpConfigFile(chatID: chat.id).path
+            #expect(await eventually(timeout: .seconds(10)) { !FileManager.default.fileExists(atPath: configFile) })
             try await bed.send(chat.id, "Three")
             let second = try #require(await bed.launcher.chatProcess(1))
             #expect(Array(second.request.arguments[7...8]) == ["--resume", chat.id.uuidString])

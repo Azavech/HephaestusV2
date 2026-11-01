@@ -241,26 +241,39 @@ struct SyncLoopbackTests {
             var server = SyncTimings.fast
             server.serverSilence = 0.6
             await main.syncServer.setTimings(server)
+            let device = try storePairing(on: remote, deviceID: main.deviceID, port: try await syncPort(of: main),
+                                          code: await main.syncServer.pairingCode)
             var client = SyncTimings.fast
             client.pingInterval = 30
-            let connection = try await pair(remote, with: main, timings: client)
+            let connection = RemoteEngineConnection(device: device, local: await remote.localDeviceInfo(), pairedDevices: remote.pairedDevices,
+                                                    browser: remote.deviceBrowser, log: MemoryLog(), timings: client)
             defer { connection.close() }
-            let lost = await phase(of: connection) { $0.isWaiting }
+            // Recorded from the start: the first session lasts 0.6 s, less than a loaded machine
+            // can take to look at it.
+            let recorder = PhaseRecorder(connection)
+            #expect(await eventually(timeout: .seconds(20)) { recorder.phases.contains(.connected) })
+            // The sessions accepted from now on stay open, so that a call can reach one.
+            await main.syncServer.setTimings(.fast)
+            #expect(await eventually(timeout: .seconds(20)) { recorder.phases(from: { $0 == .connected }).contains { $0.isWaiting } })
+            let lost = recorder.phases(from: { $0 == .connected }).first { $0.isWaiting }
             #expect(lost?.message == "The connection to Studio was lost.")
-            #expect(await phase(of: connection) { $0 == .connected } == .connected)
-            #expect(try await connection.call(SnapshotGet.self).device.name == "Studio")
+            // A session accepted before the timings changed can be cancelled before the call
+            // reaches it; the client then reconnects once more.
+            #expect(await eventually(timeout: .seconds(20)) { (try? await connection.call(SnapshotGet.self))?.device.name == "Studio" })
         }
     }
 
     @Test("Pings keep a session alive past the server's silence limit")
     func keepalive() async throws {
         try await withTwoEngines { main, _, remote, _ in
+            // A ping every 0.25 s against a silence limit of 3 s leaves a loaded machine 2.75 s to
+            // deliver one. The session is watched for longer than the limit.
             var server = SyncTimings.fast
-            server.serverSilence = 0.8
+            server.serverSilence = 3
             await main.syncServer.setTimings(server)
             let connection = try await pair(remote, with: main)
             defer { connection.close() }
-            let phases = await elements(of: connection.phaseUpdates, during: .seconds(2))
+            let phases = await elements(of: connection.phaseUpdates, during: .seconds(4))
             #expect(phases == [.connected])
             #expect(connection.phase == .connected)
             #expect(await main.syncServer.status.sessions.count == 1)
@@ -349,10 +362,11 @@ struct SyncLoopbackTests {
             let localEvents = mainLocal.events
             await main.emit(HugeEvent.self, String(repeating: "b", count: 33_554_432), origin: .system)
             await main.emit(SkillsChangedEvent.self, [], origin: .system)
-            // Other events of the engines' background work may come first.
-            let remoteEvent = try #require(await firstElement(of: remoteEvents) { $0.name == SkillsChangedEvent.name })
+            // Other events of the engines' background work may come first. The 32 MiB event
+            // takes a debug build a while to encode and decode.
+            let remoteEvent = try #require(await firstElement(of: remoteEvents, timeout: .seconds(30)) { $0.name == SkillsChangedEvent.name })
             #expect(remoteEvent.data == [])
-            let local = try #require(await firstElement(of: localEvents) { $0.name == SkillsChangedEvent.name })
+            let local = try #require(await firstElement(of: localEvents, timeout: .seconds(30)) { $0.name == SkillsChangedEvent.name })
             #expect(local.data.stringValue?.count == 33_554_432)
             let logText = try String(contentsOf: main.dataDirectory.engineLogFile, encoding: .utf8)
             #expect(logText.contains("WARN sync: event skills.changed of 33554520 bytes not sent to \(remote.deviceID)"))
