@@ -157,6 +157,7 @@ extension WindowState {
             }
             updateViewState { $0.selectedSkillName = name }
         case .webTab(_, let tabID):
+            WebTabsController.willSelectByNavigation(in: self, projectID: resolvedProjectID)
             updateViewState { $0.selectedWebTabID = tabID.uuidString }
         }
     }
