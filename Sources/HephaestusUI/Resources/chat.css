@@ -27,8 +27,12 @@
   display: none !important;
 }
 
+/* The page scrolls vertically only: long words wrap, so bubbles and cards stay within the page
+   width, and wide code blocks and tables scroll inside their own box (docs/chats.md › Scrolling and
+   long transcripts). */
 html {
   background: var(--chat-page);
+  overflow-x: hidden;
 }
 
 body {
@@ -38,6 +42,7 @@ body {
   color: var(--md-text);
   font: 13px/1.45 -apple-system, system-ui;
   -webkit-text-size-adjust: none;
+  overflow-wrap: anywhere;
   cursor: default;
 }
 

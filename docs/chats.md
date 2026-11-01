@@ -768,6 +768,7 @@ All text of the transcript is selectable across bubbles. ⌘A selects the whole 
 
 - When the view is scrolled within 40 pt of the bottom, new content keeps it at the bottom; otherwise a `Jump to Latest` button appears at the bottom edge.
 - A transcript renders its last 300 items; the `Show Earlier Messages` button at the top adds the 300 previous ones each time. Default chosen at design time.
+- The transcript page scrolls vertically only, in every chat view: `chat.css` hides the page's horizontal overflow (`overflow-x: hidden` on `html`) and keeps the bubbles and cards within the page width, wrapping long words. Wide code blocks and tables scroll horizontally inside their own box ([Code blocks](documentation-viewer.md#code-blocks), [Tables](documentation-viewer.md#tables)). `markdown.css` is unchanged, so the Docs preview keeps its own scrolling.
 
 ### Empty transcript
 
