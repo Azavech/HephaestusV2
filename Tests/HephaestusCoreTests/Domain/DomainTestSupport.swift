@@ -62,8 +62,12 @@ func withDomainEngine<T>(prepare: (DataDirectory, URL) throws -> Void = { _, _ i
         try prepare(directory, projects)
         let configuration = EngineConfiguration.test(dataDirectory: directory.url, claudeLauncher: NoClaudeLauncher())
         let engine = try await Engine(configuration: configuration)
-        await engine.useTrash(FolderTrash(folder: trash))
+        await engine.useFileTrash(.folder(trash))
         await engine.start()
+        // The reload rules are tested by calling the domain's hooks; the FSEvents streams that
+        // call them are tested in Files/, and their files.changed events would mix with the
+        // events these tests expect.
+        await engine.stopFileWatching()
         let connection = await LocalEngineConnection(engine: engine)
         let harness = DomainHarness(engine: engine, connection: connection, folder: folder, projects: projects, trash: trash)
         do {
@@ -80,11 +84,6 @@ func withDomainEngine<T>(prepare: (DataDirectory, URL) throws -> Void = { _, _ i
 }
 
 extension Engine {
-    /// Replaces the Trash of the project data engine.
-    func useTrash(_ trash: any DomainTrash) {
-        domain.trash = trash
-    }
-
     /// Adds chat metadata in memory, as core-claude does when it creates a chat.
     func testUpsertChat(_ meta: ChatMeta) {
         domain.upsertChat(meta)
@@ -110,10 +109,7 @@ final class DomainEventRecorder: @unchecked Sendable {
         }
     }
 
-    // The task is not cancelled when the recorder goes away: cancelling a task that iterates a
-    // connection's events while an event is delivered can deadlock `StreamFanOut` (it yields
-    // under its lock, and the stream's termination handler takes the same lock). The task ends
-    // when the connection closes.
+    // The task ends when the connection closes.
 
     /// A recorder created once the events of the calls made before have been delivered.
     static func make(_ connection: LocalEngineConnection) async -> DomainEventRecorder {

@@ -205,6 +205,43 @@ struct FileWatchingTests {
         }
     }
 
+    @Test("A sub project whose project file reappears in its listed folder loads again")
+    func projectFileAppears() async throws {
+        try await withFileTestEngine(subproject: true) { _, connection, project in
+            let events = connection.events
+            try await sync(project, events)
+            let file = project.subRoot.appendingPathComponent(".hephaestus/project.yml")
+            let saved = try Data(contentsOf: file)
+            try FileManager.default.removeItem(at: file)
+            let removed = try #require(await firstEvent(named: ProjectRemovedEvent.name, on: events, timeout: .seconds(20)))
+            #expect(try removed.payload(ProjectRemovedEvent.self).projectID == FileTestProject.subID)
+            try saved.write(to: file)
+            let changed = await firstElement(of: events, timeout: .seconds(20)) { envelope in
+                guard envelope.name == ProjectsChangedEvent.name,
+                      let list = try? envelope.payload(ProjectsChangedEvent.self) else { return false }
+                return list.contains { $0.id == FileTestProject.subID }
+            }
+            #expect(changed?.origin == .system)
+            #expect(try await connection.call(ProjectsList.self).map(\.id) == [FileTestProject.id, FileTestProject.subID])
+        }
+    }
+
+    @Test("An external edit of registry.yml loads the added projects and unloads the removed ones")
+    func registryFile() async throws {
+        try await withFileTestEngine { engine, connection, project in
+            let events = connection.events
+            let other = project.folder.appendingPathComponent("Other", isDirectory: true)
+            try ProjectFileStore.write(Project(id: "OTHER", name: "Other", created: Date(timeIntervalSince1970: 1_790_000_000)),
+                                       to: ProjectFolder(root: other))
+            try DeviceFileStore.write(Registry(projects: [other.path]), to: engine.dataDirectory)
+            let removed = try #require(await firstEvent(named: ProjectRemovedEvent.name, on: events, timeout: .seconds(20)))
+            #expect(removed.origin == .system)
+            #expect(try removed.payload(ProjectRemovedEvent.self).projectID == FileTestProject.id)
+            #expect(try await connection.call(ProjectsList.self).map(\.id) == ["OTHER"])
+            #expect(await engine.watchedFolders() == [engine.dataDirectory.url.path, other.path])
+        }
+    }
+
     @Test("More than 500 changed paths are reduced to their ancestors")
     func manyPaths() async throws {
         try await withFileTestEngine { _, connection, project in

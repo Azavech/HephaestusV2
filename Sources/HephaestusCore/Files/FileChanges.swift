@@ -115,8 +115,9 @@ extension Engine {
 
     /// Processes one closed batch (docs/data-model.md › Processing a change): the data
     /// directory files first, then the data files of the projects (project files of every
-    /// project, parents before sub projects, then their bundle and ticket files), then one
-    /// files.changed per loaded project whose root holds changed paths.
+    /// project, parents before sub projects, then their bundle and ticket files), then the
+    /// project files that appeared in registered folders, then one files.changed per loaded
+    /// project whose root holds changed paths.
     func processFileChanges(_ batch: [WatchedEvents]) async {
         var dataDirectoryEvents: [FileWatcher.Event] = []
         var projectEvents: [FileWatcher.Event] = []
@@ -149,6 +150,8 @@ extension Engine {
         guard !projectEvents.isEmpty, files.isWatching else { return }
 
         await processProjectDataChanges(projectEvents)
+        guard files.isWatching else { return }
+        await processAppearedProjectFiles(projectEvents)
         guard files.isWatching else { return }
         emitFilesChanged(for: projectEvents)
     }
@@ -214,6 +217,31 @@ extension Engine {
         return paths.contains { ownWrites.isOwnWrite(path: $0, data: data) }
     }
 
+    // MARK: Project files that appear
+
+    /// docs/data-model.md › Reactions: a project file appearing in a registered folder or a
+    /// listed sub project folder loads that project. The folders whose project is not loaded,
+    /// among the registered top-level roots and the listed sub project folders of the loaded
+    /// projects, are checked when an event may have created their `.hephaestus/project.yml`.
+    private func processAppearedProjectFiles(_ events: [FileWatcher.Event]) async {
+        let loadedRoots = Set(loadedProjectRoots().map(\.path))
+        var folders = domain.registeredRootPaths()
+        for id in domain.loadedProjectIDs() {
+            guard let loaded = domain.projects[id] else { continue }
+            folders += loaded.project.subprojects.compactMap { DomainPaths.subprojectRoot(parent: loaded.rootPath, entry: $0) }
+        }
+        var checked: Set<String> = []
+        for folder in folders where !loadedRoots.contains(folder) && checked.insert(folder).inserted {
+            let candidate = WatchedProjectRoot(id: "", path: folder)
+            let touched = events.contains { event in
+                guard let path = candidate.projectPath(ofEventPath: event.path) else { return false }
+                return path.isEmpty || path == ProjectPaths.dataFolder || path == ProjectPaths.projectFile
+            }
+            guard touched, FileItem.at(candidate.absolutePaths(of: ProjectPaths.projectFile)[0]) != nil else { continue }
+            await projectFileAppeared(root: URL(fileURLWithPath: folder, isDirectory: true))
+        }
+    }
+
     // MARK: files.changed
 
     /// One files.changed per loaded project whose root holds changed paths, with origin
@@ -244,9 +272,11 @@ extension Engine {
         for event in events {
             names.formUnion(dataDirectoryFileNames(of: event))
         }
-        // registry.yml: the watched project roots follow the registry in memory (the caller
-        // calls updateFileWatching). Loading the entries added and unloading the entries removed
-        // by another program belongs to the project loading, which has no hook for it yet.
+        // registry.yml first: the projects it adds may be named by settings.yml. The watched
+        // project roots follow the registry in memory (the caller calls updateFileWatching).
+        if names.contains("registry.yml") {
+            await registryFileChanged()
+        }
         if names.contains("settings.yml") {
             await reloadSettingsFile()
         }

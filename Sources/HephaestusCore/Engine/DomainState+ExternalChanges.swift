@@ -408,31 +408,4 @@ extension Engine {
         terminateChatProcesses(inProjects: removedIDs)
         updateFileWatching()
     }
-
-    /// settings.yml changed outside the engine: the values apply as if set with
-    /// `settings.update`, then `settings.updated`. A deleted file keeps the values in memory.
-    // DOC-GAP: the cross-key contracts give no seam for a change of settings.yml on the data
-    // directory stream; this is the one for core-files to call.
-    func settingsFileChanged() async {
-        let path = dataDirectory.settingsFile.standardizedFileURL.path
-        guard case .data(let data) = readChangedFile(path) else { return }
-        let new: HostSettings
-        do {
-            new = try YAMLCoding.decode(HostSettings.self, from: data)
-        } catch {
-            warnInvalid(path, error)
-            return
-        }
-        recordApplied(path, data)
-        let old = settings
-        guard new != old else { return }
-        let skillsFolderChanged = new.skillsLibraryURL(dataDirectory: dataDirectory) != old.skillsLibraryURL(dataDirectory: dataDirectory)
-        if skillsFolderChanged {
-            try? FileManager.default.createDirectory(at: new.skillsLibraryURL(dataDirectory: dataDirectory),
-                                                     withIntermediateDirectories: true)
-        }
-        settings = new
-        emit(SettingsUpdatedEvent.self, new, origin: .system)
-        await applySettingsEffects(old: old, new: new, skillsFolderChanged: skillsFolderChanged, origin: .system)
-    }
 }
