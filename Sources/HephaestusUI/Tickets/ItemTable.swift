@@ -5,15 +5,39 @@
 import AppKit
 import SwiftUI
 
+/// How an `ItemTable` column takes its width (docs/tickets.md › Ticket list, column widths).
+enum ItemTableColumnSizing {
+    /// The width the other columns leave, at least the column's minimum: it truncates first.
+    case fill
+    /// As wide as its widest cell and its header.
+    case content
+    /// As wide as its widest cell and its header while the fill column is wider than its minimum;
+    /// then it shrinks, down to the column's minimum, and its text truncates.
+    case shrinkableContent
+}
+
 /// One column of an `ItemTable`.
 struct ItemTableColumn<Row> {
     var id: String
     var title: String
     var minWidth: CGFloat
-    var idealWidth: CGFloat
-    var maxWidth: CGFloat = 10_000
+    var sizing: ItemTableColumnSizing
+    /// The width of a row's cell content, for the `content` sizings.
+    var contentWidth: (Row) -> CGFloat = { _ in 0 }
     var sortable = true
     var cell: (Row) -> AnyView
+}
+
+/// Text widths for `ItemTableColumn.contentWidth`, rounded up with a point to spare.
+enum ItemTableText {
+    static func width(_ text: String, font: NSFont) -> CGFloat {
+        ((text as NSString).size(withAttributes: [.font: font]).width + 1).rounded(.up)
+    }
+
+    /// The font of `.system(size: 12, design: .monospaced)`, the id columns.
+    static let monospaced = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    /// The font of plain cell text.
+    static let body = NSFont.systemFont(ofSize: NSFont.systemFontSize)
 }
 
 /// The sorted column and direction of an `ItemTable`.
@@ -64,9 +88,8 @@ struct ItemTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.ID
         table.allowsColumnReordering = false
         table.allowsColumnSelection = false
         table.allowsEmptySelection = true
-        // The columns start at their minimum width; the first columns grow up to their maximum,
-        // so the Title column takes the remaining width.
-        table.columnAutoresizingStyle = .sequentialColumnAutoresizingStyle
+        // The coordinator sets every column's width from the visible width (`layoutColumns`).
+        table.columnAutoresizingStyle = .noColumnAutoresizing
         table.intercellSpacing = NSSize(width: 6, height: 2)
         table.dataSource = context.coordinator
         table.delegate = context.coordinator
@@ -79,13 +102,14 @@ struct ItemTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.ID
             tableColumn.title = column.title
             tableColumn.minWidth = column.minWidth
             tableColumn.width = column.minWidth
-            tableColumn.maxWidth = column.maxWidth
+            tableColumn.resizingMask = []
             if column.sortable, onSortChange != nil {
                 tableColumn.sortDescriptorPrototype = NSSortDescriptor(key: column.id, ascending: true)
             }
             table.addTableColumn(tableColumn)
         }
-        let scrollView = NSScrollView()
+        let scrollView = ItemScrollView()
+        scrollView.onTile = { [weak coordinator = context.coordinator] in coordinator?.layoutColumns() }
         scrollView.documentView = table
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
@@ -122,6 +146,8 @@ struct ItemTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.ID
             if force || shownRows != parent.rows {
                 shownRows = parent.rows
                 table.reloadData()
+                measureColumns()
+                layoutColumns()
             }
             let descriptors = parent.sort.map { [NSSortDescriptor(key: $0.columnID, ascending: $0.ascending)] } ?? []
             if parent.onSortChange != nil, table.sortDescriptors != descriptors {
@@ -133,6 +159,54 @@ struct ItemTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.ID
                 // A selection made elsewhere (navigation, a new ticket) is scrolled into view.
                 if let first = wanted.first {
                     table.scrollRowToVisible(first)
+                }
+            }
+        }
+
+        // MARK: Column widths (docs/tickets.md › Ticket list, column widths)
+
+        /// The widest cell of each `content` column, by column id.
+        private var contentWidths: [String: CGFloat] = [:]
+        private var isLayingOut = false
+
+        private func measureColumns() {
+            for column in parent.columns where column.sizing != .fill {
+                contentWidths[column.id] = shownRows.map(column.contentWidth).max() ?? 0
+            }
+        }
+
+        /// Content columns as wide as their widest cell and header; the fill column takes the rest,
+        /// down to its minimum; then the shrinkable columns shrink, the last first, down to theirs.
+        func layoutColumns() {
+            guard !isLayingOut, let table, let clip = table.enclosingScrollView?.contentView else { return }
+            let available = clip.bounds.width
+            guard available > 0 else { return }
+            isLayingOut = true
+            defer { isLayingOut = false }
+            let columns = parent.columns
+            let tableColumns = columns.map { table.tableColumn(withIdentifier: NSUserInterfaceItemIdentifier($0.id)) }
+            var widths = zip(columns, tableColumns).map { column, tableColumn -> CGFloat in
+                guard column.sizing != .fill else { return column.minWidth }
+                // The header's title, with room for the sort indicator.
+                let header = (tableColumn?.headerCell.cellSize.width ?? 0) + (column.sortable && parent.onSortChange != nil ? 16 : 4)
+                return max(column.minWidth, contentWidths[column.id] ?? 0, header.rounded(.up))
+            }
+            var extra = available - widths.reduce(0, +) - table.intercellSpacing.width * CGFloat(columns.count)
+            if extra > 0 {
+                let fill = columns.firstIndex { $0.sizing == .fill } ?? columns.count - 1
+                if widths.indices.contains(fill) {
+                    widths[fill] += extra.rounded(.down)
+                }
+            } else {
+                for index in columns.indices.reversed() where columns[index].sizing == .shrinkableContent && extra < 0 {
+                    let cut = min(widths[index] - columns[index].minWidth, -extra)
+                    widths[index] -= cut
+                    extra += cut
+                }
+            }
+            for (tableColumn, width) in zip(tableColumns, widths) {
+                if let tableColumn, abs(tableColumn.width - width) >= 0.5 {
+                    tableColumn.width = width
                 }
             }
         }
@@ -353,6 +427,16 @@ extension ItemTable.Coordinator: ItemTableCoordinating {
 
     func deleteKey(command: Bool) -> Bool {
         delete(command: command)
+    }
+}
+
+/// The scroll view of `ItemTable`: each new layout of its visible area sets the column widths.
+final class ItemScrollView: NSScrollView {
+    var onTile: (() -> Void)?
+
+    override func tile() {
+        super.tile()
+        onTile?()
     }
 }
 

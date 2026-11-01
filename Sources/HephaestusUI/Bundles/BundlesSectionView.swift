@@ -69,10 +69,8 @@ struct BundlesSectionView: View {
     }
 
     /// ID by number, Title by localized standard comparison, Progress by the share of done
-    /// tickets, Created by date; ties keep the bundle number order, newest first.
-    // DOC-GAP: docs/tickets.md › Bundles section says the list starts sorted by ID, newest first,
-    // without the order of the other columns; they sort as the ticket list's columns do, Progress
-    // by the share of done tickets.
+    /// tickets, Created by date; ties keep the bundle number order, newest first
+    /// (docs/tickets.md › Bundles section).
     static func sorted(_ rows: [BundleRow], by sort: ItemTableSort) -> [BundleRow] {
         rows.sorted { a, b in
             let order: ComparisonResult
@@ -155,32 +153,39 @@ struct BundlesSectionView: View {
     }
 
     static let columns: [ItemTableColumn<BundleRow>] = [
-        ItemTableColumn(id: "id", title: "ID", minWidth: 60, idealWidth: 76, maxWidth: 88) { row in
+        ItemTableColumn(id: "id", title: "ID", minWidth: 24, sizing: .content,
+                        contentWidth: { ItemTableText.width($0.id, font: ItemTableText.monospaced) }) { row in
             AnyView(Text(row.id)
                 .font(.system(size: 12, design: .monospaced))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading))
         },
-        ItemTableColumn(id: "title", title: "Title", minWidth: 60, idealWidth: 200) { row in
+        ItemTableColumn(id: "title", title: "Title", minWidth: 40, sizing: .fill) { row in
             AnyView(Text(row.title)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .help(row.title))
         },
-        ItemTableColumn(id: "progress", title: "Progress", minWidth: 72, idealWidth: 84, maxWidth: 72) { row in
+        ItemTableColumn(id: "progress", title: "Progress", minWidth: 24, sizing: .content,
+                        contentWidth: { ItemTableText.width($0.progressText, font: Self.progressFont) }) { row in
             AnyView(Text(row.progressText)
                 .lineLimit(1)
                 .monospacedDigit()
                 .frame(maxWidth: .infinity, alignment: .leading))
         },
-        ItemTableColumn(id: "created", title: "Created", minWidth: 90, idealWidth: 140, maxWidth: 220) { row in
+        ItemTableColumn(id: "created", title: "Created", minWidth: 40, sizing: .shrinkableContent,
+                        contentWidth: { ItemTableText.width(TicketFormat.created($0.created), font: ItemTableText.body) }) { row in
             AnyView(Text(TicketFormat.created(row.created))
                 .lineLimit(1)
+                .truncationMode(.tail)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading))
         },
     ]
+
+    /// The font of the Progress cells: plain text with monospaced digits.
+    private static let progressFont = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
 
     private func menu(for ids: Set<String>) -> [ItemTableMenuItem] {
         guard let bundleID = ids.first, let bundle = workspace.bundles[projectID]?[bundleID] else { return [] }

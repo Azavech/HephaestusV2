@@ -37,6 +37,14 @@ enum TicketFormat {
 struct StatusCapsule: View {
     let status: TicketStatus
 
+    /// The width of the widest capsule, for the Status columns: its caption text in medium weight
+    /// and 7 pt on each side.
+    static let maxWidth: CGFloat = {
+        let caption = NSFont.preferredFont(forTextStyle: .caption1).pointSize
+        let font = NSFont.systemFont(ofSize: caption, weight: .medium)
+        return (TicketStatus.allCases.map { ItemTableText.width($0.label, font: font) }.max() ?? 0) + 14
+    }()
+
     var body: some View {
         Text(status.label)
             .font(.caption.weight(.medium))

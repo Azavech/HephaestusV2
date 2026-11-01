@@ -166,26 +166,30 @@ struct TicketListView: View {
     }
 
     static let columns: [ItemTableColumn<Ticket>] = [
-        ItemTableColumn(id: TicketListState.SortColumn.id.rawValue, title: "ID", minWidth: 56, idealWidth: 72, maxWidth: 84) { ticket in
+        ItemTableColumn(id: TicketListState.SortColumn.id.rawValue, title: "ID", minWidth: 24, sizing: .content,
+                        contentWidth: { ItemTableText.width($0.id, font: ItemTableText.monospaced) }) { ticket in
             AnyView(Text(ticket.id)
                 .font(.system(size: 12, design: .monospaced))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading))
         },
-        ItemTableColumn(id: TicketListState.SortColumn.title.rawValue, title: "Title", minWidth: 60, idealWidth: 220) { ticket in
+        ItemTableColumn(id: TicketListState.SortColumn.title.rawValue, title: "Title", minWidth: 40, sizing: .fill) { ticket in
             AnyView(Text(ticket.title)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .help(ticket.title))
         },
-        ItemTableColumn(id: TicketListState.SortColumn.status.rawValue, title: "Status", minWidth: 84, idealWidth: 90, maxWidth: 84) { ticket in
+        ItemTableColumn(id: TicketListState.SortColumn.status.rawValue, title: "Status", minWidth: 24, sizing: .content,
+                        contentWidth: { _ in StatusCapsule.maxWidth }) { ticket in
             AnyView(StatusCapsule(status: ticket.status)
                 .frame(maxWidth: .infinity, alignment: .leading))
         },
-        ItemTableColumn(id: TicketListState.SortColumn.created.rawValue, title: "Created", minWidth: 90, idealWidth: 140, maxWidth: 220) { ticket in
+        ItemTableColumn(id: TicketListState.SortColumn.created.rawValue, title: "Created", minWidth: 40, sizing: .shrinkableContent,
+                        contentWidth: { ItemTableText.width(TicketFormat.created($0.created), font: ItemTableText.body) }) { ticket in
             AnyView(Text(TicketFormat.created(ticket.created))
                 .lineLimit(1)
+                .truncationMode(.tail)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading))
         },

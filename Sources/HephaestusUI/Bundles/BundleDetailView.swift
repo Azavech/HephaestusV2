@@ -157,13 +157,14 @@ struct BundleDetailView: View {
     }
 
     static let columns: [ItemTableColumn<BundleTicketRow>] = [
-        ItemTableColumn(id: "id", title: "ID", minWidth: 60, idealWidth: 76, maxWidth: 88, sortable: false) { row in
+        ItemTableColumn(id: "id", title: "ID", minWidth: 24, sizing: .content,
+                        contentWidth: { ItemTableText.width($0.id, font: ItemTableText.monospaced) }, sortable: false) { row in
             AnyView(Text(row.id)
                 .font(.system(size: 12, design: .monospaced))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading))
         },
-        ItemTableColumn(id: "title", title: "Title", minWidth: 80, idealWidth: 260, sortable: false) { row in
+        ItemTableColumn(id: "title", title: "Title", minWidth: 40, sizing: .fill, sortable: false) { row in
             AnyView(Text(row.title)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -171,7 +172,8 @@ struct BundleDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .help(row.title))
         },
-        ItemTableColumn(id: "status", title: "Status", minWidth: 84, idealWidth: 94, maxWidth: 84, sortable: false) { row in
+        ItemTableColumn(id: "status", title: "Status", minWidth: 24, sizing: .content,
+                        contentWidth: { _ in StatusCapsule.maxWidth }, sortable: false) { row in
             AnyView(Group {
                 if let status = row.status {
                     StatusCapsule(status: status)
