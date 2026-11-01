@@ -130,6 +130,10 @@ public actor MCPServer {
 
     /// Closes the current listener, lets the open connections end after their current request,
     /// then binds `port` with up to 5 attempts one second apart.
+    // DOC-GAP: docs/mcp.md › Server lifecycle names the states but not the one between two bind
+    // attempts or during a move; the server is not listening then, so it is `stopped`. `start`
+    // and `move` return once the outcome is known, so a busy port delays `Engine.start()` by the
+    // 4 seconds of the retries.
     private func listen(on port: Int) async {
         generation += 1
         let current = generation
