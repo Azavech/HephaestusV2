@@ -67,6 +67,8 @@ final class TicketWindowStore {
     var chatSelection: [String: String] = [:]
     /// The Chats tabs that show a draft chat, by `<deviceID>/<ticket or bundle id>`.
     var draftChats: Set<String> = []
+    /// The sort order of the bundle list, by `<deviceID>/<project id>`.
+    var bundleSorts: [String: ItemTableSort] = [:]
 
     static func key(_ deviceID: String, _ itemID: String) -> String {
         "\(deviceID)/\(itemID)"

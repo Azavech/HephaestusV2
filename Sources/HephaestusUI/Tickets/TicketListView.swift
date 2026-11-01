@@ -245,13 +245,16 @@ struct FilterSearchField: NSViewRepresentable {
     @Binding var text: String
     /// Return in the field: nil lets the field do nothing.
     var onSubmit: (() -> Void)?
+    /// Called when the field gains or loses the keyboard focus.
+    var onFocusChange: ((Bool) -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
 
     func makeNSView(context: Context) -> NSSearchField {
-        let field = NSSearchField()
+        let field = FocusReportingSearchField()
+        field.onFocus = { [weak coordinator = context.coordinator] in coordinator?.parent.onFocusChange?(true) }
         field.placeholderString = placeholder
         field.delegate = context.coordinator
         field.sendsSearchStringImmediately = true
@@ -290,6 +293,10 @@ struct FilterSearchField: NSViewRepresentable {
             }
         }
 
+        func controlTextDidEndEditing(_ notification: Notification) {
+            parent.onFocusChange?(false)
+        }
+
         func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
             if selector == #selector(NSResponder.insertNewline(_:)) {
                 parent.onSubmit?()
@@ -297,5 +304,18 @@ struct FilterSearchField: NSViewRepresentable {
             }
             return false
         }
+    }
+}
+
+/// A search field that reports when it takes the keyboard focus.
+final class FocusReportingSearchField: NSSearchField {
+    var onFocus: (() -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let result = super.becomeFirstResponder()
+        if result {
+            onFocus?()
+        }
+        return result
     }
 }
