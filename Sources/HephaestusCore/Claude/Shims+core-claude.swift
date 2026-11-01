@@ -118,3 +118,10 @@ extension Engine {
         }
     }
 }
+
+// SHIM(core-files): delete at integration. The tools lookup of docs/architecture.md › Child
+// processes, rule 5, implemented by core-files in Files/; called once after the login-shell
+// environment capture.
+extension Engine {
+    func lookUpFileTools(environment: [String: String]) async {}
+}

@@ -1,20 +1,6 @@
 import Darwin
 import Foundation
 
-/// The locations of the tools the engine runs, looked up once after the environment capture
-/// (docs/architecture.md › Child processes, rule 5). nil when the tool is not found or not used.
-public struct ToolPaths: Sendable, Hashable {
-    public var git: String?
-    public var gofmt: String?
-    public var swiftFormat: String?
-
-    public init(git: String? = nil, gofmt: String? = nil, swiftFormat: String? = nil) {
-        self.git = git
-        self.gofmt = gofmt
-        self.swiftFormat = swiftFormat
-    }
-}
-
 /// A model of the last `initialize` response, with the `resolvedModel` the engine keeps in
 /// memory to name the model of `system/init` (docs/chats.md › Models).
 struct CachedModel: Sendable, Hashable {
@@ -47,8 +33,6 @@ struct ClaudeCLITimings: Sendable {
     // DOC-GAP: docs/chats.md › Locating the CLI gives no timeout for candidate 4; it uses the 10 s
     // of the environment capture.
     var loginShellTimeout: Duration = .seconds(10)
-    /// `xcrun --find swift-format` and `xcode-select -p` (docs/architecture.md › Child processes).
-    var toolTimeout: Duration = .seconds(10)
     /// The models probe (docs/chats.md › Models).
     var probeTimeout: Duration = .seconds(30)
     /// SIGKILL after the SIGTERM of a timeout (docs/chats.md › Signals).
@@ -59,8 +43,8 @@ struct ClaudeCLITimings: Sendable {
     var shutdownGrace: Duration = .seconds(3)
 }
 
-/// The Claude CLI of the device: the login-shell environment, the tools lookup, the location of
-/// the CLI, its `ClaudeStatus` and the model list (docs/chats.md › Claude CLI). Used only on the
+/// The Claude CLI of the device: the login-shell environment, the location of the CLI, its
+/// `ClaudeStatus` and the model list (docs/chats.md › Claude CLI). Used only on the
 /// engine actor.
 // DOC-GAP: the docs describe this work but name no Swift type for it; the type name is a
 // design choice.
@@ -72,10 +56,8 @@ final class ClaudeCLI {
     var initializeModels: [CachedModel]?
     /// The login-shell environment, nil until the capture has finished.
     var environment: [String: String]?
-    /// The tools found after the environment capture.
-    var tools = ToolPaths()
     var timings = ClaudeCLITimings()
-    /// The probe, naming calls, `--version` and tools, for the shutdown.
+    /// The probe, naming calls, `--version` and the CLI lookup in the login shell, for the shutdown.
     let helpers = HelperProcessRegistry()
 
     /// Increases at every status computation started at engine start or by a `claudePath`
@@ -149,10 +131,10 @@ extension Engine {
     // MARK: Background tasks
 
     /// Startup step 7 of docs/architecture.md › Startup: the login-shell environment capture, then
-    /// the lookup of the tools and the Claude CLI detection, which emits `claude.updated` when
-    /// done, then the models probe. They run in child tasks; this returns at once. The chats of
-    /// the loaded projects are scanned for incomplete question sets (docs/data-model.md ›
-    /// Loading, step 4).
+    /// the lookup of the tools (`lookUpFileTools(environment:)`, Files/) and the Claude CLI
+    /// detection, which emits `claude.updated` when done, then the models probe. They run in
+    /// child tasks; this returns at once. The chats of the loaded projects are scanned for
+    /// incomplete question sets (docs/data-model.md › Loading, step 4).
     func startClaudeBackgroundTasks() async {
         (titleNamer as? HaikuTitleNamer)?.attach(to: self)
         scanChatTranscriptsOfLoadedProjects()
@@ -164,9 +146,9 @@ extension Engine {
             let captured = await launcher.captureEnvironment(processEnvironment: ProcessInfo.processInfo.environment, log: log)
             guard !Task.isCancelled else { return }
             self.environmentCaptured(captured)
-            let toolsTask = Task { await self.lookUpTools() }
+            let tools = Task { await self.lookUpFileTools(environment: ProcessEnvironment.withoutHephaestusVariables(captured)) }
             await self.runDetection(generation: generation, probe: true)
-            self.claudeCLI.tools = await toolsTask.value
+            await tools.value
         }
         claudeCLI.detectionTask = task
     }
@@ -189,49 +171,6 @@ extension Engine {
             await withCheckedContinuation { claudeCLI.environmentWaiters.append($0) }
         }
         return ProcessEnvironment.withoutHephaestusVariables(claudeCLI.environment ?? ProcessInfo.processInfo.environment)
-    }
-
-    /// The tools of docs/architecture.md › Child processes, rule 5.
-    var toolPaths: ToolPaths { claudeCLI.tools }
-
-    /// Rule 5 of docs/architecture.md › Child processes: the first executable file of each name
-    /// in the `PATH` of the captured environment; `swift-format` from `xcrun --find` when `PATH`
-    /// has none; `git` unused when it is `/usr/bin/git` and `xcode-select -p` fails.
-    private func lookUpTools() async -> ToolPaths {
-        let environment = await childProcessEnvironment()
-        let launcher = configuration.claudeLauncher
-        let directories = (environment["PATH"] ?? "").split(separator: ":").map(String.init).filter { !$0.isEmpty }
-        func inPath(_ name: String) -> String? {
-            for directory in directories {
-                let path = (directory as NSString).appendingPathComponent(name)
-                if launcher.isExecutableFile(atPath: path) { return path }
-            }
-            return nil
-        }
-        var tools = ToolPaths(git: inPath("git"), gofmt: inPath("gofmt"), swiftFormat: inPath("swift-format"))
-        let registry = claudeCLI.helpers
-        let timings = claudeCLI.timings
-        if tools.git == "/usr/bin/git" {
-            let result = await ClaudeHelperRun.run(
-                ChildProcessRequest(executable: "/usr/bin/xcode-select", arguments: ["-p"], environment: environment),
-                launcher: launcher, registry: registry, timeout: timings.toolTimeout, killGrace: timings.killGrace)
-            if result.termination != .exited(0) || result.timedOut {
-                tools.git = nil
-            }
-        }
-        if tools.swiftFormat == nil {
-            let result = await ClaudeHelperRun.run(
-                ChildProcessRequest(executable: "/usr/bin/xcrun", arguments: ["--find", "swift-format"], environment: environment),
-                launcher: launcher, registry: registry, timeout: timings.toolTimeout, killGrace: timings.killGrace)
-            if result.termination == .exited(0), !result.timedOut,
-               let path = Engine.lastNonEmptyLine(result.standardOutputText), path.hasPrefix("/"),
-               launcher.isExecutableFile(atPath: path) {
-                tools.swiftFormat = path
-            }
-        }
-        log.info(.claude, "tools: git \(tools.git ?? "not found"), gofmt \(tools.gofmt ?? "not found"), "
-                 + "swift-format \(tools.swiftFormat ?? "not found")")
-        return tools
     }
 
     // MARK: Status
@@ -502,7 +441,7 @@ extension Engine {
     // MARK: Shutdown
 
     /// docs/architecture.md › Shutdown, step 1 for the models probe, the naming calls and the
-    /// tools: SIGTERM, SIGKILL 3 s later; returns once they have ended.
+    /// CLI lookup: SIGTERM, SIGKILL 3 s later; returns once they have ended.
     func stopClaudeHelperProcesses() async {
         claudeCLI.stopped = true
         claudeCLI.detectionTask?.cancel()
