@@ -1,0 +1,577 @@
+// OWNER: ui-chats — the state and actions of one chat view: the chat or draft it shows, the
+// composer, the pinned cards and their keys, the header (docs/chats.md › Chat view, › Composer,
+// › Pinned permission card, › Pinned questions card, › Draft chats).
+import AppKit
+import HephaestusCore
+import Observation
+import SwiftUI
+
+/// A chat that is not stored yet (docs/chats.md › Draft chats): its first Send calls
+/// `chats.create` with the message and the draft's settings.
+struct DraftChat: Hashable {
+    var projectID: String
+    var kind: ChatKind
+    var ticketID: String?
+    var bundleID: String?
+    /// Each New Chat shows a new draft; a draft that is closed or replaced is discarded.
+    var id = UUID()
+
+    init(projectID: String, kind: ChatKind = .project, ticketID: String? = nil, bundleID: String? = nil) {
+        self.projectID = projectID
+        self.kind = kind
+        self.ticketID = ticketID
+        self.bundleID = bundleID
+    }
+}
+
+/// The choice of the questions card: an option's label, or `Answer another way`.
+enum QuestionChoice: Hashable {
+    case option(String)
+    case other
+}
+
+@MainActor @Observable
+final class ChatViewModel {
+    let workspace: DeviceWorkspace
+    /// The shown chat; nil for a draft.
+    let chatID: String?
+    /// The draft shown when `chatID` is nil.
+    let draft: DraftChat?
+    let projectID: String
+    let transcript: TranscriptController
+    @ObservationIgnored let windowReference = ChatWindowReference()
+    @ObservationIgnored weak var app: AppModel?
+    /// Called with the chat that the draft's first Send created.
+    @ObservationIgnored var onCreated: ((ChatMeta) -> Void)?
+
+    // MARK: Draft chat
+
+    /// The unsent text and attachments of a draft chat (an existing chat's are in
+    /// `DeviceWorkspace.drafts`).
+    var draftComposer = ComposerDraft()
+    /// The settings the draft is created with: the project's `chatDefaults`, else the host's
+    /// `defaultChatSettings`, until a menu changes them.
+    var draftSettings: ChatSettings?
+
+    // MARK: Composer
+
+    var composerFocusRequest = 0
+    var isCreating = false
+
+    // MARK: Cards
+
+    /// The id of the permission request shown for at least 1 second.
+    var permissionArmedID: String?
+    var denyMessage = ""
+    var permissionShowsAll = false
+    /// `<questionSetID>/<label>` of the shown question.
+    var questionKey: String?
+    var questionChoice: QuestionChoice = .other
+    var questionOther = ""
+    var isSubmittingAnswer = false
+
+    // MARK: Header
+
+    var isRenaming = false
+    var renameText = ""
+
+    @ObservationIgnored private var keyMonitor: Any?
+    @ObservationIgnored private var opened = false
+
+    init(workspace: DeviceWorkspace, chatID: String?, draft: DraftChat?) {
+        self.workspace = workspace
+        self.chatID = chatID
+        self.draft = draft
+        let projectID = draft?.projectID ?? chatID.flatMap { workspace.chats[$0]?.projectID } ?? ""
+        self.projectID = projectID
+        transcript = TranscriptController(connection: workspace.connection, projectID: projectID)
+    }
+
+    // MARK: Derived values
+
+    var meta: ChatMeta? {
+        chatID.flatMap { workspace.chats[$0] }
+    }
+
+    /// The project of the chat: the draft's, else the chat's metadata.
+    var chatProjectID: String {
+        meta?.projectID ?? projectID
+    }
+
+    var kind: ChatKind {
+        meta?.kind ?? draft?.kind ?? .project
+    }
+
+    var state: ChatState {
+        meta?.state ?? .idle
+    }
+
+    var transcriptState: TranscriptState? {
+        if let chatID { return workspace.transcripts[chatID] }
+        return TranscriptState()
+    }
+
+    var title: String {
+        meta?.title ?? ChatMeta.defaultTitle
+    }
+
+    /// The settings the composer's menus show.
+    var settings: ChatSettings {
+        meta?.settings ?? draftSettings ?? defaultSettings
+    }
+
+    /// The project's `chatDefaults`, else the host's `defaultChatSettings`
+    /// (docs/chats.md › Fields and defaults).
+    var defaultSettings: ChatSettings {
+        workspace.details[chatProjectID]?.project.chatDefaults ?? workspace.settings?.defaultChatSettings ?? ChatSettings()
+    }
+
+    var composer: ComposerDraft {
+        get {
+            if let chatID { return workspace.drafts[chatID] ?? ComposerDraft() }
+            return draftComposer
+        }
+        set {
+            if let chatID {
+                workspace.drafts[chatID] = newValue.text.isEmpty && newValue.attachments.isEmpty ? nil : newValue
+            } else {
+                draftComposer = newValue
+            }
+        }
+    }
+
+    var placeholder: String? {
+        let projectName = workspace.project(chatProjectID)?.name ?? chatProjectID
+        return ChatFormat.placeholder(kind: kind, projectName: projectName, ticketID: meta?.ticketID ?? draft?.ticketID,
+                                      bundleID: meta?.bundleID ?? draft?.bundleID)
+    }
+
+    var renderContext: TranscriptRenderContext {
+        TranscriptRenderContext(projectRootPath: workspace.project(chatProjectID)?.rootPath, chatIsRunning: state.isRunning)
+    }
+
+    /// Send is enabled when the text is not blank or there is an attachment, the window's device is
+    /// connected and the CLI is available.
+    var canSend: Bool {
+        let draft = composer
+        let hasContent = !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !draft.attachments.isEmpty
+        let status = workspace.claudeStatus
+        return hasContent && workspace.isConnected && status?.available == true && status?.checking == false && !isCreating
+    }
+
+    var window: NSWindow? {
+        windowReference.window
+    }
+
+    // MARK: Lifecycle
+
+    func appear(app: AppModel, focusComposer: Bool) {
+        self.app = app
+        if draftSettings == nil, chatID == nil {
+            draftSettings = defaultSettings
+        }
+        if let chatID, !opened {
+            opened = true
+            ChatTranscriptStore.shared.open(chatID, in: workspace)
+        }
+        transcript.onOpenLink = { [weak self] url, commandKey in
+            self?.openLink(url, commandKey: commandKey)
+        }
+        transcript.onOpenAttachment = { [weak self] path in
+            self?.openAttachment(path)
+        }
+        startKeyMonitor()
+        if chatID == nil, focusComposer {
+            composerFocusRequest += 1
+        }
+    }
+
+    func disappear() {
+        if let chatID, opened {
+            opened = false
+            ChatTranscriptStore.shared.close(chatID, in: workspace)
+        }
+        stopKeyMonitor()
+    }
+
+    /// Loads the transcript for the workspace's current connection.
+    func ensureLoaded(force: Bool = false) {
+        guard let chatID else { return }
+        ChatTranscriptStore.shared.ensureLoaded(chatID, in: workspace, force: force)
+    }
+
+    // MARK: Composer actions
+
+    /// Send: `chats.send`, or `chats.create` for a draft; sending clears the text and the chips.
+    func send() {
+        guard canSend else { return }
+        let sent = composer
+        let message = ChatMessageInput(text: sent.text, attachments: sent.attachments.isEmpty ? nil : sent.attachments)
+        composer = ComposerDraft()
+        Task {
+            do {
+                if let chatID, let uuid = UUID(uuidString: chatID) {
+                    _ = try await workspace.call(ChatsSend.self, ChatsSend.Params(chatID: uuid, message: message))
+                } else if let draft {
+                    isCreating = true
+                    defer { isCreating = false }
+                    let meta = try await workspace.call(ChatsCreate.self, ChatsCreate.Params(
+                        projectID: draft.projectID, kind: draft.kind, ticketID: draft.ticketID, bundleID: draft.bundleID,
+                        settings: settings, message: message))
+                    onCreated?(meta)
+                }
+            } catch {
+                let current = composer
+                if current.text.isEmpty, current.attachments.isEmpty {
+                    composer = sent
+                }
+                alert(.failure("Send", error))
+            }
+        }
+    }
+
+    /// Stop and Escape while running: `chats.interrupt`.
+    func stop() {
+        guard let chatID, let uuid = UUID(uuidString: chatID), state.isRunning else { return }
+        Task {
+            do {
+                _ = try await workspace.call(ChatsInterrupt.self, ChatsInterrupt.Params(chatID: uuid))
+            } catch {
+                alert(.failure("Stop", error))
+            }
+        }
+    }
+
+    /// A menu change: `chats.updateSettings` at once for an existing chat; in a draft it changes
+    /// the settings the chat is created with.
+    func changeSettings(_ new: ChatSettings) {
+        guard let chatID, let uuid = UUID(uuidString: chatID) else {
+            draftSettings = new
+            return
+        }
+        Task {
+            do {
+                _ = try await workspace.call(ChatsUpdateSettings.self, ChatsUpdateSettings.Params(chatID: uuid, settings: new))
+            } catch {
+                // DOC-GAP: docs/ui.md › Principles names the alert of a failed menu item by its
+                // title; the settings menus use `Chat Settings`.
+                alert(.failure("Chat Settings", error))
+            }
+        }
+    }
+
+    /// Files from the open panel, a drop or ⌘V.
+    func addFiles(_ urls: [URL]) {
+        guard !urls.isEmpty, workspace.isConnected else { return }
+        Task {
+            switch await ChatAttachmentFiles.uploads(from: urls) {
+            case .success(let uploads):
+                composer.attachments += uploads
+            case .failure(let problem):
+                alert(WindowAlert(title: problem.title, message: problem.message))
+            }
+        }
+    }
+
+    /// Pasted image data without a file.
+    func addPastedImage(_ png: Data) {
+        switch ChatAttachmentFiles.pastedImage(png) {
+        case .success(let upload):
+            composer.attachments.append(upload)
+        case .failure(let problem):
+            alert(WindowAlert(title: problem.title, message: problem.message))
+        }
+    }
+
+    func removeAttachment(at index: Int) {
+        guard composer.attachments.indices.contains(index) else { return }
+        composer.attachments.remove(at: index)
+    }
+
+    /// The paperclip: an open panel for files, several at once, no folders.
+    func chooseFiles() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        let handler: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard response == .OK else { return }
+            self?.addFiles(panel.urls)
+        }
+        if let window, window.attachedSheet == nil {
+            panel.beginSheetModal(for: window, completionHandler: handler)
+        } else {
+            panel.begin(completionHandler: handler)
+        }
+    }
+
+    /// Files dropped anywhere on the chat view.
+    func drop(_ providers: [NSItemProvider]) -> Bool {
+        let fileProviders = providers.filter { $0.canLoadObject(ofClass: URL.self) }
+        guard !fileProviders.isEmpty, workspace.isConnected else { return false }
+        Task {
+            var urls: [URL] = []
+            for provider in fileProviders {
+                if let url = await Self.loadURL(provider), url.isFileURL {
+                    urls.append(url)
+                }
+            }
+            addFiles(urls)
+        }
+        return true
+    }
+
+    private static func loadURL(_ provider: NSItemProvider) async -> URL? {
+        await withCheckedContinuation { continuation in
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                continuation.resume(returning: url)
+            }
+        }
+    }
+
+    // MARK: Permission card
+
+    /// Allow Once, Always Allow and Deny of the shown request; a conflict shows no alert, since
+    /// the card follows the `chat.item` event.
+    func answerPermission(_ request: PermissionRequestItem, _ decision: PermissionDecision) {
+        guard let chatID, let uuid = UUID(uuidString: chatID) else { return }
+        let trimmed = denyMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        let message = decision == .deny && !trimmed.isEmpty ? trimmed : nil
+        Task {
+            do {
+                _ = try await workspace.call(ChatsAnswerPermission.self, ChatsAnswerPermission.Params(
+                    chatID: uuid, requestID: request.requestID, decision: decision, message: message))
+            } catch let error as EngineError where error.code == .conflict {
+                return
+            } catch {
+                alert(.failure(decision.label, error))
+            }
+        }
+    }
+
+    /// The shown request changed: its keys wait 1 second, its field and Show All start anew.
+    func permissionShown(_ requestID: String?) {
+        if permissionArmedID != requestID {
+            permissionArmedID = nil
+        }
+        denyMessage = ""
+        permissionShowsAll = false
+    }
+
+    // MARK: Questions card
+
+    /// The first question of the set, in label order, that has no answer.
+    static func firstUnanswered(_ set: QuestionsItem) -> Question? {
+        set.questions.sorted { $0.label < $1.label }.first { set.answers[$0.label] == nil }
+    }
+
+    /// A new question appears with its recommended option selected and an empty field.
+    func questionShown(_ set: QuestionsItem, _ question: Question) {
+        let key = set.questionSetID.uuidString + "/" + question.label
+        guard questionKey != key else { return }
+        questionKey = key
+        questionChoice = .option(question.recommended)
+        questionOther = ""
+    }
+
+    /// The answer the card submits: the selected option's label, or the field's text.
+    var questionAnswer: String {
+        switch questionChoice {
+        case .option(let label): return label
+        case .other: return questionOther.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
+    var canSubmitAnswer: Bool {
+        !questionAnswer.isEmpty && !isSubmittingAnswer
+    }
+
+    /// Submit: `chats.answerQuestion`. An answer that fails because the question was answered on
+    /// another device shows no alert.
+    func submitAnswer() {
+        guard let chatID, let uuid = UUID(uuidString: chatID), let set = transcriptState?.incompleteQuestionSet,
+              let question = Self.firstUnanswered(set), canSubmitAnswer else { return }
+        let answer = questionAnswer
+        isSubmittingAnswer = true
+        Task {
+            defer { isSubmittingAnswer = false }
+            do {
+                _ = try await workspace.call(ChatsAnswerQuestion.self, ChatsAnswerQuestion.Params(
+                    chatID: uuid, questionSetID: set.questionSetID, label: question.label, answer: answer))
+            } catch let error as EngineError where (error.code == .invalid || error.code == .conflict)
+                && answeredElsewhere(set.id, label: question.label) {
+                return
+            } catch {
+                alert(.failure("Submit", error))
+            }
+        }
+    }
+
+    private func answeredElsewhere(_ itemID: String, label: String) -> Bool {
+        guard case .questions(let set)? = transcriptState?.item(itemID) else { return false }
+        return set.completed || set.answers[label] != nil
+    }
+
+    // MARK: Card keys (docs/chats.md › Keyboard shortcuts)
+
+    private func startKeyMonitor() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self else { return event }
+            return MainActor.assumeIsolated { self.handleKey(event) } ? nil : event
+        }
+    }
+
+    private func stopKeyMonitor() {
+        if let keyMonitor {
+            NSEvent.removeMonitor(keyMonitor)
+        }
+        keyMonitor = nil
+    }
+
+    /// ⌘Return, ⌥⌘Return and ⇧⌘Return answer the permission card once its request has been shown
+    /// for 1 second; ⌘Return submits the questions card when no permission card is shown. Both act
+    /// only while the focus is in this chat view outside its composer.
+    func handleKey(_ event: NSEvent) -> Bool {
+        guard event.keyCode == 36 || event.keyCode == 76, let window, event.window === window else { return false }
+        let flags = event.modifierFlags.intersection([.command, .option, .shift, .control])
+        let decision: PermissionDecision?
+        switch flags {
+        case [.command]: decision = .allow
+        case [.command, .option]: decision = .allowAlways
+        case [.command, .shift]: decision = .deny
+        default: return false
+        }
+        guard let state = transcriptState, focusIsInViewOutsideComposer() else { return false }
+        if let request = state.pendingPermissionRequests.first, let decision {
+            if permissionArmedID == request.id {
+                answerPermission(request, decision)
+            }
+            return true
+        }
+        if flags == [.command], state.incompleteQuestionSet != nil {
+            submitAnswer()
+            return true
+        }
+        return false
+    }
+
+    /// The first responder lies inside this chat view and is not its composer.
+    private func focusIsInViewOutsideComposer() -> Bool {
+        guard let window, let region = windowReference.view, let responder = window.firstResponder as? NSView else {
+            return false
+        }
+        if let textView = responder as? ChatNSTextView, textView.isComposer { return false }
+        if region.isDescendant(of: responder) { return false }
+        let regionRect = region.convert(region.bounds, to: nil)
+        let rect = responder.convert(responder.visibleRect.isEmpty ? responder.bounds : responder.visibleRect, to: nil)
+        return regionRect.contains(NSPoint(x: rect.midX, y: rect.midY))
+    }
+
+    // MARK: Header actions
+
+    func startRename() {
+        guard meta != nil else { return }
+        renameText = title
+        isRenaming = true
+    }
+
+    /// Return in the title field: `chats.rename`.
+    func commitRename() {
+        guard isRenaming, let chatID, let uuid = UUID(uuidString: chatID) else { return }
+        isRenaming = false
+        let newTitle = renameText
+        guard newTitle != title else { return }
+        Task {
+            do {
+                _ = try await workspace.call(ChatsRename.self, ChatsRename.Params(chatID: uuid, title: newTitle))
+            } catch {
+                alert(.failure("Rename", error))
+            }
+        }
+    }
+
+    func cancelRename() {
+        isRenaming = false
+    }
+
+    func openInNewWindow() {
+        guard let chatID else { return }
+        app?.openChatWindow(ChatWindowValue(deviceID: workspace.deviceID, chatID: chatID))
+    }
+
+    func confirmDelete() {
+        guard let meta, let app else { return }
+        ChatActions.confirmDelete(meta, workspace: workspace, window: window, app: app)
+    }
+
+    /// The ticket or bundle id of the header's chip.
+    func navigateToLink() {
+        guard let app, let meta else { return }
+        let target: NavigationTarget
+        if let bundleID = meta.bundleID {
+            target = .bundle(bundleID: bundleID)
+        } else if let ticketID = meta.ticketID {
+            target = .ticket(ticketID: ticketID)
+        } else {
+            return
+        }
+        ChatNavigator.navigate(to: target, from: window, workspace: workspace, app: app)
+    }
+
+    // MARK: Page messages
+
+    private func openLink(_ url: String, commandKey: Bool) {
+        guard let app else { return }
+        ChatNavigator.openLink(url, commandKey: commandKey, projectID: chatProjectID, workspace: workspace, app: app, window: window)
+    }
+
+    private func openAttachment(_ path: String) {
+        guard let app else { return }
+        ChatNavigator.openAttachment(path: path, attachment: transcriptState?.attachment(atPath: path), projectID: chatProjectID,
+                                     workspace: workspace, app: app, window: window)
+    }
+
+    func alert(_ alert: WindowAlert) {
+        guard let app else { return }
+        ChatAlerts.show(alert, in: window, app: app)
+    }
+}
+
+/// Actions shared by the chat view's header and the chat lists.
+@MainActor
+enum ChatActions {
+    /// Delete… asks `Delete the chat “<title>”?` with the informative text `Its transcript and
+    /// attachments are moved to the Trash.` and the buttons Delete (destructive) and Cancel, then
+    /// calls `chats.delete`.
+    static func confirmDelete(_ meta: ChatMeta, workspace: DeviceWorkspace, window: NSWindow?, app: AppModel) {
+        let alert = NSAlert()
+        alert.messageText = "Delete the chat “\(meta.title)”?"
+        alert.informativeText = "Its transcript and attachments are moved to the Trash."
+        let delete = alert.addButton(withTitle: "Delete")
+        delete.hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel").keyEquivalent = "\u{1b}"
+        ChatAlerts.present(alert, in: window) { response in
+            guard response == .alertFirstButtonReturn else { return }
+            Task { @MainActor in
+                do {
+                    _ = try await workspace.call(ChatsDelete.self, ChatsDelete.Params(chatID: meta.id))
+                } catch {
+                    ChatAlerts.failure("Delete", error, in: window, app: app)
+                }
+            }
+        }
+    }
+
+    /// `chats.rename` from a list row.
+    static func rename(_ meta: ChatMeta, to title: String, workspace: DeviceWorkspace, window: NSWindow?, app: AppModel) {
+        guard title != meta.title else { return }
+        Task {
+            do {
+                _ = try await workspace.call(ChatsRename.self, ChatsRename.Params(chatID: meta.id, title: title))
+            } catch {
+                ChatAlerts.failure("Rename", error, in: window, app: app)
+            }
+        }
+    }
+}

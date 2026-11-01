@@ -1,0 +1,301 @@
+// OWNER: ui-chats — the texts of the transcript and the chat views: durations, costs, tool card
+// summaries and icons, status lines (docs/chats.md › Item rendering, › Tool cards, › Chat states).
+import Foundation
+import HephaestusCore
+
+/// Formats of docs/chats.md › Item rendering.
+enum ChatFormat {
+    /// `<duration>` from `durationMs`: below 60 s one decimal and ` s` (`3.5 s`); below one hour
+    /// `<m> min <s> s` (`2 min 5 s`); else `<h> h <m> min` (`1 h 2 min`).
+    static func duration(milliseconds: Int) -> String {
+        let ms = max(0, milliseconds)
+        let tenths = (ms + 50) / 100
+        if tenths < 600 {
+            return "\(tenths / 10).\(tenths % 10) s"
+        }
+        let seconds = ms / 1000
+        if seconds < 3600 {
+            return "\(seconds / 60) min \(seconds % 60) s"
+        }
+        return "\(seconds / 3600) h \((seconds % 3600) / 60) min"
+    }
+
+    /// `<cost>`: `< $0.01` below 0.01, else `$` and two decimals (`$0.42`).
+    static func cost(_ usd: Double) -> String {
+        if usd < 0.01 { return "< $0.01" }
+        return "$" + String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), usd)
+    }
+
+    /// The footer line of a `result` item: `Done · <duration> · session cost <cost>`, or
+    /// `Error · <duration> · <summary>`; the cost part is left out when `costUSD` is null.
+    static func resultLine(_ result: ResultItem) -> String {
+        var parts = [result.isError ? "Error" : "Done", duration(milliseconds: result.durationMs)]
+        if result.isError {
+            if let summary = result.summary, !summary.isEmpty { parts.append(summary) }
+        } else if let usd = result.costUSD {
+            parts.append("session cost " + cost(usd))
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    /// The tooltip of a bubble: its `created` time in local time.
+    static func created(_ date: Date) -> String {
+        createdFormatter.string(from: date)
+    }
+
+    private static let createdFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .medium
+        return formatter
+    }()
+
+    /// A file-style byte count, for example `12 KB`.
+    static func byteCount(_ bytes: Int) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+    }
+
+    /// `m:ss` of the running status line.
+    static func elapsed(since start: Date, now: Date) -> String {
+        let seconds = max(0, Int(now.timeIntervalSince(start)))
+        return "\(seconds / 60):" + String(format: "%02d", seconds % 60)
+    }
+
+    /// The label of a permission decision line (docs/chats.md › Item rendering).
+    static func permissionStatus(_ request: PermissionRequestItem) -> String {
+        guard let decision = request.decision else { return "Waiting for permission" }
+        guard let decidedBy = request.decidedBy else { return "Cancelled" }
+        switch decision {
+        case .allow: return "Allowed once by \(decidedBy)"
+        case .allowAlways: return "Always allowed by \(decidedBy)"
+        case .deny: return "Denied by \(decidedBy)"
+        }
+    }
+
+    /// The kind as a chip and group title.
+    static func kindTitle(_ kind: ChatKind) -> String {
+        switch kind {
+        case .project: return "Project"
+        case .ticket: return "Ticket"
+        case .bundle: return "Bundle"
+        case .feedback: return "Feedback"
+        }
+    }
+
+    /// The transcript placeholder of an empty chat (docs/chats.md › Empty transcript); nil for a
+    /// feedback chat, which is never empty.
+    static func placeholder(kind: ChatKind, projectName: String, ticketID: String?, bundleID: String?) -> String? {
+        switch kind {
+        case .project: return "Ask Claude to plan, create tickets or work on \(projectName)."
+        case .ticket: return "Ask Claude about \(ticketID ?? ""), or click Implement."
+        case .bundle: return "Ask Claude about \(bundleID ?? ""), or click Implement All."
+        case .feedback: return nil
+        }
+    }
+}
+
+/// The running states of a chat (docs/chats.md › Chat states): starting, running and
+/// waitingPermission.
+extension ChatState {
+    var isRunning: Bool {
+        self == .starting || self == .running || self == .waitingPermission
+    }
+}
+
+/// Which attachments show as images (docs/tickets.md › Showing attachments).
+enum ChatAttachmentKind {
+    static let imageTypes: Set<String> = [
+        "image/png", "image/jpeg", "image/gif", "image/heic", "image/heif", "image/tiff", "image/bmp", "image/webp",
+    ]
+
+    static func isImage(_ contentType: String) -> Bool {
+        imageTypes.contains(contentType.lowercased())
+    }
+}
+
+/// The header of a tool card: its icon and one-line summary (docs/chats.md › Tool cards).
+enum ToolCardSummary {
+    /// Summaries are cut at 120 characters with `…`.
+    static let maximumLength = 120
+
+    /// The inline SVG drawing of `chat.js` that the card shows.
+    static func icon(name: String, server: String?) -> String {
+        if server != nil { return "plug" }
+        switch name {
+        case "Bash": return "terminal"
+        case "Read", "Write", "Edit", "NotebookEdit": return "document"
+        case "Glob", "Grep": return "magnifier"
+        case "WebFetch", "WebSearch": return "globe"
+        case "Agent", "Task": return "people"
+        case "TodoWrite": return "checklist"
+        default: return "wrench"
+        }
+    }
+
+    /// The one-line summary of a tool call; `projectRootPath` makes file paths inside the project
+    /// relative to it.
+    static func summary(name: String, server: String?, input: JSONValue, projectRootPath: String?) -> String {
+        let text: String
+        if server != nil {
+            text = generic(input)
+        } else {
+            switch name {
+            case "Bash":
+                text = input.string("command").map(firstLine) ?? generic(input)
+            case "Read", "Write", "Edit", "NotebookEdit":
+                if let path = input.string("file_path") ?? input.string("notebook_path") {
+                    text = relative(path, to: projectRootPath)
+                } else {
+                    text = generic(input)
+                }
+            case "Glob", "Grep":
+                if let pattern = input.string("pattern") {
+                    if let path = input.string("path"), !path.isEmpty {
+                        text = pattern + " in " + path
+                    } else {
+                        text = pattern
+                    }
+                } else {
+                    text = generic(input)
+                }
+            case "WebFetch":
+                text = input.string("url") ?? generic(input)
+            case "WebSearch":
+                text = input.string("query") ?? generic(input)
+            case "Agent", "Task":
+                text = input.string("description") ?? generic(input)
+            case "TodoWrite":
+                if case .array(let todos)? = input.field("todos") {
+                    text = "\(todos.count) todos"
+                } else {
+                    text = generic(input)
+                }
+            default:
+                text = generic(input)
+            }
+        }
+        return cut(text)
+    }
+
+    /// The generic rule: the first of these input fields that holds a non-empty string, else the
+    /// input as compact JSON.
+    static let genericFields = [
+        "command", "file_path", "path", "pattern", "url", "query", "description", "prompt", "name", "title", "ticketID",
+        "bundleID", "projectID",
+    ]
+
+    static func generic(_ input: JSONValue) -> String {
+        for field in genericFields {
+            if let value = input.string(field), !value.isEmpty { return firstLine(value) }
+        }
+        return input.compactJSON
+    }
+
+    static func cut(_ text: String) -> String {
+        let single = text.replacingOccurrences(of: "\n", with: " ")
+        guard single.count > maximumLength else { return single }
+        return String(single.prefix(maximumLength)) + "…"
+    }
+
+    static func firstLine(_ text: String) -> String {
+        String(text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first ?? "")
+    }
+
+    /// A path relative to the project root when it lies inside it.
+    static func relative(_ path: String, to root: String?) -> String {
+        guard let root, !root.isEmpty else { return path }
+        let prefix = root.hasSuffix("/") ? root : root + "/"
+        return path.hasPrefix(prefix) ? String(path.dropFirst(prefix.count)) : path
+    }
+}
+
+extension JSONValue {
+    /// The value of an object field.
+    func field(_ key: String) -> JSONValue? {
+        guard case .object(let object) = self else { return nil }
+        return object[key]
+    }
+
+    /// The string value of an object field.
+    func string(_ key: String) -> String? {
+        guard case .string(let value)? = field(key) else { return nil }
+        return value
+    }
+
+    /// Compact JSON, keys in code point order.
+    var compactJSON: String {
+        var out = ""
+        write(to: &out, indent: nil)
+        return out
+    }
+
+    /// JSON with 2-space indentation, keys in code point order.
+    var prettyJSON: String {
+        var out = ""
+        write(to: &out, indent: 0)
+        return out
+    }
+
+    /// Writes the value; `indent` nil writes compact JSON, else the current depth.
+    private func write(to out: inout String, indent: Int?) {
+        switch self {
+        case .null: out += "null"
+        case .bool(let value): out += value ? "true" : "false"
+        case .int(let value): out += String(value)
+        case .double(let value): out += Self.scalar(value)
+        case .string(let value): out += Self.quoted(value)
+        case .array(let values):
+            guard !values.isEmpty else { out += "[]"; return }
+            out += "["
+            for (index, value) in values.enumerated() {
+                if index > 0 { out += "," }
+                if let indent { out += "\n" + String(repeating: "  ", count: indent + 1) }
+                value.write(to: &out, indent: indent.map { $0 + 1 })
+            }
+            if let indent { out += "\n" + String(repeating: "  ", count: indent) }
+            out += "]"
+        case .object(let object):
+            guard !object.isEmpty else { out += "{}"; return }
+            out += "{"
+            for (index, key) in object.keys.sorted(by: { Array($0.unicodeScalars.map(\.value)).lexicographicallyPrecedes($1.unicodeScalars.map(\.value)) }).enumerated() {
+                if index > 0 { out += "," }
+                if let indent { out += "\n" + String(repeating: "  ", count: indent + 1) }
+                out += Self.quoted(key) + (indent == nil ? ":" : ": ")
+                object[key]!.write(to: &out, indent: indent.map { $0 + 1 })
+            }
+            if let indent { out += "\n" + String(repeating: "  ", count: indent) }
+            out += "}"
+        }
+    }
+
+    /// A number as JSON text.
+    private static func scalar(_ value: Double) -> String {
+        let encoder = JSONEncoder()
+        guard let data = try? encoder.encode(value), let text = String(data: data, encoding: .utf8) else { return "null" }
+        return text
+    }
+
+    /// A string as a JSON string literal.
+    static func quoted(_ value: String) -> String {
+        var out = "\""
+        for scalar in value.unicodeScalars {
+            switch scalar {
+            case "\"": out += "\\\""
+            case "\\": out += "\\\\"
+            case "\n": out += "\\n"
+            case "\r": out += "\\r"
+            case "\t": out += "\\t"
+            case "\u{08}": out += "\\b"
+            case "\u{0C}": out += "\\f"
+            default:
+                if scalar.value < 0x20 {
+                    out += String(format: "\\u%04x", scalar.value)
+                } else {
+                    out.unicodeScalars.append(scalar)
+                }
+            }
+        }
+        return out + "\""
+    }
+}

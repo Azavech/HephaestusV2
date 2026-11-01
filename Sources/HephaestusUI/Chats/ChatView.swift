@@ -1,15 +1,343 @@
 // OWNER: ui-chats — the chat view: header, transcript, pinned cards, status line and composer (docs/chats.md › Chat view).
+import AppKit
 import HephaestusCore
 import SwiftUI
+import UniformTypeIdentifiers
 
-/// One chat of a device; `chats.get` loads its transcript into `DeviceWorkspace.transcripts`.
-// STUB: ui-chats
+/// One chat of a device, or a draft chat; `chats.get` loads its transcript into
+/// `DeviceWorkspace.transcripts`.
+///
+/// From top to bottom: the header, the transcript, the pinned permission card, the pinned
+/// questions card, the status line and the composer. The header shows in the Chats section, the
+/// ticket and bundle Chats tabs and chat windows; the inspector shows its picker instead.
 struct ChatView: View {
-    /// The chat id, an uppercase UUID string.
-    let chatID: String
+    /// The chat id, an uppercase UUID string; nil for a draft.
+    let chatID: String?
+    let draft: DraftChat?
     let workspace: DeviceWorkspace
+    var showsHeader = true
+    /// Inside a chat window, Open in New Window is hidden.
+    var isInChatWindow = false
+    /// Incremented to put the keyboard focus in the composer.
+    var focusRequest = 0
+    /// A draft shown by New Chat puts the keyboard focus in its composer when it appears.
+    var focusesComposer = false
+    /// Called with the chat that a draft's first Send created.
+    var onCreated: (ChatMeta) -> Void = { _ in }
+
+    /// An existing chat.
+    init(chatID: String, workspace: DeviceWorkspace, showsHeader: Bool = true, isInChatWindow: Bool = false) {
+        self.chatID = chatID
+        self.draft = nil
+        self.workspace = workspace
+        self.showsHeader = showsHeader
+        self.isInChatWindow = isInChatWindow
+    }
+
+    /// A draft chat: its composer has the keyboard focus, and its first Send calls `chats.create`.
+    init(draft: DraftChat, workspace: DeviceWorkspace, showsHeader: Bool = true, focusRequest: Int = 0,
+         focusesComposer: Bool = true, onCreated: @escaping (ChatMeta) -> Void) {
+        self.chatID = nil
+        self.draft = draft
+        self.workspace = workspace
+        self.showsHeader = showsHeader
+        self.focusRequest = focusRequest
+        self.focusesComposer = focusesComposer
+        self.onCreated = onCreated
+    }
 
     var body: some View {
-        PlaceholderView(name: "ChatView")
+        ChatViewContent(chatID: chatID, draft: draft, workspace: workspace, showsHeader: showsHeader,
+                        isInChatWindow: isInChatWindow, focusRequest: focusRequest, focusesComposer: focusesComposer,
+                        onCreated: onCreated)
+            .id(chatID ?? draft?.id.uuidString ?? "")
+    }
+}
+
+/// The chat view of one chat or draft; a new chat or draft gets a new content view and model.
+private struct ChatViewContent: View {
+    let workspace: DeviceWorkspace
+    let showsHeader: Bool
+    let isInChatWindow: Bool
+    let focusRequest: Int
+    let focusesComposer: Bool
+    let onCreated: (ChatMeta) -> Void
+    @State private var model: ChatViewModel
+    @State private var cardsHeight: CGFloat = 0
+    @Environment(AppModel.self) private var app
+
+    init(chatID: String?, draft: DraftChat?, workspace: DeviceWorkspace, showsHeader: Bool, isInChatWindow: Bool,
+         focusRequest: Int, focusesComposer: Bool, onCreated: @escaping (ChatMeta) -> Void) {
+        self.workspace = workspace
+        self.showsHeader = showsHeader
+        self.isInChatWindow = isInChatWindow
+        self.focusRequest = focusRequest
+        self.focusesComposer = focusesComposer
+        self.onCreated = onCreated
+        _model = State(initialValue: ChatViewModel(workspace: workspace, chatID: chatID, draft: draft))
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                if showsHeader {
+                    ChatHeader(model: model, isInChatWindow: isInChatWindow)
+                    Divider()
+                }
+                if model.transcript.findVisible {
+                    TranscriptFindBar(controller: model.transcript)
+                    Divider()
+                }
+                transcriptArea
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                pinnedCards(maxHeight: geometry.size.height / 2)
+                ChatStatusLine(model: model)
+                ComposerView(model: model)
+            }
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+        .background(ChatWindowReader(reference: model.windowReference))
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            model.drop(providers)
+        }
+        .onAppear {
+            model.onCreated = onCreated
+            model.appear(app: app, focusComposer: focusesComposer)
+        }
+        .onDisappear {
+            model.disappear()
+        }
+        .onChange(of: focusRequest) {
+            model.composerFocusRequest += 1
+        }
+        .task(id: workspace.connectionGeneration) {
+            model.ensureLoaded()
+        }
+        .task(id: model.chatProjectID) {
+            workspace.ensureProjectLoaded(model.chatProjectID)
+        }
+    }
+
+    // MARK: Transcript
+
+    @ViewBuilder
+    private var transcriptArea: some View {
+        if let chatID = model.chatID {
+            let phase = ChatTranscriptStore.shared.phase(of: chatID, in: workspace)
+            if case .failed(let message, let notFound) = phase {
+                if notFound {
+                    NotFoundView(kind: "Chat", id: chatID)
+                } else {
+                    TranscriptLoadFailedView(message: message) {
+                        model.ensureLoaded(force: true)
+                    }
+                }
+            } else if let state = workspace.transcripts[chatID] {
+                TranscriptWebView(controller: model.transcript,
+                                  input: TranscriptInput(state: state, context: model.renderContext, placeholder: model.placeholder))
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        } else {
+            TranscriptWebView(controller: model.transcript,
+                              input: TranscriptInput(state: TranscriptState(), context: model.renderContext, placeholder: model.placeholder))
+        }
+    }
+
+    // MARK: Pinned cards
+
+    /// The permission card, then the questions card; together at most half of the view's height,
+    /// scrolling inside.
+    @ViewBuilder
+    private func pinnedCards(maxHeight: CGFloat) -> some View {
+        let state = model.chatID.flatMap { workspace.transcripts[$0] }
+        let pending = state?.pendingPermissionRequests ?? []
+        let set = state?.incompleteQuestionSet
+        let question = set.flatMap { ChatViewModel.firstUnanswered($0) }
+        if !pending.isEmpty || question != nil {
+            ScrollView(.vertical) {
+                VStack(spacing: 8) {
+                    if let request = pending.first {
+                        PermissionCard(model: model, request: request, count: pending.count)
+                    }
+                    if let set, let question {
+                        QuestionsCard(model: model, set: set, question: question)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, 8)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                    cardsHeight = height
+                }
+            }
+            .frame(height: min(cardsHeight + 1, max(maxHeight, 80)))
+        }
+    }
+}
+
+/// `The chat could not be loaded.`, the error's message and Try Again; the composer stays usable
+/// (docs/ui.md › Empty states).
+private struct TranscriptLoadFailedView: View {
+    let message: String
+    let tryAgain: () -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text("The chat could not be loaded.")
+                .font(.headline)
+            Text(message)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .textSelection(.enabled)
+            Button("Try Again", action: tryAgain)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Status line
+
+/// The line above the composer (docs/chats.md › Chat states): hidden for idle, `Starting Claude…`,
+/// `Claude is working… m:ss`, `Waiting for your permission`, `Waiting for your answers`, or
+/// `Claude stopped with an error` in red.
+struct ChatStatusLine: View {
+    let model: ChatViewModel
+
+    var body: some View {
+        Group {
+            switch model.state {
+            case .idle:
+                EmptyView()
+            case .starting:
+                line("Starting Claude…")
+            case .running:
+                let start = model.chatID.flatMap { ChatTranscriptStore.shared.runningSince($0, in: model.workspace) } ?? Date()
+                TimelineView(.periodic(from: start, by: 1)) { context in
+                    line("Claude is working… " + ChatFormat.elapsed(since: start, now: context.date))
+                }
+            case .waitingPermission:
+                line("Waiting for your permission")
+            case .waitingAnswers:
+                line("Waiting for your answers")
+            case .error:
+                line("Claude stopped with an error")
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    private func line(_ text: String) -> some View {
+        Text(text)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .monospacedDigit()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.top, 6)
+    }
+}
+
+// MARK: - Header
+
+/// The title (double-click edits it in place: Return renames, Escape cancels), the kind chip with
+/// the linked ticket or bundle id, Open in New Window and the More menu with Rename… and Delete….
+struct ChatHeader: View {
+    @Bindable var model: ChatViewModel
+    let isInChatWindow: Bool
+    @FocusState private var titleFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if model.isRenaming {
+                TextField("", text: $model.renameText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.headline)
+                    .focused($titleFocused)
+                    .onSubmit {
+                        model.commitRename()
+                    }
+                    .onExitCommand {
+                        model.cancelRename()
+                    }
+                    .onAppear {
+                        titleFocused = true
+                    }
+                    .onChange(of: titleFocused) { _, focused in
+                        if !focused {
+                            model.cancelRename()
+                        }
+                    }
+                    .frame(maxWidth: 360)
+            } else {
+                Text(model.title)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .onTapGesture(count: 2) {
+                        model.startRename()
+                    }
+            }
+            KindChip(model: model)
+            Spacer(minLength: 8)
+            if model.meta != nil {
+                if !isInChatWindow {
+                    Button {
+                        model.openInNewWindow()
+                    } label: {
+                        Image(systemName: "macwindow.badge.plus")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Open in New Window")
+                    .accessibilityLabel("Open in New Window")
+                }
+                Menu {
+                    Button("Rename…") {
+                        model.startRename()
+                    }
+                    Button("Delete…") {
+                        model.confirmDelete()
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .accessibilityLabel("More")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+    }
+}
+
+/// The kind and, for ticket, bundle and linked feedback chats, the ticket or bundle id; clicking
+/// the id navigates to it.
+private struct KindChip: View {
+    let model: ChatViewModel
+
+    var body: some View {
+        let linkedID = model.meta?.bundleID ?? model.meta?.ticketID ?? model.draft?.bundleID ?? model.draft?.ticketID
+        HStack(spacing: 4) {
+            Text(ChatFormat.kindTitle(model.kind))
+            if let linkedID {
+                Button(linkedID) {
+                    model.navigateToLink()
+                }
+                .buttonStyle(.link)
+                .foregroundStyle(Color.accentColor)
+                .font(.system(.caption, design: .monospaced))
+                .disabled(model.meta == nil)
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 2)
+        .background(Capsule().fill(Color.secondary.opacity(0.12)))
+        .fixedSize()
     }
 }
