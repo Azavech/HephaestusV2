@@ -81,6 +81,8 @@ final class TranscriptController {
         var hasResult = false
         var resultIsError = false
         var steps = 0
+        /// For question sets: the label marked with ➡️.
+        var markedLabel: String?
     }
 
     /// `connection` and the chat's project serve the images of the page (`ResourceSchemeHandler`,
@@ -209,6 +211,9 @@ final class TranscriptController {
             key.resultIsError = result?.isError ?? false
             key.spinner = result == nil && context.chatIsRunning
             key.steps = state.stepCount(ofToolUseID: use.toolUseID)
+        }
+        if case .questions(let set) = item {
+            key.markedLabel = context.markedLabel(set)
         }
         guard renderKeys[item.id] != key else { return nil }
         renderKeys[item.id] = key

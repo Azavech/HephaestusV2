@@ -160,7 +160,10 @@ final class ChatViewModel {
     }
 
     var renderContext: TranscriptRenderContext {
-        TranscriptRenderContext(projectRootPath: workspace.project(chatProjectID)?.rootPath, chatIsRunning: state.isChatRunning)
+        let set = transcriptState?.incompleteQuestionSet
+        let displayed = set.flatMap { set in displayedQuestion(set).map { QuestionKey(setID: set.questionSetID, label: $0.label) } }
+        return TranscriptRenderContext(projectRootPath: workspace.project(chatProjectID)?.rootPath, chatIsRunning: state.isChatRunning,
+                                       displayedQuestion: displayed)
     }
 
     /// Send is enabled when the text is not blank or there is an attachment, the window's device is

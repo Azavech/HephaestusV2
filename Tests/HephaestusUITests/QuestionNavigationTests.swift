@@ -57,3 +57,38 @@ struct QuestionNavigationTests {
         #expect(QuestionNavigation.selection(question, answer: QuestionNavigation.skipped) == (.other, "Skipped"))
     }
 }
+
+/// docs/chats.md › Item rendering: the transcript's Questions card marks the question the pinned
+/// card of the same chat view displays, while the set is not completed.
+@Suite("Transcript questions mark")
+struct TranscriptQuestionsMarkTests {
+    let setID = UUID(uuidString: "5B8E0C3A-6D1F-4A2B-9C7E-1F2A3B4C5D6E")!
+
+    func set(completed: Bool = false) -> QuestionsItem {
+        let questions = ["A", "B"].map {
+            Question(label: $0, question: "Which \($0)?", options: [QuestionOption(label: "Yes"), QuestionOption(label: "No")],
+                     recommended: "Yes")
+        }
+        return QuestionsItem(id: setID.uuidString, created: Date(timeIntervalSince1970: 1_800_000_000), questionSetID: setID,
+                             questions: questions, answers: completed ? ["A": "Yes", "B": "No"] : [:], completed: completed)
+    }
+
+    func html(_ item: QuestionsItem, displayed: QuestionKey?) -> String {
+        let context = TranscriptRenderContext(projectRootPath: nil, chatIsRunning: false, displayedQuestion: displayed)
+        return TranscriptRenderer.fragment(for: .questions(item), in: TranscriptState(), context: context).html
+    }
+
+    @Test("The displayed question carries ➡️ before its label, and only it")
+    func marked() {
+        let text = html(set(), displayed: QuestionKey(setID: setID, label: "B"))
+        #expect(text.contains("➡️ B. Which B?"))
+        #expect(text.components(separatedBy: "➡️").count == 2)
+    }
+
+    @Test("A completed set, or the displayed question of another set, shows no mark")
+    func unmarked() {
+        #expect(!html(set(completed: true), displayed: QuestionKey(setID: setID, label: "B")).contains("➡️"))
+        #expect(!html(set(), displayed: QuestionKey(setID: UUID(), label: "B")).contains("➡️"))
+        #expect(!html(set(), displayed: nil).contains("➡️"))
+    }
+}

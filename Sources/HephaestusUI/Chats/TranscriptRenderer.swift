@@ -37,6 +37,16 @@ struct TranscriptRenderContext: Hashable {
     var projectRootPath: String?
     /// The chat is running: a tool card without result shows a spinner.
     var chatIsRunning: Bool
+    /// The question the pinned questions card of this chat view displays: the transcript marks it
+    /// with ➡️ while its set is not completed.
+    var displayedQuestion: QuestionKey?
+
+    /// The label marked in a question set: the displayed question of this set, when it is not
+    /// completed.
+    func markedLabel(_ set: QuestionsItem) -> String? {
+        guard !set.completed, let displayedQuestion, displayedQuestion.setID == set.questionSetID else { return nil }
+        return displayedQuestion.label
+    }
 }
 
 /// Renders items to HTML fragments; Markdown goes through the HephaestusText HTML renderer with
@@ -228,9 +238,11 @@ enum TranscriptRenderer {
 
     private static func questionsHTML(_ set: QuestionsItem, context: TranscriptRenderContext) -> String {
         var html = "<div class=\"questions-card\"><div class=\"questions-title\">Questions</div>"
+        let marked = context.markedLabel(set)
         for question in set.questions {
+            let mark = question.label == marked ? "➡️ " : ""
             html += "<div class=\"question\"><div class=\"question-text\">"
-                + markdown("\(question.label). \(question.question)", context: context) + "</div><ul class=\"options\">"
+                + markdown("\(mark)\(question.label). \(question.question)", context: context) + "</div><ul class=\"options\">"
             for option in question.options {
                 var line = option.label
                 if let description = option.description, !description.isEmpty {
