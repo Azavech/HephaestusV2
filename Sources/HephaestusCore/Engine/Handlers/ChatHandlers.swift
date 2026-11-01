@@ -137,8 +137,8 @@ extension Engine {
         let saved = try saveChatMeta(meta, origin: origin)
         chats.scannedChats.insert(meta.id)
         chats.hasTextMessage[meta.id] = false
-        if let ticketID { try linkChat(meta.id, toTicket: ticketID) }
-        if let bundleID { try linkChat(meta.id, toBundle: bundleID) }
+        if let ticketID { try linkChat(meta.id, toTicket: ticketID, origin: origin) }
+        if let bundleID { try linkChat(meta.id, toBundle: bundleID, origin: origin) }
         return saved
     }
 
@@ -309,7 +309,7 @@ extension Engine {
         chats.scannedChats.remove(chatID)
         chats.hasTextMessage[chatID] = nil
         chats.reportedStates[chatID] = nil
-        try unlinkChat(chatID)
+        try unlinkChat(chatID, origin: actor)
         try moveChatItemToTrash(folder.chatMetaFile(chatID))
         try moveChatItemToTrash(folder.transcriptFile(chatID))
         try moveChatItemToTrash(folder.chatAttachmentsFolder(chatID))

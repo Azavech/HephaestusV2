@@ -298,6 +298,30 @@ struct ChatLifecycleTests {
         }
     }
 
+    @Test("Linking and unlinking a chat emit ticket.updated and bundle.updated with the caller's actor")
+    func linkEventsOrigin() async throws {
+        try await withChatEngine { bed in
+            try await bed.writeTicket(Ticket(id: "DEMO-1", title: "First", created: ISODate.now(), description: "Problem"))
+            try await bed.writeBundle(TicketBundle(id: "DEMO-B1", title: "Polish", created: ISODate.now(), ticketIDs: ["DEMO-1"]))
+            // The reloads of these files carry origin system; only the events that follow count.
+            try await Task.sleep(for: .milliseconds(100))
+            let before = await bed.events.all.count
+            let ticketChat = try await bed.createChat(kind: .ticket, ticketID: "DEMO-1")
+            let bundleChat = try await bed.createChat(kind: .bundle, bundleID: "DEMO-B1")
+            _ = try await bed.connection.call(ChatsDelete.self, .init(chatID: ticketChat.id))
+            _ = try await bed.connection.call(ChatsDelete.self, .init(chatID: bundleChat.id))
+            let caller = try #require(await bed.events.wait(for: "chat.deleted")?.origin)
+            #expect(caller.kind == .user)
+            let events = await bed.events.all.dropFirst(before)
+            let tickets = events.filter { $0.name == "ticket.updated" && (try? $0.payload(TicketUpdatedEvent.self).id) == "DEMO-1" }
+            let bundles = events.filter { $0.name == "bundle.updated" && (try? $0.payload(BundleUpdatedEvent.self).id) == "DEMO-B1" }
+            // The link of chats.create, then the unlink of chats.delete.
+            #expect(tickets.count == 2)
+            #expect(bundles.count == 2)
+            #expect((tickets + bundles).allSatisfy { $0.origin == caller })
+        }
+    }
+
     @Test("Attachments: images up to 5,000,000 bytes become image blocks, other files are listed")
     func attachments() async throws {
         try await withChatEngine { bed in

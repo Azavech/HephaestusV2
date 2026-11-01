@@ -230,7 +230,7 @@ struct TicketsTests {
             _ = try await h.connection.call(BundlesCreate.self, .init(projectID: "HEPH", title: "Both", ticketIDs: ["HEPH-1", "HEPH-2"]))
             _ = try await h.connection.call(BundlesCreate.self, .init(projectID: "HEPH", title: "Other", ticketIDs: ["HEPH-2"]))
             let chatID = UUID()
-            _ = try await h.engine.linkChat(chatID, toTicket: "HEPH-1")
+            _ = try await h.engine.linkChat(chatID, toTicket: "HEPH-1", origin: .system)
             let events = await DomainEventRecorder.make(h)
             _ = try await h.connection.call(TicketsDelete.self, .init(ticketID: "HEPH-1"))
             #expect(await events.wait(for: ProjectsChangedEvent.name) == ["bundle.updated", "ticket.deleted", "projects.changed"])
