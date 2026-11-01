@@ -511,11 +511,8 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
     }
 
     /// A Bonjour endpoint is reached over IPv4: a TCP connection to the service gives the IPv4
-    /// address and port of the main device, the device address of this connection.
-    // DOC-GAP: docs/remote.md › WebSocket connects to "the Bonjour service endpoint", but
-    // Network.framework opens a client WebSocket only to a URL endpoint. The service is resolved
-    // with a TCP connection that requires IPv4, closed at once, then the WebSocket opens to
-    // ws://<IPv4 address>:<port>/ (also IPv4 only).
+    /// address and port of the main device, the device address of this connection; it is
+    /// cancelled at once and the WebSocket opens to that address (docs/remote.md › WebSocket).
     private func resolve(_ endpoint: NWEndpoint, attempt id: Int) {
         let parameters = NWParameters.tcp
         if let ip = parameters.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options {
@@ -719,8 +716,7 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
             do {
                 try pairedDevices.save(record, code: addCode)
             } catch {
-                // DOC-GAP: docs/remote.md › Adding a device gives no message for a record that
-                // cannot be saved; the sheet shows the storage error.
+                // docs/remote.md › Adding a device, Saving fails.
                 let message = (error as? StorageError)?.description ?? "\(error)"
                 endConnection(sending: .normal)
                 completeAdd(.failure(AddDeviceFailure(message: message)))
@@ -889,9 +885,7 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
             return
         }
         guard failure.retries else {
-            // DOC-GAP: docs/remote.md › Logging writes `; next attempt in <n> s` for every ended
-            // connection; a phase without a retry (needsPairing, sameDevice, replaced) has no
-            // next attempt, so the line ends after the code.
+            // No next attempt to log (docs/remote.md › Logging, Client connection ended).
             log.info(.sync, "connection to \(name) ended, code \(code)")
             setPhase(failure.phase(name: name, nextAttempt: nil))
             return

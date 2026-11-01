@@ -110,10 +110,9 @@ public final class DeviceBrowser: @unchecked Sendable {
     }
 
     /// This device's name, sent in the `hello` of every connection this app opens; set by the
-    /// engine at launch and when the name changes (docs/remote.md › Device identity).
-    // DOC-GAP: docs/remote.md › Device identity uses the new name in every later `hello`, but a
-    // `RemoteEngineConnection` receives the local DeviceInfo once, at its creation; it reads the
-    // current name here, next to the device id this browser already excludes.
+    /// engine at launch and when the name changes, and read at each `hello`, since a
+    /// `RemoteEngineConnection` receives the local DeviceInfo once (docs/remote.md › Device
+    /// identity).
     var ownDeviceName: String? {
         get {
             lock.lock()
@@ -298,11 +297,8 @@ public final class DeviceBrowser: @unchecked Sendable {
 }
 
 extension Engine {
-    /// Startup step 5: Bonjour browsing for nearby and paired devices.
-    // DOC-GAP: docs/architecture.md › Startup always starts browsing, while docs/development.md ›
-    // Test rules allow no network beyond 127.0.0.1 and `EngineConfiguration` has no field for
-    // browsing; an engine browses only when it advertises (`advertisesBonjour`), so test engines
-    // never browse.
+    /// Startup step 5: Bonjour browsing for nearby and paired devices, only when the engine
+    /// advertises (docs/architecture.md › Engine configuration, `advertisesBonjour`).
     func startDeviceBrowsing() {
         deviceBrowser.ownDeviceName = deviceInfo.name
         guard configuration.advertisesBonjour else { return }
