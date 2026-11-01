@@ -6,26 +6,14 @@ import Foundation
 extension Engine {
     // MARK: Senders
 
-    /// The name of the device of a user actor: this device's name, or the name of the remote
-    /// device of a sync session or of a paired device; `Claude` for a claude actor.
-    // DOC-GAP: the docs name the device of a user actor but not where the engine reads a remote
-    // device's name; it is the name of its open sync session, else of the paired device record,
-    // else its id. The system actor writes with this device's name.
-    func senderName(_ actor: Actor) async -> String {
+    /// The `sender` of a user message (docs/data-model.md › User item): the name of the device of
+    /// a user actor (`userDeviceName(deviceID:)`), `Claude` for a claude actor.
+    // DOC-GAP: the docs give no sender for the system actor; it writes with this device's name.
+    func senderName(_ actor: Actor) -> String {
         switch actor {
-        case .claude:
-            return "Claude"
-        case .system:
-            return deviceInfo.name
-        case .user(let id):
-            if id.uppercased() == deviceID { return deviceInfo.name }
-            if let session = await syncServer.status.sessions.first(where: { $0.deviceID.uppercased() == id.uppercased() }) {
-                return session.deviceName
-            }
-            if let device = pairedDevices.devices.first(where: { $0.id.uuidString.uppercased() == id.uppercased() }) {
-                return device.name
-            }
-            return id
+        case .claude: return "Claude"
+        case .system: return deviceInfo.name
+        case .user(let deviceID): return userDeviceName(deviceID: deviceID)
         }
     }
 

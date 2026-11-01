@@ -125,3 +125,11 @@ extension Engine {
 extension Engine {
     func lookUpFileTools(environment: [String: String]) async {}
 }
+
+// SHIM(core-sync): delete at integration. The name of the device of a user actor: this Mac's
+// name for the local device id, else the name of a connected or paired remote device.
+extension Engine {
+    func userDeviceName(deviceID: String) -> String {
+        deviceID.uppercased() == self.deviceID ? deviceInfo.name : deviceID
+    }
+}

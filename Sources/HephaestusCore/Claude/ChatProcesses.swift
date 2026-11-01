@@ -505,7 +505,7 @@ extension Engine {
                let mode = suggestions.compactMap(\.objectValue).last(where: { $0["type"]?.stringValue == "setMode" })?["mode"]?.stringValue {
                 applyCLIPermissionMode(mode, chatID: chatID, process: process)
             }
-            reportChatState(chatID, origin: origin)
+            emitChatUpdated(chatID, origin: origin)
             return
         }
         let items = try loadTranscript(chatID)
@@ -564,7 +564,7 @@ extension Engine {
             runtime.starting = false
             runtime.turnInProgress = false
         }
-        reportChatState(chatID, origin: origin)
+        emitChatUpdated(chatID, origin: origin)
     }
 
     // MARK: Exit

@@ -112,7 +112,7 @@ extension Engine {
         let (_, root) = try checkTargets()
         let prepared = try params.message.map { try prepareMessage($0, projectRoot: root) }
         if params.message != nil { _ = try await requireClaudeCLI() }
-        let sender = await senderName(actor)
+        let sender = senderName(actor)
         let (project, _) = try checkTargets()
 
         let meta = try createChat(kind: params.kind, project: project, ticketID: ticketID, bundleID: bundleID,
@@ -156,7 +156,7 @@ extension Engine {
         }
         _ = try checkTicket()
         _ = try await requireClaudeCLI()
-        let sender = await senderName(actor)
+        let sender = senderName(actor)
         let ticket = try checkTicket()
         guard let projectID = ticket.projectID, let project = domain.project(projectID) else { throw EngineError.notFound("Ticket", ticketID) }
         let meta = try createChat(kind: .ticket, project: project, ticketID: ticketID, bundleID: nil, settings: params.settings, origin: actor)
@@ -182,7 +182,7 @@ extension Engine {
         }
         _ = try checkBundle()
         _ = try await requireClaudeCLI()
-        let sender = await senderName(actor)
+        let sender = senderName(actor)
         let bundle = try checkBundle()
         guard let projectID = bundle.projectID, let project = domain.project(projectID) else { throw EngineError.notFound("Bundle", bundleID) }
         let meta = try createChat(kind: .bundle, project: project, ticketID: nil, bundleID: bundleID, settings: params.settings, origin: actor)
@@ -217,7 +217,7 @@ extension Engine {
         }
         _ = try checkProject()
         _ = try await requireClaudeCLI()
-        let sender = await senderName(actor)
+        let sender = senderName(actor)
         let project = try checkProject()
         let meta = try createChat(kind: .feedback, project: project, ticketID: nil, bundleID: nil, settings: params.settings, origin: actor)
         recordDrivingDevice(meta.id, actor)
@@ -239,7 +239,7 @@ extension Engine {
         let meta = try requireChat(params.chatID)
         let prepared = try prepareMessage(params.message, projectRoot: try chatFolder(meta).root)
         _ = try await requireClaudeCLI()
-        let sender = await senderName(actor)
+        let sender = senderName(actor)
         _ = try requireChat(params.chatID)
         recordDrivingDevice(params.chatID, actor)
         let stored = try storeChatAttachments(prepared, chatID: params.chatID)
@@ -251,8 +251,7 @@ extension Engine {
     /// waitingPermission; nothing in the others.
     func chatsInterrupt(_ params: ChatsInterrupt.Params, _ actor: Actor) async throws -> Empty {
         _ = try requireChat(params.chatID)
-        let name = await senderName(actor)
-        _ = try requireChat(params.chatID)
+        let name = senderName(actor)
         interruptChat(params.chatID, deviceName: name, origin: actor)
         return Empty()
     }
@@ -324,8 +323,7 @@ extension Engine {
     /// `chats.answerPermission` (docs/chats.md › Answer).
     func chatsAnswerPermission(_ params: ChatsAnswerPermission.Params, _ actor: Actor) async throws -> Empty {
         _ = try requireChat(params.chatID)
-        let name = await senderName(actor)
-        _ = try requireChat(params.chatID)
+        let name = senderName(actor)
         recordDrivingDevice(params.chatID, actor)
         try answerChatPermission(params.chatID, requestID: params.requestID, decision: params.decision, message: params.message,
                                  deviceName: name, origin: actor)
@@ -381,7 +379,7 @@ extension Engine {
         var sender = ""
         if completes {
             _ = try await requireClaudeCLI()
-            sender = await senderName(actor)
+            sender = senderName(actor)
             (set, completes) = try check()
         }
         recordDrivingDevice(chatID, actor)
