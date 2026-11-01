@@ -210,7 +210,7 @@ The copy button, the labels You and Claude, the relative update time and the Bun
 
 The Details tab shows, from top to bottom:
 
-1. Description. It is rendered with the shared Markdown renderer ([Documentation viewer](documentation-viewer.md)). The Edit button replaces it with a plain-text editor (SF Mono 13) with the buttons Cancel (Esc) and Save (⌘Return); Save calls `tickets.update` with the description. Default chosen at design time.
+1. Description. It is rendered with the shared Markdown renderer ([Documentation viewer](documentation-viewer.md)). A line outside a fenced code block that is a heading line of [Template validation](#template-validation) step 2 (for example `Problem`, `## Current Behavior` or `Expected:`) is shown as a level-3 heading of the heading's words as written, without its `#` characters and its colon, and the lines after it start a new paragraph, so that each template heading stands above its section text. Only the display changes: the stored description keeps the user's text. The Edit button replaces it with a plain-text editor (SF Mono 13) with the buttons Cancel (Esc) and Save (⌘Return); Save calls `tickets.update` with the description. Default chosen at design time.
 2. Attachments of the ticket ([Attachments](#attachments)).
 3. Comments ([Comments](#comments)).
 
