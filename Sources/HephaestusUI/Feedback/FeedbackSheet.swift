@@ -26,6 +26,8 @@ struct FeedbackSheet: View {
     /// The error of the last Send.
     @State private var sendError: String?
     @FocusState private var commentFocused: Bool
+    /// The screenshot, decoded once.
+    @State private var image: NSImage?
 
     private var capture: FeedbackCapture? {
         app.feedbackController.capture(for: previewID)
@@ -84,6 +86,7 @@ struct FeedbackSheet: View {
             await lookUpDefaultProject()
         }
         .onAppear {
+            image = png.flatMap { NSImage(data: $0) }
             commentFocused = true
         }
         .onDisappear {
@@ -96,7 +99,7 @@ struct FeedbackSheet: View {
     /// The PNG scaled to fit 480 × 300 pt; a click opens it in the image viewer.
     @ViewBuilder
     private var screenshot: some View {
-        if let png, let image = NSImage(data: png) {
+        if let image {
             Button {
                 app.openImageViewer(.feedbackPreview(previewID: previewID))
             } label: {
@@ -109,6 +112,11 @@ struct FeedbackSheet: View {
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity)
             .accessibilityLabel("Screenshot")
+        } else if png != nil {
+            // The PNG is being decoded.
+            Color.clear
+                .frame(width: 480, height: 300)
+                .frame(maxWidth: .infinity)
         } else {
             Text("The window could not be captured.")
                 .foregroundStyle(.secondary)
@@ -120,8 +128,7 @@ struct FeedbackSheet: View {
 
     /// A multi-line field with the focus; it may stay empty.
     private var commentField: some View {
-        MultilineField(text: $comment)
-            .focused($commentFocused)
+        MultilineField(text: $comment, focus: $commentFocused)
             .frame(height: 96)
             .overlay(alignment: .topLeading) {
                 if comment.isEmpty {

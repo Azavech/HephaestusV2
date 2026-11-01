@@ -413,7 +413,7 @@ private struct MissingSkillRow: View {
                 Text("Not found in the skills library")
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 4)
             Button("Disable") {

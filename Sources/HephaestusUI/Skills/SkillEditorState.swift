@@ -85,10 +85,11 @@ final class SkillEditorState {
         let name = skillName
         do {
             let skill = try await workspace.call(SkillsGet.self, .init(name: name))
-            guard generation == fetchGeneration, name == skillName else { return }
+            // A save in progress gives the saved version itself.
+            guard generation == fetchGeneration, name == skillName, !isSaving else { return }
             apply(skill)
         } catch {
-            guard generation == fetchGeneration, name == skillName else { return }
+            guard generation == fetchGeneration, name == skillName, !isSaving else { return }
             let engineError = error as? EngineError ?? EngineError(.unavailable, errorMessage(error))
             if engineError.code == .notFound {
                 skillDisappeared(engineError)
@@ -132,7 +133,7 @@ final class SkillEditorState {
     // reports the engine's error.
     private func skillDisappeared(_ error: EngineError) {
         loadError = error
-        if hasLoaded, form.hasUnsavedChanges {
+        if hasLoaded, !unsavedEditors.isEmpty {
             var next = conflict ?? SkillConflict()
             next.skill = nil
             next.skillMissing = true
@@ -145,7 +146,7 @@ final class SkillEditorState {
         let name = skillName
         do {
             let content = try await workspace.call(SkillsReadFile.self, .init(name: name, path: file.path))
-            guard self.file === file, name == skillName else { return }
+            guard self.file === file, name == skillName, !isSaving else { return }
             if !file.hasUnsavedChanges {
                 file.apply(content)
                 conflict?.file = nil
@@ -185,7 +186,10 @@ final class SkillEditorState {
         if let skill = conflict.skill {
             form.reset(to: skill)
         } else if conflict.skillMissing {
+            // The skill is gone: everything unsaved is dropped and the selection shows
+            // `Skill <name> was not found.`.
             form.discardChanges()
+            file?.discardChanges()
         }
         if let content = conflict.file {
             file?.apply(content)
@@ -246,6 +250,7 @@ final class SkillEditorState {
             if form.name != form.savedName { params.newName = form.name }
             if form.description != form.savedDescription { params.description = form.description }
             if form.body.text != form.body.diskText { params.body = form.body.text }
+            fetchGeneration += 1
             isSaving = true
             defer { isSaving = false }
             let skill = try await workspace.call(SkillsUpdate.self, params)
@@ -277,6 +282,7 @@ final class SkillEditorState {
         do {
             guard let workspace else { throw EngineError(.unavailable, "The file cannot be saved: its window is closed.") }
             let text = file.buffer.text
+            fetchGeneration += 1
             isSaving = true
             defer { isSaving = false }
             _ = try await workspace.call(SkillsWriteFile.self, .init(name: skillName, path: file.path, text: text))

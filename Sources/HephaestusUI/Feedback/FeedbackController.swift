@@ -41,7 +41,9 @@ final class FeedbackController {
 
     /// The ladybug of a status bar, or Help ▸ Send Feedback… (⇧⌘B) for the key window.
     func start(capturing window: NSWindow?, source: FeedbackSource) {
-        guard let app, !isCapturing, let window, window.attachedSheet == nil else { return }
+        // A window that shows a sheet, or is itself a sheet (the key window while a sheet is
+        // shown), does not start feedback; nor does a start while a capture is running.
+        guard let app, !isCapturing, let window, window.attachedSheet == nil, window.sheetParent == nil else { return }
         if case .main(let state) = source, state.sheet != nil { return }
         let capture = makeCapture(for: source, app: app)
         isCapturing = true

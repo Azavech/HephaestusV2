@@ -251,11 +251,12 @@ private struct SkillBodyPart: View {
         case .preview:
             preview(form.body.text)
         case .split:
+            // 50/50 at the start, each side at least 180 pt (docs/documentation-viewer.md › Modes).
             HSplitView {
                 bodyEditor
-                    .frame(minWidth: 180, maxWidth: .infinity)
+                    .frame(minWidth: 180, idealWidth: 1000, maxWidth: .infinity)
                 preview(splitPreviewText)
-                    .frame(minWidth: 180, maxWidth: .infinity)
+                    .frame(minWidth: 180, idealWidth: 1000, maxWidth: .infinity)
             }
         }
     }
@@ -458,13 +459,22 @@ struct ValidationMessage: View {
 /// A multi-line text field that wraps: Return inserts a line break.
 struct MultilineField: View {
     @Binding var text: String
+    /// The keyboard focus of the field, when its owner sets it.
+    var focus: FocusState<Bool>.Binding?
 
     var body: some View {
-        TextEditor(text: $text)
-            .font(.body)
-            .scrollContentBackground(.hidden)
-            .padding(4)
-            .background(RoundedRectangle(cornerRadius: 5).fill(Color(nsColor: .textBackgroundColor)))
-            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
+        Group {
+            if let focus {
+                TextEditor(text: $text)
+                    .focused(focus)
+            } else {
+                TextEditor(text: $text)
+            }
+        }
+        .font(.body)
+        .scrollContentBackground(.hidden)
+        .padding(4)
+        .background(RoundedRectangle(cornerRadius: 5).fill(Color(nsColor: .textBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
     }
 }
