@@ -95,6 +95,7 @@ struct ChatsSectionView: View {
                 }
             }
             .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
             .onKeyPress(keys: [.delete], phases: .down) { press in
                 guard press.modifiers.subtracting(.command).isEmpty, renamingChatID == nil,
                       let chatID = selectedChatID, let meta = workspace.chats[chatID] else { return .ignored }
@@ -102,6 +103,8 @@ struct ChatsSectionView: View {
                 return .handled
             }
         }
+        // The background of the Ticket list and the Bundles section (docs/chats.md › Where chats appear).
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     /// A row: the title, the linked ticket or bundle id, a state mark and the relative `updated`
