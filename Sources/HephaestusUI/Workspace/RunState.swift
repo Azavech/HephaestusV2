@@ -72,19 +72,19 @@ struct RunState: Identifiable {
 }
 
 /// The console buffer of one run (docs/projects.md › Console): complete lines and the current
-/// unfinished line. Output processing removes ANSI escape sequences (CSI `ESC [` up to a final
-/// byte from `@` to `~`, OSC `ESC ]` up to `BEL` or `ESC \`, and every other two-character `ESC`
-/// sequence) and turns CR LF and a lone CR into line breaks; a sequence or a CR LF split between
-/// two chunks is handled as if the chunks were one. The buffer keeps its last 20,000 lines; once
-/// lines were dropped, the first line reads `… earlier output dropped …`.
+/// unfinished line. Output processing removes ANSI escape sequences whole (CSI `ESC [` up to a
+/// final byte from `@` to `~`, OSC `ESC ]` up to `BEL` or `ESC \`, and any other `ESC`, its
+/// intermediate bytes 0x20–0x2F and one final byte 0x30–0x7E) and turns CR LF and a lone CR into
+/// line breaks; a sequence or a CR LF split between two chunks is handled as if the chunks were
+/// one. The buffer keeps its last 20,000 lines; once lines were dropped, the first line reads
+/// `… earlier output dropped …`.
 ///
 /// Apart from `clear()`, the text only grows at its end and loses lines at its start, so a view
 /// can follow it incrementally with `firstLineNumber`, `lineCount`, `lines(from:)`, `partial`,
 /// `dropped` and `clearCount`.
 // DOC-GAP: docs/projects.md › Console keeps "the last 20,000 lines" without saying whether the
 // dropped-output line and the unfinished last line count; the dropped-output line does not, the
-// unfinished line does. "Every other two-character ESC sequence" removes ESC and the next
-// character only, so the third character of a sequence such as `ESC ( B` stays.
+// unfinished line does.
 struct ConsoleBuffer {
     /// Lines kept, the dropped-output line excluded.
     static let lineLimit = 20_000
@@ -142,10 +142,16 @@ struct ConsoleBuffer {
         for scalar in chunk.unicodeScalars {
             if !escape.isEmpty {
                 escape.append(scalar)
-                if Self.escapeIsComplete(escape) {
+                switch Self.escapeProgress(escape) {
+                case .incomplete:
+                    continue
+                case .complete:
+                    escape.removeAll()
+                    continue
+                case .invalid:
+                    // ESC and its intermediate bytes are removed; the character is output.
                     escape.removeAll()
                 }
-                continue
             }
             switch scalar {
             case "\u{1B}":
@@ -211,22 +217,34 @@ struct ConsoleBuffer {
         }
     }
 
-    /// True when `sequence`, which starts with ESC, is a complete escape sequence.
-    static func escapeIsComplete(_ sequence: [Unicode.Scalar]) -> Bool {
-        guard sequence.count >= 2 else { return false }
+    /// Where an escape sequence stands after its last character.
+    enum EscapeProgress {
+        /// More characters belong to the sequence.
+        case incomplete
+        /// The sequence ends with its last character and is removed whole.
+        case complete
+        /// The last character is not part of the sequence: the characters before it are removed
+        /// and it is processed as output.
+        case invalid
+    }
+
+    /// The progress of `sequence`, which starts with ESC.
+    static func escapeProgress(_ sequence: [Unicode.Scalar]) -> EscapeProgress {
+        guard sequence.count >= 2, let last = sequence.last else { return .incomplete }
         switch sequence[1] {
         case "[":
             // CSI: parameter and intermediate bytes, then a final byte from `@` to `~`.
-            guard sequence.count >= 3, let last = sequence.last else { return false }
-            return (0x40...0x7E).contains(last.value)
+            guard sequence.count >= 3 else { return .incomplete }
+            return (0x40...0x7E).contains(last.value) ? .complete : .incomplete
         case "]":
             // OSC: up to BEL or ST (`ESC \`).
-            guard let last = sequence.last, sequence.count >= 3 else { return false }
-            if last == "\u{07}" { return true }
-            return last == "\\" && sequence[sequence.count - 2] == "\u{1B}"
+            guard sequence.count >= 3 else { return .incomplete }
+            if last == "\u{07}" { return .complete }
+            return last == "\\" && sequence[sequence.count - 2] == "\u{1B}" ? .complete : .incomplete
         default:
-            // Every other two-character sequence.
-            return true
+            // Any other sequence: intermediate bytes 0x20–0x2F, then one final byte 0x30–0x7E.
+            if (0x20...0x2F).contains(last.value) { return .incomplete }
+            return (0x30...0x7E).contains(last.value) ? .complete : .invalid
         }
     }
 }

@@ -24,10 +24,13 @@ enum WindowCapture {
     /// which a chat message passes an image to Claude as an image block.
     static let maximumPNGSize = 5_000_000
 
-    /// Steps 1 to 4: the frame view of the window (title bar, toolbar and content) rendered with
+    /// Steps 1 to 5: the frame view of the window (title bar, toolbar and content) rendered with
     /// `cacheDisplay` at the backing scale, every visible `WKWebView` snapshotted and drawn at its
-    /// area, then encoded as PNG; again at 1 pixel per point when the PNG is too large.
-    static func capture(_ window: NSWindow) async throws -> Image {
+    /// area, the window's sheets drawn over it, then encoded as PNG; again at 1 pixel per point
+    /// when the PNG is too large. A sheet, or the background window of an alert sheet, is
+    /// captured as the window it is attached to.
+    static func capture(_ requested: NSWindow) async throws -> Image {
+        let window = hostWindow(of: requested)
         guard let root = window.contentView?.superview ?? window.contentView, !root.bounds.isEmpty else {
             throw Failure()
         }
@@ -40,13 +43,42 @@ enum WindowCapture {
                 cover.removeFromSuperview()
             }
         }
-        if let image = render(root, onePixelPerPoint: false), image.png.count <= maximumPNGSize {
+        if let image = render(root, of: window, onePixelPerPoint: false), image.png.count <= maximumPNGSize {
             return image
         }
-        guard let image = render(root, onePixelPerPoint: true) else {
+        guard let image = render(root, of: window, onePixelPerPoint: true) else {
             throw Failure()
         }
         return image
+    }
+
+    // MARK: Sheets
+
+    /// The window a sheet is attached to, through every level of sheets; for the background
+    /// window of an alert sheet (a child window of the sheet), the window of that sheet.
+    static func hostWindow(of window: NSWindow) -> NSWindow {
+        var host = window
+        if host.sheetParent == nil, let parent = host.parent, parent.sheetParent != nil {
+            host = parent
+        }
+        while let parent = host.sheetParent {
+            host = parent
+        }
+        return host
+    }
+
+    /// Step 4: the windows drawn over the window, back to front: each attached sheet, through
+    /// every level, preceded by its visible child windows, the background macOS puts behind an
+    /// alert sheet.
+    private static func overlayWindows(of window: NSWindow) -> [NSWindow] {
+        var result: [NSWindow] = []
+        var current = window.attachedSheet
+        while let sheet = current {
+            result += (sheet.childWindows ?? []).filter(\.isVisible)
+            result.append(sheet)
+            current = sheet.attachedSheet
+        }
+        return result
     }
 
     // MARK: Rendering
@@ -58,7 +90,28 @@ enum WindowCapture {
         let image: NSImage
     }
 
-    private static func render(_ root: NSView, onePixelPerPoint: Bool) -> Image? {
+    private static func render(_ root: NSView, of window: NSWindow, onePixelPerPoint: Bool) -> Image? {
+        guard let bitmap = bitmap(of: root, onePixelPerPoint: onePixelPerPoint) else { return nil }
+        let overlays = overlayWindows(of: window)
+        if !overlays.isEmpty, let context = NSGraphicsContext(bitmapImageRep: bitmap) {
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = context
+            for overlay in overlays {
+                guard let overlayRoot = overlay.contentView?.superview ?? overlay.contentView, !overlayRoot.bounds.isEmpty,
+                      let image = Self.bitmap(of: overlayRoot, onePixelPerPoint: onePixelPerPoint)
+                else { continue }
+                let rect = NSRect(x: overlay.frame.minX - window.frame.minX, y: overlay.frame.minY - window.frame.minY,
+                                  width: overlay.frame.width, height: overlay.frame.height)
+                image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            }
+            NSGraphicsContext.restoreGraphicsState()
+        }
+        guard let png = bitmap.representation(using: .png, properties: [:]) else { return nil }
+        return Image(png: png, width: bitmap.pixelsWide, height: bitmap.pixelsHigh)
+    }
+
+    /// Step 2: the view rendered with `cacheDisplay`, at the backing scale or at 1 pixel per point.
+    private static func bitmap(of root: NSView, onePixelPerPoint: Bool) -> NSBitmapImageRep? {
         let bounds = root.bounds
         let bitmap: NSBitmapImageRep
         if onePixelPerPoint {
@@ -73,8 +126,7 @@ enum WindowCapture {
             bitmap = rep
         }
         root.cacheDisplay(in: bounds, to: bitmap)
-        guard let png = bitmap.representation(using: .png, properties: [:]) else { return nil }
-        return Image(png: png, width: bitmap.pixelsWide, height: bitmap.pixelsHigh)
+        return bitmap
     }
 
     /// Puts each snapshot in an image view right above its web view, so that the rendering draws

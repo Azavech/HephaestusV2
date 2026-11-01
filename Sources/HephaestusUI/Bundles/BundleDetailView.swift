@@ -23,8 +23,8 @@ struct BundleDetailView: View {
         workspace.bundles[projectID]?[bundleID]
     }
 
-    private var store: TicketWindowStore {
-        TicketWindowStore.store(for: window)
+    private var tab: BundleDetailTab {
+        window.projectStates[ProjectKey(deviceID: window.deviceID, projectID: projectID)]?.bundleTab ?? .tickets
     }
 
     var body: some View {
@@ -38,7 +38,7 @@ struct BundleDetailView: View {
                     tabPicker(bundle)
                         .padding(.bottom, 8)
                     Divider()
-                    switch store.bundleTab {
+                    switch tab {
                     case .tickets:
                         ticketsTab(bundle)
                     case .chats:
@@ -93,12 +93,13 @@ struct BundleDetailView: View {
     private func tabPicker(_ bundle: TicketBundle) -> some View {
         let chatCount = LinkedChatsView.listedChats(bundle.chatIDs, workspace: workspace).count
         return Picker("Tab", selection: Binding(
-            get: { store.bundleTab },
-            set: { tab in
-                if tab == .chats, store.bundleTab != .chats {
-                    LinkedChatsView.selectMostRecent(owner: .bundle(bundle.id), chatIDs: bundle.chatIDs, workspace: workspace, window: window)
+            get: { tab },
+            set: { newTab in
+                if newTab == .chats, tab != .chats {
+                    LinkedChatsView.selectMostRecent(owner: .bundle(bundle.id), chatIDs: bundle.chatIDs, workspace: workspace,
+                                                     window: window, projectID: projectID)
                 }
-                store.bundleTab = tab
+                window.updateViewState(of: projectID) { $0.bundleTab = newTab }
             }
         )) {
             Text("Tickets (\(bundle.ticketIDs.count))").tag(BundleDetailTab.tickets)
@@ -157,13 +158,14 @@ struct BundleDetailView: View {
     }
 
     static let columns: [ItemTableColumn<BundleTicketRow>] = [
-        ItemTableColumn(id: "id", title: "ID", minWidth: 60, idealWidth: 76, maxWidth: 88, sortable: false) { row in
+        ItemTableColumn(id: "id", title: "ID", minWidth: 24, sizing: .content,
+                        contentWidth: { ItemTableText.width($0.id, font: ItemTableText.monospaced) }, sortable: false) { row in
             AnyView(Text(row.id)
                 .font(.system(size: 12, design: .monospaced))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading))
         },
-        ItemTableColumn(id: "title", title: "Title", minWidth: 80, idealWidth: 260, sortable: false) { row in
+        ItemTableColumn(id: "title", title: "Title", minWidth: 40, sizing: .fill, sortable: false) { row in
             AnyView(Text(row.title)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -171,7 +173,8 @@ struct BundleDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .help(row.title))
         },
-        ItemTableColumn(id: "status", title: "Status", minWidth: 84, idealWidth: 94, maxWidth: 84, sortable: false) { row in
+        ItemTableColumn(id: "status", title: "Status", minWidth: 24, sizing: .content,
+                        contentWidth: { _ in StatusCapsule.maxWidth }, sortable: false) { row in
             AnyView(Group {
                 if let status = row.status {
                     StatusCapsule(status: status)

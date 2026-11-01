@@ -24,8 +24,8 @@ struct TicketDetailView: View {
         workspace.tickets[projectID]?[ticketID]
     }
 
-    private var store: TicketWindowStore {
-        TicketWindowStore.store(for: window)
+    private var tab: TicketDetailTab {
+        window.projectStates[ProjectKey(deviceID: window.deviceID, projectID: projectID)]?.ticketTab ?? .details
     }
 
     var body: some View {
@@ -39,7 +39,7 @@ struct TicketDetailView: View {
                     tabPicker(ticket)
                         .padding(.bottom, 8)
                     Divider()
-                    switch store.ticketTab {
+                    switch tab {
                     case .details:
                         TicketDetailsTab(window: window, workspace: workspace, projectID: projectID, ticket: ticket, editor: editor)
                     case .chats:
@@ -65,12 +65,13 @@ struct TicketDetailView: View {
     private func tabPicker(_ ticket: Ticket) -> some View {
         let chatCount = LinkedChatsView.listedChats(ticket.chatIDs, workspace: workspace).count
         return Picker("Tab", selection: Binding(
-            get: { store.ticketTab },
-            set: { tab in
-                if tab == .chats, store.ticketTab != .chats {
-                    LinkedChatsView.selectMostRecent(owner: .ticket(ticket.id), chatIDs: ticket.chatIDs, workspace: workspace, window: window)
+            get: { tab },
+            set: { newTab in
+                if newTab == .chats, tab != .chats {
+                    LinkedChatsView.selectMostRecent(owner: .ticket(ticket.id), chatIDs: ticket.chatIDs, workspace: workspace,
+                                                     window: window, projectID: projectID)
                 }
-                store.ticketTab = tab
+                window.updateViewState(of: projectID) { $0.ticketTab = newTab }
             }
         )) {
             Text("Details").tag(TicketDetailTab.details)
@@ -255,7 +256,7 @@ private struct TicketDetailsTab: View {
                     Button("Edit") { editor.begin(ticket.description) }
                         .disabled(!window.isConnected)
                 }
-                MarkdownView(markdown: ticket.description)
+                MarkdownView(markdown: TemplateHeadingMarkdown.source(ticket.description))
             }
         }
     }
@@ -343,5 +344,53 @@ private struct TicketAttachmentsArea: View {
                 window.alert = .failure("Remove", error)
             }
         }
+    }
+}
+
+/// The Markdown shown for a ticket description: each line outside a fenced code block that is a
+/// template heading line (`Problem`, `## Current Behavior`, `Expected:`…) becomes a level-3 ATX
+/// heading of the heading's words, so that it stands above its section text instead of joining
+/// it as a soft break (docs/tickets.md › Ticket detail). The stored description is not changed.
+enum TemplateHeadingMarkdown {
+    static func source(_ description: String) -> String {
+        var fence: (marker: Character, length: Int)?
+        let lines = TicketTemplate.lines(of: description).map { line -> String in
+            if let opening = fenceMarker(of: line) {
+                if let current = fence {
+                    if opening.marker == current.marker, opening.length >= current.length, opening.isBare {
+                        fence = nil
+                    }
+                } else {
+                    fence = (opening.marker, opening.length)
+                }
+                return line
+            }
+            guard fence == nil, TicketTemplate.headingIndex(of: line) != nil else { return line }
+            return "### " + headingWords(of: line)
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// The heading's words as written: without white space, `#` characters and the colon.
+    static func headingWords(of line: String) -> String {
+        var text = line.trimmingCharacters(in: .whitespaces)
+        text = String(text.drop { $0 == "#" }).trimmingCharacters(in: .whitespaces)
+        if text.hasSuffix(":") {
+            text.removeLast()
+        }
+        return text.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// A code fence line: at most 3 spaces, then 3 or more backticks or tildes. `isBare` is true
+    /// when nothing but white space follows them, as a closing fence requires.
+    private static func fenceMarker(of line: String) -> (marker: Character, length: Int, isBare: Bool)? {
+        let indent = line.prefix { $0 == " " }.count
+        guard indent <= 3 else { return nil }
+        let rest = line.dropFirst(indent)
+        guard let marker = rest.first, marker == "`" || marker == "~" else { return nil }
+        let length = rest.prefix { $0 == marker }.count
+        guard length >= 3 else { return nil }
+        let after = rest.dropFirst(length)
+        return (marker, length, after.allSatisfy(\.isWhitespace))
     }
 }

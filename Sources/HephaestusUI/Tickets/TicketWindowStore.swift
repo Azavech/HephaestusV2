@@ -1,37 +1,55 @@
-// OWNER: ui-tickets — the per-window view state of the Tickets and Bundles sections that is not part
-// of ProjectViewState: comment composer drafts kept per ticket and per window, the detail tabs, the
-// chat selected in each Chats tab, and the description editors with their quit savers
-// (docs/tickets.md › Ticket detail, › Comments, › Live updates; docs/ui.md › Unsaved changes and
-// quitting).
+// OWNER: ui-tickets — the types of the Tickets and Bundles view state kept in ProjectViewState (the
+// detail tabs and the comment drafts), the width of their lists, and the description editors with
+// their quit savers (docs/tickets.md › Ticket detail, › Comments, › Live updates; docs/ui.md ›
+// WindowState, › Unsaved changes and quitting).
 import Foundation
 import HephaestusCore
 import Observation
 
-/// The tabs of the ticket detail.
-enum TicketDetailTab: Hashable {
+/// The tabs of the ticket detail (`ProjectViewState.ticketTab`).
+enum TicketDetailTab: String, Codable, Hashable {
     case details, chats
 }
 
-/// The tabs of the bundle detail.
-enum BundleDetailTab: Hashable {
+/// The tabs of the bundle detail (`ProjectViewState.bundleTab`).
+enum BundleDetailTab: String, Codable, Hashable {
     case tickets, chats
 }
 
-/// The comment composer's unsent text and files of one ticket.
-struct CommentDraft: Hashable {
+/// The comment composer's unsent text and files of one ticket (`ProjectViewState.commentDrafts`).
+/// It encodes its text and the names of its pending files as `attachments`; decoding keeps the
+/// text only, as the files are not encoded.
+struct CommentDraft: Hashable, Codable {
     var text = ""
     var attachments: [TicketPendingFile] = []
 
     var isEmpty: Bool {
         text.isEmpty && attachments.isEmpty
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case text, attachments
+    }
+
+    init(text: String = "", attachments: [TicketPendingFile] = []) {
+        self.text = text
+        self.attachments = attachments
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(text, forKey: .text)
+        try c.encode(attachments.map(\.name), forKey: .attachments)
+    }
 }
 
-/// The view state of the Tickets and Bundles sections of one main window, kept while the window is
-/// open and never persisted.
-// DOC-GAP: docs/tickets.md › Comments keeps the composer's draft per ticket and per window while
-// the window is open, and docs/ui.md › WindowState lets section documents add fields to
-// ProjectViewState, but no field is named; this state lives in a per-window store of ui-tickets.
+/// The width of the ticket list and of the bundle list of one main window, which share their
+/// divider; kept while the window is open and never persisted.
 @MainActor @Observable
 final class TicketWindowStore {
     private static var stores: [UUID: TicketWindowStore] = [:]
@@ -53,25 +71,16 @@ final class TicketWindowStore {
     /// such a window is not idle for the automatic restart (docs/tickets.md › Live updates;
     /// docs/updater.md › Restart rules).
     static var hasUnsavedTicketEdits: Bool {
-        stores.values.contains { store in store.commentDrafts.values.contains { !$0.isEmpty } }
-            || DescriptionEditorModel.live.contains { $0.hasChanges }
+        let windows = AppModel.shared.map { Array($0.windows.values) } ?? []
+        return windows.contains { window in
+            window.projectStates.values.contains { state in state.commentDrafts.values.contains { !$0.isEmpty } }
+        } || DescriptionEditorModel.live.contains { $0.hasChanges }
     }
 
-    /// Comment composer drafts by `<deviceID>/<ticketID>`.
-    var commentDrafts: [String: CommentDraft] = [:]
-    /// The tab of the ticket detail.
-    var ticketTab = TicketDetailTab.details
-    /// The tab of the bundle detail.
-    var bundleTab = BundleDetailTab.tickets
-    /// The chat shown under the list of a Chats tab, by `<deviceID>/<ticket or bundle id>`.
-    var chatSelection: [String: String] = [:]
-    /// The Chats tabs that show a draft chat, by `<deviceID>/<ticket or bundle id>`.
-    var draftChats: Set<String> = []
     /// The width of the ticket list and of the bundle list, which share their divider.
     var listWidth: CGFloat = 320
-    /// The sort order of the bundle list, by `<deviceID>/<project id>`.
-    var bundleSorts: [String: ItemTableSort] = [:]
 
+    /// The identity of a ticket or bundle detail view: `<deviceID>/<item id>`.
     static func key(_ deviceID: String, _ itemID: String) -> String {
         "\(deviceID)/\(itemID)"
     }

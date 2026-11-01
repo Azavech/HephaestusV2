@@ -58,7 +58,6 @@ struct TicketListView: View {
             }
             VStack(alignment: .leading, spacing: 6) {
                 statusFilter
-                    .frame(maxWidth: .infinity)
                 HStack(spacing: 8) {
                     filterField
                     bundleButton
@@ -69,17 +68,10 @@ struct TicketListView: View {
     }
 
     private var statusFilter: some View {
-        Picker("Status", selection: Binding(
+        StatusFilterControl(selection: Binding(
             get: { listState.statusFilter },
             set: { value in window.updateViewState(of: projectID) { $0.ticketList.statusFilter = value } }
-        )) {
-            ForEach(TicketListState.StatusFilter.allCases, id: \.self) { filter in
-                Text(filter.title).tag(filter)
-            }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .controlSize(.small)
+        ))
     }
 
     private var filterField: some View {
@@ -174,26 +166,30 @@ struct TicketListView: View {
     }
 
     static let columns: [ItemTableColumn<Ticket>] = [
-        ItemTableColumn(id: TicketListState.SortColumn.id.rawValue, title: "ID", minWidth: 56, idealWidth: 72, maxWidth: 84) { ticket in
+        ItemTableColumn(id: TicketListState.SortColumn.id.rawValue, title: "ID", minWidth: 24, sizing: .content,
+                        contentWidth: { ItemTableText.width($0.id, font: ItemTableText.monospaced) }) { ticket in
             AnyView(Text(ticket.id)
                 .font(.system(size: 12, design: .monospaced))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading))
         },
-        ItemTableColumn(id: TicketListState.SortColumn.title.rawValue, title: "Title", minWidth: 60, idealWidth: 220) { ticket in
+        ItemTableColumn(id: TicketListState.SortColumn.title.rawValue, title: "Title", minWidth: 40, sizing: .fill) { ticket in
             AnyView(Text(ticket.title)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .help(ticket.title))
         },
-        ItemTableColumn(id: TicketListState.SortColumn.status.rawValue, title: "Status", minWidth: 84, idealWidth: 90, maxWidth: 84) { ticket in
+        ItemTableColumn(id: TicketListState.SortColumn.status.rawValue, title: "Status", minWidth: 24, sizing: .content,
+                        contentWidth: { _ in StatusCapsule.maxWidth }) { ticket in
             AnyView(StatusCapsule(status: ticket.status)
                 .frame(maxWidth: .infinity, alignment: .leading))
         },
-        ItemTableColumn(id: TicketListState.SortColumn.created.rawValue, title: "Created", minWidth: 90, idealWidth: 140, maxWidth: 220) { ticket in
+        ItemTableColumn(id: TicketListState.SortColumn.created.rawValue, title: "Created", minWidth: 40, sizing: .shrinkableContent,
+                        contentWidth: { ItemTableText.width(TicketFormat.created($0.created), font: ItemTableText.body) }) { ticket in
             AnyView(Text(TicketFormat.created(ticket.created))
                 .lineLimit(1)
+                .truncationMode(.tail)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading))
         },
@@ -240,6 +236,56 @@ struct TicketListView: View {
     private func createBundleFromSelection(_ ids: Set<String>) {
         guard !ids.isEmpty else { return }
         window.sheet = .ticketPicker(projectID: projectID, bundleID: nil, checkedTicketIDs: TicketFormat.ascending(Array(ids)))
+    }
+}
+
+/// The status filter: a small segmented control whose segments are as wide as their titles
+/// (211 pt), so that it fits the list at its 240 pt minimum width. SwiftUI's segmented picker
+/// gives every segment the width of the widest (318 pt), which made the list's content wider than
+/// its column.
+struct StatusFilterControl: NSViewRepresentable {
+    @Binding var selection: TicketListState.StatusFilter
+
+    private static let filters = TicketListState.StatusFilter.allCases
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeNSView(context: Context) -> NSSegmentedControl {
+        let control = NSSegmentedControl(labels: Self.filters.map(\.title), trackingMode: .selectOne,
+                                         target: context.coordinator, action: #selector(Coordinator.changed(_:)))
+        control.controlSize = .small
+        control.font = .systemFont(ofSize: NSFont.systemFontSize(for: .small))
+        control.segmentDistribution = .fit
+        control.setAccessibilityLabel("Status")
+        return control
+    }
+
+    func updateNSView(_ control: NSSegmentedControl, context: Context) {
+        context.coordinator.parent = self
+        let index = Self.filters.firstIndex(of: selection) ?? 0
+        if control.selectedSegment != index {
+            control.selectedSegment = index
+        }
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSSegmentedControl, context: Context) -> CGSize? {
+        nsView.intrinsicContentSize
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var parent: StatusFilterControl
+
+        init(_ parent: StatusFilterControl) {
+            self.parent = parent
+        }
+
+        @objc func changed(_ sender: NSSegmentedControl) {
+            guard StatusFilterControl.filters.indices.contains(sender.selectedSegment) else { return }
+            parent.selection = StatusFilterControl.filters[sender.selectedSegment]
+        }
     }
 }
 

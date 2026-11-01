@@ -150,22 +150,17 @@ private struct CommentComposer: View {
     @State private var isPosting = false
     @State private var dropTargeted = false
 
-    private var store: TicketWindowStore {
-        TicketWindowStore.store(for: window)
-    }
-
-    private var key: String {
-        TicketWindowStore.key(workspace.deviceID, ticketID)
-    }
-
     private var draft: CommentDraft {
-        store.commentDrafts[key] ?? CommentDraft()
+        window.projectStates[ProjectKey(deviceID: window.deviceID, projectID: projectID)]?.commentDrafts[ticketID] ?? CommentDraft()
     }
 
+    /// Changes the draft in `ProjectViewState.commentDrafts`; an empty draft is removed.
     private func updateDraft(_ change: (inout CommentDraft) -> Void) {
-        var value = store.commentDrafts[key] ?? CommentDraft()
-        change(&value)
-        store.commentDrafts[key] = value.isEmpty ? nil : value
+        window.updateViewState(of: projectID) { state in
+            var value = state.commentDrafts[ticketID] ?? CommentDraft()
+            change(&value)
+            state.commentDrafts[ticketID] = value.isEmpty ? nil : value
+        }
     }
 
     private var canComment: Bool {

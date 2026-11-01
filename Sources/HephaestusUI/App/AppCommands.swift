@@ -26,8 +26,14 @@ public struct AppCommands: Commands {
             FileCloseAndSaveCommands(app: app)
         }
         CommandGroup(replacing: .printItem) {}
+        CommandGroup(after: .pasteboard) {
+            PasteAndMatchStyleCommand()
+        }
+        // Find, Spelling and Grammar, Substitutions, Transformations and Speech: standard items
+        // without a target, which AppKit validates through the responder chain (docs/ui.md ›
+        // Menus and keyboard shortcuts, note 3).
+        TextEditingCommands()
         CommandGroup(after: .textEditing) {
-            FindCommands()
             ToggleCommentCommand()
         }
         CommandGroup(replacing: .sidebar) {
@@ -70,8 +76,12 @@ private struct AboutCommand: View {
 private struct FileNewCommands: View {
     let app: AppModel
     @FocusedValue(\.windowState) private var focused
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
+        // The menu exists from launch on: its action lets the app open a main window before any
+        // window has appeared (AppModel.ensureLaunchWindow).
+        let _ = app.captureCommandsOpenWindow(openWindow)
         let window = actionable(focused)
         Button("New Window") {
             app.openNewMainWindow()
@@ -142,10 +152,11 @@ private struct FileCloseAndSaveCommands: View {
         .disabled(!(window?.sectionCommands?.canSave ?? false))
     }
 
-    /// A window is key and shows no sheet.
+    /// A window is key and shows no sheet; `MenuValidation` follows the key window, which SwiftUI
+    /// does not observe.
     private var canClose: Bool {
-        guard let key = NSApp.keyWindow else { return false }
-        return key.attachedSheet == nil && focused?.sheet == nil
+        let validation = MenuValidation.shared
+        return validation.keyWindowNumber != nil && !validation.keyWindowShowsSheet && focused?.sheet == nil
     }
 
     /// A main window closes after the unsaved changes check; any other window closes.
@@ -163,48 +174,16 @@ private struct FileCloseAndSaveCommands: View {
 
 // MARK: - Edit
 
-/// Edit ▸ Find: each item sends `performTextFinderAction:` with its `NSTextFinder.Action` as tag
-/// to the first responder (an editor, the Docs preview, a web page or a chat transcript), which
-/// shows its find bar or acts on it; Jump to Selection sends `centerSelectionInVisibleArea:`
-/// (docs/ui.md › Menus and keyboard shortcuts, note 1).
-// DOC-GAP: SwiftUI menu items are not validated through the responder chain; the items stay
-// enabled, and an item the focused view cannot perform beeps.
-private struct FindCommands: View {
-    private static let finderAction = #selector(NSResponder.performTextFinderAction(_:))
-
+/// Edit ▸ Paste and Match Style (⌥⇧⌘V): sends `pasteAsPlainText:` to the first responder; enabled
+/// while the focused view accepts it (docs/ui.md › Menus and keyboard shortcuts). SwiftUI has no
+/// standard item for it, so it follows the pasteboard group.
+private struct PasteAndMatchStyleCommand: View {
     var body: some View {
-        Menu("Find") {
-            item("Find…", tag: NSTextFinder.Action.showFindInterface.rawValue, "f")
-            item("Find and Replace…", tag: NSTextFinder.Action.showReplaceInterface.rawValue, "f", modifiers: [.command, .option])
-            item("Find Next", tag: NSTextFinder.Action.nextMatch.rawValue, "g")
-            item("Find Previous", tag: NSTextFinder.Action.previousMatch.rawValue, "g", modifiers: [.command, .shift])
-            item("Use Selection for Find", tag: NSTextFinder.Action.setSearchString.rawValue, "e")
-            item("Jump to Selection", action: #selector(NSResponder.centerSelectionInVisibleArea(_:)), "j")
+        Button("Paste and Match Style") {
+            NSApp.sendAction(#selector(NSTextView.pasteAsPlainText(_:)), to: nil, from: nil)
         }
-    }
-
-    private func item(_ title: String, action: Selector = finderAction, tag: Int = 0, _ key: KeyEquivalent,
-                      modifiers: EventModifiers = .command) -> some View {
-        Button(title) {
-            Self.perform(action, tag: tag)
-        }
-        .keyboardShortcut(key, modifiers: modifiers)
-    }
-
-    /// Sends the action to the first responder that implements it and validates it.
-    @MainActor
-    static func perform(_ action: Selector, tag: Int) {
-        let sender = NSMenuItem()
-        sender.action = action
-        sender.tag = tag
-        let target = NSApp.target(forAction: action, to: nil, from: sender)
-        if let validator = target as? NSUserInterfaceValidations, !validator.validateUserInterfaceItem(sender) {
-            NSSound.beep()
-            return
-        }
-        if target == nil || !NSApp.sendAction(action, to: target, from: sender) {
-            NSSound.beep()
-        }
+        .keyboardShortcut("v", modifiers: [.command, .option, .shift])
+        .disabled(!MenuValidation.shared.canPasteAndMatchStyle)
     }
 }
 
@@ -401,7 +380,7 @@ private struct SendFeedbackCommand: View {
     @FocusedValue(\.chatWindowValue) private var focusedChat
 
     var body: some View {
-        let key = NSApp.keyWindow
+        let validation = MenuValidation.shared
         Button("Send Feedback…") {
             guard let key = NSApp.keyWindow else { return }
             let source: FeedbackSource
@@ -417,6 +396,6 @@ private struct SendFeedbackCommand: View {
             app.feedbackController.start(capturing: key, source: source)
         }
         .keyboardShortcut("b", modifiers: [.command, .shift])
-        .disabled(key == nil || key?.attachedSheet != nil || focusedMain?.sheet != nil)
+        .disabled(validation.keyWindowNumber == nil || validation.keyWindowShowsSheet || focusedMain?.sheet != nil)
     }
 }

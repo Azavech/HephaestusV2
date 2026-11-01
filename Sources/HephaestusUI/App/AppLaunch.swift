@@ -61,6 +61,12 @@ extension AppModel {
         let connection = waitFor { await LocalEngineConnection(engine: engine) }
 
         WindowPlacement.disablesRestoration = !environment.restoresWindowState
+        if !environment.restoresWindowState {
+            // docs/architecture.md › Environment overrides, rule 8: AppKit ignores the saved
+            // state another process of this bundle wrote, in this process only (registration
+            // domain, never written to disk).
+            UserDefaults.standard.register(defaults: ["ApplePersistenceIgnoreState": true])
+        }
         if let screen = environment.windowScreen {
             WindowPlacement.install(screen, log: engine.log)
         }

@@ -172,6 +172,8 @@ The text filter's matching fields and the placeholder are defaults. Default chos
 
 The capsule colors and the date format are defaults. Default chosen at design time.
 
+- Column widths: ID, Status and Created are as wide as their widest cell and their header. Title takes the width they leave, at least 40 pt, and is the first to truncate when the list narrows; once Title is at 40 pt, Created truncates with an ellipsis, down to 40 pt; a list narrower than that scrolls horizontally. The widths follow the list's width and cannot be dragged. Default chosen at design time.
+
 - The list starts sorted by ID, newest first. Clicking a column header sorts by that column; clicking it again reverses the order. Default chosen at design time.
 - Filters and sort order are kept per window and per project in `ProjectViewState.ticketList` while the window is open; `debug_ui_state` encodes them, and they are never persisted. Default chosen at design time.
 - Selection: click, ⌘-click and ⇧-click; ⌘A selects every visible ticket. With one ticket selected the detail shows it; with several it shows `<n> Tickets Selected` and a Create Bundle from Selection button; with none it shows `No Ticket Selected`. Default chosen at design time.
@@ -197,20 +199,20 @@ The empty-state texts are defaults. Default chosen at design time.
 
 ### Ticket detail
 
-| Element | Behaviour                                                                                                                                                                                |
-| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ID      | Monospaced and selectable, with a copy button.                                                                                                                                           |
-| Title   | Inline text field. Return, or moving the focus away, saves with `tickets.update`. Esc restores the stored title. An empty title is not saved and the stored title comes back.            |
-| Status  | Pop-up menu To Do, In Progress, Done. A choice calls `tickets.setStatus` at once.                                                                                                        |
-| Dates   | `Created <date> by You` or `Created <date> by Claude`, with the date in the format of the list's Created column, then `· Updated <relative time>` (for example `Updated 5 minutes ago`). |
-| Bundles | `In bundles: HEPH-B2, HEPH-B5`, each id opening that bundle. Hidden when the ticket is in no bundle.                                                                                     |
-| Tabs    | Details, and `Chats (<n>)` where n is the number of chats listed in the Chats tab.                                                                                                       |
+| Element | Behaviour                                                                                                                                                                                                                                                                                  |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ID      | Monospaced and selectable, with a copy button.                                                                                                                                                                                                                                             |
+| Title   | Inline text field. Return, or moving the focus away, saves with `tickets.update`. Esc restores the stored title. An empty title is not saved and the stored title comes back.                                                                                                              |
+| Status  | Pop-up menu To Do, In Progress, Done. A choice calls `tickets.setStatus` at once.                                                                                                                                                                                                          |
+| Dates   | `Created <date> by You` or `Created <date> by Claude`, with the date in the format of the list's Created column, then `· Updated <relative time>`: `Updated just now` less than a minute after the change, then for example `Updated 5 minutes ago`; the text is updated every 30 seconds. |
+| Bundles | `In bundles: HEPH-B2, HEPH-B5`, each id opening that bundle. Hidden when the ticket is in no bundle.                                                                                                                                                                                       |
+| Tabs    | Details, and `Chats (<n>)` where n is the number of chats listed in the Chats tab.                                                                                                                                                                                                         |
 
 The copy button, the labels You and Claude, the relative update time and the Bundles line are defaults. Default chosen at design time.
 
 The Details tab shows, from top to bottom:
 
-1. Description. It is rendered with the shared Markdown renderer ([Documentation viewer](documentation-viewer.md)). The Edit button replaces it with a plain-text editor (SF Mono 13) with the buttons Cancel (Esc) and Save (⌘Return); Save calls `tickets.update` with the description. Default chosen at design time.
+1. Description. It is rendered with the shared Markdown renderer ([Documentation viewer](documentation-viewer.md)). A line outside a fenced code block that is a heading line of [Template validation](#template-validation) step 2 (for example `Problem`, `## Current Behavior` or `Expected:`) is shown as a level-3 heading of the heading's words as written, without its `#` characters and its colon, and the lines after it start a new paragraph, so that each template heading stands above its section text. Only the display changes: the stored description keeps the user's text. The Edit button replaces it with a plain-text editor (SF Mono 13) with the buttons Cancel (Esc) and Save (⌘Return); Save calls `tickets.update` with the description. Default chosen at design time.
 2. Attachments of the ticket ([Attachments](#attachments)).
 3. Comments ([Comments](#comments)).
 
@@ -225,7 +227,7 @@ The Details tab shows, from top to bottom:
 - Below the last comment is the composer: a multi-line editor that grows to 8 lines and then scrolls, with the placeholder `Add a comment…`; a paperclip button that opens an open panel for several files; and a Comment button (⌘Return). Return inserts a line break. Default chosen at design time.
 - Files and images dropped or pasted on the composer become pending attachments, shown as chips that can be removed before posting. Default chosen at design time.
 - Comment is enabled when the text is not empty after trimming or at least one file is pending. It calls `tickets.addComment`. On success the composer empties; on failure an alert shows the error and the composer keeps its content.
-- The composer's draft is kept per ticket and per window while the window is open. Default chosen at design time.
+- The composer's draft is kept per ticket and per window while the window is open (`ProjectViewState.commentDrafts`, [WindowState](ui.md#windowstate)). Default chosen at design time.
 - Context menu of a comment. Default chosen at design time.
   - Edit: an inline editor with Cancel (Esc) and Save (⌘Return) that calls `tickets.updateComment`. Saving sets `updated`. The attachments of a comment cannot be changed.
   - Copy Text: copies the Markdown source.
@@ -308,7 +310,7 @@ The Chats tab of a ticket:
 - A bar with the buttons Implement (prominent) and New Chat.
 - The list of the ticket's chats (the ids in `chats`), newest first, each with its title, kind icon, state and last update time. The state shows as a spinner while `starting` or `running`, an orange dot while `waitingPermission` or `waitingAnswers`, a red mark on `error`, and nothing when `idle`. Default chosen at design time.
 - A chat id without chat metadata is not listed. Chat files are git-ignored, so another clone of the repository has no metadata for them. Default chosen at design time.
-- The selected chat is shown under the list with its full chat view and composer ([Chats](chats.md)). Opening the tab selects the most recently updated chat. Default chosen at design time.
+- The selected chat is shown under the list with its full chat view and composer ([Chats](chats.md)). Opening the tab selects the most recently updated chat. The tab, the selected chat and a shown draft are kept per window and per project while the window is open (`ticketTab`, `chatsTabSelection` and `chatsTabDrafts` of [WindowState](ui.md#windowstate)). Default chosen at design time.
 - The context menu of a chat has Open in New Window, Rename… and Delete… ([Chats](chats.md)).
 - With no chats the tab shows `No Chats`, the text `Implement lets Claude implement this ticket. New Chat opens a conversation about it.`, and both buttons. Default chosen at design time.
 
@@ -352,15 +354,15 @@ The fields are defined in [Data model](data-model.md#bundle-file). The order of 
 The Bundles section (⌘2) shows the bundles of the selected project in a list on the left and the selected bundle on the right, with the same divider as the Tickets section. Default chosen at design time.
 
 - The list header has a New Bundle (+) button, which opens the ticket picker sheet with no ticket checked.
-- Columns: ID, Title, Progress (`<done>/<total> done`) and Created. The list starts sorted by ID, newest first. The columns sort as the ticket list's do, Progress by the share of done tickets; equal values keep the ID order, newest first. The sort order is kept per window and per project while the window is open. Default chosen at design time.
+- Columns: ID, Title, Progress (`<done>/<total> done`) and Created, with the widths of the ticket list's columns, Progress taking the rule of Status. The list starts sorted by ID, newest first. The columns sort as the ticket list's do, Progress by the share of done tickets; equal values keep the ID order, newest first. The sort order is kept per window and per project while the window is open (`ProjectViewState.bundleList`, [WindowState](ui.md#windowstate)). Default chosen at design time.
 - The context menu of a bundle has Implement All and Delete…. Default chosen at design time.
 - With no bundles the list shows `No Bundles`, the text `Select tickets in Tickets and choose Create Bundle from Selection, or create a bundle here.`, and a New Bundle button. With no bundle selected the detail shows `No Bundle Selected`. Default chosen at design time.
 
 | Element             | Behaviour                                                                                                                                                                                                                                                                                                                             |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Header              | ID, inline title field (same behaviour as the ticket title), `Created <date> · Updated <relative time>`, and a progress bar with `<done> of <total> done`.                                                                                                                                                                            |
+| Header              | ID, inline title field (same behaviour as the ticket title), `Created <date> · Updated <relative time>` with the relative time of the ticket detail's Dates, and a progress bar with `<done> of <total> done`.                                                                                                                        |
 | Tabs                | `Tickets (<n>)` and `Chats (<n>)`.                                                                                                                                                                                                                                                                                                    |
-| Tickets tab         | Table with ID, Title and Status in bundle order. Dragging rows reorders the bundle with `bundles.update`; a failure shows the alert `Reorder failed` ([UI](ui.md#principles)).                                                                                                                                                        |
+| Tickets tab         | Table with ID, Title and Status in bundle order, with the widths of the ticket list's columns. Dragging rows reorders the bundle with `bundles.update`; a failure shows the alert `Reorder failed` ([UI](ui.md#principles)).                                                                                                          |
 | Tickets tab actions | Add Tickets… opens the ticket picker sheet. Remove from Bundle (context menu or ⌫) removes the selected rows with `bundles.update`, without confirmation; the tickets are not deleted. Show Ticket (context menu or double-click) opens the ticket in the Tickets section. Set Status ▸ acts as in the ticket list.                   |
 | Missing ticket      | A listed id without a ticket file shows `Ticket not found` as its title and no status.                                                                                                                                                                                                                                                |
 | Tickets tab, empty  | `No Tickets in This Bundle` and an Add Tickets… button.                                                                                                                                                                                                                                                                               |

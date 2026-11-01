@@ -39,12 +39,30 @@ struct LinkedChatsView: View {
     /// The identity of the draft chat view: each New Chat shows a new draft.
     @State private var draftIdentity = UUID()
 
-    private var store: TicketWindowStore {
-        TicketWindowStore.store(for: window)
+    private var viewState: ProjectViewState {
+        window.projectStates[ProjectKey(deviceID: window.deviceID, projectID: projectID)] ?? ProjectViewState()
     }
 
-    private var key: String {
-        TicketWindowStore.key(workspace.deviceID, owner.id)
+    /// Selects a chat of this tab, or shows its draft when `chatID` is nil.
+    private func select(_ chatID: String?, draft: Bool) {
+        Self.select(chatID, draft: draft, owner: owner, window: window, projectID: projectID)
+    }
+
+    /// Sets the chat of a Chats tab (`chatsTabSelection`) and whether it shows a draft
+    /// (`chatsTabDrafts`).
+    static func select(_ chatID: String?, draft: Bool, owner: LinkedChatsOwner, window: WindowState, projectID: String) {
+        window.updateViewState(of: projectID) { state in
+            if let chatID {
+                state.chatsTabSelection[owner.id] = chatID
+            } else if !draft {
+                state.chatsTabSelection[owner.id] = nil
+            }
+            if draft {
+                state.chatsTabDrafts.insert(owner.id)
+            } else {
+                state.chatsTabDrafts.remove(owner.id)
+            }
+        }
     }
 
     /// The listed chats: ids with chat metadata, most recently updated first. A chat id without
@@ -54,17 +72,16 @@ struct LinkedChatsView: View {
     }
 
     /// Opening the tab selects the most recently updated chat.
-    static func selectMostRecent(owner: LinkedChatsOwner, chatIDs: [ChatID], workspace: DeviceWorkspace, window: WindowState) {
-        let store = TicketWindowStore.store(for: window)
-        let key = TicketWindowStore.key(workspace.deviceID, owner.id)
-        store.chatSelection[key] = listedChats(chatIDs, workspace: workspace).first?.id.uuidString
-        store.draftChats.remove(key)
+    static func selectMostRecent(owner: LinkedChatsOwner, chatIDs: [ChatID], workspace: DeviceWorkspace, window: WindowState,
+                                 projectID: String) {
+        select(listedChats(chatIDs, workspace: workspace).first?.id.uuidString, draft: false, owner: owner, window: window,
+               projectID: projectID)
     }
 
     /// The chat shown under the list: the stored selection while it is listed or is a chat of this
     /// ticket or bundle whose link has not arrived yet, otherwise the most recently updated chat.
     private func selectedChatID(_ chats: [ChatMeta]) -> String? {
-        if let stored = store.chatSelection[key] {
+        if let stored = viewState.chatsTabSelection[owner.id] {
             if chats.contains(where: { $0.id.uuidString == stored }) {
                 return stored
             }
@@ -83,7 +100,7 @@ struct LinkedChatsView: View {
     }
 
     private var showsDraft: Bool {
-        store.draftChats.contains(key)
+        viewState.chatsTabDrafts.contains(owner.id)
     }
 
     var body: some View {
@@ -145,7 +162,7 @@ struct LinkedChatsView: View {
     private var newChatButton: some View {
         Button("New Chat") {
             draftIdentity = UUID()
-            store.draftChats.insert(key)
+            select(nil, draft: true)
         }
         .disabled(!window.isConnected)
     }
@@ -183,8 +200,7 @@ struct LinkedChatsView: View {
             get: { selectedID },
             set: { id in
                 guard let id else { return }
-                store.chatSelection[key] = id
-                store.draftChats.remove(key)
+                select(id, draft: false)
             }
         )) {
             ForEach(chats) { meta in
@@ -259,8 +275,7 @@ struct LinkedChatsView: View {
                           bundleID: owner.kind == .bundle ? owner.id : nil,
                           workspace: workspace) { chatID in
                 // The new chat replaces the draft and is selected.
-                store.chatSelection[key] = chatID.uuidString
-                store.draftChats.remove(key)
+                select(chatID.uuidString, draft: false)
             }
             .id(draftIdentity)
         } else if let chatID = selectedChatID(chats) {
