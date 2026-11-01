@@ -128,19 +128,20 @@ struct DevicesSettingsPane: View {
         })
     }
 
-    /// `Listening on port <port> · <n> remote devices connected`, `Not listening: <message>`, or
-    /// `Remote devices are not allowed.` while `syncEnabled` is false.
+    /// `Listening on port <port> · 1 remote device connected` or `… · <n> remote devices
+    /// connected`, `Not listening: <message>`, `Remote devices are not allowed.` while
+    /// `syncEnabled` is false, and empty while the server is stopped with `syncEnabled` true
+    /// (docs/ui.md › Devices).
     private var serverStatus: String {
         guard settings?.syncEnabled ?? true else { return "Remote devices are not allowed." }
         switch app.syncStatus.state {
         case .listening(let port):
             let count = Set(app.syncStatus.sessions.map(\.deviceID)).count
-            return "Listening on port \(port) · \(count) remote devices connected"
+            let devices = count == 1 ? "1 remote device" : "\(count) remote devices"
+            return "Listening on port \(port) · \(devices) connected"
         case .failed(let message):
             return "Not listening: \(message)"
         case .stopped:
-            // DOC-GAP: docs/ui.md › Devices gives no status text while the sync server is stopped
-            // with `syncEnabled` true (before it starts); the line stays empty.
             return ""
         }
     }
