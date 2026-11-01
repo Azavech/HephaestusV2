@@ -36,6 +36,8 @@ struct LinkedChatsView: View {
     @State private var renamingID: String?
     @State private var renameText = ""
     @FocusState private var renameFocused: Bool
+    /// The identity of the draft chat view: each New Chat shows a new draft.
+    @State private var draftIdentity = UUID()
 
     private var store: TicketWindowStore {
         TicketWindowStore.store(for: window)
@@ -142,6 +144,7 @@ struct LinkedChatsView: View {
 
     private var newChatButton: some View {
         Button("New Chat") {
+            draftIdentity = UUID()
             store.draftChats.insert(key)
         }
         .disabled(!window.isConnected)
@@ -251,8 +254,15 @@ struct LinkedChatsView: View {
     @ViewBuilder
     private func selected(_ chats: [ChatMeta]) -> some View {
         if showsDraft {
-            LinkedChatDraftView(window: window, workspace: workspace, projectID: projectID, owner: owner)
-                .id(key)
+            ChatDraftView(projectID: projectID, kind: owner.kind,
+                          ticketID: owner.kind == .ticket ? owner.id : nil,
+                          bundleID: owner.kind == .bundle ? owner.id : nil,
+                          workspace: workspace) { chatID in
+                // The new chat replaces the draft and is selected.
+                store.chatSelection[key] = chatID.uuidString
+                store.draftChats.remove(key)
+            }
+            .id(draftIdentity)
         } else if let chatID = selectedChatID(chats) {
             ChatView(chatID: chatID, workspace: workspace)
                 .id(chatID)
@@ -288,182 +298,6 @@ struct LinkedChatsView: View {
                 _ = try await workspace.call(ChatsDelete.self, ChatsDelete.Params(chatID: meta.id))
             } catch {
                 window.alert = .failure("Delete", error)
-            }
-        }
-    }
-}
-
-// MARK: - Draft chat
-
-/// A draft chat of kind ticket or bundle: an empty chat whose composer has the focus; its first
-/// Send calls `chats.create` with the kind, the ticket or bundle and the message, using the default
-/// settings (docs/chats.md › Draft chats).
-// DOC-GAP: `ChatView` (ui-chats) is declared for stored chats only and `ComposerView` has no
-// ticket or bundle draft, so the Chats tabs show this draft until integration gives them the chat
-// view's draft mode: the empty transcript text, the CLI status lines, the files and Send; the
-// draft uses the default chat settings (no settings menus).
-private struct LinkedChatDraftView: View {
-    let window: WindowState
-    let workspace: DeviceWorkspace
-    let projectID: String
-    let owner: LinkedChatsOwner
-
-    @State private var text = ""
-    @State private var attachments: [TicketPendingFile] = []
-    @State private var focusRequest = 1
-    @State private var isSending = false
-
-    private var status: ClaudeStatus? {
-        workspace.claudeStatus
-    }
-
-    private var canSend: Bool {
-        (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty)
-            && window.isConnected && status?.available == true && !isSending
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Text(owner.kind == .ticket
-                 ? "Ask Claude about \(owner.id), or click Implement."
-                 : "Ask Claude about \(owner.id), or click Implement All.")
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            cliStatus
-            composer
-                .padding(10)
-        }
-    }
-
-    @ViewBuilder
-    private var cliStatus: some View {
-        if let status, status.checking {
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.small)
-                Text("Checking the Claude CLI…")
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 10)
-        } else if let status, !status.available {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                if workspace.isLocal {
-                    Text(status.error ?? "")
-                    Spacer()
-                    Button("Open Settings") {
-                        window.app?.openSettings(tab: .general)
-                    }
-                } else {
-                    Text("Claude CLI is not available on \(workspace.deviceName): \(status.error ?? "")")
-                    Spacer()
-                }
-            }
-            .font(.callout)
-            .padding(8)
-            .background(RoundedRectangle(cornerRadius: 6).fill(Color.orange.opacity(0.12)))
-            .padding(.horizontal, 10)
-        }
-    }
-
-    private var composer: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if !attachments.isEmpty {
-                TicketFlowLayout(spacing: 6) {
-                    ForEach(attachments) { attachment in
-                        TicketPendingFileChip(attachment: attachment) {
-                            attachments.removeAll { $0.id == attachment.id }
-                        }
-                    }
-                }
-            }
-            HStack(alignment: .bottom, spacing: 8) {
-                Button {
-                    Task {
-                        let urls = await TicketPendingFiles.chooseFiles(in: TicketActions.nsWindow(window))
-                        addFiles(urls)
-                    }
-                } label: {
-                    Image(systemName: "paperclip")
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Attach Files")
-                TicketTextEditor(
-                    text: $text,
-                    placeholder: window.isConnected ? "Message Claude…" : "Not connected to \(workspace.deviceName)",
-                    minLines: 1, maxLines: 10,
-                    focusRequest: focusRequest,
-                    onReturn: { send() },
-                    onEscape: nil,
-                    onPaste: { pasteboard in
-                        switch TicketPendingFiles.fromPasteboard(pasteboard) {
-                        case .files(let items?):
-                            attachments += items
-                            return true
-                        case .files(nil):
-                            window.alert = TicketPendingFiles.folderAlert
-                            return true
-                        case .none:
-                            return false
-                        }
-                    },
-                    onDropFiles: { urls in addFiles(urls) }
-                )
-                .disabled(!window.isConnected)
-                Button {
-                    send()
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title2)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Send")
-                .disabled(!canSend)
-            }
-            .padding(6)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color(nsColor: .separatorColor)))
-        }
-        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-            Task { addFiles(await TicketDroppedFiles.urls(from: providers)) }
-            return true
-        }
-    }
-
-    private func addFiles(_ urls: [URL]) {
-        guard !urls.isEmpty else { return }
-        guard let items = TicketPendingFiles.fromFiles(urls) else {
-            window.alert = TicketPendingFiles.folderAlert
-            return
-        }
-        attachments += items
-    }
-
-    /// The first Send: `chats.create` with the message; the new chat replaces the draft and is
-    /// selected.
-    private func send() {
-        guard canSend else { return }
-        let message = text
-        let files = attachments
-        isSending = true
-        Task {
-            defer { isSending = false }
-            do {
-                let uploads = try await TicketPendingFiles.uploads(files)
-                let params = ChatsCreate.Params(
-                    projectID: projectID, kind: owner.kind,
-                    ticketID: owner.kind == .ticket ? owner.id : nil,
-                    bundleID: owner.kind == .bundle ? owner.id : nil,
-                    message: ChatMessageInput(text: message, attachments: uploads.isEmpty ? nil : uploads))
-                let meta = try await workspace.call(ChatsCreate.self, params)
-                let store = TicketWindowStore.store(for: window)
-                let key = TicketWindowStore.key(workspace.deviceID, owner.id)
-                store.chatSelection[key] = meta.id.uuidString
-                store.draftChats.remove(key)
-            } catch {
-                window.alert = .failure("Send", error)
             }
         }
     }
