@@ -1,6 +1,6 @@
-/* Rendered Markdown (docs/documentation-viewer.md › Styling).
-   STUB: ui — the variables and the token rules of docs/code-editor.md › Token kinds and colors;
-   the .md selectors of the Styling table come with the documentation viewer. */
+/* OWNER: ui-code-docs — rendered Markdown in doc.html and chat.html (docs/documentation-viewer.md ›
+   Styling): the variables and the token rules of docs/code-editor.md › Token kinds and colors.
+   STUB: ui-code-docs — the .md selectors of the Styling table. */
 
 :root {
   --md-text: #1F1F24;
