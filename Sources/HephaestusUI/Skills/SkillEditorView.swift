@@ -265,6 +265,7 @@ private struct SkillBodyPart: View {
     /// `Instructions Claude follows when it uses this skill (Markdown).`
     private var bodyEditor: some View {
         CodeEditorView(buffer: form.body, workspace: workspace)
+            .goToLinePopover(isPresented: editor.goToLineBinding(for: form.body), host: form.body)
             .overlay(alignment: .topLeading) {
                 if form.body.text.isEmpty {
                     Text("Instructions Claude follows when it uses this skill (Markdown).")
@@ -380,6 +381,7 @@ private struct SkillFileView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .text:
             CodeEditorView(buffer: file.buffer, workspace: workspace)
+                .goToLinePopover(isPresented: editor.goToLineBinding(for: file.buffer), host: file.buffer)
         case .image(let data):
             if let image = NSImage(data: data) {
                 Image(nsImage: image)

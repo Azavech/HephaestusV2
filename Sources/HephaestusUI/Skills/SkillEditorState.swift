@@ -3,6 +3,7 @@
 import Foundation
 import HephaestusCore
 import Observation
+import SwiftUI
 
 /// The edited skill of a window (`ProjectViewState.skillEditor`): the form (name, description,
 /// body) and the open extra file, with their unsaved changes (docs/skills.md › Editor, › Saving).
@@ -35,6 +36,8 @@ final class SkillEditorState {
     private(set) var conflict: SkillConflict?
     /// True while `skills.update` or `skills.writeFile` runs.
     private(set) var isSaving = false
+    /// The editor that shows the Go to Line popover: the body's or the open extra file's.
+    var goToLineEditor: EditorBuffer?
     /// Incremented to put the keyboard focus in the body editor (New Skill sheet).
     var bodyFocusRequest = 0
     /// The last focus request the body editor handled.
@@ -66,6 +69,25 @@ final class SkillEditorState {
         if form.hasUnsavedChanges { editors.append(form) }
         if let file, file.hasUnsavedChanges { editors.append(file) }
         return editors
+    }
+
+    /// The body editor or the open extra file's editor while its text view has the keyboard
+    /// focus: Navigate ▸ Go to Line… and Edit ▸ Toggle Comment act on it, as in the Code section.
+    var focusedEditor: EditorBuffer? {
+        if bodyMode != .preview, form.body.hasEditorFocus { return form.body }
+        if let file, file.kind == .text, file.buffer.hasEditorFocus { return file.buffer }
+        return nil
+    }
+
+    /// The Go to Line popover of an embedded editor: shown while `goToLineEditor` is that editor.
+    func goToLineBinding(for buffer: EditorBuffer) -> Binding<Bool> {
+        Binding(get: { self.goToLineEditor === buffer }, set: { shown in
+            if shown {
+                self.goToLineEditor = buffer
+            } else if self.goToLineEditor === buffer {
+                self.goToLineEditor = nil
+            }
+        })
     }
 
     /// The selection names a skill that is not in the library and nothing unsaved holds it.

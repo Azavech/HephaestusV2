@@ -201,6 +201,27 @@ final class SkillsSectionCommands: SectionCommandHandler {
             await editor.save()
         }
     }
+
+    // Go to Line, Toggle Comment and Find act on the focused embedded editor through the code
+    // editor's forwarding API; Find reaches its text view through the responder chain.
+
+    var canGoToLine: Bool {
+        editor?.focusedEditor != nil
+    }
+
+    func goToLine() {
+        guard let editor, let buffer = editor.focusedEditor else { return }
+        editor.goToLineEditor = buffer
+    }
+
+    var canToggleComment: Bool {
+        editor?.focusedEditor?.canToggleEditorComment ?? false
+    }
+
+    func toggleComment() {
+        guard canToggleComment, let buffer = editor?.focusedEditor else { return }
+        buffer.toggleEditorComment()
+    }
 }
 
 /// `skills.get` failed for another reason than a missing skill.
