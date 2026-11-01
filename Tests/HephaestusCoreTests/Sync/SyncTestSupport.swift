@@ -325,14 +325,15 @@ final class FakeSyncServer: @unchecked Sendable {
     let port: Int
     private let inbox = Inbox()
 
-    /// `autoReplyPing` false keeps the server silent to pings.
-    init(autoReplyPing: Bool = true) async throws {
+    /// `autoReplyPing` false keeps the server silent to pings. `port` 0 lets the system choose.
+    init(autoReplyPing: Bool = true, port requested: Int = 0) async throws {
         let parameters = SyncSocket.parameters()
         parameters.requiredInterfaceType = .loopback
         if let webSocket = parameters.defaultProtocolStack.applicationProtocols.first as? NWProtocolWebSocket.Options {
             webSocket.autoReplyPing = autoReplyPing
         }
-        let listener = try NWListener(using: parameters)
+        let listener = requested == 0 ? try NWListener(using: parameters)
+            : try NWListener(using: parameters, on: NWEndpoint.Port(integerLiteral: UInt16(requested)))
         self.listener = listener
         let inbox = self.inbox
         listener.newConnectionHandler = { connection in

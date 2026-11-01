@@ -341,7 +341,9 @@ struct RemoteConnectionTests {
 
     @Test("Add Device attempts: a typed address is saved, cancelling closes with 1000, a refusal fails")
     func addDeviceAttempts() async throws {
-        let server = try await FakeSyncServer()
+        // Outside the ephemeral range, so that no other test's listener takes the port once the
+        // server stops.
+        let server = try await FakeSyncServer(port: try unusedTestPort())
         defer { server.stop() }
         try await withTestEngine { remote, _, _ in
             let local = await remote.localDeviceInfo()

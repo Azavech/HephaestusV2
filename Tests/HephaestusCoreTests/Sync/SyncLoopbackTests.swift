@@ -198,6 +198,10 @@ struct SyncLoopbackTests {
     @Test("The server stops (1001), refuses, then a retry reconnects with the backoff")
     func serverStopsAndRestarts() async throws {
         try await withTwoEngines { main, mainLocal, remote, log in
+            // A port outside the ephemeral range, so that no other test's listener takes it
+            // while the stopped server leaves it unused.
+            await main.syncServer.start(port: try unusedTestPort(), interface: .loopback, advertises: false,
+                                        deviceName: "Studio", engine: main)
             let connection = try await pair(remote, with: main, log: log)
             defer { connection.close() }
             _ = try await connection.call(SnapshotGet.self)

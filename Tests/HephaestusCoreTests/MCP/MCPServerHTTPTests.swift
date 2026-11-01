@@ -544,26 +544,11 @@ struct MCPServerHTTPTests {
 
     // MARK: Lifecycle
 
-    /// A port chosen by the system on 127.0.0.1 and released at once.
-    static func freePort() async throws -> Int {
-        let parameters = NWParameters.tcp
-        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
-        let listener = try NWListener(using: parameters)
-        listener.newConnectionHandler = { $0.cancel() }
-        listener.start(queue: DispatchQueue(label: "test.free-port"))
-        defer { listener.cancel() }
-        let deadline = ContinuousClock.now + .seconds(5)
-        while (listener.port?.rawValue ?? 0) == 0, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        return Int(try #require(listener.port).rawValue)
-    }
-
     @Test("settings.update of mcpPort moves the server when no port override is set")
     func movesWithSetting() async throws {
         try await TestEngineSlots.withSlot { try await withTemporaryDirectory { folder in
-            let first = try await Self.freePort()
-            let second = try await Self.freePort()
+            let first = try unusedTestPort()
+            let second = try unusedTestPort()
             let directory = DataDirectory(url: folder.appendingPathComponent("Data", isDirectory: true))
             try FileManager.default.createDirectory(at: directory.url, withIntermediateDirectories: true)
             _ = try DeviceFileStore.write(HostSettings(mcpPort: first, syncEnabled: false), to: directory)
@@ -630,13 +615,19 @@ struct MCPServerHTTPTests {
     @Test("A port freed during the retries is bound by a later attempt")
     func bindRetrySucceeds() async throws {
         try await withTemporaryDirectory { folder in
+            // A port outside the ephemeral range: once the holder releases it, no other test's
+            // listener can take it before the server does.
+            let busy = try unusedTestPort()
             let parameters = NWParameters.tcp
-            parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
+            parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: try #require(NWEndpoint.Port(rawValue: UInt16(busy))))
             let holder = try NWListener(using: parameters)
             holder.newConnectionHandler = { $0.cancel() }
+            let ready = Recorder<Bool>()
+            holder.stateUpdateHandler = { state in
+                if case .ready = state { ready.append(true) }
+            }
             holder.start(queue: DispatchQueue(label: "test.holder"))
-            while holder.port == nil || holder.port?.rawValue == 0 { try await Task.sleep(for: .milliseconds(10)) }
-            let busy = Int(holder.port!.rawValue)
+            #expect(await eventually(timeout: .seconds(10)) { !ready.values.isEmpty })
 
             let log = MemoryLog()
             let tokens = MCPTokenStore(secrets: SecretsStore(directory: DataDirectory(url: folder), secrets: Secrets()))
@@ -656,7 +647,8 @@ struct MCPServerHTTPTests {
 
     @Test("Moving: the old listener closes, an idle connection closes, a request in progress finishes first")
     func move() async throws {
-        try await withStandaloneServer { server in
+        // Outside the ephemeral range, so that no other test's listener takes the old port.
+        try await withStandaloneServer(port: try unusedTestPort()) { server in
             let oldPort = server.port
             let idle = try await RawConnection(port: oldPort)
             let busy = try await RawConnection(port: oldPort)
@@ -687,7 +679,8 @@ struct MCPServerHTTPTests {
 
     @Test("Stopping closes the listener and every connection; the state stream ends")
     func stop() async throws {
-        try await withStandaloneServer { server in
+        // Outside the ephemeral range, so that no other test's listener takes the stopped port.
+        try await withStandaloneServer(port: try unusedTestPort()) { server in
             let connection = try await RawConnection(port: server.port)
             let states = await server.server.stateUpdates()
             await server.server.stop()

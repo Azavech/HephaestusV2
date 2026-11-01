@@ -91,7 +91,7 @@ struct StandaloneServer {
     var port: Int
 }
 
-func withStandaloneServer<T>(debugTools: Bool = false, idleTimeout: Duration? = nil,
+func withStandaloneServer<T>(debugTools: Bool = false, idleTimeout: Duration? = nil, port: Int = 0,
                              _ body: (StandaloneServer) async throws -> T) async throws -> T {
     try await withTemporaryDirectory { folder in
         let secrets = SecretsStore(directory: DataDirectory(url: folder), secrets: Secrets())
@@ -100,7 +100,7 @@ func withStandaloneServer<T>(debugTools: Bool = false, idleTimeout: Duration? = 
         let server = MCPServer(tokens: tokens, debugTools: debugTools, appVersion: "1.2.3", log: log)
         await server.configure(idleTimeout: idleTimeout, homeDirectory: "/Users/example")
         let engine = RecordedEngine()
-        await server.start(port: 0, engineCall: engine.engineCall)
+        await server.start(port: port, engineCall: engine.engineCall)
         guard let port = await server.port else {
             await server.stop()
             throw EngineError(.internal, "The test server does not listen.")
