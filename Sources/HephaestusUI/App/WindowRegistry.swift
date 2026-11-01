@@ -2,6 +2,7 @@
 // tools (docs/mcp.md › Window information), the key window order (docs/ui.md › AppModel) and the
 // window of a feedback capture (docs/feedback.md › Starting feedback).
 import AppKit
+import ObjectiveC
 import SwiftUI
 
 /// The role of an app window.
@@ -97,6 +98,46 @@ extension View {
     func registersWindow(_ role: WindowRole, in app: AppModel) -> some View {
         background(WindowAccessor { window in
             app.windowRegistry.register(window, role: role)
+            if case .main(let id) = role {
+                app.interceptCloseButton(of: window, mainID: id)
+            }
         })
+    }
+}
+
+/// The target of a main window's close button: the window closes after the unsaved changes check
+/// of its editors, as with File ▸ Close Window (docs/ui.md › Unsaved changes and quitting).
+@MainActor
+final class MainWindowCloseButtonTarget: NSObject {
+    weak var app: AppModel?
+    let mainID: UUID
+
+    init(app: AppModel, mainID: UUID) {
+        self.app = app
+        self.mainID = mainID
+    }
+
+    @objc func closeWindow(_ sender: Any?) {
+        guard let app, let state = app.windows[mainID] else {
+            (sender as? NSView)?.window?.close()
+            return
+        }
+        Task {
+            await app.closeMainWindow(state)
+        }
+    }
+}
+
+private var closeButtonTargetKey: UInt8 = 0
+
+extension AppModel {
+    /// Points the close button of a main window at the unsaved changes check.
+    func interceptCloseButton(of window: NSWindow, mainID: UUID) {
+        guard let button = window.standardWindowButton(.closeButton) else { return }
+        if let target = button.target as? MainWindowCloseButtonTarget, target.mainID == mainID { return }
+        let target = MainWindowCloseButtonTarget(app: self, mainID: mainID)
+        objc_setAssociatedObject(window, &closeButtonTargetKey, target, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        button.target = target
+        button.action = #selector(MainWindowCloseButtonTarget.closeWindow(_:))
     }
 }

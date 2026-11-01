@@ -12,6 +12,9 @@ import SwiftUI
 public enum WindowSheet: Codable, Hashable, Sendable, Identifiable {
     /// New Project sheet (docs/projects.md › Creating a project).
     case newProject
+    /// New Project sheet in Existing Folder mode with a folder, opened by `Create Project Here…`
+    /// (docs/projects.md › Opening an existing project).
+    case newProjectInFolder(path: String)
     /// New Sub Project sheet, opened for an active project (docs/projects.md › Sub projects).
     case newSubProject(parentID: String)
     /// Choose Folder sheet of Open Project… on a remote device
@@ -59,6 +62,8 @@ struct WindowSheetView: View {
         switch sheet {
         case .newProject:
             NewProjectSheet(window: window, workspace: workspace, parentID: nil)
+        case .newProjectInFolder(let path):
+            NewProjectSheet(window: window, workspace: workspace, parentID: nil, existingFolder: path)
         case .newSubProject(let parentID):
             NewProjectSheet(window: window, workspace: workspace, parentID: parentID)
         case .openProjectFolder:

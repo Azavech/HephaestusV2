@@ -73,12 +73,18 @@ public final class AppModel {
     /// True when the termination skips the confirmations: SIGTERM, SIGINT, a restart for an update.
     @ObservationIgnored var skipsQuitConfirmations = false
     @ObservationIgnored var isShuttingDown = false
+    /// True while the quit checks of a Quit run (`applicationShouldTerminate` answered
+    /// `terminateLater`).
+    @ObservationIgnored var quitChecksPending = false
     /// True once `app.quitting` was posted for this termination.
     @ObservationIgnored var appQuittingPosted = false
     @ObservationIgnored private var openWindowAction: OpenWindowAction?
     @ObservationIgnored private var openSettingsAction: OpenSettingsAction?
     @ObservationIgnored private var pendingMainWindows: [UUID: WindowState] = [:]
     @ObservationIgnored var restartMainWindowStates: [String] = []
+    /// True when this launch reopens the windows of a restart and they hold no main window: the
+    /// main window SwiftUI opens at launch closes at once.
+    @ObservationIgnored private var suppressesLaunchWindow = false
     @ObservationIgnored var restartChatWindows: [ChatWindowValue] = []
     @ObservationIgnored private var tasks: [Task<Void, Never>] = []
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
@@ -111,6 +117,7 @@ public final class AppModel {
                 restartChatWindows.append(chat)
             }
         }
+        suppressesLaunchWindow = restartWindows != nil && restartMainWindowStates.isEmpty
         updateController = UpdateController(environment: environment, appVersion: appVersion)
         feedbackController = FeedbackController()
         pairedDevices = engine.pairedDevices.devices
@@ -150,14 +157,32 @@ public final class AppModel {
     func workspace(for deviceID: String) -> DeviceWorkspace? {
         if let workspace = workspaces[deviceID] { return workspace }
         guard let device = pairedDevices.first(where: { $0.id.uuidString == deviceID }) else { return nil }
-        let local = localWorkspace.deviceInfo ?? DeviceInfo(id: localDeviceID, name: localWorkspace.deviceName,
-                                                            appVersion: appVersion.version, build: appVersion.build)
-        let connection = RemoteEngineConnection(device: device, local: local, pairedDevices: engine.pairedDevices,
+        let connection = RemoteEngineConnection(device: device, local: localDeviceInfo, pairedDevices: engine.pairedDevices,
                                                 browser: engine.deviceBrowser, log: engine.log)
         let workspace = DeviceWorkspace(deviceID: deviceID, connection: connection, remote: connection, isLocal: false)
         workspaces[deviceID] = workspace
         observe(workspace)
         return workspace
+    }
+
+    /// This Mac's DeviceInfo, sent in `hello`.
+    var localDeviceInfo: DeviceInfo {
+        localWorkspace.deviceInfo ?? DeviceInfo(id: localDeviceID, name: localWorkspace.deviceName,
+                                                appVersion: appVersion.version, build: appVersion.build)
+    }
+
+    /// A successful Add Device attempt: its connection becomes the device's connection, and a
+    /// connection the app already had to that device is closed with 1000 (docs/remote.md ›
+    /// Adding a device). The windows showing the device go on with the new workspace.
+    func adopt(_ connection: RemoteEngineConnection) {
+        let deviceID = connection.device.id.uuidString
+        workspaces[deviceID]?.close()
+        if !pairedDevices.contains(where: { $0.id == connection.device.id }) {
+            pairedDevices.append(connection.device)
+        }
+        let workspace = DeviceWorkspace(deviceID: deviceID, connection: connection, remote: connection, isLocal: false)
+        workspaces[deviceID] = workspace
+        observe(workspace)
     }
 
     /// Closes a remote workspace and its connection as soon as no main window and no chat window
@@ -196,6 +221,14 @@ public final class AppModel {
         let state = WindowState(deviceID: localDeviceID)
         state.needsDefaultProject = true
         return state
+    }
+
+    /// True once, for the main window SwiftUI opens at launch, when the windows of a restart hold
+    /// no main window (docs/ui.md › Windows: the app opens exactly those windows).
+    func takeSuppressedLaunchWindow() -> Bool {
+        guard suppressesLaunchWindow else { return false }
+        suppressesLaunchWindow = false
+        return true
     }
 
     /// A restored window whose device is no longer paired shows This Mac.
@@ -510,9 +543,10 @@ public final class AppModel {
         observers.append(NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil,
                                                                 queue: .main) { [weak self] notification in
             MainActor.assumeIsolated {
-                guard let self, let id = self.windowRegistry.mainID(of: notification.object as? NSWindow) else { return }
+                guard let self, let window = notification.object as? NSWindow, let id = self.windowRegistry.mainID(of: window) else { return }
                 self.keyWindowOrder.removeAll { $0 == id }
                 self.keyWindowOrder.insert(id, at: 0)
+                self.interceptCloseButton(of: window, mainID: id)
             }
         })
     }
@@ -526,7 +560,7 @@ extension WindowSheet {
              .ticketPicker(let projectID, _, _), .newSkill(let projectID), .newDoc(let projectID, _),
              .renameDoc(let projectID, _), .newFile(let projectID, _, _), .renameFile(let projectID, _):
             return projectID
-        case .newProject, .openProjectFolder, .addDevice, .feedback, .newSkillFile, .webPageDialog:
+        case .newProject, .newProjectInFolder, .openProjectFolder, .addDevice, .feedback, .newSkillFile, .webPageDialog:
             return nil
         }
     }
