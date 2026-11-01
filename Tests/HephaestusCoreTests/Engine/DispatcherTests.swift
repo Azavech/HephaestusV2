@@ -113,15 +113,6 @@ struct DispatcherTests {
         }
     }
 
-    @Test("A method without a handler yet fails with unavailable (not implemented yet)")
-    func stubs() async throws {
-        try await withTestEngine { _, connection, _ in
-            let error = await engineError { try await connection.call(ChatsList.self, .init(projectID: "HEPH")) }
-            #expect(error?.code == .unavailable)
-            #expect(error?.message.hasSuffix("(not implemented yet).") == true)
-        }
-    }
-
     @Test("The rules for Claude are checked whatever the token")
     func rulesForClaude() async throws {
         try await withTestEngine { engine, _, _ in

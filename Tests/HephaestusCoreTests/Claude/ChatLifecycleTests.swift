@@ -96,7 +96,8 @@ struct ChatLifecycleTests {
             #expect(meta.title == "Plan the sprint")
             // The MCP configuration file holds the chat token, mode 0600.
             let config = try String(contentsOf: bed.dataDirectory.mcpConfigFile(chatID: chat.id), encoding: .utf8)
-            #expect(config.hasPrefix(#"{"mcpServers":{"hephaestus":{"type":"http","url":"http://127.0.0.1:0/mcp","headers":{"Authorization":"Bearer "#))
+            let port = try #require(await bed.engine.mcpServer.port)
+            #expect(config.hasPrefix(#"{"mcpServers":{"hephaestus":{"type":"http","url":"http://127.0.0.1:\#(port)/mcp","headers":{"Authorization":"Bearer "#))
             let attributes = try FileManager.default.attributesOfItem(atPath: configPath)
             #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
             let actor = await bed.engine.tokens.actor(forToken: String(config.split(separator: " ").last!.prefix(64)))
@@ -279,7 +280,7 @@ struct ChatLifecycleTests {
     @Test("chats.delete terminates the process, unlinks the ticket and moves the files to the Trash")
     func delete() async throws {
         try await withChatEngine { bed in
-            try bed.writeTicket(Ticket(id: "DEMO-1", title: "First", created: ISODate.now(), description: "Problem"))
+            try await bed.writeTicket(Ticket(id: "DEMO-1", title: "First", created: ISODate.now(), description: "Problem"))
             let chat = try await bed.createChat(kind: .ticket, ticketID: "DEMO-1", message: "Hello")
             #expect(try ProjectFileStore.readTicket(at: bed.folder.ticketFile("DEMO-1"), projectID: "DEMO").chatIDs == [chat.id])
             let process = try #require(await bed.launcher.chatProcess())

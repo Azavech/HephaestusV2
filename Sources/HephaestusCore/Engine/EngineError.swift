@@ -93,12 +93,6 @@ extension EngineError {
         EngineError(.invalid, "\(param): \(reason).")
     }
 
-    /// The error of a method whose handler is not written yet: `unavailable`, the code of a
-    /// required service that is missing (docs/engine-api.md › Error codes).
-    public static func notImplemented(_ method: String) -> EngineError {
-        EngineError(.unavailable, "\(method) is not available (not implemented yet).")
-    }
-
     /// `internal` for a storage failure, naming the path (docs/engine-api.md › Writes and
     /// consistency).
     public static func storage(_ error: StorageError) -> EngineError {

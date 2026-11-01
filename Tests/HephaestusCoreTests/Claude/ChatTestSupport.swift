@@ -122,12 +122,16 @@ struct ChatTestBed {
         }
     }
 
-    func writeTicket(_ ticket: Ticket) throws {
+    /// Writes a ticket file and reloads it, as a change made outside the engine.
+    func writeTicket(_ ticket: Ticket) async throws {
         try ProjectFileStore.write(ticket, to: folder)
+        await engine.projectDataFilesChanged(projectID: "DEMO", paths: [folder.ticketFile(ticket.id).path])
     }
 
-    func writeBundle(_ bundle: TicketBundle) throws {
+    /// Writes a bundle file and reloads it, as a change made outside the engine.
+    func writeBundle(_ bundle: TicketBundle) async throws {
         try ProjectFileStore.write(bundle, to: folder)
+        await engine.projectDataFilesChanged(projectID: "DEMO", paths: [folder.bundleFile(bundle.id).path])
     }
 }
 
@@ -196,6 +200,7 @@ func withChatEngine<T>(launcher: FakeClaudeLauncher = FakeClaudeLauncher(), debu
         if let settings { try DeviceFileStore.write(settings, to: data) }
         try prepare(folder, data)
         let engine = try await Engine(configuration: .test(dataDirectory: data.url, debugTools: debugTools, claudeLauncher: launcher))
+        await engine.useFileTrash(.folder(temporary.appendingPathComponent("Trash", isDirectory: true)))
         await engine.useTimings(chats: chatTimings, cli: cliTimings)
         await engine.start()
         let connection = await LocalEngineConnection(engine: engine)

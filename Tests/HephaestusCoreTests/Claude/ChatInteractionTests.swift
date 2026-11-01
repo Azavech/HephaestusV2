@@ -258,8 +258,8 @@ struct ChatInteractionTests {
     @Test("Implement: the ticket chat, its first message and its system prompt; a done ticket is refused")
     func implementTicket() async throws {
         try await withChatEngine { bed in
-            try bed.writeTicket(Ticket(id: "DEMO-1", title: "Fix the build", status: .todo, created: ISODate.now(), description: "Problem\nIt fails."))
-            try bed.writeTicket(Ticket(id: "DEMO-2", title: "Done one", status: .done, created: ISODate.now(), description: "Problem"))
+            try await bed.writeTicket(Ticket(id: "DEMO-1", title: "Fix the build", status: .todo, created: ISODate.now(), description: "Problem\nIt fails."))
+            try await bed.writeTicket(Ticket(id: "DEMO-2", title: "Done one", status: .done, created: ISODate.now(), description: "Problem"))
             #expect(await engineError { try await bed.connection.call(ChatsImplementTicket.self, .init(ticketID: "demo-2")) }
                 == EngineError(.conflict, "DEMO-2 is done; set it to To Do or In Progress to implement it."))
             #expect(await engineError { try await bed.connection.call(ChatsImplementTicket.self, .init(ticketID: "DEMO-7")) }?.code == .notFound)
@@ -293,10 +293,10 @@ struct ChatInteractionTests {
     @Test("Implement All: the bundle chat and its message; a bundle without a ticket left is refused")
     func implementBundle() async throws {
         try await withChatEngine { bed in
-            try bed.writeTicket(Ticket(id: "DEMO-1", title: "One", created: ISODate.now(), description: "Problem"))
-            try bed.writeTicket(Ticket(id: "DEMO-2", title: "Two", status: .done, created: ISODate.now(), description: "Problem"))
-            try bed.writeBundle(TicketBundle(id: "DEMO-B1", title: "Polish", created: ISODate.now(), ticketIDs: ["DEMO-1", "DEMO-2"]))
-            try bed.writeBundle(TicketBundle(id: "DEMO-B2", title: "Finished", created: ISODate.now(), ticketIDs: ["DEMO-2"]))
+            try await bed.writeTicket(Ticket(id: "DEMO-1", title: "One", created: ISODate.now(), description: "Problem"))
+            try await bed.writeTicket(Ticket(id: "DEMO-2", title: "Two", status: .done, created: ISODate.now(), description: "Problem"))
+            try await bed.writeBundle(TicketBundle(id: "DEMO-B1", title: "Polish", created: ISODate.now(), ticketIDs: ["DEMO-1", "DEMO-2"]))
+            try await bed.writeBundle(TicketBundle(id: "DEMO-B2", title: "Finished", created: ISODate.now(), ticketIDs: ["DEMO-2"]))
             #expect(await engineError { try await bed.connection.call(ChatsImplementBundle.self, .init(bundleID: "DEMO-B2")) }
                 == EngineError(.conflict, "DEMO-B2 has no ticket left to implement."))
             let chat = try await bed.connection.call(ChatsImplementBundle.self, .init(bundleID: "DEMO-B1"))
