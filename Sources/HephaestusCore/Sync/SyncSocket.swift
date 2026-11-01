@@ -306,6 +306,14 @@ enum SyncAddress {
         return (withoutZone, Int(port.rawValue))
     }
 
+    /// The Bonjour service of a discovered device, `<instance name>._hephaestus2._tcp.local.`, as
+    /// a client attempt logs it before the address is resolved (docs/remote.md › Logging); nil
+    /// for an endpoint that is not a service.
+    static func bonjourService(of endpoint: NWEndpoint) -> String? {
+        guard case .service(let name, _, _, _) = endpoint else { return nil }
+        return "\(name).\(DeviceBrowser.serviceType).local."
+    }
+
     /// `host:port`, with an IPv6 address in brackets.
     static func display(host: String, port: Int) -> String {
         host.contains(":") ? "[\(host)]:\(port)" : "\(host):\(port)"

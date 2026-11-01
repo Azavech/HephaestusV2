@@ -374,4 +374,18 @@ struct RemoteConnectionTests {
             #expect(remote.pairedDevices.devices.count == 1)
         }
     }
+
+    @Test("An attempt that fails before any connection still logs its start")
+    func attemptLoggedAtStart() async throws {
+        try await withTestEngine { remote, _, _ in
+            let log = MemoryLog()
+            // No ws:// URL can be made for this host: the attempt fails before connecting.
+            await #expect(throws: AddDeviceFailure(message: "Can't find [.")) {
+                _ = try await RemoteEngineConnection.attempt(.address(host: "[", port: 1), code: SyncCryptoTests.code,
+                                                             local: await remote.localDeviceInfo(), pairedDevices: remote.pairedDevices,
+                                                             browser: remote.deviceBrowser, log: log, timings: .fast)
+            }
+            #expect(log.entries.map(\.message) == ["connecting to [:1 at [:1", "connection to [:1 ended, code 1006"])
+        }
+    }
 }

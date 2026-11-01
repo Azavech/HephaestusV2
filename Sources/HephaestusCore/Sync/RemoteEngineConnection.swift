@@ -497,6 +497,7 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
         stage = .resolving
         lastReceived = Date()
         setPhase(.connecting)
+        log.info(.sync, "connecting to \(name) at \(target.endpoint.flatMap(SyncAddress.bonjourService(of:)) ?? address)")
         schedule(after: timings.connect) { connection in
             if connection.stage == .resolving || connection.stage == .connecting {
                 connection.fail(.noAnswer)
@@ -560,7 +561,6 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
             return
         }
         stage = .connecting
-        log.info(.sync, "connecting to \(name) at \(address)")
         let connection = NWConnection(to: .url(url), using: SyncSocket.parameters(ipv4Only: isBonjour))
         let socket = SyncSocket(connection: connection, queue: queue, closeWait: timings.closeWait)
         self.socket = socket
