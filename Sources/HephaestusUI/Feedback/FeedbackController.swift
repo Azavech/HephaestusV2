@@ -3,6 +3,8 @@
 // › Feedback context, › Creating the feedback chat).
 import AppKit
 import Foundation
+import HephaestusCore
+import SwiftUI
 
 /// The window whose feedback is started.
 enum FeedbackSource {
@@ -14,16 +16,234 @@ enum FeedbackSource {
     case other
 }
 
+/// What a capture gathered for its Feedback sheet, from the captured window at capture time.
+struct FeedbackCapture {
+    /// The device whose engine creates the feedback chat (docs/feedback.md › Starting feedback).
+    let receivingDeviceID: String
+    /// docs/feedback.md › Feedback context.
+    let context: FeedbackContext
+}
+
 /// Starts feedback for a window: captures it with `WindowCapture` (owned by ui-shell), keeps the
 /// PNG in `AppModel.feedbackPreviews`, then shows the Feedback sheet on that window
 /// (`WindowSheet.feedback` on a main window). A start while a capture is running is ignored.
 @MainActor
 final class FeedbackController {
     weak var app: AppModel?
+    /// True while a window is being rendered.
+    private(set) var isCapturing = false
+    /// The captures of the open Feedback sheets, by preview id.
+    private var captures: [UUID: FeedbackCapture] = [:]
+    /// The Feedback sheets attached to windows other than main windows, by preview id.
+    private var hostedSheets: [UUID: (sheet: NSWindow, parent: NSWindow)] = [:]
 
     init() {}
 
     /// The ladybug of a status bar, or Help ▸ Send Feedback… (⇧⌘B) for the key window.
-    // STUB: ui-skills-feedback
-    func start(capturing window: NSWindow?, source: FeedbackSource) {}
+    func start(capturing window: NSWindow?, source: FeedbackSource) {
+        // A window that shows a sheet, or is itself a sheet (the key window while a sheet is
+        // shown), does not start feedback; nor does a start while a capture is running.
+        guard let app, !isCapturing, let window, window.attachedSheet == nil, window.sheetParent == nil else { return }
+        if case .main(let state) = source, state.sheet != nil { return }
+        let capture = makeCapture(for: source, app: app)
+        isCapturing = true
+        Task {
+            // The sheet opens only after the capture finishes, so it is never in the screenshot.
+            let image = try? await WindowCapture.capture(window)
+            isCapturing = false
+            let previewID = UUID()
+            if let image {
+                app.feedbackPreviews[previewID] = image.png
+            }
+            captures[previewID] = capture
+            present(previewID, source: source, on: window, app: app)
+        }
+    }
+
+    /// The capture of an open Feedback sheet.
+    func capture(for previewID: UUID) -> FeedbackCapture? {
+        captures[previewID]
+    }
+
+    /// The sheet closed: its screenshot and capture are dropped.
+    func finish(_ previewID: UUID) {
+        captures[previewID] = nil
+        app?.feedbackPreviews[previewID] = nil
+    }
+
+    // MARK: Presenting the sheet
+
+    /// The sheet is attached to the captured window: `WindowSheet.feedback` on a main window, an
+    /// AppKit sheet hosting `FeedbackSheet` on any other window.
+    private func present(_ previewID: UUID, source: FeedbackSource, on window: NSWindow, app: AppModel) {
+        guard window.isVisible, window.attachedSheet == nil else {
+            finish(previewID)
+            return
+        }
+        if case .main(let state) = source {
+            guard state.sheet == nil else {
+                finish(previewID)
+                return
+            }
+            state.sheet = .feedback(previewID: previewID)
+            return
+        }
+        let content = FeedbackSheet(previewID: previewID, source: source) { [weak self] in
+            self?.closeHostedSheet(previewID)
+        }
+        .environment(app)
+        let controller = NSHostingController(rootView: content)
+        controller.sizingOptions = .preferredContentSize
+        let sheet = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 520, height: 560), styleMask: [.titled],
+                            backing: .buffered, defer: true)
+        sheet.hidesOnDeactivate = false
+        sheet.isReleasedWhenClosed = false
+        sheet.contentViewController = controller
+        hostedSheets[previewID] = (sheet, window)
+        window.beginSheet(sheet) { [weak self] _ in
+            self?.hostedSheetEnded(previewID)
+        }
+    }
+
+    private func closeHostedSheet(_ previewID: UUID) {
+        guard let entry = hostedSheets[previewID] else { return }
+        entry.parent.endSheet(entry.sheet)
+    }
+
+    private func hostedSheetEnded(_ previewID: UUID) {
+        if let entry = hostedSheets.removeValue(forKey: previewID) {
+            entry.sheet.orderOut(nil)
+        }
+        finish(previewID)
+    }
+
+    // MARK: Context (docs/feedback.md › Feedback context)
+
+    private func makeCapture(for source: FeedbackSource, app: AppModel) -> FeedbackCapture {
+        let capturingDevice = app.localWorkspace.deviceName
+        func context(receiving deviceID: String) -> FeedbackContext {
+            FeedbackContext(appVersion: app.appVersion.version, build: app.appVersion.build, deviceName: capturingDevice,
+                            mainDeviceName: app.deviceName(deviceID))
+        }
+        switch source {
+        case .main(let state):
+            var result = context(receiving: state.deviceID)
+            if let projectID = state.projectID {
+                result.projectID = projectID
+                result.section = state.section
+                if let workspace = app.workspaces[state.deviceID] {
+                    result.item = Self.selectedItem(of: state, in: workspace, projectID: projectID)
+                }
+            }
+            return FeedbackCapture(receivingDeviceID: state.deviceID, context: result)
+        case .chat(let value):
+            var result = context(receiving: value.deviceID)
+            if let meta = app.workspaces[value.deviceID]?.chats[value.chatID] {
+                result.projectID = meta.projectID
+                result.item = meta.title
+            }
+            // A chat window counts as the `chats` section of its project.
+            result.section = .chats
+            return FeedbackCapture(receivingDeviceID: value.deviceID, context: result)
+        case .other:
+            return FeedbackCapture(receivingDeviceID: app.localDeviceID, context: context(receiving: app.localDeviceID))
+        }
+    }
+
+    /// The selected item of a main window's section; nil when nothing is selected.
+    static func selectedItem(of state: WindowState, in workspace: DeviceWorkspace, projectID: String) -> String? {
+        let view = state.projectStates[ProjectKey(deviceID: workspace.deviceID, projectID: projectID)] ?? ProjectViewState()
+        switch state.section {
+        case .tickets:
+            return firstTicketInListOrder(view.selectedTicketIDs, tickets: workspace.tickets[projectID] ?? [:],
+                                          list: view.ticketList)
+        case .bundles:
+            return view.selectedBundleID
+        case .chats:
+            return view.selectedChatID.flatMap { workspace.chats[$0]?.title }
+        case .code:
+            guard let path = view.selectedEditorPath else { return nil }
+            guard let tab = view.editorTabs.first(where: { $0.path == path }) else { return path }
+            return "\(path):\(cursorLine(of: tab.buffer))"
+        case .docs:
+            return view.selectedDocPath
+        case .web:
+            guard let tabID = view.selectedWebTabID else { return nil }
+            return workspace.webTabs[projectID]?.first { $0.id.uuidString == tabID.uppercased() }?.url
+        case .skills:
+            return view.selectedSkillName
+        }
+    }
+
+    /// The 1-based line of the cursor (the start of the selection) of an editor buffer.
+    static func cursorLine(of buffer: EditorBuffer) -> Int {
+        let text = buffer.text as NSString
+        let location = min(max(buffer.selection.location, 0), text.length)
+        var line = 1
+        var index = 0
+        while index < location {
+            let found = text.range(of: "\n", options: [], range: NSRange(location: index, length: location - index))
+            guard found.location != NSNotFound else { break }
+            line += 1
+            index = found.location + 1
+        }
+        return line
+    }
+
+    /// The first selected ticket in the ticket list's order: the sorted column, then the ticket
+    /// number (docs/tickets.md › Ticket list).
+    static func firstTicketInListOrder(_ ids: Set<String>, tickets: [String: Ticket], list: TicketListState) -> String? {
+        guard !ids.isEmpty else { return nil }
+        let number = { (id: String) in Identifiers.parseTicketID(id)?.number ?? 0 }
+        return ids.sorted { a, b in
+            guard let first = tickets[a], let second = tickets[b] else {
+                // Tickets the workspace does not hold: by number, as the list starts.
+                return list.sortAscending ? number(a) < number(b) : number(a) > number(b)
+            }
+            var order: ComparisonResult
+            switch list.sortColumn {
+            case .id:
+                order = compare(number(a), number(b))
+            case .title:
+                order = first.title.localizedStandardCompare(second.title)
+            case .status:
+                let statuses = TicketStatus.allCases
+                order = compare(statuses.firstIndex(of: first.status) ?? 0, statuses.firstIndex(of: second.status) ?? 0)
+            case .created:
+                order = compare(first.created, second.created)
+            }
+            if order == .orderedSame {
+                order = compare(number(a), number(b))
+            }
+            return list.sortAscending ? order == .orderedAscending : order == .orderedDescending
+        }
+        .first
+    }
+
+    private static func compare<T: Comparable>(_ a: T, _ b: T) -> ComparisonResult {
+        a < b ? .orderedAscending : (a > b ? .orderedDescending : .orderedSame)
+    }
+
+    // MARK: The context line of the sheet
+
+    /// The App, Device, Project, Section and Item lines of the feedback message without their
+    /// leading `- `, joined with ` · ` (docs/chats.md › Feedback message).
+    static func contextLine(_ context: FeedbackContext, projectName: String?) -> String {
+        var parts = ["App: HephaestusV2 v\(context.appVersion)(\(context.build))"]
+        if context.deviceName == context.mainDeviceName {
+            parts.append("Device: \(context.deviceName)")
+        } else {
+            parts.append("Device: \(context.deviceName), connected to \(context.mainDeviceName)")
+        }
+        if let projectID = context.projectID {
+            parts.append("Project: \(projectName ?? projectID) (\(projectID))")
+        }
+        if let section = context.section {
+            parts.append("Section: \(section.rawValue)")
+        }
+        if let item = context.item {
+            parts.append("Item: \(item)")
+        }
+        return parts.joined(separator: " · ")
+    }
 }
