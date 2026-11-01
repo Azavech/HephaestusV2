@@ -107,6 +107,9 @@ struct WebAddressBar: View {
 
     /// Return loads the typed address; Escape restores the tab's URL and moves the focus to the
     /// page, or removes the placeholder from its empty field.
+    // DOC-GAP: docs/web-tabs.md › Address bar does not say where the focus goes after Return, nor
+    // what Escape does in the placeholder's field when it has text; Return moves the focus to the
+    // page, and Escape there empties the field (a second Escape removes the placeholder).
     private func handle(_ command: CommandTextField.Command) -> Bool {
         switch command {
         case .submit:

@@ -273,6 +273,11 @@ final class WebTabsController: SectionCommandHandler {
     /// The first tab list of a binding: a selection that is nil, or names a tab that no longer
     /// exists, selects the first tab; a navigation's tab that does not exist shows the not-found
     /// text.
+    // DOC-GAP: docs/web-tabs.md › Selection selects the first tab when `selectedWebTabID` names a
+    // tab that no longer exists, while docs/ui.md › Resolving a target shows `Web tab <id> was not
+    // found.` for a navigation to a missing tab. A selection this window wrote or found when it
+    // first showed its Web section follows the first rule; one set since by a navigation follows
+    // the second.
     private func validateInitialSelection(_ tabs: [WebTab]) {
         guard let key, localSelection == nil, let window else { return }
         let selected = window.projectStates[key]?.selectedWebTabID

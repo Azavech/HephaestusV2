@@ -50,6 +50,9 @@ struct SearchPanel: View {
 
     /// A click in the window's content outside the card closes the panel; the toolbar keeps its
     /// own clicks, so its Search button toggles the panel.
+    // DOC-GAP: docs/search.md › Opening and closing closes the panel on "a click outside the
+    // panel" and toggles it with the toolbar's Search button; closing on a toolbar click would
+    // make that button reopen the panel, so toolbar clicks are left to the toolbar.
     private func installOutsideClickMonitor() {
         host.removeMonitor()
         let host = host
