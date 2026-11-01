@@ -178,14 +178,10 @@ private struct ProjectColumns: View {
             }
             CentreColumn(state: state, workspace: workspace, project: project)
                 .frame(minWidth: 540, maxWidth: .infinity, maxHeight: .infinity)
+                .background(PaneWidths(state: state))
             if state.inspectorVisible {
                 ProjectChatPanel(window: state, workspace: workspace, projectID: project.id)
-                    .frame(minWidth: 300, idealWidth: state.inspectorWidth, maxWidth: 600, maxHeight: .infinity)
-                    .onGeometryChange(for: Double.self) { Double($0.size.width) } action: { width in
-                        if width >= 300 {
-                            state.inspectorWidth = width
-                        }
-                    }
+                    .frame(minWidth: 300, maxWidth: 600, maxHeight: .infinity)
             }
         }
     }
@@ -248,6 +244,151 @@ private struct SectionContent: View {
                 WebSectionView(window: state, workspace: workspace, projectID: projectID)
             case .skills:
                 SkillsSectionView(window: state, workspace: workspace, projectID: projectID)
+            }
+        }
+    }
+}
+
+/// The widths of the sidebar and the inspector (docs/ui.md › Main window layout): a main window
+/// opens with the sidebar at 200 pt and the inspector at `inspectorWidth`, and a pane shown again
+/// takes its width back (the sidebar its last width in this window). Only a divider dragged by
+/// the user changes the widths, and only then is `inspectorWidth` stored. `HSplitView` ignores
+/// `idealWidth`, so the widths are set on its `NSSplitView`, found from the centre column.
+private struct PaneWidths: NSViewRepresentable {
+    let state: WindowState
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> ProbeView {
+        let view = ProbeView()
+        view.coordinator = context.coordinator
+        return view
+    }
+
+    func updateNSView(_ view: ProbeView, context: Context) {
+        context.coordinator.state = state
+        context.coordinator.update(probe: view)
+    }
+
+    static func dismantleNSView(_ view: ProbeView, coordinator: Coordinator) {
+        coordinator.detach()
+    }
+
+    final class ProbeView: NSView {
+        weak var coordinator: Coordinator?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            coordinator?.update(probe: self)
+        }
+    }
+
+    @MainActor
+    final class Coordinator {
+        static let defaultSidebarWidth: CGFloat = 200
+
+        weak var state: WindowState?
+        private weak var probe: NSView?
+        private weak var splitView: NSSplitView?
+        private var observer: NSObjectProtocol?
+        /// The panes (sidebar, inspector) whose widths were last applied.
+        private var applied: [Bool]?
+        private var sidebarWidth = Coordinator.defaultSidebarWidth
+        private var isApplying = false
+        private var applyScheduled = false
+
+        /// Finds the split view and applies the widths when the shown panes changed.
+        func update(probe: NSView) {
+            self.probe = probe
+            guard let state, probe.window != nil else { return }
+            var current = probe.superview
+            while let candidate = current, !(candidate is NSSplitView) {
+                current = candidate.superview
+            }
+            guard let found = current as? NSSplitView else { return }
+            if found !== splitView {
+                detach()
+                splitView = found
+                applied = nil
+                observer = NotificationCenter.default.addObserver(forName: NSSplitView.didResizeSubviewsNotification,
+                                                                  object: found, queue: .main) { [weak self] note in
+                    let byUser = note.userInfo?["NSSplitViewDividerIndex"] != nil
+                    MainActor.assumeIsolated {
+                        self?.resized(byUser: byUser)
+                    }
+                }
+            }
+            if applied != [state.sidebarVisible, state.inspectorVisible] {
+                scheduleApply(attempts: 20)
+            }
+        }
+
+        func detach() {
+            if let observer {
+                NotificationCenter.default.removeObserver(observer)
+            }
+            observer = nil
+            splitView = nil
+        }
+
+        /// The panes in split view order around the centre column, once SwiftUI has added or
+        /// removed them and the split view has its width.
+        private func panes() -> (sidebar: NSView?, centre: Int, inspector: NSView?)? {
+            guard let state, let splitView, let probe, splitView.bounds.width > 0 else { return nil }
+            let views = splitView.arrangedSubviews
+            guard views.count == 1 + (state.sidebarVisible ? 1 : 0) + (state.inspectorVisible ? 1 : 0),
+                  let centre = views.firstIndex(where: { probe.isDescendant(of: $0) }) else { return nil }
+            let sidebar = state.sidebarVisible && centre > 0 ? views[centre - 1] : nil
+            let inspector = state.inspectorVisible && centre + 1 < views.count ? views[centre + 1] : nil
+            return (sidebar, centre, inspector)
+        }
+
+        private func scheduleApply(attempts: Int) {
+            guard !applyScheduled else { return }
+            applyScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.applyScheduled = false
+                    if !self.apply(), attempts > 1 {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                            MainActor.assumeIsolated {
+                                self?.scheduleApply(attempts: attempts - 1)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        /// Sets the sidebar and inspector widths; false when the split view is not ready yet.
+        @discardableResult
+        private func apply() -> Bool {
+            guard let state, let splitView, let panes = panes() else { return false }
+            isApplying = true
+            defer { isApplying = false }
+            splitView.layoutSubtreeIfNeeded()
+            if panes.sidebar != nil {
+                splitView.setPosition(sidebarWidth, ofDividerAt: panes.centre - 1)
+            }
+            if panes.inspector != nil {
+                let position = splitView.bounds.width - CGFloat(state.inspectorWidth) - splitView.dividerThickness
+                splitView.setPosition(position, ofDividerAt: panes.centre)
+            }
+            applied = [state.sidebarVisible, state.inspectorVisible]
+            return true
+        }
+
+        /// A divider dragged by the user: the new widths are kept, `inspectorWidth` persisted.
+        private func resized(byUser: Bool) {
+            guard byUser, !isApplying, let state, let panes = panes() else { return }
+            if let sidebar = panes.sidebar, sidebar.frame.width >= 160 {
+                sidebarWidth = sidebar.frame.width
+            }
+            if let inspector = panes.inspector, inspector.frame.width >= 300 {
+                state.inspectorWidth = Double(inspector.frame.width)
             }
         }
     }
