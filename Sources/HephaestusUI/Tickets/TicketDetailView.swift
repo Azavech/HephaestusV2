@@ -205,10 +205,10 @@ private struct TicketDetailsTab: View {
         }
         .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
             Task {
-                let urls = await DroppedFiles.urls(from: providers)
+                let urls = await TicketDroppedFiles.urls(from: providers)
                 guard !urls.isEmpty else { return }
-                guard let items = PendingAttachments.fromFiles(urls) else {
-                    window.alert = PendingAttachments.folderAlert
+                guard let items = TicketPendingFiles.fromFiles(urls) else {
+                    window.alert = TicketPendingFiles.folderAlert
                     return
                 }
                 addAttachments(items)
@@ -262,12 +262,12 @@ private struct TicketDetailsTab: View {
 
     // MARK: Attachments
 
-    private func addAttachments(_ items: [PendingAttachment]) {
+    private func addAttachments(_ items: [TicketPendingFile]) {
         guard !items.isEmpty else { return }
         let ticketID = ticket.id
         Task {
             do {
-                let uploads = try await PendingAttachments.uploads(items)
+                let uploads = try await TicketPendingFiles.uploads(items)
                 _ = try await workspace.call(TicketsAddAttachments.self, TicketsAddAttachments.Params(ticketID: ticketID, attachments: uploads))
             } catch {
                 window.alert = .failure("Add Files", error)
@@ -283,7 +283,7 @@ private struct TicketAttachmentsArea: View {
     let workspace: DeviceWorkspace
     let projectID: String
     let ticket: Ticket
-    let add: ([PendingAttachment]) -> Void
+    let add: ([TicketPendingFile]) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -293,8 +293,8 @@ private struct TicketAttachmentsArea: View {
                 Spacer()
                 Button("Add Files…") {
                     Task {
-                        let urls = await PendingAttachments.chooseFiles(in: TicketActions.nsWindow(window))
-                        if let items = PendingAttachments.fromFiles(urls) {
+                        let urls = await TicketPendingFiles.chooseFiles(in: TicketActions.nsWindow(window))
+                        if let items = TicketPendingFiles.fromFiles(urls) {
                             add(items)
                         }
                     }
@@ -309,7 +309,7 @@ private struct TicketAttachmentsArea: View {
                         .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
                         .foregroundStyle(Color(nsColor: .separatorColor)))
             } else {
-                FlowLayout(spacing: 10) {
+                TicketFlowLayout(spacing: 10) {
                     ForEach(ticket.attachments) { attachment in
                         AttachmentThumbnail(attachment: attachment, workspace: workspace, projectID: projectID,
                                             onRemove: { remove(attachment) })
@@ -320,11 +320,11 @@ private struct TicketAttachmentsArea: View {
         .focusable()
         .focusEffectDisabled()
         .onPasteCommand(of: [.fileURL, .png, .tiff]) { _ in
-            switch PendingAttachments.fromPasteboard(NSPasteboard.general) {
+            switch TicketPendingFiles.fromPasteboard(NSPasteboard.general) {
             case .files(let items?):
                 add(items)
             case .files(nil):
-                window.alert = PendingAttachments.folderAlert
+                window.alert = TicketPendingFiles.folderAlert
             case .none:
                 break
             }

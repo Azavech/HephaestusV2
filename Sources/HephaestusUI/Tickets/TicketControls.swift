@@ -65,7 +65,7 @@ struct InlineTitleField: View {
 }
 
 /// A layout that places its views left to right and wraps them onto new lines.
-struct FlowLayout: Layout {
+struct TicketFlowLayout: Layout {
     var spacing: CGFloat = 8
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
@@ -107,7 +107,7 @@ struct FlowLayout: Layout {
 }
 
 /// The file URLs of dropped item providers.
-enum DroppedFiles {
+enum TicketDroppedFiles {
     static func urls(from providers: [NSItemProvider]) async -> [URL] {
         var urls: [URL] = []
         for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
@@ -125,8 +125,8 @@ enum DroppedFiles {
 }
 
 /// The chip of a pending attachment, with its remove button (×).
-struct PendingAttachmentChip: View {
-    let attachment: PendingAttachment
+struct TicketPendingFileChip: View {
+    let attachment: TicketPendingFile
     let remove: () -> Void
 
     var body: some View {

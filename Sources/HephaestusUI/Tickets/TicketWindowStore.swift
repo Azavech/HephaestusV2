@@ -20,7 +20,7 @@ enum BundleDetailTab: Hashable {
 /// The comment composer's unsent text and files of one ticket.
 struct CommentDraft: Hashable {
     var text = ""
-    var attachments: [PendingAttachment] = []
+    var attachments: [TicketPendingFile] = []
 
     var isEmpty: Bool {
         text.isEmpty && attachments.isEmpty

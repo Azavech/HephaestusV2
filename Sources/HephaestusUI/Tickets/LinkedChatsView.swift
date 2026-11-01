@@ -309,7 +309,7 @@ private struct LinkedChatDraftView: View {
     let owner: LinkedChatsOwner
 
     @State private var text = ""
-    @State private var attachments: [PendingAttachment] = []
+    @State private var attachments: [TicketPendingFile] = []
     @State private var focusRequest = 1
     @State private var isSending = false
 
@@ -371,9 +371,9 @@ private struct LinkedChatDraftView: View {
     private var composer: some View {
         VStack(alignment: .leading, spacing: 6) {
             if !attachments.isEmpty {
-                FlowLayout(spacing: 6) {
+                TicketFlowLayout(spacing: 6) {
                     ForEach(attachments) { attachment in
-                        PendingAttachmentChip(attachment: attachment) {
+                        TicketPendingFileChip(attachment: attachment) {
                             attachments.removeAll { $0.id == attachment.id }
                         }
                     }
@@ -382,7 +382,7 @@ private struct LinkedChatDraftView: View {
             HStack(alignment: .bottom, spacing: 8) {
                 Button {
                     Task {
-                        let urls = await PendingAttachments.chooseFiles(in: TicketActions.nsWindow(window))
+                        let urls = await TicketPendingFiles.chooseFiles(in: TicketActions.nsWindow(window))
                         addFiles(urls)
                     }
                 } label: {
@@ -398,12 +398,12 @@ private struct LinkedChatDraftView: View {
                     onReturn: { send() },
                     onEscape: nil,
                     onPaste: { pasteboard in
-                        switch PendingAttachments.fromPasteboard(pasteboard) {
+                        switch TicketPendingFiles.fromPasteboard(pasteboard) {
                         case .files(let items?):
                             attachments += items
                             return true
                         case .files(nil):
-                            window.alert = PendingAttachments.folderAlert
+                            window.alert = TicketPendingFiles.folderAlert
                             return true
                         case .none:
                             return false
@@ -427,15 +427,15 @@ private struct LinkedChatDraftView: View {
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color(nsColor: .separatorColor)))
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-            Task { addFiles(await DroppedFiles.urls(from: providers)) }
+            Task { addFiles(await TicketDroppedFiles.urls(from: providers)) }
             return true
         }
     }
 
     private func addFiles(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
-        guard let items = PendingAttachments.fromFiles(urls) else {
-            window.alert = PendingAttachments.folderAlert
+        guard let items = TicketPendingFiles.fromFiles(urls) else {
+            window.alert = TicketPendingFiles.folderAlert
             return
         }
         attachments += items
@@ -451,7 +451,7 @@ private struct LinkedChatDraftView: View {
         Task {
             defer { isSending = false }
             do {
-                let uploads = try await PendingAttachments.uploads(files)
+                let uploads = try await TicketPendingFiles.uploads(files)
                 let params = ChatsCreate.Params(
                     projectID: projectID, kind: owner.kind,
                     ticketID: owner.kind == .ticket ? owner.id : nil,

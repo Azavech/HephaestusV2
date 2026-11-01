@@ -379,7 +379,7 @@ final class ItemCellView: NSTableCellView {
 }
 
 /// A menu item that runs a closure.
-final class ClosureMenuItem: NSMenuItem {
+private final class ClosureMenuItem: NSMenuItem {
     private let handler: () -> Void
 
     init(title: String, handler: @escaping () -> Void) {

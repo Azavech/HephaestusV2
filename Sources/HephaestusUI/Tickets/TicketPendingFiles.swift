@@ -7,7 +7,7 @@ import HephaestusCore
 import UniformTypeIdentifiers
 
 /// A file waiting to be sent with a comment, a ticket or a chat message.
-struct PendingAttachment: Identifiable, Hashable {
+struct TicketPendingFile: Identifiable, Hashable {
     enum Source: Hashable {
         /// A file of this Mac, read when it is sent.
         case file(URL)
@@ -38,7 +38,7 @@ struct PendingAttachment: Identifiable, Hashable {
 }
 
 /// Reading files, drops and the pasteboard into pending attachments.
-enum PendingAttachments {
+enum TicketPendingFiles {
     /// The limit of one file and of the files of one request (docs/engine-api.md › Limits).
     static let maxBytes = 20_971_520
 
@@ -47,15 +47,15 @@ enum PendingAttachments {
 
     /// The pending attachments of file URLs; nil when one of them is a folder, in which case
     /// nothing of that drop is added and the caller shows `folderAlert`.
-    static func fromFiles(_ urls: [URL]) -> [PendingAttachment]? {
-        var result: [PendingAttachment] = []
+    static func fromFiles(_ urls: [URL]) -> [TicketPendingFile]? {
+        var result: [TicketPendingFile] = []
         for url in urls {
             let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
             if values?.isDirectory == true {
                 return nil
             }
             let name = url.lastPathComponent
-            result.append(PendingAttachment(name: name, contentType: mimeType(forName: name), source: .file(url)))
+            result.append(TicketPendingFile(name: name, contentType: mimeType(forName: name), source: .file(url)))
         }
         return result
     }
@@ -63,7 +63,7 @@ enum PendingAttachments {
     /// The files or the image of a pasteboard. `.files` holds nil when a folder was pasted;
     /// `.none` means the pasteboard holds neither files nor image data (text is pasted as text).
     enum PasteContent {
-        case files([PendingAttachment]?)
+        case files([TicketPendingFile]?)
         case none
     }
 
@@ -74,7 +74,7 @@ enum PendingAttachments {
         }
         if let png = pastedImagePNG(pasteboard) {
             let name = pastedImageName(at: now)
-            return .files([PendingAttachment(name: name, contentType: "image/png", source: .data(png))])
+            return .files([TicketPendingFile(name: name, contentType: "image/png", source: .data(png))])
         }
         return .none
     }
@@ -110,7 +110,7 @@ enum PendingAttachments {
     /// The uploads of pending attachments, read on this Mac and sent as base64 content
     /// (docs/tickets.md › Adding attachments: files added from a remote device travel inside the
     /// request). The 20 MiB limits fail with the engine's messages before any file is read.
-    static func uploads(_ items: [PendingAttachment]) async throws -> [AttachmentUpload] {
+    static func uploads(_ items: [TicketPendingFile]) async throws -> [AttachmentUpload] {
         var total = 0
         for item in items {
             let size = item.size ?? 0

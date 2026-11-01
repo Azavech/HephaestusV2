@@ -53,7 +53,7 @@ struct TicketCommentsView: View {
                 MarkdownView(markdown: comment.text)
             }
             if !comment.attachments.isEmpty {
-                FlowLayout(spacing: 10) {
+                TicketFlowLayout(spacing: 10) {
                     ForEach(comment.attachments) { attachment in
                         AttachmentThumbnail(attachment: attachment, workspace: workspace, projectID: projectID)
                     }
@@ -176,9 +176,9 @@ private struct CommentComposer: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if !draft.attachments.isEmpty {
-                FlowLayout(spacing: 6) {
+                TicketFlowLayout(spacing: 6) {
                     ForEach(draft.attachments) { attachment in
-                        PendingAttachmentChip(attachment: attachment) {
+                        TicketPendingFileChip(attachment: attachment) {
                             updateDraft { $0.attachments.removeAll { $0.id == attachment.id } }
                         }
                     }
@@ -200,7 +200,7 @@ private struct CommentComposer: View {
             HStack {
                 Button {
                     Task {
-                        let urls = await PendingAttachments.chooseFiles(in: TicketActions.nsWindow(window))
+                        let urls = await TicketPendingFiles.chooseFiles(in: TicketActions.nsWindow(window))
                         addFiles(urls)
                     }
                 } label: {
@@ -216,7 +216,7 @@ private struct CommentComposer: View {
         }
         .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
             Task {
-                addFiles(await DroppedFiles.urls(from: providers))
+                addFiles(await TicketDroppedFiles.urls(from: providers))
             }
             return true
         }
@@ -224,8 +224,8 @@ private struct CommentComposer: View {
 
     private func addFiles(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
-        guard let items = PendingAttachments.fromFiles(urls) else {
-            window.alert = PendingAttachments.folderAlert
+        guard let items = TicketPendingFiles.fromFiles(urls) else {
+            window.alert = TicketPendingFiles.folderAlert
             return
         }
         updateDraft { $0.attachments += items }
@@ -233,12 +233,12 @@ private struct CommentComposer: View {
 
     /// ⌘V in the composer: files and images become pending attachments; text is pasted as text.
     private func paste(_ pasteboard: NSPasteboard) -> Bool {
-        switch PendingAttachments.fromPasteboard(pasteboard) {
+        switch TicketPendingFiles.fromPasteboard(pasteboard) {
         case .files(let items?):
             updateDraft { $0.attachments += items }
             return true
         case .files(nil):
-            window.alert = PendingAttachments.folderAlert
+            window.alert = TicketPendingFiles.folderAlert
             return true
         case .none:
             return false
@@ -254,7 +254,7 @@ private struct CommentComposer: View {
         Task {
             defer { isPosting = false }
             do {
-                let uploads = try await PendingAttachments.uploads(current.attachments)
+                let uploads = try await TicketPendingFiles.uploads(current.attachments)
                 _ = try await workspace.call(TicketsAddComment.self, TicketsAddComment.Params(
                     ticketID: ticketID, text: current.text, attachments: uploads.isEmpty ? nil : uploads))
                 updateDraft { value in

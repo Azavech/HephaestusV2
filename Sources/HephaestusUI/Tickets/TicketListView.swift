@@ -312,7 +312,7 @@ struct FilterSearchField: NSViewRepresentable {
 }
 
 /// A search field that reports when it takes the keyboard focus.
-final class FocusReportingSearchField: NSSearchField {
+private final class FocusReportingSearchField: NSSearchField {
     var onFocus: (() -> Void)?
 
     override func becomeFirstResponder() -> Bool {

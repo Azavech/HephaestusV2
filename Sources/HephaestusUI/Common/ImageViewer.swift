@@ -545,7 +545,7 @@ final class ImageScrollView: NSScrollView {
 }
 
 /// Keeps a document smaller than the view in its centre.
-final class CenteringClipView: NSClipView {
+private final class CenteringClipView: NSClipView {
     override func constrainBoundsRect(_ proposedBounds: NSRect) -> NSRect {
         var rect = super.constrainBoundsRect(proposedBounds)
         guard let document = documentView else { return rect }
