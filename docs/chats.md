@@ -588,7 +588,7 @@ A set stays incomplete across process exits and app restarts; answering its last
 
 While the chat has a question set that is not completed, a native SwiftUI card is pinned above the composer of every view of the chat, below the permission card when both exist. It shows one question of the set at a time. Each chat view chooses its displayed question on its own: when the card appears for a set, it displays the first question of the set, in label order, that has no answer.
 
-- Header `<label> of <count>`, for example `B of 3`: the displayed question.
+- Header `Question <label> (<position> of <count>)`, where `<position>` is the displayed question's place in the set counting from 1, for example `Question A (1 of 1)` or `Question B (2 of 3)`.
 - At the top right, previous and next arrow buttons, then a minimize button, a chevron pointing down. The arrows display the previous and the next question of the set, in label order, answered or not; they wrap at neither end: the previous arrow is disabled on the first question and the next arrow on the last one.
 - The question text rendered as Markdown (selectable).
 - One row per option: a radio button, then the label in bold and the description in secondary text, both selectable; only the radio button and the empty part of the row choose the option, so selecting text never changes the answer. The recommended option carries a `Recommended` tag.

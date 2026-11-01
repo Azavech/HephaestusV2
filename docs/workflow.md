@@ -64,7 +64,7 @@ The label, text and option-label checks, the maximum of 10 options and all messa
 
 ### Answering
 
-- The questions appear in the chat as a card above the composer, one at a time, with a counter such as `B of 3` and arrows that move between the questions of the set. The card lists the options, with the recommended one marked `Recommended` and preselected, plus a free-text field `Answer another way`, a Submit button and a Skip button. The card can be minimized into a one-line bar ([Chats](chats.md#pinned-questions-card)).
+- The questions appear in the chat as a card above the composer, one at a time, with a header such as `Question B (2 of 3)` and arrows that move between the questions of the set. The card lists the options, with the recommended one marked `Recommended` and preselected, plus a free-text field `Answer another way`, a Submit button and a Skip button. The card can be minimized into a one-line bar ([Chats](chats.md#pinned-questions-card)).
 - The user answers the questions one by one, in any order, from any window or device. Each Submit stores one answer with `chats.answerQuestion` (`questionSetID`, `label`, `answer`); submitting again on an answered question replaces its answer while the set is not completed. Skip stores the answer `Skipped`. The chat's state is `waitingAnswers` while the set is not completed.
 - The stored answer is the label of the chosen option, or the free text as typed, trimmed. Default chosen at design time.
 

@@ -24,6 +24,14 @@ struct QuestionNavigationTests {
         #expect(QuestionNavigation.firstUnanswered(set(["A": "Yes", "C": "No"]))?.label == "B")
     }
 
+    @Test("The header reads Question <label> (<position> of <count>)")
+    func header() {
+        let three = set([:], labels: ["A", "B", "C"])
+        #expect(QuestionNavigation.header(three, three.questions[1]) == "Question B (2 of 3)")
+        let one = set([:], labels: ["A"])
+        #expect(QuestionNavigation.header(one, one.questions[0]) == "Question A (1 of 1)")
+    }
+
     @Test("The arrows move to the neighbouring question, answered or not, and wrap at neither end")
     func arrows() {
         let items = set(["B": "Yes"])

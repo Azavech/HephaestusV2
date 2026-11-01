@@ -7,9 +7,11 @@ enum QuestionNavigation {
     /// The answer Skip stores.
     static let skipped = "Skipped"
 
-    /// The header of the card and the text of its collapsed bar.
+    /// The header of the card and the text of its collapsed bar: `Question <label> (<position> of
+    /// <count>)`, the position counting from 1.
     static func header(_ set: QuestionsItem, _ question: Question) -> String {
-        "\(question.label) of \(set.questions.count)"
+        let position = (ordered(set).firstIndex { $0.label == question.label } ?? 0) + 1
+        return "Question \(question.label) (\(position) of \(set.questions.count))"
     }
 
     /// The questions of the set in label order.
