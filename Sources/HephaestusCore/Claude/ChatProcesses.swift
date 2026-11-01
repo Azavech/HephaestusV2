@@ -299,9 +299,11 @@ extension Engine {
             guard let pending = process.permissions[requestID] else { return }
             resolvePermission(pending, decision: .deny, decidedBy: nil, chatID: chatID, process: process, origin: .system)
             reportChatState(chatID)
-        case .result(let item):
+        case .result(var item):
             clearDeltas(runtime)
-            // The CLI turn that Stop interrupted has ended (docs/chats.md › Stopping a turn).
+            // The CLI turn that Stop interrupted has ended (docs/chats.md › Stopping a turn); its
+            // error is the stop, not the CLI's diagnostic (docs/chats.md › Turn result).
+            if process.stopRequested, item.isError { item.summary = Engine.stoppedSummary }
             process.stopRequested = false
             process.stopTask?.cancel()
             process.stopTask = nil
@@ -440,6 +442,9 @@ extension Engine {
             addSystemItem(Engine.refusedSettingText(name, "no answer"), level: .warning, chatID: chatID)
         }
     }
+
+    /// The `summary` of the first error `result` after Stop (docs/chats.md › Turn result).
+    static let stoppedSummary = "Stopped by the user."
 
     static func refusedSettingText(_ setting: String, _ description: String) -> String {
         var description = description.trimmingCharacters(in: .whitespacesAndNewlines)

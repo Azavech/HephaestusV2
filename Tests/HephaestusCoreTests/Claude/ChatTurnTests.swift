@@ -143,6 +143,13 @@ struct ChatTurnTests {
                                                        errors: ["[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=null"]))
             process.emit(FakeClaudeLauncher.lifecycleLine(a, "cancelled"))
             #expect(try await Self.waitForResults(bed, chat.id, 1))
+            // The stopped CLI turn shows the stop, not the CLI's diagnostic.
+            let stopped = try await bed.transcript(chat.id).compactMap { item -> ResultItem? in
+                if case .result(let result) = item { return result }
+                return nil
+            }.first
+            #expect(stopped?.isError == true)
+            #expect(stopped?.summary == "Stopped by the user.")
             // B and C still wait: the chat stays running, and the result stops the signal sequence.
             try await Task.sleep(for: .milliseconds(500))
             #expect(await bed.state(chat.id) == .running)
@@ -155,6 +162,18 @@ struct ChatTurnTests {
             #expect(await bed.waitForState(chat.id, .idle))
             process.emit(FakeClaudeLauncher.lifecycleLine(b, "completed"))
             process.emit(FakeClaudeLauncher.lifecycleLine(c, "completed"))
+            // Only the result that followed Stop is summarized as stopped; an error after it keeps its text.
+            try await bed.send(chat.id, "Reply with only the letter D.")
+            let d = try await Self.uuid(process, "Reply with only the letter D.")
+            process.emit(FakeClaudeLauncher.lifecycleLine(d, "started"))
+            process.emit(FakeClaudeLauncher.initLine())
+            process.emit(FakeClaudeLauncher.resultLine(isError: true, subtype: "error_max_turns"))
+            #expect(await bed.waitForState(chat.id, .idle))
+            let summaries = try await bed.transcript(chat.id).compactMap { item -> String?? in
+                if case .result(let result) = item { return .some(result.summary) }
+                return nil
+            }
+            #expect(summaries == ["Stopped by the user.", nil, "error_max_turns"])
             try await Task.sleep(for: .milliseconds(100))
             #expect(await bed.state(chat.id) == .idle)
             #expect(process.receivedSignals.isEmpty)
