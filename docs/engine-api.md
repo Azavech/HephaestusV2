@@ -2312,8 +2312,8 @@ String enum, the `state` of a ChatMeta in the API. Declared in `API/APITypes.swi
     {
       "label": "B",
       "options": [
-        {"description": null, "label": "1 hour"},
-        {"description": null, "label": "1 day"}
+        {"description": null, "label": "1 day"},
+        {"description": null, "label": "1 hour"}
       ],
       "question": "How long should cache entries live?",
       "recommended": "1 day"
