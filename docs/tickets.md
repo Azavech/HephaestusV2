@@ -176,7 +176,7 @@ The text filter's matching fields and the placeholder are defaults. Default chos
 | Status  | Capsule: To Do gray, In Progress blue, In Review orange, Done green            | `todo`, `in_progress`, `review`, `done` |
 | Created | Date with abbreviated month and short time, in the user's locale and time zone | By date                                 |
 
-The capsule colors and the date format are defaults. Default chosen at design time.
+The capsule colors and the date format are defaults; the [segmented progress bar](#segmented-progress-bar) of bundles uses the same colors. Default chosen at design time.
 
 - Column widths: ID, Status and Created are as wide as their widest cell and their header. Title takes the width they leave, at least 40 pt, and is the first to truncate when the list narrows; once Title is at 40 pt, Created truncates with an ellipsis, down to 40 pt; a list narrower than that scrolls horizontally. The widths follow the list's width and cannot be dragged. Default chosen at design time.
 
@@ -353,20 +353,20 @@ The fields are defined in [Data model](data-model.md#bundle-file). The order of 
 - Deleting a ticket removes its id from every bundle, each of which emits `bundle.updated`.
 - A bundle created without a title gets a provisional title made of its ticket titles joined with `, ` in bundle order, cut to its first 60 characters and trimmed, since a title may not end with white space ([Text](data-model.md#text)). Default chosen at design time.
 - Haiku then names the bundle in the background from the ticket titles with the `naming-bundle.md` prompt ([Chats](chats.md)), with at most 60 characters. As for tickets, a title changed in the meantime is never overwritten and a failed call is not retried.
-- A bundle has no status. Its progress is the number of its tickets that are `done` out of all its tickets.
+- A bundle has no status. Its progress is the number of its tickets that are `done` out of all its tickets. The [segmented progress bar](#segmented-progress-bar) also shows how its other tickets are split between the statuses.
 
 ### Bundles section
 
 The Bundles section (⌘3) shows the bundles of the selected project in a list on the left and the selected bundle on the right, with the same divider as the Tickets section. Default chosen at design time.
 
 - The list header has a New Bundle (+) button, which opens the ticket picker sheet with no ticket checked.
-- Columns: ID, Title, Progress (`<done>/<total> done`) and Created, with the widths of the ticket list's columns, Progress taking the rule of Status. The list starts sorted by ID, newest first. The columns sort as the ticket list's do, Progress by the share of done tickets; equal values keep the ID order, newest first. The sort order is kept per window and per project while the window is open (`ProjectViewState.bundleList`, [WindowState](ui.md#windowstate)). Default chosen at design time.
+- Columns: ID, Title, Progress (the [segmented progress bar](#segmented-progress-bar) followed by `<done>/<total>`) and Created, with the widths of the ticket list's columns, Progress taking the rule of Status. The list starts sorted by ID, newest first. The columns sort as the ticket list's do, Progress by the share of done tickets; equal values keep the ID order, newest first. The sort order is kept per window and per project while the window is open (`ProjectViewState.bundleList`, [WindowState](ui.md#windowstate)). Default chosen at design time.
 - The context menu of a bundle has Implement All and Delete…. Default chosen at design time.
 - With no bundles the list shows `No Bundles`, the text `Select tickets in Tickets and choose Create Bundle from Selection, or create a bundle here.`, and a New Bundle button. With no bundle selected the detail shows `No Bundle Selected`. Default chosen at design time.
 
 | Element             | Behaviour                                                                                                                                                                                                                                                                                                                             |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Header              | ID, inline title field (same behaviour as the ticket title), `Created <date> · Updated <relative time>` with the relative time of the ticket detail's Dates, and a progress bar with `<done> of <total> done`.                                                                                                                        |
+| Header              | ID, inline title field (same behaviour as the ticket title), `Created <date> · Updated <relative time>` with the relative time of the ticket detail's Dates, and the [segmented progress bar](#segmented-progress-bar) followed by `<done> of <total> done`.                                                                          |
 | Tabs                | `Tickets (<n>)` and `Chats (<n>)`.                                                                                                                                                                                                                                                                                                    |
 | Tickets tab         | Table with ID, Title and Status in bundle order, with the widths of the ticket list's columns. Dragging rows reorders the bundle with `bundles.update`; a failure shows the alert `Reorder failed` ([UI](ui.md#principles)).                                                                                                          |
 | Tickets tab actions | Add Tickets… opens the ticket picker sheet. Remove from Bundle (context menu or ⌫) removes the selected rows with `bundles.update`, without confirmation; the tickets are not deleted. Show Ticket (context menu or double-click) opens the ticket in the Tickets section. Set Status ▸ acts as in the ticket list.                   |
@@ -375,6 +375,16 @@ The Bundles section (⌘3) shows the bundles of the selected project in a list o
 | Chats tab           | Same as the ticket's Chats tab, with Implement All in place of Implement, also in the empty tab's text: `Implement All lets Claude implement this bundle. New Chat opens a conversation about it.`; New Chat shows a draft chat of kind `bundle`; its first Send calls `chats.create` with kind `bundle`, `bundleID` and the message. |
 
 The layout, actions and texts of this table are defaults. Default chosen at design time.
+
+### Segmented progress bar
+
+The Progress column of the bundle list and the header of the bundle detail show a bundle's progress with the same bar.
+
+- The bar has one segment per status, from left to right: Done, In Review, In Progress, To Do. Each segment takes the share of the bar's width that its status has among the bundle's tickets; a status without tickets has no segment.
+- Each segment has the colour of its status capsule ([Ticket list](#ticket-list)): Done green, In Review orange, In Progress blue, To Do gray.
+- The rest of the bar shows its track, a light fill. A listed id without a ticket file counts among the bundle's tickets but has no status, so its share stays empty and shows the track. A bundle without tickets shows only the track.
+- The bar is 6 pt high with rounded ends. It is 60 pt wide in the Progress column and 240 pt wide at most in the header. Default chosen at design time.
+- The bar follows the status changes of the bundle's tickets as they happen ([Live updates](#live-updates)).
 
 ### Ticket picker sheet
 

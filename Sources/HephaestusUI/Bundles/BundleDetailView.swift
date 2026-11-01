@@ -55,7 +55,7 @@ struct BundleDetailView: View {
 
     // MARK: Header
 
-    /// ID, the inline title field, `Created <date> · Updated <relative time>`, and the progress bar
+    /// ID, the inline title field, `Created <date> · Updated <relative time>`, and the segmented progress bar
     /// with `<done> of <total> done`.
     private func header(_ bundle: TicketBundle) -> some View {
         let progress = BundleProgress.of(bundle, tickets: workspace.tickets[projectID] ?? [:])
@@ -79,9 +79,8 @@ struct BundleDetailView: View {
                     .foregroundStyle(.secondary)
             }
             HStack(spacing: 10) {
-                ProgressView(value: Double(progress.done), total: Double(max(progress.total, 1)))
-                    .progressViewStyle(.linear)
-                    .frame(maxWidth: 240)
+                BundleProgressBar(progress: progress)
+                    .frame(maxWidth: BundleProgressBar.headerMaxWidth)
                 Text("\(progress.done) of \(progress.total) done")
                     .font(.callout)
                     .monospacedDigit()

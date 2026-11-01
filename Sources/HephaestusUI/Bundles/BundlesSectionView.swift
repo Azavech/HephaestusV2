@@ -7,22 +7,39 @@ import SwiftUI
 struct BundleRow: Identifiable, Hashable {
     var id: String
     var title: String
-    var done: Int
-    var total: Int
+    var progress: BundleProgress
     var created: Date
 
-    /// `<done>/<total> done`.
+    var done: Int { progress.done }
+    var total: Int { progress.total }
+
+    /// `<done>/<total>`, after the segmented progress bar.
     var progressText: String {
-        "\(done)/\(total) done"
+        "\(done)/\(total)"
     }
 }
 
-/// The progress of a bundle: its tickets that are done out of all its tickets.
-@MainActor
-enum BundleProgress {
-    static func of(_ bundle: TicketBundle, tickets: [String: Ticket]) -> (done: Int, total: Int) {
-        let done = bundle.ticketIDs.filter { tickets[$0]?.status == .done }.count
-        return (done, bundle.ticketIDs.count)
+/// The progress of a bundle: the number of its tickets in each status, out of all its tickets
+/// (docs/tickets.md › Bundle rules). A listed id without a ticket file counts in `total` only.
+struct BundleProgress: Hashable {
+    var counts: [TicketStatus: Int] = [:]
+    var total = 0
+
+    /// The tickets that are done.
+    var done: Int { count(.done) }
+
+    func count(_ status: TicketStatus) -> Int {
+        counts[status] ?? 0
+    }
+
+    static func of(_ bundle: TicketBundle, tickets: [String: Ticket]) -> BundleProgress {
+        var progress = BundleProgress(total: bundle.ticketIDs.count)
+        for id in bundle.ticketIDs {
+            if let status = tickets[id]?.status {
+                progress.counts[status, default: 0] += 1
+            }
+        }
+        return progress
     }
 }
 
@@ -59,7 +76,7 @@ struct BundlesSectionView: View {
         let tickets = workspace.tickets[projectID] ?? [:]
         let rows = (workspace.bundles[projectID] ?? [:]).values.map { bundle in
             let progress = BundleProgress.of(bundle, tickets: tickets)
-            return BundleRow(id: bundle.id, title: bundle.title, done: progress.done, total: progress.total, created: bundle.created)
+            return BundleRow(id: bundle.id, title: bundle.title, progress: progress, created: bundle.created)
         }
         return Self.sorted(rows, by: sort)
     }
@@ -172,11 +189,15 @@ struct BundlesSectionView: View {
                 .help(row.title))
         },
         ItemTableColumn(id: "progress", title: "Progress", minWidth: 24, sizing: .content,
-                        contentWidth: { ItemTableText.width($0.progressText, font: Self.progressFont) }) { row in
-            AnyView(Text(row.progressText)
-                .lineLimit(1)
-                .monospacedDigit()
-                .frame(maxWidth: .infinity, alignment: .leading))
+                        contentWidth: { Self.progressWidth($0) }) { row in
+            AnyView(HStack(spacing: Self.progressSpacing) {
+                BundleProgressBar(progress: row.progress)
+                    .frame(width: BundleProgressBar.columnWidth)
+                Text(row.progressText)
+                    .lineLimit(1)
+                    .monospacedDigit()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading))
         },
         ItemTableColumn(id: "created", title: "Created", minWidth: 40, sizing: .shrinkableContent,
                         contentWidth: { ItemTableText.width(TicketFormat.created($0.created), font: ItemTableText.body) }) { row in
@@ -190,6 +211,14 @@ struct BundlesSectionView: View {
 
     /// The font of the Progress cells: plain text with monospaced digits.
     private static let progressFont = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+
+    /// The space between the bar and the text of a Progress cell.
+    private static let progressSpacing: CGFloat = 6
+
+    /// The width of a Progress cell: the bar, the space and the text.
+    private static func progressWidth(_ row: BundleRow) -> CGFloat {
+        BundleProgressBar.columnWidth + progressSpacing + ItemTableText.width(row.progressText, font: progressFont)
+    }
 
     private func menu(for ids: Set<String>) -> [ItemTableMenuItem] {
         guard let bundleID = ids.first, let bundle = workspace.bundles[projectID]?[bundleID] else { return [] }

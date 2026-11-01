@@ -51,11 +51,12 @@ struct StatusCapsule: View {
             .foregroundStyle(.white)
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
-            .background(Capsule().fill(color))
+            .background(Capsule().fill(Self.color(of: status)))
             .fixedSize()
     }
 
-    private var color: Color {
+    /// The colour of a status, also used by the segments of `BundleProgressBar`.
+    static func color(of status: TicketStatus) -> Color {
         switch status {
         case .todo: return .gray
         case .inProgress: return .blue
