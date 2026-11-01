@@ -57,10 +57,13 @@ final class StreamFanOut<Element: Sendable>: @unchecked Sendable {
         return stream
     }
 
+    /// Yields outside the lock: a consumer cancelled during the delivery runs its termination
+    /// handler, which takes the lock to remove it, while yielding may wait for that cancellation.
     func yield(_ element: Element) {
         lock.lock()
-        defer { lock.unlock() }
-        for continuation in continuations.values {
+        let all = Array(continuations.values)
+        lock.unlock()
+        for continuation in all {
             continuation.yield(element)
         }
     }
