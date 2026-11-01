@@ -49,6 +49,9 @@ extension Engine {
 
     /// A loaded ticket: `invalid` for a malformed id, `notFound` when its project or file does
     /// not exist, `internal` when its file exists but never loaded (docs/tickets.md › Errors).
+    // DOC-GAP: docs/engine-api.md lists the `internal` error of a ticket file that never loaded
+    // for tickets.get only; docs/tickets.md › Errors gives it without a method, so every method
+    // that names such a ticket fails with it.
     func existingTicket(_ value: String) throws -> Ticket {
         let id = try normalizedTicketID(value)
         if let ticket = domain.ticket(id) {

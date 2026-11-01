@@ -32,8 +32,16 @@ extension Engine {
                 log.warn(.storage, "a change of \(path) is ignored: project \(projectID) is not loaded")
             }
         }
+        let rootsBefore = watchedRootsState()
         processDataFileChanges(absolute)
-        await watchedProjectRootsDidChange()
+        if watchedRootsState() != rootsBefore {
+            await watchedProjectRootsDidChange()
+        }
+    }
+
+    /// The registered roots and the roots of the loaded projects.
+    private func watchedRootsState() -> Set<String> {
+        Set(domain.registeredRootPaths()).union(domain.projects.values.map(\.rootPath))
     }
 
     /// One change of a `.hephaestus/` folder: its project root and the path inside the folder.
@@ -187,6 +195,8 @@ extension Engine {
         case .own:
             return
         case .deleted:
+            // DOC-GAP: docs/data-model.md › Reactions stops the running chats of an unloaded
+            // project but says nothing of its runs; they continue until they end or the app quits.
             recordApplied(path, nil)
             let unloaded = unloadTree(id)
             emitProjectsRemoved(unloaded.projectIDs, origin: .system)
@@ -249,8 +259,11 @@ extension Engine {
     func projectFileAppeared(root: URL) async {
         let rootPath = DomainPaths.standardize(root.path)
         guard domain.projectID(atRoot: rootPath) == nil else { return }
+        let rootsBefore = watchedRootsState()
         loadAppearedProject(root: rootPath)
-        await watchedProjectRootsDidChange()
+        if watchedRootsState() != rootsBefore {
+            await watchedProjectRootsDidChange()
+        }
     }
 
     /// Loads the project of a registered folder whose project file appeared.
@@ -369,7 +382,7 @@ extension Engine {
     /// registry.yml changed outside the engine: added paths are loaded and removed paths
     /// unloaded (`project.removed` for each), then `projects.changed`. A deleted file keeps the
     /// list in memory; it is written again at the next registry change.
-    // DOC-GAP: the cross-key contracts give no seam for the data directory stream; core-files
+    // Seam of core-files (coordinator, after the cross-key contracts): its data directory stream
     // calls this for a change of registry.yml.
     func registryFileChanged() async {
         let path = dataDirectory.registryFile.standardizedFileURL.path
@@ -400,8 +413,8 @@ extension Engine {
 
     /// settings.yml changed outside the engine: the values apply as if set with
     /// `settings.update`, then `settings.updated`. A deleted file keeps the values in memory.
-    // DOC-GAP: the cross-key contracts give no seam for the data directory stream; core-files
-    // calls this for a change of settings.yml.
+    // DOC-GAP: the cross-key contracts give no seam for a change of settings.yml on the data
+    // directory stream; this is the one for core-files to call.
     func settingsFileChanged() async {
         let path = dataDirectory.settingsFile.standardizedFileURL.path
         guard case .data(let data) = readChangedFile(path) else { return }
