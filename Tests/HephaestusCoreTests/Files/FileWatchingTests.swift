@@ -4,7 +4,7 @@ import Testing
 
 /// FSEvents tests: each waits for the event it expects with a generous timeout, and checks what
 /// must not happen against a later marker change, so that no test depends on a fixed delay.
-@Suite("File watching", .serialized)
+@Suite("File watching", .serialized, .fsEvents)
 struct FileWatchingTests {
     /// Writes `marker.txt`, again every 2 seconds, until a files.changed event of `projectID`
     /// names it (or the whole project): the stream is running and every earlier change has been

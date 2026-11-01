@@ -1,4 +1,5 @@
 import Foundation
+import Testing
 @testable import HephaestusCore
 
 /// A launcher that starts nothing: these tests never reach a Claude process.
@@ -23,6 +24,98 @@ extension FileTrash {
     }
 }
 
+/// A counting semaphore whose waiters are served in order, priority waiters first.
+final class AsyncGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var available: Int
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(_ count: Int) {
+        available = count
+    }
+
+    func acquire(priority: Bool = false) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            if available > 0 {
+                available -= 1
+                lock.unlock()
+                continuation.resume()
+            } else {
+                if priority { waiters.insert(continuation, at: 0) } else { waiters.append(continuation) }
+                lock.unlock()
+            }
+        }
+    }
+
+    func release() {
+        lock.lock()
+        if waiters.isEmpty {
+            available += 1
+            lock.unlock()
+        } else {
+            let next = waiters.removeFirst()
+            lock.unlock()
+            next.resume()
+        }
+    }
+
+    func withPermit<T>(priority: Bool = false, _ body: () async throws -> T) async rethrows -> T {
+        await acquire(priority: priority)
+        defer { release() }
+        return try await body()
+    }
+}
+
+/// Swift Testing starts every test of the run at once. A test engine opens one FSEvents stream
+/// per watched folder (the data directory, the skills library and each project root), and a
+/// process gets at most 512 streams: past that `FSEventStreamStart` fails and the engine
+/// watches nothing. So at most `limit` test engines run at the same time; the tests that build
+/// one wait here. An engine built inside another test engine's body shares that engine's slot.
+enum TestEngineSlots {
+    static let limit = 32
+    private static let gate = AsyncGate(limit)
+    @TaskLocal private static var held = false
+    /// True inside `FSEventsTests.serialized`: those tests get the next free slot.
+    @TaskLocal static var first = false
+
+    static func withSlot<T>(_ body: () async throws -> T) async throws -> T {
+        if held { return try await body() }
+        return try await gate.withPermit(priority: first) {
+            try await $held.withValue(true) { try await body() }
+        }
+    }
+}
+
+/// The tests that wait for FSEvents run one at a time, across suites, so that no other
+/// watching test's writes compete with their timing checks; each also gets the next free
+/// engine slot. Mark them with the trait `.fsEvents`.
+enum FSEventsTests {
+    private static let gate = AsyncGate(1)
+
+    static func serialized<T>(_ body: () async throws -> T) async throws -> T {
+        try await gate.withPermit {
+            try await TestEngineSlots.$first.withValue(true) { try await body() }
+        }
+    }
+}
+
+/// Runs each test it is applied to (each test of a suite it is applied to) through
+/// `FSEventsTests.serialized`.
+struct FSEventsTrait: SuiteTrait, TestTrait, TestScoping {
+    var isRecursive: Bool { true }
+
+    func provideScope(for test: Test, testCase: Test.Case?,
+                      performing function: @Sendable () async throws -> Void) async throws {
+        try await FSEventsTests.serialized { try await function() }
+    }
+}
+
+extension Trait where Self == FSEventsTrait {
+    /// The test waits for FSEvents: see `FSEventsTests`.
+    static var fsEvents: Self { Self() }
+}
+
 /// Runs `body` with a started test engine (docs/development.md › Test rules: a temporary data
 /// directory, ports 0, the sync server on the loopback interface, no Bonjour advertising) and a
 /// `LocalEngineConnection` to it, then closes both. `prepare` receives the data directory before
@@ -30,7 +123,7 @@ extension FileTrash {
 /// directory, for other files of the test.
 func withTestEngine<T>(debugTools: Bool = false, prepare: (DataDirectory) throws -> Void = { _ in },
                        _ body: (Engine, LocalEngineConnection, URL) async throws -> T) async throws -> T {
-    try await withTemporaryDirectory { folder in
+    try await TestEngineSlots.withSlot { try await withTemporaryDirectory { folder in
         let directory = DataDirectory(url: folder.appendingPathComponent("Data", isDirectory: true))
         try FileManager.default.createDirectory(at: directory.url, withIntermediateDirectories: true)
         try prepare(directory)
@@ -50,7 +143,7 @@ func withTestEngine<T>(debugTools: Bool = false, prepare: (DataDirectory) throws
             await engine.shutdown()
             throw error
         }
-    }
+    } }
 }
 
 /// The first element of `stream` that satisfies `predicate`, or nil after `timeout`.

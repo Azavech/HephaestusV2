@@ -559,9 +559,9 @@ struct MCPServerHTTPTests {
 
     @Test("settings.update of mcpPort moves the server when no port override is set")
     func movesWithSetting() async throws {
-        let first = try await Self.freePort()
-        let second = try await Self.freePort()
-        try await withTemporaryDirectory { folder in
+        try await TestEngineSlots.withSlot { try await withTemporaryDirectory { folder in
+            let first = try await Self.freePort()
+            let second = try await Self.freePort()
             let directory = DataDirectory(url: folder.appendingPathComponent("Data", isDirectory: true))
             try FileManager.default.createDirectory(at: directory.url, withIntermediateDirectories: true)
             _ = try DeviceFileStore.write(HostSettings(mcpPort: first, syncEnabled: false), to: directory)
@@ -584,7 +584,7 @@ struct MCPServerHTTPTests {
             }
             await engine.shutdown()
             #expect(try String(contentsOf: directory.engineLogFile, encoding: .utf8).contains("INFO mcp: stopped\n"))
-        }
+        } }
     }
 
     @Test("With a port override, a new mcpPort is stored and the server stays")

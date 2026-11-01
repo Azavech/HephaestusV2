@@ -52,7 +52,7 @@ struct DomainHarness {
 /// data directory and the projects folder before the engine opens them.
 func withDomainEngine<T>(prepare: (DataDirectory, URL) throws -> Void = { _, _ in },
                          _ body: (DomainHarness) async throws -> T) async throws -> T {
-    try await withTemporaryDirectory { folder in
+    try await TestEngineSlots.withSlot { try await withTemporaryDirectory { folder in
         let directory = DataDirectory(url: folder.appendingPathComponent("Data", isDirectory: true))
         let projects = folder.appendingPathComponent("Projects", isDirectory: true)
         let trash = folder.appendingPathComponent("Trash", isDirectory: true)
@@ -80,7 +80,7 @@ func withDomainEngine<T>(prepare: (DataDirectory, URL) throws -> Void = { _, _ i
             await engine.shutdown()
             throw error
         }
-    }
+    } }
 }
 
 extension Engine {

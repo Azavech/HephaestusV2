@@ -190,7 +190,7 @@ func withChatEngine<T>(launcher: FakeClaudeLauncher = FakeClaudeLauncher(), debu
                        chatTimings: ChatTimings = testChatTimings(), cliTimings: ClaudeCLITimings = testCLITimings(),
                        waitForCLI: Bool = true, prepare: (ProjectFolder, DataDirectory) throws -> Void = { _, _ in },
                        _ body: (ChatTestBed) async throws -> T) async throws -> T {
-    try await withTemporaryDirectory { temporary in
+    try await TestEngineSlots.withSlot { try await withTemporaryDirectory { temporary in
         let data = DataDirectory(url: temporary.appendingPathComponent("Data", isDirectory: true))
         try FileManager.default.createDirectory(at: data.url, withIntermediateDirectories: true)
         let root = temporary.appendingPathComponent("Project", isDirectory: true).standardizedFileURL
@@ -221,5 +221,5 @@ func withChatEngine<T>(launcher: FakeClaudeLauncher = FakeClaudeLauncher(), debu
             await engine.shutdown()
             throw error
         }
-    }
+    } }
 }

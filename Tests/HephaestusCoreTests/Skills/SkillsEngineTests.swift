@@ -438,7 +438,7 @@ struct SkillsEngineTests {
 
     // MARK: Watching and the library location
 
-    @Test("A change made outside the engine emits skills.changed with origin system")
+    @Test("A change made outside the engine emits skills.changed with origin system", .fsEvents)
     func watcher() async throws {
         try await withSkillsEngine { _, connection, library, _ in
             let events = connection.events
@@ -452,22 +452,28 @@ struct SkillsEngineTests {
             }
             let primed = await firstEvent(named: SkillsChangedEvent.name, on: events, timeout: .seconds(20))
             primer.cancel()
+            _ = await primer.result
             _ = try #require(primed)
+            // FSEvents may report one write in several callbacks, each a skills.changed of the
+            // library as it was then: each step waits for the event that shows its change.
+            func changed(to skills: [SkillSummary]) async -> EngineEventEnvelope? {
+                await firstElement(of: events, timeout: .seconds(20)) {
+                    $0.name == SkillsChangedEvent.name && (try? $0.payload(SkillsChangedEvent.self)) == skills
+                }
+            }
             try FileManager.default.removeItem(at: library.appendingPathComponent("primer"))
-            #expect(try #require(await firstEvent(named: SkillsChangedEvent.name, on: events, timeout: .seconds(10)))
-                .payload(SkillsChangedEvent.self).isEmpty)
+            #expect(try #require(await changed(to: [])).origin == .system)
             try writeSkill("outside", in: library, description: "Written elsewhere.")
-            let event = try #require(await firstEvent(named: SkillsChangedEvent.name, on: events, timeout: .seconds(10)))
-            #expect(event.origin == .system)
-            #expect(try event.payload(SkillsChangedEvent.self) == [SkillSummary(name: "outside", description: "Written elsewhere.")])
+            let outside = [SkillSummary(name: "outside", description: "Written elsewhere.")]
+            #expect(try #require(await changed(to: outside)).origin == .system)
 
             try writeFile("outside/templates/x.md", in: library, "x")
-            let inside = try #require(await firstEvent(named: SkillsChangedEvent.name, on: events, timeout: .seconds(10)))
+            let inside = try #require(await firstEvent(named: SkillsChangedEvent.name, on: events, timeout: .seconds(20)))
             #expect(inside.origin == .system)
         }
     }
 
-    @Test("A new library location is used, watched, and the old one is left alone")
+    @Test("A new library location is used, watched, and the old one is left alone", .fsEvents)
     func libraryLocation() async throws {
         try await withSkillsEngine { _, connection, library, _ in
             try writeSkill("old", in: library, description: "Old.")
