@@ -244,7 +244,7 @@ Input schemas, errors and examples: [Debug tools](mcp.md#debug-tools).
 
 1. Tests use Swift Testing (`import Testing`, `@Test`, `#expect`). Default chosen at design time.
 2. A test that touches files creates its own temporary directory and removes it at the end. Tests never read or write the default data directory, `~/.claude` or the user's projects.
-3. A test engine is built from an `EngineConfiguration` ([Engine configuration](architecture.md#engine-configuration)): a temporary data directory, ports 0, the sync server on the loopback interface, no Bonjour advertising.
+3. A test engine is built from an `EngineConfiguration` ([Engine configuration](architecture.md#engine-configuration)): a temporary data directory, ports 0, the sync server on the loopback interface, no Bonjour advertising and therefore no Bonjour browsing ([Startup](architecture.md#startup)).
 4. Engine method tests call through `LocalEngineConnection`, so they exercise the JSON path every client uses. Default chosen at design time.
 5. Tests never start the real Claude CLI. Chat behaviour is tested with the in-memory `ClaudeProcessLauncher` fed with fixture lines, and the CLI arguments are compared as argument lists with [Chats](chats.md).
 6. Tests use no network beyond 127.0.0.1 and no user interaction; the GitHub answers of the release feed are stubbed.

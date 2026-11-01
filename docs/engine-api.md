@@ -40,7 +40,7 @@ every connection ◄────────────────────
 | Binary data      | Standard base64 with padding and without line breaks (RFC 4648 section 4), in fields whose name ends in `Base64`.                                                                                                                                                                                                                                                                                                                                                                                             |
 | Enums            | String raw values, case-sensitive: status `in_progress`, never `In Progress`.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Numbers          | Integers are JSON numbers without fraction.                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Text             | UTF-8. Line endings are stored as sent.                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Text             | UTF-8. Multi-line values of the data model (descriptions, comment texts, message texts) are stored with CR LF and lone CR converted to LF ([Data model](data-model.md#text)); the text of `files.write` and `skills.writeFile` is written as sent.                                                                                                                                                                                                                                                            |
 
 ### Identifiers
 
@@ -56,7 +56,7 @@ every connection ◄────────────────────
 | skill name                                           | `String`             | Folder name of the skill ([Skills](skills.md#skill-names)) | `swift-style`                          |
 
 - The type aliases and formats are those of [Data model](data-model.md#ids). Project identifiers, ticket ids, bundle ids and UUIDs are accepted in any letter case and are always returned in their stored uppercase form; requestIDs and skill names are matched exactly.
-- An id that does not have its format fails with `invalid`; a well-formed id that names nothing fails with `notFound` ([Tickets and bundles](tickets.md#identifiers)).
+- An id that does not have its format fails with `invalid`; a well-formed id that names nothing fails with `notFound` ([Tickets and bundles](tickets.md#identifiers)). A malformed project identifier fails with `<param>: use 2 to 8 letters A–Z.`, for example `projectID: use 2 to 8 letters A–Z.`, and a malformed skill name with `<param>: use at most 64 lowercase letters, digits and single hyphens between them.`; a param of Swift type `UUID` that is not a UUID fails with the `invalid` of [Dispatcher errors](#dispatcher-errors). The error tables of the methods list these cases.
 - The project of a ticket or a bundle is the identifier part of its id.
 
 ### Paths
@@ -68,27 +68,27 @@ every connection ◄────────────────────
 | Skill path    | The skill's folder                  | `skills.readFile`, `skills.writeFile`, `skills.deleteFile`, Skill `files`                                  |
 | Absolute path | The main device's file system       | `projects.create`, `projects.open`, `fs.browse`, ProjectSummary `rootPath`, AttachmentUpload `sourcePath`  |
 
-- Project paths and skill paths use `/` separators, have no leading `/` and no `.`, `..` or empty components; a trailing `/` is removed first. `""` means the root and is accepted only where a method says so. A path that breaks a rule fails with `invalid`.
+- Project paths and skill paths use `/` separators, have no leading `/` and no `.`, `..` or empty components; a trailing `/` is removed first. `""` means the root and is accepted only where a method says so. A path that breaks a rule, `""` included where the method does not accept it, fails with `invalid` and a message of the form `<param>: <reason>.` ([Messages](#messages)).
 - The check is lexical: symbolic links inside a project or a skill are followed without further checks. Default chosen at design time.
 - Data paths have the forms of [Data model](data-model.md#attachments); `attachments.read` checks them.
 - Absolute paths start with `/`. The engine standardizes them before use: `.` components are removed, `..` components resolved, repeated and trailing `/` removed. Symbolic links are not resolved, as in the registry ([Data model](data-model.md#registry-file)). Results carry the standardized form.
 
 ### Limits
 
-| Limit                                              | Value                                                                                                                                                                                                                                                                                                                                                                                                          |
-| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Attachments                                        | 20 MiB (20,971,520 bytes) per file once decoded, and 20 MiB for all the attachments of one request together ([Tickets and bundles](tickets.md#storage-and-limits)).                                                                                                                                                                                                                                            |
-| Content returned by files.read and skills.readFile | 20 MiB; a larger file is returned without content. Default chosen at design time.                                                                                                                                                                                                                                                                                                                              |
-| Text of files.write and skills.writeFile           | 20 MiB of UTF-8. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                                                |
-| Remote message                                     | 32 MiB per message, set by the transport ([Remote devices](remote.md)).                                                                                                                                                                                                                                                                                                                                        |
-| outputTail of a RunResult                          | The last 200 lines, at most 20,000 characters. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                  |
-| run.output events                                  | At most one per run every 100 ms. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                               |
-| chat.delta events                                  | At most 20 per second per chat ([Chats](chats.md#streaming)).                                                                                                                                                                                                                                                                                                                                                  |
-| files.changed events                               | Emitted 300 ms after the last change, or 2 s after the first change of the batch, whichever comes first. At most 500 paths per event: when more paths changed, each is replaced by its ancestor at the smallest depth that brings the distinct paths to 500 or fewer (depth 1 is a top-level entry such as `.build`); `[""]` only when more than 500 top-level entries changed. Default chosen at design time. |
-| Entries returned by files.list                     | At most 10,000 per directory. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                                   |
-| limit of search.query                              | 1–1,000, default 200. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                                           |
-| snippet of a SearchResult                          | At most 200 characters ([Search](search.md#snippets)).                                                                                                                                                                                                                                                                                                                                                         |
-| timeoutSeconds of projects.run                     | 1–1,800, default 600. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                                           |
+| Limit                                              | Value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Attachments                                        | 20 MiB (20,971,520 bytes) per file once decoded, and 20 MiB for all the attachments of one request together ([Tickets and bundles](tickets.md#storage-and-limits)).                                                                                                                                                                                                                                                                                                                        |
+| Content returned by files.read and skills.readFile | 20 MiB; a larger file is returned without content. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Text of files.write and skills.writeFile           | 20 MiB of UTF-8. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Remote message                                     | 32 MiB per message, set by the transport ([Remote devices](remote.md)).                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| outputTail of a RunResult                          | The last 200 lines, at most 20,000 characters. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                                                                                              |
+| run.output events                                  | At most one per run every 100 ms. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| chat.delta events                                  | At most 20 per second per chat ([Chats](chats.md#streaming)).                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| files.changed events                               | Emitted 300 ms after the last change, or 2 s after the first change of the batch, whichever comes first. At most 500 paths per event: when more paths changed, each is replaced by its ancestor at one depth, the same for every path and the greatest that brings the distinct paths to 500 or fewer, so the event keeps as much detail as fits (depth 1 is a top-level entry such as `.build`); `[""]` only when more than 500 top-level entries changed. Default chosen at design time. |
+| Entries returned by files.list                     | At most 10,000 per directory. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| limit of search.query                              | 1–1,000, default 200. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| snippet of a SearchResult                          | At most 200 characters ([Search](search.md#snippets)).                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| timeoutSeconds of projects.run                     | 1–1,800, default 600. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 The 20 MiB limits keep a base64-encoded file under the 32 MiB message size, so a remote device can read everything a local window can.
 
@@ -99,7 +99,7 @@ The 20 MiB limits keep a base64-encoded file under the 32 MiB message size, so a
 - A call that leaves the stored data unchanged writes nothing, emits no event and returns the current object. Default chosen at design time.
 - Concurrent edits follow "last write wins". The only optimistic check is `files.write` with `expectedModified`. Default chosen at design time.
 - Every write of a ticket, bundle or chat metadata file sets its `updated` ([Data model](data-model.md)).
-- What the API removes goes to the Trash of the main device and is never deleted: tickets, bundles, ticket and comment attachments ([Tickets and bundles](tickets.md#deleting)), chats ([Chats](chats.md#persistence)), files of a project (`files.trash`), skills and skill files ([Skills](skills.md)). When the Trash cannot be used, the call fails with `unavailable` and `<path> cannot be moved to the Trash: <reason>.`; the writes that come before the move in [Data model](data-model.md#changes-that-touch-several-files) stay, with their events (a failed `tickets.delete` leaves the ticket out of its bundles). `projects.remove` only unregisters.
+- What the API removes goes to the Trash of the main device and is never deleted: tickets, bundles, ticket and comment attachments ([Tickets and bundles](tickets.md#deleting)), chats ([Chats](chats.md#persistence)), files of a project (`files.trash`), skills and skill files ([Skills](skills.md)). When the Trash cannot be used, the call fails with `unavailable` and `<path> cannot be moved to the Trash: <reason>.`, `<path>` being the absolute path of the item on the main device; the writes that come before the move in [Data model](data-model.md#changes-that-touch-several-files) stay, with their events (a failed `tickets.delete` leaves the ticket out of its bundles). `projects.remove` only unregisters.
 - Events are emitted after the write they describe succeeded. Counters (`nextTicketNumber`, `nextBundleNumber`) are written before the object they number, so a failure can skip a number but never reuse one.
 
 ## Actors
@@ -161,9 +161,15 @@ Every method can fail with these, in this order of checks.
 | The params do not decode                          | invalid   | `Invalid params for <name>: <coding path>: <reason>.`                                |
 | The handler throws another error than EngineError | internal  | `Internal error: <localized description>.` The error is logged to `Logs/engine.log`. |
 
+- `<coding path>` names the param from the top level with the form of [MCP server](mcp.md#validation-messages), indexes counting from 0 (`questions[1].options[0].label`); `params` names the params object itself.
+- `<reason>` is `required` for a missing or null required key, `must be <type>` for a value of the wrong type (`a string`, `an integer`, `a boolean`, `a number`, `an array`, `an object`, else `a valid value`), `must be one of <values joined by ", ">` for an unknown enum value, `must be a UUID` for a malformed UUID, `is not valid JSON` for params that are not JSON, and `is not a valid value` otherwise.
+- `<localized description>` is the error's `localizedDescription` when it provides one, and its Swift `description` otherwise, so that the message names the failure; a final period is dropped.
+
+The forms of the coding path and the reasons are Default chosen at design time.
+
 ### Messages
 
-- A message is one or two English sentences that start with a capital letter and end with a period. Clients show it as-is; the MCP server returns it to Claude as the tool error text ([MCP server](mcp.md#tool-errors)).
+- A message is one or two English sentences that end with a period. It starts with a capital letter, except when it starts with a name kept in its own spelling: a param or a coding path (`<param>: <reason>.`), a method name (`<name> is not available to <kind>.`), a key (`sourcePath is accepted from Claude only.`) or a path (`<path> changed on disk.`). Clients show it as-is; the MCP server returns it to Claude as the tool error text ([MCP server](mcp.md#tool-errors)).
 - The messages of tickets and bundles are in [Tickets and bundles](tickets.md#errors), those of the questions rules in [Workflow](workflow.md#validation), and the failures of a remote connection in [Remote devices](remote.md#errors-produced-by-the-connection); this document quotes the others where they matter.
 - A message that no document defines uses `<Kind> <id> not found.` for `notFound`, for example `File Sources/App.swift not found.`, and `<param>: <reason>.` for `invalid`, for example `identifier: use 2 to 8 letters A–Z.`; for an element of an array, `attachments[1]: <reason>.`
 - The messages quoted in the docs are exact. Tests assert error codes, and assert messages only where a document quotes them. Default chosen at design time.
@@ -308,11 +314,11 @@ Swift type `ProjectsCreate` · actors: user, claude · result: [ProjectDetail](#
 Steps:
 
 1. Standardize `rootPath` and uppercase `identifier`.
-2. Validate: `identifier` matches `^[A-Z]{2,8}$`; `name` is valid; `rootPath` is absolute and has no `.hephaestus` component.
+2. Validate: `identifier` matches `^[A-Z]{2,8}$`; `name` is valid; `rootPath` is absolute and has no `.hephaestus` component; with `parentID`, that project is loaded and `rootPath` is strictly inside its root. A call that fails here creates no folder. Default chosen at design time (parent checked here).
 3. Check that no loaded project uses the identifier.
 4. Use the folder when it exists as a directory; create it when it does not exist and `createDirectory` is true. When `createDirectory` is true and the folder exists, the existing folder is used. Default chosen at design time.
 5. Check that the folder has no `.hephaestus/project.yml`.
-6. Choose the parent: with `parentID`, that project, and `rootPath` must be strictly inside its root; without `parentID`, the innermost loaded project whose root contains `rootPath`, when there is one; otherwise the project is top-level. Projects already registered inside `rootPath` are left as they are. Default chosen at design time.
+6. Choose the parent: with `parentID`, that project (checked at step 2); without `parentID`, the innermost loaded project whose root contains `rootPath`, when there is one; otherwise the project is top-level. Projects already registered inside `rootPath` are left as they are. Default chosen at design time.
 7. Write `.hephaestus/project.yml` with the defaults of [Data model](data-model.md#project-file) and `.hephaestus/.gitignore` containing the line `chats/`.
 8. Register it: a top-level project's root is appended to registry.yml; a sub project's path relative to the parent root is appended to the parent's `subprojects`.
 
@@ -345,12 +351,12 @@ Steps:
 6. Register it: the innermost loaded project whose root contains `rootPath` becomes its parent (the relative path is appended to the parent's `subprojects`); without such a project, `rootPath` is appended to registry.yml.
 7. Remove from registry.yml every top-level entry that is now loaded as a descendant of the opened project. Default chosen at design time.
 
-| Error    | When                                                                                                                                     |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| invalid  | rootPath is not absolute; project.yml fails validation (the message names the field).                                                    |
-| notFound | The folder does not exist; the folder has no `.hephaestus/project.yml` (`No project at <rootPath>.`).                                    |
-| conflict | An identifier of the project or of a descendant is used by another loaded project (`Identifier HEPH is already used by Hephaestus V2.`). |
-| internal | registry.yml or the parent's project.yml cannot be written.                                                                              |
+| Error    | When                                                                                                                                                               |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| invalid  | rootPath is not absolute; project.yml fails validation (`project.yml: <field>: <reason>.`, for example `project.yml: name: the required key is missing or null.`). |
+| notFound | The folder does not exist; the folder has no `.hephaestus/project.yml` (`No project at <rootPath>.`).                                                              |
+| conflict | An identifier of the project or of a descendant is used by another loaded project (`Identifier HEPH is already used by Hephaestus V2.`).                           |
+| internal | registry.yml or the parent's project.yml cannot be written.                                                                                                        |
 
 Events: project.updated (the parent, when the project becomes a sub project), project.updated (the opened project), projects.changed.
 
@@ -368,11 +374,11 @@ Swift type `ProjectsUpdate` · actors: user, claude · result: [ProjectDetail](#
 
 An absent param leaves its value unchanged. The identifier, `created`, the counters, `subprojects`, `webTabs` and `skills` change only through their own methods.
 
-| Error     | When                                                                                                                                                            |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| notFound  | No loaded project has this identifier.                                                                                                                          |
-| invalid   | name, docsPath, commands or chatDefaults fail validation ([Data model](data-model.md#project-file)); docsPath breaks the path rules or is inside `.hephaestus`. |
-| forbidden | The actor is claude and chatDefaults is present (`Claude cannot change chat defaults.`).                                                                        |
+| Error     | When                                                                                                                                                                                    |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| notFound  | No loaded project has this identifier.                                                                                                                                                  |
+| invalid   | projectID is malformed; name, docsPath, commands or chatDefaults fail validation ([Data model](data-model.md#project-file)); docsPath breaks the path rules or is inside `.hephaestus`. |
+| forbidden | The actor is claude and chatDefaults is present (`Claude cannot change chat defaults.`).                                                                                                |
 
 Events: project.updated; projects.changed when the name changed.
 
@@ -392,6 +398,7 @@ Unregisters the project and all its descendants. No file inside their folders is
 
 | Error     | When                                                                                                                                       |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| invalid   | projectID is malformed.                                                                                                                    |
 | notFound  | No loaded project has this identifier.                                                                                                     |
 | forbidden | The actor is claude and the project holds the calling chat or is one of its ancestors (`A chat cannot remove the project it belongs to.`). |
 
@@ -417,12 +424,12 @@ Runs one of the project's commands. Execution (shell, environment, working direc
 - The exit code is the process's exit status, or 128 + the signal number when a signal terminated it. Default chosen at design time.
 - Runs are not persisted. When the engine stops, its runs end as [Shutdown](architecture.md#shutdown) specifies.
 
-| Error    | When                                                                                                  |
-| -------- | ----------------------------------------------------------------------------------------------------- |
-| notFound | No loaded project has this identifier.                                                                |
-| invalid  | The project has no command for kind (`HEPH has no test command.`); timeoutSeconds is outside 1–1,800. |
-| conflict | A run of the same kind is running in this project (`A build of HEPH is already running.`).            |
-| internal | The process cannot be started.                                                                        |
+| Error    | When                                                                                                                          |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| notFound | No loaded project has this identifier.                                                                                        |
+| invalid  | projectID is malformed; the project has no command for kind (`HEPH has no test command.`); timeoutSeconds is outside 1–1,800. |
+| conflict | A run of the same kind is running in this project (`A build of HEPH is already running.`).                                    |
+| internal | The process cannot be started.                                                                                                |
 
 Events: run.started (origin: the caller), run.output (zero or more), run.finished.
 
@@ -438,6 +445,7 @@ Sends SIGINT to the run's process group, SIGTERM 5 seconds later when it is stil
 
 | Error    | When                                                     |
 | -------- | -------------------------------------------------------- |
+| invalid  | runID is not a UUID.                                     |
 | notFound | No running run has this id (finished runs are not kept). |
 
 Events: run.finished when the process has ended.
@@ -445,6 +453,8 @@ Events: run.finished when the process has ended.
 ## Tickets
 
 Ticket fields, identifiers, the description template, the status rules, titles and naming, attachments and every error message are in [Tickets and bundles](tickets.md); the ticket file format is in [Data model](data-model.md#ticket-file); the rules Claude follows while working on tickets are in [Workflow](workflow.md).
+
+A `ticketID` param, or a `ui.open` target, that names a ticket whose file exists but never loaded fails with `internal` (`Ticket file HEPH-12.yml cannot be read: <reason>.`) in every method, not only `tickets.get` ([Tickets and bundles](tickets.md#errors)). Default chosen at design time.
 
 ### tickets.list
 
@@ -458,6 +468,7 @@ Returns every ticket of the project, not those of its sub projects, sorted by ti
 
 | Error    | When                                   |
 | -------- | -------------------------------------- |
+| invalid  | projectID is malformed.                |
 | notFound | No loaded project has this identifier. |
 
 Events: none.
@@ -500,12 +511,12 @@ Steps, as in [Tickets and bundles](tickets.md#creation-steps):
 
 When step 3 or 4 fails, the copied files are removed and the allocated number stays used. The status is always todo; a user picks another status afterwards with `tickets.setStatus`.
 
-| Error     | When                                                                                                                                                                                                                                                        |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| notFound  | No loaded project has this identifier.                                                                                                                                                                                                                      |
-| invalid   | description is empty (`The description must not be empty.`); a claude description does not follow the template ([Tickets and bundles](tickets.md#template-validation)); title is invalid; an attachment is invalid ([AttachmentUpload](#attachmentupload)). |
-| forbidden | The actor is claude and title is present (`Claude cannot set a ticket title; Haiku names the ticket.`); a user sent an attachment with sourcePath.                                                                                                          |
-| internal  | A file cannot be written.                                                                                                                                                                                                                                   |
+| Error     | When                                                                                                                                                                                                                                                                                |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| notFound  | No loaded project has this identifier.                                                                                                                                                                                                                                              |
+| invalid   | projectID is malformed; description is empty (`The description must not be empty.`); a claude description does not follow the template ([Tickets and bundles](tickets.md#template-validation)); title is invalid; an attachment is invalid ([AttachmentUpload](#attachmentupload)). |
+| forbidden | The actor is claude and title is present (`Claude cannot set a ticket title; Haiku names the ticket.`); a user sent an attachment with sourcePath.                                                                                                                                  |
+| internal  | A file cannot be written.                                                                                                                                                                                                                                                           |
 
 Events: project.updated, ticket.updated, projects.changed, chat.updated (feedback link only); later ticket.updated with origin system when Haiku has named the ticket.
 
@@ -604,10 +615,10 @@ Swift type `TicketsUpdateComment` · actors: user, claude · result: [Ticket](da
 
 Sets the comment's `updated` to now. The attachments of a comment do not change. The user and Claude may edit any comment, whoever wrote it ([Tickets and bundles](tickets.md#comments)).
 
-| Error    | When                                                                    |
-| -------- | ----------------------------------------------------------------------- |
-| invalid  | ticketID is malformed; text is empty and the comment has no attachment. |
-| notFound | No such ticket; no comment with this id in it.                          |
+| Error    | When                                                                                             |
+| -------- | ------------------------------------------------------------------------------------------------ |
+| invalid  | ticketID is malformed; commentID is not a UUID; text is empty and the comment has no attachment. |
+| notFound | No such ticket; no comment with this id in it.                                                   |
 
 Events: ticket.updated.
 
@@ -622,11 +633,11 @@ Swift type `TicketsDeleteComment` · actors: user, claude · result: [Ticket](da
 
 Removes the comment and moves the files of its attachments to the Trash.
 
-| Error       | When                                           |
-| ----------- | ---------------------------------------------- |
-| invalid     | ticketID is malformed.                         |
-| notFound    | No such ticket; no comment with this id in it. |
-| unavailable | A file cannot be moved to the Trash.           |
+| Error       | When                                            |
+| ----------- | ----------------------------------------------- |
+| invalid     | ticketID is malformed; commentID is not a UUID. |
+| notFound    | No such ticket; no comment with this id in it.  |
+| unavailable | A file cannot be moved to the Trash.            |
 
 Events: ticket.updated.
 
@@ -660,7 +671,7 @@ Removes the attachment entry and moves its file to the Trash. A comment attachme
 
 | Error       | When                                                                                    |
 | ----------- | --------------------------------------------------------------------------------------- |
-| invalid     | ticketID is malformed.                                                                  |
+| invalid     | ticketID is malformed; attachmentID is not a UUID.                                      |
 | notFound    | No such ticket; no ticket-level attachment with this id (`Attachment <id> not found.`). |
 | unavailable | The file cannot be moved to the Trash.                                                  |
 
@@ -682,11 +693,11 @@ Reads a stored attachment: a ticket or comment attachment, or a file of a chat (
 - The path has one of the forms `attachments/<TICKET-ID>/<file name>` and `chats/<CHAT-ID>/<file name>`, and the file's real path lies inside the project's `.hephaestus/` folder ([Data model](data-model.md#attachments)).
 - `name` is the file name without its leading `<UUID>-` prefix; `contentType` is the MIME type of the file extension, `application/octet-stream` when unknown. Default chosen at design time.
 
-| Error     | When                                                                                                               |
-| --------- | ------------------------------------------------------------------------------------------------------------------ |
-| notFound  | No loaded project has this identifier; no file at path (`Attachment file <path> not found.`).                      |
-| forbidden | path does not have one of the two forms, or leaves `.hephaestus/` (`The path is outside the attachments folder.`). |
-| invalid   | The file is larger than 20 MiB.                                                                                    |
+| Error     | When                                                                                                                                              |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| notFound  | No loaded project has this identifier; no file at path (`Attachment file <path> not found.`).                                                     |
+| forbidden | path does not have one of the two forms, or leaves `.hephaestus/` (`The path is outside the attachments folder.`).                                |
+| invalid   | projectID is malformed; the file is larger than 20 MiB (`<name> is larger than 20 MB.`, the message of [Tickets and bundles](tickets.md#errors)). |
 
 Events: none.
 
@@ -706,6 +717,7 @@ Returns the project's bundles sorted by bundle number ascending. Default chosen 
 
 | Error    | When                                   |
 | -------- | -------------------------------------- |
+| invalid  | projectID is malformed.                |
 | notFound | No loaded project has this identifier. |
 
 Events: none.
@@ -744,11 +756,11 @@ Steps:
 
 A ticket may belong to several bundles.
 
-| Error    | When                                                                                                                                                                                                                                     |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| invalid  | ticketIDs is empty (`A bundle needs at least one ticket.`), lists a ticket twice (`HEPH-12 is listed more than once.`), has a malformed id or a ticket of another project (`HEPH-12 does not belong to project WEB.`); title is invalid. |
-| notFound | No loaded project has this identifier; a ticket does not exist.                                                                                                                                                                          |
-| internal | A file cannot be written.                                                                                                                                                                                                                |
+| Error    | When                                                                                                                                                                                                                                                             |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid  | projectID is malformed; ticketIDs is empty (`A bundle needs at least one ticket.`), lists a ticket twice (`HEPH-12 is listed more than once.`), has a malformed id or a ticket of another project (`HEPH-12 does not belong to project WEB.`); title is invalid. |
+| notFound | No loaded project has this identifier; a ticket does not exist.                                                                                                                                                                                                  |
+| internal | A file cannot be written.                                                                                                                                                                                                                                        |
 
 Events: project.updated, bundle.updated; later bundle.updated with origin system when Haiku has named the bundle.
 
@@ -762,10 +774,12 @@ Swift type `BundlesUpdate` · actors: user, claude · result: [TicketBundle](dat
 | title     | String     | no       | New title.                                                                      |
 | ticketIDs | [TicketID] | no       | Replaces the list; may be empty; otherwise the rules of `bundles.create` apply. |
 
+An id that the bundle already lists is accepted even when its ticket file is missing, so that the user can reorder and remove the other ids ([Tickets and bundles](tickets.md#bundles)); an id the bundle does not list must name an existing ticket. Default chosen at design time.
+
 | Error    | When                                                                                                                        |
 | -------- | --------------------------------------------------------------------------------------------------------------------------- |
 | invalid  | bundleID is malformed; ticketIDs lists a ticket twice, has a malformed id or a ticket of another project; title is invalid. |
-| notFound | No such bundle; a ticket does not exist.                                                                                    |
+| notFound | No such bundle; a ticket that the bundle does not already list does not exist.                                              |
 
 Events: bundle.updated.
 
@@ -809,6 +823,7 @@ Returns every chat of the project, all kinds, sorted by `updated` descending.
 
 | Error    | When                                   |
 | -------- | -------------------------------------- |
+| invalid  | projectID is malformed.                |
 | notFound | No loaded project has this identifier. |
 
 Events: none.
@@ -851,12 +866,12 @@ Steps:
 4. For kind ticket or bundle, append the chat id to the ticket's or bundle's `chats`.
 5. When `message` is present, send it as `chats.send` does.
 
-| Error       | When                                                                                                                                                                                                |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| invalid     | kind is feedback; ticketID or bundleID missing or present against the kind; the ticket or bundle belongs to another project; settings invalid; message empty or invalid ([chats.send](#chatssend)). |
-| notFound    | No loaded project has this identifier; the ticket or bundle does not exist.                                                                                                                         |
-| unavailable | message is present and the Claude CLI is not available.                                                                                                                                             |
-| forbidden   | An attachment of message has sourcePath.                                                                                                                                                            |
+| Error       | When                                                                                                                                                                                                                                              |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid     | projectID, ticketID or bundleID is malformed; kind is feedback; ticketID or bundleID missing or present against the kind; the ticket or bundle belongs to another project; settings invalid; message empty or invalid ([chats.send](#chatssend)). |
+| notFound    | No loaded project has this identifier; the ticket or bundle does not exist.                                                                                                                                                                       |
+| unavailable | message is present and the Claude CLI is not available.                                                                                                                                                                                           |
+| forbidden   | An attachment of message has sourcePath.                                                                                                                                                                                                          |
 
 Events: chat.updated, ticket.updated or bundle.updated (link), then the events of `chats.send` when a message was sent.
 
@@ -874,12 +889,12 @@ Swift type `ChatsSend` · actors: user · result: [Empty](#empty)
 - The first user message of a chat that has text starts its naming with Haiku ([Chats](chats.md#haiku-naming)).
 - Returns once the message is accepted; Claude's answer arrives as events.
 
-| Error       | When                                                                                                         |
-| ----------- | ------------------------------------------------------------------------------------------------------------ |
-| invalid     | chatID is not a UUID; the text is empty after trimming and there is no attachment; an attachment is invalid. |
-| notFound    | No such chat.                                                                                                |
-| unavailable | The Claude CLI is not available ([Chats](chats.md#version-and-status)).                                      |
-| forbidden   | An attachment has sourcePath.                                                                                |
+| Error       | When                                                                                                                                                     |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid     | chatID is not a UUID; the text is empty after trimming and there is no attachment (`message: write a text or attach a file.`); an attachment is invalid. |
+| notFound    | No such chat.                                                                                                                                            |
+| unavailable | The Claude CLI is not available ([Chats](chats.md#version-and-status)).                                                                                  |
+| forbidden   | An attachment has sourcePath.                                                                                                                            |
 
 Events: chat.item (the user item), chat.updated (state, `updated`); then chat.delta, chat.item and chat.updated with origin system while Claude works; later chat.updated with origin system when Haiku has named the chat.
 
@@ -1013,12 +1028,12 @@ Swift type `ChatsAnswerQuestion` · actors: user · result: [Empty](#empty)
 - `label` must be the label of the first question of the set, in label order, that has no answer (`invalid`, `Answer question <first unanswered label> first.`): the questions are answered one by one ([Chats](chats.md#answering)). `answer` is trimmed and has 1 to 10,000 characters. A stored answer is never replaced. Default chosen at design time.
 - When every question of the set has an answer, the set becomes completed and the engine sends one user message, by the rules of `chats.send`, with `sender` the name of the actor's device: `Answers:` followed by one line `<label>: <answer>` per question in label order, lines separated by `\n`. During a turn it is written to the Claude process at once and the CLI runs it after that turn, as for `chats.send` ([Chats](chats.md#answering)).
 
-| Error       | When                                                                                                                                                                                                                               |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| invalid     | chatID or questionSetID is not a UUID; label is not a label of the set, or not its first unanswered question (`Answer question <first unanswered label> first.`); answer is empty or longer than 10,000 characters after trimming. |
-| notFound    | No such chat; no question set with this id in it.                                                                                                                                                                                  |
-| conflict    | The set is already completed (`These questions were already answered.`).                                                                                                                                                           |
-| unavailable | The answer completes the set and the Claude CLI is not available; nothing is stored.                                                                                                                                               |
+| Error       | When                                                                                                                                                                                                                                                                       |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid     | chatID or questionSetID is not a UUID; label is not a label of the set, or not its first unanswered question (`Answer question <first unanswered label> first.`); answer is empty or longer than 10,000 characters after trimming (`answer: use 1 to 10,000 characters.`). |
+| notFound    | No such chat; no question set with this id in it.                                                                                                                                                                                                                          |
+| conflict    | The set is already completed (`These questions were already answered.`).                                                                                                                                                                                                   |
+| unavailable | The answer completes the set and the Claude CLI is not available; nothing is stored.                                                                                                                                                                                       |
 
 Events: chat.item (the `questions` item); when the set is completed, chat.item (the user message) and chat.updated.
 
@@ -1054,13 +1069,13 @@ Swift type `ChatsImplementBundle` · actors: user, claude · result: [ChatMeta](
 
 Creates a chat of kind bundle in the bundle's project, linked to the bundle, then sends the message of the prompt `implement-bundle.md` as its first user message, with `sender` the name of the actor's device, or `Claude` for a claude actor ([Data model](data-model.md#user-item)) ([Chats](chats.md#implement-and-feedback-chats)).
 
-| Error       | When                                                                                                                    |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------- |
-| invalid     | bundleID is malformed; settings invalid.                                                                                |
-| notFound    | No such bundle.                                                                                                         |
-| conflict    | The bundle has no ticket that is not done, which includes an empty bundle (`HEPH-B2 has no ticket left to implement.`). |
-| forbidden   | The actor is claude and settings is present (`Claude cannot choose chat settings.`).                                    |
-| unavailable | The Claude CLI is not available.                                                                                        |
+| Error       | When                                                                                                                                                                           |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| invalid     | bundleID is malformed; settings invalid.                                                                                                                                       |
+| notFound    | No such bundle.                                                                                                                                                                |
+| conflict    | The bundle lists no existing ticket that is not done, which includes an empty bundle and one whose other tickets no longer exist (`HEPH-B2 has no ticket left to implement.`). |
+| forbidden   | The actor is claude and settings is present (`Claude cannot choose chat settings.`).                                                                                           |
+| unavailable | The Claude CLI is not available.                                                                                                                                               |
 
 Events: chat.updated, bundle.updated, then the events of `chats.send`.
 
@@ -1080,13 +1095,13 @@ Called by the feedback sheet; the client opens the returned chat in a new window
 
 Creates a chat of kind feedback in the project and sends its first user message, with `sender` the name of the actor's device: the comment, the rendered context and the screenshot as an image, in the format of [Chats](chats.md#feedback-message). The screenshot is stored as `.hephaestus/chats/<chatID>/<UUID>-screenshot.png`, the attachment of that message, and its absolute path on the main device is part of the message text, so Claude attaches it to the ticket it creates (`tickets.create` with `sourcePath`).
 
-| Error       | When                                                                                                    |
-| ----------- | ------------------------------------------------------------------------------------------------------- |
-| invalid     | screenshot is not `image/png`, has no dataBase64 or is larger than 20 MiB; context or settings invalid. |
-| notFound    | No loaded project has this identifier.                                                                  |
-| forbidden   | screenshot has sourcePath.                                                                              |
-| unavailable | The Claude CLI is not available.                                                                        |
-| internal    | A file cannot be written.                                                                               |
+| Error       | When                                                                                                                                                                                                                                                                                                                                                     |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid     | projectID is malformed; screenshot is not `image/png` (`screenshot: use a PNG image (image/png).`), has no dataBase64 (`screenshot: give its content in dataBase64.`), has a dataBase64 that is not valid base64 (`screenshot: dataBase64 is not valid base64.`) or is larger than 20 MiB (`<name> is larger than 20 MB.`); context or settings invalid. |
+| notFound    | No loaded project has this identifier.                                                                                                                                                                                                                                                                                                                   |
+| forbidden   | screenshot has sourcePath.                                                                                                                                                                                                                                                                                                                               |
+| unavailable | The Claude CLI is not available.                                                                                                                                                                                                                                                                                                                         |
+| internal    | A file cannot be written.                                                                                                                                                                                                                                                                                                                                |
 
 Events: chat.updated, chat.item (the first user message), then the events of a running chat.
 
@@ -1112,7 +1127,7 @@ Params: none. Errors: dispatcher errors only. Events: claude.updated when the st
 
 Paths are project paths. The file browser and the editor are described in [Code editor](code-editor.md); docs use the same methods ([Documentation viewer](documentation-viewer.md)).
 
-`files.write`, `files.create`, `files.rename` and `files.trash` do not record what they write or remove as the engine's own change: a change they make to a file the engine loads (`.hephaestus/project.yml`, `.hephaestus/ticket/*.yml`, `.hephaestus/bundle/*.yml`) is processed by the file watcher as an external change ([Data model › External changes](data-model.md#external-changes)). They refuse `.hephaestus/chats` and every path inside it with `forbidden` (`Chat files are written only by HephaestusV2.`). Default chosen at design time.
+`files.write`, `files.create`, `files.rename` and `files.trash` do not record what they write or remove as the engine's own change: a change they make to a file the engine loads (`.hephaestus/project.yml`, `.hephaestus/ticket/*.yml`, `.hephaestus/bundle/*.yml`) is processed by the file watcher as an external change ([Data model › External changes](data-model.md#external-changes)). They refuse `.hephaestus/chats` and every path inside it with `forbidden` (`Chat files are written only by HephaestusV2.`), at any depth: the chats folder of a sub project, `<sub project>/.hephaestus/chats`, is refused in its parent too. Default chosen at design time.
 
 ### files.list
 
@@ -1125,10 +1140,10 @@ Swift type `FilesList` · actors: user · result: [FileEntry](#fileentry) array
 
 Returns the directory's direct children except `.git` and `.DS_Store`: directories first, then files, each group sorted by name in Finder order (`localizedStandardCompare`), at most 10,000 entries (the first ones in that order). A symbolic link is described by its target; a broken link is a file of size 0. Default chosen at design time.
 
-| Error    | When                                                    |
-| -------- | ------------------------------------------------------- |
-| invalid  | path breaks the path rules; path is not a directory.    |
-| notFound | No loaded project has this identifier; no item at path. |
+| Error    | When                                                                         |
+| -------- | ---------------------------------------------------------------------------- |
+| invalid  | projectID is malformed; path breaks the path rules; path is not a directory. |
+| notFound | No loaded project has this identifier; no item at path.                      |
 
 Events: none.
 
@@ -1143,10 +1158,10 @@ Swift type `FilesRead` · actors: user · result: [FileContent](#filecontent)
 
 `text` is set when the content is valid UTF-8 without NUL bytes; `dataBase64` is set otherwise; neither is set when the file is larger than 20 MiB. Default chosen at design time.
 
-| Error    | When                                                        |
-| -------- | ----------------------------------------------------------- |
-| invalid  | path breaks the path rules or is `""`; path is a directory. |
-| notFound | No loaded project has this identifier; no file at path.     |
+| Error    | When                                                                                                                                                                                            |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid  | projectID is malformed; path breaks the path rules or is `""`; path is a directory; path is a FIFO, a socket or a device, which reading would block on (`path: <path> is not a regular file.`). |
+| notFound | No loaded project has this identifier; no file at path.                                                                                                                                         |
 
 Events: none.
 
@@ -1164,18 +1179,18 @@ Swift type `FilesWrite` · actors: user · result: [FileContent](#filecontent) o
 Steps:
 
 1. With `expectedModified`: the file must exist and its modification date, truncated to milliseconds, must equal `expectedModified`. Without it, the file is created or overwritten.
-2. Format on save: a `.go` file when `formatGoOnSave` is true and `gofmt` is found ([Child processes](architecture.md#child-processes)) is piped through `gofmt`; a `.swift` file when `formatSwiftOnSave` is true and `swift-format` is found ([Child processes](architecture.md#child-processes)) is piped through `swift-format format --assume-filename <absolute path>`. The text goes to standard input and standard output is written. A non-zero exit or a run longer than 10 seconds writes the text unformatted. The engine formats because the formatters and the file are on the main device. Default chosen at design time.
+2. Format on save: a `.go` file when `formatGoOnSave` is true and `gofmt` is found ([Child processes](architecture.md#child-processes)) is piped through `gofmt`; a `.swift` file when `formatSwiftOnSave` is true and `swift-format` is found ([Child processes](architecture.md#child-processes)) is piped through `swift-format format --assume-filename <absolute path>`. The text goes to standard input and standard output is written. A non-zero exit, a run longer than 10 seconds or an output that is not valid UTF-8 writes the text unformatted. The engine formats because the formatters and the file are on the main device. Default chosen at design time.
 3. Write the text as UTF-8, atomically.
 
 The result's `text` is the text written, formatted when a formatter ran.
 
-| Error     | When                                                                                    |
-| --------- | --------------------------------------------------------------------------------------- |
-| invalid   | path breaks the path rules or is `""`; path is a directory; text is larger than 20 MiB. |
-| notFound  | No loaded project has this identifier; the parent directory does not exist.             |
-| conflict  | The file changed or disappeared since expectedModified (`<path> changed on disk.`).     |
-| forbidden | path is inside `.hephaestus/chats/` (`Chat files are written only by HephaestusV2.`).   |
-| internal  | The file cannot be written.                                                             |
+| Error     | When                                                                                                            |
+| --------- | --------------------------------------------------------------------------------------------------------------- |
+| invalid   | projectID is malformed; path breaks the path rules or is `""`; path is a directory; text is larger than 20 MiB. |
+| notFound  | No loaded project has this identifier; the parent directory does not exist.                                     |
+| conflict  | The file changed or disappeared since expectedModified (`<path> changed on disk.`).                             |
+| forbidden | path is inside `.hephaestus/chats/` (`Chat files are written only by HephaestusV2.`).                           |
+| internal  | The file cannot be written.                                                                                     |
 
 Events: files.changed (from file watching).
 
@@ -1193,7 +1208,7 @@ Missing intermediate directories are created. Default chosen at design time.
 
 | Error     | When                                                                                  |
 | --------- | ------------------------------------------------------------------------------------- |
-| invalid   | path breaks the path rules or is `""`.                                                |
+| invalid   | projectID is malformed; path breaks the path rules or is `""`.                        |
 | notFound  | No loaded project has this identifier.                                                |
 | conflict  | An item exists at path (`<path> already exists.`).                                    |
 | forbidden | path is inside `.hephaestus/chats/` (`Chat files are written only by HephaestusV2.`). |
@@ -1213,13 +1228,13 @@ Swift type `FilesRename` · actors: user · result: [FileEntry](#fileentry) at `
 
 Moves or renames the item. Missing intermediate directories of `newPath` are created. Default chosen at design time.
 
-| Error     | When                                                                                                                                                                                                                                                    |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| invalid   | path or newPath breaks the path rules or is `""`; newPath is inside path.                                                                                                                                                                               |
-| notFound  | No loaded project has this identifier; no item at path.                                                                                                                                                                                                 |
-| conflict  | An item exists at newPath (`<newPath> already exists.`).                                                                                                                                                                                                |
-| forbidden | path is `.hephaestus` or `.hephaestus/project.yml` (`The project's data folder and project.yml cannot be moved.`). Default chosen at design time. path or newPath is `.hephaestus/chats` or inside it (`Chat files are written only by HephaestusV2.`). |
-| internal  | The item cannot be moved.                                                                                                                                                                                                                               |
+| Error     | When                                                                                                                                                                                                                                                                                                                                                                                        |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid   | projectID is malformed; path or newPath breaks the path rules or is `""`; newPath is inside path.                                                                                                                                                                                                                                                                                           |
+| notFound  | No loaded project has this identifier; no item at path.                                                                                                                                                                                                                                                                                                                                     |
+| conflict  | An item exists at newPath (`<newPath> already exists.`).                                                                                                                                                                                                                                                                                                                                    |
+| forbidden | path is `.hephaestus` or `.hephaestus/project.yml`, or the same item of a loaded sub project inside the project (`<sub project>/.hephaestus`, `<sub project>/.hephaestus/project.yml`) (`The project's data folder and project.yml cannot be moved.`). Default chosen at design time. path or newPath is `.hephaestus/chats` or inside it (`Chat files are written only by HephaestusV2.`). |
+| internal  | The item cannot be moved.                                                                                                                                                                                                                                                                                                                                                                   |
 
 Events: files.changed.
 
@@ -1234,12 +1249,12 @@ Swift type `FilesTrash` · actors: user · result: [Empty](#empty)
 
 Moves the item to the Trash of the main device; it never deletes.
 
-| Error       | When                                                                                                                                                                                                                                         |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| invalid     | path breaks the path rules or is `""`.                                                                                                                                                                                                       |
-| notFound    | No loaded project has this identifier; no item at path.                                                                                                                                                                                      |
-| forbidden   | path is `.hephaestus` or `.hephaestus/project.yml` (`The project's data folder and project.yml cannot be moved.`). Default chosen at design time. path is `.hephaestus/chats` or inside it (`Chat files are written only by HephaestusV2.`). |
-| unavailable | The item cannot be moved to the Trash.                                                                                                                                                                                                       |
+| Error       | When                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid     | projectID is malformed; path breaks the path rules or is `""`.                                                                                                                                                                                                                                                                                                                   |
+| notFound    | No loaded project has this identifier; no item at path.                                                                                                                                                                                                                                                                                                                          |
+| forbidden   | path is `.hephaestus` or `.hephaestus/project.yml`, or the same item of a loaded sub project inside the project (`<sub project>/.hephaestus`, `<sub project>/.hephaestus/project.yml`) (`The project's data folder and project.yml cannot be moved.`). Default chosen at design time. path is `.hephaestus/chats` or inside it (`Chat files are written only by HephaestusV2.`). |
+| unavailable | The item cannot be moved to the Trash.                                                                                                                                                                                                                                                                                                                                           |
 
 Events: files.changed.
 
@@ -1253,10 +1268,11 @@ Swift type `DocsList` · actors: user, claude · result: [DocEntry](#docentry) a
 | --------- | --------- | -------- | ------------------- |
 | projectID | ProjectID | yes      | Project identifier. |
 
-Returns every file whose name ends in `.md` or `.markdown` (any case) under the project's `docsPath`, recursively, skipping files and folders whose name starts with `.`, sorted by path in Finder order. `path` is a project path, for example `docs/engine-api.md`, usable with `files.read` and `files.write`. `title` is the text after `# ` on the first line that starts with `# `, trimmed; without such a line, the file name without its extension. A missing docs folder gives an empty list. Default chosen at design time.
+Returns every file whose name ends in `.md` or `.markdown` (any case) under the project's `docsPath`, recursively, skipping files and folders whose name starts with `.`, sorted by path in Finder order. `path` is a project path, for example `docs/engine-api.md`, usable with `files.read` and `files.write`. `title` is the text after `# ` on the first line that starts with `# `, trimmed; without such a line, the file name without its extension. A missing docs folder gives an empty list. Symbolic links to folders are not followed, so a link cycle cannot make the listing endless; symbolic links to files are listed like files. Default chosen at design time.
 
 | Error    | When                                   |
 | -------- | -------------------------------------- |
+| invalid  | projectID is malformed.                |
 | notFound | No loaded project has this identifier. |
 
 Events: none.
@@ -1275,10 +1291,11 @@ Lists folders of the main device so a remote window can pick a location for `pro
 
 The result's `path` is the standardized path; `parent` is its parent directory and is absent for `/`; `entries` are its sub-directories whose name does not start with `.`, sorted by name in Finder order; `hasProject` is true when the entry contains `.hephaestus/project.yml`. Default chosen at design time.
 
-| Error    | When                                           |
-| -------- | ---------------------------------------------- |
-| invalid  | path is not absolute; path is not a directory. |
-| notFound | Nothing exists at path.                        |
+| Error    | When                                                                                            |
+| -------- | ----------------------------------------------------------------------------------------------- |
+| invalid  | path is not absolute; path is not a directory.                                                  |
+| notFound | Nothing exists at path.                                                                         |
+| internal | The folder cannot be read, for example without permission (`<path> cannot be read: <reason>.`). |
 
 Events: none.
 
@@ -1298,6 +1315,7 @@ Returns the project's tabs in tab order.
 
 | Error    | When                                   |
 | -------- | -------------------------------------- |
+| invalid  | projectID is malformed.                |
 | notFound | No loaded project has this identifier. |
 
 Events: none.
@@ -1316,10 +1334,10 @@ Swift type `WebTabsOpen` · actors: user, claude · result: [WebTab](data-model.
 
 Adds a tab with a new UUID. Default chosen at design time (http and https only, host as title, clamped index).
 
-| Error    | When                                                                                  |
-| -------- | ------------------------------------------------------------------------------------- |
-| invalid  | url is not an absolute http or https URL (`url: use an absolute http or https URL.`). |
-| notFound | No loaded project has this identifier.                                                |
+| Error    | When                                                                                                          |
+| -------- | ------------------------------------------------------------------------------------------------------------- |
+| invalid  | projectID is malformed; url is not an absolute http or https URL (`url: use an absolute http or https URL.`). |
+| notFound | No loaded project has this identifier.                                                                        |
 
 Events: webTabs.updated, project.updated.
 
@@ -1337,11 +1355,11 @@ Swift type `WebTabsUpdate` · actors: user, claude · result: [WebTab](data-mode
 
 A locked tab can be updated: navigated, renamed and unlocked.
 
-| Error     | When                                                                         |
-| --------- | ---------------------------------------------------------------------------- |
-| invalid   | tabID is not a UUID; url is not an absolute http or https URL.               |
-| notFound  | No loaded project has this identifier; no tab with this id in it.            |
-| forbidden | The actor is claude and locked is false (`Only the user can unlock a tab.`). |
+| Error     | When                                                                                   |
+| --------- | -------------------------------------------------------------------------------------- |
+| invalid   | projectID is malformed; tabID is not a UUID; url is not an absolute http or https URL. |
+| notFound  | No loaded project has this identifier; no tab with this id in it.                      |
+| forbidden | The actor is claude and locked is false (`Only the user can unlock a tab.`).           |
 
 Events: webTabs.updated, project.updated.
 
@@ -1356,7 +1374,7 @@ Swift type `WebTabsClose` · actors: user, claude · result: [Empty](#empty)
 
 | Error     | When                                                              |
 | --------- | ----------------------------------------------------------------- |
-| invalid   | tabID is not a UUID.                                              |
+| invalid   | projectID is malformed; tabID is not a UUID.                      |
 | notFound  | No loaded project has this identifier; no tab with this id in it. |
 | forbidden | The tab is locked (`This tab is locked.`).                        |
 
@@ -1374,7 +1392,7 @@ Swift type `WebTabsMove` · actors: user, claude · result: [WebTab](data-model.
 
 | Error    | When                                                              |
 | -------- | ----------------------------------------------------------------- |
-| invalid  | tabID is not a UUID.                                              |
+| invalid  | projectID is malformed; tabID is not a UUID.                      |
 | notFound | No loaded project has this identifier; no tab with this id in it. |
 
 Events: webTabs.updated, project.updated.
@@ -1394,11 +1412,11 @@ Matching, ranking, sources, snippets and the per-kind limits (at most 100 code r
 | projectID | ProjectID     | no       | Searches only this project; absent searches every project. Skills belong to no project and are searched in both cases.                |
 | limit     | Int           | no       | Maximum number of results, 1–1,000, default 200. Default chosen at design time.                                                       |
 
-| Error    | When                                                          |
-| -------- | ------------------------------------------------------------- |
-| invalid  | limit is outside 1–1,000; a scope is not a SearchScope value. |
-| notFound | projectID names no loaded project.                            |
-| internal | Unexpected failure while searching.                           |
+| Error    | When                                                                                                                          |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| invalid  | limit is outside 1–1,000 (`limit: use a number from 1 to 1000.`); projectID is malformed; a scope is not a SearchScope value. |
+| notFound | projectID names no loaded project.                                                                                            |
+| internal | Unexpected failure while searching.                                                                                           |
 
 Events: none.
 
@@ -1412,9 +1430,9 @@ Swift type `SkillsList` · actors: user, claude · result: [SkillSummary](#skill
 
 Returns every skill of the library sorted by name, read from disk at every call. A folder whose SKILL.md cannot be read is skipped and logged ([Data model](data-model.md#skillmd-format)).
 
-| Error       | When                                          |
-| ----------- | --------------------------------------------- |
-| unavailable | The library folder cannot be read or created. |
+| Error       | When                                                                                                                |
+| ----------- | ------------------------------------------------------------------------------------------------------------------- |
+| unavailable | The library folder cannot be read or created (`The skills library <path> cannot be read: <localized description>`). |
 
 Events: none.
 
@@ -1426,9 +1444,10 @@ Swift type `SkillsGet` · actors: user, claude · result: [Skill](#skill)
 | ----- | ------ | -------- | ----------- |
 | name  | String | yes      | Skill name. |
 
-| Error    | When           |
-| -------- | -------------- |
-| notFound | No such skill. |
+| Error    | When                            |
+| -------- | ------------------------------- |
+| invalid  | name is not a valid skill name. |
+| notFound | No such skill.                  |
 
 Events: none.
 
@@ -1465,12 +1484,12 @@ Swift type `SkillsUpdate` · actors: user, claude · result: [Skill](#skill)
 
 Extra frontmatter keys and the other files of the skill are kept. On a rename, every project whose `skills` contains the old name gets the new name at the same position, and its generated plugin is rebuilt ([Skills](skills.md)).
 
-| Error    | When                                    |
-| -------- | --------------------------------------- |
-| notFound | No such skill.                          |
-| invalid  | newName or description breaks its rule. |
-| conflict | A skill named newName exists.           |
-| internal | The folder or a file cannot be written. |
+| Error    | When                                                                                                    |
+| -------- | ------------------------------------------------------------------------------------------------------- |
+| notFound | No such skill.                                                                                          |
+| invalid  | name or newName is not a valid skill name; description breaks its rule.                                 |
+| conflict | A skill named newName exists (`A skill named <newName> already exists.`, the message of skills.create). |
+| internal | The folder or a file cannot be written.                                                                 |
 
 Events: skills.changed; project.updated for each project changed by a rename.
 
@@ -1486,6 +1505,7 @@ Moves the skill's folder to the Trash (a symbolic link goes to the Trash, not it
 
 | Error       | When                                     |
 | ----------- | ---------------------------------------- |
+| invalid     | name is not a valid skill name.          |
 | notFound    | No such skill.                           |
 | unavailable | The folder cannot be moved to the Trash. |
 
@@ -1502,10 +1522,10 @@ Swift type `SkillsReadFile` · actors: user · result: [FileContent](#fileconten
 
 Same content rules as `files.read`.
 
-| Error    | When                                                        |
-| -------- | ----------------------------------------------------------- |
-| invalid  | path breaks the path rules or is `""`; path is a directory. |
-| notFound | No such skill; no file at path.                             |
+| Error    | When                                                                                        |
+| -------- | ------------------------------------------------------------------------------------------- |
+| invalid  | name is not a valid skill name; path breaks the path rules or is `""`; path is a directory. |
+| notFound | No such skill; no file at path.                                                             |
 
 Events: none.
 
@@ -1521,11 +1541,11 @@ Swift type `SkillsWriteFile` · actors: user · result: [Empty](#empty)
 
 Writes the text atomically as UTF-8, creating missing folders.
 
-| Error    | When                                                                                                                                             |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| invalid  | path breaks the path rules, is `""` or names a folder; path is `SKILL.md` (`Use skills.update to change SKILL.md.`); text is larger than 20 MiB. |
-| notFound | No such skill.                                                                                                                                   |
-| internal | The file cannot be written.                                                                                                                      |
+| Error    | When                                                                                                                                                                                                                    |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid  | name is not a valid skill name; path breaks the path rules, is `""` or names a folder; path is `SKILL.md` (`Use skills.update to change SKILL.md.`); text is larger than 20 MiB (`text: use at most 20 MiB of UTF-8.`). |
+| notFound | No such skill.                                                                                                                                                                                                          |
+| internal | The file cannot be written.                                                                                                                                                                                             |
 
 Events: skills.changed.
 
@@ -1540,11 +1560,11 @@ Swift type `SkillsDeleteFile` · actors: user · result: [Empty](#empty)
 
 Moves the item to the Trash.
 
-| Error       | When                                                                                                |
-| ----------- | --------------------------------------------------------------------------------------------------- |
-| invalid     | path breaks the path rules or is `""`; path is `SKILL.md` (`Use skills.delete to delete a skill.`). |
-| notFound    | No such skill; no item at path.                                                                     |
-| unavailable | The item cannot be moved to the Trash.                                                              |
+| Error       | When                                                                                                                                |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| invalid     | name is not a valid skill name; path breaks the path rules or is `""`; path is `SKILL.md` (`Use skills.delete to delete a skill.`). |
+| notFound    | No such skill; no item at path.                                                                                                     |
+| unavailable | The item cannot be moved to the Trash.                                                                                              |
 
 Events: skills.changed.
 
@@ -1562,6 +1582,7 @@ Enabling requires the skill to exist; a name that is no longer in the library ca
 
 | Error    | When                                                                             |
 | -------- | -------------------------------------------------------------------------------- |
+| invalid  | projectID is malformed; name is not a valid skill name.                          |
 | notFound | No loaded project has this identifier; enabled is true and no such skill exists. |
 
 Events: project.updated when the project's list changed.
@@ -1607,11 +1628,11 @@ Every param is optional; an absent param keeps its value. Value rules are those 
 | autoUpdate, updateCheckIntervalMinutes | Sent to the Updater ([Updater](updater.md)).                                                                                                         |
 | formatGoOnSave, formatSwiftOnSave      | Used by `files.write`.                                                                                                                               |
 
-| Error    | When                                                                                                                                               |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| invalid  | A value breaks the HostSettings rules; mcpPort equals syncPort after the update; the new skills folder cannot be created or is inside `~/.claude`. |
-| notFound | feedbackProjectID names no loaded project.                                                                                                         |
-| internal | settings.yml cannot be written.                                                                                                                    |
+| Error    | When                                                                                                                                                                                                |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid  | A value breaks the HostSettings rules; mcpPort equals syncPort after the update; the new skills folder cannot be created (`skillsLibraryPath: <path> cannot be created.`) or is inside `~/.claude`. |
+| notFound | feedbackProjectID names no loaded project.                                                                                                                                                          |
+| internal | settings.yml cannot be written.                                                                                                                                                                     |
 
 Events: settings.updated; claude.updated when claudePath changed; skills.changed when skillsLibraryPath changed.
 
@@ -1720,7 +1741,7 @@ chat.delta events are flushed at most every 50 ms per chat, so a chat emits at m
 
 - The engine watches every loaded project root and the skills library folder with FSEvents, debounced 300 ms, at most 2 s after the first change of a batch for project roots ([Data model](data-model.md#processing-a-change)). Changes it did not make itself (an editor, `git pull`, Claude editing files) produce the events an API call would emit, with origin `system`. The reload rules and reactions for project, ticket and bundle files are in [Data model](data-model.md#external-changes); the library watcher is in [Skills](skills.md#library).
 - Not reloaded: `.hephaestus/chats/`, whose only writer is the engine, and the device files of the data directory, which are read at launch only ([Data model](data-model.md#watching)).
-- files.changed is emitted for every change under a loaded project root except inside `.git/` and `.hephaestus/chats/`, changes made by the engine included. Default chosen at design time.
+- files.changed is emitted for every change under a loaded project root except inside `.git/` and `.hephaestus/chats/`, changes made by the engine included. Both are skipped at any depth: a `.git` component anywhere in the path (the repository of a sub project or of a nested work tree) and the chats folder of a sub project add no paths. Default chosen at design time.
 
 ## API types
 
@@ -1835,13 +1856,13 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
 
 ### DeviceInfo
 
-| Field           | Type   | Required | Description                                                                                                         |
-| --------------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------- |
-| id              | String | yes      | Device UUID from device.yml, uppercase.                                                                             |
-| name            | String | yes      | Device name from device.yml, or the Mac's computer name when it has none ([Data model](data-model.md#device-file)). |
-| appVersion      | String | yes      | `CFBundleShortVersionString` of the running app, for example `0.4.0`.                                               |
-| build           | Int    | yes      | `CFBundleVersion` of the running app, for example 57; 0 for a local development build.                              |
-| protocolVersion | Int    | yes      | Sync protocol version: 1.                                                                                           |
+| Field           | Type   | Required | Description                                                                                                                                                         |
+| --------------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id              | String | yes      | Device UUID from device.yml, uppercase.                                                                                                                             |
+| name            | String | yes      | Device name from device.yml, or the Mac's computer name when it has none, or `Mac` when the computer name cannot be read ([Data model](data-model.md#device-file)). |
+| appVersion      | String | yes      | `CFBundleShortVersionString` of the running app, for example `0.4.0`.                                                                                               |
+| build           | Int    | yes      | `CFBundleVersion` of the running app, for example 57; 0 for a local development build.                                                                              |
+| protocolVersion | Int    | yes      | Sync protocol version: 1.                                                                                                                                           |
 
 ### Snapshot
 
@@ -1982,14 +2003,14 @@ String enum: `build`, `run`, `test`. Each selects the project command of the sam
 
 ### FileEntry
 
-| Field       | Type   | Required | Description                                                                                                                                                                                                     |
-| ----------- | ------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| name        | String | yes      | Last path component.                                                                                                                                                                                            |
-| path        | String | yes      | Project path, or skill path for the files of a Skill.                                                                                                                                                           |
-| isDirectory | Bool   | yes      | true for a directory.                                                                                                                                                                                           |
-| size        | Int    | yes      | Size in bytes; 0 for a directory.                                                                                                                                                                               |
-| modified    | Date   | yes      | Modification date, millisecond precision.                                                                                                                                                                       |
-| isIgnored   | Bool   | no       | true when git ignores the item (`git check-ignore` reports it); absent otherwise, outside a git work tree and for skill files. The file tree dims ignored folders. Default chosen at design time (field added). |
+| Field       | Type   | Required | Description                                                                                                                                                                                                                                                                             |
+| ----------- | ------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| name        | String | yes      | Last path component.                                                                                                                                                                                                                                                                    |
+| path        | String | yes      | Project path, or skill path for the files of a Skill.                                                                                                                                                                                                                                   |
+| isDirectory | Bool   | yes      | true for a directory.                                                                                                                                                                                                                                                                   |
+| size        | Int    | yes      | Size in bytes; 0 for a directory.                                                                                                                                                                                                                                                       |
+| modified    | Date   | yes      | Modification date, millisecond precision.                                                                                                                                                                                                                                               |
+| isIgnored   | Bool   | no       | true when git ignores the item (`git check-ignore` reports it); absent otherwise, outside a git work tree, for skill files, and when `git check-ignore` fails or runs longer than its timeout of 10 s. The file tree dims ignored folders. Default chosen at design time (field added). |
 
 ```json
 {"isDirectory": true, "isIgnored": true, "modified": "2026-10-31T14:03:07.412Z", "name": ".build", "path": ".build", "size": 0}
@@ -2072,7 +2093,7 @@ String enum: `projects`, `tickets`, `bundles`, `docs`, `code`, `chats`, `skills`
 | skills   | `skill:<name>`                   | Skill name           | Skill description                 | skill           |
 | web      | `web:<projectID>:<tabID>`        | Tab title            | Tab URL                           | webTab          |
 
-Status labels are To Do, In Progress and Done. Clients highlight every query term in `title` and `snippet` themselves, case-insensitively. Default chosen at design time.
+Status labels are To Do, In Progress and Done. `<chat kind>` is the stored kind: `project`, `ticket`, `bundle` or `feedback`. A skill whose description is empty has no subtitle. Clients highlight every query term in `title` and `snippet` themselves, case-insensitively. Default chosen at design time.
 
 ```json
 [
@@ -2161,7 +2182,8 @@ Rules:
 - Exactly one of `dataBase64` and `sourcePath` is present.
 - `sourcePath` is absolute, or relative to the root of the project the call targets (for `tickets.addComment`, the ticket's project). It must name a readable regular file; the engine copies it and leaves the source unchanged.
 - The content is at most 20 MiB, and the attachments of one request at most 20 MiB together.
-- The stored name is `name` with `/`, `:` and control characters replaced by `_`, `file` when nothing is left, and the part before its extension shortened so that the stored file name `<UUID>-<name>` has at most 255 UTF-8 bytes. The stored `contentType` is the given one, or when it is empty the MIME type of the name's extension, else `application/octet-stream` ([Tickets and bundles](tickets.md#storage-and-limits)).
+- The stored name is `name` with `/`, `:` and control characters replaced by `_`, `file` when nothing is left, and the part before its extension shortened so that the stored file name `<UUID>-<name>` has at most 255 UTF-8 bytes; when the extension alone is too long, the whole name is shortened from its end. The stored `contentType` is the given one, or when it is empty the MIME type of the name's extension, else `application/octet-stream` ([Tickets and bundles](tickets.md#storage-and-limits)).
+- The two failures that have no quoted message, both or neither of `dataBase64` and `sourcePath` and an invalid base64, use the form `<param>: <reason>.` of [Messages](#messages), the param naming the upload with its index counting from 0, for example `attachments[1]: <reason>.`
 - A ticket or comment attachment is stored as `.hephaestus/attachments/<ticketID>/<UUID>-<name>`, where the UUID is the new Attachment's `id`; chat attachments are stored in `.hephaestus/chats/<chatID>/` ([Data model](data-model.md#attachments)).
 
 | Error     | When                                                                                                                                                                                                                                                                                                                                         |
@@ -2458,6 +2480,8 @@ public struct EngineEventEnvelope: Codable, Sendable, Hashable {
 }
 ```
 
+`payload(_:)` fails with `invalid` `Event <name> is not <event name>.` when the names differ, and with `Invalid payload for <name>: <coding path>: <reason>.` when `data` does not decode, with the coding paths and reasons of [Dispatcher errors](#dispatcher-errors) and `data` naming the payload itself. Default chosen at design time.
+
 Event types are named after the event in UpperCamelCase with the suffix `Event` ([Event list](#event-list)); payloads that are objects of the event list are nested `Payload` structs. `ChatDeltaEvent.Payload.Kind` is the enum `text`, `thinking`, `toolInput`.
 
 ### EngineJSON
@@ -2547,6 +2571,8 @@ extension EngineConnection {
 - Calls `device.info` once to set `deviceInfo`, subscribes to the engine, and is `connected` until `close()`, then `disconnected(reason: "Closed.")`.
 - `call` encodes the params with `EngineJSON.encoder()`, runs `engine.dispatch(method: M.name, params:, actor: .user(deviceID:))` with this device's id, and decodes the result with `EngineJSON.decoder()`; a result that does not decode throws `internal` `Unexpected result for <method>.`
 - `events` decodes the bytes of `engine.subscribe()` into `EngineEventEnvelope` values.
+- Calls made after `close()` throw `unavailable` `Not connected to <device name>.`, the message of a remote connection that is not connected ([Remote devices](remote.md#errors-produced-by-the-connection)). Default chosen at design time.
+- When the engine stops (the app quits) and ends the subscription, the connection closes as `close()` does. Default chosen at design time.
 
 **RemoteEngineConnection** (created and driven as described in [Remote devices](remote.md)):
 
