@@ -75,7 +75,8 @@ final class AppDebugUI: MCPDebugUI, @unchecked Sendable {
 
     /// docs/mcp.md › debug_navigate: the frontmost main window, switched to This Mac first when it
     /// shows another device, or a new main window on This Mac; returns its WindowInfo once its
-    /// state is updated.
+    /// state is updated, or fails with `conflict` as soon as the navigation shows an unsaved
+    /// changes prompt, which then waits on the window for its answer.
     @MainActor
     private func navigateOnMain(_ target: NavigationTarget) async throws -> WindowInfo {
         guard let app else { throw EngineError(.unavailable, "No window is open.") }
@@ -99,8 +100,25 @@ final class AppDebugUI: MCPDebugUI, @unchecked Sendable {
             throw EngineError(.unavailable, "No window is open.")
         }
         state.reconcileProject(with: app.localWorkspace)
-        await state.navigate(to: target)
+        let sheetBefore = window.attachedSheet
+        let progress = NavigationProgress()
+        Task {
+            await state.navigate(to: target)
+            progress.finished = true
+        }
+        while !progress.finished {
+            if let sheet = window.attachedSheet, sheet !== sheetBefore {
+                throw EngineError(.conflict, "The window asks whether to save unsaved changes; the target is selected once the prompt is answered.")
+            }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
         return app.windowInfo(window)
+    }
+
+    /// Whether a navigation started by debug_navigate has finished.
+    @MainActor
+    private final class NavigationProgress {
+        var finished = false
     }
 }
 
