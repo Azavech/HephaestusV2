@@ -84,9 +84,11 @@ func withDomainEngine<T>(prepare: (DataDirectory, URL) throws -> Void = { _, _ i
 }
 
 extension Engine {
-    /// Adds chat metadata in memory, as core-claude does when it creates a chat.
+    /// Adds chat metadata in memory, as core-claude does when it creates a chat: the new chat
+    /// counts as scanned, so that a later transcript scan does not report its state.
     func testUpsertChat(_ meta: ChatMeta) {
         domain.upsertChat(meta)
+        chats.scannedChats.insert(meta.id)
     }
 
     /// The in-memory project data, for checks.
