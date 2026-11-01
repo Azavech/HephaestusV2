@@ -509,8 +509,8 @@ enum MarkdownLinkAction: Equatable {
             return .web(destination)
         }
         if destination.hasPrefix("#") {
-            // DOC-GAP: docs/tickets.md › Ticket detail does not say what a fragment-only link does
-            // in a description; there is no document to scroll, so it does nothing.
+            // A link made of a fragment only does nothing: there is no document to scroll
+            // (docs/tickets.md › Ticket detail).
             return .none
         }
         guard scheme == nil || scheme == "file" else { return .none }
@@ -546,6 +546,8 @@ enum MarkdownLinkAction: Equatable {
         if let question = rest.firstIndex(of: "?") {
             rest = String(rest[..<question])
         }
+        // Step 1: a reference made of a fragment or a query only resolves to nothing.
+        guard !rest.isEmpty else { return nil }
         var relative: String
         if isFileURL {
             guard let url = URL(string: reference), let root = projectRootPath else { return nil }
