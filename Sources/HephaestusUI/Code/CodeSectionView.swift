@@ -13,11 +13,11 @@ struct CodeSectionView: View {
     var body: some View {
         let commands = CodeSectionCommands.of(window: window, workspace: workspace, projectID: projectID)
         let state = FileActions.viewState(window, projectID)
-        HSplitView {
+        @Bindable var layout = CodeDocsStore.shared.entry(window: window, projectID: projectID).layout
+        SplitPanes(leadingWidth: $layout.codeTreeWidth, leadingRange: 180...480, minimumTrailingWidth: 300) {
             FileTreeView(window: window, workspace: workspace, projectID: projectID)
-                .frame(minWidth: 180, idealWidth: 260, maxWidth: 480, maxHeight: .infinity)
+        } trailing: {
             EditorArea(window: window, workspace: workspace, projectID: projectID, commands: commands)
-                .frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity)
         }
         .onAppear {
             window.sectionCommands = commands

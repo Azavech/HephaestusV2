@@ -63,7 +63,7 @@ struct OutlineTreeView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         let outline = KeyedOutlineView()
         outline.headerView = nil
-        outline.style = .sourceList
+        outline.style = .inset
         outline.rowSizeStyle = .default
         outline.indentationPerLevel = 14
         outline.autoresizesOutlineColumn = false

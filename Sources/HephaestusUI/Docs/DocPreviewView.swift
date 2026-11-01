@@ -39,7 +39,7 @@ struct DocPreviewView: View {
                 PreviewFindBar(controller: controller)
                 Divider()
             }
-            PreviewWebViewHost(controller: controller)
+            PreviewWebViewHost(controller: controller, workspace: workspace, projectID: projectID, window: window)
         }
         .onAppear {
             controller.configure(workspace: workspace, projectID: projectID, window: window)
@@ -54,17 +54,22 @@ struct DocPreviewView: View {
     }
 }
 
-/// Hosts the controller's web view.
+/// Hosts the controller's web view, created on first use.
 private struct PreviewWebViewHost: NSViewRepresentable {
     let controller: DocPreviewController
+    let workspace: DeviceWorkspace
+    let projectID: String
+    let window: WindowState?
 
     func makeNSView(context: Context) -> EditorContainerView {
         let view = EditorContainerView()
+        controller.configure(workspace: workspace, projectID: projectID, window: window)
         view.show(controller.webView)
         return view
     }
 
     func updateNSView(_ view: EditorContainerView, context: Context) {
+        controller.configure(workspace: workspace, projectID: projectID, window: window)
         view.show(controller.webView)
     }
 

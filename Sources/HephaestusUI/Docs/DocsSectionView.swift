@@ -12,11 +12,11 @@ struct DocsSectionView: View {
     var body: some View {
         let commands = DocsSectionCommands.of(window: window, workspace: workspace, projectID: projectID)
         let state = FileActions.viewState(window, projectID)
-        HSplitView {
+        @Bindable var layout = CodeDocsStore.shared.entry(window: window, projectID: projectID).layout
+        SplitPanes(leadingWidth: $layout.docsTreeWidth, leadingRange: 180...400, minimumTrailingWidth: 360) {
             DocsTreeView(window: window, workspace: workspace, projectID: projectID)
-                .frame(minWidth: 180, idealWidth: 240, maxWidth: 400, maxHeight: .infinity)
-            DocsViewer(window: window, workspace: workspace, projectID: projectID, commands: commands)
-                .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
+        } trailing: {
+            DocsViewer(window: window, workspace: workspace, projectID: projectID, commands: commands, layout: layout)
         }
         .onAppear {
             window.sectionCommands = commands
@@ -61,6 +61,7 @@ private struct DocsViewer: View {
     let workspace: DeviceWorkspace
     let projectID: String
     @Bindable var commands: DocsSectionCommands
+    @Bindable var layout: SectionLayout
 
     var body: some View {
         let state = FileActions.viewState(window, projectID)
@@ -169,13 +170,10 @@ private struct DocsViewer: View {
             case .edit:
                 editor(buffer)
             case .split:
-                GeometryReader { geometry in
-                    HSplitView {
-                        editor(buffer)
-                            .frame(minWidth: 180, idealWidth: geometry.size.width / 2, maxWidth: .infinity, maxHeight: .infinity)
-                        preview(buffer)
-                            .frame(minWidth: 180, idealWidth: geometry.size.width / 2, maxWidth: .infinity, maxHeight: .infinity)
-                    }
+                FractionSplitPanes(fraction: $layout.docSplitFraction, minimumWidth: 180) {
+                    editor(buffer)
+                } trailing: {
+                    preview(buffer)
                 }
             }
         }

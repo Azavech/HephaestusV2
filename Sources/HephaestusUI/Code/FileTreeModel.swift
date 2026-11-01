@@ -232,6 +232,8 @@ final class CodeDocsStore {
         var docsTree: DocsTreeModel?
         var codeCommands: CodeSectionCommands?
         var docsCommands: DocsSectionCommands?
+        /// The pane widths of the sections.
+        let layout = SectionLayout()
         /// The fragment the preview scrolls to once the doc at `path` is rendered.
         var pendingFragment: (path: String, fragment: String)?
 

@@ -203,9 +203,7 @@ final class EditorTextController: NSObject, NSTextViewDelegate {
     private func restoreScroll(_ origin: NSPoint) {
         textView.layoutManager?.ensureLayout(forBoundingRect: NSRect(origin: origin, size: scrollView.contentView.bounds.size),
                                              in: textView.textContainer!)
-        let maxY = max(0, textView.frame.height - scrollView.contentView.bounds.height)
-        scrollView.contentView.scroll(to: NSPoint(x: 0, y: min(max(origin.y, 0), maxY)))
-        scrollView.reflectScrolledClipView(scrollView.contentView)
+        scroll(toY: origin.y)
     }
 
     // MARK: Edits
@@ -329,11 +327,18 @@ final class EditorTextController: NSObject, NSTextViewDelegate {
             rect = .zero
         }
         rect = rect.offsetBy(dx: 0, dy: textView.textContainerOrigin.y)
-        let visibleHeight = scrollView.contentView.bounds.height
-        let maxY = max(0, textView.frame.height - visibleHeight)
-        let y = min(max(0, rect.midY - visibleHeight / 2), maxY)
-        scrollView.contentView.scroll(to: NSPoint(x: 0, y: y))
-        scrollView.reflectScrolledClipView(scrollView.contentView)
+        scroll(toY: rect.midY - scrollView.contentView.bounds.height / 2)
+    }
+
+    /// Scrolls vertically, clamped to the document; the horizontal origin stays, since the clip
+    /// view's origin leaves room for the line-number ruler.
+    private func scroll(toY y: CGFloat) {
+        let clip = scrollView.contentView
+        let insets = clip.contentInsets
+        let minY = -insets.top
+        let maxY = max(minY, textView.frame.height - clip.bounds.height + insets.bottom)
+        clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: min(max(y, minY), maxY)))
+        scrollView.reflectScrolledClipView(clip)
     }
 
     /// Gives the text view the keyboard focus.
