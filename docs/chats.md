@@ -567,32 +567,39 @@ Once the set passes these rules, the engine moves each question's recommended op
 `chats.answerQuestion` {chatID, questionSetID, label, answer} ([Engine API](engine-api.md#chatsanswerquestion)) stores one answer:
 
 - `answer` is trimmed and has 1 to 10,000 characters (`invalid` otherwise).
-- `label` must be the first question of the set without an answer: the questions are answered one by one, in label order (`invalid` with the message `Answer question <first unanswered label> first.`). A client whose answer fails because the question was answered on another device (`invalid` or `conflict` while `chat.item` already carries that answer) shows no alert.
-- A completed set gives `conflict`.
-- The item is replaced with `answers[label] = answer`. When this answers the last question, the item also gets `completed` true, and the engine delivers the Answers message as a user message whose `sender` is the name of the answering device. During a turn it is delivered like any message ([Chat states](#chat-states)).
+- `label` is the label of any question of the set (`invalid` otherwise): the questions are answered in any order, and answering a question that already has an answer replaces that answer.
+- A completed set gives `conflict`. A client whose answer fails because the set was completed on another device (`conflict` while `chat.item` already carries the completed set) shows no alert.
+- The item is replaced with `answers[label] = answer`. When every question of the set then has an answer, the item also gets `completed` true, and the engine delivers the Answers message as a user message whose `sender` is the name of the answering device. During a turn it is delivered like any message ([Chat states](#chat-states)).
+- Skipping a question stores the answer `Skipped` ([Pinned questions card](#pinned-questions-card)). It counts as an answer: a set whose questions are all answered or skipped is completed.
 
-Answers message, with the answers in label order, lines separated by `\n`; an answer keeps its own line breaks:
+Answers message, with the answers in label order, lines separated by `\n`; an answer keeps its own line breaks, and a skipped question reads `<label>: Skipped`:
 
 ```
 Answers:
 A: Do nothing and beep
-B: Yes, "This tab is locked"
+B: Skipped
 ```
 
-A set stays incomplete across process exits and app restarts; answering its last question later starts a process with `--resume`. Messages typed in the composer while a set is incomplete are delivered normally and do not change the set. A question set cannot be dismissed: it stays pinned until its last question is answered, and until then Claude cannot post another set in this chat. Default chosen at design time.
+Claude leaves a skipped point out: it does not act on it or guess, and it mentions it in its reply ([Prompt: common](#prompt-common)).
+
+A set stays incomplete across process exits and app restarts; answering its last unanswered question later starts a process with `--resume`. Messages typed in the composer while a set is incomplete are delivered normally and do not change the set. Until every question of the set has an answer, the set stays pinned and Claude cannot post another set in this chat. Default chosen at design time.
 
 ### Pinned questions card
 
-While the chat has a question set that is not completed, a native SwiftUI card is pinned above the composer of every view of the chat, below the permission card when both exist. It shows one question at a time: the first question of the set, in label order, that has no answer.
+While the chat has a question set that is not completed, a native SwiftUI card is pinned above the composer of every view of the chat, below the permission card when both exist. It shows one question of the set at a time. Each chat view chooses its displayed question on its own: when the card appears for a set, it displays the first question of the set, in label order, that has no answer.
 
-- Header `<label> of <count>`, for example `B of 3`.
+- Header `<label> of <count>`, for example `B of 3`: the displayed question.
+- At the top right, previous and next arrow buttons, then a minimize button, a chevron pointing down. The arrows display the previous and the next question of the set, in label order, answered or not; they wrap at neither end: the previous arrow is disabled on the first question and the next arrow on the last one.
 - The question text rendered as Markdown (selectable).
-- One row per option: a radio button, then the label in bold and the description in secondary text, both selectable; only the radio button and the empty part of the row choose the option, so selecting text never changes the answer. The recommended option carries a `Recommended` tag and is selected when the question appears.
+- One row per option: a radio button, then the label in bold and the description in secondary text, both selectable; only the radio button and the empty part of the row choose the option, so selecting text never changes the answer. The recommended option carries a `Recommended` tag.
 - Every text of the card is selectable (`textSelection(.enabled)`), the header included.
 - A last radio row `Answer another way` with a multi-line text field (1 to 6 visible lines). Typing in the field selects this row; Return inserts a line break.
-- Submit (⌘Return while the focus is in the chat view outside its composer and no permission card is shown) calls `chats.answerQuestion` with the selected option's label, or with the field's text. It is disabled while `Answer another way` is selected with an empty field.
-- After a successful answer the card shows the next unanswered question; after the last one the card disappears.
-- Answers given on another device appear live through `chat.item`.
+- Selection when a question is displayed: a question without an answer appears with its recommended option selected and an empty field. An answered question appears with its answer selected: the option whose label equals the answer, or else `Answer another way` with the answer as its text; a skipped question thus shows `Answer another way` with the text `Skipped`.
+- Submit (⌘Return while the focus is in the chat view outside its composer, no permission card is shown and the card is not minimized) calls `chats.answerQuestion` for the displayed question with the selected option's label, or with the field's text. It is disabled while `Answer another way` is selected with an empty field. Submitting on an answered question replaces its answer.
+- Skip, next to Submit, calls `chats.answerQuestion` for the displayed question with the answer `Skipped`.
+- After a successful Submit or Skip, the card displays the next question after the displayed one, in label order, that has no answer, wrapping to the first question of the set; when every question has an answer the set is completed and the card disappears.
+- Answers given in another view or on another device appear live through `chat.item`. When one is for the displayed question, the card keeps displaying that question and selects the new answer.
+- Minimize: the minimize button turns the card into a one-line collapsed bar above the composer, which shows the card's header text and a chevron pointing up. Clicking the bar opens the card again. The minimized state is kept per chat and applies to the question set that was minimized: a new question set of the chat opens the card. It is stored on this device only, never in the chat files and never synced, and survives an app restart ([UI › Persistence](ui.md#persistence)). Every view of the chat on this device shares it.
 
 ## Chat settings
 
@@ -994,22 +1001,22 @@ The Claude integration lives in `Sources/HephaestusCore/Claude/`. The type names
 
 ## Keyboard shortcuts
 
-| Shortcut     | Where                                                                               | Action                                     |
-| ------------ | ----------------------------------------------------------------------------------- | ------------------------------------------ |
-| Return       | composer                                                                            | Send                                       |
-| Shift-Return | composer                                                                            | insert a line break                        |
-| Escape       | composer, while the chat is running                                                 | Stop                                       |
-| ⌘V           | composer                                                                            | paste; files and images become attachments |
-| ⌘Return      | chat view with a permission card, focus outside the composer, request shown for 1 s | Allow Once                                 |
-| ⌥⌘Return     | chat view with a permission card, focus outside the composer, request shown for 1 s | Always Allow                               |
-| ⇧⌘Return     | chat view with a permission card, focus outside the composer, request shown for 1 s | Deny                                       |
-| ⌘Return      | chat view with a questions card and no permission card, focus outside the composer  | Submit the answer                          |
-| Return       | answer field of the questions card                                                  | insert a line break                        |
-| ⌘A           | transcript                                                                          | select the whole transcript                |
-| ⌘C           | transcript                                                                          | copy the selection as plain text           |
-| ⌥⌘N          | any main window ([UI](ui.md))                                                       | New Chat: a project chat draft             |
-| ⌥⌘0          | any main window ([UI](ui.md))                                                       | show or hide the inspector                 |
-| ⌘4           | any main window ([UI](ui.md))                                                       | Chats section                              |
+| Shortcut     | Where                                                                                            | Action                                     |
+| ------------ | ------------------------------------------------------------------------------------------------ | ------------------------------------------ |
+| Return       | composer                                                                                         | Send                                       |
+| Shift-Return | composer                                                                                         | insert a line break                        |
+| Escape       | composer, while the chat is running                                                              | Stop                                       |
+| ⌘V           | composer                                                                                         | paste; files and images become attachments |
+| ⌘Return      | chat view with a permission card, focus outside the composer, request shown for 1 s              | Allow Once                                 |
+| ⌥⌘Return     | chat view with a permission card, focus outside the composer, request shown for 1 s              | Always Allow                               |
+| ⇧⌘Return     | chat view with a permission card, focus outside the composer, request shown for 1 s              | Deny                                       |
+| ⌘Return      | chat view with a questions card not minimized and no permission card, focus outside the composer | Submit the answer                          |
+| Return       | answer field of the questions card                                                               | insert a line break                        |
+| ⌘A           | transcript                                                                                       | select the whole transcript                |
+| ⌘C           | transcript                                                                                       | copy the selection as plain text           |
+| ⌥⌘N          | any main window ([UI](ui.md))                                                                    | New Chat: a project chat draft             |
+| ⌥⌘0          | any main window ([UI](ui.md))                                                                    | show or hide the inspector                 |
+| ⌘4           | any main window ([UI](ui.md))                                                                    | Chats section                              |
 
 ## System prompts
 
@@ -1180,7 +1187,7 @@ Answers:
 A: <answer to question A>
 B: <answer to question B>
 
-An answer is the label of one of your options or the user's own words. Answers are decisions: apply them and do not ask them again. When an answer raises a new unknown, ask a new set of questions, labelled from A again.
+An answer is the label of one of your options or the user's own words. The answer Skipped means that the user skipped the question: leave that point out, without acting on it or guessing, and mention it in your reply. Answers are decisions: apply them and do not ask them again. When an answer raises a new unknown, ask a new set of questions, labelled from A again.
 
 # Writing tickets
 
@@ -1481,3 +1488,6 @@ Follow "Implementing a bundle": take the tickets in this order, skip those that 
 - R100: Under Problem, Current Behavior, Expected and Change, Claude explains the problem, the current behaviour, the expected behaviour and what should change.
 - R102: The main window's sidebar and inspector are translucent and frosted, like the sidebars of native macOS apps such as Music.
 - R103: The project chat in the inspector knows which items the user has open in the main window.
+- R107: The pinned questions card can be minimized into a one-line bar and opened again.
+- R108: The user moves between the questions of a set, answers them in any order and can change an answer until every question has one.
+- R109: The user can skip a question; Claude then leaves that point out and mentions it in its reply.

@@ -173,6 +173,18 @@ private struct ChatViewContent: View {
         .task(id: model.chatProjectID) {
             workspace.ensureProjectLoaded(model.chatProjectID)
         }
+        .onChange(of: shownQuestionSet, initial: true) {
+            // A loaded transcript whose card shows another set, or none, ends the minimized state.
+            if let chatID = model.chatID, let shown = shownQuestionSet {
+                app.forgetMinimizedQuestionSet(chatID: chatID, shownSetID: shown.setID)
+            }
+        }
+    }
+
+    /// The question set of the chat once its transcript is loaded; nil while it is not.
+    private var shownQuestionSet: ShownQuestionSet? {
+        guard let chatID = model.chatID, let state = workspace.transcripts[chatID] else { return nil }
+        return ShownQuestionSet(setID: state.incompleteQuestionSet?.questionSetID)
     }
 
     // MARK: Transcript
@@ -214,15 +226,23 @@ private struct ChatViewContent: View {
         let state = model.chatID.flatMap { workspace.transcripts[$0] }
         let pending = state?.pendingPermissionRequests ?? []
         let set = state?.incompleteQuestionSet
-        let question = set.flatMap { ChatViewModel.firstUnanswered($0) }
+        let question = set.flatMap { model.displayedQuestion($0) }
         if !pending.isEmpty || question != nil {
             ScrollView(.vertical) {
                 VStack(spacing: 8) {
                     if let request = pending.first {
                         PermissionCard(model: model, request: request, count: pending.count)
                     }
-                    if let set, let question {
-                        QuestionsCard(model: model, set: set, question: question)
+                    if let chatID = model.chatID, let set, let question {
+                        if app.isQuestionsCardMinimized(chatID: chatID, setID: set.questionSetID) {
+                            QuestionsCollapsedBar(text: QuestionNavigation.header(set, question)) {
+                                app.setQuestionsCardMinimized(false, chatID: chatID, setID: set.questionSetID)
+                            }
+                        } else {
+                            QuestionsCard(model: model, set: set, question: question) {
+                                app.setQuestionsCardMinimized(true, chatID: chatID, setID: set.questionSetID)
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal, 10)
@@ -234,6 +254,11 @@ private struct ChatViewContent: View {
             .frame(height: min(cardsHeight + 1, max(maxHeight, 80)))
         }
     }
+}
+
+/// The question set of a loaded transcript, nil when it has none.
+private struct ShownQuestionSet: Equatable {
+    var setID: UUID?
 }
 
 /// `The chat could not be loaded.`, the error's message and Try Again; the composer stays usable

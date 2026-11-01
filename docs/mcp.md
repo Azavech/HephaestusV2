@@ -1359,12 +1359,12 @@ Claude then ends its turn ([Workflow](workflow.md#asking)).
 
 #### Answers
 
-The app shows the questions one at a time, the recommended option listed first, marked `Recommended` and preselected, with a free-text field `Answer another way` ([Chats](chats.md)). The user answers them one by one (chats.answerQuestion). When the last one is answered, the engine sends Claude one user message: `Answers:`, then one line `<label>: <answer>` per question in label order, `<answer>` being the label of the chosen option or the text the user typed ([Workflow](workflow.md#answers-message)). For example:
+The app shows the questions one at a time, the recommended option listed first, marked `Recommended` and preselected, with a free-text field `Answer another way` and a Skip button ([Chats](chats.md#pinned-questions-card)). The user answers them one by one, in any order, and can change an answer until every question has one (chats.answerQuestion). When every question has an answer, the engine sends Claude one user message: `Answers:`, then one line `<label>: <answer>` per question in label order, `<answer>` being the label of the chosen option, the text the user typed, or `Skipped` for a skipped question ([Workflow](workflow.md#answers-message)). For example:
 
 ```text
 Answers:
 A: Use YAML files
-B: Beep and show the tooltip
+B: Skipped
 ```
 
 ### list_chats
@@ -2418,3 +2418,5 @@ Unauthorized: missing or invalid bearer token.
 - R96: Claude always gives several ways to answer each question.
 - R97: One of the ways to answer is a recommended answer.
 - R104: A project has a type: None, Go service or Swift application.
+- R108: The user moves between the questions of a set, answers them in any order and can change an answer until every question has one.
+- R109: The user can skip a question; Claude then leaves that point out and mentions it in its reply.

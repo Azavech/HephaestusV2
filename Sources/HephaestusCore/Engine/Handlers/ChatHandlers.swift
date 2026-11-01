@@ -375,14 +375,15 @@ extension Engine {
             _ = try requireChat(chatID)
             try ensureChatScanned(chatID)
             let set = try questionSet(params.questionSetID, chatID: chatID)
-            guard let first = set.questions.first(where: { set.answers[$0.label] == nil })?.label else {
+            guard !set.completed, set.questions.contains(where: { set.answers[$0.label] == nil }) else {
                 throw EngineError(.conflict, "These questions were already answered.")
             }
-            guard params.label == first else {
-                throw EngineError(.invalid, "Answer question \(first) first.")
+            // Any label, in any order; an answer given again replaces the earlier one.
+            guard set.questions.contains(where: { $0.label == params.label }) else {
+                throw EngineError.invalid("label", "no question of the set has this label")
             }
-            let remaining = set.questions.filter { set.answers[$0.label] == nil }.count
-            return (set, remaining == 1)
+            let remaining = set.questions.filter { $0.label != params.label && set.answers[$0.label] == nil }
+            return (set, remaining.isEmpty)
         }
         var (set, completes) = try check()
         var sender = ""

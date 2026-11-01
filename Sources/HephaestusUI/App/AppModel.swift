@@ -43,6 +43,9 @@ public final class AppModel {
     private(set) var chatWindows: Set<ChatWindowValue> = []
     /// Last active project per device, persisted in `UserDefaults`.
     private(set) var lastProjectIDByDevice: [String: String]
+    /// Minimized questions cards: chat id → id of the minimized question set, persisted in
+    /// `UserDefaults` (docs/chats.md › Pinned questions card).
+    private(set) var minimizedQuestionSets: [String: String]
     /// The last status received from the Updater.
     var updaterStatus = UpdaterStatus.initial
 
@@ -100,6 +103,7 @@ public final class AppModel {
     /// `UserDefaults` keys (docs/ui.md › Persistence).
     static let lastProjectDefaultsKey = "lastProjectIDByDevice"
     static let windowsAtRestartDefaultsKey = "windowsAtRestart"
+    static let minimizedQuestionSetsDefaultsKey = "minimizedQuestionSets"
 
     init(environment: LaunchEnvironment, engine: Engine, appVersion: AppVersion, connection: LocalEngineConnection,
          restartWindows: [RestartWindowRecord]?) {
@@ -114,8 +118,11 @@ public final class AppModel {
         workspaces = [engine.deviceID: local]
         if persistsWindowState {
             lastProjectIDByDevice = UserDefaults.standard.dictionary(forKey: Self.lastProjectDefaultsKey) as? [String: String] ?? [:]
+            minimizedQuestionSets = UserDefaults.standard.dictionary(forKey: Self.minimizedQuestionSetsDefaultsKey) as? [String: String]
+                ?? [:]
         } else {
             lastProjectIDByDevice = [:]
+            minimizedQuestionSets = [:]
         }
         for record in restartWindows ?? [] {
             if let json = record.main {
@@ -209,6 +216,30 @@ public final class AppModel {
         lastProjectIDByDevice[deviceID] = projectID
         if persistsWindowState {
             UserDefaults.standard.set(lastProjectIDByDevice, forKey: Self.lastProjectDefaultsKey)
+        }
+    }
+
+    /// Whether the questions card of a chat is minimized for this question set.
+    func isQuestionsCardMinimized(chatID: String, setID: UUID) -> Bool {
+        minimizedQuestionSets[chatID] == setID.uuidString
+    }
+
+    /// The minimize button and the collapsed bar of the questions card.
+    func setQuestionsCardMinimized(_ minimized: Bool, chatID: String, setID: UUID) {
+        updateMinimizedQuestionSet(chatID, minimized ? setID.uuidString : nil)
+    }
+
+    /// Removes the entry of a chat whose card shows another question set, or none.
+    func forgetMinimizedQuestionSet(chatID: String, shownSetID: UUID?) {
+        guard let stored = minimizedQuestionSets[chatID], stored != shownSetID?.uuidString else { return }
+        updateMinimizedQuestionSet(chatID, nil)
+    }
+
+    private func updateMinimizedQuestionSet(_ chatID: String, _ setID: String?) {
+        guard minimizedQuestionSets[chatID] != setID else { return }
+        minimizedQuestionSets[chatID] = setID
+        if persistsWindowState {
+            UserDefaults.standard.set(minimizedQuestionSets, forKey: Self.minimizedQuestionSetsDefaultsKey)
         }
     }
 

@@ -751,12 +751,12 @@ A CLI tool name `mcp__<server>__<tool>` is split after the `mcp__` prefix at the
 
 The persisted form of a question set posted with the MCP tool `ask_questions` ([Workflow](workflow.md)).
 
-| Swift name    | Key             | Type               | Required | Default | Rules                                                                                                                          |
-| ------------- | --------------- | ------------------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| questionSetID | `questionSetID` | `UUID`             | yes      | —       | Id of the set, used by `chats.answerQuestion`.                                                                                 |
-| questions     | `questions`     | `[Question]`       | yes      | —       | 1–26 questions, labelled `A`, `B`, `C`… in order. Default chosen at design time.                                               |
-| answers       | `answers`       | `[String: String]` | no       | `{}`    | Answer per question label: the `label` of the chosen option or the user's own text.                                            |
-| completed     | `completed`     | `Bool`             | no       | `false` | `true` once every question has an answer; the engine then sends the answers to Claude in one user message ([Chats](chats.md)). |
+| Swift name    | Key             | Type               | Required | Default | Rules                                                                                                                                                                                                              |
+| ------------- | --------------- | ------------------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| questionSetID | `questionSetID` | `UUID`             | yes      | —       | Id of the set, used by `chats.answerQuestion`.                                                                                                                                                                     |
+| questions     | `questions`     | `[Question]`       | yes      | —       | 1–26 questions, labelled `A`, `B`, `C`… in order. Default chosen at design time.                                                                                                                                   |
+| answers       | `answers`       | `[String: String]` | no       | `{}`    | Answer per question label: the `label` of the chosen option, the user's own text, or `Skipped` for a skipped question. An answer is replaced when the user answers its question again before the set is completed. |
+| completed     | `completed`     | `Bool`             | no       | `false` | `true` once every question has an answer; the engine then sends the answers to Claude in one user message ([Chats](chats.md)).                                                                                     |
 
 `Question`:
 
@@ -1256,3 +1256,5 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R42: A project's tickets are stored in `.hephaestus/ticket/<ticket id>.yml`.
 - R104: A project has a type: None, Go service or Swift application.
 - R105: A project shows how much it has cost: its total, sub projects included, and the cost of each of its chats, deleted chats included.
+- R108: The user moves between the questions of a set, answers them in any order and can change an answer until every question has one.
+- R109: The user can skip a question; Claude then leaves that point out and mentions it in its reply.

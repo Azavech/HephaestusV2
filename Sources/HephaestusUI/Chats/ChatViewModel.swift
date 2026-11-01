@@ -30,6 +30,12 @@ enum QuestionChoice: Hashable {
     case other
 }
 
+/// The question a questions card displays: its set and its label.
+struct QuestionKey: Hashable {
+    var setID: UUID
+    var label: String
+}
+
 @MainActor @Observable
 final class ChatViewModel {
     let workspace: DeviceWorkspace
@@ -69,8 +75,8 @@ final class ChatViewModel {
     var permissionArmedID: String?
     var denyMessage = ""
     var permissionShowsAll = false
-    /// `<questionSetID>/<label>` of the shown question.
-    var questionKey: String?
+    /// The set and the label of the question the card displays.
+    var questionKey: QuestionKey?
     var questionChoice: QuestionChoice = .other
     var questionOther = ""
     var isSubmittingAnswer = false
@@ -376,18 +382,27 @@ final class ChatViewModel {
 
     // MARK: Questions card
 
-    /// The first question of the set, in label order, that has no answer.
-    static func firstUnanswered(_ set: QuestionsItem) -> Question? {
-        set.questions.sorted { $0.label < $1.label }.first { set.answers[$0.label] == nil }
+    /// The question the card displays for `set`: the one this view chose for this set, else the
+    /// first question without an answer.
+    func displayedQuestion(_ set: QuestionsItem) -> Question? {
+        if questionKey?.setID == set.questionSetID, let label = questionKey?.label,
+           let question = set.questions.first(where: { $0.label == label }) {
+            return question
+        }
+        return QuestionNavigation.firstUnanswered(set)
     }
 
-    /// A new question appears with its recommended option selected and an empty field.
+    /// The displayed question appeared, or its stored answer changed: the selection shows the
+    /// stored answer, else the recommended option with an empty field.
     func questionShown(_ set: QuestionsItem, _ question: Question) {
-        let key = set.questionSetID.uuidString + "/" + question.label
-        guard questionKey != key else { return }
-        questionKey = key
-        questionChoice = .option(question.recommended)
-        questionOther = ""
+        questionKey = QuestionKey(setID: set.questionSetID, label: question.label)
+        (questionChoice, questionOther) = QuestionNavigation.selection(question, answer: set.answers[question.label])
+    }
+
+    /// The previous or next arrow: the neighbouring question of the set, in label order.
+    func showQuestion(_ label: String, of set: QuestionsItem) {
+        guard let question = set.questions.first(where: { $0.label == label }) else { return }
+        questionShown(set, question)
     }
 
     /// The answer the card submits: the selected option's label, or the field's text.
@@ -402,30 +417,44 @@ final class ChatViewModel {
         !questionAnswer.isEmpty && !isSubmittingAnswer
     }
 
-    /// Submit: `chats.answerQuestion`. An answer that fails because the question was answered on
-    /// another device shows no alert.
+    /// Submit: `chats.answerQuestion` for the displayed question with the selected answer.
     func submitAnswer() {
+        guard canSubmitAnswer else { return }
+        answerDisplayedQuestion(questionAnswer, action: "Submit")
+    }
+
+    /// Skip: `chats.answerQuestion` for the displayed question with `Skipped`.
+    func skipQuestion() {
+        guard !isSubmittingAnswer else { return }
+        answerDisplayedQuestion(QuestionNavigation.skipped, action: "Skip")
+    }
+
+    /// Stores an answer of the displayed question, then displays the next question without an
+    /// answer. An answer that fails because the set was completed on another device shows no alert.
+    private func answerDisplayedQuestion(_ answer: String, action: String) {
         guard let chatID, let uuid = UUID(uuidString: chatID), let set = transcriptState?.incompleteQuestionSet,
-              let question = Self.firstUnanswered(set), canSubmitAnswer else { return }
-        let answer = questionAnswer
+              let question = displayedQuestion(set) else { return }
         isSubmittingAnswer = true
         Task {
             defer { isSubmittingAnswer = false }
             do {
                 _ = try await workspace.call(ChatsAnswerQuestion.self, ChatsAnswerQuestion.Params(
                     chatID: uuid, questionSetID: set.questionSetID, label: question.label, answer: answer))
-            } catch let error as EngineError where (error.code == .invalid || error.code == .conflict)
-                && answeredElsewhere(set.id, label: question.label) {
+                let latest = transcriptState?.incompleteQuestionSet ?? set
+                guard latest.questionSetID == set.questionSetID,
+                      let next = QuestionNavigation.nextUnanswered(latest, after: question.label) else { return }
+                showQuestion(next, of: latest)
+            } catch let error as EngineError where error.code == .conflict && completedElsewhere(set.id) {
                 return
             } catch {
-                alert(.failure("Submit", error))
+                alert(.failure(action, error))
             }
         }
     }
 
-    private func answeredElsewhere(_ itemID: String, label: String) -> Bool {
+    private func completedElsewhere(_ itemID: String) -> Bool {
         guard case .questions(let set)? = transcriptState?.item(itemID) else { return false }
-        return set.completed || set.answers[label] != nil
+        return set.completed
     }
 
     // MARK: Card keys (docs/chats.md › Keyboard shortcuts)
@@ -446,7 +475,8 @@ final class ChatViewModel {
     }
 
     /// ⌘Return, ⌥⌘Return and ⇧⌘Return answer the permission card once its request has been shown
-    /// for 1 second; ⌘Return submits the questions card when no permission card is shown. Both act
+    /// for 1 second; ⌘Return submits the questions card when no permission card is shown and the
+    /// card is not minimized. Both act
     /// only while the focus is in this chat view outside its composer.
     func handleKey(_ event: NSEvent) -> Bool {
         guard let window, event.window === window else { return false }
@@ -467,7 +497,8 @@ final class ChatViewModel {
             }
             return true
         }
-        if flags == [.command], state.incompleteQuestionSet != nil {
+        if flags == [.command], let set = state.incompleteQuestionSet, let chatID,
+           app?.isQuestionsCardMinimized(chatID: chatID, setID: set.questionSetID) != true {
             submitAnswer()
             return true
         }

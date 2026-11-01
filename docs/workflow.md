@@ -64,8 +64,8 @@ The label, text and option-label checks, the maximum of 10 options and all messa
 
 ### Answering
 
-- The questions appear in the chat as a card above the composer, one at a time in label order, with a counter such as `B of 3`. The card lists the options, with the recommended one marked `Recommended` and preselected, plus a free-text field `Answer another way` and a Submit button ([Chats](chats.md)).
-- The user answers the questions one by one, from any window or device. Each Submit stores one answer with `chats.answerQuestion` (`questionSetID`, `label`, `answer`). The chat's state is `waitingAnswers` while the set is not completed.
+- The questions appear in the chat as a card above the composer, one at a time, with a counter such as `B of 3` and arrows that move between the questions of the set. The card lists the options, with the recommended one marked `Recommended` and preselected, plus a free-text field `Answer another way`, a Submit button and a Skip button. The card can be minimized into a one-line bar ([Chats](chats.md#pinned-questions-card)).
+- The user answers the questions one by one, in any order, from any window or device. Each Submit stores one answer with `chats.answerQuestion` (`questionSetID`, `label`, `answer`); submitting again on an answered question replaces its answer while the set is not completed. Skip stores the answer `Skipped`. The chat's state is `waitingAnswers` while the set is not completed.
 - The stored answer is the label of the chosen option, or the free text as typed, trimmed. Default chosen at design time.
 
 ### Answers message
@@ -79,6 +79,7 @@ B: <answer>
 ```
 
 - The message has one line per question, in label order, in the form `<label>: <answer>`. Line breaks inside a free-text answer are kept. Default chosen at design time.
+- A skipped question reads `<label>: Skipped`. Claude leaves that point out: it does not act on it or guess, and it mentions it in its reply.
 - Answers are decisions: Claude applies them and does not ask them again. An answer that raises a new unknown leads to a new question set, labelled from `A` again.
 
 ### Plain-text questions
@@ -447,3 +448,5 @@ Notes
 - R98: The user can answer however they want.
 - R100: Under Problem, Current Behavior, Expected and Change, Claude explains the problem, the current behaviour, the expected behaviour and what should change.
 - R101: Under Docs, Claude lists all docs files and paragraphs relevant to the issue.
+- R108: The user moves between the questions of a set, answers them in any order and can change an answer until every question has one.
+- R109: The user can skip a question; Claude then leaves that point out and mentions it in its reply.

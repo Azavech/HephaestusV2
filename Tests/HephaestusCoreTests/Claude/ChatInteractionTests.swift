@@ -151,7 +151,7 @@ struct ChatInteractionTests {
         }
     }
 
-    @Test("Questions: the rules, one set at a time, answers in label order, then the Answers message")
+    @Test("Questions: the rules, one set at a time, answers in any order and replaced, then the Answers message")
     func questions() async throws {
         try await withChatEngine { bed in
             let chat = try await bed.createChat(message: "Plan")
@@ -169,7 +169,7 @@ struct ChatInteractionTests {
                 try await bed.engine.call(ChatsPostQuestions.self, .init(chatID: chat.id, questions: [question("A")]),
                                           actor: .claude(chatID: UUID().uuidString))
             } == EngineError(.forbidden, "Only the chat's own Claude can ask questions."))
-            let set = try await bed.engine.call(ChatsPostQuestions.self, .init(chatID: chat.id, questions: [question("A"), question("B")]),
+            let set = try await bed.engine.call(ChatsPostQuestions.self, .init(chatID: chat.id, questions: [question("A"), question("B"), question("C")]),
                                                 actor: claude)
             #expect(set.questions[0].options[0].label == "Yes")
             #expect(set.answers.isEmpty && !set.completed)
@@ -181,14 +181,16 @@ struct ChatInteractionTests {
                 _ = try await bed.connection.call(ChatsAnswerQuestion.self, .init(chatID: chat.id, questionSetID: set.questionSetID,
                                                                                  label: label, answer: text))
             }
-            #expect(await engineError { try await answer("B", "No") } == EngineError(.invalid, "Answer question A first."))
+            #expect(await engineError { try await answer("D", "No") } == EngineError(.invalid, "label: no question of the set has this label."))
             #expect(await engineError { try await answer("A", "   ") }?.code == .invalid)
-            try await answer("A", " Yes ")
-            #expect(await bed.state(chat.id) == .waitingAnswers)
+            try await answer("C", "Skipped")
+            try await answer("B", "No")
             try await answer("B", "Only on Mondays\nand Fridays")
+            #expect(await bed.state(chat.id) == .waitingAnswers)
+            try await answer("A", " Yes ")
             let process = try #require(await bed.launcher.chatProcess())
             let line = await process.line { $0.contains("Answers:") }
-            #expect(line?.contains(#""text":"Answers:\nA: Yes\nB: Only on Mondays\nand Fridays""#) == true)
+            #expect(line?.contains(#""text":"Answers:\nA: Yes\nB: Only on Mondays\nand Fridays\nC: Skipped""#) == true)
             #expect(await bed.waitForState(chat.id, .idle))
             let items = try await bed.transcript(chat.id)
             let stored = items.compactMap { item -> QuestionsItem? in
@@ -196,7 +198,7 @@ struct ChatInteractionTests {
                 return nil
             }.first
             #expect(stored?.completed == true)
-            #expect(stored?.answers == ["A": "Yes", "B": "Only on Mondays\nand Fridays"])
+            #expect(stored?.answers == ["A": "Yes", "B": "Only on Mondays\nand Fridays", "C": "Skipped"])
             #expect(await engineError { try await answer("B", "x") } == EngineError(.conflict, "These questions were already answered."))
             #expect(await engineError {
                 try await bed.connection.call(ChatsAnswerQuestion.self, .init(chatID: chat.id, questionSetID: UUID(), label: "A", answer: "x"))

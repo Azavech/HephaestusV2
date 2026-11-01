@@ -1029,15 +1029,15 @@ Swift type `ChatsAnswerQuestion` · actors: user · result: [Empty](#empty)
 | label         | String | yes      | Label of a question of the set.                             |
 | answer        | String | yes      | The chosen option's label or free text; trimmed; not empty. |
 
-- `label` must be the label of the first question of the set, in label order, that has no answer (`invalid`, `Answer question <first unanswered label> first.`): the questions are answered one by one ([Chats](chats.md#answering)). `answer` is trimmed and has 1 to 10,000 characters. A stored answer is never replaced. Default chosen at design time.
-- When every question of the set has an answer, the set becomes completed and the engine sends one user message, by the rules of `chats.send`, with `sender` the name of the actor's device: `Answers:` followed by one line `<label>: <answer>` per question in label order, lines separated by `\n`. During a turn it is written to the Claude process at once and the CLI runs it after that turn, as for `chats.send` ([Chats](chats.md#answering)).
+- `label` is the label of any question of the set: the questions are answered in any order, and an answer to a question that already has one replaces it ([Chats](chats.md#answering)). Another label fails with `invalid` (`label: no question of the set has this label.`); this message is a default chosen at design time. `answer` is trimmed and has 1 to 10,000 characters; the answer `Skipped` marks a skipped question.
+- When every question of the set has an answer, skipped questions included, the set becomes completed and the engine sends one user message, by the rules of `chats.send`, with `sender` the name of the actor's device: `Answers:` followed by one line `<label>: <answer>` per question in label order, lines separated by `\n`. During a turn it is written to the Claude process at once and the CLI runs it after that turn, as for `chats.send` ([Chats](chats.md#answering)).
 
-| Error       | When                                                                                                                                                                                                                                                                       |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| invalid     | chatID or questionSetID is not a UUID; label is not a label of the set, or not its first unanswered question (`Answer question <first unanswered label> first.`); answer is empty or longer than 10,000 characters after trimming (`answer: use 1 to 10,000 characters.`). |
-| notFound    | No such chat; no question set with this id in it.                                                                                                                                                                                                                          |
-| conflict    | The set is already completed (`These questions were already answered.`).                                                                                                                                                                                                   |
-| unavailable | The answer completes the set and the Claude CLI is not available; nothing is stored.                                                                                                                                                                                       |
+| Error       | When                                                                                                                                                                                                                               |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid     | chatID or questionSetID is not a UUID; label is not a label of the set (`label: no question of the set has this label.`); answer is empty or longer than 10,000 characters after trimming (`answer: use 1 to 10,000 characters.`). |
+| notFound    | No such chat; no question set with this id in it.                                                                                                                                                                                  |
+| conflict    | The set is already completed (`These questions were already answered.`).                                                                                                                                                           |
+| unavailable | The answer completes the set and the Claude CLI is not available; nothing is stored.                                                                                                                                               |
 
 Events: chat.item (the `questions` item); when the set is completed, chat.item (the user message) and chat.updated.
 
@@ -2612,3 +2612,5 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R88 (partly): Only the user can mark a ticket done.
 - R104: A project has a type: None, Go service or Swift application.
 - R105: A project shows how much it has cost: its total, sub projects included, and the cost of each of its chats, deleted chats included.
+- R108: The user moves between the questions of a set, answers them in any order and can change an answer until every question has one.
+- R109: The user can skip a question; Claude then leaves that point out and mentions it in its reply.

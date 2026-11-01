@@ -47,7 +47,7 @@ Answers:
 A: <answer to question A>
 B: <answer to question B>
 
-An answer is the label of one of your options or the user's own words. Answers are decisions: apply them and do not ask them again. When an answer raises a new unknown, ask a new set of questions, labelled from A again.
+An answer is the label of one of your options or the user's own words. The answer Skipped means that the user skipped the question: leave that point out, without acting on it or guessing, and mention it in your reply. Answers are decisions: apply them and do not ask them again. When an answer raises a new unknown, ask a new set of questions, labelled from A again.
 
 # Writing tickets
 
