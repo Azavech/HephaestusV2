@@ -1,9 +1,13 @@
-// OWNER: ui-shell — the sidebar: the seven sections and the project footer (docs/ui.md › Sidebar).
+// OWNER: ui-shell — the sidebar: the eight sections and the project footer (docs/ui.md › Sidebar).
 import AppKit
 import HephaestusCore
 import SwiftUI
 
 extension ProjectSection {
+    /// The sections listed from the top of the sidebar, in order; `settings` is pinned to its
+    /// bottom.
+    static let listed: [ProjectSection] = allCases.filter { $0 != .settings }
+
     /// The sidebar title.
     var title: String {
         switch self {
@@ -14,6 +18,7 @@ extension ProjectSection {
         case .docs: return "Docs"
         case .web: return "Web"
         case .skills: return "Skills"
+        case .settings: return "Project Settings"
         }
     }
 
@@ -27,24 +32,26 @@ extension ProjectSection {
         case .docs: return "doc.text"
         case .web: return "globe"
         case .skills: return "wand.and.stars"
+        case .settings: return "gearshape"
         }
     }
 
-    /// The digit of its View menu shortcut, ⌘1 to ⌘7.
-    var shortcutKey: KeyEquivalent {
+    /// Its shortcut: ⌘1 to ⌘7 in the View menu, ⇧⌘, for Project ▸ Project Settings….
+    var shortcut: KeyboardShortcut {
         switch self {
-        case .tickets: return "1"
-        case .bundles: return "2"
-        case .chats: return "3"
-        case .code: return "4"
-        case .docs: return "5"
-        case .web: return "6"
-        case .skills: return "7"
+        case .tickets: return KeyboardShortcut("1", modifiers: .command)
+        case .bundles: return KeyboardShortcut("2", modifiers: .command)
+        case .chats: return KeyboardShortcut("3", modifiers: .command)
+        case .code: return KeyboardShortcut("4", modifiers: .command)
+        case .docs: return KeyboardShortcut("5", modifiers: .command)
+        case .web: return KeyboardShortcut("6", modifiers: .command)
+        case .skills: return KeyboardShortcut("7", modifiers: .command)
+        case .settings: return KeyboardShortcut(",", modifiers: [.command, .shift])
         }
     }
 }
 
-/// The section list of the active project and its footer.
+/// The section list of the active project, the pinned Project Settings row and the footer.
 struct SidebarView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -54,12 +61,15 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(spacing: 2) {
-                    ForEach(ProjectSection.allCases, id: \.self) { section in
+                    ForEach(ProjectSection.listed, id: \.self) { section in
                         row(section)
                     }
                 }
                 .padding(8)
             }
+            row(.settings)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 6)
             Divider()
             footer
         }
@@ -100,20 +110,13 @@ struct SidebarView: View {
         return count > 0 ? String(count) : nil
     }
 
-    /// The active project's identifier and a gear button that opens Project settings.
+    /// The active project's identifier.
     private var footer: some View {
         HStack {
             Text(project.id)
                 .font(.system(.body, design: .monospaced))
                 .foregroundStyle(.secondary)
             Spacer()
-            Button {
-                window.sheet = .projectSettings(projectID: project.id)
-            } label: {
-                Image(systemName: "gearshape")
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel("Project Settings…")
         }
         .padding(.horizontal, 12)
         .frame(height: 30)

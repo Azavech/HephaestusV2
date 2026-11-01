@@ -592,7 +592,7 @@ extension WindowSheet {
     /// The project a sheet acts on, when it acts on one.
     var projectID: String? {
         switch self {
-        case .newSubProject(let projectID), .projectSettings(let projectID), .newTicket(let projectID),
+        case .newSubProject(let projectID), .newTicket(let projectID),
              .ticketPicker(let projectID, _, _), .newSkill(let projectID), .newDoc(let projectID, _),
              .renameDoc(let projectID, _), .newFile(let projectID, _, _), .renameFile(let projectID, _):
             return projectID

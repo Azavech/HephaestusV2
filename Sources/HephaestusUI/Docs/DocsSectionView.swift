@@ -217,7 +217,7 @@ private struct DocsViewer: View {
                     }
                 }
                 Button("Project Settings…") {
-                    window.sheet = .projectSettings(projectID: projectID)
+                    window.section = .settings
                 }
             }
         }

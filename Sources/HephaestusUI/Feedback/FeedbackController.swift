@@ -172,6 +172,8 @@ final class FeedbackController {
             return workspace.webTabs[projectID]?.first { $0.id.uuidString == tabID.uppercased() }?.url
         case .skills:
             return view.selectedSkillName
+        case .settings:
+            return nil
         }
     }
 

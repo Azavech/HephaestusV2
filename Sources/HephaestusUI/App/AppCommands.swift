@@ -209,11 +209,11 @@ private struct ViewCommands: View {
     var body: some View {
         let window = actionable(focused)
         let hasProject = window?.projectID != nil
-        ForEach(ProjectSection.allCases, id: \.self) { section in
+        ForEach(ProjectSection.listed, id: \.self) { section in
             Button(section.title) {
                 window?.section = section
             }
-            .keyboardShortcut(section.shortcutKey, modifiers: .command)
+            .keyboardShortcut(section.shortcut)
             .disabled(!hasProject)
         }
         Divider()
@@ -336,10 +336,9 @@ private struct ProjectCommands: View {
         }
         .disabled(!project)
         Button("Project Settings…") {
-            if let window, let projectID = window.projectID {
-                window.sheet = .projectSettings(projectID: projectID)
-            }
+            window?.section = .settings
         }
+        .keyboardShortcut(ProjectSection.settings.shortcut)
         .disabled(!project)
         if window?.workspace?.isLocal ?? true {
             Button("Reveal in Finder") {

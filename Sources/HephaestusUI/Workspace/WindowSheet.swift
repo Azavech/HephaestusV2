@@ -18,8 +18,6 @@ public enum WindowSheet: Codable, Hashable, Sendable, Identifiable {
     /// Choose Folder sheet of Open Project… on a remote device
     /// (docs/projects.md › Picking a folder on a remote device).
     case openProjectFolder
-    /// Project Settings sheet (docs/projects.md › Project settings).
-    case projectSettings(projectID: String)
     /// New Ticket sheet (docs/tickets.md › New Ticket sheet).
     case newTicket(projectID: String)
     /// Ticket picker sheet: Create Bundle from Selection, or Add Tickets of a bundle
@@ -66,8 +64,6 @@ struct WindowSheetView: View {
             NewProjectSheet(window: window, workspace: workspace, parentID: parentID)
         case .openProjectFolder:
             ChooseFolderSheet(window: window, workspace: workspace, purpose: .openProject)
-        case .projectSettings(let projectID):
-            ProjectSettingsSheet(window: window, workspace: workspace, projectID: projectID)
         case .newTicket(let projectID):
             NewTicketSheet(window: window, workspace: workspace, projectID: projectID)
         case .ticketPicker(let projectID, let bundleID, let checked):

@@ -2172,7 +2172,7 @@ public enum NavigationTarget: Codable, Sendable, Hashable {
 
 ### ProjectSection
 
-String enum of the sidebar sections: `tickets`, `bundles`, `chats`, `code`, `docs`, `web`, `skills`. The Swift name avoids SwiftUI's `Section`. Default chosen at design time.
+String enum of the sidebar sections: `tickets`, `bundles`, `chats`, `code`, `docs`, `web`, `skills`, `settings` ([Sidebar](ui.md#sidebar)). The Swift name avoids SwiftUI's `Section`. Default chosen at design time.
 
 ### AttachmentUpload
 

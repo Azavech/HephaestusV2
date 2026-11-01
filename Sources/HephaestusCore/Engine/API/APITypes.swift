@@ -410,6 +410,7 @@ public enum ProjectSection: String, Codable, Sendable, Hashable, CaseIterable {
     case docs
     case web
     case skills
+    case settings
 
     public init(from decoder: Decoder) throws {
         self = try APIEnumCoding.decode(decoder)

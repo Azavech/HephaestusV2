@@ -48,7 +48,9 @@ The scene ids, the window titles and subtitles, the window sizes and the restora
 │ Docs          ├─────────────────────────────────────────────┤                      │
 │ Web           │ console drawer (⇧⌘Y)                        │                      │
 │ Skills        │                                             │                      │
-│ HEPH  [gear]  │                                             │                      │
+│               │                                             │                      │
+│ Proj Settings │                                             │                      │
+│ HEPH          │                                             │                      │
 ├───────────────┴─────────────────────────────────────────────┴──────────────────────┤
 │ ● This Mac · 2 remotes · MCP :47820    ◌ 1 chat running · ▶ make run   [ladybug]   │ status bar
 └────────────────────────────────────────────────────────────────────────────────────┘
@@ -57,7 +59,7 @@ The scene ids, the window titles and subtitles, the window sizes and the restora
 | Region         | Position                        | Size (points)                   | Content                                                               | Specified in                      |
 | -------------- | ------------------------------- | ------------------------------- | --------------------------------------------------------------------- | --------------------------------- |
 | Toolbar        | top, unified with the title bar | system height                   | Run, Stop, breadcrumb selector, Search, New Chat, Project Chat toggle | [Toolbar](#toolbar)               |
-| Sidebar        | left column                     | width 160 to 280, default 200   | the seven sections and the project footer                             | [Sidebar](#sidebar)               |
+| Sidebar        | left column                     | width 160 to 280, default 200   | the eight sections and the project footer                             | [Sidebar](#sidebar)               |
 | Content        | centre column                   | minimum width 540               | the selected section of the active project                            | the section's document            |
 | Console drawer | bottom of the centre column     | height default 220, minimum 120 | output of the active project's runs                                   | [Console drawer](#console-drawer) |
 | Inspector      | right column                    | width 300 to 600, default 380   | the project chat panel                                                | [Inspector](#inspector)           |
@@ -106,23 +108,25 @@ The segment icons, the dot in the Device title, the 240-point truncation and the
 
 ## Sidebar
 
-| Section (`ProjectSection`) | Title   | SF Symbol                                 | Shortcut | Badge                                                                                                                                       | Specified in                                    |
-| -------------------------- | ------- | ----------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `tickets`                  | Tickets | `checklist`                               | ⌘1       | number of the active project's tickets whose status is `todo` or `in_progress` (`ticketCounts.todo + ticketCounts.inProgress`); hidden at 0 | [Tickets](tickets.md)                           |
-| `bundles`                  | Bundles | `shippingbox`                             | ⌘2       | none                                                                                                                                        | [Tickets](tickets.md)                           |
-| `chats`                    | Chats   | `bubble.left.and.bubble.right`            | ⌘3       | none                                                                                                                                        | [Chats](chats.md)                               |
-| `code`                     | Code    | `chevron.left.forwardslash.chevron.right` | ⌘4       | none                                                                                                                                        | [Code editor](code-editor.md)                   |
-| `docs`                     | Docs    | `doc.text`                                | ⌘5       | none                                                                                                                                        | [Documentation viewer](documentation-viewer.md) |
-| `web`                      | Web     | `globe`                                   | ⌘6       | none                                                                                                                                        | [Web tabs](web-tabs.md)                         |
-| `skills`                   | Skills  | `wand.and.stars`                          | ⌘7       | none                                                                                                                                        | [Skills](skills.md)                             |
+| Section (`ProjectSection`) | Title            | SF Symbol                                 | Shortcut | Badge                                                                                                                                       | Specified in                                     |
+| -------------------------- | ---------------- | ----------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `tickets`                  | Tickets          | `checklist`                               | ⌘1       | number of the active project's tickets whose status is `todo` or `in_progress` (`ticketCounts.todo + ticketCounts.inProgress`); hidden at 0 | [Tickets](tickets.md)                            |
+| `bundles`                  | Bundles          | `shippingbox`                             | ⌘2       | none                                                                                                                                        | [Tickets](tickets.md)                            |
+| `chats`                    | Chats            | `bubble.left.and.bubble.right`            | ⌘3       | none                                                                                                                                        | [Chats](chats.md)                                |
+| `code`                     | Code             | `chevron.left.forwardslash.chevron.right` | ⌘4       | none                                                                                                                                        | [Code editor](code-editor.md)                    |
+| `docs`                     | Docs             | `doc.text`                                | ⌘5       | none                                                                                                                                        | [Documentation viewer](documentation-viewer.md)  |
+| `web`                      | Web              | `globe`                                   | ⌘6       | none                                                                                                                                        | [Web tabs](web-tabs.md)                          |
+| `skills`                   | Skills           | `wand.and.stars`                          | ⌘7       | none                                                                                                                                        | [Skills](skills.md)                              |
+| `settings`                 | Project Settings | `gearshape`                               | ⇧⌘,      | none                                                                                                                                        | [Project settings](projects.md#project-settings) |
 
 - Exactly one section is selected per window. The selection is kept when the window switches project or device.
 - The centre column shows the selected section for the active project. Switching project shows the same section of the new project, with the selections the window last used in that project ([WindowState](#windowstate)).
 - The sidebar's background is the frosted material of [Main window layout](#main-window-layout), under the section list and the footer.
-- The sidebar footer shows the active project's identifier and a `gearshape` button that opens [Project settings](projects.md#project-settings).
+- The rows from `tickets` to `skills` are listed from the top of the sidebar in table order. The `settings` row is pinned to the bottom of the sidebar, under the free space below the other rows and directly above the footer; it is selected like the other rows.
+- The sidebar footer shows the active project's identifier.
 - View ▸ Hide Sidebar (⌃⌘S) or dragging the divider to the window edge collapses the sidebar; its visibility persists per window.
 
-The section symbols and the footer are design-time choices. Default chosen at design time.
+The section symbols, the pinned `settings` row and the footer are design-time choices. Default chosen at design time.
 
 ## Inspector
 
@@ -138,15 +142,16 @@ The inspector is the project chat panel in the right column ([Where chats appear
 
 Linked items: the composer of the inspector's chat, or of its draft, links the items open in the centre column, read from the active project's `ProjectViewState` for the selected section only ([Linked items](chats.md#linked-items)):
 
-| Section | Linked items                                                        |
-| ------- | ------------------------------------------------------------------- |
-| Tickets | every selected ticket (`selectedTicketIDs`), in ticket number order |
-| Bundles | the selected bundle (`selectedBundleID`)                            |
-| Chats   | the chat shown in the Chats section (`selectedChatID`)              |
-| Code    | the selected editor tab (`selectedEditorPath`)                      |
-| Docs    | the selected doc (`selectedDocPath`)                                |
-| Web     | the selected web tab (`selectedWebTabID`)                           |
-| Skills  | the selected skill (`selectedSkillName`)                            |
+| Section          | Linked items                                                        |
+| ---------------- | ------------------------------------------------------------------- |
+| Tickets          | every selected ticket (`selectedTicketIDs`), in ticket number order |
+| Bundles          | the selected bundle (`selectedBundleID`)                            |
+| Chats            | the chat shown in the Chats section (`selectedChatID`)              |
+| Code             | the selected editor tab (`selectedEditorPath`)                      |
+| Docs             | the selected doc (`selectedDocPath`)                                |
+| Web              | the selected web tab (`selectedWebTabID`)                           |
+| Skills           | the selected skill (`selectedSkillName`)                            |
+| Project Settings | none                                                                |
 
 The links change with the section, the selection and the active project. A ticket, bundle, chat or web tab that the workspace does not hold is not linked. An item unlinked with × goes into `unlinkedItems` and is not linked while it stays open; as soon as it is no longer open, it leaves `unlinkedItems`, so it is linked again the next time it is opened.
 
@@ -263,7 +268,7 @@ Conditions used in the table: **main** means the key window is a main window; **
 | Project      | Stop                                     | ⌘.                      | a run of the active project is running                                                                                                                                                            | Stops every running run of the active project.                                                                                          | Brief §9.1                                                  |
 | Project      | Clear Console                            | ⌘K                      | the console drawer shows a run                                                                                                                                                                    | Clears that run's output ([Console](projects.md#console)).                                                                              | Default chosen at design time.                              |
 | Project      | New Sub Project…                         | —                       | project                                                                                                                                                                                           | Opens the New Sub Project sheet ([Sub projects](projects.md#sub-projects)).                                                             | Brief §9.1                                                  |
-| Project      | Project Settings…                        | —                       | project                                                                                                                                                                                           | Opens [Project settings](projects.md#project-settings).                                                                                 | Default chosen at design time.                              |
+| Project      | Project Settings…                        | ⇧⌘,                     | project                                                                                                                                                                                           | Selects the [Project Settings](projects.md#project-settings) section.                                                                   | Default chosen at design time.                              |
 | Project      | Reveal in Finder                         | —                       | project, on This Mac; hidden on a remote device                                                                                                                                                   | Reveals the project folder in Finder.                                                                                                   | Default chosen at design time.                              |
 | Project      | Remove Project…                          | —                       | project                                                                                                                                                                                           | [Removing a project](projects.md#removing-a-project).                                                                                   | Default chosen at design time.                              |
 | Window       | Minimize                                 | ⌘M                      | a window is key                                                                                                                                                                                   | Standard minimize.                                                                                                                      | macOS standard                                              |
@@ -339,6 +344,7 @@ Notes:
 | ⌘[, ⌘]   | Back and Forward in Finder and Safari                                        | Same meaning, for web tabs.                                                                                                                                                                                                                      |
 | ⌥⌘0      | Xcode's inspector toggle                                                     | Same meaning; ⌥⌘I is not bound.                                                                                                                                                                                                                  |
 | ⇧⌘S      | Save As                                                                      | Same meaning, in the image viewer only.                                                                                                                                                                                                          |
+| ⇧⌘,      | Settings… is ⌘,                                                              | Project ▸ Project Settings…: the active project's settings, next to the app's Settings… (⌘,), which change This Mac.                                                                                                                             |
 
 Standard shortcuts used only with their standard meaning: ⌘, ⌘H ⌥⌘H ⌘Q ⌘N ⌘O ⌘W ⌘S ⌘Z ⇧⌘Z ⌘X ⌘C ⌘V ⌥⇧⌘V ⌘A ⌘F ⌥⌘F ⌘G ⇧⌘G ⌘E ⌘J ⌘M ⌃⌘S ⌃⌘F ⇧⌘/ and ⌘\`.
 
@@ -662,7 +668,7 @@ Every main window has one `WindowState`. Its **active project** is `projectID`: 
 - Section documents add the other view state they need (for example `docBuffer` and `expandedDocFolders` of [Documentation viewer](documentation-viewer.md)) as fields of `ProjectViewState`.
 - The view state of a project stays in memory while its window is open, so returning to a project restores its selections and its unsaved editors.
 - A chat window's state is its `ChatWindowValue {deviceID: String, chatID: String}` (`Codable`, `Hashable`): the window observes the workspace of `deviceID`, opening it when needed, and shows `chatID`; it never changes while the window is open.
-- `WindowSheet` has one case per sheet that a document attaches to a main window, with the values the sheet needs to open: `newProject`, `newProjectInFolder(path)`, `newSubProject(parentID)`, `openProjectFolder`, `projectSettings(projectID)`, `newTicket(projectID)`, `ticketPicker(projectID, bundleID?, checkedTicketIDs)`, `addDevice(deviceID?)`, `feedback(previewID)`, `newSkill(projectID)`, `newSkillFile(skillName)`, `newDoc(projectID, folder)`, `renameDoc(projectID, path)`, `newFile(projectID, folder, isFolder)`, `renameFile(projectID, path)` and `webPageDialog(tabID)`.
+- `WindowSheet` has one case per sheet that a document attaches to a main window, with the values the sheet needs to open: `newProject`, `newProjectInFolder(path)`, `newSubProject(parentID)`, `openProjectFolder`, `newTicket(projectID)`, `ticketPicker(projectID, bundleID?, checkedTicketIDs)`, `addDevice(deviceID?)`, `feedback(previewID)`, `newSkill(projectID)`, `newSkillFile(skillName)`, `newDoc(projectID, folder)`, `renameDoc(projectID, path)`, `newFile(projectID, folder, isFolder)`, `renameFile(projectID, path)` and `webPageDialog(tabID)`.
 - `WindowState`, `ProjectViewState` and `ChatWindowValue` are `Codable`. They belong to their window: they are never sent to an engine and never synced. `debug_ui_state` encodes them as [WindowState](architecture.md#windowstate) specifies, without buffers: an editor tab encodes its path only, and `docBuffer` and the skill form are left out. The feedback context is built from them ([Feedback context](feedback.md#feedback-context)).
 - In JSON, `projectStates` is an array of `{deviceID, projectID, state}` objects sorted by device and project, since JSON object keys are strings.
 

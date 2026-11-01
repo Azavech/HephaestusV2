@@ -249,6 +249,8 @@ private struct SectionContent: View {
                 WebSectionView(window: state, workspace: workspace, projectID: projectID)
             case .skills:
                 SkillsSectionView(window: state, workspace: workspace, projectID: projectID)
+            case .settings:
+                ProjectSettingsView(window: state, workspace: workspace, projectID: projectID)
             }
         }
     }

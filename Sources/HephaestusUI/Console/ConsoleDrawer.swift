@@ -178,7 +178,7 @@ struct ConsoleDrawer: View {
                 Text("Set the project's commands in Project Settings.")
                     .foregroundStyle(.secondary)
                 Button("Project Settings…") {
-                    window.sheet = .projectSettings(projectID: projectID)
+                    window.section = .settings
                 }
             } else {
                 Text("No runs yet. Use Run (⌘R), Build (⌘B) or Test (⌘U).")

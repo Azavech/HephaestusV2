@@ -118,6 +118,7 @@ The client fills the [FeedbackContext](engine-api.md#feedbackcontext) from the c
 | `docs`            | path of the open doc                                                         |
 | `web`             | URL of the selected web tab                                                  |
 | `skills`          | name of the selected skill                                                   |
+| `settings`        | absent                                                                       |
 | chat window       | title of the window's chat                                                   |
 
 A chat window counts as the `chats` section of its project. Default chosen at design time.
