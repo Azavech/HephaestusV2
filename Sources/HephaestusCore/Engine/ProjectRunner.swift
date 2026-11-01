@@ -318,16 +318,31 @@ final class RunCompletion: @unchecked Sendable {
 final class RunOutputReader: @unchecked Sendable {
     let stream: AsyncStream<Data>
     private let continuation: AsyncStream<Data>.Continuation
-    private let handle: FileHandle
     private let lock = NSLock()
     private var finished = false
 
+    /// Reads with blocking reads on a thread of its own, which keeps the handle until end of
+    /// file, so that its file descriptor is never closed while a read may use it.
     init(_ handle: FileHandle) {
-        self.handle = handle
         (stream, continuation) = AsyncStream<Data>.makeStream(bufferingPolicy: .unbounded)
-        handle.readabilityHandler = { [weak self] handle in
-            self?.receive(handle.availableData)
+        let thread = Thread { [self] in
+            let descriptor = handle.fileDescriptor
+            var buffer = [UInt8](repeating: 0, count: 65_536)
+            while true {
+                let count = buffer.withUnsafeMutableBytes { read(descriptor, $0.baseAddress, $0.count) }
+                if count > 0 {
+                    receive(Data(buffer[0..<count]))
+                } else if count < 0 && errno == EINTR {
+                    continue
+                } else {
+                    break
+                }
+            }
+            receive(Data())
+            withExtendedLifetime(handle) {}
         }
+        thread.name = "RunOutputReader"
+        thread.start()
     }
 
     private func receive(_ chunk: Data) {
@@ -351,7 +366,6 @@ final class RunOutputReader: @unchecked Sendable {
     private func finishLocked() {
         guard !finished else { return }
         finished = true
-        handle.readabilityHandler = nil
         continuation.finish()
     }
 }

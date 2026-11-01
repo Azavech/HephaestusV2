@@ -322,32 +322,50 @@ private final class TimeoutFlag: @unchecked Sendable {
 
 /// Accumulates what a pipe delivers until end of file. A process that left the pipe open in
 /// a grandchild does not block the caller: `collect` waits at most `graceAfterExit`.
+///
+/// The pipe is read with blocking reads on a thread of its own, which keeps the handle until
+/// end of file: its file descriptor is never closed while a read may use it. (A
+/// `readabilityHandler` can still run once after the handle was released and its descriptor
+/// closed, and `availableData` then raises "Bad file descriptor".)
 private final class PipeCollector: @unchecked Sendable {
-    private let handle: FileHandle
     private let lock = NSLock()
     private var data = Data()
     private var finished = false
     private var waiting: [CheckedContinuation<Void, Never>] = []
 
     init(_ handle: FileHandle) {
-        self.handle = handle
-        handle.readabilityHandler = { [weak self] handle in
-            let chunk = handle.availableData
-            self?.receive(chunk)
+        let thread = Thread { [self] in
+            let descriptor = handle.fileDescriptor
+            var buffer = [UInt8](repeating: 0, count: 65_536)
+            while true {
+                let count = buffer.withUnsafeMutableBytes { read(descriptor, $0.baseAddress, $0.count) }
+                if count > 0 {
+                    receive(Data(buffer[0..<count]))
+                } else if count < 0 && errno == EINTR {
+                    continue
+                } else {
+                    break
+                }
+            }
+            receive(Data())
+            withExtendedLifetime(handle) {}
         }
+        thread.name = "ChildProcess.read"
+        thread.start()
     }
 
     private func receive(_ chunk: Data) {
         lock.lock()
         if chunk.isEmpty {
             finished = true
-            handle.readabilityHandler = nil
             let continuations = waiting
             waiting = []
             lock.unlock()
             continuations.forEach { $0.resume() }
         } else {
-            data.append(chunk)
+            if !finished {
+                data.append(chunk)
+            }
             lock.unlock()
         }
     }
@@ -383,7 +401,6 @@ private final class PipeCollector: @unchecked Sendable {
             return
         }
         finished = true
-        handle.readabilityHandler = nil
         let continuations = waiting
         waiting = []
         lock.unlock()
