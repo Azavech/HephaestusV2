@@ -258,8 +258,12 @@ enum GitTool {
     // DOC-GAP: the docs give no timeout for `git config`; 5 s.
     static let timeout: TimeInterval = 5
 
+    /// Time between SIGTERM and SIGKILL for a call that timed out (docs/architecture.md › Child
+    /// processes, the sequence of the other children).
+    static let killGrace: TimeInterval = 2
+
     /// Runs a tool with standard output piped and returns its exit status and output; nil when
-    /// it cannot start or times out.
+    /// it cannot start or times out. A call that times out gets SIGTERM, then SIGKILL 2 s later.
     static func run(_ executable: String, _ arguments: [String], in directory: String, environment: [String: String],
                     timeout: TimeInterval = GitTool.timeout) -> (status: Int32, output: Data)? {
         let request = ChildProcessRequest(executable: executable, arguments: arguments, environment: environment,
@@ -268,21 +272,29 @@ enum GitTool {
         guard let process = try? ChildProcess.spawn(request), let handle = process.standardOutput else { return nil }
         let box = OutputBox()
         let done = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .userInitiated).async {
+        // The reading thread keeps the handle until end of file, so its descriptor stays open
+        // while it reads.
+        Thread.detachNewThread {
             box.set(handle.readDataToEndOfFile())
             done.signal()
         }
-        if done.wait(timeout: .now() + timeout) == .timedOut {
-            process.signalGroup(SIGKILL)
-            _ = done.wait(timeout: .now() + 1)
-            return nil
+        func waitForExit(until deadline: Date) -> Bool {
+            while !process.hasExited, Date() < deadline {
+                usleep(1000)
+            }
+            return process.hasExited
+        }
+        func stop() {
+            guard !process.hasExited else { return }
+            process.signalGroup(SIGTERM)
+            if !waitForExit(until: Date().addingTimeInterval(killGrace)) {
+                process.signalGroup(SIGKILL)
+            }
         }
         let deadline = Date().addingTimeInterval(timeout)
-        while !process.hasExited, Date() < deadline {
-            usleep(1000)
-        }
-        guard case .exited(let status)? = process.termination else {
-            process.signalGroup(SIGKILL)
+        guard done.wait(timeout: .now() + timeout) == .success, waitForExit(until: deadline),
+              case .exited(let status)? = process.termination else {
+            stop()
             return nil
         }
         return (status, box.value)
