@@ -196,7 +196,7 @@ A sync load never writes, so two windows showing the same tab cannot bounce a re
 | Any other scheme (`mailto:`, `tel:`, `facetime:`, `x-apple.systempreferences:`, app schemes) in the main frame after a user click | Cancelled and handed to macOS (`NSWorkspace.shared.open`) on the Mac that shows the window. |
 | Any other scheme without a user click, or in a frame                                                                              | Cancelled.                                                                                  |
 
-Default chosen at design time.
+A navigation comes after a user click when it is a link activation (a click, or Return on a focused link), or when it is a script navigation or a form submission that starts within 1 second after a click of the primary mouse button in the web view. Default chosen at design time.
 
 ### Load errors
 
