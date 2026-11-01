@@ -29,30 +29,22 @@ extension Engine {
 
     /// Removes a chat from the `chats` of every loaded ticket and bundle that lists it (its
     /// ticket or bundle, and the ticket a feedback chat created), writing each file and emitting
-    /// `ticket.updated` or `bundle.updated`. A write that fails is logged.
-    // DOC-GAP: the cross-key contract declares `unlinkChat` without `throws`; a failed write is
-    // therefore logged instead of failing the calling `chats.delete`.
-    func unlinkChat(_ chatID: ChatID, origin: Actor = .system) {
+    /// `ticket.updated` or `bundle.updated`. A write that fails stops the change and is thrown,
+    /// so that the calling `chats.delete` fails before the chat goes to the Trash; the files
+    /// written before it keep their events (docs/engine-api.md › Writes and consistency).
+    func unlinkChat(_ chatID: ChatID, origin: Actor = .system) throws {
         for projectID in domain.loadedProjectIDs() {
             for var ticket in domain.tickets(of: projectID) where ticket.chatIDs.contains(chatID) {
                 ticket.chatIDs.removeAll { $0 == chatID }
                 ticket.updated = ISODate.now()
-                do {
-                    try saveTicket(ticket)
-                    emit(TicketUpdatedEvent.self, ticket, origin: origin)
-                } catch {
-                    log.error(.storage, "the chat \(chatID.uuidString) cannot be unlinked from \(ticket.id): \(error)")
-                }
+                try saveTicket(ticket)
+                emit(TicketUpdatedEvent.self, ticket, origin: origin)
             }
             for var bundle in domain.bundles(of: projectID) where bundle.chatIDs.contains(chatID) {
                 bundle.chatIDs.removeAll { $0 == chatID }
                 bundle.updated = ISODate.now()
-                do {
-                    try saveBundle(bundle)
-                    emit(BundleUpdatedEvent.self, bundle, origin: origin)
-                } catch {
-                    log.error(.storage, "the chat \(chatID.uuidString) cannot be unlinked from \(bundle.id): \(error)")
-                }
+                try saveBundle(bundle)
+                emit(BundleUpdatedEvent.self, bundle, origin: origin)
             }
         }
     }

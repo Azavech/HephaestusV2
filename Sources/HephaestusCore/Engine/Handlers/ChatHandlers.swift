@@ -309,7 +309,7 @@ extension Engine {
         chats.scannedChats.remove(chatID)
         chats.hasTextMessage[chatID] = nil
         chats.reportedStates[chatID] = nil
-        unlinkChat(chatID)
+        try unlinkChat(chatID)
         try moveChatItemToTrash(folder.chatMetaFile(chatID))
         try moveChatItemToTrash(folder.transcriptFile(chatID))
         try moveChatItemToTrash(folder.chatAttachmentsFolder(chatID))

@@ -281,7 +281,7 @@ struct LoadingAndExternalChangesTests {
             #expect(await engineError { try await h.engine.linkChat(chatID, toTicket: "HEPH-99") }?.code == .notFound)
             #expect(await engineError { try await h.engine.linkChat(chatID, toBundle: "HEPH-B9") }?.code == .notFound)
             events.clear()
-            await h.engine.unlinkChat(chatID)
+            try await h.engine.unlinkChat(chatID)
             await events.wait(for: BundleUpdatedEvent.name)
             #expect(events.names == ["ticket.updated", "bundle.updated"])
             #expect(await h.engine.testDomain.ticket("HEPH-1")?.chatIDs == [])
