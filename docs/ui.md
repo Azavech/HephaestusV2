@@ -336,7 +336,7 @@ System shortcuts HephaestusV2 never binds: ⌘Space, ⌥⌘Space, ⌃Space, ⌃�
 
 ## Unsaved changes and quitting
 
-An unsaved editor is a code editor tab, the Docs section's doc buffer, a skill form or a skill extra file whose content differs from what was last loaded or saved. Unsaved editors belong to their window, not to the engine.
+An unsaved editor is a code editor tab or the Docs section's doc buffer whose content differs from what was last loaded or saved, or a skill whose form or open extra file does; a skill counts as one unsaved editor, with its own prompt, even when both have changes ([Saving](skills.md#saving)). Unsaved editors belong to their window, not to the engine.
 
 | Moment                                                                                                                                             | Alert title / message                                                                                                                                                                                               | Buttons                                      |
 | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
