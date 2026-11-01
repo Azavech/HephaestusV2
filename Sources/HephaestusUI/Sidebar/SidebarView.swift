@@ -57,7 +57,25 @@ extension ProjectSection {
     }
 }
 
-/// The section list of the active project, the pinned Project Settings row and the footer.
+/// A category of the sidebar: a heading over its section rows (docs/ui.md › Sidebar).
+struct SidebarCategory: Equatable, Identifiable {
+    var title: String
+    var sections: [ProjectSection]
+
+    var id: String { title }
+
+    /// `Project` with every listed section, then `Go Service`, without rows yet, for the
+    /// `goService` type.
+    static func categories(for type: ProjectType) -> [SidebarCategory] {
+        var categories = [SidebarCategory(title: "Project", sections: ProjectSection.listed)]
+        if type == .goService {
+            categories.append(SidebarCategory(title: "Go Service", sections: []))
+        }
+        return categories
+    }
+}
+
+/// The categories of the active project, the pinned Project Settings row and the footer.
 struct SidebarView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -66,9 +84,12 @@ struct SidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(spacing: 2) {
-                    ForEach(ProjectSection.listed, id: \.self) { section in
-                        row(section)
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(SidebarCategory.categories(for: project.type)) { category in
+                        heading(category.title)
+                        ForEach(category.sections, id: \.self) { section in
+                            row(section)
+                        }
                     }
                 }
                 .padding(8)
@@ -80,6 +101,17 @@ struct SidebarView: View {
             footer
         }
         .background(FrostedPaneBackground())
+    }
+
+    /// A plain category heading: not collapsible, not selectable.
+    private func heading(_ title: String) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
+            .accessibilityAddTraits(.isHeader)
     }
 
     private func row(_ section: ProjectSection) -> some View {

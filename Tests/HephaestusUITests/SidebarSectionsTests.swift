@@ -50,3 +50,21 @@ struct SidebarSectionsTests {
         #expect(WindowState.restored(fromJSON: json)?.section == .settings)
     }
 }
+
+/// docs/ui.md › Sidebar: the categories shown for each project type.
+@Suite("Sidebar categories")
+struct SidebarCategoriesTests {
+    @Test("Project holds every listed section; Go Service, without rows, only for the Go service type",
+          arguments: ProjectType.allCases)
+    func categories(_ type: ProjectType) {
+        let categories = SidebarCategory.categories(for: type)
+        #expect(categories.first == SidebarCategory(title: "Project", sections: ProjectSection.listed))
+        #expect(!categories.contains { $0.sections.contains(.settings) })
+        if type == .goService {
+            #expect(categories.map(\.title) == ["Project", "Go Service"])
+            #expect(categories[1].sections.isEmpty)
+        } else {
+            #expect(categories.map(\.title) == ["Project"])
+        }
+    }
+}

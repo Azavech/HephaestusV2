@@ -26,7 +26,7 @@ A project is a folder that contains `.hephaestus/project.yml`. It has a display 
 | `goService`        | `Go service`        |
 | `swiftApplication` | `Swift application` |
 
-The type lets the app show content that depends on it ([Sidebar](ui.md#sidebar)). `none` is the default: a project created without a type, and a `project.yml` without the key `type`, have the type `none`. Every menu of project types lists the three values in this order. The stored values are design-time choices. Default chosen at design time.
+The type lets the app show content that depends on it: the `goService` type adds the Go Service category to the sidebar ([Sidebar](ui.md#sidebar)). `none` is the default: a project created without a type, and a `project.yml` without the key `type`, have the type `none`. Every menu of project types lists the three values in this order. The stored values are design-time choices. Default chosen at design time.
 
 The project root is the folder that contains `.hephaestus/`. Tickets, bundles, attachments and chats are stored under `.hephaestus/` ([Project folder layout](data-model.md#project-folder-layout)); the exact format of `project.yml` is in [Project file](data-model.md#project-file).
 

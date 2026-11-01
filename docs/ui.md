@@ -41,15 +41,17 @@ The scene ids, the window titles and subtitles, the window sizes and the restora
 ┌────────────────────────────────────────────────────────────────────────────────────┐
 │ ● ● ●  [Run ▾] [Stop]  [ This Mac ▸ Hephaestus ▸ Backend ] [Search] [+Chat] [Insp] │ toolbar
 ├───────────────┬─────────────────────────────────────────────┬──────────────────────┤
-│ Dashboard     │                                             │ Project chat         │
-│ Tickets     4 │            section content                  │ (inspector, ⌥⌘0)     │
-│ Bundles       │                                             │                      │
-│ Chats         │                                             │                      │
-│ Code          │                                             │                      │
-│ Docs          ├─────────────────────────────────────────────┤                      │
-│ Web           │ console drawer (⇧⌘Y)                        │                      │
-│ Skills        │                                             │                      │
-│ Costs         │                                             │                      │
+│ Project       │                                             │ Project chat         │
+│  Dashboard    │                                             │                      │
+│  Tickets    4 │            section content                  │ (inspector, ⌥⌘0)     │
+│  Bundles      │                                             │                      │
+│  Chats        │                                             │                      │
+│  Code         │                                             │                      │
+│  Docs         ├─────────────────────────────────────────────┤                      │
+│  Web          │ console drawer (⇧⌘Y)                        │                      │
+│  Skills       │                                             │                      │
+│  Costs        │                                             │                      │
+│ Go Service    │                                             │                      │
 │               │                                             │                      │
 │ Proj Settings │                                             │                      │
 │ HEPH          │                                             │                      │
@@ -126,11 +128,14 @@ The segment icons, the dot in the Device title, the 240-point truncation and the
 - Exactly one section is selected per window. The selection is kept when the window switches project or device.
 - The centre column shows the selected section for the active project. Switching project shows the same section of the new project, with the selections the window last used in that project ([WindowState](#windowstate)).
 - The sidebar's background is the frosted material of [Main window layout](#main-window-layout), under the section list and the footer.
-- The rows from `dashboard` to `costs` are listed from the top of the sidebar in table order. The `settings` row is pinned to the bottom of the sidebar, under the free space below the other rows and directly above the footer; it is selected like the other rows.
+- The rows from `dashboard` to `costs` are listed from the top of the sidebar in table order, under the category heading `Project`.
+- When the active project's [type](projects.md#project-types) is `goService`, a second category heading, `Go Service`, follows the Project category. It has no rows yet. For the types `none` and `swiftApplication`, only the Project category is shown.
+- A category heading is a plain line of text in a small semibold font and the secondary colour, above its rows; it cannot be collapsed and cannot be selected.
+- The categories follow the active project's `type` in the workspace's `projects`: changing the type, which emits `project.updated` and `projects.changed` ([projects.update](engine-api.md#projectsupdate)), or switching to a project of another type adds or removes the Go Service heading at once, on This Mac and on remote devices. The `settings` row is pinned to the bottom of the sidebar, outside the categories, under the free space below them and directly above the footer; it is selected like the other rows.
 - The sidebar footer shows the active project's identifier.
 - View ▸ Hide Sidebar (⌃⌘S) or dragging the divider to the window edge collapses the sidebar; its visibility persists per window.
 
-The section symbols, the pinned `settings` row and the footer are design-time choices. Default chosen at design time.
+The section symbols, the pinned `settings` row, the style of the category headings and the footer are design-time choices. Default chosen at design time.
 
 ## Inspector
 
