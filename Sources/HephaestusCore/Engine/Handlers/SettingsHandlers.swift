@@ -45,13 +45,20 @@ extension Engine {
         guard new != old else { return old }
 
         do {
-            try DeviceFileStore.write(new, to: dataDirectory)
+            let digest = try DeviceFileStore.write(new, to: dataDirectory)
+            ownWrites.recordWrite(path: dataDirectory.settingsFile.standardizedFileURL.path, sha256: digest)
         } catch let error as StorageError {
             throw EngineError.storage(error)
         }
         settings = new
         emit(SettingsUpdatedEvent.self, new, origin: actor)
+        await applySettingsEffects(old: old, new: new, skillsFolderChanged: skillsFolderChanged, origin: actor)
+        return new
+    }
 
+    /// The effects of the changed keys (docs/engine-api.md › settings.update), after settings.yml
+    /// was written by `settings.update` or changed outside the engine.
+    func applySettingsEffects(old: HostSettings, new: HostSettings, skillsFolderChanged: Bool, origin actor: Actor) async {
         if new.claudePath != old.claudePath {
             await claudePathDidChange()
         }
@@ -66,6 +73,5 @@ extension Engine {
             await skillsLibraryFolderDidChange()
             emit(SkillsChangedEvent.self, skillSummaries(), origin: actor)
         }
-        return new
     }
 }
