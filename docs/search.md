@@ -89,11 +89,11 @@ Rules per source:
 
 For each project in the filter:
 
-1. Git test: `git -C <root> rev-parse --is-inside-work-tree` prints `true`. Every `git` command runs with the login-shell environment used for Claude processes ([Chats](chats.md)).
+1. Git test: `git -C <root> rev-parse --is-inside-work-tree` prints `true`. Every `git` command runs with the login-shell environment used for Claude processes ([Chats](chats.md)), without the `HEPHAESTUS_*` variables. Until the environment capture and the tools lookup are done ([Child processes](architecture.md#child-processes)), or when `git` is not found, every project is walked as in step 3. A `git` command that runs longer than 30 seconds is ended and counts as failed: a failed git test is read as outside a git work tree. Default chosen at design time.
 2. Inside a git work tree, the list is the output of `git -C <root> ls-files -z --cached --others --exclude-standard`: tracked files plus untracked files that are not ignored, relative to the project root. Duplicate paths are removed, entries ending with `/` (nested repositories) are dropped, and paths that no longer exist on disk are dropped. When the command exits with a non-zero status, the walk of step 3 is used instead.
 3. Outside a git work tree, the list comes from a recursive walk of the root folder that skips every directory named `.git`, `.build`, `build`, `DerivedData` or `node_modules` at any depth, and the directory `.hephaestus/chats`.
 4. In both cases symbolic links are skipped. Default chosen at design time.
-5. Paths inside the root folder of a sub project of that project are removed: those files belong to the sub project, which is searched as its own project.
+5. Paths inside `.hephaestus/chats` are removed from the git list too, so the code scope never reads chat files, even when `.hephaestus/.gitignore` is missing or changed. Paths inside the root folder of a sub project of that project are removed: those files belong to the sub project, which is searched as its own project.
 6. The list is sorted by path (byte order) and its first 50,000 paths are kept. Default chosen at design time.
 
 The code scope therefore reads the files of `.hephaestus/` other than `.hephaestus/chats`: a query that matches a ticket also matches lines of its `.hephaestus/ticket/<id>.yml` file when the code scope is selected.
@@ -142,6 +142,7 @@ The 200-character maximum is the limit of `SearchResult.snippet` ([Engine API](e
 
 - `user` and `claude` actors call it. It changes nothing and emits no event.
 - The handler copies the in-memory data it needs on the engine actor and reads files in a child task, so the engine serves other calls while a search runs. A search is never cancelled; the panel drops answers to queries that are no longer current. Default chosen at design time.
+- The engine's `SearchService` (`Sources/HephaestusCore/Search/`) holds what is kept between queries, the transcript texts of [Sources](#sources). Default chosen at design time.
 - The MCP tool `search` {query, scopes?, projectID?} calls `search.query` without `limit`, so at most 200 results come back ([MCP](mcp.md)).
 
 Example 1. In project HEPH, where ticket HEPH-12 belongs to bundle HEPH-B2 and no other ticket or bundle contains the term, `{"projectID": "HEPH", "query": "heph-12", "scopes": ["tickets", "bundles"]}` returns:
@@ -192,7 +193,7 @@ Example 2. In the same project, where a single line of a single file contains th
 
 - ⇧⌘F, the toolbar Search button ([UI](ui.md#toolbar)) and Navigate ▸ Search… open the panel over the columns of the current main window. The command is disabled in other windows. Default chosen at design time.
 - The panel is a card centered horizontally, 8 pt below the toolbar, 720 pt wide (the window width minus 32 pt when the window is narrower), its height following the results up to 70 % of the window height. Default chosen at design time.
-- Escape, ⇧⌘F, a click outside the panel, or opening a result closes the panel.
+- Escape, ⇧⌘F, the toolbar Search button, a click in the window's content outside the panel, or opening a result closes the panel. A click in the toolbar is left to the toolbar, so the Search button closes the open panel instead of closing and reopening it. Default chosen at design time.
 - On opening, the query field has focus with its text selected; the previous query, chips and toggle of this window are restored and the query runs again. This state belongs to the window and is not persisted ([UI](ui.md)). Default chosen at design time.
 
 ### Controls

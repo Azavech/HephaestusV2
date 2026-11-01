@@ -11,7 +11,7 @@ HephaestusV2 keeps its own library of Claude skills: one folder per skill, holdi
 | Creation   | the engine creates the folder, with missing parent folders, at start and when the setting changes                                                                                                                                                                                                                 |
 | Separation | the skills feature never reads or writes `~/.claude/skills` or a project's `.claude/skills` folder                                                                                                                                                                                                                |
 
-A skill is an entry directly inside the library folder that is a folder or a symbolic link to a folder, has a valid name ([Skill names](#skill-names)) and holds a readable `SKILL.md` ([SKILL.md format](#skillmd-format)). A symbolic link to a folder counts as a folder. Default chosen at design time. Hidden entries (names starting with `.`) and every other entry are skipped; the engine logs each skipped folder in `engine.log`.
+A skill is an entry directly inside the library folder that is a folder or a symbolic link to a folder, has a valid name ([Skill names](#skill-names)) and holds a readable `SKILL.md` ([SKILL.md format](#skillmd-format)). A symbolic link to a folder counts as a folder. Default chosen at design time. Hidden entries (names starting with `.`) and every other entry are skipped. The engine logs a warning in `engine.log` for each skipped folder that is not hidden, `<folder path> skipped: <reason>`, the reason naming the invalid name, the unreadable `SKILL.md` or the [SKILL.md format](#skillmd-format) error; hidden entries and entries that are not folders are skipped without a log line. Default chosen at design time.
 
 Example library:
 
@@ -100,7 +100,7 @@ Every file of a skill folder other than its `SKILL.md` is an extra file: templat
 - `files` lists the skill paths of every regular file in the skill folder except `SKILL.md`, recursively, skipping names that start with `.`, sorted by path ([Data model](data-model.md#skill-file)).
 - Skill paths are relative to the skill folder and follow the path rules of [Engine API](engine-api.md#paths).
 - `skills.readFile` reads any file of the skill, `SKILL.md` included, with the content rules of `files.read`.
-- `skills.writeFile` writes a text file, creating missing folders; `skills.deleteFile` moves a file or a folder to the Trash. Both refuse `SKILL.md` with `invalid`: the name, description and body change through `skills.update`, and a whole skill goes to the Trash through `skills.delete`.
+- `skills.writeFile` writes a text file, creating missing folders; `skills.deleteFile` moves a file or a folder to the Trash. Both refuse `SKILL.md` with `invalid`, and on a case-insensitive volume every case variant of it, such as `skill.md`, which names the same file: the name, description and body change through `skills.update`, and a whole skill goes to the Trash through `skills.delete`.
 - Sizes are limited as in [Engine API](engine-api.md#limits).
 - The API writes text files only. A binary file enters a skill when it is copied into the skill folder outside the app, for example in Finder.
 
@@ -122,6 +122,7 @@ Parameters, results and errors are in [Engine API](engine-api.md#skills). All mu
 
 - `skills.create` and `skills.update` check the name against [Skill names](#skill-names) (`invalid`, or `conflict` when it is taken) and the description length of 1 to 1024 characters (`invalid`).
 - When a skill's library entry is a symbolic link, `skills.delete` moves the link to the Trash and leaves its target untouched.
+- In the engine, `SkillsLibrary` (`Sources/HephaestusCore/Skills/`) reads and writes the library and runs its watcher, and the protocol `SkillsPluginProvider`, implemented by `SkillsPluginGenerator`, prepares the [generated plugin](#generated-plugin) for chat launches and the `skills.*` methods, so that tests can provide another implementation. Default chosen at design time.
 - `skills.changed` carries the whole library, sorted by name. API mutations emit it when they complete, and the library watcher emits it for every change it sees, changes inside a skill and the engine's own writes included, so one change can produce two events. Clients replace their skill list with the event data and re-fetch, with `skills.get`, the skill they show.
 
 ## Per-project enablement
@@ -208,7 +209,7 @@ The Skills section of the active project (sidebar, ⌘7, [UI](ui.md)) has two co
 
 ### Library list
 
-- A filter field at the top keeps the skills whose name or description contains its text, compared case-insensitively.
+- A filter field at the top, placeholder `Filter`, keeps the skills whose name or description contains its text, compared case-insensitively. Default chosen at design time.
 - Rows are sorted by name. Each row shows the SF Symbol `checkmark.circle.fill` when the skill is enabled in the active project, the name, and the description on one truncated line.
 - When the project's list names skills the library lacks, a group `Missing from Library` follows, one row per name: the SF Symbol `exclamationmark.triangle`, the name, the text `Not found in the skills library` and a `Disable` button that calls `skills.setEnabled` with `enabled: false`.
 - The bottom bar has `+` (New Skill…) and `−` (Move to Trash…, disabled without a selection).
@@ -225,17 +226,21 @@ The Skills section of the active project (sidebar, ⌘7, [UI](ui.md)) has two co
 | Footer            | the skill folder path, home folder written `~`; `Reveal in Finder` when the window's device is this Mac                                                                                                                  |
 
 - The `Enabled in <project name>` toggle applies at once through `skills.setEnabled`, using the saved name.
+- The body's mode starts as Preview, as in the Docs section ([Modes](documentation-viewer.md#modes)), and is kept when the window selects another skill of the same project. Default chosen at design time.
+- Preview renders the body natively with `MarkdownBlockRenderer` ([Block model](documentation-viewer.md#block-model)) and the options `baseDirectory` `""`, no `projectRootPath` and `stripFrontMatter` false: the body has no front matter and belongs to no project folder. Links in the preview do nothing and project images show as blocked. Default chosen at design time.
+- The form and the open extra file belong to the window and project: `ProjectViewState.skillEditor` ([WindowState](ui.md#windowstate)), never encoded. Returning to the project restores them, unsaved changes included.
 - A skill with an empty description shows the banner `This skill has no description. Claude uses the description to decide when to use the skill.`
 
 Extra file view:
 
-| File                                                                              | View                                                                                                                  |
-| --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| text (`FileContent.text` present)                                                 | the code editor with highlighting by file extension ([Code editor](code-editor.md)); ⌘S saves with `skills.writeFile` |
-| image (`png`, `jpg`, `jpeg`, `gif`, `heic`, `heif`, `tif`, `tiff`, `bmp`, `webp`) | the image, scaled to fit, read-only                                                                                   |
-| any other file                                                                    | `Binary file · <size>`                                                                                                |
+| File                                                                                 | View                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| text (`FileContent.text` present)                                                    | the code editor with highlighting by file extension ([Code editor](code-editor.md)); ⌘S saves with `skills.writeFile`                                                     |
+| image (`png`, `jpg`, `jpeg`, `gif`, `heic`, `heif`, `tif`, `tiff`, `bmp`, `webp`)    | the image, scaled to fit, read-only                                                                                                                                       |
+| any other file, and a file above 20 MiB, returned without content, an image included | `Binary file · <size>`                                                                                                                                                    |
+| a failed `skills.readFile`                                                           | the error row of the code editor ([Large and binary files](code-editor.md#large-and-binary-files)): `The file could not be opened.`, the engine's message and `Try Again` |
 
-New File… opens a sheet with a `Path` field (a relative path such as `templates/changelog.md`). Create calls `skills.writeFile` with an empty text and selects the new file; path errors appear under the field.
+New File… opens a sheet with a `Path` field (a relative path such as `templates/changelog.md`). Create calls `skills.writeFile` with an empty text and selects the new file; path errors appear under the field. A path that names an existing extra file or folder of the skill, which `skills.writeFile` would empty, is refused under the field with `<path> already exists.`, as in [New File and New Folder](code-editor.md#new-file-and-new-folder). Selecting another extra file while the open one has unsaved changes asks the save question of [Saving](#saving) first; Cancel keeps the open file. Default chosen at design time.
 
 ### Saving
 
@@ -243,6 +248,7 @@ New File… opens a sheet with a `Path` field (a relative path such as `template
 - Revert discards the form's changes.
 - Selecting another skill, leaving the section or closing the window with unsaved changes asks `Do you want to save the changes to “<name>”?` with `Save`, `Don't Save` and `Cancel`.
 - On `skills.changed`, the editor re-fetches the shown skill with `skills.get`, and the open extra file with `skills.readFile`. Content without unsaved changes is replaced silently. Content with unsaved changes whose saved version changed shows the banner `This skill was changed elsewhere.` with `Reload` and `Keep Mine`; Keep Mine hides the banner and the next save overwrites. Default chosen at design time.
+- When the skill is deleted or renamed elsewhere while the form or the open extra file has unsaved changes, the editor stays with the banner `This skill was changed elsewhere.`: Reload discards the changes, Keep Mine keeps them and the next save reports the engine's error. Without unsaved changes, the editor shows `Skill <name> was not found.` Default chosen at design time.
 - An error returned by the engine on save appears in an alert with its message.
 
 Field validation, shown under the field while Save and Create stay disabled:
@@ -262,11 +268,11 @@ Field validation, shown under the field while Save and Create stay disabled:
 | Description                | multi-line field, 1 to 1024 characters |
 | `Enable in <project name>` | checkbox, checked when the sheet opens |
 
-`Cancel` (Escape) closes the sheet. `Create` (default button: Return outside the Description field, ⌘Return anywhere; enabled when both fields are valid) calls `skills.create` with the name and description, then `skills.setEnabled` with `enabled: true` when the checkbox is checked, then selects the new skill and focuses its body in Edit mode. The sheet offers to enable the new skill in the active project. Default chosen at design time.
+`Cancel` (Escape) closes the sheet. `Create` (default button: Return outside the Description field, ⌘Return anywhere; enabled when both fields are valid) calls `skills.create` with the name and description, then `skills.setEnabled` with `enabled: true` when the checkbox is checked, then selects the new skill and focuses its body in Edit mode. The sheet offers to enable the new skill in the active project. When the skill is created but enabling it fails, the sheet still closes, the skill is selected, and the failure shows as the alert of a failed control titled `Enable in <project name> failed` ([Principles](ui.md#principles)). Default chosen at design time.
 
 ### Move to Trash
 
-- Skill: the alert `Move “<name>” to the Trash?` with the message `The skill is removed from every project that enables it.` and the buttons `Move to Trash` (destructive) and `Cancel`; confirming calls `skills.delete`.
+- Skill: the alert `Move “<name>” to the Trash?` with the message `The skill is removed from every project that enables it.` and the buttons `Move to Trash` (destructive, default) and `Cancel` (Escape), as in [Move to Trash](code-editor.md#move-to-trash); confirming calls `skills.delete`. Default chosen at design time.
 - Extra file: the alert `Move “<path>” to the Trash?` with the same buttons; confirming calls `skills.deleteFile`.
 
 ### Keyboard
@@ -280,12 +286,13 @@ Field validation, shown under the field while Save and Create stay disabled:
 
 ### Empty and error states
 
-| State                | Content                                                                                                                                                        |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Library empty        | title `No Skills`; text `Skills are folders with a SKILL.md file in <library path>. Enable a skill in a project to let its chats use it.`; button `New Skill…` |
-| No skill selected    | `Select a skill`                                                                                                                                               |
-| Filter without match | `No skills match “<filter text>”`                                                                                                                              |
-| `skills.list` fails  | the error message, for example while the window's device is disconnected                                                                                       |
+| State                | Content                                                                                                                                                                            |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Library empty        | title `No Skills`; text `Skills are folders with a SKILL.md file in <library path>. Enable a skill in a project to let its chats use it.`; button `New Skill…`                     |
+| No skill selected    | `Select a skill`                                                                                                                                                                   |
+| Filter without match | `No skills match “<filter text>”`                                                                                                                                                  |
+| `skills.list` fails  | the error message, for example while the window's device is disconnected                                                                                                           |
+| `skills.get` fails   | in the editor column, the engine's message and `Try Again`, as a chat view's failed load ([Empty states](ui.md#empty-states)); a missing skill shows `Skill <name> was not found.` |
 
 ## Settings
 
@@ -295,6 +302,7 @@ The library folder is chosen in Settings ▸ Skills, whose controls are specifie
 
 - A remote window shows and edits the main device's library through the same methods; files are read and written on the main device ([Remote devices](remote.md)).
 - `Reveal in Finder` is hidden in remote windows.
+- A remote snapshot carries neither the main device's data directory nor its home folder. The library path of the empty state and the editor's footer is the main device's `skillsLibraryPath`, or `~/Library/Application Support/HephaestusV2/Skills` when it is absent; a path under `/Users/<name>` is written with `~`. Default chosen at design time.
 
 ## Search and navigation
 
