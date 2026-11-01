@@ -113,31 +113,41 @@ public struct HaikuTitleNamer: TitleNamer {
     /// The quote characters removed around a title.
     static let quoteCharacters: Set<Character> = ["\"", "'", "“", "”", "‘", "’", "«", "»", "`"]
 
-    /// Steps 2 to 7: first line of the trimmed result, leading `Title:` removed, surrounding quote
-    /// characters removed, trailing periods removed, cut at the last space at or before the
-    /// maximum; nil when nothing is left.
+    /// The leading labels removed by step 3, compared in any letter case.
+    static let titlePrefixes = ["title:", "ticket title:", "bundle title:", "chat title:"]
+
+    /// Steps 2 to 7: first line of the trimmed result, a leading `Title:`, `Ticket title:`,
+    /// `Bundle title:` or `Chat title:` removed, surrounding quote characters and trailing periods
+    /// removed until neither changes the text, cut at the last space at or before the maximum;
+    /// nil when nothing is left.
     static func cleanTitle(_ result: String, maximumLength: Int) -> String? {
         var text = result.trimmingCharacters(in: .whitespacesAndNewlines)
         text = String(text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first ?? "")
         text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.lowercased().hasPrefix("title:") {
-            text = String(text.dropFirst("title:".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        if let prefix = titlePrefixes.first(where: { String(text.prefix($0.count)).lowercased() == $0 }) {
+            text = String(text.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        var changed = true
-        while changed {
-            changed = false
-            if let first = text.first, quoteCharacters.contains(first) {
-                text = String(text.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
-                changed = true
+        var previous: String
+        repeat {
+            previous = text
+            // Step 4.
+            var changed = true
+            while changed {
+                changed = false
+                if let first = text.first, quoteCharacters.contains(first) {
+                    text = String(text.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
+                    changed = true
+                }
+                if let last = text.last, quoteCharacters.contains(last) {
+                    text = String(text.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+                    changed = true
+                }
             }
-            if let last = text.last, quoteCharacters.contains(last) {
+            // Step 5.
+            while text.hasSuffix(".") {
                 text = String(text.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
-                changed = true
             }
-        }
-        while text.hasSuffix(".") {
-            text = String(text.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
+        } while text != previous
         if text.count > maximumLength {
             let characters = Array(text)
             let cut = (0...maximumLength).last { characters[$0] == " " } ?? maximumLength

@@ -146,11 +146,20 @@ struct PromptAndNamingTests {
         func clean(_ text: String, _ maximum: Int = 60) -> String? { HaikuTitleNamer.cleanTitle(text, maximumLength: maximum) }
         #expect(clean("  Plan the sprint  \nsecond line") == "Plan the sprint")
         #expect(clean("TITLE: Plan the sprint") == "Plan the sprint")
+        #expect(clean("Ticket title: Fix the build") == "Fix the build")
+        #expect(clean("BUNDLE TITLE: Web tab polish") == "Web tab polish")
+        #expect(clean("chat Title:   Plan the sprint") == "Plan the sprint")
+        #expect(clean("Ticket title:") == nil)
+        // Only one leading label is removed, and only at the start.
+        #expect(clean("Title: Chat title: x") == "Chat title: x")
+        #expect(clean("The ticket title: x") == "The ticket title: x")
         #expect(clean("“'\"Plan the sprint\"'”") == "Plan the sprint")
         #expect(clean("« Plan the sprint »") == "Plan the sprint")
-        // Step 4 comes before step 5: a period after the closing quote keeps that quote.
-        #expect(clean("`Fix it`.") == "Fix it`")
+        // Steps 4 and 5 repeat until neither changes the text.
+        #expect(clean("`Fix it`.") == "Fix it")
         #expect(clean("\"Fix it.\"") == "Fix it")
+        #expect(clean("“'Fix it.'”.") == "Fix it")
+        #expect(clean("\". .\"") == nil)
         #expect(clean("Plan the sprint.", 60) == "Plan the sprint")
         #expect(clean("Alpha beta gamma", 10) == "Alpha beta")
         #expect(clean("Alpha beta gamma", 11) == "Alpha beta")
