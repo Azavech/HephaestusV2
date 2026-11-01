@@ -112,6 +112,20 @@ struct RemoteConnectionTests {
         }
     }
 
+    @Test("A challenge larger than 4,096 bytes: close 1009, waiting with the protocol failure message")
+    func oversizedChallenge() async throws {
+        let server = try await FakeSyncServer()
+        defer { server.stop() }
+        try await withPairedConnection(server: server, code: SyncCryptoTests.code) { connection, _, _ in
+            let peer = try #require(await server.nextPeer())
+            guard case .text? = await peer.next() else { throw SyncTestError("no hello") }
+            peer.sendText(String(repeating: " ", count: 4_097 - 2) + "{}")
+            #expect(await peer.closeCode() == 1009)
+            let phase = await phase(of: connection) { $0.isWaiting }
+            #expect(phase?.message == "The connection to Studio failed (code 1009).")
+        }
+    }
+
     @Test("A welcome from another device: close 1000, waiting")
     func anotherDevice() async throws {
         let server = try await FakeSyncServer()
