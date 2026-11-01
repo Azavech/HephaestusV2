@@ -56,6 +56,11 @@ let package = Package(
             swiftSettings: swiftSettings
         ),
         .testTarget(
+            name: "HephaestusUITests",
+            dependencies: ["HephaestusUI", "HephaestusCore"],
+            swiftSettings: swiftSettings
+        ),
+        .testTarget(
             name: "UpdaterCoreTests",
             dependencies: ["UpdaterCore"],
             swiftSettings: swiftSettings

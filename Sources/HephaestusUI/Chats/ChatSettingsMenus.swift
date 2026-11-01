@@ -142,7 +142,9 @@ final class ChatMenuItem: NSMenuItem {
 
     init(title: String, subtitle: String? = nil, checked: Bool = false, handler: @escaping () -> Void) {
         self.handler = handler
-        super.init(title: title, action: #selector(perform(_:)), keyEquivalent: "")
+        // Not named `perform(_:)`: `#selector(perform(_:))` resolves to NSObject's
+        // `performSelector:`, and the handler never runs.
+        super.init(title: title, action: #selector(runHandler(_:)), keyEquivalent: "")
         target = self
         state = checked ? .on : .off
         if let subtitle, !subtitle.isEmpty {
@@ -155,7 +157,7 @@ final class ChatMenuItem: NSMenuItem {
         fatalError("init(coder:) is not used")
     }
 
-    @objc private func perform(_ sender: Any?) {
+    @objc private func runHandler(_ sender: Any?) {
         handler()
     }
 }

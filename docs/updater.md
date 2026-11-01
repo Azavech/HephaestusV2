@@ -370,7 +370,7 @@ Settings > Updates ([Updates](ui.md#updates)) edits `autoUpdate` and `updateChec
 | `UpdateArea`             | struct | `row`, `text`, `showsProgress`, `controls`; `static func about(_:)` gives the row of the [About window](#about-window) that applies (row 10 is reported as row 2, whose text it shows), `static func settingsStatusLine(_:)` the [Settings](#settings) status line.                                                                           |
 | `UpdaterTexts`           | enum   | Every text of this page shown by the app or posted by the Updater.                                                                                                                                                                                                                                                                            |
 
-The `Updater` executable parses the [command line](#command-line), creates `UpdaterMachine` with the real dependencies, connects it to `UpdaterIPC` and runs the main run loop. The app side's start conditions and texts are pure functions of their inputs in UpdaterCore, so that UpdaterCoreTests cover them; HephaestusUI has no test target. The type names are Default chosen at design time.
+The `Updater` executable parses the [command line](#command-line), creates `UpdaterMachine` with the real dependencies, connects it to `UpdaterIPC` and runs the main run loop. The app side's start conditions and texts are pure functions of their inputs in UpdaterCore, so that UpdaterCoreTests cover them. The type names are Default chosen at design time.
 
 ## Tests
 

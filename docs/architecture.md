@@ -116,6 +116,7 @@ The package is built with Swift Package Manager only; there is no `.xcodeproj`. 
 | Updater             | executable | UpdaterCore                                 | The Updater helper process.                                                                                                                                                                                              |
 | HephaestusCoreTests | test       | HephaestusCore                              | Unit, integration and docs conformance tests; `Fixtures/` resources.                                                                                                                                                     |
 | HephaestusTextTests | test       | HephaestusText                              | Highlighting and Markdown rendering tests.                                                                                                                                                                               |
+| HephaestusUITests   | test       | HephaestusUI, HephaestusCore                | Tests of HephaestusUI view models and AppKit helpers that need no window, such as the chat settings menus.                                                                                                               |
 | UpdaterCoreTests    | test       | UpdaterCore                                 | Version, feed, verification and install tests.                                                                                                                                                                           |
 
 1. HephaestusCore never imports AppKit, SwiftUI or WebKit.
@@ -146,6 +147,7 @@ HephaestusV2/                   the repository root
   Sources/Updater/
   Tests/HephaestusCoreTests/    Fixtures/ holds sanitized Claude CLI stream-json captures
   Tests/HephaestusTextTests/
+  Tests/HephaestusUITests/
   Tests/UpdaterCoreTests/
   docs/                         the specification (source of truth)
   scripts/                      build-app.sh, next-version.sh, check-public.sh, check-docs.sh, make-icon.swift, tables.py
