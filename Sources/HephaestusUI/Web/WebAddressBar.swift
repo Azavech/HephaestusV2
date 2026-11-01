@@ -45,7 +45,10 @@ struct WebAddressBar: View {
                 }
                 .disabled(page == nil)
             }
+            // With no tab the Web section shows no address bar: the focus request of ⌘T, New Tab or
+            // ⌥⌘L is performed when this bar appears with the placeholder (docs/web-tabs.md › New tab).
             CommandTextField(text: $text, accessibilityLabel: "Address", focusRequest: controller.urlFieldFocus.count,
+                             focusOnAppear: controller.urlFieldFocus.count != controller.seenURLFieldFocus,
                              onCommand: handle, onFocusChange: focusChanged)
                 .padding(.leading, 4)
         }
@@ -66,6 +69,9 @@ struct WebAddressBar: View {
             } else if !isEditing {
                 text = displayedURL
             }
+        }
+        .onChange(of: controller.urlFieldFocus.count, initial: true) { _, count in
+            controller.seenURLFieldFocus = count
         }
     }
 

@@ -153,6 +153,9 @@ final class WebTabsController: SectionCommandHandler {
     /// The locked tab whose `This tab is locked` label shows.
     private(set) var lockedNoticeTabID: UUID?
     private(set) var urlFieldFocus = URLFieldFocus()
+    /// The last `urlFieldFocus.count` an address bar has seen: a request made while no address
+    /// bar was shown (⌘T with no tab) is performed by the next address bar when it appears.
+    @ObservationIgnored var seenURLFieldFocus = 0
     var findBar = WebFindState()
     let downloads = WebDownloads()
     /// JavaScript dialogs, the first one shown in the window's sheet.
