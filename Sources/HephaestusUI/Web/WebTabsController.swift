@@ -503,20 +503,22 @@ final class WebTabsController: SectionCommandHandler {
     // MARK: Storing what the page shows (docs/web-tabs.md › Storing what the page shows)
 
     /// After 1 second without change: the changed `url` and `title` in one `webTabs.update`; a
-    /// failure is written to the log and ignored.
+    /// URL or title the page reached during a sync load is never written; a failure is written to
+    /// the log and ignored.
     func storePage(_ page: WebPage) {
         guard let key, let tabID = page.tabID, let workspace = window?.workspace, workspace.deviceID == key.deviceID,
               workspace.isConnected, let tab = workspace.webTabs[key.projectID]?.first(where: { $0.id == tabID }) else { return }
         var url: String?
         if let current = page.webView.url, let scheme = current.scheme?.lowercased(), scheme == "http" || scheme == "https" {
             let stored = storedForm(of: current.absoluteString, tabID: tabID)
-            if stored != tab.url {
+            if stored != tab.url, !page.syncReachedURLs.contains(stored) {
                 url = stored
             }
         }
         var title: String?
         let cleaned = Self.cleanedTitle(page.webView.title ?? "")
-        if !cleaned.isEmpty, cleaned != tab.title, String(cleaned.prefix(WebTabsController.titleLimit)) != tab.title {
+        if !cleaned.isEmpty, cleaned != tab.title, String(cleaned.prefix(WebTabsController.titleLimit)) != tab.title,
+           !page.syncReachedTitles.contains(cleaned) {
             title = cleaned
         }
         guard url != nil || title != nil else { return }

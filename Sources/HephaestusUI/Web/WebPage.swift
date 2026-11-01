@@ -94,6 +94,11 @@ final class WebPage: NSObject {
     @ObservationIgnored private var syncQuietUntil: Date?
     @ObservationIgnored private var storeTask: Task<Void, Never>?
     @ObservationIgnored private var storeChangeFromSync = false
+    /// The URLs, in stored form, and the cleaned titles the web view reached during a sync load:
+    /// none of them is written back until the web view reaches another URL (docs/web-tabs.md ›
+    /// Changes from other clients).
+    @ObservationIgnored private(set) var syncReachedURLs: Set<String> = []
+    @ObservationIgnored private(set) var syncReachedTitles: Set<String> = []
     @ObservationIgnored private var observations: [NSKeyValueObservation] = []
     @ObservationIgnored private var isClosed = false
 
@@ -154,6 +159,8 @@ final class WebPage: NSObject {
         if let shown = shownStoredURL, shown == storedURL { return }
         syncLoading = true
         syncQuietUntil = nil
+        syncReachedURLs = []
+        syncReachedTitles = []
         syncNavigation = load(storedURL: storedURL)
         if syncNavigation == nil {
             syncLoading = false
@@ -214,6 +221,7 @@ final class WebPage: NSObject {
         pageTitle = webView.title ?? ""
         controller?.pageDidChange(self)
         storeChangeFromSync = isSyncQuiet
+        rememberSyncReached(quiet: storeChangeFromSync)
         storeTask?.cancel()
         storeTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1))
@@ -221,6 +229,24 @@ final class WebPage: NSObject {
             if !self.storeChangeFromSync {
                 self.controller?.storePage(self)
             }
+        }
+    }
+
+    /// During a sync load, notes the URL and title reached; afterwards, a URL that is not one of
+    /// them forgets them.
+    private func rememberSyncReached(quiet: Bool) {
+        let shown = shownStoredURL
+        if quiet {
+            if let shown {
+                syncReachedURLs.insert(shown)
+            }
+            let title = WebTabsController.cleanedTitle(pageTitle)
+            if !title.isEmpty {
+                syncReachedTitles.insert(title)
+            }
+        } else if let shown, !syncReachedURLs.isEmpty, !syncReachedURLs.contains(shown) {
+            syncReachedURLs = []
+            syncReachedTitles = []
         }
     }
 
