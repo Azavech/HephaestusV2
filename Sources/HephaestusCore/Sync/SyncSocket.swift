@@ -42,8 +42,8 @@ struct SyncTimings: Sendable {
 /// frames; close frames follow docs/remote.md › Closing a connection: the closing side sends its
 /// code, then cancels when the peer's close frame arrives or after the close wait; a side that
 /// receives a close frame cancels. No frame is reported after a close frame was sent or received.
-/// A connection that fails while a receive is pending ends when that receive completes, so that a
-/// close frame delivered with the error is reported first.
+/// A connection that fails while a receive is pending keeps receiving the messages delivered with
+/// the error, so that the peer's close frame is reported before the end.
 final class SyncSocket: @unchecked Sendable {
     enum Input {
         /// The WebSocket is open.
@@ -79,8 +79,8 @@ final class SyncSocket: @unchecked Sendable {
     private(set) var unsentBytes = 0
     /// True while a receive is pending.
     private var isReceiving = false
-    /// The error of a connection that failed while a receive was pending, reported once that
-    /// receive completed.
+    /// The error of a connection that failed while a receive was pending, reported once the
+    /// receives delivered no more messages.
     private var failure: NWError?
 
     init(connection: NWConnection, queue: DispatchQueue, closeWait: TimeInterval) {
@@ -204,8 +204,8 @@ final class SyncSocket: @unchecked Sendable {
                 end(error)
                 return
             }
-            // The pending receive may carry the peer's close frame: end when it completes, or
-            // after the close wait if it never does.
+            // The receives may still deliver messages, the peer's close frame among them: end
+            // when they deliver no more, or after the close wait.
             failure = error
             queue.asyncAfter(deadline: .now() + closeWait) { [weak self] in
                 self?.end(error)
@@ -219,22 +219,25 @@ final class SyncSocket: @unchecked Sendable {
 
     private func receive() {
         isReceiving = true
-        connection.receiveMessage { [weak self] content, context, _, error in
+        connection.receiveMessage { [weak self] content, context, isComplete, error in
             guard let self else { return }
             self.isReceiving = false
             let metadata = context?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata
-            if let error {
-                // A close frame can arrive together with the error of the connection it ended.
-                if let metadata, metadata.opcode == .close {
-                    self.received(metadata, content: Data())
-                }
-                self.end(self.failure ?? error)
-                return
-            }
-            if let metadata {
+            if let metadata, error == nil || isComplete {
                 self.received(metadata, content: content ?? Data())
             }
             if self.hasEnded {
+                return
+            }
+            if let error {
+                // A complete message can arrive together with the error of the connection that
+                // failed after it; the messages that follow it, the peer's close frame among
+                // them, come with the next receives.
+                guard metadata != nil, isComplete, !self.isClosing else {
+                    self.end(self.failure ?? error)
+                    return
+                }
+                self.receive()
                 return
             }
             if context?.isFinal == true, metadata == nil {

@@ -14,7 +14,7 @@ struct SyncSocketTests {
         defer { server.stop() }
         let code: SyncCloseCode = serverCloses ? .goingAway : .normal
         var received: [UInt16?] = []
-        for _ in 0..<10 {
+        for _ in 0..<25 {
             received += await withTaskGroup(of: UInt16?.self) { group in
                 for _ in 0..<20 {
                     group.addTask {
