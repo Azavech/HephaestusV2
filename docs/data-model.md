@@ -36,7 +36,7 @@ HephaestusV2 stores everything in plain files: each project's `.hephaestus/` fol
 - The Required column of a field table says whether a file is invalid without the key. A key that is absent or `null` takes the value of the Default column; a required key that is absent or `null` makes the file invalid. Default chosen at design time.
 - The Default column values of `HostSettings` and `ChatSettings` are the product's default settings. The other Default column values only fill keys missing from a file, since the engine always writes every key. Default chosen at design time.
 - Key order is part of the contract for YAML files only. In JSON (`secrets.json`, transcripts, the engine API) key order is not significant.
-- Writing: the engine writes every known key in the order of the field table, `null` for an absent optional value, `[]` and `{}` for empty collections, then the unknown keys ([Unknown keys](#unknown-keys)). Mappings and non-empty sequences use block style with two-space indentation. A string containing a line break uses literal block style (`|`, or `|-` when the string does not end with a line break). A string that YAML would read as another type, for example `true`, `null`, `12`, `1.5`, `2026-10-31`, `NO` or `ON`, is quoted. Every other layout detail is the emitter's (Yams); the contract is the decoded values and the key order. Default chosen at design time.
+- Writing: the engine writes every known key in the order of the field table, `null` for an absent optional value, `[]` and `{}` for empty collections, then the unknown keys ([Unknown keys](#unknown-keys)). Mappings and non-empty sequences use block style. A nested mapping is indented by two spaces under its key; a sequence that is the value of a key is not indented: its `- ` items start at the key's column, and the keys of a mapping item are aligned after its `- `. This is the only layout the emitter, libyaml through Yams, writes, and the examples of this page use it. A string containing a line break uses literal block style (`|`, or `|-` when the string does not end with a line break). A string that YAML would read as another type, for example `true`, `null`, `12`, `1.5`, `2026-10-31`, `NO` or `ON`, is quoted. Every other layout detail is the emitter's (Yams); the contract is the decoded values and the key order. Default chosen at design time.
 - Reading: any YAML style is accepted, flow or block, quoted or plain. A key of Swift type `String` accepts any scalar, so an unquoted `NO` reads as the string `NO`. Booleans are `true` and `false`; the YAML 1.1 spellings `yes`, `no`, `on` and `off` are accepted too. A mapping with a duplicate key makes the file invalid. Default chosen at design time.
 
 ### Dates
@@ -74,7 +74,7 @@ Default chosen at design time.
 
 ### Swift types
 
-- The model types live in `Sources/HephaestusCore/Models/`; reading, writing and watching the files is done by `Sources/HephaestusCore/Storage/`.
+- The model types live in `Sources/HephaestusCore/Models/`, `HostSettings` included; the rules of the host settings that depend on the device (write rules, `~/` expansion, the skills library folder) are in `Sources/HephaestusCore/Settings/HostSettingsRules.swift` ([Architecture](architecture.md#hephaestuscore-folders)); reading, writing and watching the files is done by `Sources/HephaestusCore/Storage/`.
 - Every type on this page is a `struct` or an `enum` conforming to `Codable`, `Sendable` and `Hashable`. Enumerations have `String` raw values equal to the stored values.
 - A Swift property has the name of its key unless the field table gives another name, for example `Ticket.chatIDs` for the key `chats`.
 - Integers are `Int` (64-bit), decimals `Double`, UUIDs `UUID`, dates `Date`, URLs and paths `String`.
@@ -101,7 +101,7 @@ public enum JSONValue: Codable, Sendable, Hashable {
 
 ### JSON form in the engine API
 
-The engine API sends these types as JSON objects with the same keys and value rules: dates are strings in the format of [Dates](#dates), UUIDs are uppercase strings, absent optional values are `null`, `schema` is included, and unknown keys appear next to the known keys. `ChatMeta` adds two keys that are never stored, `projectID` and `state` ([Chat metadata file](#chat-metadata-file)). Types that exist only in the API are defined in [Engine API](engine-api.md).
+The engine API sends these types as JSON objects with the same keys and value rules, except that dates follow [JSON encoding](engine-api.md#json-encoding): the format of [Dates](#dates) for a date with whole seconds, which every date stored in these files has, and milliseconds for a date with a fraction. UUIDs are uppercase strings, absent optional values are `null`, `schema` is included, and unknown keys appear next to the known keys. `ChatMeta` adds two keys that are never stored, `projectID` and `state` ([Chat metadata file](#chat-metadata-file)). Types that exist only in the API are defined in [Engine API](engine-api.md).
 
 ## Project folder layout
 
@@ -158,7 +158,7 @@ The engine API sends these types as JSON objects with the same keys and value ru
 - Each name has the skill name format ([Ids](#ids)).
 - Enabling a skill appends its name; the list has no duplicates ([Skills](skills.md)).
 - A name without a folder in the skills library is kept and ignored when the engine generates the project's skills plugin ([Skills](skills.md)).
-- When a skill is renamed in the library, the engine replaces the old name with the new one, at the same position, in every loaded project that lists it; when a skill is deleted, the engine removes its name from every loaded project. Default chosen at design time.
+- When a skill is renamed in the library, the engine replaces the old name with the new one, at the same position, in every loaded project that lists it; a list that already holds the new name (a skill missing from the library) keeps it at the old name's position only. When a skill is deleted, the engine removes its name from every loaded project. Default chosen at design time.
 
 ### Project commands
 
@@ -199,23 +199,23 @@ nextTicketNumber: 15
 nextBundleNumber: 3
 docsPath: docs
 subprojects:
-  - backend
-  - apps/ios
+- backend
+- apps/ios
 commands:
   build: make build
   run: make run
   test: make test
 webTabs:
-  - id: 7C9E6679-7425-40DE-944B-E07FC1F90AE7
-    title: GitHub
-    url: https://github.com/
-    locked: true
-  - id: A1C2E3F4-5B6D-4E7F-8091-A2B3C4D5E6F7
-    title: Local server
-    url: http://localhost:8080/
-    locked: false
+- id: 7C9E6679-7425-40DE-944B-E07FC1F90AE7
+  title: GitHub
+  url: https://github.com/
+  locked: true
+- id: A1C2E3F4-5B6D-4E7F-8091-A2B3C4D5E6F7
+  title: Local server
+  url: http://localhost:8080/
+  locked: false
 skills:
-  - release-notes
+- release-notes
 chatDefaults:
   model: opus
   effort: high
@@ -358,45 +358,45 @@ description: |
   - [web-tabs.md › Locking](docs/web-tabs.md#locking)
   - [ui.md › Closing tabs and windows](docs/ui.md#closing-tabs-and-windows)
 attachments:
-  - id: 5F2B6A1C-3D4E-4F50-8A6B-7C8D9E0F1A2B
-    name: screenshot.png
-    path: attachments/HEPH-12/5F2B6A1C-3D4E-4F50-8A6B-7C8D9E0F1A2B-screenshot.png
-    contentType: image/png
-    size: 183204
+- id: 5F2B6A1C-3D4E-4F50-8A6B-7C8D9E0F1A2B
+  name: screenshot.png
+  path: attachments/HEPH-12/5F2B6A1C-3D4E-4F50-8A6B-7C8D9E0F1A2B-screenshot.png
+  contentType: image/png
+  size: 183204
 comments:
-  - id: 0A1B2C3D-4E5F-4061-8273-94A5B6C7D8E9
-    author: user
-    created: 2026-10-31T12:10:00Z
-    updated: null
-    text: Happens only when the address bar has focus.
-    attachments: []
-  - id: 6E7F8091-A2B3-44C5-96D7-E8F90A1B2C3D
-    author: claude
-    created: 2026-10-31T12:30:00Z
-    updated: null
-    text: |-
-      Implemented in `4f2c9e1`: fix: keep locked web tabs open on Command-W (HEPH-12)
+- id: 0A1B2C3D-4E5F-4061-8273-94A5B6C7D8E9
+  author: user
+  created: 2026-10-31T12:10:00Z
+  updated: null
+  text: Happens only when the address bar has focus.
+  attachments: []
+- id: 6E7F8091-A2B3-44C5-96D7-E8F90A1B2C3D
+  author: claude
+  created: 2026-10-31T12:30:00Z
+  updated: null
+  text: |-
+    Implemented in `4f2c9e1`: fix: keep locked web tabs open on Command-W (HEPH-12)
 
-      Docs
-      - [web-tabs.md › Locking](docs/web-tabs.md#locking): Command-W never closes a locked tab, whatever has focus.
+    Docs
+    - [web-tabs.md › Locking](docs/web-tabs.md#locking): Command-W never closes a locked tab, whatever has focus.
 
-      Code
-      - Sources/HephaestusUI/Web/: the Close Tab command goes through the tab strip's close action.
+    Code
+    - Sources/HephaestusUI/Web/: the Close Tab command goes through the tab strip's close action.
 
-      Checks
-      - make test: passed
+    Checks
+    - make test: passed
 
-      Notes
-      - None
-    attachments:
-      - id: 9B8A7C6D-5E4F-4A3B-B2C1-D0E9F8A7B6C5
-        name: test-output.txt
-        path: attachments/HEPH-12/9B8A7C6D-5E4F-4A3B-B2C1-D0E9F8A7B6C5-test-output.txt
-        contentType: text/plain
-        size: 2048
+    Notes
+    - None
+  attachments:
+  - id: 9B8A7C6D-5E4F-4A3B-B2C1-D0E9F8A7B6C5
+    name: test-output.txt
+    path: attachments/HEPH-12/9B8A7C6D-5E4F-4A3B-B2C1-D0E9F8A7B6C5-test-output.txt
+    contentType: text/plain
+    size: 2048
 chats:
-  - B5A4C3D2-E1F0-4A9B-8C7D-6E5F4A3B2C1D
-  - C0FFEE00-1234-4ABC-9DEF-0123456789AB
+- B5A4C3D2-E1F0-4A9B-8C7D-6E5F4A3B2C1D
+- C0FFEE00-1234-4ABC-9DEF-0123456789AB
 ```
 
 A minimal ticket file; it reads as a ticket created by the user, status `todo`, empty description:
@@ -453,10 +453,10 @@ title: Polish before v0.5.0
 created: 2026-10-31T16:00:00Z
 updated: 2026-10-31T16:05:00Z
 tickets:
-  - HEPH-12
-  - HEPH-13
+- HEPH-12
+- HEPH-13
 chats:
-  - 1D2C3B4A-5968-4776-A5B4-C3D2E1F0A9B8
+- 1D2C3B4A-5968-4776-A5B4-C3D2E1F0A9B8
 ```
 
 ## Chat metadata file
@@ -791,7 +791,7 @@ The skills library is a folder with one folder per skill: the setting `skillsLib
 
 ### SKILL.md format
 
-1. When the first line is exactly `---`, the lines up to the next line that is exactly `---` are the frontmatter, a YAML mapping. The body is everything after that closing line, verbatim.
+1. When the first line is exactly `---`, the lines up to the next line that is exactly `---` are the frontmatter, a YAML mapping; an empty frontmatter, or one of white space only, is an empty mapping. The body is everything after that closing line, verbatim.
 2. When the first line is not `---`, the file has no frontmatter and the whole file is the body.
 
 Reading:
@@ -799,19 +799,19 @@ Reading:
 - The folder name is the skill's name. A frontmatter `name` that is missing or differs from the folder name is ignored, and the engine writes the folder name at its next write of the file. Default chosen at design time.
 - A missing `description` reads as `""`.
 - Every other frontmatter key, for example `allowed-tools`, `model`, `argument-hint` or `disable-model-invocation`, is kept in `extraFrontmatter`.
-- A folder is skipped and logged when it has no `SKILL.md`, when `SKILL.md` is not valid UTF-8, when the frontmatter has no closing line, or when the frontmatter is not a YAML mapping. A folder whose name is not a valid skill name, for example `.git` or `My Skill`, is skipped. Default chosen at design time.
+- A folder is skipped and logged when it has no `SKILL.md`, when `SKILL.md` is not valid UTF-8, when the frontmatter has no closing line, or when the frontmatter is not a YAML mapping. A folder whose name is not a valid skill name, for example `.git` or `My Skill`, is skipped. A folder whose name starts with `.` is skipped without a log line; every other skipped folder is logged. Default chosen at design time.
 
 Writing: the line `---`, the frontmatter (`name`, `description`, then the extra keys sorted by key, following the writing rules of [Keys and values](#keys-and-values)), the line `---`, then the body verbatim. The file is written atomically ([Atomic writes](#atomic-writes)).
 
 Swift type `SkillFrontmatter`:
 
-| Swift name       | Key             | Type                  | Required | Default     | Rules                                                                                                            |
-| ---------------- | --------------- | --------------------- | -------- | ----------- | ---------------------------------------------------------------------------------------------------------------- |
-| name             | `name`          | `String`              | no       | folder name | Skill name ([Ids](#ids)). Equals the folder name, so names are unique in the library.                            |
-| description      | `description`   | `String`              | no       | `""`        | Tells Claude when to use the skill. 1–1024 characters when written by the engine. Default chosen at design time. |
-| extraFrontmatter | every other key | `[String: JSONValue]` | no       | `[:]`       | Other frontmatter keys, preserved as read.                                                                       |
+| Swift name       | Key             | Type                  | Required | Default     | Rules                                                                                                                                                                                           |
+| ---------------- | --------------- | --------------------- | -------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| name             | `name`          | `String`              | no       | folder name | Skill name ([Ids](#ids)). Equals the folder name, so names are unique in the library. A decoder that is not given the folder name, as in the conformance tests, reads a missing `name` as `""`. |
+| description      | `description`   | `String`              | no       | `""`        | Tells Claude when to use the skill. 1–1024 characters when written by the engine. Default chosen at design time.                                                                                |
+| extraFrontmatter | every other key | `[String: JSONValue]` | no       | `[:]`       | Other frontmatter keys, preserved as read.                                                                                                                                                      |
 
-The `files` of a skill in the engine API are the relative paths, with `/` separators, of every regular file in the skill's folder except `SKILL.md`, searched recursively, skipping names that start with `.`, sorted by path. Default chosen at design time.
+The `files` of a skill in the engine API are the relative paths, with `/` separators, of every regular file in the skill's folder except `SKILL.md`, searched recursively, skipping names that start with `.`, sorted by path. A symbolic link inside the skill's folder is not a regular file: it is neither listed nor followed. Default chosen at design time.
 
 ### Skill file example
 
@@ -858,12 +858,12 @@ The engine creates the directory and its missing subfolders at launch. One proce
 
 `<data dir>/device.yml` identifies this device to other devices. Swift type `DeviceRecord`.
 
-| Swift name  | Key      | Type                  | Required | Default | Rules                                                                                                                                                                                                                                                |
-| ----------- | -------- | --------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| schema      | `schema` | `Int`                 | no       | `1`     | See [Keys and values](#keys-and-values).                                                                                                                                                                                                             |
-| id          | `id`     | `UUID`                | yes      | —       | This device's id. Generated at first launch, never changed by the engine. Used in the handshake and the Bonjour TXT record ([Remote devices](remote.md)).                                                                                            |
-| name        | `name`   | `String?`             | no       | `null`  | Name shown to other devices; `null` uses the Mac's computer name, read at each launch. Default chosen at design time. Set in Settings > Devices: one line of 1 to 63 UTF-8 bytes after trimming; an empty field stores `null` ([UI](ui.md#devices)). |
-| unknownKeys | —        | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                                                                                                                                                       |
+| Swift name  | Key      | Type                  | Required | Default | Rules                                                                                                                                                                                                                                                                                                |
+| ----------- | -------- | --------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| schema      | `schema` | `Int`                 | no       | `1`     | See [Keys and values](#keys-and-values).                                                                                                                                                                                                                                                             |
+| id          | `id`     | `UUID`                | yes      | —       | This device's id. Generated at first launch, never changed by the engine. Used in the handshake and the Bonjour TXT record ([Remote devices](remote.md)).                                                                                                                                            |
+| name        | `name`   | `String?`             | no       | `null`  | Name shown to other devices; `null` uses the Mac's computer name, read at each launch, or `Mac` when the computer name cannot be read. Default chosen at design time. Set in Settings > Devices: one line of 1 to 63 UTF-8 bytes after trimming; an empty field stores `null` ([UI](ui.md#devices)). |
+| unknownKeys | —        | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                                                                                                                                                                                                       |
 
 ```yaml
 # <data dir>/device.yml
@@ -888,8 +888,8 @@ Registering and removing projects: [Projects](projects.md).
 # <data dir>/registry.yml
 schema: 1
 projects:
-  - /Users/example/Developer/HephaestusV2
-  - /Users/example/Developer/Website
+- /Users/example/Developer/HephaestusV2
+- /Users/example/Developer/Website
 ```
 
 ## Settings file
@@ -999,11 +999,11 @@ The pairing code of each remote device is in the [secrets file](#secrets-file). 
 # <data dir>/remotes.yml
 schema: 1
 remotes:
-  - id: 0E3C2A55-8B1D-4F4C-9E43-2D6A9C1B7F10
-    name: MacBook
-    host: MacBook.local
-    port: 47821
-    lastConnected: 2026-10-31T14:03:00Z
+- id: 0E3C2A55-8B1D-4F4C-9E43-2D6A9C1B7F10
+  name: MacBook
+  host: MacBook.local
+  port: 47821
+  lastConnected: 2026-10-31T14:03:00Z
 ```
 
 ## Id allocation
@@ -1049,7 +1049,7 @@ A file that breaks one of these rules is invalid. What happens to an invalid fil
 
 ### Write rules
 
-Every other rule of the field tables (lengths, ranges, single-line values, uniqueness, path syntax, references) is checked when the engine writes a value received from a client or from Claude. A violation fails the call with error `conflict` when the value is already used by another object (a project identifier, a skill name, an existing file) and `invalid` for any other rule, a duplicate inside the value itself included (a ticket listed twice in a bundle, two equal option labels), with a message naming the field and the rule. Default chosen at design time. These rules are not checked when reading: a file that breaks one still loads, and values the call did not change are written back as they were.
+Every other rule of the field tables (lengths, ranges, single-line values, uniqueness, path syntax, references) is checked when the engine writes a value received from a client or from Claude. A violation fails the call with error `conflict` when the value is already used by another object (a project identifier, a skill name, an existing file) and `invalid` for any other rule, a duplicate inside the value itself included (a ticket listed twice in a bundle, two equal option labels), with a message naming the field and the rule. A rule whose message no document gives uses the form `<field>: <rule>.`, for example `identifier: use 2 to 8 letters A–Z.` ([Engine API](engine-api.md#messages)). Default chosen at design time. These rules are not checked when reading: a file that breaks one still loads, and values the call did not change are written back as they were.
 
 ## Unknown keys
 
@@ -1090,8 +1090,8 @@ createdBy: user
 description: The console drawer opens at its default height in every new window.
 estimate: 3
 labels:
-  - ui
-  - console
+- ui
+- console
 attachments: []
 comments: []
 chats: []
@@ -1120,20 +1120,22 @@ When a step fails, the temporary file is deleted and the call fails with error `
 
 The engine writes a file that is referenced before the files that reference it, and removes a reference before the file it references. A crash between two steps leaves at most an unreferenced file or a skipped number, never a reference to a missing file.
 
-| Change                                | Order of the writes                                                                                                    |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Create a ticket                       | 1. project file (`nextTicketNumber`) 2. attachment files 3. ticket file                                                |
-| Create a bundle                       | 1. project file (`nextBundleNumber`) 2. bundle file                                                                    |
-| Add a comment or attachments          | 1. attachment files 2. ticket file                                                                                     |
-| Remove an attachment or a comment     | 1. ticket file 2. attachment files, moved to the Trash                                                                 |
-| Delete a ticket                       | 1. every bundle file listing it 2. ticket file and folder `attachments/<TICKET-ID>/`, moved to the Trash               |
-| Create a ticket chat or a bundle chat | 1. chat metadata file 2. ticket or bundle file (`chats`)                                                               |
-| Create a ticket from a feedback chat  | 1. project file 2. attachment files 3. ticket file, with the chat in `chats` 4. chat metadata file (`ticket`)          |
-| Delete a chat                         | 1. ticket or bundle file (`chats`) 2. chat metadata file, transcript and folder `chats/<CHAT-ID>/`, moved to the Trash |
-| Register a top-level project          | 1. the project's own files 2. registry file                                                                            |
-| Register a sub project                | 1. the sub project's own files 2. the parent's project file (`subprojects`)                                            |
-| Rename a skill                        | 1. the skill folder and its `SKILL.md` 2. every project file listing it                                                |
-| Delete a skill                        | 1. every project file listing it 2. the skill folder, moved to the Trash ([Skills](skills.md))                         |
+| Change                                | Order of the writes                                                                                                                                    |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Create a ticket                       | 1. project file (`nextTicketNumber`) 2. attachment files 3. ticket file                                                                                |
+| Create a bundle                       | 1. project file (`nextBundleNumber`) 2. bundle file                                                                                                    |
+| Add a comment or attachments          | 1. attachment files 2. ticket file                                                                                                                     |
+| Remove an attachment or a comment     | 1. ticket file 2. attachment files, moved to the Trash                                                                                                 |
+| Delete a ticket                       | 1. every bundle file listing it 2. ticket file and folder `attachments/<TICKET-ID>/`, moved to the Trash                                               |
+| Create a ticket chat or a bundle chat | 1. chat metadata file 2. ticket or bundle file (`chats`)                                                                                               |
+| Create a ticket from a feedback chat  | 1. project file 2. attachment files 3. ticket file, with the chat in `chats` 4. chat metadata file (`ticket`)                                          |
+| Delete a chat                         | 1. ticket or bundle file (`chats`) 2. chat metadata file, transcript and folder `chats/<CHAT-ID>/`, moved to the Trash                                 |
+| Register a top-level project          | 1. the project's own files 2. registry file                                                                                                            |
+| Register a sub project                | 1. the sub project's own files 2. the parent's project file (`subprojects`)                                                                            |
+| Rename a skill                        | 1. the skill folder and its `SKILL.md` 2. every project file listing it                                                                                |
+| Delete a skill                        | 1. every project file listing it 2. the skill folder, moved to the Trash ([Skills](skills.md))                                                         |
+| Pair a device                         | 1. secrets file (`remoteSecrets`) 2. remotes file; when step 2 fails, the code of step 1 goes back to its previous value ([Remote devices](remote.md)) |
+| Remove a paired device                | 1. remotes file 2. secrets file (`remoteSecrets`)                                                                                                      |
 
 When a step fails, the engine stops and the call fails. Files written by the earlier steps stay, except where the page that defines the change says otherwise, for example the attachment files of a ticket creation ([Tickets](tickets.md)).
 
@@ -1177,13 +1179,13 @@ A renamed file is a deletion of the old path and a creation of the new one. Defa
 
 The engine reacts to each kind of file as follows. Default chosen at design time.
 
-| File           | Created or changed                                                                                                                                                                                                                                                                                                                                                                                           | Deleted                                                                                                                                                                                                                                                 |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Project file   | `project.updated`. Also `projects.changed` when `name` or `subprojects` changed, loading added sub projects and unloading removed ones; `webTabs.updated` when `webTabs` changed; the skills plugin is regenerated when `skills` changed. A changed `id` makes the file invalid. A project file appearing in a registered folder or a listed sub project folder loads that project, with `projects.changed`. | The project and its sub projects are unloaded and their running chats stopped: `project.removed` for each, then `projects.changed`. The registry entry or the parent's `subprojects` entry is kept, so the project loads again when its file reappears. |
-| Ticket file    | `ticket.updated`, and `projects.changed` when the project's ticket counts changed.                                                                                                                                                                                                                                                                                                                           | `ticket.deleted` and `projects.changed`.                                                                                                                                                                                                                |
-| Bundle file    | `bundle.updated`.                                                                                                                                                                                                                                                                                                                                                                                            | `bundle.deleted`.                                                                                                                                                                                                                                       |
-| `settings.yml` | The values apply as if set with `settings.update`, then `settings.updated`.                                                                                                                                                                                                                                                                                                                                  | The values in memory stay; the file is written again at the next settings change.                                                                                                                                                                       |
-| `registry.yml` | Added paths are loaded and removed paths unloaded (`project.removed` for each), then `projects.changed`.                                                                                                                                                                                                                                                                                                     | The list in memory stays; the file is written again at the next registry change.                                                                                                                                                                        |
+| File           | Created or changed                                                                                                                                                                                                                                                                                                                                                                                           | Deleted                                                                                                                                                                                                                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Project file   | `project.updated`. Also `projects.changed` when `name` or `subprojects` changed, loading added sub projects and unloading removed ones; `webTabs.updated` when `webTabs` changed; the skills plugin is regenerated when `skills` changed. A changed `id` makes the file invalid. A project file appearing in a registered folder or a listed sub project folder loads that project, with `projects.changed`. | The project and its sub projects are unloaded and their running chats stopped: `project.removed` for each, then `projects.changed`. Their runs continue until they end or the app quits. The registry entry or the parent's `subprojects` entry is kept, so the project loads again when its file reappears. |
+| Ticket file    | `ticket.updated`, and `projects.changed` when the project's ticket counts changed.                                                                                                                                                                                                                                                                                                                           | `ticket.deleted` and `projects.changed`.                                                                                                                                                                                                                                                                     |
+| Bundle file    | `bundle.updated`.                                                                                                                                                                                                                                                                                                                                                                                            | `bundle.deleted`.                                                                                                                                                                                                                                                                                            |
+| `settings.yml` | The values apply as if set with `settings.update`, then `settings.updated`.                                                                                                                                                                                                                                                                                                                                  | The values in memory stay; the file is written again at the next settings change.                                                                                                                                                                                                                            |
+| `registry.yml` | Added paths are loaded and removed paths unloaded (`project.removed` for each), then `projects.changed`.                                                                                                                                                                                                                                                                                                     | The list in memory stays; the file is written again at the next registry change.                                                                                                                                                                                                                             |
 
 ## Conformance tests
 
