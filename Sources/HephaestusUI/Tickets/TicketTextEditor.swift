@@ -18,6 +18,9 @@ struct TicketTextEditor: NSViewRepresentable {
     var focusRequest = 0
     var onFocusChange: ((Bool) -> Void)?
     var onCommandReturn: (() -> Void)?
+    /// Return without modifiers: nil inserts a line break; set, it is called and Shift-Return
+    /// inserts the line break (the chat composer's keys).
+    var onReturn: (() -> Void)?
     var onEscape: (() -> Void)?
     /// Pasted content: return true when the pasteboard held files or image data that the owner
     /// took; otherwise the text is pasted as text.
@@ -177,6 +180,14 @@ final class TicketNSTextView: NSTextView {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.numericPad, .function])
         if isReturn(event), flags == .command {
             owner?.parent.onCommandReturn?()
+            return
+        }
+        if isReturn(event), flags.isEmpty, !hasMarkedText(), let onReturn = owner?.parent.onReturn {
+            onReturn()
+            return
+        }
+        if isReturn(event), flags == .shift, owner?.parent.onReturn != nil {
+            insertNewlineIgnoringFieldEditor(nil)
             return
         }
         super.keyDown(with: event)

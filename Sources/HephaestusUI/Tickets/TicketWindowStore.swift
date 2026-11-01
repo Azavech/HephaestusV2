@@ -156,7 +156,9 @@ final class DescriptionEditorModel {
     /// changes are saved, an unchanged editor closes.
     func leave() {
         guard isEditing else { return }
-        guard hasChanges else {
+        let projectID = Identifiers.projectID(of: ticketID) ?? ""
+        let ticketExists = workspace?.tickets[projectID].map { $0[ticketID] != nil } ?? true
+        guard hasChanges, ticketExists else {
             cancel()
             return
         }
