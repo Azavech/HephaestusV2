@@ -187,6 +187,7 @@ final class FakeClaudeLauncher: ClaudeProcessLauncher, @unchecked Sendable {
     private var _started: [FakeClaudeProcess] = []
     private var _chatScript: (@Sendable (FakeClaudeProcess) -> Void)?
     private var _spawnFailure: String?
+    private var _loginShellOutput = "/fake/bin/claude\n"
     private var processWaiters: [UUID: (predicate: (FakeClaudeProcess) -> Bool, continuation: CheckedContinuation<FakeClaudeProcess?, Never>)] = [:]
 
     var environment: [String: String] {
@@ -218,6 +219,12 @@ final class FakeClaudeLauncher: ClaudeProcessLauncher, @unchecked Sendable {
     var chatScript: (@Sendable (FakeClaudeProcess) -> Void)? {
         get { lock.withLock { _chatScript } }
         set { lock.withLock { _chatScript = newValue } }
+    }
+
+    /// What `/bin/zsh -lic 'command -v claude'` prints.
+    var loginShellOutput: String {
+        get { lock.withLock { _loginShellOutput } }
+        set { lock.withLock { _loginShellOutput = newValue } }
     }
 
     /// When set, starting a chat process throws this error text.
@@ -274,6 +281,12 @@ final class FakeClaudeLauncher: ClaudeProcessLauncher, @unchecked Sendable {
             DispatchQueue.global().async {
                 process.emit(output.trimmingCharacters(in: .newlines))
                 process.exit(.exited(code))
+            }
+        } else if request.executable == "/bin/zsh" {
+            let output = loginShellOutput
+            DispatchQueue.global().async {
+                for line in output.split(separator: "\n") { process.emit(String(line)) }
+                process.exit(.exited(0))
             }
         } else if arguments.contains("--system-prompt") {
             let output = namingOutput
