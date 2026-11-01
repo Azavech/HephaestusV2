@@ -4,8 +4,6 @@ import Foundation
 /// The attachments of chat messages, stored in the chat's attachment folder `chats/<chat id>/`
 /// (docs/data-model.md › Attachments, docs/engine-api.md › AttachmentUpload).
 enum ChatAttachments {
-    /// 20 MiB per file once decoded and for all the attachments of one request together.
-    static let maximumSize = 20 * 1024 * 1024
     /// docs/chats.md › User messages: images of at most 5,000,000 bytes become image blocks.
     static let maximumImageBlockSize = 5_000_000
     /// The content types sent to Claude as image blocks.
@@ -18,61 +16,17 @@ enum ChatAttachments {
         var data: Data
     }
 
-    /// Checks and reads the uploads of one request (docs/engine-api.md › AttachmentUpload):
-    /// exactly one of `dataBase64` and `sourcePath`, valid base64, a readable regular file, at
-    /// most 20 MiB each and together. `sourcePath` is resolved against `projectRoot`.
+    /// Checks and reads the uploads of one request with the rules of ticket attachments
+    /// (`AttachmentUploads.prepare`, docs/engine-api.md › AttachmentUpload).
     static func prepare(_ uploads: [AttachmentUpload], projectRoot: URL) throws -> [Prepared] {
-        var prepared: [Prepared] = []
-        var total = 0
-        for (index, upload) in uploads.enumerated() {
-            let data: Data
-            switch (upload.dataBase64, upload.sourcePath) {
-            case (let base64?, nil):
-                guard let decoded = Data(base64Encoded: base64) else {
-                    throw EngineError.invalid("attachments[\(index)]", "dataBase64 is not valid base64")
-                }
-                data = decoded
-            case (nil, let source?):
-                let path = source.hasPrefix("/") ? source : projectRoot.appendingPathComponent(source).path
-                var info = stat()
-                guard stat(path, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG, let contents = FileManager.default.contents(atPath: path) else {
-                    throw EngineError(.invalid, "\(source) is not a readable file.")
-                }
-                data = contents
-            default:
-                throw EngineError.invalid("attachments[\(index)]", "give exactly one of dataBase64 and sourcePath")
-            }
-            guard data.count <= maximumSize else {
-                throw EngineError(.invalid, "\(upload.name) is larger than 20 MB.")
-            }
-            total += data.count
-            prepared.append(Prepared(name: upload.name, contentType: upload.contentType, data: data))
+        try AttachmentUploads.prepare(uploads, projectRoot: projectRoot).map { upload in
+            Prepared(name: upload.name, contentType: upload.contentType, data: upload.data)
         }
-        guard total <= maximumSize else {
-            throw EngineError(.invalid, "The attachments of one request exceed 20 MB.")
-        }
-        return prepared
     }
 
-    /// The stored name of an upload: `/`, `:` and control characters replaced by `_`, `file`
-    /// when nothing is left, and the part before the extension shortened so that the stored file
-    /// name `<UUID>-<name>` has at most 255 UTF-8 bytes.
+    /// The stored name of an upload, as for ticket attachments (`AttachmentUploads.storedName`).
     static func storedName(_ name: String) -> String {
-        var cleaned = String(name.unicodeScalars.map { scalar -> Character in
-            scalar == "/" || scalar == ":" || scalar.properties.generalCategory == .control ? "_" : Character(scalar)
-        })
-        if cleaned.isEmpty { cleaned = "file" }
-        let limit = 255 - 37
-        guard cleaned.utf8.count > limit else { return cleaned }
-        let ext = (cleaned as NSString).pathExtension
-        var base = ext.isEmpty ? cleaned : String(cleaned.dropLast(ext.count + 1))
-        let suffix = ext.isEmpty ? "" : "." + ext
-        while !base.isEmpty, (base + suffix).utf8.count > limit {
-            base.removeLast()
-        }
-        var result = base + suffix
-        while result.utf8.count > limit { result.removeLast() }
-        return result.isEmpty ? "file" : result
+        AttachmentUploads.storedName(name, id: UUID())
     }
 
     /// Writes one file in the chat's attachment folder and returns its Attachment.

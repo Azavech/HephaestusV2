@@ -204,7 +204,7 @@ extension Engine {
         guard params.screenshot.contentType == "image/png" else { throw EngineError.invalid("screenshot", "use a PNG image (image/png)") }
         guard let base64 = params.screenshot.dataBase64 else { throw EngineError.invalid("screenshot", "give its content in dataBase64") }
         guard let screenshot = Data(base64Encoded: base64) else { throw EngineError.invalid("screenshot", "dataBase64 is not valid base64") }
-        guard screenshot.count <= ChatAttachments.maximumSize else {
+        guard screenshot.count <= AttachmentUploads.maximumSize else {
             throw EngineError(.invalid, "\(params.screenshot.name) is larger than 20 MB.")
         }
         if let settings = params.settings { try Engine.validated { try settings.validate() } }
