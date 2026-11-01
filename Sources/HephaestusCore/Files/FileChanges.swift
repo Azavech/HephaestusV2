@@ -315,6 +315,9 @@ extension Engine {
             log.warn(.files, "\(url.path) is invalid: \(FormatError.describe(error)); the settings in memory stay")
             return
         }
+        // Keys the engine does not know come from the file, so later writes keep them
+        // (docs/data-model.md › Reactions, › Unknown keys).
+        settings.unknownKeys = stored.unknownKeys
         guard stored != settings else { return }
         let params = SettingsUpdate.Params(
             claudePath: stored.claudePath.map { .set($0) } ?? .clear,

@@ -298,6 +298,23 @@ struct FileWatchingTests {
         }
     }
 
+    @Test("An external edit of settings.yml keeps the keys the engine does not know")
+    func settingsFileUnknownKeys() async throws {
+        try await withFileTestEngine { engine, connection, _ in
+            let events = connection.events
+            var settings = try await connection.call(SettingsGet.self)
+            settings.formatGoOnSave = false
+            settings.unknownKeys = ["handNote": .string("kept")]
+            try DeviceFileStore.write(settings, to: engine.dataDirectory)
+            _ = try #require(await firstEvent(named: SettingsUpdatedEvent.name, on: events, timeout: .seconds(20)))
+
+            _ = try await connection.call(SettingsUpdate.self, .init(formatSwiftOnSave: true))
+            let written = try String(contentsOf: engine.dataDirectory.settingsFile, encoding: .utf8)
+            #expect(written.contains("handNote: kept"))
+            #expect(written.contains("formatSwiftOnSave: true"))
+        }
+    }
+
     @Test("An invalid settings.yml leaves the settings in memory unchanged")
     func invalidSettingsFile() async throws {
         try await withFileTestEngine { engine, connection, project in
