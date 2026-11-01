@@ -10,7 +10,7 @@ HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server th
 | Address           | `127.0.0.1` only, TCP port `mcpPort` (default 47820); `HEPHAESTUS_MCP_PORT` replaces it when set ([Architecture](architecture.md#environment-overrides)) |
 | Endpoint          | `/mcp`                                                                                                                                                   |
 | Transport         | MCP Streamable HTTP, limited to POST requests answered with `application/json`: no SSE stream, no sessions                                               |
-| Protocol versions | `2025-06-18` and `2025-03-26`                                                                                                                            |
+| Protocol versions | `2025-06-18` and `2025-03-26`, negotiated in `initialize` ([Protocol version](#protocol-version))                                                        |
 | JSON-RPC methods  | `initialize`, `ping`, `tools/list`, `tools/call`; every notification is accepted and ignored                                                             |
 | Server name       | `hephaestus`, in `serverInfo` and as the server's key in Claude's MCP configuration, so Claude names the tools `mcp__hephaestus__<tool>`                 |
 | Authentication    | `Authorization: Bearer <token>` with a chat token or the external token                                                                                  |
@@ -49,27 +49,28 @@ The server reads each request and applies these steps in order; the first step t
 4. **Method.** Only POST is handled; every other method, GET and DELETE included, gets 405 with `Allow: POST`.
 5. **Authorization.** A missing, malformed or unknown bearer token gets 401 ([Authentication](#authentication)).
 6. **Declared size.** A `Content-Length` above 4 194 304 bytes gets 413 without the body being read. Default chosen at design time.
-7. **Protocol version.** An `MCP-Protocol-Version` header whose value is neither `2025-06-18` nor `2025-03-26` gets 400. A request without this header is accepted. Default chosen at design time.
-8. **Continue.** When the request carries `Expect: 100-continue`, the server sends the interim response `HTTP/1.1 100 Continue`. Default chosen at design time.
-9. **Body.** The body is the `Content-Length` bytes, or the decoded chunks when `Transfer-Encoding: chunked` is present, which takes precedence over `Content-Length`; chunk extensions and trailer fields are ignored. A request with neither header has an empty body. A chunked body growing beyond 4 194 304 bytes gets 413 and a malformed chunk gets 400; a chunk-size line or a trailer section longer than 65 536 bytes, the head limit, is malformed. Default chosen at design time.
-10. **JSON-RPC.** The body is handled as described in [JSON-RPC](#json-rpc) and answered with 200 or 202.
+7. **Continue.** When the request carries `Expect: 100-continue`, the server sends the interim response `HTTP/1.1 100 Continue`. Default chosen at design time.
+8. **Body.** The body is the `Content-Length` bytes, or the decoded chunks when `Transfer-Encoding: chunked` is present, which takes precedence over `Content-Length`; chunk extensions and trailer fields are ignored. A request with neither header has an empty body. A chunked body growing beyond 4 194 304 bytes gets 413 and a malformed chunk gets 400; a chunk-size line or a trailer section longer than 65 536 bytes, the head limit, is malformed. Default chosen at design time.
+9. **JSON-RPC.** The body is handled as described in [JSON-RPC](#json-rpc) and answered with 200 or 202, or with 400 when the request's `MCP-Protocol-Version` header names a version it may not use ([Protocol version](#protocol-version)).
 
 Every rejection (400, 401, 403, 404, 405, 413) carries `Connection: close` and the server closes the connection after sending it. Default chosen at design time.
 
+The Claude CLI sends `GET /mcp` after `initialize` to open an SSE stream, which this server does not offer; the 405 it gets is expected, and the CLI continues without the stream ([Examples](#initialization)).
+
 ### Status codes
 
-| Status                 | Sent when                                                                                             | Body                                                                                        |
-| ---------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| 200 OK                 | A JSON-RPC request was handled, or the body is not a valid JSON-RPC message; JSON-RPC errors included | JSON-RPC response (`application/json`)                                                      |
-| 202 Accepted           | The body is a JSON-RPC notification or a JSON-RPC response                                            | None                                                                                        |
-| 400 Bad Request        | Malformed request head or chunked body                                                                | `Bad Request: malformed HTTP request.`                                                      |
-| 400 Bad Request        | `MCP-Protocol-Version` names an unsupported version                                                   | `Bad Request: unsupported MCP-Protocol-Version <value>; supported: 2025-06-18, 2025-03-26.` |
-| 401 Unauthorized       | Missing, malformed or unknown bearer token                                                            | `Unauthorized: missing or invalid bearer token.`                                            |
-| 403 Forbidden          | The request carries an `Origin` header                                                                | `Forbidden: requests with an Origin header are refused.`                                    |
-| 404 Not Found          | The path is not `/mcp`                                                                                | `Not Found: the MCP endpoint is /mcp.`                                                      |
-| 405 Method Not Allowed | The method is not POST                                                                                | `Method Not Allowed: use POST.`                                                             |
-| 413 Content Too Large  | The request head exceeds 65 536 bytes                                                                 | `Content Too Large: the request head exceeds 65536 bytes.`                                  |
-| 413 Content Too Large  | The body exceeds 4 194 304 bytes                                                                      | `Content Too Large: the request body exceeds 4194304 bytes.`                                |
+| Status                 | Sent when                                                                                                                                            | Body                                                                                        |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| 200 OK                 | A JSON-RPC request was handled, or the body is not a valid JSON-RPC message; JSON-RPC errors included                                                | JSON-RPC response (`application/json`)                                                      |
+| 202 Accepted           | The body is a JSON-RPC notification or a JSON-RPC response                                                                                           | None                                                                                        |
+| 400 Bad Request        | Malformed request head or chunked body                                                                                                               | `Bad Request: malformed HTTP request.`                                                      |
+| 400 Bad Request        | A request for `ping`, `tools/list` or `tools/call` whose `MCP-Protocol-Version` names an unsupported version ([Protocol version](#protocol-version)) | `Bad Request: unsupported MCP-Protocol-Version <value>; supported: 2025-06-18, 2025-03-26.` |
+| 401 Unauthorized       | Missing, malformed or unknown bearer token                                                                                                           | `Unauthorized: missing or invalid bearer token.`                                            |
+| 403 Forbidden          | The request carries an `Origin` header                                                                                                               | `Forbidden: requests with an Origin header are refused.`                                    |
+| 404 Not Found          | The path is not `/mcp`                                                                                                                               | `Not Found: the MCP endpoint is /mcp.`                                                      |
+| 405 Method Not Allowed | The method is not POST                                                                                                                               | `Method Not Allowed: use POST.`                                                             |
+| 413 Content Too Large  | The request head exceeds 65 536 bytes                                                                                                                | `Content Too Large: the request head exceeds 65536 bytes.`                                  |
+| 413 Content Too Large  | The body exceeds 4 194 304 bytes                                                                                                                     | `Content Too Large: the request body exceeds 4194304 bytes.`                                |
 
 A rejection's body is `text/plain; charset=utf-8` and is exactly the text shown, without a final newline. Default chosen at design time.
 
@@ -81,8 +82,8 @@ A rejection's body is `text/plain; charset=utf-8` and is exactly the text shown,
 | Origin                                                                                              | Present: 403, whatever the value.                                                                                            |
 | Content-Length                                                                                      | Length of the body in bytes.                                                                                                 |
 | Transfer-Encoding                                                                                   | `chunked` is decoded and takes precedence over `Content-Length`; any other value: 400.                                       |
-| Expect                                                                                              | `100-continue`: interim `100 Continue` once steps 1 to 7 pass; any other value is ignored.                                   |
-| MCP-Protocol-Version                                                                                | Optional; when present it must be `2025-06-18` or `2025-03-26` (400 otherwise).                                              |
+| Expect                                                                                              | `100-continue`: interim `100 Continue` once steps 1 to 6 pass; any other value is ignored.                                   |
+| MCP-Protocol-Version                                                                                | Optional; checked only on requests for `ping`, `tools/list` and `tools/call` ([Protocol version](#protocol-version)).        |
 | Connection                                                                                          | `close`: the connection is closed after the response.                                                                        |
 | Any other header, Accept, Content-Type, Host, Mcp-Session-Id, Last-Event-ID and User-Agent included | Ignored: the body is parsed as JSON whatever its declared type and the answer is always JSON. Default chosen at design time. |
 
@@ -163,7 +164,16 @@ The errors of this table carry `"id": null` and are sent with status 200. An int
 | -32602 | `Invalid params: arguments must be an object`      | `tools/call` with `arguments` present, not `null` and not an object.                                             |
 | -32602 | `Unknown tool: <name>`                             | `tools/call` names a tool that `tools/list` does not list, a debug tool while debug tools are disabled included. |
 
--32601 is checked before -32602. The server sends no other code, -32603 included: a failure inside a tool is a [tool error](#tool-errors). Default chosen at design time.
+-32601 is checked before the protocol version, and the protocol version before -32602. The server sends no other code, -32603 included: a failure inside a tool is a [tool error](#tool-errors). Default chosen at design time.
+
+### Protocol version
+
+The protocol version is negotiated in `initialize`: the server answers the requested version when it supports it, otherwise `2025-06-18` ([initialize](#initialize)), and the client sends the negotiated version in the `MCP-Protocol-Version` header of its later requests. The server keeps no session, so it checks the header only where a negotiated version applies:
+
+- A request for `ping`, `tools/list` or `tools/call` whose `MCP-Protocol-Version` header names a version other than `2025-06-18` and `2025-03-26` gets the 400 of [Status codes](#status-codes) instead of a JSON-RPC response; with several such fields, the first unsupported value is named. A request without the header is accepted.
+- The header is not checked on `initialize`, which negotiates the version, on notifications and responses, on bodies that fail the [classification](#message-classification), and on requests for other methods, which get -32601. A client that first tries a newer protocol, as the Claude CLI 2.1.309 does with `server/discover` and the header `2026-07-28` ([initialize](#initialize)), thus gets -32601 and falls back to `initialize`.
+
+These rules are Default chosen at design time.
 
 ### Responses
 
@@ -187,7 +197,13 @@ The errors of this table carry `"id": null` and are sent with status 200. An int
 | capabilities    | `{"tools": {"listChanged": false}}`                                                                                                                          |
 | serverInfo      | `{"name": "hephaestus", "version": <app version>}`, the version being `DeviceInfo.appVersion` ([Engine API](engine-api.md#deviceinfo)), for example `0.4.0`. |
 
-The result has no other member: no `instructions`. Default chosen at design time. The server keeps nothing from `initialize`; a client may send it any number of times, and every method behaves the same under both protocol versions. The Claude CLI 2.1.309 supports protocol versions up to `2025-11-25`, `2025-06-18` included.
+The result has no other member: no `instructions`. Default chosen at design time. The server keeps nothing from `initialize`; a client may send it any number of times, and every method behaves the same under both protocol versions.
+
+The Claude CLI 2.1.309 connects in these steps, every POST carrying its `Authorization` header and `Accept: application/json, text/event-stream`:
+
+1. `server/discover`, with the headers `MCP-Protocol-Version: 2026-07-28` and `Mcp-Method: server/discover`, the id `server-discover-probe-1`, and `params._meta` holding `io.modelcontextprotocol/protocolVersion` `2026-07-28`, its client info and capabilities. The server answers -32601 `Method not found: server/discover` ([Protocol version](#protocol-version)).
+2. `initialize` without an `MCP-Protocol-Version` header, with `protocolVersion` `2025-11-25`; the server answers `2025-06-18`.
+3. `notifications/initialized`, then `GET /mcp`, which gets 405 ([Request handling](#request-handling)), then `tools/list`, each with `MCP-Protocol-Version: 2025-06-18`.
 
 ### Notifications
 
@@ -2151,15 +2167,15 @@ Input schema:
 
 The server writes these messages to `Logs/engine.log` with the component `mcp`, each line being `<UTC time with milliseconds> <LEVEL> mcp: <message>` ([Architecture](architecture.md#enginelog)). It never logs tokens, arguments or results. Default chosen at design time.
 
-| Event                | Level | Message                                                                                                                           |
-| -------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Listening            | INFO  | `listening on 127.0.0.1:<port>`                                                                                                   |
-| Bind attempt failed  | WARN  | `cannot listen on 127.0.0.1:<port>: <error> (attempt <n> of 5)`                                                                   |
-| Bind failed for good | ERROR | `not listening: <error>`; also written when a listener fails after it was listening                                               |
-| Stopped              | INFO  | `stopped`                                                                                                                         |
-| Rejected request     | WARN  | `<status> <method> <path>: <body of the response>`; `-` stands for the method and for the path of a head that could not be parsed |
-| Tool call succeeded  | INFO  | `tools/call <tool> by <chat id or external>: ok in <milliseconds> ms`                                                             |
-| Tool call failed     | WARN  | `tools/call <tool> by <chat id or external>: <error code> in <milliseconds> ms`                                                   |
+| Event                | Level | Message                                                                                                                                                                                                                      |
+| -------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Listening            | INFO  | `listening on 127.0.0.1:<port>`                                                                                                                                                                                              |
+| Bind attempt failed  | WARN  | `cannot listen on 127.0.0.1:<port>: <error> (attempt <n> of 5)`                                                                                                                                                              |
+| Bind failed for good | ERROR | `not listening: <error>`; also written when a listener fails after it was listening                                                                                                                                          |
+| Stopped              | INFO  | `stopped`                                                                                                                                                                                                                    |
+| Rejected request     | WARN  | `<status> <method> <path>: <body of the response>`; `-` stands for the method and for the path of a head that could not be parsed. The 405 answer to `GET /mcp`, which MCP clients send to open an SSE stream, is not logged |
+| Tool call succeeded  | INFO  | `tools/call <tool> by <chat id or external>: ok in <milliseconds> ms`                                                                                                                                                        |
+| Tool call failed     | WARN  | `tools/call <tool> by <chat id or external>: <error code> in <milliseconds> ms`                                                                                                                                              |
 
 ## Security
 
