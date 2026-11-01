@@ -31,6 +31,7 @@ struct MainWindowRoot: View {
         }
         .onAppear {
             app.captureWindowActions(openWindow: openWindow, openSettings: openSettings)
+            app.mainWindowRootAppeared()
             guard state == nil else { return }
             // A restart whose saved windows hold no main window: SwiftUI still opens one at
             // launch, which closes at once (docs/ui.md › Windows, windowsAtRestart).

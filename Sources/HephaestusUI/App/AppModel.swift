@@ -85,6 +85,13 @@ public final class AppModel {
     /// True when this launch reopens the windows of a restart and they hold no main window: the
     /// main window SwiftUI opens at launch closes at once.
     @ObservationIgnored private var suppressesLaunchWindow = false
+    /// True when this launch reopens the windows of a restart: the app opens exactly those.
+    @ObservationIgnored private let isRestartLaunch: Bool
+    /// True once the restart windows were opened.
+    @ObservationIgnored private var restartWindowsOpened = false
+    /// True once the launch has its windows: the first main window root appeared, or the launch
+    /// check ran (docs/ui.md › Windows).
+    @ObservationIgnored private(set) var launchWindowsSettled = false
     @ObservationIgnored var restartChatWindows: [ChatWindowValue] = []
     @ObservationIgnored private var tasks: [Task<Void, Never>] = []
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
@@ -118,6 +125,7 @@ public final class AppModel {
             }
         }
         suppressesLaunchWindow = restartWindows != nil && restartMainWindowStates.isEmpty
+        isRestartLaunch = restartWindows != nil
         updateController = UpdateController(environment: environment, appVersion: appVersion)
         feedbackController = FeedbackController()
         pairedDevices = engine.pairedDevices.devices
@@ -221,6 +229,25 @@ public final class AppModel {
         let state = WindowState(deviceID: localDeviceID)
         state.needsDefaultProject = true
         return state
+    }
+
+    /// Called when a main window's root appears: the launch has its first window.
+    func mainWindowRootAppeared() {
+        launchWindowsSettled = true
+    }
+
+    /// The launch check of docs/ui.md › Windows, once the app has finished launching: when no
+    /// window of the scenes is open and none was restored, the app opens the main window that
+    /// SwiftUI should have opened. A restart for an update opens exactly its saved windows.
+    func ensureLaunchWindow() {
+        defer { launchWindowsSettled = true }
+        guard !launchWindowsSettled, !isRestartLaunch else { return }
+        let hasSceneWindow = NSApp.windows.contains { window in
+            window.isVisible && window.sheetParent == nil && !(window is NSPanel) && window.styleMask.contains(.titled)
+        }
+        guard !hasSceneWindow else { return }
+        engine.log.warn(.ui, "no window was open after launch; opening a main window")
+        openNewMainWindow()
     }
 
     /// True once, for the main window SwiftUI opens at launch, when the windows of a restart hold
@@ -348,13 +375,22 @@ public final class AppModel {
     }
 
     /// Keeps the window actions of the SwiftUI environment, so the model can open windows itself
-    /// (`ui.open`, restart windows, debug navigation).
+    /// (`ui.open`, restart windows, debug navigation); the first window root to appear also opens
+    /// the remaining windows of a restart.
     func captureWindowActions(openWindow: OpenWindowAction, openSettings: OpenSettingsAction) {
-        let first = openWindowAction == nil
         openWindowAction = openWindow
         openSettingsAction = openSettings
-        if first {
+        if !restartWindowsOpened {
+            restartWindowsOpened = true
             openRestartWindows()
+        }
+    }
+
+    /// The `openWindow` action of the menu commands, which exist from launch on, before any
+    /// window: the app can open a main window even when SwiftUI opened none.
+    func captureCommandsOpenWindow(_ openWindow: OpenWindowAction) {
+        if openWindowAction == nil {
+            openWindowAction = openWindow
         }
     }
 

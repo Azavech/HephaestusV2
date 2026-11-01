@@ -76,8 +76,12 @@ private struct AboutCommand: View {
 private struct FileNewCommands: View {
     let app: AppModel
     @FocusedValue(\.windowState) private var focused
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
+        // The menu exists from launch on: its action lets the app open a main window before any
+        // window has appeared (AppModel.ensureLaunchWindow).
+        let _ = app.captureCommandsOpenWindow(openWindow)
         let window = actionable(focused)
         Button("New Window") {
             app.openNewMainWindow()

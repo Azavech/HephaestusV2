@@ -29,6 +29,13 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         }
         installSignalHandlers()
         MenuValidation.shared.start()
+        // docs/ui.md › Windows: a launch that restores nothing opens one main window, also when
+        // SwiftUI opened none.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            MainActor.assumeIsolated {
+                AppModel.shared?.ensureLaunchWindow()
+            }
+        }
         // Startup step 9: the Updater, unless a condition of docs/updater.md › Starting the
         // Updater holds.
         app?.updateController.start()

@@ -80,6 +80,12 @@ final class AppDebugUI: MCPDebugUI, @unchecked Sendable {
     @MainActor
     private func navigateOnMain(_ target: NavigationTarget) async throws -> WindowInfo {
         guard let app else { throw EngineError(.unavailable, "No window is open.") }
+        // While the app is launching, or while a main window's root has appeared but its window
+        // is not registered yet, wait for that window rather than open a second one.
+        let launchDeadline = Date().addingTimeInterval(10)
+        while app.frontmostMainWindow == nil, !app.launchWindowsSettled || !app.windows.isEmpty, Date() < launchDeadline {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
         let state: WindowState
         if let front = app.frontmostMainWindow {
             state = front
