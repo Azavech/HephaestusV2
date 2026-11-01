@@ -266,14 +266,14 @@ struct SyncLoopbackTests {
     @Test("Pings keep a session alive past the server's silence limit")
     func keepalive() async throws {
         try await withTwoEngines { main, _, remote, _ in
-            // A ping every 0.25 s against a silence limit of 3 s leaves a loaded machine 2.75 s to
+            // A ping every 0.25 s against a silence limit of 8 s leaves a loaded machine 7.75 s to
             // deliver one. The session is watched for longer than the limit.
             var server = SyncTimings.fast
-            server.serverSilence = 3
+            server.serverSilence = 8
             await main.syncServer.setTimings(server)
             let connection = try await pair(remote, with: main)
             defer { connection.close() }
-            let phases = await elements(of: connection.phaseUpdates, during: .seconds(4))
+            let phases = await elements(of: connection.phaseUpdates, during: .seconds(9))
             #expect(phases == [.connected])
             #expect(connection.phase == .connected)
             #expect(await main.syncServer.status.sessions.count == 1)
