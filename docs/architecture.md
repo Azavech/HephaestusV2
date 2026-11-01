@@ -462,7 +462,7 @@ Search results, `ui.open` events and `debug_navigate` all end in `WindowState.na
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `windows()`             | Returns the `WindowInfo` of every visible window, front to back ([MCP server](mcp.md#window-information)).                                                                                                                                                                                    |
 | `screenshot(windowID:)` | Renders the window in-process with the feedback capture ([Feedback](feedback.md#screenshot-capture)), writes the PNG to `Runtime/screenshots/` and returns its path and size. It reads nothing from the screen and gives the same image for an offscreen window as for a window on a display. |
-| `navigate(to:)`         | Navigates as `debug_navigate` defines and returns the window's `WindowInfo` once its state is updated ([MCP server](mcp.md#debug_navigate)).                                                                                                                                                  |
+| `navigate(to:)`         | Navigates as `debug_navigate` defines and returns the window's `WindowInfo` once its state is updated, or throws `conflict` once the navigation shows an unsaved changes prompt ([MCP server](mcp.md#debug_navigate)).                                                                        |
 
 ## Security overview
 

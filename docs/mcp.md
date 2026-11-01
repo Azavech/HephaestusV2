@@ -2013,7 +2013,7 @@ The JSON of these results is encoded with sorted keys, as the engine's.
 
 ### debug_screenshot
 
-- **Action:** captures the window `window`, by default the key window or, when no window is key, the frontmost one, with `MCPDebugUI.screenshot(windowID:)` ([Architecture](architecture.md#debug-ui-hook)): the window is rendered in-process with the Feedback capture ([Feedback](feedback.md#screenshot-capture)), at its backing scale factor, WKWebView content included. Nothing is read from the screen, so offscreen windows work and no screen-recording permission is needed.
+- **Action:** captures the window `window`, by default the key window or, when no window is key, the frontmost one, with `MCPDebugUI.screenshot(windowID:)` ([Architecture](architecture.md#debug-ui-hook)): the window is rendered in-process with the Feedback capture ([Feedback](feedback.md#screenshot-capture)), at its backing scale factor, WKWebView content and sheets included. A sheet, or the background window macOS puts behind an alert sheet, is captured as the window it is attached to, with the sheet drawn over it. Nothing is read from the screen, so offscreen windows work and no screen-recording permission is needed.
 - **File:** `<data dir>/Runtime/screenshots/<window id>-<time>.png`, `<time>` being the UTC capture time as `yyyyMMdd'T'HHmmss.SSS'Z'`. The folder is created when missing and the app never deletes these files. Default chosen at design time.
 - **Result:** `{"height": <pixels>, "path": <absolute path>, "width": <pixels>}`, for example:
 
@@ -2053,9 +2053,9 @@ Input schema:
 
 ### debug_navigate
 
-- **Action:** the target is checked like `open_in_app`'s ([Target kinds](#target-kinds), same messages). `MCPDebugUI.navigate(to:)` navigates the window that [UI](ui.md#choosing-the-window) chooses for `debug_navigate` (the frontmost main window, switched to This Mac when needed, or a new one), with the same resolution as a `ui.open` target. The tool returns once the window's state has been updated.
+- **Action:** the target is checked like `open_in_app`'s ([Target kinds](#target-kinds), same messages). `MCPDebugUI.navigate(to:)` navigates the window that [UI](ui.md#choosing-the-window) chooses for `debug_navigate` (the frontmost main window, switched to This Mac when needed, or a new one), with the same resolution as a `ui.open` target. The tool returns once the window's state has been updated. When the navigation shows an unsaved changes prompt ([Resolving a target](ui.md#resolving-a-target), step 5), the tool does not wait for its answer and fails as listed under Errors; the project and section changes of step 4 stay, the prompt stays on the window as a `sheet` window of `debug_ui_state` and `debug_screenshot` shows it, and the selection is applied if the prompt is answered with Save or Don't Save. Default chosen at design time.
 - **Result:** the [WindowInfo](#window-information) of that window.
-- **Errors:** a target rule fails (`invalid`). debug_navigate calls no engine method, so a target whose ids do not decode, a `chatID` or `tabID` that is not a UUID for example, fails with `invalid` and `target.<property>: <reason>.`, the reasons of the [dispatcher's decoding errors](engine-api.md#dispatcher-errors). Default chosen at design time. A target naming an item that does not exist is not an error: the window shows its not-found state ([UI](ui.md#resolving-a-target)).
+- **Errors:** a target rule fails (`invalid`). The navigation shows an unsaved changes prompt: `The window asks whether to save unsaved changes; the target is selected once the prompt is answered.` (`conflict`). debug_navigate calls no engine method, so a target whose ids do not decode, a `chatID` or `tabID` that is not a UUID for example, fails with `invalid` and `target.<property>: <reason>.`, the reasons of the [dispatcher's decoding errors](engine-api.md#dispatcher-errors). Default chosen at design time. A target naming an item that does not exist is not an error: the window shows its not-found state ([UI](ui.md#resolving-a-target)).
 
 Description:
 
