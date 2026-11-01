@@ -51,8 +51,11 @@ public struct UpdaterArguments: Sendable, Hashable {
         guard isDecimal(pidText), let pid = Int32(pidText), pid > 0 else { throw UsageError(reason: "--pid needs a process id") }
         var interval = 30
         if let text = values["--interval"] {
-            guard isDecimal(text), let value = Int(text) else { throw UsageError(reason: "--interval needs a number of minutes") }
-            interval = value
+            // A value below 5 is raised to 5, a negative one included; a value too large for `Int`
+            // is above 1440 and lowered to it.
+            let digits = text.hasPrefix("-") ? String(text.dropFirst()) : text
+            guard isDecimal(digits) else { throw UsageError(reason: "--interval needs a number of minutes") }
+            interval = Int(text) ?? (text.hasPrefix("-") ? 5 : 1440)
         }
         var autoUpdate = true
         if let text = values["--auto-update"] {

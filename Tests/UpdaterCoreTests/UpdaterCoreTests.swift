@@ -156,11 +156,17 @@ struct UpdaterArgumentsTests {
         #expect(all.intervalMinutes == 5)
         #expect(!all.autoUpdate)
         #expect(try UpdaterArguments.parse(["--app", "/A.app", "--pid", "5", "--interval", "5000"]).intervalMinutes == 1440)
+        #expect(try UpdaterArguments.parse(["--app", "/A.app", "--pid", "5", "--interval", "-1"]).intervalMinutes == 5)
+        #expect(try UpdaterArguments.parse(["--app", "/A.app", "--pid", "5", "--interval", "99999999999999999999"]).intervalMinutes == 1440)
+        #expect(try UpdaterArguments.parse(["--app", "/A.app", "--pid", "5", "--interval", "60"]).intervalMinutes == 60)
+        #expect(try UpdaterArguments.parse(["--app", "/A.app", "--pid", "5", "--auto-update", "true"]).autoUpdate)
     }
 
     @Test("Usage errors", arguments: [
         [], ["--app", "/A.app"], ["--pid", "5"], ["--app", "A.app", "--pid", "5"], ["--app", "/A.app", "--pid", "x"],
-        ["--app", "/A.app", "--pid", "5", "--interval", "-1"], ["--app", "/A.app", "--pid", "5", "--auto-update", "yes"],
+        ["--app", "/A.app", "--pid", "5", "--interval", "x"], ["--app", "/A.app", "--pid", "5", "--interval", "-"],
+        ["--app", "/A.app", "--pid", "5", "--interval", ""], ["--app", "/A.app", "--pid", "5", "--auto-update", "yes"],
+        ["--app", "/A.app", "--pid", "5", "--pid", "6"], ["--app", "/A.app", "--pid", "0"],
         ["--app", "/A.app", "--pid", "5", "--verbose"], ["--app", "/A.app", "--pid"],
     ])
     func usageErrors(_ arguments: [String]) {
