@@ -250,6 +250,7 @@ Input schemas, errors and examples: [Debug tools](mcp.md#debug-tools).
 6. Tests use no network beyond 127.0.0.1 and no user interaction; the GitHub answers of the release feed are stubbed.
 7. Test data contains no personal data ([Public repository](#public-repository)).
 8. At most 32 test engines run at the same time, and the tests that wait for FSEvents run one at a time, across suites (the `.fsEvents` trait). Swift Testing starts every test of a run at once, and a process gets at most 512 FSEvents streams: past that `FSEventStreamStart` fails and an engine watches nothing. Default chosen at design time.
+9. A test that binds a port it chose earlier, or checks that a stopped server's port refuses connections, uses a free port below the ephemeral range (49152 to 65535). A released ephemeral port can go to another test's listener that asks for port 0 at any time, and a later bind of 127.0.0.1 on it succeeds and takes that listener's loopback connections. Default chosen at design time.
 
 ### Docs conformance tests
 
