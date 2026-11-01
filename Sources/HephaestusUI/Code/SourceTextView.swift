@@ -132,6 +132,9 @@ final class LineNumberRulerView: NSRulerView {
         super.init(scrollView: scrollView, orientation: .verticalRuler)
         clientView = textView
         ruleThickness = 36
+        // Views do not clip their drawing by default; the background fill of `draw(_:)` must not
+        // cover the views next to the editor.
+        clipsToBounds = true
     }
 
     @available(*, unavailable)
@@ -169,9 +172,10 @@ final class LineNumberRulerView: NSRulerView {
     override var requiredThickness: CGFloat { ruleThickness }
 
     override func draw(_ dirtyRect: NSRect) {
+        let rect = dirtyRect.intersection(bounds)
         EditorTheme.background.setFill()
-        dirtyRect.fill()
-        drawHashMarksAndLabels(in: dirtyRect)
+        rect.fill()
+        drawHashMarksAndLabels(in: rect)
     }
 
     override func drawHashMarksAndLabels(in rect: NSRect) {

@@ -181,6 +181,18 @@ struct EditorTextHostView: NSViewRepresentable {
 final class EditorContainerView: NSView {
     private weak var content: NSView?
 
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        // Views do not clip their drawing by default, and WebKit draws the page's background
+        // beyond the web view's bounds: the editor and the preview stay inside their area.
+        clipsToBounds = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
     func show(_ view: NSView) {
         guard content !== view || view.superview !== self else { return }
         content?.removeFromSuperview()

@@ -98,6 +98,9 @@ final class TranscriptController {
         configuration.setURLSchemeHandler(schemeHandler, forURLScheme: ResourceSchemeHandler.attachmentScheme)
         configuration.userContentController.add(TranscriptMessageProxy(controller: self), name: Self.messageHandlerName)
         let view = TranscriptWKWebView(frame: .zero, configuration: configuration)
+        // WebKit can draw the page's background beyond the web view's bounds, over the views
+        // next to the transcript.
+        view.clipsToBounds = true
         view.controller = self
         view.navigationDelegate = view
         view.uiDelegate = view
