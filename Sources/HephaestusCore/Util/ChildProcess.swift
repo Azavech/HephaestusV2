@@ -52,9 +52,15 @@ public struct ChildProcessRequest: Sendable {
 
 /// A child process started with `posix_spawn` as the leader of a new process group
 /// (`POSIX_SPAWN_SETPGROUP`), so that a signal sent to the group reaches what it started.
+///
+/// Each pipe end this process keeps has exactly one owner, its `FileHandle`, which closes it
+/// once: with `close()` or when the last reference to the handle goes away. Readers keep a
+/// reference to their handle until end of file, so a descriptor is never closed while a read
+/// may use it, and nothing else closes these descriptors.
 public final class ChildProcess: @unchecked Sendable {
     public let pid: pid_t
-    /// Write end of standard input when the request asked for a pipe.
+    /// Write end of standard input when the request asked for a pipe. Writing to it after the
+    /// child closed its end fails with `EPIPE` and raises no `SIGPIPE`.
     public let standardInput: FileHandle?
     /// Read end of standard output when the request asked for a pipe.
     public let standardOutput: FileHandle?
@@ -72,6 +78,9 @@ public final class ChildProcess: @unchecked Sendable {
     }
 
     /// Starts the process. Its process group id equals its pid.
+    ///
+    /// The pipes are plain descriptors until the spawn succeeded: a failure closes each of them
+    /// exactly once, and only a successful spawn hands the parent's ends to their handles.
     public static func spawn(_ request: ChildProcessRequest) throws -> ChildProcess {
         var actions: posix_spawn_file_actions_t?
         posix_spawn_file_actions_init(&actions)
@@ -91,20 +100,23 @@ public final class ChildProcess: @unchecked Sendable {
         sigfillset(&defaultSignals)
         posix_spawnattr_setsigdefault(&attributes, &defaultSignals)
 
-        var parentEnds: [Int32] = []
+        // Descriptors created here and not yet handed to a handle; each is closed once.
         var childEnds: [Int32] = []
+        var parentEnds: [Int32] = []
         func makePipe() throws -> (read: Int32, write: Int32) {
             var fds: [Int32] = [0, 0]
             guard pipe(&fds) == 0 else { throw ChildProcessError.pipeFailed(errno: errno) }
+            // Close-on-exec at once: no process another thread starts inherits them.
+            for fd in fds { _ = fcntl(fd, F_SETFD, FD_CLOEXEC) }
             return (fds[0], fds[1])
         }
-        func closeAll() {
-            for fd in parentEnds + childEnds { close(fd) }
+        func closeAll(_ descriptors: [Int32]) {
+            for fd in descriptors { close(fd) }
         }
 
-        var inputHandle: FileHandle?
-        var outputHandle: FileHandle?
-        var errorHandle: FileHandle?
+        var inputEnd: Int32?
+        var outputEnd: Int32?
+        var errorEnd: Int32?
 
         do {
             switch request.standardInput {
@@ -114,8 +126,9 @@ public final class ChildProcess: @unchecked Sendable {
                 let fds = try makePipe()
                 parentEnds.append(fds.write)
                 childEnds.append(fds.read)
+                _ = fcntl(fds.write, F_SETNOSIGPIPE, 1)
                 posix_spawn_file_actions_adddup2(&actions, fds.read, 0)
-                inputHandle = FileHandle(fileDescriptor: fds.write, closeOnDealloc: true)
+                inputEnd = fds.write
             }
             for (target, output) in [(Int32(1), request.standardOutput), (Int32(2), request.standardError)] {
                 switch output {
@@ -128,16 +141,12 @@ public final class ChildProcess: @unchecked Sendable {
                     parentEnds.append(fds.read)
                     childEnds.append(fds.write)
                     posix_spawn_file_actions_adddup2(&actions, fds.write, target)
-                    let handle = FileHandle(fileDescriptor: fds.read, closeOnDealloc: true)
-                    if target == 1 { outputHandle = handle } else { errorHandle = handle }
+                    if target == 1 { outputEnd = fds.read } else { errorEnd = fds.read }
                 }
             }
         } catch {
-            closeAll()
+            closeAll(parentEnds + childEnds)
             throw error
-        }
-        for fd in parentEnds {
-            _ = fcntl(fd, F_SETFD, FD_CLOEXEC)
         }
         if let directory = request.currentDirectory {
             posix_spawn_file_actions_addchdir(&actions, directory)
@@ -152,12 +161,17 @@ public final class ChildProcess: @unchecked Sendable {
 
         var pid: pid_t = 0
         let status = posix_spawn(&pid, request.executable, &actions, &attributes, argv, envp)
-        for fd in childEnds { close(fd) }
+        closeAll(childEnds)
         guard status == 0 else {
-            for fd in parentEnds { close(fd) }
+            closeAll(parentEnds)
             throw ChildProcessError.spawnFailed(executable: request.executable, errno: status)
         }
-        let process = ChildProcess(pid: pid, standardInput: inputHandle, standardOutput: outputHandle, standardError: errorHandle)
+        // From here on each parent end belongs to its handle alone.
+        func handle(_ fd: Int32?) -> FileHandle? {
+            fd.map { FileHandle(fileDescriptor: $0, closeOnDealloc: true) }
+        }
+        let process = ChildProcess(pid: pid, standardInput: handle(inputEnd), standardOutput: handle(outputEnd),
+                                   standardError: handle(errorEnd))
         process.waiter.start()
         return process
     }

@@ -120,6 +120,115 @@ struct ChildProcessTests {
         }
     }
 
+    /// Opens pipes on threads of its own while spawns run: a descriptor that a spawn closes
+    /// twice is then one of these pipes, closed under its owner, which the owner notices.
+    private final class DescriptorSentinels: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stopped = false
+        private var problems: [String] = []
+        private var running = 0
+        private var finished: CheckedContinuation<Void, Never>?
+
+        func start(_ count: Int) {
+            lock.withLock { running = count }
+            for _ in 0..<count {
+                let thread = Thread { [self] in
+                    while !lock.withLock({ stopped }) {
+                        check()
+                    }
+                    let continuation = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+                        running -= 1
+                        return running == 0 ? finished : nil
+                    }
+                    continuation?.resume()
+                }
+                thread.start()
+            }
+        }
+
+        func stop() async -> [String] {
+            await withCheckedContinuation { continuation in
+                lock.lock()
+                stopped = true
+                if running == 0 {
+                    lock.unlock()
+                    continuation.resume()
+                } else {
+                    finished = continuation
+                    lock.unlock()
+                }
+            }
+            return lock.withLock { problems }
+        }
+
+        private func identity(_ fd: Int32) -> String? {
+            var info = stat()
+            guard fstat(fd, &info) == 0 else { return nil }
+            return "\(info.st_dev):\(info.st_ino)"
+        }
+
+        private func check() {
+            var fds: [Int32] = [0, 0]
+            guard pipe(&fds) == 0 else { return }
+            _ = fcntl(fds[1], F_SETNOSIGPIPE, 1)
+            let identities = fds.map(identity)
+            var byte: UInt8 = 7
+            var problem: String?
+            for _ in 0..<20 {
+                guard write(fds[1], &byte, 1) == 1, read(fds[0], &byte, 1) == 1 else {
+                    problem = "a pipe stopped working: \(String(cString: strerror(errno)))"
+                    break
+                }
+            }
+            if problem == nil, fds.map(identity) != identities {
+                problem = "a pipe descriptor changed under its owner"
+            }
+            for fd in fds where close(fd) != 0 && problem == nil {
+                problem = "a pipe descriptor was already closed"
+            }
+            if let problem {
+                lock.withLock { problems.append(problem) }
+            }
+        }
+    }
+
+    @Test("Starts that fail and runs that succeed close each pipe exactly once, also concurrently")
+    func descriptorOwnershipUnderLoad() async throws {
+        let sentinels = DescriptorSentinels()
+        sentinels.start(4)
+        let echo = ChildProcessRequest(executable: "/bin/sh", arguments: ["-c", "cat; echo err >&2"], environment: Self.environment)
+        let missing = ChildProcessRequest(executable: "/nonexistent/tool", environment: [:], standardInput: .pipe)
+        let outcomes = await withTaskGroup(of: [String].self) { group in
+            for worker in 0..<8 {
+                group.addTask {
+                    var problems: [String] = []
+                    for round in 0..<300 {
+                        if (try? ChildProcess.spawn(missing)) != nil {
+                            problems.append("a missing executable started")
+                        }
+                        guard round % 30 == worker % 30 else { continue }
+                        let input = Data("\(worker)-\(round)".utf8)
+                        do {
+                            let result = try await ChildProcessRunner.run(echo, input: input, timeout: .seconds(20))
+                            if result.standardOutput != input || result.standardErrorText != "err\n" || !result.termination.isSuccess {
+                                problems.append("run \(worker)-\(round): \(result.termination), \(result.standardOutputText)")
+                            }
+                        } catch {
+                            problems.append("run \(worker)-\(round): \(error)")
+                        }
+                    }
+                    return problems
+                }
+            }
+            var all: [String] = []
+            for await problems in group { all += problems }
+            return all
+        }
+        let sentinelProblems = await sentinels.stop()
+        #expect(outcomes == [])
+        #expect(sentinelProblems == [])
+    }
+
     @Test("Environment rules of child processes")
     func environmentRules() {
         let captured = ["PATH": "/bin", "HEPHAESTUS_DATA_DIR": "/x", "HEPHAESTUS_DEBUG_TOOLS": "1"]

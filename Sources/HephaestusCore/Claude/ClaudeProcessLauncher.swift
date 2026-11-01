@@ -164,9 +164,6 @@ final class SystemClaudeProcess: ClaudeProcess, @unchecked Sendable {
         request.standardOutput = .pipe
         request.standardError = .pipe
         process = try ChildProcess.spawn(request)
-        if let input = process.standardInput {
-            _ = fcntl(input.fileDescriptor, F_SETNOSIGPIPE, 1)
-        }
         let (lines, linesContinuation) = AsyncStream<ClaudeOutputLine>.makeStream(bufferingPolicy: .unbounded)
         let (errors, errorsContinuation) = AsyncStream<Data>.makeStream(bufferingPolicy: .unbounded)
         outputLines = lines
