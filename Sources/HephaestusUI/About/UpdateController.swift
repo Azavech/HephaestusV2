@@ -453,10 +453,9 @@ final class UpdateController {
     }
 
     /// docs/updater.md › Restart rules: no chat of This Mac's engine in `starting`, `running` or
-    /// `waitingPermission`, and nothing unsaved in any window of this app.
-    // DOC-GAP: comment drafts of ticket views and the composer text of draft chats are view state
-    // that no shared model exposes yet; the idle check covers editors, ticket description savers,
-    // composer drafts of existing chats and every sheet.
+    /// `waitingPermission`, and nothing unsaved in any window of this app: editors, ticket
+    /// description savers, comment drafts and changed description editors of ticket views, the
+    /// composer text and attachments of existing and draft chats, and every sheet.
     var isAppIdle: Bool {
         guard let app else { return false }
         let busy: Set<ChatState> = [.starting, .running, .waitingPermission]
@@ -469,7 +468,7 @@ final class UpdateController {
         if !app.quitSavers.isEmpty {
             return false
         }
-        for workspace in app.workspaces.values where workspace.drafts.values.contains(where: { !$0.text.isEmpty }) {
+        if TicketWindowStore.hasUnsavedTicketEdits || ChatDrafts.hasUnsentDraftText(in: Array(app.workspaces.values)) {
             return false
         }
         if NSApp.windows.contains(where: { $0.attachedSheet != nil }) {
