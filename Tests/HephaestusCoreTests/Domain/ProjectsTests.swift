@@ -1,0 +1,316 @@
+import Foundation
+import Testing
+@testable import HephaestusCore
+
+/// projects.list, projects.get, projects.create, projects.open, projects.update and
+/// projects.remove through `LocalEngineConnection` (docs/engine-api.md › Projects,
+/// docs/projects.md).
+@Suite("Projects")
+struct ProjectsTests {
+    @Test("projects.create writes the project file and .gitignore, registers the root and emits the events")
+    func createTopLevel() async throws {
+        try await withDomainEngine { h in
+            let events = await EventRecorder.make(h.connection)
+            let detail = try await h.connection.call(ProjectsCreate.self, .init(
+                rootPath: h.path("Website/./sub/.."), name: "  Website  ", identifier: "web", createDirectory: true))
+            #expect(detail.project.id == "WEB")
+            #expect(detail.project.name == "Website")
+            #expect(detail.rootPath == h.path("Website"))
+            #expect(detail.parentID == nil)
+            #expect(detail.subprojects.isEmpty)
+            #expect(detail.gitRemoteURL == nil)
+            #expect(detail.project.nextTicketNumber == 1 && detail.project.docsPath == "docs")
+            let folder = ProjectFolder(root: URL(fileURLWithPath: h.path("Website")))
+            #expect(try readFile(folder.gitignoreFile) == "chats/\n")
+            #expect(try ProjectFileStore.readProject(folder) == detail.project)
+            let registry = try ProjectFileStore.decodeYAML(Registry.self, at: DataDirectory(url: h.folder.appendingPathComponent("Data")).registryFile)
+            #expect(registry.projects == [h.path("Website")])
+            #expect(await events.wait(for: ProjectsChangedEvent.name) == ["project.updated", "projects.changed"])
+            let changed = try events.all.last!.payload(ProjectsChangedEvent.self)
+            #expect(changed == [ProjectSummary(id: "WEB", name: "Website", rootPath: h.path("Website"))])
+            #expect(events.all.allSatisfy { $0.origin == .user(deviceID: h.engine.deviceID) })
+            #expect(try await h.connection.call(ProjectsList.self) == changed)
+            #expect(try await h.connection.call(ProjectsGet.self, .init(projectID: "web")) == detail)
+        }
+    }
+
+    @Test("projects.create refuses invalid params, used identifiers, files and existing projects")
+    func createErrors() async throws {
+        try await withDomainEngine { h in
+            func create(_ rootPath: String, _ name: String = "Name", identifier: String = "ABC", parentID: ProjectID? = nil,
+                        createDirectory: Bool = true) async -> EngineError? {
+                await engineError {
+                    try await h.connection.call(ProjectsCreate.self, .init(rootPath: rootPath, name: name, identifier: identifier,
+                                                                         parentID: parentID, createDirectory: createDirectory))
+                }
+            }
+            #expect(await create("relative/path")?.code == .invalid)
+            #expect(await create(h.path("A"), identifier: "A1") == EngineError(.invalid, "identifier: use 2 to 8 letters A–Z."))
+            #expect(await create(h.path("A"), identifier: "ABCDEFGHI")?.code == .invalid)
+            #expect(await create(h.path("A"), "")?.code == .invalid)
+            #expect(await create(h.path("A"), "Two\nlines")?.code == .invalid)
+            #expect(await create(h.path("A/.hephaestus/x"))?.code == .invalid)
+            try writeFile("text", to: h.projects.appendingPathComponent("file"))
+            #expect(await create(h.path("file"))?.code == .invalid)
+            #expect(await create(h.path("Missing"), createDirectory: false) == EngineError(.notFound, "Folder \(h.path("Missing")) not found."))
+            #expect(!FileManager.default.fileExists(atPath: h.path("Missing")))
+            #expect(await create(h.path("A"), parentID: "NOPE") == EngineError(.notFound, "Project NOPE not found."))
+            try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
+            #expect(await create(h.path("B"), identifier: "heph") == EngineError(.conflict, "Identifier HEPH is already used by Hephaestus V2."))
+            #expect(await create(h.path("Other"), parentID: "HEPH")?.code == .invalid)
+            #expect(!FileManager.default.fileExists(atPath: h.path("Other")))
+            #expect(await create(h.path("Heph"), identifier: "NEW")
+                == EngineError(.conflict, "\(h.path("Heph")) already contains a project; open it instead."))
+        }
+    }
+
+    @Test("projects.create in an existing folder keeps its .gitignore lines and appends chats/")
+    func createInExistingFolder() async throws {
+        try await withDomainEngine { h in
+            let root = h.projects.appendingPathComponent("Existing")
+            try writeFile("attachments/", to: root.appendingPathComponent(".hephaestus/.gitignore"))
+            let detail = try await h.connection.call(ProjectsCreate.self, .init(rootPath: root.path, name: "Existing",
+                                                                              identifier: "EX", createDirectory: false))
+            #expect(detail.project.id == "EX")
+            #expect(try readFile(root.appendingPathComponent(".hephaestus/.gitignore")) == "attachments/\nchats/\n")
+        }
+    }
+
+    @Test("A project created inside a loaded project becomes its sub project")
+    func createSubProjects() async throws {
+        try await withDomainEngine { h in
+            try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
+            let events = await EventRecorder.make(h.connection)
+            let site = try await h.create("Heph/site", name: "Website", identifier: "SITE")
+            #expect(site.parentID == "HEPH")
+            #expect(await events.wait(for: ProjectsChangedEvent.name) == ["project.updated", "project.updated", "projects.changed"])
+            #expect(try events.all[0].payload(ProjectUpdatedEvent.self).project.id == "SITE")
+            #expect(try events.all[1].payload(ProjectUpdatedEvent.self).project.subprojects == ["site"])
+            let api = try await h.create("Heph/backend/api", name: "API", identifier: "API", parentID: "HEPH")
+            #expect(api.parentID == "HEPH")
+            let deep = try await h.create("Heph/site/blog", name: "Blog", identifier: "BLOG")
+            #expect(deep.parentID == "SITE")
+            let heph = try await h.connection.call(ProjectsGet.self, .init(projectID: "HEPH"))
+            #expect(heph.project.subprojects == ["site", "backend/api"])
+            #expect(heph.subprojects.map(\.id) == ["SITE", "API"])
+            let list = try await h.connection.call(ProjectsList.self)
+            #expect(list.map(\.id) == ["HEPH", "SITE", "BLOG", "API"])
+            #expect(list.map(\.parentID) == [nil, "HEPH", "SITE", "HEPH"])
+            #expect(list[0].subprojectIDs == ["SITE", "API"])
+            let registry = await h.engine.testDomain.registry
+            #expect(registry.projects == [h.path("Heph")])
+            #expect(await h.engine.testDomain.loadedProjectIDs() == ["HEPH", "SITE", "BLOG", "API"])
+        }
+    }
+
+    @Test("projects.open registers an existing project, inside a loaded project as its sub project")
+    func open() async throws {
+        try await withDomainEngine { h in
+            let website = h.projects.appendingPathComponent("Website")
+            try writeFile(projectYAML(id: "WEB", name: "Website"), to: website.appendingPathComponent(".hephaestus/project.yml"))
+            try writeFile(ticketYAML(id: "WEB-3", title: "Open me"), to: website.appendingPathComponent(".hephaestus/ticket/WEB-3.yml"))
+            let events = await EventRecorder.make(h.connection)
+            let detail = try await h.connection.call(ProjectsOpen.self, .init(rootPath: website.path + "/"))
+            #expect(detail.project.id == "WEB" && detail.rootPath == website.path && detail.parentID == nil)
+            #expect(try readFile(website.appendingPathComponent(".hephaestus/.gitignore")) == "chats/\n")
+            #expect(await events.wait(for: ProjectsChangedEvent.name) == ["project.updated", "projects.changed"])
+            #expect(try await h.connection.call(TicketsList.self, .init(projectID: "WEB")).map(\.id) == ["WEB-3"])
+            #expect(await h.engine.testDomain.registry.projects == [website.path])
+
+            // An already loaded root is returned unchanged, without events.
+            events.clear()
+            #expect(try await h.connection.call(ProjectsOpen.self, .init(rootPath: website.path)) == detail)
+            #expect(await events.settle().isEmpty)
+
+            // A folder inside a loaded project becomes its sub project.
+            let blog = website.appendingPathComponent("blog")
+            try writeFile(projectYAML(id: "BLOG", name: "Blog"), to: blog.appendingPathComponent(".hephaestus/project.yml"))
+            let opened = try await h.connection.call(ProjectsOpen.self, .init(rootPath: blog.path))
+            #expect(opened.parentID == "WEB")
+            #expect(try await h.connection.call(ProjectsGet.self, .init(projectID: "WEB")).project.subprojects == ["blog"])
+            #expect(await events.wait(for: ProjectsChangedEvent.name) == ["project.updated", "project.updated", "projects.changed"])
+            #expect(try events.all[0].payload(ProjectUpdatedEvent.self).project.id == "WEB")
+        }
+    }
+
+    @Test("projects.open of a parent removes the registry entries of its listed sub projects")
+    func openAdoptsTopLevelProjects() async throws {
+        try await withDomainEngine { h in
+            let parent = h.projects.appendingPathComponent("Parent")
+            let child = parent.appendingPathComponent("apps/child")
+            try writeFile(projectYAML(id: "CHILD", name: "Child"), to: child.appendingPathComponent(".hephaestus/project.yml"))
+            _ = try await h.connection.call(ProjectsOpen.self, .init(rootPath: child.path))
+            try writeFile(projectYAML(id: "PAR", name: "Parent", subprojects: ["apps/child", "missing"]),
+                          to: parent.appendingPathComponent(".hephaestus/project.yml"))
+            let detail = try await h.connection.call(ProjectsOpen.self, .init(rootPath: parent.path))
+            #expect(detail.subprojects.map(\.id) == ["CHILD"])
+            #expect(await h.engine.testDomain.registry.projects == [parent.path])
+            let list = try await h.connection.call(ProjectsList.self)
+            #expect(list.map(\.id) == ["PAR", "CHILD"])
+            #expect(list[1].parentID == "PAR")
+        }
+    }
+
+    @Test("projects.open fails without a project, with an invalid file or with a used identifier")
+    func openErrors() async throws {
+        try await withDomainEngine { h in
+            #expect(await engineError { try await h.connection.call(ProjectsOpen.self, .init(rootPath: "relative")) }?.code == .invalid)
+            #expect(await engineError { try await h.connection.call(ProjectsOpen.self, .init(rootPath: h.path("None"))) }?.code == .notFound)
+            try FileManager.default.createDirectory(at: h.projects.appendingPathComponent("Empty"), withIntermediateDirectories: true)
+            #expect(await engineError { try await h.connection.call(ProjectsOpen.self, .init(rootPath: h.path("Empty"))) }
+                == EngineError(.notFound, "No project at \(h.path("Empty"))."))
+            try writeFile("schema: 1\nid: BAD\ncreated: 2026-10-31T12:00:00Z\n",
+                          to: h.projects.appendingPathComponent("Bad/.hephaestus/project.yml"))
+            let invalid = await engineError { try await h.connection.call(ProjectsOpen.self, .init(rootPath: h.path("Bad"))) }
+            #expect(invalid?.code == .invalid)
+            #expect(invalid?.message.contains("name") == true)
+            try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
+            try writeFile(projectYAML(id: "HEPH", name: "Copy"), to: h.projects.appendingPathComponent("Copy/.hephaestus/project.yml"))
+            #expect(await engineError { try await h.connection.call(ProjectsOpen.self, .init(rootPath: h.path("Copy"))) }
+                == EngineError(.conflict, "Identifier HEPH is already used by Hephaestus V2."))
+            try writeFile(projectYAML(id: "OUT", name: "Outer", subprojects: ["inner"]), to: h.projects.appendingPathComponent("Outer/.hephaestus/project.yml"))
+            try writeFile(projectYAML(id: "HEPH", name: "Inner"), to: h.projects.appendingPathComponent("Outer/inner/.hephaestus/project.yml"))
+            #expect(await engineError { try await h.connection.call(ProjectsOpen.self, .init(rootPath: h.path("Outer"))) }?.code == .conflict)
+            #expect(try await h.connection.call(ProjectsList.self).map(\.id) == ["HEPH"])
+        }
+    }
+
+    @Test("projects.update changes the given fields and emits project.updated, projects.changed for a new name")
+    func update() async throws {
+        try await withDomainEngine { h in
+            try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
+            let events = await EventRecorder.make(h.connection)
+            let detail = try await h.connection.call(ProjectsUpdate.self, .init(
+                projectID: "heph", docsPath: "documentation/", commands: ProjectCommands(build: "  make build ", run: "  ", test: nil),
+                chatDefaults: .set(ChatSettings(model: "opus", effort: .xhigh))))
+            #expect(detail.project.docsPath == "documentation")
+            #expect(detail.project.commands == ProjectCommands(build: "make build"))
+            #expect(detail.project.chatDefaults == ChatSettings(model: "opus", effort: .xhigh))
+            #expect(await events.wait(for: ProjectUpdatedEvent.name) == ["project.updated"])
+            #expect(await events.settle() == ["project.updated"])
+
+            events.clear()
+            _ = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "HEPH", name: "Forge"))
+            #expect(await events.wait(for: ProjectsChangedEvent.name) == ["project.updated", "projects.changed"])
+            events.clear()
+            let same = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "HEPH", name: "Forge"))
+            #expect(same.project.name == "Forge")
+            #expect(await events.settle().isEmpty)
+
+            let cleared = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "HEPH", chatDefaults: .clear))
+            #expect(cleared.project.chatDefaults == nil)
+            let stored = try ProjectFileStore.readProject(ProjectFolder(root: URL(fileURLWithPath: h.path("Heph"))))
+            #expect(stored == cleared.project)
+        }
+    }
+
+    @Test("projects.update refuses invalid values and chat defaults from Claude")
+    func updateErrors() async throws {
+        try await withDomainEngine { h in
+            try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
+            func update(_ params: ProjectsUpdate.Params) async -> EngineError? {
+                await engineError { try await h.connection.call(ProjectsUpdate.self, params) }
+            }
+            #expect(await update(.init(projectID: "HEPH", name: " "))?.code == .invalid)
+            #expect(await update(.init(projectID: "HEPH", docsPath: "../docs"))?.code == .invalid)
+            #expect(await update(.init(projectID: "HEPH", docsPath: "/docs"))?.code == .invalid)
+            #expect(await update(.init(projectID: "HEPH", docsPath: ".hephaestus/docs"))?.code == .invalid)
+            #expect(await update(.init(projectID: "HEPH", docsPath: ""))?.code == .invalid)
+            #expect(await update(.init(projectID: "HEPH", chatDefaults: .set(ChatSettings(model: "two words"))))?.code == .invalid)
+            #expect(await update(.init(projectID: "NONE", name: "X")) == EngineError(.notFound, "Project NONE not found."))
+            #expect(await update(.init(projectID: "1", name: "X")) == EngineError(.invalid, "projectID: use 2 to 8 letters A–Z."))
+            let claude = await engineError {
+                try await h.call(ProjectsUpdate.self, .init(projectID: "HEPH", chatDefaults: .clear), as: h.claude)
+            }
+            #expect(claude == EngineError(.forbidden, "Claude cannot change chat defaults."))
+            let renamed = try await h.call(ProjectsUpdate.self, .init(projectID: "HEPH", name: "By Claude"), as: h.claude)
+            #expect(renamed.project.name == "By Claude")
+        }
+    }
+
+    @Test("projects.remove unregisters the project and its descendants and leaves their files")
+    func remove() async throws {
+        try await withDomainEngine { h in
+            try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
+            try await h.create("Heph/site", name: "Website", identifier: "SITE")
+            try await h.create("Heph/site/blog", name: "Blog", identifier: "BLOG")
+            try await h.create("Other", name: "Other", identifier: "OTH")
+            try await h.ticket("SITE")
+            let events = await EventRecorder.make(h.connection)
+            _ = try await h.connection.call(ProjectsRemove.self, .init(projectID: "SITE"))
+            #expect(await events.wait(for: ProjectsChangedEvent.name)
+                == ["project.removed", "project.removed", "project.updated", "projects.changed"])
+            #expect(try events.all.prefix(2).map { try $0.payload(ProjectRemovedEvent.self).projectID } == ["SITE", "BLOG"])
+            #expect(try events.all[2].payload(ProjectUpdatedEvent.self).project.subprojects.isEmpty)
+            #expect(try await h.connection.call(ProjectsList.self).map(\.id) == ["HEPH", "OTH"])
+            #expect(FileManager.default.fileExists(atPath: h.path("Heph/site/.hephaestus/ticket/SITE-1.yml")))
+            #expect(await engineError { try await h.connection.call(TicketsList.self, .init(projectID: "SITE")) }?.code == .notFound)
+
+            events.clear()
+            _ = try await h.connection.call(ProjectsRemove.self, .init(projectID: "HEPH"))
+            #expect(await events.wait(for: ProjectsChangedEvent.name) == ["project.removed", "projects.changed"])
+            #expect(await h.engine.testDomain.registry.projects == [h.path("Other")])
+            #expect(await engineError { try await h.connection.call(ProjectsRemove.self, .init(projectID: "HEPH")) }?.code == .notFound)
+
+            // Opening the folder again registers the project with its data.
+            _ = try await h.connection.call(ProjectsOpen.self, .init(rootPath: h.path("Heph/site")))
+            #expect(try await h.connection.call(TicketsList.self, .init(projectID: "SITE")).map(\.id) == ["SITE-1"])
+        }
+    }
+
+    @Test("A chat cannot remove its own project or one of its ancestors")
+    func removeOwnProject() async throws {
+        try await withDomainEngine { h in
+            try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
+            try await h.create("Heph/site", name: "Website", identifier: "SITE")
+            try await h.create("Heph/site/blog", name: "Blog", identifier: "BLOG")
+            let chatID = UUID()
+            await h.engine.testUpsertChat(ChatMeta(id: chatID, kind: .project, created: ISODate.now(), projectID: "SITE"))
+            let chat = Actor.claude(chatID: chatID.uuidString)
+            for id in ["SITE", "HEPH"] {
+                #expect(await engineError { try await h.call(ProjectsRemove.self, .init(projectID: id), as: chat) }
+                    == EngineError(.forbidden, "A chat cannot remove the project it belongs to."))
+            }
+            _ = try await h.call(ProjectsRemove.self, .init(projectID: "BLOG"), as: chat)
+            _ = try await h.call(ProjectsRemove.self, .init(projectID: "SITE"), as: h.claude)
+            #expect(try await h.connection.call(ProjectsList.self).map(\.id) == ["HEPH"])
+        }
+    }
+
+    @Test("A project skipped because its identifier is used loads once the other project is removed")
+    func retryAfterRemoval() async throws {
+        try await withDomainEngine(prepare: { directory, projects in
+            let first = projects.appendingPathComponent("First").path
+            let second = projects.appendingPathComponent("Second").path
+            try writeFile(projectYAML(id: "SAME", name: "First"), to: URL(fileURLWithPath: first + "/.hephaestus/project.yml"))
+            try writeFile(projectYAML(id: "SAME", name: "Second"), to: URL(fileURLWithPath: second + "/.hephaestus/project.yml"))
+            try writeFile(registryYAML([first, second]), to: directory.registryFile)
+        }) { h in
+            #expect(try await h.connection.call(ProjectsList.self).map(\.name) == ["First"])
+            let events = await EventRecorder.make(h.connection)
+            _ = try await h.connection.call(ProjectsRemove.self, .init(projectID: "SAME"))
+            await events.wait(for: ProjectsChangedEvent.name)
+            let list = try await h.connection.call(ProjectsList.self)
+            #expect(list.map(\.name) == ["Second"])
+            #expect(try events.all.last!.payload(ProjectsChangedEvent.self) == list)
+        }
+    }
+
+    @Test("ProjectDetail.gitRemoteURL is the origin remote of the git work tree")
+    func gitRemote() async throws {
+        try await withDomainEngine { h in
+            guard case .found(let git) = GitTool.lookUp(environment: ProcessInfo.processInfo.environment) else { return }
+            let root = h.projects.appendingPathComponent("Repo")
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            let environment = ProcessEnvironment.withoutHephaestusVariables(ProcessInfo.processInfo.environment)
+            #expect(GitTool.run(git, ["init", "-q"], in: root.path, environment: environment)?.status == 0)
+            let before = try await h.connection.call(ProjectsCreate.self, .init(rootPath: root.path, name: "Repo", identifier: "REPO",
+                                                                              createDirectory: false))
+            #expect(before.gitRemoteURL == nil)
+            #expect(GitTool.run(git, ["remote", "add", "origin", "https://example.com/repo.git"], in: root.path,
+                                environment: environment)?.status == 0)
+            let after = try await h.connection.call(ProjectsGet.self, .init(projectID: "REPO"))
+            #expect(after.gitRemoteURL == "https://example.com/repo.git")
+        }
+    }
+}

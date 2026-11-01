@@ -20,29 +20,100 @@ extension Engine {
         }
     }
 
-    // STUB: core-domain — docs/engine-api.md › webTabs.list.
+    /// docs/engine-api.md › webTabs.list: the project's tabs in tab order.
     func webTabsList(_ params: WebTabsList.Params, _ actor: Actor) async throws -> [WebTab] {
-        throw EngineError.notImplemented(WebTabsList.name)
+        let id = try loadedProjectID(params.projectID)
+        return loaded(id).project.webTabs
     }
 
-    // STUB: core-domain — docs/engine-api.md › webTabs.open.
+    /// docs/engine-api.md › webTabs.open: a new tab with a new UUID, the URL's host as default
+    /// title, unlocked by default, at `index` clamped to the tab range or appended.
     func webTabsOpen(_ params: WebTabsOpen.Params, _ actor: Actor) async throws -> WebTab {
-        throw EngineError.notImplemented(WebTabsOpen.name)
+        let id = try loadedProjectID(params.projectID)
+        let url = try validated { try ModelRules.webTabURL(params.url) }
+        let title = params.title.map(Self.webTabTitle) ?? (URLComponents(string: url)?.host ?? "")
+        let tab = WebTab(id: UUID(), title: title, url: url, locked: params.locked ?? false)
+        var project = loaded(id).project
+        let index = min(max(params.index ?? project.webTabs.count, 0), project.webTabs.count)
+        project.webTabs.insert(tab, at: index)
+        try saveWebTabs(project, origin: actor)
+        return tab
     }
 
-    // STUB: core-domain — docs/engine-api.md › webTabs.update.
+    /// docs/engine-api.md › webTabs.update: a locked tab can be navigated, renamed and unlocked;
+    /// Claude never unlocks a tab.
     func webTabsUpdate(_ params: WebTabsUpdate.Params, _ actor: Actor) async throws -> WebTab {
         try ActorRules.requireNoUnlock(params.locked, actor)
-        throw EngineError.notImplemented(WebTabsUpdate.name)
+        let id = try loadedProjectID(params.projectID)
+        var project = loaded(id).project
+        guard let index = project.webTabs.firstIndex(where: { $0.id == params.tabID }) else {
+            throw Self.webTabNotFound(params.tabID)
+        }
+        var tab = project.webTabs[index]
+        if let url = params.url {
+            tab.url = try validated { try ModelRules.webTabURL(url) }
+        }
+        if let title = params.title {
+            tab.title = Self.webTabTitle(title)
+        }
+        if let locked = params.locked {
+            tab.locked = locked
+        }
+        guard tab != project.webTabs[index] else { return tab }
+        project.webTabs[index] = tab
+        try saveWebTabs(project, origin: actor)
+        return tab
     }
 
-    // STUB: core-domain — docs/engine-api.md › webTabs.close.
+    /// docs/engine-api.md › webTabs.close: a locked tab cannot be closed, whoever calls.
     func webTabsClose(_ params: WebTabsClose.Params, _ actor: Actor) async throws -> Empty {
-        throw EngineError.notImplemented(WebTabsClose.name)
+        let id = try loadedProjectID(params.projectID)
+        var project = loaded(id).project
+        guard let index = project.webTabs.firstIndex(where: { $0.id == params.tabID }) else {
+            throw Self.webTabNotFound(params.tabID)
+        }
+        guard !project.webTabs[index].locked else {
+            throw EngineError(.forbidden, "This tab is locked.")
+        }
+        project.webTabs.remove(at: index)
+        try saveWebTabs(project, origin: actor)
+        return Empty()
     }
 
-    // STUB: core-domain — docs/engine-api.md › webTabs.move.
+    /// docs/engine-api.md › webTabs.move: `toIndex` is the final position, clamped to the tab
+    /// range.
     func webTabsMove(_ params: WebTabsMove.Params, _ actor: Actor) async throws -> [WebTab] {
-        throw EngineError.notImplemented(WebTabsMove.name)
+        let id = try loadedProjectID(params.projectID)
+        var project = loaded(id).project
+        guard let index = project.webTabs.firstIndex(where: { $0.id == params.tabID }) else {
+            throw Self.webTabNotFound(params.tabID)
+        }
+        let target = min(max(params.toIndex, 0), project.webTabs.count - 1)
+        guard target != index else { return project.webTabs }
+        let tab = project.webTabs.remove(at: index)
+        project.webTabs.insert(tab, at: target)
+        try saveWebTabs(project, origin: actor)
+        return project.webTabs
+    }
+
+    // MARK: Helpers
+
+    /// Writes project.yml with changed tabs and emits `webTabs.updated`, then `project.updated`.
+    private func saveWebTabs(_ project: Project, origin: Actor) throws {
+        try saveProject(project)
+        emitWebTabsUpdated(project.id, origin: origin)
+        emitProjectUpdated(project.id, origin: origin)
+    }
+
+    /// A web tab title as stored: trimmed, line breaks replaced by spaces, at most 500
+    /// characters (docs/data-model.md › Web tab).
+    static func webTabTitle(_ value: String) -> String {
+        ModelRules.normalizedWebTabTitle(value.trimmingCharacters(in: .whitespacesAndNewlines))
+            .trimmingCharacters(in: .whitespaces)
+    }
+
+    /// `notFound` `Web tab <id> not found.`
+    static func webTabNotFound(_ id: UUID) -> EngineError {
+        EngineError.notFound("Web tab", id.uuidString)
     }
 }
