@@ -1649,14 +1649,14 @@ Asks clients to show something. The MCP tool `open_in_app` calls it.
 | target   | [NavigationTarget](#navigationtarget) | yes      | What to show.                                                                               |
 | deviceID | String                                | no       | Device whose windows show the target; absent means every client. Ignored for claude actors. |
 
-- The target is checked: every project, ticket, bundle, chat, skill, web tab, doc or file it names exists, and `line` is at least 1. Default chosen at design time.
+- The target is checked: every project, ticket, bundle, chat, skill, web tab or doc it names exists; the path of a `file` target names an existing file, or an existing folder when the target has no `line`; `line` is at least 1. Default chosen at design time.
 - The event's `deviceID` is the `deviceID` param for user and system actors; for a claude actor with a chat id, the chat's driving device ([Chat metadata in the API](#chat-metadata-in-the-api)), absent when unknown; for the external token, absent.
 - A client acts on a ui.open event when its `deviceID` is absent or equals the client's own device id; which window shows the target is in [User interface](ui.md#choosing-the-window).
 
-| Error    | When                                                                                 |
-| -------- | ------------------------------------------------------------------------------------ |
-| invalid  | An id of the target is malformed; a path breaks the path rules; line is less than 1. |
-| notFound | An object or file named by the target does not exist.                                |
+| Error    | When                                                                                              |
+| -------- | ------------------------------------------------------------------------------------------------- |
+| invalid  | An id of the target is malformed; a path breaks the path rules; line is less than 1.              |
+| notFound | An object or file named by the target does not exist; a `file` target with `line` names a folder. |
 
 Events: ui.open.
 
@@ -2122,17 +2122,17 @@ Status labels are To Do, In Progress and Done. `<chat kind>` is the stored kind:
 
 A place in the app, with the discriminator `kind`. Clients switch the window's project or sub project and section as needed and select the item ([User interface](ui.md#resolving-a-target)).
 
-| kind    | Fields                     | The client shows                                                                                                             |
-| ------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| project | projectID                  | The project, in the window's current section.                                                                                |
-| ticket  | ticketID                   | Tickets section of the ticket's project, ticket selected.                                                                    |
-| bundle  | bundleID                   | Bundles section, bundle selected.                                                                                            |
-| chat    | chatID                     | Chats section of the chat's project, chat selected.                                                                          |
-| doc     | projectID, path, fragment? | Docs section, doc opened; `path` is a project path; with `fragment`, the preview scrolled to the heading whose anchor it is. |
-| file    | projectID, path, line?     | Code section, file opened, scrolled to `line` (1-based) when present.                                                        |
-| skill   | name                       | Skills section of the window's current project, skill selected.                                                              |
-| webTab  | projectID, tabID           | Web section, tab selected.                                                                                                   |
-| section | projectID, section         | The section, a [ProjectSection](#projectsection).                                                                            |
+| kind    | Fields                     | The client shows                                                                                                                                                                                                    |
+| ------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| project | projectID                  | The project, in the window's current section.                                                                                                                                                                       |
+| ticket  | ticketID                   | Tickets section of the ticket's project, ticket selected.                                                                                                                                                           |
+| bundle  | bundleID                   | Bundles section, bundle selected.                                                                                                                                                                                   |
+| chat    | chatID                     | Chats section of the chat's project, chat selected.                                                                                                                                                                 |
+| doc     | projectID, path, fragment? | Docs section, doc opened; `path` is a project path; with `fragment`, the preview scrolled to the heading whose anchor it is.                                                                                        |
+| file    | projectID, path, line?     | Code section, file opened, scrolled to `line` (1-based) when present; a folder (without `line`) is revealed and selected in the file tree, the editor tabs unchanged ([Code editor](code-editor.md#opening-files)). |
+| skill   | name                       | Skills section of the window's current project, skill selected.                                                                                                                                                     |
+| webTab  | projectID, tabID           | Web section, tab selected.                                                                                                                                                                                          |
+| section | projectID, section         | The section, a [ProjectSection](#projectsection).                                                                                                                                                                   |
 
 ```json
 [
