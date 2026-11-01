@@ -17,8 +17,10 @@ struct PreparedUpload: Sendable, Hashable {
 enum AttachmentUploads {
     /// 20 MiB per file once decoded, and for all the files of one request together.
     static let maximumSize = 20_971_520
-    /// The stored file name `<UUID>-<name>` has at most 255 UTF-8 bytes.
-    static let maximumStoredNameBytes = 255
+    /// The stored file name `<UUID>-<name>` has at most 213 UTF-8 bytes, so that the temporary file
+    /// of its atomic write, 42 bytes longer, stays within the 255-byte limit of a file name
+    /// (docs/tickets.md › Storage and limits, docs/data-model.md › Atomic writes).
+    static let maximumStoredNameBytes = 255 - AtomicFile.temporaryNameOverhead
 
     /// Checks every upload and reads its content: exactly one of `dataBase64` and `sourcePath`,
     /// valid base64, a readable regular file for `sourcePath` (absolute, starting with `~/`, or
@@ -87,7 +89,7 @@ enum AttachmentUploads {
 
     /// The stored name of an upload: `/`, `:` and control characters (U+0000 to U+001F and
     /// U+007F) replaced by `_`, `file` when nothing is left, and the part before the extension
-    /// shortened so that `<UUID>-<name>` has at most 255 UTF-8 bytes.
+    /// shortened by whole characters so that `<UUID>-<name>` has at most 213 UTF-8 bytes.
     static func storedName(_ original: String, id: UUID) -> String {
         var scalars = String.UnicodeScalarView()
         for scalar in original.unicodeScalars {

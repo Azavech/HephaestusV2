@@ -145,7 +145,7 @@ struct ClaudeProtocolTests {
         let long = String(repeating: "x", count: 300) + ".log"
         let stored = ChatAttachments.storedName(long)
         #expect(stored.hasSuffix(".log"))
-        #expect(("\(UUID().uuidString)-" + stored).utf8.count == 255)
+        #expect(("\(UUID().uuidString)-" + stored).utf8.count == 213)
         #expect(ChatAttachments.imageExtension("image/jpeg") == "jpg")
     }
 }

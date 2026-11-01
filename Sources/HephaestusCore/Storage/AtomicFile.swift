@@ -11,6 +11,15 @@ public enum AtomicFile {
     /// Mode of the parent folders the write creates.
     public static let folderMode: mode_t = 0o755
 
+    /// The temporary file name of step 3 for the file name `fileName`: `.<file name>.<UUID>.tmp`.
+    static func temporaryName(for fileName: String, id: UUID = UUID()) -> String {
+        ".\(fileName).\(id.uuidString).tmp"
+    }
+
+    /// The UTF-8 bytes that the temporary file name adds to the file name: 42
+    /// (docs/data-model.md › Atomic writes, step 3).
+    public static let temporaryNameOverhead = temporaryName(for: "").utf8.count
+
     /// Writes `data` to `url`:
     /// 1. the content is already encoded in memory;
     /// 2. the missing parent folders are created, mode 0755;
@@ -39,7 +48,7 @@ public enum AtomicFile {
             mode = existing.st_mode & 0o7777
         }
 
-        let temporary = folder.appendingPathComponent(".\(destination.lastPathComponent).\(UUID().uuidString).tmp")
+        let temporary = folder.appendingPathComponent(temporaryName(for: destination.lastPathComponent))
         let descriptor = open(temporary.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, mode)
         guard descriptor >= 0 else {
             throw StorageError.writeFailed(path: path, reason: posixReason("cannot create a temporary file"))

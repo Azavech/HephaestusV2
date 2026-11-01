@@ -371,17 +371,48 @@ struct TicketsTests {
         }
     }
 
-    @Test("Stored attachment names are cleaned and shortened to 255 UTF-8 bytes")
+    @Test("Stored attachment names are cleaned and shortened to 213 UTF-8 bytes")
     func storedNames() {
         let id = UUID()
+        #expect(AtomicFile.temporaryNameOverhead == 42)
+        #expect(AttachmentUploads.maximumStoredNameBytes == 213)
         #expect(AttachmentUploads.storedName("", id: id) == "file")
         #expect(AttachmentUploads.storedName("a:b/c\u{7F}d", id: id) == "a_b_c_d")
-        let long = String(repeating: "é", count: 200) + ".png"
-        let stored = AttachmentUploads.storedName(long, id: id)
-        #expect(stored.hasSuffix(".png"))
-        #expect("\(id.uuidString)-\(stored)".utf8.count <= 255)
-        #expect("\(id.uuidString)-\(stored)é".utf8.count > 255 - 4)
+        // 1-, 2-, 3- and 4-byte UTF-8 characters: whole characters are removed before the extension.
+        for character in ["x", "é", "€", "😀"] {
+            let width = character.utf8.count
+            let stored = AttachmentUploads.storedName(String(repeating: character, count: 200) + ".png", id: id)
+            let fileName = "\(id.uuidString)-\(stored)"
+            #expect(stored.hasSuffix(".png"))
+            #expect(stored.dropLast(4).allSatisfy { String($0) == character })
+            #expect(fileName.utf8.count <= 213)
+            #expect(fileName.utf8.count > 213 - width)
+            #expect(AtomicFile.temporaryName(for: fileName).utf8.count <= 255)
+        }
         let noExtension = AttachmentUploads.storedName(String(repeating: "x", count: 300), id: id)
-        #expect("\(id.uuidString)-\(noExtension)".utf8.count == 255)
+        #expect("\(id.uuidString)-\(noExtension)".utf8.count == 213)
+        // A name that fits is kept.
+        let fits = String(repeating: "x", count: 172) + ".png"
+        #expect(AttachmentUploads.storedName(fits, id: id) == fits)
+    }
+
+    @Test("Attachments with the longest names of 1- to 4-byte characters are written")
+    func longestNamesAreWritten() throws {
+        try withTemporaryDirectory { folder in
+            for character in ["x", "é", "€", "😀"] {
+                let id = UUID()
+                let upload = PreparedUpload(name: AttachmentUploads.storedName(String(repeating: character, count: 300) + ".txt", id: id),
+                                            contentType: "text/plain", data: Data("hello".utf8), id: id)
+                let attachments = try AttachmentUploads.store([upload], in: folder, pathPrefix: "attachments/DEMO-1",
+                                                              ownWrites: OwnWrites())
+                let file = folder.appendingPathComponent("\(id.uuidString)-\(upload.name)")
+                #expect(FileManager.default.contents(atPath: file.path) == Data("hello".utf8))
+                #expect(attachments.first?.path == "attachments/DEMO-1/\(id.uuidString)-\(upload.name)")
+            }
+            // No temporary file is left.
+            let names = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+            #expect(names.count == 4)
+            #expect(names.allSatisfy { !$0.hasPrefix(".") })
+        }
     }
 }
