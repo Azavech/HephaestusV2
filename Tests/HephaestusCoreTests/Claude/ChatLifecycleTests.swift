@@ -301,24 +301,33 @@ struct ChatLifecycleTests {
     @Test("Linking and unlinking a chat emit ticket.updated and bundle.updated with the caller's actor")
     func linkEventsOrigin() async throws {
         try await withChatEngine { bed in
-            try await bed.writeTicket(Ticket(id: "DEMO-1", title: "First", created: ISODate.now(), description: "Problem"))
-            try await bed.writeBundle(TicketBundle(id: "DEMO-B1", title: "Polish", created: ISODate.now(), ticketIDs: ["DEMO-1"]))
-            // The reloads of these files carry origin system; only the events that follow count.
-            try await Task.sleep(for: .milliseconds(100))
+            // Created through the API with titles: no reload and no naming adds events of its own.
+            let ticket = try await bed.connection.call(TicketsCreate.self, .init(projectID: "DEMO", title: "First", description: "Problem"))
+            let bundle = try await bed.connection.call(BundlesCreate.self, .init(projectID: "DEMO", title: "Polish", ticketIDs: [ticket.id]))
+            _ = await bed.events.wait(for: "bundle.updated")
             let before = await bed.events.all.count
-            let ticketChat = try await bed.createChat(kind: .ticket, ticketID: "DEMO-1")
-            let bundleChat = try await bed.createChat(kind: .bundle, bundleID: "DEMO-B1")
+            let ticketChat = try await bed.createChat(kind: .ticket, ticketID: ticket.id)
+            let bundleChat = try await bed.createChat(kind: .bundle, bundleID: bundle.id)
             _ = try await bed.connection.call(ChatsDelete.self, .init(chatID: ticketChat.id))
             _ = try await bed.connection.call(ChatsDelete.self, .init(chatID: bundleChat.id))
-            let caller = try #require(await bed.events.wait(for: "chat.deleted")?.origin)
+            let lastDeleted = await bed.events.wait(for: "chat.deleted") { (try? $0.payload(ChatDeletedEvent.self).chatID) == bundleChat.id }
+            let caller = try #require(lastDeleted?.origin)
             #expect(caller.kind == .user)
             let events = await bed.events.all.dropFirst(before)
-            let tickets = events.filter { $0.name == "ticket.updated" && (try? $0.payload(TicketUpdatedEvent.self).id) == "DEMO-1" }
-            let bundles = events.filter { $0.name == "bundle.updated" && (try? $0.payload(BundleUpdatedEvent.self).id) == "DEMO-B1" }
+            let tickets = events.compactMap { event -> (Actor, [ChatID])? in
+                guard event.name == "ticket.updated", let payload = try? event.payload(TicketUpdatedEvent.self), payload.id == ticket.id
+                else { return nil }
+                return (event.origin, payload.chatIDs)
+            }
+            let bundles = events.compactMap { event -> (Actor, [ChatID])? in
+                guard event.name == "bundle.updated", let payload = try? event.payload(BundleUpdatedEvent.self), payload.id == bundle.id
+                else { return nil }
+                return (event.origin, payload.chatIDs)
+            }
             // The link of chats.create, then the unlink of chats.delete.
-            #expect(tickets.count == 2)
-            #expect(bundles.count == 2)
-            #expect((tickets + bundles).allSatisfy { $0.origin == caller })
+            #expect(tickets.suffix(2).map(\.1) == [[ticketChat.id], []])
+            #expect(bundles.suffix(2).map(\.1) == [[bundleChat.id], []])
+            #expect((tickets + bundles).allSatisfy { $0.0 == caller })
         }
     }
 
