@@ -120,6 +120,9 @@ struct ChatsSectionView: View {
                         .onExitCommand {
                             renamingChatID = nil
                         }
+                        .onAppear {
+                            renameFocused = true
+                        }
                         .onChange(of: renameFocused) { _, focused in
                             if !focused { renamingChatID = nil }
                         }

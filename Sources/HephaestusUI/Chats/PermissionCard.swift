@@ -19,7 +19,7 @@ struct PermissionCard: View {
                 Text("Claude wants to use \(name)")
                     .font(.headline)
                 if let server {
-                    MCPBadge(server: server)
+                    ChatMCPBadge(server: server)
                 }
                 Spacer(minLength: 8)
                 if count > 1 {
@@ -108,7 +108,7 @@ struct PermissionCard: View {
 }
 
 /// The badge `MCP · <server>` of an MCP tool.
-struct MCPBadge: View {
+struct ChatMCPBadge: View {
     let server: String
 
     var body: some View {
@@ -159,35 +159,35 @@ enum PermissionPreview {
         var segments: [Segment] = []
         switch request.toolName {
         case "Bash":
-            if let command = input.string("command") {
+            if let command = input.chatString("command") {
                 segments.append(.code(command))
-                if let description = input.string("description"), !description.isEmpty {
+                if let description = input.chatString("description"), !description.isEmpty {
                     segments.append(.text(description))
                 }
             }
         case "Write":
-            if let path = input.string("file_path"), let content = input.string("content") {
+            if let path = input.chatString("file_path"), let content = input.chatString("content") {
                 segments = [.code(path), .code(content)]
             }
         case "Edit":
-            if let path = input.string("file_path"), let old = input.string("old_string"), let new = input.string("new_string") {
+            if let path = input.chatString("file_path"), let old = input.chatString("old_string"), let new = input.chatString("new_string") {
                 segments = [.code(path), .removed(old), .added(new)]
             }
         case "ExitPlanMode":
-            if let plan = input.string("plan") {
+            if let plan = input.chatString("plan") {
                 segments = [.markdown(plan)]
             }
         case "WebFetch":
-            if let url = input.string("url") {
+            if let url = input.chatString("url") {
                 segments.append(.code(url))
-                if let prompt = input.string("prompt"), !prompt.isEmpty {
+                if let prompt = input.chatString("prompt"), !prompt.isEmpty {
                     segments.append(.text(prompt))
                 }
             }
         default:
             break
         }
-        return segments.isEmpty ? [.code(input.prettyJSON)] : segments
+        return segments.isEmpty ? [.code(input.chatPrettyJSON)] : segments
     }
 
     /// The segments cut to `limit` lines in all; true when lines were left out.

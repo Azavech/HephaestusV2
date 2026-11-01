@@ -168,23 +168,23 @@ enum TranscriptRenderer {
         if use.server == nil {
             switch use.name {
             case "Bash":
-                if let command = use.input.string("command") {
+                if let command = use.input.chatString("command") {
                     return markdown(fence(command, language: "sh"), context: context)
                 }
             case "Edit":
-                if let old = use.input.string("old_string"), let new = use.input.string("new_string") {
+                if let old = use.input.chatString("old_string"), let new = use.input.chatString("new_string") {
                     return markdown(fence(old, language: "") + "\n\n" + fence(new, language: ""), context: context)
                 }
             case "Write":
-                if let content = use.input.string("content") {
-                    let path = use.input.string("file_path") ?? ""
+                if let content = use.input.chatString("content") {
+                    let path = use.input.chatString("file_path") ?? ""
                     return markdown(fence(content, language: languageWord(forPath: path)), context: context)
                 }
             default:
                 break
             }
         }
-        return markdown(fence(use.input.prettyJSON, language: "json"), context: context)
+        return markdown(fence(use.input.chatPrettyJSON, language: "json"), context: context)
     }
 
     private static func toolResultHTML(_ result: ToolResultItem) -> String {

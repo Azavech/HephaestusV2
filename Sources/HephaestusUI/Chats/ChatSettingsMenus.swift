@@ -61,14 +61,14 @@ struct ChatSettingsMenus {
         let menu = NSMenu()
         menu.autoenablesItems = false
         for model in models {
-            menu.addItem(MenuItem(title: model.displayName, subtitle: model.description, checked: model.value == settings.model) {
+            menu.addItem(ChatMenuItem(title: model.displayName, subtitle: model.description, checked: model.value == settings.model) {
                 var new = settings
                 new.model = model.value
                 change(new)
             })
         }
         menu.addItem(.separator())
-        let ultracode = MenuItem(title: "Ultracode", checked: settings.ultracode) {
+        let ultracode = ChatMenuItem(title: "Ultracode", checked: settings.ultracode) {
             var new = settings
             new.ultracode.toggle()
             change(new)
@@ -84,7 +84,7 @@ struct ChatSettingsMenus {
         menu.autoenablesItems = false
         let supported = supportedEfforts
         for effort in Effort.allCases {
-            let item = MenuItem(title: effort.label, checked: effort == settings.effort) {
+            let item = ChatMenuItem(title: effort.label, checked: effort == settings.effort) {
                 var new = settings
                 new.effort = effort
                 change(new)
@@ -100,7 +100,7 @@ struct ChatSettingsMenus {
         let menu = NSMenu()
         menu.autoenablesItems = false
         for mode in PermissionMode.allCases {
-            let item = MenuItem(title: mode.label, subtitle: Self.subtitle(mode), checked: mode == settings.permissionMode) {
+            let item = ChatMenuItem(title: mode.label, subtitle: Self.subtitle(mode), checked: mode == settings.permissionMode) {
                 var new = settings
                 new.permissionMode = mode
                 change(new)
@@ -139,7 +139,7 @@ struct ChatSettingsMenus {
 }
 
 /// A menu item that runs a closure.
-final class MenuItem: NSMenuItem {
+final class ChatMenuItem: NSMenuItem {
     private let handler: () -> Void
 
     init(title: String, subtitle: String? = nil, checked: Bool = false, handler: @escaping () -> Void) {
@@ -165,10 +165,10 @@ final class MenuItem: NSMenuItem {
 // MARK: - Buttons
 
 /// A button that opens an `NSMenu` under itself.
-struct MenuButton<Label: View>: View {
+struct ChatMenuButton<Label: View>: View {
     let menu: () -> NSMenu
     @ViewBuilder let label: () -> Label
-    @State private var anchor = MenuAnchor()
+    @State private var anchor = ChatMenuAnchor()
 
     var body: some View {
         Button {
@@ -178,13 +178,13 @@ struct MenuButton<Label: View>: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .background(MenuAnchorView(anchor: anchor))
+        .background(ChatMenuAnchorView(anchor: anchor))
     }
 }
 
 /// The view a menu opens under.
 @MainActor
-final class MenuAnchor {
+final class ChatMenuAnchor {
     weak var view: NSView?
 
     func popUp(_ menu: NSMenu) {
@@ -193,8 +193,8 @@ final class MenuAnchor {
     }
 }
 
-private struct MenuAnchorView: NSViewRepresentable {
-    let anchor: MenuAnchor
+private struct ChatMenuAnchorView: NSViewRepresentable {
+    let anchor: ChatMenuAnchor
 
     func makeNSView(context: Context) -> FlippedView {
         let view = FlippedView()
@@ -216,7 +216,7 @@ private struct MenuAnchorView: NSViewRepresentable {
 }
 
 /// The label of a menu button: a title and a chevron.
-struct MenuButtonLabel: View {
+struct ChatMenuButtonLabel: View {
     let title: String
 
     var body: some View {
@@ -238,8 +238,8 @@ struct ChatModelMenuButton: View {
     let menus: ChatSettingsMenus
 
     var body: some View {
-        MenuButton(menu: menus.modelMenu) {
-            MenuButtonLabel(title: menus.modelTitle)
+        ChatMenuButton(menu: menus.modelMenu) {
+            ChatMenuButtonLabel(title: menus.modelTitle)
         }
         .accessibilityLabel("Model")
     }
@@ -251,8 +251,8 @@ struct ChatEffortMenuButton: View {
     var compact = false
 
     var body: some View {
-        MenuButton(menu: menus.effortMenu) {
-            MenuButtonLabel(title: compact ? menus.settings.effort.label : "Effort: \(menus.settings.effort.label)")
+        ChatMenuButton(menu: menus.effortMenu) {
+            ChatMenuButtonLabel(title: compact ? menus.settings.effort.label : "Effort: \(menus.settings.effort.label)")
         }
         .disabled(menus.effortDisabled)
         .help(menus.effortDisabled ? ChatSettingsMenus.noEffortHelp : "")
@@ -266,11 +266,11 @@ struct ChatPermissionsMenuButton: View {
     let menus: ChatSettingsMenus
 
     var body: some View {
-        MenuButton(menu: menus.permissionsMenu) {
+        ChatMenuButton(menu: menus.permissionsMenu) {
             if menus.settings.permissionMode == .bypassPermissions {
                 AllowAllBadge()
             } else {
-                MenuButtonLabel(title: menus.settings.permissionMode.label)
+                ChatMenuButtonLabel(title: menus.settings.permissionMode.label)
             }
         }
         .accessibilityLabel("Permissions")
@@ -295,7 +295,7 @@ struct ChatCombinedSettingsMenuButton: View {
     let menus: ChatSettingsMenus
 
     var body: some View {
-        MenuButton(menu: menus.combinedMenu) {
+        ChatMenuButton(menu: menus.combinedMenu) {
             Image(systemName: "slider.horizontal.3")
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)

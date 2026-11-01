@@ -93,7 +93,7 @@ struct ComposerView: View {
             .accessibilityLabel("Attach")
             menus()
             Spacer(minLength: 8)
-            if model.state.isRunning, model.chatID != nil {
+            if model.state.isChatRunning, model.chatID != nil {
                 Button {
                     model.stop()
                 } label: {

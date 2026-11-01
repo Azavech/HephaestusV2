@@ -58,7 +58,9 @@ final class TranscriptController {
     @ObservationIgnored var onOpenAttachment: ((String) -> Void)?
 
     @ObservationIgnored private(set) weak var webView: TranscriptWKWebView?
-    @ObservationIgnored let schemeHandler: ResourceSchemeHandler?
+    @ObservationIgnored private let connection: any EngineConnection
+    /// The chat's project, read when the web view is made: by then the chat's metadata is known.
+    @ObservationIgnored private let projectID: () -> String
     @ObservationIgnored private var ready = false
     @ObservationIgnored private var input: TranscriptInput?
     /// The index of the first shown item.
@@ -79,19 +81,21 @@ final class TranscriptController {
         var steps = 0
     }
 
-    /// `connection` and `projectID` serve the images of the page (`ResourceSchemeHandler`); a
-    /// draft chat has no project data to show yet but uses the same page.
-    init(connection: (any EngineConnection)?, projectID: String) {
-        schemeHandler = connection.map { ResourceSchemeHandler(connection: $0, projectID: projectID) }
+    /// `connection` and the chat's project serve the images of the page (`ResourceSchemeHandler`,
+    /// one per web view).
+    init(connection: any EngineConnection, projectID: @escaping () -> String) {
+        self.connection = connection
+        self.projectID = projectID
     }
 
+    /// A new page; SwiftUI makes one each time the transcript appears.
     func makeWebView() -> TranscriptWKWebView {
-        if let webView { return webView }
+        ready = false
+        shownGeneration = nil
         let configuration = WKWebViewConfiguration()
-        if let schemeHandler {
-            configuration.setURLSchemeHandler(schemeHandler, forURLScheme: ResourceSchemeHandler.fileScheme)
-            configuration.setURLSchemeHandler(schemeHandler, forURLScheme: ResourceSchemeHandler.attachmentScheme)
-        }
+        let schemeHandler = ResourceSchemeHandler(connection: connection, projectID: projectID())
+        configuration.setURLSchemeHandler(schemeHandler, forURLScheme: ResourceSchemeHandler.fileScheme)
+        configuration.setURLSchemeHandler(schemeHandler, forURLScheme: ResourceSchemeHandler.attachmentScheme)
         configuration.userContentController.add(TranscriptMessageProxy(controller: self), name: Self.messageHandlerName)
         let view = TranscriptWKWebView(frame: .zero, configuration: configuration)
         view.controller = self
@@ -439,11 +443,6 @@ struct TranscriptFindBar: View {
                 }
                 .onExitCommand {
                     controller.hideFind()
-                }
-                .onKeyPress(keys: ["g"], phases: .down) { press in
-                    guard press.modifiers.contains(.command) else { return .ignored }
-                    controller.find(backwards: press.modifiers.contains(.shift))
-                    return .handled
                 }
                 .onChange(of: controller.findText) {
                     controller.findNotFound = false

@@ -98,7 +98,7 @@ enum ChatFormat {
 /// The running states of a chat (docs/chats.md › Chat states): starting, running and
 /// waitingPermission.
 extension ChatState {
-    var isRunning: Bool {
+    var isChatRunning: Bool {
         self == .starting || self == .running || self == .waitingPermission
     }
 }
@@ -142,16 +142,16 @@ enum ToolCardSummary {
         } else {
             switch name {
             case "Bash":
-                text = input.string("command").map(firstLine) ?? generic(input)
+                text = input.chatString("command").map(firstLine) ?? generic(input)
             case "Read", "Write", "Edit", "NotebookEdit":
-                if let path = input.string("file_path") ?? input.string("notebook_path") {
+                if let path = input.chatString("file_path") ?? input.chatString("notebook_path") {
                     text = relative(path, to: projectRootPath)
                 } else {
                     text = generic(input)
                 }
             case "Glob", "Grep":
-                if let pattern = input.string("pattern") {
-                    if let path = input.string("path"), !path.isEmpty {
+                if let pattern = input.chatString("pattern") {
+                    if let path = input.chatString("path"), !path.isEmpty {
                         text = pattern + " in " + path
                     } else {
                         text = pattern
@@ -160,13 +160,13 @@ enum ToolCardSummary {
                     text = generic(input)
                 }
             case "WebFetch":
-                text = input.string("url") ?? generic(input)
+                text = input.chatString("url") ?? generic(input)
             case "WebSearch":
-                text = input.string("query") ?? generic(input)
+                text = input.chatString("query") ?? generic(input)
             case "Agent", "Task":
-                text = input.string("description") ?? generic(input)
+                text = input.chatString("description") ?? generic(input)
             case "TodoWrite":
-                if case .array(let todos)? = input.field("todos") {
+                if case .array(let todos)? = input.chatField("todos") {
                     text = "\(todos.count) todos"
                 } else {
                     text = generic(input)
@@ -187,9 +187,9 @@ enum ToolCardSummary {
 
     static func generic(_ input: JSONValue) -> String {
         for field in genericFields {
-            if let value = input.string(field), !value.isEmpty { return firstLine(value) }
+            if let value = input.chatString(field), !value.isEmpty { return firstLine(value) }
         }
-        return input.compactJSON
+        return input.chatCompactJSON
     }
 
     static func cut(_ text: String) -> String {
@@ -212,26 +212,26 @@ enum ToolCardSummary {
 
 extension JSONValue {
     /// The value of an object field.
-    func field(_ key: String) -> JSONValue? {
+    func chatField(_ key: String) -> JSONValue? {
         guard case .object(let object) = self else { return nil }
         return object[key]
     }
 
     /// The string value of an object field.
-    func string(_ key: String) -> String? {
-        guard case .string(let value)? = field(key) else { return nil }
+    func chatString(_ key: String) -> String? {
+        guard case .string(let value)? = chatField(key) else { return nil }
         return value
     }
 
     /// Compact JSON, keys in code point order.
-    var compactJSON: String {
+    var chatCompactJSON: String {
         var out = ""
         write(to: &out, indent: nil)
         return out
     }
 
     /// JSON with 2-space indentation, keys in code point order.
-    var prettyJSON: String {
+    var chatPrettyJSON: String {
         var out = ""
         write(to: &out, indent: 0)
         return out

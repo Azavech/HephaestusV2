@@ -64,6 +64,7 @@ struct QuestionsCard: View {
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
                             .background(Capsule().fill(Color.accentColor))
+                            .fixedSize()
                     }
                 }
                 if let description = option.description, !description.isEmpty {
@@ -71,6 +72,7 @@ struct QuestionsCard: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .layoutPriority(1)
             EmptyRowArea {
                 model.questionChoice = choice
             }

@@ -101,7 +101,7 @@ enum ChatNavigator {
     /// `docsPath`, else in the Code section. Other links do nothing.
     static func openLink(_ href: String, commandKey: Bool, projectID: String, workspace: DeviceWorkspace, app: AppModel,
                          window: NSWindow?) {
-        let scheme = LinkPath.scheme(of: href)?.lowercased()
+        let scheme = ChatLinkPath.scheme(of: href)?.lowercased()
         if scheme == "http" || scheme == "https" {
             if commandKey {
                 if let url = URL(string: href) {
@@ -123,13 +123,13 @@ enum ChatNavigator {
         }
         guard scheme == nil || scheme == "file" else { return }
         let rootPath = workspace.project(projectID)?.rootPath
-        guard let resolved = LinkPath.resolve(href, projectRootPath: rootPath) else { return }
+        guard let resolved = ChatLinkPath.resolve(href, projectRootPath: rootPath) else { return }
         let docsPath = workspace.details[projectID]?.project.docsPath ?? "docs"
         let target: NavigationTarget
         if resolved.path.lowercased().hasSuffix(".md"), resolved.path.hasPrefix(docsPath + "/") {
             target = .doc(projectID: projectID, path: resolved.path)
         } else {
-            target = .file(projectID: projectID, path: resolved.path, line: LinkPath.line(fromFragment: resolved.fragment))
+            target = .file(projectID: projectID, path: resolved.path, line: ChatLinkPath.line(fromFragment: resolved.fragment))
         }
         navigate(to: target, from: window, workspace: workspace, app: app)
     }
@@ -140,13 +140,13 @@ enum ChatNavigator {
     /// copy (docs/tickets.md › Showing attachments).
     static func openAttachment(path: String, attachment: Attachment?, projectID: String, workspace: DeviceWorkspace,
                                app: AppModel, window: NSWindow?) {
-        let name = attachment?.name ?? LinkPath.attachmentName(fromPath: path)
+        let name = attachment?.name ?? ChatLinkPath.attachmentName(fromPath: path)
         let contentType = attachment?.contentType ?? ChatAttachmentFiles.contentType(forName: name)
         if ChatAttachmentKind.isImage(contentType) {
             app.openImageViewer(.stored(deviceID: workspace.deviceID, projectID: projectID, path: path))
             return
         }
-        let id = attachment?.id.uuidString ?? LinkPath.attachmentID(fromPath: path) ?? UUID().uuidString
+        let id = attachment?.id.uuidString ?? ChatLinkPath.attachmentID(fromPath: path) ?? UUID().uuidString
         Task {
             do {
                 let content = try await workspace.call(AttachmentsRead.self, AttachmentsRead.Params(projectID: projectID, path: path))
@@ -225,7 +225,7 @@ final class ChatQuickLook: NSObject, QLPreviewPanelDataSource {
 
 /// The path rules of docs/documentation-viewer.md › Links and › Path resolution, with
 /// `baseDirectory` `""` (docs/chats.md › Links, images and files).
-enum LinkPath {
+enum ChatLinkPath {
     /// The scheme of a link destination: the text before the first `:` when it matches
     /// `[A-Za-z][A-Za-z0-9+.-]*` and no `/`, `?` or `#` comes before the `:`.
     static func scheme(of destination: String) -> String? {

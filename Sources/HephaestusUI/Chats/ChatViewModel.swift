@@ -84,7 +84,9 @@ final class ChatViewModel {
         self.draft = draft
         let projectID = draft?.projectID ?? chatID.flatMap { workspace.chats[$0]?.projectID } ?? ""
         self.projectID = projectID
-        transcript = TranscriptController(connection: workspace.connection, projectID: projectID)
+        transcript = TranscriptController(connection: workspace.connection) { [weak workspace] in
+            chatID.flatMap { workspace?.chats[$0]?.projectID } ?? projectID
+        }
     }
 
     // MARK: Derived values
@@ -147,7 +149,7 @@ final class ChatViewModel {
     }
 
     var renderContext: TranscriptRenderContext {
-        TranscriptRenderContext(projectRootPath: workspace.project(chatProjectID)?.rootPath, chatIsRunning: state.isRunning)
+        TranscriptRenderContext(projectRootPath: workspace.project(chatProjectID)?.rootPath, chatIsRunning: state.isChatRunning)
     }
 
     /// Send is enabled when the text is not blank or there is an attachment, the window's device is
@@ -167,9 +169,6 @@ final class ChatViewModel {
 
     func appear(app: AppModel, focusComposer: Bool) {
         self.app = app
-        if draftSettings == nil, chatID == nil {
-            draftSettings = defaultSettings
-        }
         if let chatID, !opened {
             opened = true
             ChatTranscriptStore.shared.open(chatID, in: workspace)
@@ -232,7 +231,7 @@ final class ChatViewModel {
 
     /// Stop and Escape while running: `chats.interrupt`.
     func stop() {
-        guard let chatID, let uuid = UUID(uuidString: chatID), state.isRunning else { return }
+        guard let chatID, let uuid = UUID(uuidString: chatID), state.isChatRunning else { return }
         Task {
             do {
                 _ = try await workspace.call(ChatsInterrupt.self, ChatsInterrupt.Params(chatID: uuid))
@@ -433,8 +432,10 @@ final class ChatViewModel {
     /// for 1 second; ⌘Return submits the questions card when no permission card is shown. Both act
     /// only while the focus is in this chat view outside its composer.
     func handleKey(_ event: NSEvent) -> Bool {
-        guard event.keyCode == 36 || event.keyCode == 76, let window, event.window === window else { return false }
+        guard let window, event.window === window else { return false }
         let flags = event.modifierFlags.intersection([.command, .option, .shift, .control])
+        if handleFindKey(event, flags: flags, window: window) { return true }
+        guard event.keyCode == 36 || event.keyCode == 76 else { return false }
         let decision: PermissionDecision?
         switch flags {
         case [.command]: decision = .allow
@@ -451,6 +452,26 @@ final class ChatViewModel {
         }
         if flags == [.command], state.incompleteQuestionSet != nil {
             submitAnswer()
+            return true
+        }
+        return false
+    }
+
+    /// ⌘F with the focus in the transcript shows its find bar; ⌘G and ⇧⌘G find the next and
+    /// previous match while the bar is shown and the focus is in the transcript or the bar
+    /// (docs/ui.md › Menus and keyboard shortcuts, Edit ▸ Find).
+    private func handleFindKey(_ event: NSEvent, flags: NSEvent.ModifierFlags, window: NSWindow) -> Bool {
+        guard let key = event.charactersIgnoringModifiers?.lowercased(), key == "f" || key == "g",
+              let webView = transcript.webView else { return false }
+        let responder = window.firstResponder as? NSView
+        let inTranscript = responder.map { $0 === webView || $0.isDescendant(of: webView) } ?? false
+        if key == "f", flags == [.command], inTranscript {
+            transcript.showFind()
+            return true
+        }
+        if key == "g", flags == [.command] || flags == [.command, .shift], transcript.findVisible,
+           inTranscript || focusIsInViewOutsideComposer() {
+            transcript.find(backwards: flags.contains(.shift))
             return true
         }
         return false

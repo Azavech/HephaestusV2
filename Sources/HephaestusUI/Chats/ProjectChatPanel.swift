@@ -77,7 +77,7 @@ struct ProjectChatPanel: View {
 
     private func header(shown: String?) -> some View {
         HStack(spacing: 8) {
-            MenuButton(menu: { chatsMenu(shown: shown) }) {
+            ChatMenuButton(menu: { chatsMenu(shown: shown) }) {
                 HStack(spacing: 5) {
                     if let shown, let meta = workspace.chats[shown] {
                         ChatStateMark(state: meta.state)
@@ -127,7 +127,7 @@ struct ProjectChatPanel: View {
         menu.autoenablesItems = false
         for meta in projectChats {
             let chatID = meta.id.uuidString
-            let item = MenuItem(title: meta.title, checked: chatID == shown) {
+            let item = ChatMenuItem(title: meta.title, checked: chatID == shown) {
                 draft = nil
                 window.updateViewState(of: projectID) {
                     $0.inspectorChatID = chatID
