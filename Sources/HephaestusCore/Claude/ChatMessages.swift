@@ -76,10 +76,11 @@ extension Engine {
         }
         try? ensureChatScanned(chatID)
         let startsNaming = !text.isEmpty && chats.hasTextMessage[chatID] != true
-        try appendChatItem(.user(UserItem(id: RandomIDs.uuidString(), created: ISODate.now(), text: text, attachments: attachments,
-                                          sender: sender)), chatID: chatID, origin: origin)
+        let itemID = RandomIDs.uuidString()
+        try appendChatItem(.user(UserItem(id: itemID, created: ISODate.now(), text: text, attachments: attachments, sender: sender)),
+                           chatID: chatID, origin: origin)
         if !text.isEmpty { chats.hasTextMessage[chatID] = true }
-        deliverChatMessage(chatID, line: ControlLines.userMessage(text: sent, images: images))
+        deliverChatMessage(chatID, ChatMessageLine(data: ControlLines.userMessage(text: sent, images: images, uuid: itemID), uuid: itemID))
         try saveChatMeta(domain.chat(chatID) ?? meta, origin: origin)
         if startsNaming { startChatNaming(chatID, firstMessage: text) }
     }

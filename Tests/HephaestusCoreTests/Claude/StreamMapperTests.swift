@@ -33,7 +33,7 @@ struct StreamMapperTests {
             case .item(let item): return item
             case .toolResult(let item, _): return .toolResult(item)
             case .permissionRequest(let item, _): return .permissionRequest(item)
-            case .result(let item, _): return .result(item)
+            case .result(let item): return .result(item)
             default: return nil
             }
         }
@@ -70,16 +70,16 @@ struct StreamMapperTests {
             .result(ResultItem(id: "ID", created: Self.date, durationMs: 3523, costUSD: 0.008435510000000002, isError: false, summary: nil)),
         ]
         #expect(Self.items(all) == expected)
-        // Line 1: the two system items, then the session start.
-        #expect(replay[0].outputs.last == .sessionStarted)
+        // Line 1: the two system items, the session start, then a CLI turn opens.
+        #expect(Array(replay[0].outputs.suffix(2)) == [.sessionStarted, .cliTurnOpened])
         // Lines 5–11: tool input deltas.
         let toolInput = Self.deltas(all, itemID: "msg_011CgbN99ugMwKEYBQfCEoiP#0")
         #expect(toolInput.kinds == [.toolInput])
         #expect(toolInput.text == #"{"command": "echo probe-ok", "description": "Print probe-ok"}"#)
         // Line 22: the text delta.
         #expect(replay[21].outputs == [.delta(itemID: "msg_011CgbN9DUEEzm4yYRLnxmCV#0", kind: .text, text: "done")])
-        // Line 28 ends the turn.
-        #expect(replay[27].outputs.last.map { if case .result(_, let ends) = $0 { return ends } else { return false } } == true)
+        // Line 28 is the result that closes the CLI turn.
+        #expect(replay[27].outputs.last.map { if case .result = $0 { return true } else { return false } } == true)
         // Ignored lines are logged, stream events are not.
         let logged = all.compactMap { output -> String? in
             if case .ignored(let text) = output { return text }
@@ -158,11 +158,11 @@ struct StreamMapperTests {
         #expect(warning([["name": "hephaestus", "status": "connected"]]) == nil)
     }
 
-    @Test("A later system/init is ignored; system/status with permissionMode is reported")
+    @Test("A later system/init only opens a CLI turn; system/status with permissionMode is reported")
     func systemLines() throws {
         var mapper = try Self.mapper()
         _ = mapper.map(Data(FakeClaudeLauncher.initLine().utf8))
-        #expect(mapper.map(Data(FakeClaudeLauncher.initLine().utf8)) == [.ignored("ignored system/init")])
+        #expect(mapper.map(Data(FakeClaudeLauncher.initLine().utf8)) == [.cliTurnOpened])
         #expect(mapper.map(Data(#"{"type":"system","subtype":"status","permissionMode":"acceptEdits"}"#.utf8))
             == [.permissionModeReported("acceptEdits")])
         #expect(mapper.map(Data(#"{"type":"keep_alive"}"#.utf8)) == [.ignored("ignored keep_alive")])
@@ -205,15 +205,14 @@ struct StreamMapperTests {
         ] {
             _ = mapper.map(Data(line.utf8))
         }
-        let outputs = mapper.map(Data(FakeClaudeLauncher.resultLine(queued: 2).utf8))
+        let outputs = mapper.map(Data(FakeClaudeLauncher.resultLine().utf8))
         let items = Self.items(outputs)
         #expect(items.first == .assistant(AssistantItem(id: "msg_F#0", created: Self.date, text: "partial", messageID: "msg_F")))
         #expect(items.count == 2)
-        guard case .result(_, let ends) = outputs.last else {
+        guard case .result = outputs.last else {
             Issue.record("no result")
             return
         }
-        #expect(!ends)
         #expect(mapper.finalize().isEmpty)
     }
 
@@ -230,11 +229,12 @@ struct StreamMapperTests {
         ])
     }
 
-    @Test("Results: summaries of errors and the queued turn count")
+    @Test("Results: summaries of errors; queued_turn_count is not used")
     func results() throws {
         var mapper = try Self.mapper()
         func result(_ json: String) -> (ResultItem, Bool)? {
-            for case .result(let item, let ends) in mapper.map(Data(json.utf8)) { return (item, ends) }
+            let outputs = mapper.map(Data(json.utf8))
+            for case .result(let item) in outputs { return (item, outputs.count == 1) }
             return nil
         }
         #expect(result(#"{"type":"result","subtype":"success","is_error":true,"result":"API error","duration_ms":5}"#)?.0.summary == "API error")
@@ -245,7 +245,72 @@ struct StreamMapperTests {
         #expect(plain?.0.summary == nil)
         #expect(plain?.0.costUSD == nil)
         #expect(plain?.1 == true)
-        #expect(result(#"{"type":"result","subtype":"success","is_error":false,"duration_ms":7,"queued_turn_count":1}"#)?.1 == false)
+        #expect(result(#"{"type":"result","subtype":"success","is_error":false,"duration_ms":7,"queued_turn_count":1}"#)?.0
+            == ResultItem(id: "ID", created: Self.date, durationMs: 7, costUSD: nil, isError: false, summary: nil))
+    }
+
+    @Test("Turn tracking lines: every system/init opens a CLI turn, command_lifecycle reports a message")
+    func turnLines() throws {
+        var mapper = try Self.mapper()
+        let first = mapper.map(Data(FakeClaudeLauncher.initLine().utf8))
+        #expect(Array(first.suffix(2)) == [.sessionStarted, .cliTurnOpened])
+        // A later system/init adds no item and is not logged as ignored.
+        #expect(mapper.map(Data(FakeClaudeLauncher.initLine().utf8)) == [.cliTurnOpened])
+        let lifecycle = #"{"type":"command_lifecycle","command_uuid":"7C3E1F0A-2B4D-4E6F-8A9B-0C1D2E3F4A5B","state":"started","uuid":"1a63b051-eb56-4e4d-a9b2-7b8fff546781","session_id":"S"}"#
+        #expect(mapper.map(Data(lifecycle.utf8)) == [.commandState(uuid: "7C3E1F0A-2B4D-4E6F-8A9B-0C1D2E3F4A5B", state: "started")])
+        #expect(mapper.map(Data(#"{"type":"command_lifecycle","state":"started"}"#.utf8))
+            == [.invalid("command_lifecycle without command_uuid or state")])
+    }
+
+    @Test("TurnTracker: the steps of docs/chats.md › Turn tracking")
+    func turnTracker() {
+        // The example of the docs: A, then B written during A's CLI turn.
+        var turns = TurnTracker()
+        func report(_ uuid: String, _ state: String) -> Bool { turns.commandState(uuid, state) }
+        turns.written("A")
+        #expect(turns.isWorking)
+        #expect(!report("A", "queued"))
+        #expect(!report("A", "started"))
+        turns.cliTurnOpened()
+        turns.written("B")
+        #expect(!report("B", "queued"))
+        turns.resultReceived()
+        #expect(turns.isWorking)
+        #expect(!turns.cliTurnOpen)
+        #expect(!report("A", "completed"))
+        #expect(!report("B", "started"))
+        turns.cliTurnOpened()
+        turns.resultReceived()
+        #expect(!turns.isWorking)
+        #expect(!report("B", "completed"))
+        // Messages merged into one CLI turn are all finished by its result.
+        turns.written("C")
+        turns.written("D")
+        _ = report("C", "started")
+        _ = report("D", "started")
+        turns.cliTurnOpened()
+        turns.resultReceived()
+        #expect(!turns.isWorking)
+        // A message dropped by the CLI before it started finishes it.
+        turns.written("E")
+        _ = report("E", "queued")
+        #expect(report("E", "cancelled"))
+        #expect(!turns.isWorking)
+        // Without command_lifecycle lines each result finishes the oldest message.
+        turns.written("F")
+        turns.written("G")
+        turns.cliTurnOpened()
+        turns.resultReceived()
+        #expect(turns.outstanding.map(\.uuid) == ["G"])
+        turns.cliTurnOpened()
+        turns.resultReceived()
+        #expect(!turns.isWorking)
+        // A CLI turn the CLI starts on its own leaves a queued message outstanding.
+        turns.written("H")
+        _ = report("H", "queued")
+        turns.cliTurnOpened()
+        turns.resultReceived()
+        #expect(turns.outstanding.map(\.uuid) == ["H"])
     }
 
     @Test("Control lines: unsupported requests, answers and cancellations; ANSI removed from reasons")

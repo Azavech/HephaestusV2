@@ -44,14 +44,16 @@ struct ClaudeProtocolTests {
             == #"{"type":"control_response","response":{"subtype":"success","request_id":"1967e0c0-4eab-4e9a-8c9e-67ec5e2cb4a0","response":{"behavior":"deny","message":"User denied in probe"}}}"# + "\n")
     }
 
-    @Test("User messages: the text block then the image blocks; no text block for an empty text")
+    @Test("User messages: the text block then the image blocks; no text block for an empty text; the uuid last")
     func userMessages() {
-        #expect(Self.text(ControlLines.userMessage(text: "Why does the build fail?", images: [ControlLines.Image(mediaType: "image/png", base64: "iVBO")]))
-            == #"{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Why does the build fail?"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBO"}}]}}"# + "\n")
-        #expect(Self.text(ControlLines.userMessage(text: "", images: [ControlLines.Image(mediaType: "image/gif", base64: "R0lG")]))
-            == #"{"type":"user","message":{"role":"user","content":[{"type":"image","source":{"type":"base64","media_type":"image/gif","data":"R0lG"}}]}}"# + "\n")
+        let uuid = "7C3E1F0A-2B4D-4E6F-8A9B-0C1D2E3F4A5B"
+        #expect(Self.text(ControlLines.userMessage(text: "Why does the build fail?", images: [ControlLines.Image(mediaType: "image/png", base64: "iVBO")],
+                                                   uuid: uuid))
+            == #"{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Why does the build fail?"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBO"}}]},"uuid":"7C3E1F0A-2B4D-4E6F-8A9B-0C1D2E3F4A5B"}"# + "\n")
+        #expect(Self.text(ControlLines.userMessage(text: "", images: [ControlLines.Image(mediaType: "image/gif", base64: "R0lG")], uuid: uuid))
+            == #"{"type":"user","message":{"role":"user","content":[{"type":"image","source":{"type":"base64","media_type":"image/gif","data":"R0lG"}}]},"uuid":"7C3E1F0A-2B4D-4E6F-8A9B-0C1D2E3F4A5B"}"# + "\n")
         // One line: line breaks of the text are escaped.
-        let line = Self.text(ControlLines.userMessage(text: "a\nb", images: []))
+        let line = Self.text(ControlLines.userMessage(text: "a\nb", images: [], uuid: uuid))
         #expect(line.filter { $0 == "\n" }.count == 1)
     }
 

@@ -72,9 +72,10 @@ struct ChatLifecycleTests {
             #expect(prompt.contains("\n\n# This chat\n\nThis is a project chat of Demo (DEMO)."))
             // initialize first, then the user message, without waiting.
             #expect(await process.line { Self.isUserLine($0) } != nil)
+            let firstUser = try await bed.transcript(chat.id).first?.id ?? ""
             #expect(process.writtenLines.prefix(2) == [
                 #"{"type":"control_request","request_id":"hephaestus-1","request":{"subtype":"initialize"}}"#,
-                #"{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Plan the next sprint"}]}}"#,
+                #"{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Plan the next sprint"}]},"uuid":"\#(firstUser)"}"#,
             ])
             #expect(await bed.waitForItem(chat.id) { if case .result = $0 { return true } else { return false } } != nil)
             #expect(await bed.waitForState(chat.id, .idle))
@@ -320,7 +321,7 @@ struct ChatLifecycleTests {
             #expect(FileManager.default.contents(atPath: logPath) == Data("log".utf8))
             let expected = ControlLines.userMessage(
                 text: "Why does the build fail?\n\nAttached files:\n- \(logPath)",
-                images: [ControlLines.Image(mediaType: "image/png", base64: png.base64EncodedString())])
+                images: [ControlLines.Image(mediaType: "image/png", base64: png.base64EncodedString())], uuid: user.id)
             #expect(line + "\n" == String(decoding: expected, as: UTF8.self))
             // A message of attachments only, and the limits.
             #expect(await engineError {

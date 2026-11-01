@@ -13,8 +13,12 @@ enum MapperOutput: Sendable, Hashable {
     /// A `toolResult` item whose images the engine stores first.
     case toolResult(ToolResultItem, images: [ToolResultImage])
     /// The first `system/init` of the process: `sessionStarted` is set and the state leaves
-    /// starting. Its items come before.
+    /// starting. Its items come before, `cliTurnOpened` after.
     case sessionStarted
+    /// A `system/init`: a CLI turn opens (docs/chats.md › Turn tracking).
+    case cliTurnOpened
+    /// A `command_lifecycle` line: the CLI's state of the user message `uuid`.
+    case commandState(uuid: String, state: String)
     /// A `system/status` line with `permissionMode`: the CLI value.
     case permissionModeReported(String)
     /// Text appended to a streamed block.
@@ -27,9 +31,9 @@ enum MapperOutput: Sendable, Hashable {
     case controlResponse(requestID: String, success: Bool, response: JSONValue?, error: String?)
     /// `control_cancel_request`.
     case cancelRequest(requestID: String)
-    /// A `result` line: its item; `endsTurn` when `queued_turn_count` is 0 or absent. The items
-    /// of the finalized blocks come before.
-    case result(ResultItem, endsTurn: Bool)
+    /// A `result` line: its item; the CLI turn closes. The items of the finalized blocks come
+    /// before.
+    case result(ResultItem)
     /// An ignored line to log in the chat's log file: `ignored <type>` or `ignored <type>/<subtype>`.
     case ignored(String)
     /// A line that is not a JSON object with a `type`: logged and skipped.
@@ -97,6 +101,11 @@ struct StreamMapper {
             guard let id = line["request_id"]?.stringValue else { return [.invalid("control_cancel_request without request_id")] }
             return [.cancelRequest(requestID: id)]
         case "result": return mapResult(line)
+        case "command_lifecycle":
+            guard let uuid = line["command_uuid"]?.stringValue, let state = line["state"]?.stringValue else {
+                return [.invalid("command_lifecycle without command_uuid or state")]
+            }
+            return [.commandState(uuid: uuid, state: state)]
         default: return [.ignored("ignored \(type)")]
         }
     }
@@ -106,13 +115,14 @@ struct StreamMapper {
     private mutating func mapSystem(_ line: [String: JSONValue]) -> [MapperOutput] {
         let subtype = line["subtype"]?.stringValue
         if subtype == "init" {
-            guard !sawInit else { return [.ignored("ignored system/init")] }
+            guard !sawInit else { return [.cliTurnOpened] }
             sawInit = true
             var outputs: [MapperOutput] = [.item(.system(SystemItem(id: newID(), created: now(), text: sessionStartText(line), level: .info)))]
             if let warning = mcpWarning(line) {
                 outputs.append(.item(.system(SystemItem(id: newID(), created: now(), text: warning, level: .warning))))
             }
             outputs.append(.sessionStarted)
+            outputs.append(.cliTurnOpened)
             return outputs
         }
         if subtype == "status", let mode = line["permissionMode"]?.stringValue {
@@ -391,8 +401,7 @@ struct StreamMapper {
         }
         let item = ResultItem(id: newID(), created: now(), durationMs: line["duration_ms"]?.claudeInt ?? 0,
                               costUSD: line["total_cost_usd"]?.claudeDouble, isError: isError, summary: summary)
-        let queued = line["queued_turn_count"]?.claudeInt ?? 0
-        outputs.append(.result(item, endsTurn: queued == 0))
+        outputs.append(.result(item))
         return outputs
     }
 

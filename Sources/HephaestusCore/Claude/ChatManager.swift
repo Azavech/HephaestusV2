@@ -91,7 +91,7 @@ final class ChatRuntime {
     /// The process exited and its token is being revoked; the next launch waits.
     var cleaningUp = false
     /// User message lines delivered while no process can take them; the next launch writes them.
-    var pendingMessages: [Data] = []
+    var pendingMessages: [ChatMessageLine] = []
     /// A launch was asked for and `system/init` has not arrived yet.
     var starting = false
     /// A turn is in progress.
@@ -151,7 +151,9 @@ final class ChatProcess {
     var sawInit = false
     /// User message lines written before `system/init`, delivered again when the session was
     /// not found.
-    var messagesBeforeInit: [Data] = []
+    var messagesBeforeInit: [ChatMessageLine] = []
+    /// The messages written to the process that the CLI has not finished, and its open CLI turn.
+    var turns = TurnTracker()
     var nextRequestNumber = 1
     var pendingControl: [String: (purpose: ControlPurpose, timer: Task<Void, Never>?)] = [:]
     var permissions: [String: PendingPermission] = [:]
@@ -189,6 +191,68 @@ final class ChatProcess {
         initTimer?.cancel()
         stopTask?.cancel()
         for entry in pendingControl.values { entry.timer?.cancel() }
+    }
+}
+
+/// A user message line for the Claude process, and the `uuid` it carries (docs/chats.md › User
+/// messages).
+struct ChatMessageLine: Sendable, Hashable {
+    var data: Data
+    var uuid: String
+}
+
+/// docs/chats.md › Turn tracking: the user messages written to one process that the CLI has not
+/// finished, each with the last `command_lifecycle` state reported, and whether a CLI turn is
+/// open (from a `system/init` to its `result`).
+struct TurnTracker: Sendable {
+    enum MessageState: Sendable, Equatable {
+        /// Written; the CLI has reported nothing yet.
+        case none
+        case queued
+        case started
+    }
+
+    private(set) var outstanding: [(uuid: String, state: MessageState)] = []
+    private(set) var cliTurnOpen = false
+
+    /// Claude still works on something: a message is outstanding or a CLI turn is open.
+    var isWorking: Bool { cliTurnOpen || !outstanding.isEmpty }
+
+    /// Step 1: a message written to the process.
+    mutating func written(_ uuid: String) {
+        outstanding.append((uuid, .none))
+    }
+
+    /// Step 2: `system/init`.
+    mutating func cliTurnOpened() {
+        cliTurnOpen = true
+    }
+
+    /// Step 3: a `command_lifecycle` line. Returns true when it finished an outstanding message.
+    mutating func commandState(_ uuid: String, _ state: String) -> Bool {
+        guard let index = outstanding.firstIndex(where: { $0.uuid == uuid }) else { return false }
+        switch state {
+        case "queued":
+            outstanding[index].state = .queued
+            return false
+        case "started":
+            outstanding[index].state = .started
+            return false
+        default:
+            outstanding.remove(at: index)
+            return true
+        }
+    }
+
+    /// Step 4: `result` closes the CLI turn and finishes the started messages, or else the oldest
+    /// message the CLI reported nothing about.
+    mutating func resultReceived() {
+        cliTurnOpen = false
+        if outstanding.contains(where: { $0.state == .started }) {
+            outstanding.removeAll { $0.state == .started }
+        } else if let index = outstanding.firstIndex(where: { $0.state == .none }) {
+            outstanding.remove(at: index)
+        }
     }
 }
 

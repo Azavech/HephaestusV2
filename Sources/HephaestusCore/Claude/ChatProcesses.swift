@@ -8,24 +8,30 @@ extension Engine {
     // MARK: Delivery
 
     /// Delivers a user message line: written at once to the live process (during a turn the CLI
-    /// runs it after the current turn), otherwise kept for a new process, launched now or when
-    /// the ending process has exited (docs/chats.md › Chat states).
-    func deliverChatMessage(_ chatID: ChatID, line: Data) {
+    /// runs it after its CLI turn in progress), otherwise kept for a new process, launched now or
+    /// when the ending process has exited (docs/chats.md › Chat states).
+    func deliverChatMessage(_ chatID: ChatID, _ message: ChatMessageLine) {
         let runtime = chats.runtime(chatID)
         runtime.idleTask?.cancel()
         runtime.idleTask = nil
         runtime.error = false
         runtime.turnInProgress = true
         if let process = runtime.liveProcess, !process.handle.hasExited {
-            process.handle.write(line)
-            if !process.sawInit { process.messagesBeforeInit.append(line) }
+            writeChatMessage(message, to: process)
+            if !process.sawInit { process.messagesBeforeInit.append(message) }
             return
         }
-        runtime.pendingMessages.append(line)
+        runtime.pendingMessages.append(message)
         runtime.starting = true
         if runtime.process == nil, !runtime.launching, !runtime.cleaningUp {
             startChatLaunch(chatID)
         }
+    }
+
+    /// docs/chats.md › Turn tracking, step 1: the message is outstanding once written.
+    private func writeChatMessage(_ message: ChatMessageLine, to process: ChatProcess) {
+        process.turns.written(message.uuid)
+        process.handle.write(message.data)
     }
 
     private func startChatLaunch(_ chatID: ChatID) {
@@ -129,7 +135,7 @@ extension Engine {
         runtime.starting = true
         log.info(.claude, "chat \(chatID.uuidString): Claude started (\(meta.sessionStarted ? "resume" : "new session"))")
         sendControlRequest(.initialize, chatID: chatID, process: process) { ControlLines.request(id: $0, subtype: "initialize") }
-        for line in runtime.pendingMessages { handle.write(line) }
+        for message in runtime.pendingMessages { writeChatMessage(message, to: process) }
         process.messagesBeforeInit = runtime.pendingMessages
         runtime.pendingMessages = []
         startChatReaders(chatID, process)
@@ -259,6 +265,20 @@ extension Engine {
             } else {
                 reportChatState(chatID)
             }
+        case .cliTurnOpened:
+            // docs/chats.md › Turn tracking, step 2.
+            process.turns.cliTurnOpened()
+            if !runtime.turnInProgress {
+                runtime.turnInProgress = true
+                runtime.idleTask?.cancel()
+                runtime.idleTask = nil
+                reportChatState(chatID)
+            }
+        case .commandState(let uuid, let state):
+            // Steps 3 and 5.
+            if process.turns.commandState(uuid, state), !process.turns.isWorking, runtime.turnInProgress {
+                chatTurnEnded(chatID, runtime: runtime, process: process)
+            }
         case .permissionModeReported(let mode):
             applyCLIPermissionMode(mode, chatID: chatID, process: process)
         case .delta(let itemID, let kind, let text):
@@ -279,10 +299,16 @@ extension Engine {
             guard let pending = process.permissions[requestID] else { return }
             resolvePermission(pending, decision: .deny, decidedBy: nil, chatID: chatID, process: process, origin: .system)
             reportChatState(chatID)
-        case .result(let item, let endsTurn):
+        case .result(let item):
             clearDeltas(runtime)
+            // The CLI turn that Stop interrupted has ended (docs/chats.md › Stopping a turn).
+            process.stopRequested = false
+            process.stopTask?.cancel()
+            process.stopTask = nil
             appendChatItemLogging(.result(item), chatID: chatID)
-            if endsTurn { chatTurnEnded(chatID, runtime: runtime, process: process) }
+            // Steps 4 and 5.
+            process.turns.resultReceived()
+            if !process.turns.isWorking { chatTurnEnded(chatID, runtime: runtime, process: process) }
         case .ignored(let text):
             process.log.appendLine(text)
         case .invalid(let reason):
@@ -325,8 +351,9 @@ extension Engine {
 
     // MARK: Turns
 
-    /// A `result` with `queued_turn_count` 0 or absent ends the turn: the metadata is written, the
-    /// idle timer starts, or the process ends when an `mcpPort` change waits for the turn.
+    /// The turn ends when no message is outstanding and no CLI turn is open (docs/chats.md › Turn
+    /// tracking, step 5): the metadata is written, the idle timer starts, or the process ends when
+    /// an `mcpPort` change waits for the turn.
     private func chatTurnEnded(_ chatID: ChatID, runtime: ChatRuntime, process: ChatProcess) {
         runtime.turnInProgress = false
         runtime.starting = false
@@ -523,7 +550,7 @@ extension Engine {
 
     /// docs/chats.md › Stopping a turn: pending requests denied with `The user stopped Claude.`,
     /// the `Stopped by` item, the `interrupt` request, then SIGINT, SIGTERM and SIGKILL 5 s apart
-    /// while the turn goes on. Nothing happens in the states idle, waitingAnswers and error.
+    /// while no `result` arrives. Nothing happens in the states idle, waitingAnswers and error.
     func interruptChat(_ chatID: ChatID, deviceName: String, origin: Actor) {
         guard [.starting, .running, .waitingPermission].contains(chats.state(of: chatID)) else { return }
         let runtime = chats.runtime(chatID)
@@ -544,7 +571,8 @@ extension Engine {
             process.stopTask?.cancel()
             process.stopTask = Task {
                 try? await Task.sleep(for: step)
-                guard !Task.isCancelled, !handle.hasExited, runtime.process === process, runtime.turnInProgress || runtime.starting else {
+                guard !Task.isCancelled, !handle.hasExited, runtime.process === process, process.stopRequested,
+                      runtime.turnInProgress || runtime.starting else {
                     return
                 }
                 handle.signalGroup(SIGINT)

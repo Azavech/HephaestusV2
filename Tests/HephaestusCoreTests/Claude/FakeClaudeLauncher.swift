@@ -384,14 +384,32 @@ final class FakeClaudeLauncher: ClaudeProcessLauncher, @unchecked Sendable {
         ]
     }
 
-    static func resultLine(queued: Int = 0, isError: Bool = false, subtype: String = "success") -> String {
-        #"{"type":"result","subtype":"\#(subtype)","is_error":\#(isError),"duration_ms":1200,"total_cost_usd":0.01,"queued_turn_count":\#(queued)}"#
+    static func resultLine(isError: Bool = false, subtype: String = "success", errors: [String]? = nil) -> String {
+        let errorsMember = errors.map { #","errors":"# + ControlLines.json(.array($0.map(JSONValue.string))) } ?? ""
+        return #"{"type":"result","subtype":"\#(subtype)","is_error":\#(isError),"duration_ms":1200,"total_cost_usd":0.01\#(errorsMember),"queued_turn_count":0}"#
     }
 
-    /// A chat process that answers `initialize`, sends `system/init` with the first user
-    /// message, answers each user message with one text reply and a result, answers the other
-    /// control requests with success, ends its turn on `interrupt`, and exits when standard input
-    /// closes or a signal arrives.
+    /// The `command_lifecycle` line of Claude Code 2.1.309 for the user message `uuid`
+    /// (docs/chats.md › Turn tracking).
+    static func lifecycleLine(_ uuid: String, _ state: String) -> String {
+        #"{"type":"command_lifecycle","command_uuid":"\#(uuid)","state":"\#(state)","uuid":"\#(UUID().uuidString.lowercased())","session_id":"S"}"#
+    }
+
+    /// The `uuid` of a user message line.
+    static func uuid(of line: String) -> String? {
+        (try? JSONDecoder().decode(JSONValue.self, from: Data(line.utf8)))?.objectValue?["uuid"]?.stringValue
+    }
+
+    /// The text of the first text block of a user message line.
+    static func text(of line: String) -> String? {
+        let content = (try? JSONDecoder().decode(JSONValue.self, from: Data(line.utf8)))?.objectValue?["message"]?.objectValue?["content"]
+        return content?.arrayValue?.first?.objectValue?["text"]?.stringValue
+    }
+
+    /// A chat process that answers `initialize` and runs each user message as one CLI turn, as
+    /// Claude Code 2.1.309 does: `command_lifecycle` `queued` and `started`, `system/init`, one text
+    /// reply, a result, then `completed`. It answers the other control requests with success, ends
+    /// its CLI turn on `interrupt`, and exits when standard input closes or a signal arrives.
     static func replyingChat(reply: String = "ok", connected: Bool = true) -> @Sendable (FakeClaudeProcess) -> Void {
         { process in
             let state = Counter()
@@ -408,9 +426,15 @@ final class FakeClaudeLauncher: ClaudeProcessLauncher, @unchecked Sendable {
                     }
                 } else if line.hasPrefix(#"{"type":"user""#) {
                     let turn = state.next()
-                    if turn == 1 { process.emit(initLine(connected: connected)) }
+                    let uuid = FakeClaudeLauncher.uuid(of: line)
+                    if let uuid {
+                        process.emit(lifecycleLine(uuid, "queued"))
+                        process.emit(lifecycleLine(uuid, "started"))
+                    }
+                    process.emit(initLine(connected: connected))
                     for output in textReply(messageID: "msg_\(turn)", text: reply) { process.emit(output) }
                     process.emit(resultLine())
+                    if let uuid { process.emit(lifecycleLine(uuid, "completed")) }
                 }
             }
             process.onClose = { $0.exit(.exited(0)) }
