@@ -126,10 +126,10 @@ struct MarkdownBlockModelTests {
 
     @Test("Extended autolinks")
     func extendedAutolinks() {
-        #expect(Self.render("See www.example.com/a, https://x.y/b) and a@b.co.") == [.paragraph([
+        #expect(Self.render("See www.example.com/a, https://x.y/b) and a@example.com.") == [.paragraph([
             .text("See "), .link(destination: "http://www.example.com/a", title: nil, content: [.text("www.example.com/a")]),
             .text(", "), .link(destination: "https://x.y/b", title: nil, content: [.text("https://x.y/b")]),
-            .text(") and a@b.co."),
+            .text(") and a@example.com."),
         ])])
         #expect(Self.render("www and xwww.a.b and www.a_b.c and http:// and ftp://x.y") == [.paragraph([
             .text("www and xwww.a.b and www.a_b.c and http:// and ftp://x.y"),
