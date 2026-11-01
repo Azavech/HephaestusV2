@@ -116,7 +116,7 @@ struct DispatcherTests {
     @Test("A method without a handler yet fails with unavailable (not implemented yet)")
     func stubs() async throws {
         try await withTestEngine { _, connection, _ in
-            let error = await engineError { try await connection.call(TicketsList.self, .init(projectID: "HEPH")) }
+            let error = await engineError { try await connection.call(ChatsList.self, .init(projectID: "HEPH")) }
             #expect(error?.code == .unavailable)
             #expect(error?.message.hasSuffix("(not implemented yet).") == true)
         }
