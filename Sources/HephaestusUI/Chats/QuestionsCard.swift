@@ -66,6 +66,7 @@ struct QuestionsCard: View {
                 Text(QuestionNavigation.header(set, question))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
                 Spacer()
                 arrow("chevron.left", offset: -1)
                 arrow("chevron.right", offset: 1)
@@ -78,6 +79,7 @@ struct QuestionsCard: View {
             }
             MarkdownView(markdown: question.question)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(question.options, id: \.label) { option in
                     optionRow(option)
@@ -97,7 +99,6 @@ struct QuestionsCard: View {
                 .disabled(!model.canSubmitAnswer)
             }
         }
-        .textSelection(.enabled)
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.accentColor.opacity(0.5)))
@@ -125,8 +126,8 @@ struct QuestionsCard: View {
         .disabled(label == nil)
     }
 
-    /// A radio button, then the label in bold and the description in secondary text; only the radio
-    /// button and the empty part of the row choose the option.
+    /// A radio button, then the label in bold and the description in secondary text; a click
+    /// anywhere in the row chooses the option, and its texts are not selectable.
     private func optionRow(_ option: QuestionOption) -> some View {
         let choice = QuestionChoice.option(option.label)
         return HStack(alignment: .top, spacing: 8) {
@@ -152,27 +153,28 @@ struct QuestionsCard: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .layoutPriority(1)
-            EmptyRowArea {
-                model.questionChoice = choice
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            model.questionChoice = choice
         }
     }
 
-    /// `Answer another way` with a multi-line field of 1 to 6 visible lines; typing selects the
-    /// row and Return inserts a line break.
+    /// `Answer another way` with a multi-line field of 1 to 6 visible lines; a click on its line
+    /// chooses the row, typing selects it and Return inserts a line break.
     private var otherRow: some View {
         HStack(alignment: .top, spacing: 8) {
             RadioButton(selected: model.questionChoice == .other) {
                 model.questionChoice = .other
             }
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 0) {
-                    Text("Answer another way")
-                    EmptyRowArea {
+                Text("Answer another way")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
                         model.questionChoice = .other
                     }
-                }
                 ChatTextEditor(text: $model.questionOther, placeholder: "", minLines: 1, maxLines: 6)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -196,18 +198,6 @@ private struct RadioButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-}
-
-/// The empty part of an option row: a click there chooses the option.
-private struct EmptyRowArea: View {
-    let choose: () -> Void
-
-    var body: some View {
-        Color.clear
-            .frame(maxWidth: .infinity, minHeight: 16, maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .onTapGesture(perform: choose)
     }
 }
 

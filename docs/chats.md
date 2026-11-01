@@ -590,10 +590,10 @@ While the chat has a question set that is not completed, a native SwiftUI card i
 
 - Header `Question <label> (<position> of <count>)`, where `<position>` is the displayed question's place in the set counting from 1, for example `Question A (1 of 1)` or `Question B (2 of 3)`.
 - At the top right, previous and next arrow buttons, then a minimize button, a chevron pointing down. The arrows display the previous and the next question of the set, in label order, answered or not; they wrap at neither end: the previous arrow is disabled on the first question and the next arrow on the last one.
-- The question text rendered as Markdown (selectable).
-- One row per option: a radio button, then the label in bold and the description in secondary text, both selectable; only the radio button and the empty part of the row choose the option, so selecting text never changes the answer. The recommended option carries a `Recommended` tag.
-- Every text of the card is selectable (`textSelection(.enabled)`), the header included.
-- A last radio row `Answer another way` with a multi-line text field (1 to 6 visible lines). Typing in the field selects this row; Return inserts a line break.
+- The question text rendered as Markdown.
+- One row per option: a radio button, then the label in bold and the description in secondary text. A click anywhere in the row (the radio button, the label, the `Recommended` tag, the description or the empty space) chooses the option. The label and the description are not selectable as text. The recommended option carries a `Recommended` tag.
+- The header and the question text are selectable (`textSelection(.enabled)`); the texts of the option rows are not.
+- A last radio row `Answer another way` with a multi-line text field (1 to 6 visible lines). A click on the radio button, the label `Answer another way` or the empty part of its line chooses this row; the field stays editable, and typing in it selects this row; Return inserts a line break.
 - Selection when a question is displayed: a question without an answer appears with its recommended option selected and an empty field. An answered question appears with its answer selected: the option whose label equals the answer, or else `Answer another way` with the answer as its text; a skipped question thus shows `Answer another way` with the text `Skipped`.
 - Submit (⌘Return while the focus is in the chat view outside its composer, no permission card is shown and the card is not minimized) calls `chats.answerQuestion` for the displayed question with the selected option's label, or with the field's text. It is disabled while `Answer another way` is selected with an empty field. Submitting on an answered question replaces its answer.
 - Skip, next to Submit, calls `chats.answerQuestion` for the displayed question with the answer `Skipped`.
