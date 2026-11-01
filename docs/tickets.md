@@ -227,7 +227,7 @@ The Details tab shows, from top to bottom:
 - Below the last comment is the composer: a multi-line editor that grows to 8 lines and then scrolls, with the placeholder `Add a comment…`; a paperclip button that opens an open panel for several files; and a Comment button (⌘Return). Return inserts a line break. Default chosen at design time.
 - Files and images dropped or pasted on the composer become pending attachments, shown as chips that can be removed before posting. Default chosen at design time.
 - Comment is enabled when the text is not empty after trimming or at least one file is pending. It calls `tickets.addComment`. On success the composer empties; on failure an alert shows the error and the composer keeps its content.
-- The composer's draft is kept per ticket and per window while the window is open. Default chosen at design time.
+- The composer's draft is kept per ticket and per window while the window is open (`ProjectViewState.commentDrafts`, [WindowState](ui.md#windowstate)). Default chosen at design time.
 - Context menu of a comment. Default chosen at design time.
   - Edit: an inline editor with Cancel (Esc) and Save (⌘Return) that calls `tickets.updateComment`. Saving sets `updated`. The attachments of a comment cannot be changed.
   - Copy Text: copies the Markdown source.
@@ -310,7 +310,7 @@ The Chats tab of a ticket:
 - A bar with the buttons Implement (prominent) and New Chat.
 - The list of the ticket's chats (the ids in `chats`), newest first, each with its title, kind icon, state and last update time. The state shows as a spinner while `starting` or `running`, an orange dot while `waitingPermission` or `waitingAnswers`, a red mark on `error`, and nothing when `idle`. Default chosen at design time.
 - A chat id without chat metadata is not listed. Chat files are git-ignored, so another clone of the repository has no metadata for them. Default chosen at design time.
-- The selected chat is shown under the list with its full chat view and composer ([Chats](chats.md)). Opening the tab selects the most recently updated chat. Default chosen at design time.
+- The selected chat is shown under the list with its full chat view and composer ([Chats](chats.md)). Opening the tab selects the most recently updated chat. The tab, the selected chat and a shown draft are kept per window and per project while the window is open (`ticketTab`, `chatsTabSelection` and `chatsTabDrafts` of [WindowState](ui.md#windowstate)). Default chosen at design time.
 - The context menu of a chat has Open in New Window, Rename… and Delete… ([Chats](chats.md)).
 - With no chats the tab shows `No Chats`, the text `Implement lets Claude implement this ticket. New Chat opens a conversation about it.`, and both buttons. Default chosen at design time.
 
@@ -354,7 +354,7 @@ The fields are defined in [Data model](data-model.md#bundle-file). The order of 
 The Bundles section (⌘2) shows the bundles of the selected project in a list on the left and the selected bundle on the right, with the same divider as the Tickets section. Default chosen at design time.
 
 - The list header has a New Bundle (+) button, which opens the ticket picker sheet with no ticket checked.
-- Columns: ID, Title, Progress (`<done>/<total> done`) and Created, with the widths of the ticket list's columns, Progress taking the rule of Status. The list starts sorted by ID, newest first. The columns sort as the ticket list's do, Progress by the share of done tickets; equal values keep the ID order, newest first. The sort order is kept per window and per project while the window is open. Default chosen at design time.
+- Columns: ID, Title, Progress (`<done>/<total> done`) and Created, with the widths of the ticket list's columns, Progress taking the rule of Status. The list starts sorted by ID, newest first. The columns sort as the ticket list's do, Progress by the share of done tickets; equal values keep the ID order, newest first. The sort order is kept per window and per project while the window is open (`ProjectViewState.bundleList`, [WindowState](ui.md#windowstate)). Default chosen at design time.
 - The context menu of a bundle has Implement All and Delete…. Default chosen at design time.
 - With no bundles the list shows `No Bundles`, the text `Select tickets in Tickets and choose Create Bundle from Selection, or create a bundle here.`, and a New Bundle button. With no bundle selected the detail shows `No Bundle Selected`. Default chosen at design time.
 
