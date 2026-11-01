@@ -473,20 +473,21 @@ struct MCPServerHTTPTests {
 
     @Test("A connection idle for the idle timeout is closed, before or inside a request")
     func idleTimeout() async throws {
-        // The bytes of a request are handed over before the connection is ready, so that they
-        // reach the server within the idle timeout even when this task resumes late.
         try await withStandaloneServer(idleTimeout: .seconds(1)) { server in
             let silent = try await RawConnection(port: server.port)
-            #expect(await silent.closedByServer(timeout: .seconds(10)))
+            #expect(await silent.closedByServer())
             #expect(silent.received.isEmpty)
 
             let partial = try await RawConnection(port: server.port, sending: "POST /mcp HTTP/1.1\r\nContent-Length: 10\r\n")
-            #expect(await partial.closedByServer(timeout: .seconds(10)))
-
+            #expect(await partial.closedByServer())
+        }
+        // The bytes of a request are handed over before the connection is ready, and the idle
+        // timeout leaves a busy machine 10 s to read them; then the answered connection idles.
+        try await withStandaloneServer(idleTimeout: .seconds(10)) { server in
             let between = try await RawConnection(port: server.port, sending: RawConnection.post(#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#,
                                                                                                  token: server.externalToken))
             #expect(await between.response()?.status == 200)
-            #expect(await between.closedByServer(timeout: .seconds(10)))
+            #expect(await between.closedByServer())
         }
     }
 
@@ -499,7 +500,7 @@ struct MCPServerHTTPTests {
             server.engine.gate = gate
             let slow = try await RawConnection(port: server.port)
             await slow.send(RawConnection.post(MCPHTTP.toolCall("list_projects"), token: server.externalToken))
-            #expect(await eventually(timeout: .seconds(10)) { server.engine.calls.map(\.method) == ["projects.list"] })
+            #expect(await eventually(timeout: waitLimit) { server.engine.calls.map(\.method) == ["projects.list"] })
 
             // The ping is answered while the slow call still runs.
             let reply = try await MCPHTTP.post(port: server.port, token: server.externalToken, #"{"jsonrpc":"2.0","id":2,"method":"ping"}"#)
@@ -512,7 +513,7 @@ struct MCPServerHTTPTests {
             // The client goes away before the call ends; the call still completes.
             slow.cancel()
             gate.open()
-            #expect(await eventually(timeout: .seconds(15)) { slowCallEnded() })
+            #expect(await eventually(timeout: waitLimit) { slowCallEnded() })
             #expect(server.engine.calls.map(\.method) == ["projects.list"])
         }
     }
@@ -562,6 +563,7 @@ struct MCPServerHTTPTests {
             configuration.mcpPort = nil
             let engine = try await Engine(configuration: configuration)
             await engine.useFileTrash(.folder(folder.appendingPathComponent("Trash", isDirectory: true)))
+            await engine.useCLITimings(.inert)
             await engine.start()
             do {
                 #expect(await engine.mcpServer.state == .listening(port: first))
@@ -633,7 +635,7 @@ struct MCPServerHTTPTests {
                 if case .ready = state { ready.append(true) }
             }
             holder.start(queue: DispatchQueue(label: "test.holder"))
-            #expect(await eventually(timeout: .seconds(10)) { !ready.values.isEmpty })
+            #expect(await eventually(timeout: waitLimit) { !ready.values.isEmpty })
 
             let log = MemoryLog()
             let tokens = MCPTokenStore(secrets: SecretsStore(directory: DataDirectory(url: folder), secrets: Secrets()))
@@ -642,7 +644,7 @@ struct MCPServerHTTPTests {
             // apart, leave it time to do so on a slow machine.
             await server.configure(retryInterval: .seconds(1))
             Task {
-                _ = await eventually(timeout: .seconds(30)) { log.entries.contains { $0.level == .warn } }
+                _ = await eventually(timeout: waitLimit) { log.entries.contains { $0.level == .warn } }
                 holder.cancel()
             }
             await server.start(port: busy, engineCall: RecordedEngine().engineCall)
@@ -695,7 +697,7 @@ struct MCPServerHTTPTests {
             await server.server.stop()
             #expect(await server.server.state == .stopped)
             #expect(await connection.closedByServer())
-            #expect(await firstElements(3, of: states, timeout: .seconds(2)) == [.listening(port: server.port), .stopped])
+            #expect(await firstElements(3, of: states, timeout: waitLimit) == [.listening(port: server.port), .stopped])
             #expect(server.log.entries.last?.message == "stopped")
             await #expect(throws: (any Error).self) {
                 _ = try await MCPHTTP.post(port: server.port, token: server.externalToken, #"{"jsonrpc":"2.0","id":1,"method":"ping"}"#)

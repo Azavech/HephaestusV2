@@ -31,7 +31,7 @@ actor EventRecorder {
     func named(_ name: String) -> [EngineEventEnvelope] { events.filter { $0.name == name } }
 
     /// The first event (already received or to come) named `name` that satisfies `predicate`.
-    func wait(for name: String, timeout: Duration = .seconds(5),
+    func wait(for name: String, timeout: Duration = waitLimit,
               where predicate: @escaping @Sendable (EngineEventEnvelope) -> Bool = { _ in true }) async -> EngineEventEnvelope? {
         if let existing = events.first(where: { $0.name == name && predicate($0) }) { return existing }
         let id = UUID()
@@ -96,7 +96,7 @@ struct ChatTestBed {
 
     /// Waits until the chat has `state`.
     @discardableResult
-    func waitForState(_ chatID: ChatID, _ state: ChatState, timeout: Duration = .seconds(5)) async -> Bool {
+    func waitForState(_ chatID: ChatID, _ state: ChatState, timeout: Duration = waitLimit) async -> Bool {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
             if await self.state(chatID) == state { return true }
@@ -106,7 +106,7 @@ struct ChatTestBed {
     }
 
     /// Waits for a `chat.item` of the chat whose item satisfies `predicate`.
-    func waitForItem(_ chatID: ChatID, timeout: Duration = .seconds(5),
+    func waitForItem(_ chatID: ChatID, timeout: Duration = waitLimit,
                      where predicate: @escaping @Sendable (ChatItem) -> Bool) async -> ChatItem? {
         await events.wait(for: "chat.item", timeout: timeout) { event in
             guard let payload = try? event.payload(ChatItemEvent.self), payload.chatID == chatID else { return false }
@@ -135,30 +135,31 @@ struct ChatTestBed {
     }
 }
 
-/// Fast timings: every wait of the chat engine is short.
+/// Fast timings: the graces and steps that tests wait for are short. The fake answers at once,
+/// so the start and control request timeouts and the output grace only bound a run that a busy
+/// machine slows down: they are `waitLimit`.
 func testChatTimings() -> ChatTimings {
     var timings = ChatTimings()
-    timings.startTimeout = .seconds(5)
+    timings.startTimeout = waitLimit
     timings.terminateGrace = .milliseconds(300)
     timings.stopStep = .milliseconds(300)
     timings.idleTimeout = .seconds(60)
     timings.idleCloseGrace = .milliseconds(200)
-    timings.controlRequestTimeout = .seconds(5)
+    timings.controlRequestTimeout = waitLimit
     timings.shutdownGrace = .milliseconds(500)
     // The fake's output ends with its exit: the grace only gives a loaded machine time to read it.
-    timings.outputGrace = .seconds(10)
+    timings.outputGrace = waitLimit
     return timings
 }
 
-/// The fake CLI answers at once; the timeouts only bound a run that the load of the whole test
-/// suite slows down.
+/// The fake CLI answers at once; the timeouts only bound a run that a busy machine slows down.
 func testCLITimings() -> ClaudeCLITimings {
     var timings = ClaudeCLITimings()
-    timings.versionTimeout = .seconds(10)
-    timings.loginShellTimeout = .seconds(10)
-    timings.probeTimeout = .seconds(10)
+    timings.versionTimeout = waitLimit
+    timings.loginShellTimeout = waitLimit
+    timings.probeTimeout = waitLimit
     timings.killGrace = .milliseconds(200)
-    timings.statusWait = .seconds(10)
+    timings.statusWait = waitLimit
     timings.shutdownGrace = .milliseconds(500)
     return timings
 }
@@ -175,7 +176,7 @@ extension Engine {
     }
 
     /// Waits until the CLI status is no longer `checking`.
-    func waitUntilClaudeChecked(timeout: Duration = .seconds(20)) async {
+    func waitUntilClaudeChecked(timeout: Duration = waitLimit) async {
         let deadline = ContinuousClock.now + timeout
         while claudeCLI.status.checking, ContinuousClock.now < deadline {
             try? await Task.sleep(for: .milliseconds(10))

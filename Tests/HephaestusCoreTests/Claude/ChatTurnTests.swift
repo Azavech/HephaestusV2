@@ -38,12 +38,12 @@ struct ChatTurnTests {
     /// Waits until the transcript holds `count` results.
     @discardableResult
     static func waitForResults(_ bed: ChatTestBed, _ chatID: ChatID, _ count: Int) async throws -> Bool {
-        let deadline = ContinuousClock.now + .seconds(5)
+        let deadline = ContinuousClock.now + waitLimit
         while ContinuousClock.now < deadline {
             if try await resultCount(bed, chatID) >= count { return true }
             try await Task.sleep(for: .milliseconds(10))
         }
-        return false
+        return try await resultCount(bed, chatID) >= count
     }
 
     /// The states that `chat.updated` reported for the chat, in order.
@@ -105,7 +105,7 @@ struct ChatTurnTests {
             process.emit(FakeClaudeLauncher.lifecycleLine(b, "completed"))
             try await Task.sleep(for: .milliseconds(100))
             #expect(await bed.state(chat.id) == .idle)
-            #expect(await eventually(timeout: .seconds(10)) { await Self.reportedStates(bed, chat.id).last == .idle })
+            #expect(await eventually(timeout: waitLimit) { await Self.reportedStates(bed, chat.id).last == .idle })
             let texts = try await bed.transcript(chat.id).compactMap { item -> String? in
                 if case .assistant(let assistant) = item { return assistant.text }
                 return nil

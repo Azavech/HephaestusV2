@@ -85,7 +85,7 @@ enum TestBundle {
     /// `<folder>/<name>`, a bundle whose executable is a copy of `/usr/bin/true`.
     @discardableResult
     static func make(in folder: URL, name: String = "HephaestusV2.app", identifier: String = "ca.azavech.hephaestusv2",
-                     version: String = "0.5.0", build: String = "61", sign: Bool = true) throws -> URL {
+                     version: String = "0.5.0", build: String = "61", sign: Bool = true) async throws -> URL {
         let app = folder.appendingPathComponent(name, isDirectory: true)
         let macOS = app.appendingPathComponent("Contents/MacOS", isDirectory: true)
         try FileManager.default.createDirectory(at: macOS, withIntermediateDirectories: true)
@@ -100,26 +100,21 @@ enum TestBundle {
         let data = try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
         try data.write(to: app.appendingPathComponent("Contents/Info.plist"))
         if sign {
-            try run("/usr/bin/codesign", ["--force", "--sign", "-", app.path])
+            try await run("/usr/bin/codesign", ["--force", "--sign", "-", app.path])
         }
         return app
     }
 
     /// Zips `item` as the release workflow does.
-    static func zip(_ item: URL, to zip: URL) throws {
-        try run("/usr/bin/ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", item.path, zip.path])
+    static func zip(_ item: URL, to zip: URL) async throws {
+        try await run("/usr/bin/ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", item.path, zip.path])
     }
 
-    static func run(_ executable: String, _ arguments: [String]) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        try process.run()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            throw UpdaterError("\(executable) exited with status \(process.terminationStatus)")
+    /// Runs a tool; its exit is awaited, so that no thread of the test run waits for it.
+    static func run(_ executable: String, _ arguments: [String]) async throws {
+        let status = await ProcessRunner.run(executable, arguments)
+        guard status == 0 else {
+            throw UpdaterError("\(executable) exited with status \(status)")
         }
     }
 
@@ -131,8 +126,9 @@ enum TestBundle {
     }
 }
 
-/// Waits until `condition` holds, at most `seconds`.
-func eventually(_ seconds: Double = 5, _ condition: @Sendable () async -> Bool) async -> Bool {
+/// Waits until `condition` holds, at most `seconds`. The default bound only ends a test that
+/// fails: a busy machine makes the wait longer, never wrong.
+func eventually(_ seconds: Double = 60, _ condition: @Sendable () async -> Bool) async -> Bool {
     let deadline = Date().addingTimeInterval(seconds)
     while Date() < deadline {
         if await condition() { return true }

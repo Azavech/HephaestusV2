@@ -2,8 +2,28 @@ import Foundation
 import Testing
 @testable import HephaestusCore
 
-/// A launcher that starts nothing: these tests never reach a Claude process.
+/// A launcher that starts nothing: these tests never reach a Claude process. Its processes are
+/// inert, so the CLI lookup in the login shell lasts until its timeout; engines that use it get
+/// `ClaudeCLITimings.inert`.
 struct NoClaudeLauncher: ClaudeProcessLauncher {}
+
+extension ClaudeCLITimings {
+    /// The timings of an engine with `NoClaudeLauncher`: the inert CLI lookup outlasts every test,
+    /// so the status stays `checking` and no `claude.updated` comes among the events a test
+    /// checks, however long the test takes. The shutdown ends the lookup.
+    static var inert: ClaudeCLITimings {
+        var timings = ClaudeCLITimings()
+        timings.loginShellTimeout = .seconds(3600)
+        return timings
+    }
+}
+
+extension Engine {
+    /// Sets the Claude CLI timings before `start()`.
+    func useCLITimings(_ timings: ClaudeCLITimings) {
+        claudeCLI.timings = timings
+    }
+}
 
 extension FileTrash {
     /// A Trash that moves items into `folder`, so that tests never fill the Trash of the user
@@ -131,6 +151,7 @@ func withTestEngine<T>(debugTools: Bool = false, prepare: (DataDirectory) throws
                                                      claudeLauncher: NoClaudeLauncher())
         let engine = try await Engine(configuration: configuration)
         await engine.useFileTrash(.folder(folder.appendingPathComponent("Trash", isDirectory: true)))
+        await engine.useCLITimings(.inert)
         await engine.start()
         let connection = await LocalEngineConnection(engine: engine)
         do {
@@ -147,7 +168,7 @@ func withTestEngine<T>(debugTools: Bool = false, prepare: (DataDirectory) throws
 }
 
 /// The first element of `stream` that satisfies `predicate`, or nil after `timeout`.
-func firstElement<Element: Sendable>(of stream: AsyncStream<Element>, timeout: Duration = .seconds(5),
+func firstElement<Element: Sendable>(of stream: AsyncStream<Element>, timeout: Duration = waitLimit,
                                      where predicate: @escaping @Sendable (Element) -> Bool = { _ in true }) async -> Element? {
     await withTaskGroup(of: Element?.self) { group in
         group.addTask {
@@ -168,7 +189,7 @@ func firstElement<Element: Sendable>(of stream: AsyncStream<Element>, timeout: D
 
 /// The first `count` elements of `stream`; empty when they do not all arrive within `timeout`.
 func firstElements<Element: Sendable>(_ count: Int, of stream: AsyncStream<Element>,
-                                      timeout: Duration = .seconds(5)) async -> [Element] {
+                                      timeout: Duration = waitLimit) async -> [Element] {
     await withTaskGroup(of: [Element]?.self) { group in
         group.addTask {
             var elements: [Element] = []
@@ -190,7 +211,7 @@ func firstElements<Element: Sendable>(_ count: Int, of stream: AsyncStream<Eleme
 
 /// The first event named `name` on `stream`, or nil after `timeout`.
 func firstEvent(named name: String, on stream: AsyncStream<EngineEventEnvelope>,
-                timeout: Duration = .seconds(5)) async -> EngineEventEnvelope? {
+                timeout: Duration = waitLimit) async -> EngineEventEnvelope? {
     await firstElement(of: stream, timeout: timeout) { $0.name == name }
 }
 

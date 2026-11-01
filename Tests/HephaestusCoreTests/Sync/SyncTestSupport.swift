@@ -58,7 +58,7 @@ func pair(_ remote: Engine, with main: Engine, log: LogSink = MemoryLog(), code:
 }
 
 /// The first phase of the connection that satisfies `predicate`, the current one included.
-func phase(of connection: RemoteEngineConnection, timeout: Duration = .seconds(5),
+func phase(of connection: RemoteEngineConnection, timeout: Duration = waitLimit,
            where predicate: @escaping @Sendable (RemoteConnectionPhase) -> Bool) async -> RemoteConnectionPhase? {
     await firstElement(of: connection.phaseUpdates, timeout: timeout, where: predicate)
 }
@@ -116,7 +116,7 @@ final class PhaseRecorder: @unchecked Sendable {
 }
 
 /// Waits until `condition` holds, polling; false after `timeout`.
-func eventually(timeout: Duration = .seconds(5), _ condition: @Sendable () async -> Bool) async -> Bool {
+func eventually(timeout: Duration = waitLimit, _ condition: @Sendable () async -> Bool) async -> Bool {
     let deadline = ContinuousClock.now + timeout
     while ContinuousClock.now < deadline {
         if await condition() { return true }
@@ -220,7 +220,7 @@ final class RawPeer: @unchecked Sendable {
     }
 
     /// The next input other than `ready`, or nil after `timeout`.
-    func next(timeout: Duration = .seconds(5)) async -> RawInput? {
+    func next(timeout: Duration = waitLimit) async -> RawInput? {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
             if let input = takeFirst() {
@@ -240,7 +240,7 @@ final class RawPeer: @unchecked Sendable {
 
     /// The code of the close frame received, or 1006 when the connection ended without one; nil
     /// when it is still open after `timeout`. Data frames before it are skipped.
-    func closeCode(timeout: Duration = .seconds(5)) async -> UInt16? {
+    func closeCode(timeout: Duration = waitLimit) async -> UInt16? {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
             guard let input = await next(timeout: .milliseconds(100)) else { continue }
@@ -266,7 +266,7 @@ final class RawPeer: @unchecked Sendable {
         }
     }
 
-    func waitReady(timeout: Duration = .seconds(5)) async -> Bool {
+    func waitReady(timeout: Duration = waitLimit) async -> Bool {
         await eventually(timeout: timeout) { [self] in
             await withCheckedContinuation { continuation in
                 socket.queue.async { continuation.resume(returning: self.socket.isReady) }
@@ -388,7 +388,8 @@ final class FakeSyncServer: @unchecked Sendable {
     private let inbox = Inbox()
 
     /// `autoReplyPing` false keeps the server silent to pings. `port` 0 lets the system choose.
-    init(autoReplyPing: Bool = true, port requested: Int = 0) async throws {
+    /// The accepted connections give up a close frame they cannot send after `closeLimit`.
+    init(autoReplyPing: Bool = true, port requested: Int = 0, closeLimit: TimeInterval = SyncTimings.fast.closeLimit) async throws {
         let parameters = SyncSocket.parameters()
         parameters.requiredInterfaceType = .loopback
         if let webSocket = parameters.defaultProtocolStack.applicationProtocols.first as? NWProtocolWebSocket.Options {
@@ -399,7 +400,7 @@ final class FakeSyncServer: @unchecked Sendable {
         self.listener = listener
         let inbox = self.inbox
         listener.newConnectionHandler = { connection in
-            inbox.append(RawPeer(connection: connection))
+            inbox.append(RawPeer(connection: connection, closeLimit: closeLimit))
         }
         port = try await withCheckedThrowingContinuation { continuation in
             let once = ResumeOnceThrowing(continuation)
@@ -415,7 +416,7 @@ final class FakeSyncServer: @unchecked Sendable {
     }
 
     /// The next accepted connection, or nil after `timeout`.
-    func nextPeer(timeout: Duration = .seconds(5)) async -> RawPeer? {
+    func nextPeer(timeout: Duration = waitLimit) async -> RawPeer? {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
             if let peer = inbox.takeFirst() {
@@ -423,7 +424,7 @@ final class FakeSyncServer: @unchecked Sendable {
             }
             try? await Task.sleep(for: .milliseconds(10))
         }
-        return nil
+        return inbox.takeFirst()
     }
 
     func stop() {

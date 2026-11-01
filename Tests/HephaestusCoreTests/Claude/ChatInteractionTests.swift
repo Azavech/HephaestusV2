@@ -223,7 +223,7 @@ struct ChatInteractionTests {
             @Sendable func deltas() async -> [ChatDeltaEvent.Payload] {
                 await bed.events.named("chat.delta").compactMap { try? $0.payload(ChatDeltaEvent.self) }
             }
-            #expect(await eventually(timeout: .seconds(10)) { await deltas().map(\.append).joined() == text })
+            #expect(await eventually(timeout: waitLimit) { await deltas().map(\.append).joined() == text })
             // The first delta goes out at once and each later one at least 50 ms after the one
             // before: at most one more than the 50 ms periods since the first line was written.
             let periods = Int((ContinuousClock.now - start) / .milliseconds(50))

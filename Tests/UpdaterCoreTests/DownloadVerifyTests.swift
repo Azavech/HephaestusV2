@@ -11,11 +11,11 @@ struct DownloadVerifyTests {
     let zipURL: URL
     let runningApp: URL
 
-    init() throws {
+    init() async throws {
         folder = try TemporaryFolder()
         cacheRoot = folder.path("Caches/Updates")
         zipURL = URL(string: "https://example.com/\(UUID().uuidString)/HephaestusV2.zip")!
-        runningApp = try TestBundle.make(in: folder.path("Applications"), version: "0.4.0", build: "57")
+        runningApp = try await TestBundle.make(in: folder.path("Applications"), version: "0.4.0", build: "57")
     }
 
     var downloader: UpdateDownloader {
@@ -23,11 +23,11 @@ struct DownloadVerifyTests {
     }
 
     /// Builds the release zip of a bundle and serves it.
-    func serve(_ make: (URL) throws -> URL) throws -> (zip: Data, manifest: ReleaseManifest) {
+    func serve(_ make: (URL) async throws -> URL) async throws -> (zip: Data, manifest: ReleaseManifest) {
         let source = folder.path("source-\(UUID().uuidString)")
-        let item = try make(source)
+        let item = try await make(source)
         let zip = folder.path("\(UUID().uuidString).zip")
-        try TestBundle.zip(item, to: zip)
+        try await TestBundle.zip(item, to: zip)
         let data = try Data(contentsOf: zip)
         StubProtocol.set(zipURL.absoluteString, body: data)
         return (data, try TestBundle.manifest(for: zip))
@@ -52,7 +52,7 @@ struct DownloadVerifyTests {
 
     @Test("A valid update passes steps 1 to 9 and leaves only its build folder in the cache")
     func valid() async throws {
-        let (data, manifest) = try serve { try TestBundle.make(in: $0) }
+        let (data, manifest) = try await serve { try await TestBundle.make(in: $0) }
         try FileManager.default.createDirectory(at: cacheRoot.appendingPathComponent("57/expanded"), withIntermediateDirectories: true)
         try Data().write(to: cacheRoot.appendingPathComponent("stray-file"))
         let app = try await downloadAndVerify(manifest)
@@ -67,7 +67,7 @@ struct DownloadVerifyTests {
 
     @Test("Step 2 reuses a complete zip and replaces an incomplete one")
     func reuse() async throws {
-        let (data, manifest) = try serve { try TestBundle.make(in: $0) }
+        let (data, manifest) = try await serve { try await TestBundle.make(in: $0) }
         _ = try await downloadAndVerify(manifest)
         _ = try await downloadAndVerify(manifest)
         #expect(StubProtocol.requests(to: zipURL.absoluteString).count == 1)
@@ -80,7 +80,7 @@ struct DownloadVerifyTests {
 
     @Test("Step 1: the cache folder cannot be created")
     func cannotSave() async throws {
-        let (_, manifest) = try serve { try TestBundle.make(in: $0) }
+        let (_, manifest) = try await serve { try await TestBundle.make(in: $0) }
         try FileManager.default.createDirectory(at: cacheRoot.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data().write(to: cacheRoot)
         let error = await #expect(throws: UpdaterError.self) { try await downloadAndVerify(manifest) }
@@ -90,7 +90,7 @@ struct DownloadVerifyTests {
 
     @Test("Step 2: the download fails")
     func downloadFails() async throws {
-        let (_, manifest) = try serve { try TestBundle.make(in: $0) }
+        let (_, manifest) = try await serve { try await TestBundle.make(in: $0) }
         StubProtocol.set(zipURL.absoluteString, .failure(.networkConnectionLost))
         let description = URLError(.networkConnectionLost).localizedDescription
         let trimmed = description.hasSuffix(".") ? String(description.dropLast()) : description
@@ -102,14 +102,14 @@ struct DownloadVerifyTests {
 
     @Test("Step 3: the wrong size")
     func wrongSize() async throws {
-        var (_, manifest) = try serve { try TestBundle.make(in: $0) }
+        var (_, manifest) = try await serve { try await TestBundle.make(in: $0) }
         manifest.size += 1
         await expectFailure("The downloaded update has the wrong size.", manifest)
     }
 
     @Test("Step 4: the wrong SHA-256")
     func wrongChecksum() async throws {
-        var (_, manifest) = try serve { try TestBundle.make(in: $0) }
+        var (_, manifest) = try await serve { try await TestBundle.make(in: $0) }
         manifest.sha256 = String(repeating: "0", count: 64)
         await expectFailure("The downloaded update does not match its SHA-256 checksum.", manifest)
     }
@@ -124,7 +124,7 @@ struct DownloadVerifyTests {
 
     @Test("Step 6: no HephaestusV2.app in the zip")
     func noApp() async throws {
-        let (_, manifest) = try serve { try TestBundle.make(in: $0, name: "Other.app") }
+        let (_, manifest) = try await serve { try await TestBundle.make(in: $0, name: "Other.app") }
         await expectFailure("The downloaded update does not contain HephaestusV2.app.", manifest)
     }
 
@@ -132,16 +132,16 @@ struct DownloadVerifyTests {
         ("ca.azavech.other", "0.5.0", "61"), ("ca.azavech.hephaestusv2", "0.5.1", "61"), ("ca.azavech.hephaestusv2", "0.5.0", "62"),
     ])
     func notTheUpdate(_ values: (String, String, String)) async throws {
-        let (_, manifest) = try serve { try TestBundle.make(in: $0, identifier: values.0, version: values.1, build: values.2) }
+        let (_, manifest) = try await serve { try await TestBundle.make(in: $0, identifier: values.0, version: values.1, build: values.2) }
         await expectFailure("The downloaded update is not HephaestusV2 v0.5.0(61).", manifest)
     }
 
     @Test("Step 8: an invalid signature")
     func invalidSignature() async throws {
-        let (_, manifest) = try serve { try TestBundle.make(in: $0, sign: false) }
+        let (_, manifest) = try await serve { try await TestBundle.make(in: $0, sign: false) }
         await expectFailure("The downloaded update has an invalid code signature.", manifest)
-        let (_, tampered) = try serve { source in
-            let app = try TestBundle.make(in: source)
+        let (_, tampered) = try await serve { source in
+            let app = try await TestBundle.make(in: source)
             try Data("extra".utf8).write(to: app.appendingPathComponent("Contents/MacOS/extra"))
             return app
         }
@@ -150,7 +150,7 @@ struct DownloadVerifyTests {
 
     @Test("Step 9: the Team ID of the running app")
     func teamID() async throws {
-        let (_, manifest) = try serve { try TestBundle.make(in: $0) }
+        let (_, manifest) = try await serve { try await TestBundle.make(in: $0) }
         await expectFailure("The downloaded update is signed by another team.", manifest, teamIDs: ["running": "TEAMONE", "new": "TEAMTWO"])
         await expectFailure("The downloaded update is signed by another team.", manifest, teamIDs: ["running": "TEAMONE"])
         _ = try await downloadAndVerify(manifest, teamIDs: ["running": "TEAMONE", "new": "TEAMONE"])

@@ -6,35 +6,24 @@ import Testing
 @Suite("Code search")
 struct CodeSearchTests {
     /// A git executable and an environment that ignores the machine's git configuration, or nil
-    /// when this Mac has no working git.
-    static let git: SearchGit? = {
+    /// when this Mac has no working git. Like every tool run of the tests, its exit is awaited, so
+    /// that no thread of the test run waits for it.
+    static func git() async -> SearchGit? {
         let path = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
         guard let executable = path.split(separator: ":").map({ "\($0)/git" }).first(where: { FileManager.default.isExecutableFile(atPath: $0) })
         else { return nil }
         let home = FileManager.default.temporaryDirectory.appendingPathComponent("HephaestusCoreTests-git-home", isDirectory: true).path
         let environment = ["PATH": path, "HOME": home, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"]
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = ["--version"]
-        process.environment = environment
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return nil }
-        process.waitUntilExit()
-        return process.terminationStatus == 0 ? SearchGit(executable: executable, environment: environment) : nil
-    }()
+        let request = ChildProcessRequest(executable: executable, arguments: ["--version"], environment: environment)
+        guard let result = try? await ChildProcessRunner.run(request, timeout: waitLimit), result.termination.isSuccess else { return nil }
+        return SearchGit(executable: executable, environment: environment)
+    }
 
-    private func git(_ arguments: [String], in folder: URL) throws {
-        let git = try #require(Self.git)
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: git.executable)
-        process.arguments = ["-C", folder.path] + arguments
-        process.environment = git.environment
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        try process.run()
-        process.waitUntilExit()
-        #expect(process.terminationStatus == 0)
+    private func git(_ arguments: [String], in folder: URL) async throws {
+        let git = try #require(await Self.git())
+        let request = ChildProcessRequest(executable: git.executable, arguments: ["-C", folder.path] + arguments, environment: git.environment)
+        let result = try await ChildProcessRunner.run(request, timeout: waitLimit)
+        #expect(result.termination.isSuccess)
     }
 
     private func paths(_ data: SearchProjectData, git: SearchGit? = nil) async -> [String] {
@@ -104,10 +93,10 @@ struct CodeSearchTests {
     }
 
     @Test("Inside a git work tree: tracked and untracked files that are not ignored, nested repositories dropped",
-          .enabled(if: CodeSearchTests.git != nil))
+          .enabled { await CodeSearchTests.git() != nil })
     func gitList() async throws {
         try await withTemporaryDirectory { (root: URL) async throws in
-            try git(["init", "-q"], in: root)
+            try await git(["init", "-q"], in: root)
             for path in ["tracked.swift", "untracked.swift", "ignored.log", "build/kept-by-git.swift", "removed.swift",
                          "sub/inner.swift", ".hephaestus/project.yml", ".hephaestus/chats/x.jsonl"] {
                 try writeFile(path, in: root, "x\n")
@@ -115,29 +104,29 @@ struct CodeSearchTests {
             try writeFile(".gitignore", in: root, "*.log\n")
             try writeFile(".hephaestus/.gitignore", in: root, "chats/\n")
             try FileManager.default.createDirectory(at: root.appendingPathComponent("nested"), withIntermediateDirectories: true)
-            try git(["init", "-q"], in: root.appendingPathComponent("nested"))
+            try await git(["init", "-q"], in: root.appendingPathComponent("nested"))
             try writeFile("nested/inside.swift", in: root, "x\n")
             try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("link.swift"),
                                                        withDestinationURL: root.appendingPathComponent("tracked.swift"))
-            try git(["add", "tracked.swift", "removed.swift", "link.swift"], in: root)
+            try await git(["add", "tracked.swift", "removed.swift", "link.swift"], in: root)
             try FileManager.default.removeItem(at: root.appendingPathComponent("removed.swift"))
 
             let data = SearchSourcesTests.project("HEPH", name: "H", root: root, subprojects: ["sub"])
-            #expect(await paths(data, git: CodeSearchTests.git) == [".gitignore", ".hephaestus/.gitignore", ".hephaestus/project.yml",
+            #expect(await paths(data, git: await CodeSearchTests.git()) == [".gitignore", ".hephaestus/.gitignore", ".hephaestus/project.yml",
                                                                      "build/kept-by-git.swift", "tracked.swift", "untracked.swift"])
 
             let subfolder = SearchSourcesTests.project("SUB", name: "S", root: root.appendingPathComponent("sub"))
-            #expect(await paths(subfolder, git: CodeSearchTests.git) == ["inner.swift"])
+            #expect(await paths(subfolder, git: await CodeSearchTests.git()) == ["inner.swift"])
         }
     }
 
-    @Test("Outside a git work tree, or when git fails, the folder is walked", .enabled(if: CodeSearchTests.git != nil))
+    @Test("Outside a git work tree, or when git fails, the folder is walked", .enabled { await CodeSearchTests.git() != nil })
     func gitFallback() async throws {
         try await withTemporaryDirectory { (root: URL) async throws in
             try writeFile("file.swift", in: root, "x\n")
             try writeFile("build/out", in: root, "x\n")
             let data = SearchSourcesTests.project("HEPH", name: "H", root: root)
-            #expect(await paths(data, git: CodeSearchTests.git) == ["file.swift"])
+            #expect(await paths(data, git: await CodeSearchTests.git()) == ["file.swift"])
             let broken = SearchGit(executable: "/nonexistent/git", environment: [:])
             #expect(await paths(data, git: broken) == ["file.swift"])
         }

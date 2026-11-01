@@ -275,26 +275,34 @@ final class RawConnection: @unchecked Sendable {
 
     /// `initial` is handed to the connection before it is ready, so that the server receives it
     /// right after accepting the connection, however long this task takes to resume.
+    /// A connection that Network.framework reports as waiting, to be retried, is restarted every
+    /// 100 ms until `waitLimit` instead of failing at once.
     init(port: Int, sending initial: String? = nil) async throws {
         connection = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: UInt16(port))!, using: .tcp)
-        let ready: Bool = await withCheckedContinuation { continuation in
+        let queue = DispatchQueue(label: "test.raw")
+        let deadline = DispatchTime.now() + .seconds(Int(waitLimit.components.seconds))
+        let failure: String? = await withCheckedContinuation { continuation in
             let resumed = Flag()
-            connection.stateUpdateHandler = { state in
+            connection.stateUpdateHandler = { [connection] state in
                 switch state {
                 case .ready:
-                    if resumed.claim() { continuation.resume(returning: true) }
-                case .failed, .cancelled, .waiting:
-                    if resumed.claim() { continuation.resume(returning: false) }
+                    if resumed.claim() { continuation.resume(returning: nil) }
+                case .waiting where DispatchTime.now() < deadline:
+                    queue.asyncAfter(deadline: .now() + .milliseconds(100)) { connection.restart() }
+                case .waiting(let error), .failed(let error):
+                    if resumed.claim() { continuation.resume(returning: "\(error)") }
+                case .cancelled:
+                    if resumed.claim() { continuation.resume(returning: "cancelled") }
                 default:
                     break
                 }
             }
-            connection.start(queue: DispatchQueue(label: "test.raw"))
+            connection.start(queue: queue)
             if let initial {
                 connection.send(content: Data(initial.utf8), completion: .contentProcessed { _ in })
             }
         }
-        guard ready else { throw EngineError(.unavailable, "Cannot connect to 127.0.0.1:\(port).") }
+        if let failure { throw EngineError(.unavailable, "Cannot connect to 127.0.0.1:\(port): \(failure).") }
         receiveLoop()
     }
 
@@ -340,7 +348,7 @@ final class RawConnection: @unchecked Sendable {
     }
 
     /// The next complete response (head and `Content-Length` body), removed from the buffer.
-    func response(timeout: Duration = .seconds(10)) async -> Response? {
+    func response(timeout: Duration = waitLimit) async -> Response? {
         let parsed: (Response, Int)? = await wait(timeout: timeout) { data, _ in Self.parse(data) }
         guard let (response, length) = parsed else { return nil }
         lock.withLock { buffer.removeFirst(length) }
@@ -348,7 +356,7 @@ final class RawConnection: @unchecked Sendable {
     }
 
     /// True once the server closed the connection and every byte was read.
-    func closedByServer(timeout: Duration = .seconds(10)) async -> Bool {
+    func closedByServer(timeout: Duration = waitLimit) async -> Bool {
         await wait(timeout: timeout) { _, closed in closed ? true : nil } ?? false
     }
 

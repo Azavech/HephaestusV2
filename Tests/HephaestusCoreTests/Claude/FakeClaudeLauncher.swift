@@ -112,7 +112,7 @@ final class FakeClaudeProcess: ClaudeProcess, @unchecked Sendable {
 
     /// The first written line (already written or still to come) that satisfies `predicate`, or
     /// nil after `timeout`.
-    func line(where predicate: @escaping (String) -> Bool, timeout: Duration = .seconds(5)) async -> String? {
+    func line(where predicate: @escaping (String) -> Bool, timeout: Duration = waitLimit) async -> String? {
         let id = UUID()
         let timer = Task.detached { [weak self] in
             try? await Task.sleep(for: timeout)
@@ -275,25 +275,17 @@ final class FakeClaudeLauncher: ClaudeProcessLauncher, @unchecked Sendable {
                 resumed.append(waiter.continuation)
             }
         }
+        // The short-lived processes write their output and exit before `start` returns: nothing
+        // that a busy machine delays (a thread, a queue) stands between the start and the exit.
         if arguments == ["--version"] {
-            let output = versionOutput
-            let code = versionExit
-            DispatchQueue.global().async {
-                process.emit(output.trimmingCharacters(in: .newlines))
-                process.exit(.exited(code))
-            }
+            process.emit(versionOutput.trimmingCharacters(in: .newlines))
+            process.exit(.exited(versionExit))
         } else if request.executable == "/bin/zsh" {
-            let output = loginShellOutput
-            DispatchQueue.global().async {
-                for line in output.split(separator: "\n") { process.emit(String(line)) }
-                process.exit(.exited(0))
-            }
+            for line in loginShellOutput.split(separator: "\n") { process.emit(String(line)) }
+            process.exit(.exited(0))
         } else if arguments.contains("--system-prompt") {
-            let output = namingOutput
-            DispatchQueue.global().async {
-                process.emit(output)
-                process.exit(.exited(0))
-            }
+            process.emit(namingOutput)
+            process.exit(.exited(0))
         } else if FakeClaudeLauncher.isChat(process) {
             (script ?? FakeClaudeLauncher.replyingChat())(process)
         } else if arguments.contains("--no-session-persistence") {
@@ -304,7 +296,7 @@ final class FakeClaudeLauncher: ClaudeProcessLauncher, @unchecked Sendable {
             }
             process.onClose = { $0.exit(.exited(0)) }
         } else {
-            DispatchQueue.global().async { process.exit(.exited(1)) }
+            process.exit(.exited(1))
         }
         resumed.forEach { $0.resume(returning: process) }
         return process
@@ -312,7 +304,7 @@ final class FakeClaudeLauncher: ClaudeProcessLauncher, @unchecked Sendable {
 
     /// The next started process (or one already started) that satisfies `predicate`, or nil after
     /// `timeout`.
-    func process(where predicate: @escaping (FakeClaudeProcess) -> Bool, timeout: Duration = .seconds(5)) async -> FakeClaudeProcess? {
+    func process(where predicate: @escaping (FakeClaudeProcess) -> Bool, timeout: Duration = waitLimit) async -> FakeClaudeProcess? {
         let id = UUID()
         let timer = Task.detached { [weak self] in
             try? await Task.sleep(for: timeout)
@@ -337,7 +329,7 @@ final class FakeClaudeLauncher: ClaudeProcessLauncher, @unchecked Sendable {
     }
 
     /// The `nth` chat process (from 0), waiting for it to start.
-    func chatProcess(_ index: Int = 0, timeout: Duration = .seconds(5)) async -> FakeClaudeProcess? {
+    func chatProcess(_ index: Int = 0, timeout: Duration = waitLimit) async -> FakeClaudeProcess? {
         await process(where: { $0.chatOrdinal == index }, timeout: timeout)
     }
 

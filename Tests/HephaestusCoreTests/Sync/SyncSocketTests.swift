@@ -28,7 +28,7 @@ struct SyncSocketTests {
                             closing.socket.sendBinary(Data(repeating: 7, count: 497))
                             closing.socket.close(code)
                         }
-                        return await peer.closeCode(timeout: .seconds(30))
+                        return await peer.closeCode(timeout: waitLimit)
                     }
                 }
                 var codes: [UInt16?] = []
@@ -43,11 +43,13 @@ struct SyncSocketTests {
     }
 
     /// A peer that leaves the data in front of the close frame unread for longer than the close
-    /// wait: the close frame cannot be sent before it reads, and must still reach it then.
+    /// wait: the close frame cannot be sent before it reads, and must still reach it then. The
+    /// close limit is far above any delay of a busy machine, so that only the close wait is
+    /// tested here; `closeLimit()` tests the limit.
     @Test("A close frame queued behind data that the peer reads late reaches it", arguments: [true, false])
     func closeBehindUnreadData(serverCloses: Bool) async throws {
         let frames = 24
-        let (closing, stalled, done) = try await Self.stalledPair(serverCloses: serverCloses)
+        let (closing, stalled, done) = try await Self.stalledPair(serverCloses: serverCloses, closeLimit: 600)
         defer { done() }
         let code: SyncCloseCode = serverCloses ? .goingAway : .normal
         closing.socket.queue.async {
@@ -87,7 +89,7 @@ struct SyncSocketTests {
     private static func stalledPair(serverCloses: Bool, closeLimit: TimeInterval = SyncTimings.fast.closeLimit) async throws
         -> (RawPeer, StalledPeer, @Sendable () -> Void) {
         if serverCloses {
-            let server = try await FakeSyncServer()
+            let server = try await FakeSyncServer(closeLimit: closeLimit)
             let stalled = StalledPeer(connection: NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(integerLiteral: UInt16(server.port)),
                                                                using: .tcp))
             try #require(await stalled.ready())
@@ -95,8 +97,8 @@ struct SyncSocketTests {
                 + "Sec-WebSocket-Key: \(StalledPeer.key)\r\nSec-WebSocket-Version: 13\r\n\r\n")
             let head = try #require(await stalled.readHead())
             try #require(head.hasPrefix("HTTP/1.1 101"))
-            let accepted = try #require(await server.nextPeer(timeout: .seconds(30)))
-            try #require(await accepted.waitReady(timeout: .seconds(30)))
+            let accepted = try #require(await server.nextPeer(timeout: waitLimit))
+            try #require(await accepted.waitReady(timeout: waitLimit))
             return (accepted, stalled, { server.stop(); stalled.connection.cancel() })
         }
         let parameters = NWParameters.tcp
@@ -116,7 +118,7 @@ struct SyncSocketTests {
             listener.start(queue: DispatchQueue(label: "test.stalled-listener"))
         }
         let client = RawPeer(port: port, closeLimit: closeLimit)
-        #expect(await eventually(timeout: .seconds(30)) { !accepted.values.isEmpty })
+        #expect(await eventually(timeout: waitLimit) { !accepted.values.isEmpty })
         let stalled = StalledPeer(connection: try #require(accepted.values.first))
         try #require(await stalled.ready())
         let head = try #require(await stalled.readHead())
@@ -124,7 +126,7 @@ struct SyncSocketTests {
             .dropFirst("sec-websocket-key:".count).trimmingCharacters(in: .whitespaces))
         await stalled.send("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
             + "Sec-WebSocket-Accept: \(StalledPeer.accept(key))\r\n\r\n")
-        try #require(await client.waitReady(timeout: .seconds(30)))
+        try #require(await client.waitReady(timeout: waitLimit))
         return (client, stalled, { listener.cancel(); stalled.connection.cancel() })
     }
 
@@ -133,14 +135,14 @@ struct SyncSocketTests {
         let clients = (0..<count).map { _ in RawPeer(port: server.port) }
         var accepted: [Int: RawPeer] = [:]
         for _ in 0..<count {
-            let peer = try #require(await server.nextPeer(timeout: .seconds(30)))
-            try #require(await peer.waitReady(timeout: .seconds(30)))
+            let peer = try #require(await server.nextPeer(timeout: waitLimit))
+            try #require(await peer.waitReady(timeout: waitLimit))
             let port = try #require(await peer.ports.remote)
             accepted[port] = peer
         }
         var pairs: [(client: RawPeer, accepted: RawPeer)] = []
         for client in clients {
-            try #require(await client.waitReady(timeout: .seconds(30)))
+            try #require(await client.waitReady(timeout: waitLimit))
             let port = try #require(await client.ports.local)
             pairs.append((client, try #require(accepted[port])))
         }

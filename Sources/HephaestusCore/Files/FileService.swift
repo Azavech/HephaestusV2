@@ -48,6 +48,8 @@ final class FileService {
     var pending: [WatchedEvents] = []
     /// When the first project root event of the pending batch arrived.
     var pendingFirstProjectEvent: ContinuousClock.Instant?
+    /// When the events of the pending batch arrived, for `batchObserver`.
+    var pendingArrivals: [ContinuousClock.Instant] = []
     var flushTimer: Task<Void, Never>?
     var flushGeneration = 0
     /// Closed batches waiting while an earlier one is processed.
@@ -56,8 +58,19 @@ final class FileService {
 
     /// Called with every `projectDataFilesChanged` call before it is made, for tests.
     var dataChangeObserver: (@Sendable (ProjectID, [String]) -> Void)?
+    /// Called with the timing of every batch when it closes, for tests.
+    var batchObserver: (@Sendable (FileBatchTiming) -> Void)?
 
     init() {}
+}
+
+/// When the events of a batch reached the engine and when the batch closed: the instants that
+/// the batching rule of `receiveFileEvents` works with, for tests.
+struct FileBatchTiming: Sendable {
+    var arrivals: [ContinuousClock.Instant]
+    /// The arrival of the first project root event; nil for a batch of the data directory only.
+    var firstProjectEvent: ContinuousClock.Instant?
+    var closed: ContinuousClock.Instant
 }
 
 /// Events of one stream.
@@ -113,6 +126,7 @@ extension Engine {
         files.flushTimer = nil
         files.pending.removeAll()
         files.pendingFirstProjectEvent = nil
+        files.pendingArrivals.removeAll()
         files.closedBatches.removeAll()
     }
 
@@ -168,6 +182,11 @@ extension Engine {
         files.dataChangeObserver = observer
     }
 
+    /// Observes the timing of the batches when they close, for tests.
+    func observeFileBatches(_ observer: (@Sendable (FileBatchTiming) -> Void)?) {
+        files.batchObserver = observer
+    }
+
     private func makeFileWatcher(path: String, source: WatchedEvents.Source,
                                  keep: (@Sendable (FileWatcher.Event) -> Bool)? = nil) -> FileWatcher? {
         guard let input = files.eventInput else { return nil }
@@ -193,6 +212,7 @@ extension Engine {
         guard files.isWatching else { return }
         let now = ContinuousClock.now
         files.pending.append(events)
+        files.pendingArrivals.append(now)
         if case .projectRoot = events.source, files.pendingFirstProjectEvent == nil {
             files.pendingFirstProjectEvent = now
         }
@@ -216,9 +236,12 @@ extension Engine {
     /// Closes the pending batch and processes the closed batches one after the other.
     private func closeFileBatch(generation: Int) async {
         guard files.isWatching, generation == files.flushGeneration, !files.pending.isEmpty else { return }
+        files.batchObserver?(FileBatchTiming(arrivals: files.pendingArrivals, firstProjectEvent: files.pendingFirstProjectEvent,
+                                             closed: ContinuousClock.now))
         files.closedBatches.append(files.pending)
         files.pending.removeAll()
         files.pendingFirstProjectEvent = nil
+        files.pendingArrivals.removeAll()
         files.flushTimer = nil
         guard !files.isProcessing else { return }
         files.isProcessing = true

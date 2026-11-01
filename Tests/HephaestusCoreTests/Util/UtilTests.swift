@@ -206,10 +206,13 @@ struct ChildProcessTests {
                         if (try? ChildProcess.spawn(missing)) != nil {
                             problems.append("a missing executable started")
                         }
+                        // The workers take turns with the other tests instead of holding a
+                        // thread of the pool for their 300 rounds.
+                        await Task.yield()
                         guard round % 30 == worker % 30 else { continue }
                         let input = Data("\(worker)-\(round)".utf8)
                         do {
-                            let result = try await ChildProcessRunner.run(echo, input: input, timeout: .seconds(20))
+                            let result = try await ChildProcessRunner.run(echo, input: input, timeout: waitLimit)
                             if result.standardOutput != input || result.standardErrorText != "err\n" || !result.termination.isSuccess {
                                 problems.append("run \(worker)-\(round): \(result.termination), \(result.standardOutputText)")
                             }

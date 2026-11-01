@@ -40,7 +40,7 @@ struct FileWatchingTests {
         try await withFileTestEngine(files: ["src/.keep": ""]) { _, connection, project in
             let events = connection.events
             try project.write("src/main.go", "package main\n")
-            let envelope = await firstElement(of: events, timeout: .seconds(20)) { envelope in
+            let envelope = await firstElement(of: events, timeout: waitLimit) { envelope in
                 guard let paths = filesChangedPayload(envelope)?.paths else { return false }
                 return paths.contains("src/main.go") || paths == [""]
             }
@@ -167,37 +167,50 @@ struct FileWatchingTests {
 
     @Test("Events wait 300 ms of quiet, and at most 2 s after the first change")
     func debounce() async throws {
-        try await withFileTestEngine { _, connection, project in
+        try await withFileTestEngine { engine, connection, project in
             let events = connection.events
             try await sync(project, events)
 
-            var start = ContinuousClock.now
+            let start = ContinuousClock.now
             try project.write("single.txt", "x")
             #expect(await filesChanged(on: events) { $0.contains("single.txt") } != nil)
             #expect(ContinuousClock.now - start >= .milliseconds(290))
 
-            // Changes every 20 ms for 6 s never leave 300 ms of quiet, even when the load of the
-            // test run delays the writer: the first event comes 2 s after the first change, long
-            // before the changes stop. The writer is a thread of its own, so that tasks blocking
-            // the cooperative pool do not hold it back.
-            start = ContinuousClock.now
+            // Changes every 20 ms. The rule applies to the instants at which the events reach the
+            // engine, and a loaded machine delivers FSEvents with longer gaps at times, so each
+            // batch is checked against its own arrivals: none closes before 300 ms of quiet or
+            // 2 s after its first event. The changes go on until a batch closed at 2 s while its
+            // events still arrived. The writer is a thread of its own, so that tasks blocking the
+            // cooperative pool do not hold it back.
+            let batches = Collected<FileBatchTiming>()
+            await engine.observeFileBatches { batches.append($0) }
+            @Sendable func closedByMaximum(_ batch: FileBatchTiming) -> Bool {
+                guard let first = batch.firstProjectEvent, let last = batch.arrivals.last else { return false }
+                return batch.closed - last < FileService.quietDelay && batch.closed - first >= FileService.maximumDelay
+            }
             let stop = Collected<Bool>()
             let stopped = Collected<Bool>()
             let writer = Thread {
-                for index in 0..<300 where stop.values.isEmpty {
-                    try? project.write("busy/\(index).txt", "x")
+                var index = 0
+                while stop.values.isEmpty {
+                    try? project.write("busy/\(index % 300).txt", "\(index)")
+                    index += 1
                     Thread.sleep(forTimeInterval: 0.02)
                 }
                 stopped.append(true)
             }
             writer.start()
-            let first = await filesChanged(on: events) { $0.contains { $0.hasPrefix("busy") } }
-            let elapsed = ContinuousClock.now - start
+            #expect(await eventually(timeout: waitLimit) { batches.values.contains(where: closedByMaximum) })
             stop.append(true)
-            #expect(await eventually(timeout: .seconds(10)) { !stopped.values.isEmpty })
-            #expect(first != nil)
-            #expect(elapsed >= .milliseconds(1900))
-            #expect(elapsed < .milliseconds(5500))
+            #expect(await eventually { !stopped.values.isEmpty })
+            #expect(await filesChanged(on: events) { $0.contains { $0.hasPrefix("busy/") } } != nil)
+            for batch in batches.values {
+                guard let last = batch.arrivals.last else { continue }
+                let quiet = batch.closed - last >= FileService.quietDelay
+                let maximum = batch.firstProjectEvent.map { batch.closed - $0 >= FileService.maximumDelay } ?? false
+                #expect(quiet || maximum, "a batch closed \(batch.closed - last) after its last event")
+            }
+            await engine.observeFileBatches(nil)
         }
     }
 
@@ -238,10 +251,10 @@ struct FileWatchingTests {
             let file = project.subRoot.appendingPathComponent(".hephaestus/project.yml")
             let saved = try Data(contentsOf: file)
             try FileManager.default.removeItem(at: file)
-            let removed = try #require(await firstEvent(named: ProjectRemovedEvent.name, on: events, timeout: .seconds(20)))
+            let removed = try #require(await firstEvent(named: ProjectRemovedEvent.name, on: events, timeout: waitLimit))
             #expect(try removed.payload(ProjectRemovedEvent.self).projectID == FileTestProject.subID)
             try saved.write(to: file)
-            let changed = await firstElement(of: events, timeout: .seconds(20)) { envelope in
+            let changed = await firstElement(of: events, timeout: waitLimit) { envelope in
                 guard envelope.name == ProjectsChangedEvent.name,
                       let list = try? envelope.payload(ProjectsChangedEvent.self) else { return false }
                 return list.contains { $0.id == FileTestProject.subID }
@@ -259,7 +272,7 @@ struct FileWatchingTests {
             try ProjectFileStore.write(Project(id: "OTHER", name: "Other", created: Date(timeIntervalSince1970: 1_790_000_000)),
                                        to: ProjectFolder(root: other))
             try DeviceFileStore.write(Registry(projects: [other.path]), to: engine.dataDirectory)
-            let removed = try #require(await firstEvent(named: ProjectRemovedEvent.name, on: events, timeout: .seconds(20)))
+            let removed = try #require(await firstEvent(named: ProjectRemovedEvent.name, on: events, timeout: waitLimit))
             #expect(removed.origin == .system)
             #expect(try removed.payload(ProjectRemovedEvent.self).projectID == FileTestProject.id)
             #expect(try await connection.call(ProjectsList.self).map(\.id) == ["OTHER"])
@@ -297,7 +310,7 @@ struct FileWatchingTests {
             #expect(settings.formatGoOnSave)
             settings.formatGoOnSave = false
             try DeviceFileStore.write(settings, to: engine.dataDirectory)
-            let envelope = try #require(await firstEvent(named: SettingsUpdatedEvent.name, on: events, timeout: .seconds(20)))
+            let envelope = try #require(await firstEvent(named: SettingsUpdatedEvent.name, on: events, timeout: waitLimit))
             #expect(envelope.origin == .system)
             #expect(try envelope.payload(SettingsUpdatedEvent.self).formatGoOnSave == false)
             #expect(try await connection.call(SettingsGet.self).formatGoOnSave == false)
@@ -312,7 +325,7 @@ struct FileWatchingTests {
             settings.formatGoOnSave = false
             settings.unknownKeys = ["handNote": .string("kept")]
             try DeviceFileStore.write(settings, to: engine.dataDirectory)
-            _ = try #require(await firstEvent(named: SettingsUpdatedEvent.name, on: events, timeout: .seconds(20)))
+            _ = try #require(await firstEvent(named: SettingsUpdatedEvent.name, on: events, timeout: waitLimit))
 
             _ = try await connection.call(SettingsUpdate.self, .init(formatSwiftOnSave: true))
             let written = try String(contentsOf: engine.dataDirectory.settingsFile, encoding: .utf8)
@@ -334,7 +347,7 @@ struct FileWatchingTests {
             var settings = original
             settings.formatSwiftOnSave = true
             try DeviceFileStore.write(settings, to: engine.dataDirectory)
-            let envelope = try #require(await firstEvent(named: SettingsUpdatedEvent.name, on: settingsEvents, timeout: .seconds(20)))
+            let envelope = try #require(await firstEvent(named: SettingsUpdatedEvent.name, on: settingsEvents, timeout: waitLimit))
             #expect(try envelope.payload(SettingsUpdatedEvent.self) == settings)
         }
     }

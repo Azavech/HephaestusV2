@@ -450,14 +450,14 @@ struct SkillsEngineTests {
                     try await Task.sleep(for: .seconds(2))
                 }
             }
-            let primed = await firstEvent(named: SkillsChangedEvent.name, on: events, timeout: .seconds(20))
+            let primed = await firstEvent(named: SkillsChangedEvent.name, on: events, timeout: waitLimit)
             primer.cancel()
             _ = await primer.result
             _ = try #require(primed)
             // FSEvents may report one write in several callbacks, each a skills.changed of the
             // library as it was then: each step waits for the event that shows its change.
             func changed(to skills: [SkillSummary]) async -> EngineEventEnvelope? {
-                await firstElement(of: events, timeout: .seconds(20)) {
+                await firstElement(of: events, timeout: waitLimit) {
                     $0.name == SkillsChangedEvent.name && (try? $0.payload(SkillsChangedEvent.self)) == skills
                 }
             }
@@ -468,7 +468,7 @@ struct SkillsEngineTests {
             #expect(try #require(await changed(to: outside)).origin == .system)
 
             try writeFile("outside/templates/x.md", in: library, "x")
-            let inside = try #require(await firstEvent(named: SkillsChangedEvent.name, on: events, timeout: .seconds(20)))
+            let inside = try #require(await firstEvent(named: SkillsChangedEvent.name, on: events, timeout: waitLimit))
             #expect(inside.origin == .system)
         }
     }
@@ -494,7 +494,7 @@ struct SkillsEngineTests {
                         try await Task.sleep(for: .seconds(2))
                     }
                 }
-                let seen = await firstElement(of: events, timeout: .seconds(20)) {
+                let seen = await firstElement(of: events, timeout: waitLimit) {
                     $0.name == SkillsChangedEvent.name && $0.origin == .system
                         && ((try? $0.payload(SkillsChangedEvent.self).map(\.name)) ?? []).contains("outside")
                 }

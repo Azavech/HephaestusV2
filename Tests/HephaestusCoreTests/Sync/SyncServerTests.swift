@@ -146,16 +146,16 @@ struct SyncServerTests {
         silentTimings.helloDeadline = 3
         try await withServer(silentTimings) { engine, port in
             let silent = RawPeer(port: port)
-            #expect(await silent.waitReady(timeout: .seconds(20)))
+            #expect(await silent.waitReady(timeout: waitLimit))
             // A connection reads the timings when it is accepted: the next one has the standard
             // hello deadline to send its hello in, and 0.3 s for its auth.
             var timings = SyncTimings.fast
             timings.authDeadline = 0.3
             await engine.syncServer.setTimings(timings)
-            #expect(await silent.closeCode(timeout: .seconds(20)) == 4006)
+            #expect(await silent.closeCode(timeout: waitLimit) == 4006)
 
             let noAuth = RawPeer(port: port)
-            #expect(await noAuth.waitReady(timeout: .seconds(20)))
+            #expect(await noAuth.waitReady(timeout: waitLimit))
             noAuth.sendText(hello())
             guard case .text? = await noAuth.next() else {
                 Issue.record("no challenge")
@@ -254,7 +254,7 @@ struct SyncServerTests {
                 }
             }
             var ids: [Int] = []
-            while ids.count < count, case .binary(let frame)? = await peer.next(timeout: .seconds(30)) {
+            while ids.count < count, case .binary(let frame)? = await peer.next(timeout: waitLimit) {
                 let object = try #require(SyncMessageCheck.jsonObject(try session.opener.open(frame)))
                 if case .int(let id)? = object["id"] {
                     ids.append(id)

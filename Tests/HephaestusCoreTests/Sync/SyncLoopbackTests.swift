@@ -227,7 +227,7 @@ struct SyncLoopbackTests {
             let record = try #require(remote.pairedDevices.devices.first)
             try remote.pairedDevices.save(RemoteDevice(id: record.id, name: record.name, host: "127.0.0.1", port: port),
                                           code: try #require(remote.pairedDevices.code(forDeviceID: main.deviceID)))
-            #expect(await phase(of: connection, timeout: .seconds(8)) { $0 == .connected } == .connected)
+            #expect(await phase(of: connection, timeout: waitLimit) { $0 == .connected } == .connected)
             #expect(try await connection.call(SnapshotGet.self).device.id == main.deviceID)
             let lines = log.entries.map(\.message)
             #expect(lines.contains("connection to Studio ended, code 1001; next attempt in 0.1 s"))
@@ -251,15 +251,15 @@ struct SyncLoopbackTests {
             // Recorded from the start: the first session lasts 0.6 s, less than a loaded machine
             // can take to look at it.
             let recorder = PhaseRecorder(connection)
-            #expect(await eventually(timeout: .seconds(20)) { recorder.phases.contains(.connected) })
+            #expect(await eventually(timeout: waitLimit) { recorder.phases.contains(.connected) })
             // The sessions accepted from now on stay open, so that a call can reach one.
             await main.syncServer.setTimings(.fast)
-            #expect(await eventually(timeout: .seconds(20)) { recorder.phases(from: { $0 == .connected }).contains { $0.isWaiting } })
+            #expect(await eventually(timeout: waitLimit) { recorder.phases(from: { $0 == .connected }).contains { $0.isWaiting } })
             let lost = recorder.phases(from: { $0 == .connected }).first { $0.isWaiting }
             #expect(lost?.message == "The connection to Studio was lost.")
             // A session accepted before the timings changed can be cancelled before the call
             // reaches it; the client then reconnects once more.
-            #expect(await eventually(timeout: .seconds(20)) { (try? await connection.call(SnapshotGet.self))?.device.name == "Studio" })
+            #expect(await eventually(timeout: waitLimit) { (try? await connection.call(SnapshotGet.self))?.device.name == "Studio" })
         }
     }
 
@@ -364,9 +364,9 @@ struct SyncLoopbackTests {
             await main.emit(SkillsChangedEvent.self, [], origin: .system)
             // Other events of the engines' background work may come first. The 32 MiB event
             // takes a debug build a while to encode and decode.
-            let remoteEvent = try #require(await firstElement(of: remoteEvents, timeout: .seconds(30)) { $0.name == SkillsChangedEvent.name })
+            let remoteEvent = try #require(await firstElement(of: remoteEvents, timeout: waitLimit) { $0.name == SkillsChangedEvent.name })
             #expect(remoteEvent.data == [])
-            let local = try #require(await firstElement(of: localEvents, timeout: .seconds(30)) { $0.name == SkillsChangedEvent.name })
+            let local = try #require(await firstElement(of: localEvents, timeout: waitLimit) { $0.name == SkillsChangedEvent.name })
             #expect(local.data.stringValue?.count == 33_554_432)
             let logText = try String(contentsOf: main.dataDirectory.engineLogFile, encoding: .utf8)
             #expect(logText.contains("WARN sync: event skills.changed of 33554520 bytes not sent to \(remote.deviceID)"))

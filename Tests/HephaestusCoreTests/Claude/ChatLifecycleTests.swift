@@ -127,7 +127,7 @@ struct ChatLifecycleTests {
             _ = await first.waitForExit()
             #expect(first.isInputClosed)
             let configFile = bed.dataDirectory.mcpConfigFile(chatID: chat.id).path
-            #expect(await eventually(timeout: .seconds(10)) { !FileManager.default.fileExists(atPath: configFile) })
+            #expect(await eventually(timeout: waitLimit) { !FileManager.default.fileExists(atPath: configFile) })
             try await bed.send(chat.id, "Three")
             let second = try #require(await bed.launcher.chatProcess(1))
             #expect(Array(second.request.arguments[7...8]) == ["--resume", chat.id.uuidString])

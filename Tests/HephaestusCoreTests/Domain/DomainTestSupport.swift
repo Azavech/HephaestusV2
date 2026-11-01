@@ -63,6 +63,7 @@ func withDomainEngine<T>(prepare: (DataDirectory, URL) throws -> Void = { _, _ i
         let configuration = EngineConfiguration.test(dataDirectory: directory.url, claudeLauncher: NoClaudeLauncher())
         let engine = try await Engine(configuration: configuration)
         await engine.useFileTrash(.folder(trash))
+        await engine.useCLITimings(.inert)
         await engine.start()
         // The reload rules are tested by calling the domain's hooks; the FSEvents streams that
         // call them are tested in Files/, and their files.changed events would mix with the
@@ -156,7 +157,7 @@ final class DomainEventRecorder: @unchecked Sendable {
     /// Waits until `predicate` holds for the events received, at most `timeout`; returns the
     /// events then.
     @discardableResult
-    func wait(timeout: Duration = .seconds(5), until predicate: ([EngineEventEnvelope]) -> Bool) async -> [EngineEventEnvelope] {
+    func wait(timeout: Duration = waitLimit, until predicate: ([EngineEventEnvelope]) -> Bool) async -> [EngineEventEnvelope] {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
             let current = all
@@ -168,7 +169,7 @@ final class DomainEventRecorder: @unchecked Sendable {
 
     /// Waits until an event named `name` arrived, then returns the names received.
     @discardableResult
-    func wait(for name: String, count: Int = 1, timeout: Duration = .seconds(5)) async -> [String] {
+    func wait(for name: String, count: Int = 1, timeout: Duration = waitLimit) async -> [String] {
         await wait(timeout: timeout) { events in events.filter { $0.name == name }.count >= count }.map(\.name)
     }
 

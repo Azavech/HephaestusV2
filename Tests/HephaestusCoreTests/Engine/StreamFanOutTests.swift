@@ -22,15 +22,22 @@ struct StreamFanOutTests {
         let stopCancelling = Recorder<Bool>()
         // Consumers suspended in `next()` are cancelled from other threads while the producer
         // yields: each cancellation runs the stream's termination handler, which removes the
-        // consumer from the fan-out.
+        // consumer from the fan-out. One consumer at a time: the next one is made once the
+        // cancelled one ended, so that the work stays the same however late the tasks start.
         let canceller = Thread {
             while stopCancelling.values.isEmpty {
                 let stream = fanOut.stream()
+                let started = DispatchSemaphore(value: 0)
+                let ended = DispatchSemaphore(value: 0)
                 let task = Task.detached {
+                    started.signal()
                     for await _ in stream {}
+                    ended.signal()
                 }
+                started.wait()
                 usleep(50)
                 task.cancel()
+                ended.wait()
             }
         }
         canceller.start()
@@ -40,9 +47,10 @@ struct StreamFanOutTests {
             }
             producerDone.signal()
         }
+        // The producer only yields, which never waits: the bound only ends a deadlocked run.
         let finished = await withCheckedContinuation { continuation in
-            DispatchQueue.global().async {
-                continuation.resume(returning: producerDone.wait(timeout: .now() + 20) == .success)
+            Thread.detachNewThread {
+                continuation.resume(returning: producerDone.wait(timeout: .now() + 120) == .success)
             }
         }
         stopCancelling.append(true)
