@@ -115,6 +115,23 @@ final class WebTabsController: SectionCommandHandler {
         controllers[window.id]
     }
 
+    /// The projects whose `selectedWebTabID` a navigation set in a window that has no controller
+    /// yet, by window id.
+    @ObservationIgnored private static var navigatedSelections: [UUID: Set<ProjectKey>] = [:]
+
+    /// A `webTab` target is about to set the selection of a project in a window: that selection
+    /// was set by a navigation, so a tab it names that does not exist shows the not-found text
+    /// (docs/web-tabs.md › Selection), also when the window shows its Web section for the first
+    /// time since launch.
+    static func willSelectByNavigation(in window: WindowState, projectID: String) {
+        let key = ProjectKey(deviceID: window.deviceID, projectID: projectID)
+        if let controller = controllers[window.id], !controller.isTornDown {
+            controller.knownSelections[key] = nil
+        } else {
+            navigatedSelections[window.id, default: []].insert(key)
+        }
+    }
+
     @ObservationIgnored let windowID: UUID
     @ObservationIgnored private(set) weak var window: WindowState?
     /// The project whose tabs the web views show.
@@ -136,6 +153,9 @@ final class WebTabsController: SectionCommandHandler {
     /// The locked tab whose `This tab is locked` label shows.
     private(set) var lockedNoticeTabID: UUID?
     private(set) var urlFieldFocus = URLFieldFocus()
+    /// The last `urlFieldFocus.count` an address bar has seen: a request made while no address
+    /// bar was shown (⌘T with no tab) is performed by the next address bar when it appears.
+    @ObservationIgnored var seenURLFieldFocus = 0
     var findBar = WebFindState()
     let downloads = WebDownloads()
     /// JavaScript dialogs, the first one shown in the window's sheet.
@@ -146,7 +166,7 @@ final class WebTabsController: SectionCommandHandler {
     @ObservationIgnored private var lastSeenSelection: String?
     /// The selection of each project as this controller last knew it; a selection that differs
     /// was set by a navigation (docs/ui.md › Resolving a target).
-    @ObservationIgnored private var knownSelections: [ProjectKey: String] = [:]
+    @ObservationIgnored fileprivate var knownSelections: [ProjectKey: String] = [:]
     /// Tabs this window opened or adopted that no `webTabs.updated` listed yet.
     @ObservationIgnored private var awaitedTabIDs: Set<UUID> = []
     @ObservationIgnored private var closeObserver: NSObjectProtocol?
@@ -157,7 +177,8 @@ final class WebTabsController: SectionCommandHandler {
     private init(window: WindowState) {
         windowID = window.id
         self.window = window
-        for (key, state) in window.projectStates {
+        let navigated = Self.navigatedSelections.removeValue(forKey: window.id) ?? []
+        for (key, state) in window.projectStates where !navigated.contains(key) {
             if let selected = state.selectedWebTabID {
                 knownSelections[key] = selected
             }
@@ -273,11 +294,9 @@ final class WebTabsController: SectionCommandHandler {
     /// The first tab list of a binding: a selection that is nil, or names a tab that no longer
     /// exists, selects the first tab; a navigation's tab that does not exist shows the not-found
     /// text.
-    // DOC-GAP: docs/web-tabs.md › Selection selects the first tab when `selectedWebTabID` names a
-    // tab that no longer exists, while docs/ui.md › Resolving a target shows `Web tab <id> was not
-    // found.` for a navigation to a missing tab. A selection this window wrote or found when it
-    // first showed its Web section follows the first rule; one set since by a navigation follows
-    // the second.
+    // A selection this window wrote, or found when it first showed its Web section, follows the
+    // first rule of docs/web-tabs.md › Selection; one set by a navigation (`knownSelections` has no
+    // entry for it, `willSelectByNavigation`) follows the second.
     private func validateInitialSelection(_ tabs: [WebTab]) {
         guard let key, localSelection == nil, let window else { return }
         let selected = window.projectStates[key]?.selectedWebTabID
@@ -484,20 +503,22 @@ final class WebTabsController: SectionCommandHandler {
     // MARK: Storing what the page shows (docs/web-tabs.md › Storing what the page shows)
 
     /// After 1 second without change: the changed `url` and `title` in one `webTabs.update`; a
-    /// failure is written to the log and ignored.
+    /// URL or title the page reached during a sync load is never written; a failure is written to
+    /// the log and ignored.
     func storePage(_ page: WebPage) {
         guard let key, let tabID = page.tabID, let workspace = window?.workspace, workspace.deviceID == key.deviceID,
               workspace.isConnected, let tab = workspace.webTabs[key.projectID]?.first(where: { $0.id == tabID }) else { return }
         var url: String?
         if let current = page.webView.url, let scheme = current.scheme?.lowercased(), scheme == "http" || scheme == "https" {
             let stored = storedForm(of: current.absoluteString, tabID: tabID)
-            if stored != tab.url {
+            if stored != tab.url, !page.syncReachedURLs.contains(stored) {
                 url = stored
             }
         }
         var title: String?
         let cleaned = Self.cleanedTitle(page.webView.title ?? "")
-        if !cleaned.isEmpty, cleaned != tab.title, String(cleaned.prefix(WebTabsController.titleLimit)) != tab.title {
+        if !cleaned.isEmpty, cleaned != tab.title, String(cleaned.prefix(WebTabsController.titleLimit)) != tab.title,
+           !page.syncReachedTitles.contains(cleaned) {
             title = cleaned
         }
         guard url != nil || title != nil else { return }

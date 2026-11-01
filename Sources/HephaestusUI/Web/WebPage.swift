@@ -21,6 +21,47 @@ final class TabWebView: WKWebView {
     var onFindAction: ((NSTextFinder.Action) -> Void)?
     /// True while the find bar has a search string, for Find Next and Find Previous.
     var hasFindString: () -> Bool = { false }
+    /// When the primary mouse button last went down or up in the web view.
+    private(set) var lastClickTime: Date?
+    private var clickMonitor: Any?
+
+    /// True when a navigation of the page comes after a user click (docs/web-tabs.md › Schemes):
+    /// a link activation, or a script navigation or form submission within 1 second of a click.
+    func isAfterUserClick(_ action: WKNavigationAction, now: Date = Date()) -> Bool {
+        switch action.navigationType {
+        case .linkActivated:
+            return true
+        case .formSubmitted, .other:
+            guard let lastClickTime else { return false }
+            return now.timeIntervalSince(lastClickTime) <= 1
+        default:
+            return false
+        }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil {
+            if let clickMonitor {
+                NSEvent.removeMonitor(clickMonitor)
+                self.clickMonitor = nil
+            }
+        } else if clickMonitor == nil {
+            // A monitor, so that the clicks are seen whichever view of WebKit handles them.
+            clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp]) { [weak self] event in
+                MainActor.assumeIsolated {
+                    self?.noteClick(event)
+                }
+                return event
+            }
+        }
+    }
+
+    private func noteClick(_ event: NSEvent) {
+        guard let window, event.window === window, !isHiddenOrHasHiddenAncestor,
+              visibleRect.contains(convert(event.locationInWindow, from: nil)) else { return }
+        lastClickTime = Date()
+    }
 
     override func performTextFinderAction(_ sender: Any?) {
         guard let action = Self.action(of: sender) else { return }
@@ -94,6 +135,11 @@ final class WebPage: NSObject {
     @ObservationIgnored private var syncQuietUntil: Date?
     @ObservationIgnored private var storeTask: Task<Void, Never>?
     @ObservationIgnored private var storeChangeFromSync = false
+    /// The URLs, in stored form, and the cleaned titles the web view reached during a sync load:
+    /// none of them is written back until the web view reaches another URL (docs/web-tabs.md ›
+    /// Changes from other clients).
+    @ObservationIgnored private(set) var syncReachedURLs: Set<String> = []
+    @ObservationIgnored private(set) var syncReachedTitles: Set<String> = []
     @ObservationIgnored private var observations: [NSKeyValueObservation] = []
     @ObservationIgnored private var isClosed = false
 
@@ -154,6 +200,8 @@ final class WebPage: NSObject {
         if let shown = shownStoredURL, shown == storedURL { return }
         syncLoading = true
         syncQuietUntil = nil
+        syncReachedURLs = []
+        syncReachedTitles = []
         syncNavigation = load(storedURL: storedURL)
         if syncNavigation == nil {
             syncLoading = false
@@ -214,6 +262,7 @@ final class WebPage: NSObject {
         pageTitle = webView.title ?? ""
         controller?.pageDidChange(self)
         storeChangeFromSync = isSyncQuiet
+        rememberSyncReached(quiet: storeChangeFromSync)
         storeTask?.cancel()
         storeTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1))
@@ -221,6 +270,24 @@ final class WebPage: NSObject {
             if !self.storeChangeFromSync {
                 self.controller?.storePage(self)
             }
+        }
+    }
+
+    /// During a sync load, notes the URL and title reached; afterwards, a URL that is not one of
+    /// them forgets them.
+    private func rememberSyncReached(quiet: Bool) {
+        let shown = shownStoredURL
+        if quiet {
+            if let shown {
+                syncReachedURLs.insert(shown)
+            }
+            let title = WebTabsController.cleanedTitle(pageTitle)
+            if !title.isEmpty {
+                syncReachedTitles.insert(title)
+            }
+        } else if let shown, !syncReachedURLs.isEmpty, !syncReachedURLs.contains(shown) {
+            syncReachedURLs = []
+            syncReachedTitles = []
         }
     }
 
@@ -272,7 +339,7 @@ extension WebPage: WKNavigationDelegate {
         default:
             decisionHandler(.cancel)
             // Other schemes in the main frame after a user click go to macOS on this Mac.
-            if isMainFrame, navigationAction.navigationType == .linkActivated {
+            if isMainFrame, self.webView.isAfterUserClick(navigationAction) {
                 NSWorkspace.shared.open(url)
             }
         }

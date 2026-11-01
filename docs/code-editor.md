@@ -108,10 +108,11 @@ The context menu of a tab has Close, Close Other Tabs, Reveal in File Tree (expa
 
 A file opens when it is clicked in the tree, when a `file` navigation target arrives (search results, links in docs, chats and tickets, `open_in_app`, [UI](ui.md#resolving-a-target)), or when a window is restored with open tabs.
 
-1. When a tab already has the path, it is selected; otherwise a tab is added and selected.
-2. A new tab reads the file with `files.read` and creates its [buffer](#editor-buffers) from the result ([Large and binary files](#large-and-binary-files)).
-3. A `file` target with `line` n selects line n (its text without the line break; n is clamped to 1 through the number of lines), puts that line in the vertical middle of the view and gives the editor the focus. Without `line` the insertion point goes to the start of the file.
-4. A `file` target naming a folder reveals and selects it in the tree. A path that does not exist shows `File <path> was not found.` in the editor area (the buffer's content `notFound`, [Editor buffers](#editor-buffers)).
+1. A `file` target whose path no tab has first lists the parent folder with `files.list`. When the path is a folder there, the folders above it are expanded, the folder is selected and scrolled into view in the tree, and the editor tabs and their selection stay as they are; the steps below do not apply. When the listing fails or does not show the path as a folder, the target opens as a file.
+2. When a tab already has the path, it is selected; otherwise a tab is added and selected. For a `file` target the folders above the file are expanded and the file is selected in the tree, as Reveal in File Tree does.
+3. A new tab reads the file with `files.read` and creates its [buffer](#editor-buffers) from the result ([Large and binary files](#large-and-binary-files)). When that read finds a folder (a folder the listing of step 1 did not show), the tab is removed, the tab selected before it is selected again, and the folder is revealed and selected in the tree as in step 1.
+4. A `file` target with `line` n selects line n (its text without the line break; n is clamped to 1 through the number of lines), puts that line in the vertical middle of the view and gives the editor the focus. Without `line` the insertion point goes to the start of the file.
+5. A path that does not exist shows `File <path> was not found.` in the editor area (the buffer's content `notFound`, [Editor buffers](#editor-buffers)).
 
 Tabs restored with a window are read again from disk; a restored tab whose file no longer exists is dropped. Buffers are never persisted ([UI](ui.md#persistence)).
 

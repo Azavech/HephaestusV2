@@ -102,6 +102,9 @@ final class EditorBuffer {
 
     /// A reveal for the editor once the text is shown.
     var pendingReveal: EditorReveal?
+    /// The tab selected before a `file` target opened this tab; selected again when the read
+    /// finds a folder (docs/code-editor.md › Opening files, step 3).
+    @ObservationIgnored var tabSelectedBeforeOpening: String?
     /// True while the buffer's text view has the keyboard focus.
     var hasEditorFocus = false
     /// The file size of the last read.
@@ -477,15 +480,21 @@ final class EditorBuffer {
         }
     }
 
+    /// The read of a `file` target's tab found a folder: the tab is removed, the tab selected
+    /// before it is selected again, and the folder is revealed in the tree.
     private func revealAsFolder() {
         guard let window, let projectID else { return }
         let buffer = self
         let folder = path
+        let previous = tabSelectedBeforeOpening
         detach()
         window.updateViewState(of: projectID) { state in
+            let wasSelected = state.selectedEditorPath == folder
             state.removeEditorTab(buffer)
-            state.expandedCodeFolders.formUnion(ProjectPaths.ancestors(of: folder))
-            state.selectedTreePath = folder
+            if wasSelected, let previous, state.editorTabs.contains(where: { $0.path == previous }) {
+                state.selectedEditorPath = previous
+            }
+            state.revealFolder(folder)
         }
     }
 

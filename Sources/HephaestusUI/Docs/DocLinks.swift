@@ -51,6 +51,8 @@ enum DocLinks {
         if let question = rest.firstIndex(of: "?") {
             rest = rest[..<question]
         }
+        // A reference made of a fragment or a query only resolves to nothing.
+        guard !rest.isEmpty else { return nil }
         let isFileURL = scheme(of: String(rest))?.lowercased() == "file"
         if isFileURL {
             rest = rest.dropFirst("file:".count)

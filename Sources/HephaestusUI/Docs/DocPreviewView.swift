@@ -165,6 +165,9 @@ final class DocPreviewController: NSObject, WKNavigationDelegate {
     /// Sets the engine and the window; creates the web view with its scheme handler once.
     func configure(workspace: DeviceWorkspace, projectID: String, window: WindowState?) {
         self.window = window
+        if let window {
+            CodeDocsStore.shared.entry(window: window, projectID: projectID).preview = self
+        }
         guard webView == nil || self.workspace !== workspace || self.projectID != projectID else { return }
         self.workspace = workspace
         self.projectID = projectID
@@ -235,6 +238,11 @@ final class DocPreviewController: NSObject, WKNavigationDelegate {
         _ = try? await webView.evaluateJavaScript("HephaestusDoc.render(\(json))")
     }
 
+    /// True when the preview shows the doc at `path`, rendered.
+    func showsRendered(_ path: String) -> Bool {
+        hasRendered && renderedPath == path && docPath == path
+    }
+
     /// Scrolls the shown doc to an element id.
     func scroll(to fragment: String) {
         guard let data = try? JSONSerialization.data(withJSONObject: [fragment]),
@@ -301,13 +309,8 @@ final class DocPreviewController: NSObject, WKNavigationDelegate {
                 }
                 return
             }
-            let entry = CodeDocsStore.shared.entry(window: window, projectID: projectID)
-            entry.pendingFragment = fragment.map { (path, $0) }
             Task {
-                await window.navigate(to: .doc(projectID: projectID, path: path))
-                if FileActions.viewState(window, projectID).selectedDocPath != path, entry.pendingFragment?.path == path {
-                    entry.pendingFragment = nil
-                }
+                await window.navigate(to: .doc(projectID: projectID, path: path, fragment: fragment))
             }
         case .file(let path, let line):
             Task {

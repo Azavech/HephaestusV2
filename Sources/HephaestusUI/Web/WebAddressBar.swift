@@ -45,7 +45,10 @@ struct WebAddressBar: View {
                 }
                 .disabled(page == nil)
             }
+            // With no tab the Web section shows no address bar: the focus request of ⌘T, New Tab or
+            // ⌥⌘L is performed when this bar appears with the placeholder (docs/web-tabs.md › New tab).
             CommandTextField(text: $text, accessibilityLabel: "Address", focusRequest: controller.urlFieldFocus.count,
+                             focusOnAppear: controller.urlFieldFocus.count != controller.seenURLFieldFocus,
                              onCommand: handle, onFocusChange: focusChanged)
                 .padding(.leading, 4)
         }
@@ -66,6 +69,9 @@ struct WebAddressBar: View {
             } else if !isEditing {
                 text = displayedURL
             }
+        }
+        .onChange(of: controller.urlFieldFocus.count, initial: true) { _, count in
+            controller.seenURLFieldFocus = count
         }
     }
 
@@ -145,7 +151,8 @@ struct WebAddressBar: View {
     }
 }
 
-/// The find bar above the page: a search field, `◀` and `▶`, `Done`, and `Not found`.
+/// The find bar above the page, laid out as the Docs preview's: a search field with `Not found`
+/// next to it, then `◀`, `▶` and `Done` at the end.
 struct WebFindBar: View {
     @Bindable var controller: WebTabsController
 
@@ -154,6 +161,11 @@ struct WebFindBar: View {
             CommandTextField(text: $controller.findBar.text, kind: .search, accessibilityLabel: "Find",
                              focusRequest: controller.findBar.focusRequest, focusOnAppear: true, onCommand: handle)
                 .frame(maxWidth: 260)
+            if controller.findBar.notFound {
+                Text("Not found")
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
             Button {
                 controller.find(backwards: true)
             } label: {
@@ -168,11 +180,6 @@ struct WebFindBar: View {
                     .labelStyle(.iconOnly)
             }
             .keyboardShortcut("g", modifiers: .command)
-            if controller.findBar.notFound {
-                Text("Not found")
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
             Button("Done") {
                 controller.closeFindBar()
             }

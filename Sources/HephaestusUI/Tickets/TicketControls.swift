@@ -195,10 +195,10 @@ enum TicketMarkdown {
                     window.alert = .failure("Open Link", error)
                 }
             }
-        case .doc(let path, _):
-            // DOC-GAP: docs/tickets.md › Ticket detail scrolls the doc to the link's `#anchor`, but
-            // the `doc` navigation target has no fragment; the doc opens at its top.
-            Task { await window.navigate(to: .doc(projectID: projectID, path: path)) }
+        case .doc(let path, let fragment):
+            // The anchor, percent-decoded, is the target's fragment (docs/tickets.md › Ticket detail).
+            let anchor = fragment.map(DocLinks.decodedFragment).flatMap { $0.isEmpty ? nil : $0 }
+            Task { await window.navigate(to: .doc(projectID: projectID, path: path, fragment: anchor)) }
         case .file(let path, let line):
             Task { await window.navigate(to: .file(projectID: projectID, path: path, line: line)) }
         case .none:

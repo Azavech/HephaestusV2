@@ -306,7 +306,8 @@ public enum NavigationTarget: Codable, Sendable, Hashable {
     case ticket(ticketID: TicketID)
     case bundle(bundleID: BundleID)
     case chat(chatID: ChatID)
-    case doc(projectID: ProjectID, path: String)
+    /// `fragment`: a heading anchor of the doc, without `#`, that the preview scrolls to.
+    case doc(projectID: ProjectID, path: String, fragment: String? = nil)
     case file(projectID: ProjectID, path: String, line: Int?)
     case skill(name: String)
     case webTab(projectID: ProjectID, tabID: UUID)
@@ -336,7 +337,7 @@ public enum NavigationTarget: Codable, Sendable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case kind, projectID, ticketID, bundleID, chatID, path, line, name, tabID, section
+        case kind, projectID, ticketID, bundleID, chatID, path, fragment, line, name, tabID, section
     }
 
     public init(from decoder: Decoder) throws {
@@ -351,7 +352,8 @@ public enum NavigationTarget: Codable, Sendable, Hashable {
         case .chat:
             self = .chat(chatID: try c.decode(ChatID.self, forKey: .chatID))
         case .doc:
-            self = .doc(projectID: try c.decode(ProjectID.self, forKey: .projectID), path: try c.decode(String.self, forKey: .path))
+            self = .doc(projectID: try c.decode(ProjectID.self, forKey: .projectID), path: try c.decode(String.self, forKey: .path),
+                        fragment: try c.decodeIfPresent(String.self, forKey: .fragment))
         case .file:
             self = .file(projectID: try c.decode(ProjectID.self, forKey: .projectID), path: try c.decode(String.self, forKey: .path),
                          line: try c.decodeIfPresent(Int.self, forKey: .line))
@@ -377,9 +379,10 @@ public enum NavigationTarget: Codable, Sendable, Hashable {
             try c.encode(bundleID, forKey: .bundleID)
         case .chat(let chatID):
             try c.encode(chatID, forKey: .chatID)
-        case .doc(let projectID, let path):
+        case .doc(let projectID, let path, let fragment):
             try c.encode(projectID, forKey: .projectID)
             try c.encode(path, forKey: .path)
+            try c.encodeIfPresent(fragment, forKey: .fragment)
         case .file(let projectID, let path, let line):
             try c.encode(projectID, forKey: .projectID)
             try c.encode(path, forKey: .path)

@@ -39,10 +39,10 @@ extension Engine {
         case .chat(let chatID):
             guard domain.chat(chatID) != nil else { throw EngineError.notFound("Chat", chatID.uuidString) }
             return target
-        case .doc(let projectID, let path):
+        case .doc(let projectID, let path, let fragment):
             let id = try loadedProjectID(projectID)
             let checked = try existingProjectFile(path, in: id, kind: "Doc")
-            return .doc(projectID: id, path: checked)
+            return .doc(projectID: id, path: checked, fragment: fragment)
         case .file(let projectID, let path, let line):
             if let line, line < 1 {
                 throw EngineError.invalid("line", "use a line number of at least 1")

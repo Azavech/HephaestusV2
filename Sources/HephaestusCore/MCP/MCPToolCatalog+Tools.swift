@@ -1164,7 +1164,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "open_in_app",
             description: #"""
-            Show something to the user in HephaestusV2: a project, ticket, bundle, chat, doc, file (optionally at a line), skill, web tab or project section. The app shows it on the device the user is chatting from.
+            Show something to the user in HephaestusV2: a project, ticket, bundle, chat, doc (optionally at a heading), file (optionally at a line), skill, web tab or project section. The app shows it on the device the user is chatting from.
             """#,
             inputSchema: schema(#"""
             {
@@ -1172,7 +1172,7 @@ extension MCPToolCatalog {
               "properties": {
                 "target": {
                   "type": "object",
-                  "description": "What to show. kind decides the other properties: project: projectID; ticket: ticketID; bundle: bundleID; chat: chatID; doc: projectID and path; file: projectID, path and optionally line; skill: name; webTab: projectID and tabID; section: projectID and section.",
+                  "description": "What to show. kind decides the other properties: project: projectID; ticket: ticketID; bundle: bundleID; chat: chatID; doc: projectID, path and optionally fragment; file: projectID, path and optionally line; skill: name; webTab: projectID and tabID; section: projectID and section.",
                   "properties": {
                     "kind": {
                       "type": "string",
@@ -1198,6 +1198,10 @@ extension MCPToolCatalog {
                     "path": {
                       "type": "string",
                       "description": "Path relative to the project root, as list_docs returns for a doc."
+                    },
+                    "fragment": {
+                      "type": "string",
+                      "description": "Heading anchor of the doc to scroll to, without #, for example menus-and-keyboard-shortcuts."
                     },
                     "line": {
                       "type": "integer",
@@ -1266,7 +1270,7 @@ extension MCPToolCatalog {
               "properties": {
                 "target": {
                   "type": "object",
-                  "description": "What to show. kind decides the other properties: project: projectID; ticket: ticketID; bundle: bundleID; chat: chatID; doc: projectID and path; file: projectID, path and optionally line; skill: name; webTab: projectID and tabID; section: projectID and section.",
+                  "description": "What to show. kind decides the other properties: project: projectID; ticket: ticketID; bundle: bundleID; chat: chatID; doc: projectID, path and optionally fragment; file: projectID, path and optionally line; skill: name; webTab: projectID and tabID; section: projectID and section.",
                   "properties": {
                     "kind": {
                       "type": "string",
@@ -1292,6 +1296,10 @@ extension MCPToolCatalog {
                     "path": {
                       "type": "string",
                       "description": "Path relative to the project root, as list_docs returns for a doc."
+                    },
+                    "fragment": {
+                      "type": "string",
+                      "description": "Heading anchor of the doc to scroll to, without #, for example menus-and-keyboard-shortcuts."
                     },
                     "line": {
                       "type": "integer",

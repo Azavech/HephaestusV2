@@ -262,7 +262,8 @@ enum ChatLinkPath {
         if let question = rest.firstIndex(of: "?") {
             rest = String(rest[..<question])
         }
-        guard let decoded = rest.removingPercentEncoding ?? (rest.contains("%") ? nil : rest) else { return nil }
+        // A reference made of a fragment or a query only resolves to nothing.
+        guard !rest.isEmpty, let decoded = rest.removingPercentEncoding ?? (rest.contains("%") ? nil : rest) else { return nil }
         let root = projectRootPath.map { $0.hasSuffix("/") && $0.count > 1 ? String($0.dropLast()) : $0 }
         var relative: String
         if scheme(of: decoded)?.lowercased() == "file" {

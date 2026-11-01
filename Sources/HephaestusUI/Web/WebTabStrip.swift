@@ -243,8 +243,10 @@ private struct WebTabView: View {
     var body: some View {
         HStack(spacing: 4) {
             if locked {
+                // The secondary color on every tab, the selected one included (docs/web-tabs.md ›
+                // Tab strip, Lock icon).
                 Image(systemName: "lock.fill")
-                    .foregroundStyle(isSelected ? AnyShapeStyle(.white.opacity(0.75)) : AnyShapeStyle(.secondary))
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
                     .font(.caption)
                     // Clicking the lock icon does nothing.
                     .onTapGesture {}

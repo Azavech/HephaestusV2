@@ -85,7 +85,7 @@ extension WindowState {
         // Step 3: the project.
         let resolvedProjectID: String?
         switch target {
-        case .project(let projectID), .doc(let projectID, _), .file(let projectID, _, _), .webTab(let projectID, _),
+        case .project(let projectID), .doc(let projectID, _, _), .file(let projectID, _, _), .webTab(let projectID, _),
              .section(let projectID, _):
             resolvedProjectID = projectID
         case .ticket(let ticketID):
@@ -139,14 +139,16 @@ extension WindowState {
             updateViewState { $0.selectedBundleID = bundleID }
         case .chat(let chatID):
             updateViewState { $0.selectedChatID = chatID.uuidString }
-        case .doc(_, let path):
-            guard viewState.selectedDocPath != path else { return }
-            if let buffer = viewState.docBuffer, buffer.hasUnsavedChanges {
-                guard await UnsavedChangesPrompt.confirm([buffer], in: self) else { return }
+        case .doc(_, let path, let fragment):
+            if viewState.selectedDocPath != path {
+                if let buffer = viewState.docBuffer, buffer.hasUnsavedChanges {
+                    guard await UnsavedChangesPrompt.confirm([buffer], in: self) else { return }
+                }
+                updateViewState { $0.selectedDocPath = path }
             }
-            updateViewState { $0.selectedDocPath = path }
+            CodeDocsStore.shared.entry(window: self, projectID: resolvedProjectID).applyDocTarget(path: path, fragment: fragment)
         case .file(_, let path, let line):
-            updateViewState { $0.revealFile(path: path, line: line) }
+            await revealFileTarget(path: path, line: line, projectID: resolvedProjectID)
         case .skill(let name):
             guard viewState.selectedSkillName != name else { return }
             let unsaved = viewState.skillEditor?.unsavedEditors ?? []
@@ -155,6 +157,7 @@ extension WindowState {
             }
             updateViewState { $0.selectedSkillName = name }
         case .webTab(_, let tabID):
+            WebTabsController.willSelectByNavigation(in: self, projectID: resolvedProjectID)
             updateViewState { $0.selectedWebTabID = tabID.uuidString }
         }
     }
