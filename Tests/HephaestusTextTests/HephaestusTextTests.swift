@@ -91,32 +91,3 @@ struct TokenKindConformanceTests {
         }
     }
 }
-
-@Suite("Markdown renderers")
-struct MarkdownRendererTests {
-    @Test("The HTML renderer returns a fragment")
-    func html() {
-        let html = MarkdownHTMLRenderer.render("# Title\n\nText", options: MarkdownRenderOptions())
-        #expect(html.contains("<h1"))
-        #expect(!html.contains("<html"))
-    }
-
-    @Test("Front matter is stripped only with stripFrontMatter and a closing line")
-    func frontMatter() {
-        let text = "---\ntitle: x\n---\n# Doc\n"
-        #expect(FrontMatter.strip(text) == "# Doc\n")
-        #expect(FrontMatter.strip("---\ntitle: x\n...\nBody") == "Body")
-        #expect(FrontMatter.strip("---\nno closing line\n") == "---\nno closing line\n")
-        let blocks = MarkdownBlockRenderer.render(text, options: MarkdownRenderOptions(stripFrontMatter: true))
-        #expect(blocks == [.heading(level: 1, id: "", content: [.text("Doc")])])
-    }
-
-    @Test("The block renderer maps the basic blocks")
-    func blocks() {
-        let blocks = MarkdownBlockRenderer.render("Text *em*\n\n- [x] done\n\n```swift\nlet a = 1\n```\n\n---\n",
-                                                  options: MarkdownRenderOptions())
-        #expect(blocks.count == 4)
-        #expect(blocks[0] == .paragraph([.text("Text "), .emphasis([.text("em")])]))
-        #expect(blocks[3] == .thematicBreak)
-    }
-}

@@ -1,0 +1,9 @@
+// line comment
+{
+  /* block */ "key" /* between */ : 1, // trailing
+  "value": "not // a comment",
+  "key2" // comment
+  : 2,
+  "list": ["a", "b"]
+}
+/* unterminated

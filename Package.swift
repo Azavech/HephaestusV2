@@ -52,6 +52,7 @@ let package = Package(
         .testTarget(
             name: "HephaestusTextTests",
             dependencies: ["HephaestusText"],
+            exclude: ["Fixtures"],
             swiftSettings: swiftSettings
         ),
         .testTarget(
