@@ -62,17 +62,17 @@ With no stored tab and no placeholder, the Web section shows the SF Symbol `glob
 
 ## Tab strip
 
-| Element      | Behaviour                                                                                                                                                                                              |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Label        | The tab's `title`; when it is empty, the URL's host; the placeholder tab shows `New Tab`. One line, truncated at the end with an ellipsis.                                                             |
-| Tooltip      | The label, a line break, and the stored URL.                                                                                                                                                           |
-| Lock icon    | SF Symbol `lock.fill` before the label of a locked tab, in the secondary color. Clicking it does nothing.                                                                                              |
-| Close button | `xmark` at the end of an unlocked tab, shown on every unlocked tab. Locked tabs have no close button.                                                                                                  |
-| Width        | Tabs share the strip width equally, each between 90 and 240 pt. When they do not fit at 90 pt, the strip scrolls horizontally and keeps the selected tab visible.                                      |
-| Selected tab | Drawn with the control accent background. Clicking a tab selects it.                                                                                                                                   |
-| `+` button   | Does what ⌘T does.                                                                                                                                                                                     |
-| Reordering   | Dragging a tab within the strip moves it; on drop the client calls `webTabs.move` with the drop position as `toIndex`. The placeholder tab cannot be dragged. Tabs cannot be dragged out of the strip. |
-| Middle click | Nothing.                                                                                                                                                                                               |
+| Element      | Behaviour                                                                                                                                                                                                                                                                                                                                               |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Label        | The tab's `title`; when it is empty, the URL's host; the placeholder tab shows `New Tab`; a [popup](#popups) tab that is not stored yet shows its page's title, else its URL's host, else `New Tab`. One line, truncated at the end with an ellipsis.                                                                                                   |
+| Tooltip      | The label, a line break, and the stored URL.                                                                                                                                                                                                                                                                                                            |
+| Lock icon    | SF Symbol `lock.fill` before the label of a locked tab, in the secondary color. Clicking it does nothing.                                                                                                                                                                                                                                               |
+| Close button | `xmark` at the end of an unlocked tab, shown on every unlocked tab. Locked tabs have no close button.                                                                                                                                                                                                                                                   |
+| Width        | Tabs share the strip width equally, each between 90 and 240 pt. When they do not fit at 90 pt, the strip scrolls horizontally and keeps the selected tab visible.                                                                                                                                                                                       |
+| Selected tab | Drawn with the control accent background. Clicking a tab selects it.                                                                                                                                                                                                                                                                                    |
+| `+` button   | Does what ⌘T does.                                                                                                                                                                                                                                                                                                                                      |
+| Reordering   | Dragging a tab within the strip moves it; on drop the client calls `webTabs.move` with the drop position as `toIndex`; when the call fails, the tab goes back to its place and the failure is logged as in [Storing what the page shows](#storing-what-the-page-shows). The placeholder tab cannot be dragged. Tabs cannot be dragged out of the strip. |
+| Middle click | Nothing.                                                                                                                                                                                                                                                                                                                                                |
 
 The widths, the colors and the always-visible close button are design-time choices. Default chosen at design time.
 
@@ -87,11 +87,12 @@ The context menu of a stored tab has these items, in this order (Brief §9.2):
 | Close            | the tab is unlocked                       | Closes the tab ([Closing tabs](#closing-tabs)).                                                                                                |
 | Close Other Tabs | at least one other stored tab is unlocked | Closes every other unlocked tab, one `webTabs.close` per tab, left to right; locked tabs stay.                                                 |
 
-The placeholder tab has a context menu with Close only. A duplicate starting unlocked is a design-time choice. Default chosen at design time.
+The placeholder tab, and a popup tab that is not stored yet, have a context menu with Close only. A duplicate starting unlocked is a design-time choice. Default chosen at design time.
 
 ### Selection
 
-- `selectedWebTabID` names the selected stored tab. When it is nil or names a tab that no longer exists, the first tab is selected; with no tab, nothing is.
+- `selectedWebTabID` names the selected stored tab. When it is nil, the first tab is selected; with no tab, nothing is.
+- When it names a tab that does not exist, a selection the window wrote itself or found when it first showed the project's Web section (a restored window, a tab closed while another section was shown) is replaced by the first tab, as above; a selection set since by a navigation (`webTab` target) shows `Web tab <id> was not found.` ([UI](ui.md#resolving-a-target)) until another tab is selected or that tab appears.
 - A tab created in this window (⌘T, Duplicate, a popup of a page shown in this window, a link opened from this window) is selected in this window. A tab created anywhere else is not selected.
 - When the selected tab disappears (closed here, closed by another client), the tab that took its index is selected, else the new last tab, else nothing.
 - ⇧⌘] and ⇧⌘[ select the next and previous tab, wrapping around ([UI](ui.md#menus-and-keyboard-shortcuts)); the placeholder tab takes part as the last tab.
@@ -117,19 +118,19 @@ A new tab has no URL until the user enters one, and the engine only stores `http
 
 1. ⌘T (File ▸ New Web Tab, the `+` button, the empty state's `New Tab` button) selects the Web section and adds the placeholder tab `New Tab` at the end of the strip, or selects the existing one: a window has at most one placeholder tab per project.
 2. The placeholder is selected, its page area is empty and the URL field has the focus with an empty text.
-3. Return in the URL field with an address ([Address bar](#address-bar)) calls `webTabs.open` with the resulting URL and `index` = the placeholder's position among the stored tabs (that is, the number of stored tabs). The stored tab replaces the placeholder, is selected and loads the URL.
-4. The placeholder disappears when it is closed, when Escape is pressed in its empty URL field, or when the window switches project or device. Selecting another tab keeps it.
+3. Return in the URL field with an address ([Address bar](#address-bar)) calls `webTabs.open` with the resulting URL and `index` = the placeholder's position among the stored tabs (that is, the number of stored tabs). The stored tab replaces the placeholder, is selected and loads the URL. When `webTabs.open` fails, the placeholder stays and the alert `New Tab failed` shows the engine's message ([UI](ui.md#principles)).
+4. The placeholder disappears when it is closed, when Escape is pressed in its empty URL field (Escape first empties a field with text), or when the window switches project or device. Selecting another tab keeps it.
 
 ⌥⌘L (Navigate ▸ Open Location…) puts the focus in the URL field and selects its text; with no tab at all it first does step 1 ([UI](ui.md#menus-and-keyboard-shortcuts)).
 
 ## Address bar
 
-| Control   | Behaviour                                                                                                                                                                                  |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Back ◀    | `goBack()`; disabled when the web view cannot go back. ⌘[ does the same.                                                                                                                   |
-| Forward ▶ | `goForward()`; disabled when the web view cannot go forward. ⌘] does the same.                                                                                                             |
-| Reload ⟳  | `reload()`; while the page loads the button shows `xmark` and calls `stopLoading()`. ⇧⌘R reloads.                                                                                          |
-| URL field | Shows the selected tab's URL in its stored form, in full, while it does not have the focus; Return loads the typed address; Escape restores the tab's URL and moves the focus to the page. |
+| Control   | Behaviour                                                                                                                                                                                                                                                                                                                                                                             |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Back ◀    | `goBack()`; disabled when the web view cannot go back. ⌘[ does the same.                                                                                                                                                                                                                                                                                                              |
+| Forward ▶ | `goForward()`; disabled when the web view cannot go forward. ⌘] does the same.                                                                                                                                                                                                                                                                                                        |
+| Reload ⟳  | `reload()`; while the page loads the button shows `xmark` and calls `stopLoading()`. ⇧⌘R reloads.                                                                                                                                                                                                                                                                                     |
+| URL field | Shows the selected tab's URL in its stored form, in full, while it does not have the focus; Return loads the typed address and, for a stored tab, moves the focus to the page; Escape restores the tab's URL and moves the focus to the page. In the placeholder's field, Escape empties a field with text and removes the placeholder when the field is empty ([New tab](#new-tab)). |
 
 The shortcuts are assigned in [UI](ui.md#menus-and-keyboard-shortcuts); ⌘R stays Run, as in Xcode.
 
@@ -137,7 +138,7 @@ Find (⌘F) shows the find bar of the Docs preview above the page ([Modes](docum
 
 ### Typed addresses
 
-The text typed in the URL field is trimmed of white space and turned into a URL by the first matching rule. Default chosen at design time.
+The text typed in the URL field is trimmed of white space and turned into a URL by the first matching rule; `localhost` and `.local` are compared case-insensitively, as host names are. Default chosen at design time.
 
 | Rule | Typed text                                                                                                                                                                                                                                                            | URL loaded                                                                      | Example                                                           |
 | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
@@ -169,7 +170,7 @@ The stored `url` and `title` follow the page, so every client sees where each ta
 2. When either changes and then stays unchanged for 1 second, the window compares them with the stored tab:
    - `url` is written when it is an `http` or `https` URL, it differs from the stored URL, and the change does not come from a [sync load](#changes-from-other-clients). A window that shows a remote device first applies the [reverse rewrite](remote.md#reverse-rewrite).
    - `title` is written when it is not empty after trimming and differs from the stored title. Line breaks become spaces and the engine truncates it ([Data model](data-model.md#web-tab)).
-3. The changed fields are sent in one `webTabs.update`. A failure is written to the window's log and ignored.
+3. The changed fields are sent in one `webTabs.update`. A failure is logged as a warning of the component `ui` in This Mac's `engine.log` ([engine.log](architecture.md#enginelog)) and ignored.
 
 Navigations inside a page (`history.pushState`, fragment changes) change `url` and are stored by the same rule. Back, Forward and Reload are navigations like any other.
 
@@ -231,23 +232,23 @@ A popup tab is local to the window, like the placeholder, until its web view rea
 
 A navigation response becomes a download when WebKit cannot show its MIME type, when it has `Content-Disposition: attachment`, or when the link has a `download` attribute. Default chosen at design time.
 
-- The file is saved in the Downloads folder of the Mac that shows the window, with the suggested file name; when that name is taken, ` (1)`, ` (2)`, … is inserted before the extension. A window showing a remote device saves on its own Mac; nothing is sent to the main device.
+- The file is saved in the Downloads folder of the Mac that shows the window, with the suggested file name, `/` and `:` replaced by `_` and trimmed (a name that is then empty, `.` or `..` becomes `download`); when that name is taken, ` (1)`, ` (2)`, … is inserted before the extension. A window showing a remote device saves on its own Mac; nothing is sent to the main device.
 - The finished file gets the quarantine attributes of a web download (`URLResourceValues.quarantineProperties` with type `kLSQuarantineTypeWebDownload`, the download URL and the page URL), so Gatekeeper checks it when it is opened.
 - The downloads bar lists the window's downloads, newest first: an icon, the file name, `<received> of <total>` (or `<received>` when the total is unknown) and `Cancel` while running; `Show in Finder` when finished; `Failed: <localizedDescription>` in red when it failed; `Cancelled` when cancelled. `Clear` removes the finished, failed and cancelled entries; the bar hides when it has no entry.
 - Downloads are not stored or synced; they continue when the user switches section and are cancelled when the window closes.
 
 ## Page permissions and dialogs
 
-| Page request                        | Handling                                                                                                                            |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `alert`, `confirm`, `prompt`        | A sheet on the window with the page's host as title, the message, and OK (plus Cancel and a text field for `confirm` and `prompt`). |
-| `<input type="file">`               | An open panel on the Mac that shows the window; multiple selection when the input allows it.                                        |
-| Camera and microphone               | Denied.                                                                                                                             |
-| Location                            | Denied.                                                                                                                             |
-| Notifications                       | Not available.                                                                                                                      |
-| Element full screen (video players) | Allowed.                                                                                                                            |
-| HTTP authentication challenges      | Default handling, without a credentials dialog.                                                                                     |
-| Server certificate errors           | Default handling: the load fails and the [error view](#load-errors) shows.                                                          |
+| Page request                        | Handling                                                                                                                                                                     |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `alert`, `confirm`, `prompt`        | A sheet on the window with the page's host as title, the message, and OK; `confirm` and `prompt` add Cancel, and `prompt` adds a text field holding the page's default text. |
+| `<input type="file">`               | An open panel on the Mac that shows the window; multiple selection when the input allows it.                                                                                 |
+| Camera and microphone               | Denied.                                                                                                                                                                      |
+| Location                            | Denied.                                                                                                                                                                      |
+| Notifications                       | Not available.                                                                                                                                                               |
+| Element full screen (video players) | Allowed.                                                                                                                                                                     |
+| HTTP authentication challenges      | Default handling, without a credentials dialog.                                                                                                                              |
+| Server certificate errors           | Default handling: the load fails and the [error view](#load-errors) shows.                                                                                                   |
 
 The app's Info.plist has no camera, microphone or location usage descriptions. These choices are design-time defaults. Default chosen at design time.
 
