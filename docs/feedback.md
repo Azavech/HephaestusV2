@@ -61,13 +61,13 @@ The sheet is attached to the captured window.
 
 Send is enabled when every condition holds; otherwise one line under the comment field gives the first failing reason:
 
-| Condition                                                              | Message when it fails                                                                                                                                             |
-| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| a screenshot exists                                                    | `The window could not be captured.`                                                                                                                               |
-| the receiving device has at least one project                          | `No project can receive feedback. Create or open a project first.`                                                                                                |
-| the connection to the receiving device is connected                    | `Not connected to <device name>. Send is available when the connection is back.`                                                                                  |
-| Claude is available on the receiving device (`ClaudeStatus.available`) | `Checking the Claude CLI on <device name>…` while `ClaudeStatus.checking` is true, otherwise `Claude CLI is not available on <device name>: <ClaudeStatus.error>` |
-| the default project lookup is finished                                 | no message; the pop-up button shows a progress indicator                                                                                                          |
+| Condition                                                              | Message when it fails                                                                                                                                                                                                        |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| a screenshot exists                                                    | `The window could not be captured.`                                                                                                                                                                                          |
+| the receiving device has at least one project                          | `No project can receive feedback. Create or open a project first.`                                                                                                                                                           |
+| the connection to the receiving device is connected                    | `Not connected to <device name>. Send is available when the connection is back.`                                                                                                                                             |
+| Claude is available on the receiving device (`ClaudeStatus.available`) | `Checking the Claude CLI on <device name>…` while `ClaudeStatus.checking` is true or the status is not known yet (no snapshot of the device), otherwise `Claude CLI is not available on <device name>: <ClaudeStatus.error>` |
+| the default project lookup is finished                                 | no message; the pop-up button shows a progress indicator                                                                                                                                                                     |
 
 The sheet re-evaluates the conditions when the connection state or the snapshot of the receiving device changes. Default chosen at design time.
 
