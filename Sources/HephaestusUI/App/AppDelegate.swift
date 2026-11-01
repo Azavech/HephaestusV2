@@ -1,6 +1,7 @@
 // OWNER: ui-shell — the application delegate: window tabbing, placement and activation policy,
-// SIGTERM and SIGINT, quitting, startup step 9 (docs/ui.md › Windows; docs/architecture.md ›
-// Window placement, › Startup, › Shutdown).
+// SIGTERM and SIGINT, quitting, startup step 9, and the Edit ▸ Find items sent on to the views
+// that implement only `performTextFinderAction:` (docs/ui.md › Windows, › Menus and keyboard
+// shortcuts; docs/architecture.md › Window placement, › Startup, › Shutdown).
 import AppKit
 import Darwin
 import Foundation
