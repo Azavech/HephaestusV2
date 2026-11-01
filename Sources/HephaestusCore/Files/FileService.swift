@@ -145,6 +145,11 @@ extension Engine {
         files.formatTimeout = timeout
     }
 
+    /// The folders watched now: the data directory, then the project roots, sorted.
+    func watchedFolders() -> [String] {
+        (files.dataDirectoryWatcher.map { [$0.path] } ?? []) + files.projectWatchers.keys.sorted()
+    }
+
     /// Observes the `projectDataFilesChanged` calls of the file watcher, for tests.
     func observeProjectDataChanges(_ observer: (@Sendable (ProjectID, [String]) -> Void)?) {
         files.dataChangeObserver = observer

@@ -4,7 +4,7 @@ import Foundation
 /// The folders of a test project: the project `TEST` at `<temp>/Project`, registered in the
 /// data directory before the engine starts, optionally with the sub project `SUB` at
 /// `<temp>/Project/Sub`, and a fake Trash at `<temp>/Trash`.
-struct FileTestProject {
+struct FileTestProject: Sendable {
     static let id: ProjectID = "TEST"
     static let subID: ProjectID = "SUB"
 
