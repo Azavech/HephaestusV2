@@ -54,6 +54,38 @@ struct ChatView: View {
     }
 }
 
+/// A draft chat of a project, a ticket or a bundle (docs/chats.md › Draft chats): an empty chat
+/// view whose composer (settings menus, attachments, CLI status lines) uses the default settings
+/// and has the keyboard focus; its first Send calls `chats.create` with the kind, the ticket or
+/// bundle, the message and the draft's settings, then `onCreated` receives the new chat's id. Show
+/// a new draft (a new view identity) for each New Chat.
+struct ChatDraftView: View {
+    let projectID: String
+    let kind: ChatKind
+    var ticketID: String?
+    var bundleID: String?
+    let workspace: DeviceWorkspace
+    let onCreated: (ChatID) -> Void
+    @State private var draft: DraftChat
+
+    init(projectID: String, kind: ChatKind, ticketID: String? = nil, bundleID: String? = nil, workspace: DeviceWorkspace,
+         onCreated: @escaping (ChatID) -> Void) {
+        self.projectID = projectID
+        self.kind = kind
+        self.ticketID = ticketID
+        self.bundleID = bundleID
+        self.workspace = workspace
+        self.onCreated = onCreated
+        _draft = State(initialValue: DraftChat(projectID: projectID, kind: kind, ticketID: ticketID, bundleID: bundleID))
+    }
+
+    var body: some View {
+        ChatView(draft: draft, workspace: workspace) { meta in
+            onCreated(meta.id)
+        }
+    }
+}
+
 /// The chat view of one chat or draft; a new chat or draft gets a new content view and model.
 private struct ChatViewContent: View {
     let workspace: DeviceWorkspace

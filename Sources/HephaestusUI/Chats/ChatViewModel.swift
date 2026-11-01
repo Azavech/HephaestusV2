@@ -180,12 +180,16 @@ final class ChatViewModel {
             self?.openAttachment(path)
         }
         startKeyMonitor()
+        if chatID == nil {
+            ChatDrafts.register(self)
+        }
         if chatID == nil, focusComposer {
             composerFocusRequest += 1
         }
     }
 
     func disappear() {
+        ChatDrafts.unregister(self)
         if let chatID, opened {
             opened = false
             ChatTranscriptStore.shared.close(chatID, in: workspace)
@@ -558,6 +562,32 @@ final class ChatViewModel {
     func alert(_ alert: WindowAlert) {
         guard let app else { return }
         ChatAlerts.show(alert, in: window, app: app)
+    }
+}
+
+/// The unsent composer content of this app: an existing chat's is in `DeviceWorkspace.drafts`, a
+/// draft chat's in its shown view.
+@MainActor
+enum ChatDrafts {
+    private static let draftModels = NSHashTable<ChatViewModel>.weakObjects()
+
+    static func register(_ model: ChatViewModel) {
+        draftModels.add(model)
+    }
+
+    static func unregister(_ model: ChatViewModel) {
+        draftModels.remove(model)
+    }
+
+    /// True when a composer of these workspaces, an existing chat's or a shown draft chat's, holds
+    /// text that is not blank or an attachment.
+    static func hasUnsentDraftText(in workspaces: [DeviceWorkspace]) -> Bool {
+        func unsent(_ draft: ComposerDraft) -> Bool {
+            !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !draft.attachments.isEmpty
+        }
+        let ids = Set(workspaces.map(ObjectIdentifier.init))
+        if workspaces.contains(where: { $0.drafts.values.contains(where: unsent) }) { return true }
+        return draftModels.allObjects.contains { ids.contains(ObjectIdentifier($0.workspace)) && unsent($0.draftComposer) }
     }
 }
 
