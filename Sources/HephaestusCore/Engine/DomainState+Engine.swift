@@ -202,7 +202,8 @@ extension Engine {
 
     // MARK: Events
 
-    /// The ProjectDetail of a loaded project; `gitRemoteURL` is read each time.
+    /// The ProjectDetail of a loaded project, with the last `gitRemoteURL` read; starts a new
+    /// read (docs/engine-api.md › ProjectDetail).
     func projectDetail(_ id: ProjectID) -> ProjectDetail? {
         guard let loaded = domain.projects[id] else { return nil }
         let subprojects = domain.childIDs(of: id).compactMap { domain.summary($0) }
@@ -232,75 +233,5 @@ extension Engine {
         var copy = meta
         copy.state = chats.state(of: meta.id)
         return copy
-    }
-
-    /// `git config --get remote.origin.url` run in the root with the `git` and the environment of
-    /// the tools lookup (docs/architecture.md › Child processes, rule 5); nil without git (or
-    /// before the lookup ran), outside a git work tree or without an `origin` remote
-    /// (docs/engine-api.md › ProjectDetail).
-    func gitRemoteURL(root: String) -> String? {
-        guard let git = files.tools.git else { return nil }
-        guard let result = GitTool.run(git, ["config", "--get", "remote.origin.url"], in: root,
-                                       environment: files.tools.environment),
-              result.status == 0 else { return nil }
-        let url = String(decoding: result.output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
-        return url.isEmpty ? nil : url
-    }
-}
-
-/// The `git` tool of docs/architecture.md › Child processes, rule 5, run synchronously on the
-/// engine actor so that a ProjectDetail is built in one step with the change it describes.
-enum GitTool {
-    /// Time allowed to one git call before it is killed (docs/architecture.md › Child processes,
-    /// the table of tool runs).
-    static let timeout: TimeInterval = 5
-
-    /// Time between SIGTERM and SIGKILL for a call that timed out (docs/architecture.md › Child
-    /// processes, the sequence of the other children).
-    static let killGrace: TimeInterval = 2
-
-    /// Runs a tool with standard output piped and returns its exit status and output; nil when
-    /// it cannot start or times out. A call that times out gets SIGTERM, then SIGKILL 2 s later.
-    static func run(_ executable: String, _ arguments: [String], in directory: String, environment: [String: String],
-                    timeout: TimeInterval = GitTool.timeout) -> (status: Int32, output: Data)? {
-        let request = ChildProcessRequest(executable: executable, arguments: arguments, environment: environment,
-                                          currentDirectory: directory, standardInput: .null, standardOutput: .pipe,
-                                          standardError: .null)
-        guard let process = try? ChildProcess.spawn(request), let handle = process.standardOutput else { return nil }
-        let box = OutputBox()
-        let done = DispatchSemaphore(value: 0)
-        // The reading thread keeps the handle until end of file, so its descriptor stays open
-        // while it reads.
-        Thread.detachNewThread {
-            box.set(handle.readDataToEndOfFile())
-            done.signal()
-        }
-        func waitForExit(until deadline: Date) -> Bool {
-            while !process.hasExited, Date() < deadline {
-                usleep(1000)
-            }
-            return process.hasExited
-        }
-        func stop() {
-            guard !process.hasExited else { return }
-            process.signalGroup(SIGTERM)
-            if !waitForExit(until: Date().addingTimeInterval(killGrace)) {
-                process.signalGroup(SIGKILL)
-            }
-        }
-        let deadline = Date().addingTimeInterval(timeout)
-        guard done.wait(timeout: .now() + timeout) == .success, waitForExit(until: deadline),
-              case .exited(let status)? = process.termination else {
-            stop()
-            return nil
-        }
-        return (status, box.value)
-    }
-
-    private final class OutputBox: @unchecked Sendable {
-        private let lock = NSLock()
-        private var data = Data()
-        func set(_ value: Data) { lock.withLock { data = value } }
-        var value: Data { lock.withLock { data } }
     }
 }

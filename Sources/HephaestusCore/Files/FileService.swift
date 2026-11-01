@@ -17,6 +17,14 @@ final class FileService {
     /// unformatted.
     var formatTimeout: Duration = .seconds(10)
 
+    // MARK: Git remotes (docs/engine-api.md › ProjectDetail, Files/GitRemotes.swift)
+
+    /// The last `gitRemoteURL` read for each project root; no entry before the first read and
+    /// for a root without remote.
+    var gitRemoteURLs: [String: String] = [:]
+    /// The roots whose remote is being read; true when another read was asked for meanwhile.
+    var gitRemoteReads: [String: Bool] = [:]
+
     // MARK: Watching (docs/data-model.md › Watching)
 
     /// True between `startFileWatching()` and `stopFileWatching()`.
@@ -128,18 +136,21 @@ extension Engine {
     }
 
     /// Looks up `git`, `gofmt` and `swift-format` in the captured login-shell environment
-    /// (docs/architecture.md › Startup step 7 and › Child processes, rule 5). Runs once, after
-    /// the environment capture.
+    /// (docs/architecture.md › Startup step 7 and › Child processes, rule 5), then reads the remote
+    /// of every loaded project (docs/engine-api.md › ProjectDetail). Runs once, after the
+    /// environment capture.
     func lookUpFileTools(environment: [String: String]) async {
         let tools = await FileTools.lookUp(environment: environment, log: log)
         guard !files.toolsSetByTest else { return }
         files.tools = tools
+        refreshGitRemoteURLs()
     }
 
     /// Sets the tools directly, for tests; the lookup of the engine start does not replace them.
     func useFileTools(_ tools: FileTools) {
         files.tools = tools
         files.toolsSetByTest = true
+        refreshGitRemoteURLs()
     }
 
     /// Sets the formatter timeout, for tests.

@@ -131,3 +131,8 @@ private enum TestPorts {
         }
     }
 }
+
+/// The bound of a wait for something that must happen: an event, a state, a line, a process, a
+/// response. A busy machine, such as a small CI runner whose threads the whole test run shares,
+/// makes such a wait longer, never wrong; the bound only ends a test that fails.
+let waitLimit: Duration = .seconds(60)

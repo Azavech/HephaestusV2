@@ -80,6 +80,8 @@ public actor Engine {
     private var handlers: [String: Registration] = [:]
     private var subscribers: [UUID: AsyncStream<Data>.Continuation] = [:]
     private var lifecycle = Lifecycle.created
+    /// True once `shutdown()` began: background work drops its results.
+    var hasStopped: Bool { lifecycle == .stopped }
 
     /// Startup steps 2 to 4 of docs/architecture.md › Startup, without the projects: creates the
     /// data directory when missing and takes its lock (`StorageError.dataDirectoryInUse` when

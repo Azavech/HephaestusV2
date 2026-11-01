@@ -296,7 +296,7 @@ struct ProjectsTests {
         }
     }
 
-    @Test("ProjectDetail.gitRemoteURL is the origin remote of the git work tree")
+    @Test("ProjectDetail.gitRemoteURL is the origin remote of the git work tree, read in the background")
     func gitRemote() async throws {
         try await withDomainEngine { h in
             let tools = await FileTools.lookUp(environment: ProcessInfo.processInfo.environment)
@@ -305,14 +305,28 @@ struct ProjectsTests {
             let root = h.projects.appendingPathComponent("Repo")
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             let environment = tools.environment
-            #expect(GitTool.run(git, ["init", "-q"], in: root.path, environment: environment)?.status == 0)
-            let before = try await h.connection.call(ProjectsCreate.self, .init(rootPath: root.path, name: "Repo", identifier: "REPO",
-                                                                              createDirectory: false))
-            #expect(before.gitRemoteURL == nil)
-            #expect(GitTool.run(git, ["remote", "add", "origin", "https://example.com/repo.git"], in: root.path,
-                                environment: environment)?.status == 0)
-            let after = try await h.connection.call(ProjectsGet.self, .init(projectID: "REPO"))
-            #expect(after.gitRemoteURL == "https://example.com/repo.git")
+            #expect(await GitTool.run(git, ["init", "-q"], in: root.path, environment: environment)?.status == 0)
+            #expect(await GitTool.run(git, ["remote", "add", "origin", "https://example.com/first.git"], in: root.path,
+                                      environment: environment)?.status == 0)
+            let events = await DomainEventRecorder.make(h)
+            let url = "https://example.com/repo.git"
+            func remoteEvents(_ events: [EngineEventEnvelope]) -> [String?] {
+                events.compactMap { try? $0.payload(ProjectUpdatedEvent.self) }.filter { $0.project.id == "REPO" }.map(\.gitRemoteURL)
+            }
+            // The first ProjectDetail is built before any read of the root.
+            let created = try await h.connection.call(ProjectsCreate.self, .init(rootPath: root.path, name: "Repo", identifier: "REPO",
+                                                                               createDirectory: false))
+            #expect(created.gitRemoteURL == nil)
+            let first = await events.wait(timeout: waitLimit) { remoteEvents($0).contains("https://example.com/first.git") }
+            let read = first.first { (try? $0.payload(ProjectUpdatedEvent.self))?.gitRemoteURL == "https://example.com/first.git" }
+            #expect(read?.origin == .system)
+            #expect(try await h.connection.call(ProjectsGet.self, .init(projectID: "REPO")).gitRemoteURL == "https://example.com/first.git")
+
+            // A change is seen at the next ProjectDetail build.
+            #expect(await GitTool.run(git, ["remote", "set-url", "origin", url], in: root.path, environment: environment)?.status == 0)
+            _ = try await h.connection.call(ProjectsGet.self, .init(projectID: "REPO"))
+            await events.wait(timeout: waitLimit) { remoteEvents($0).contains(url) }
+            #expect(try await h.connection.call(ProjectsGet.self, .init(projectID: "REPO")).gitRemoteURL == url)
         }
     }
 }
