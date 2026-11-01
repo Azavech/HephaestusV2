@@ -151,7 +151,10 @@ final class EditorTextController: NSObject, NSTextViewDelegate {
             scheduleHighlight()
         }
         if host.pendingReveal != nil {
-            applyPendingReveal()
+            // Outside the view update that called this.
+            Task { @MainActor [weak self] in
+                self?.applyPendingReveal()
+            }
         }
     }
 

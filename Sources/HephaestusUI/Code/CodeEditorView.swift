@@ -143,7 +143,7 @@ struct EditorBannerView: View {
             .padding(.horizontal, 10)
             .frame(height: 32)
             .frame(maxWidth: .infinity)
-            .background(Color(nsColor: .controlBackgroundColor))
+            .background(.background.secondary)
             Divider()
         }
     }
