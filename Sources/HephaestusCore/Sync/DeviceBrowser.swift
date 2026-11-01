@@ -39,25 +39,44 @@ public enum LocalNetworkPermission: Sendable, Hashable {
 /// Bonjour browsing of `_hephaestus2._tcp` in `local.` with TXT records, from launch until the
 /// app quits, without this device's own id (docs/remote.md › Browsing). Used by the Add Device
 /// sheet, the online status of paired devices and the endpoints of `RemoteEngineConnection`.
-// STUB: core-sync — the NWBrowser and the interpretation rules of docs/remote.md › Browsing.
-// `start` browses nothing yet, so `devices` stays empty.
 public final class DeviceBrowser: @unchecked Sendable {
     /// The Bonjour service type of the sync server.
     public static let serviceType = "_hephaestus2._tcp"
+    /// `kDNSServiceErr_PolicyDenied`: the local network permission is denied.
+    static let policyDenied: Int32 = -65570
+    /// The delay before browsing again after the browser failed.
+    static let restartDelay: TimeInterval = 5
+
+    /// One browse result, in the order results were received.
+    struct Result: Sendable, Hashable {
+        /// The order of arrival.
+        var sequence: Int
+        var endpoint: NWEndpoint
+        /// The service instance name.
+        var instanceName: String
+        var txt: [String: String]
+    }
 
     private let ownDeviceID: String
     private let log: LogSink
     private let lock = NSLock()
+    private let queue = DispatchQueue(label: "HephaestusV2.sync.browser")
+    private var browser: NWBrowser?
+    private var isRunning = false
+    private var results: [NWEndpoint: Result] = [:]
+    private var nextSequence = 0
     private var currentDevices: [DiscoveredDevice] = []
     private var currentPermission = LocalNetworkPermission.unknown
+    private var currentOwnName: String?
     private let deviceStreams = StreamFanOut<[DiscoveredDevice]>()
+    private let permissionStreams = StreamFanOut<LocalNetworkPermission>()
 
     init(ownDeviceID: String, log: LogSink) {
-        self.ownDeviceID = ownDeviceID
+        self.ownDeviceID = ownDeviceID.uppercased()
         self.log = log
     }
 
-    /// The devices currently seen, This Mac excluded.
+    /// The devices currently seen, This Mac excluded, sorted by name.
     public var devices: [DiscoveredDevice] {
         lock.lock()
         defer { lock.unlock() }
@@ -73,7 +92,16 @@ public final class DeviceBrowser: @unchecked Sendable {
 
     /// A new stream on every access: the current devices, then every change.
     public var deviceUpdates: AsyncStream<[DiscoveredDevice]> {
-        deviceStreams.stream(initial: devices)
+        lock.lock()
+        defer { lock.unlock() }
+        return deviceStreams.stream(initial: currentDevices)
+    }
+
+    /// A new stream on every access: the current permission, then every change.
+    public var permissionUpdates: AsyncStream<LocalNetworkPermission> {
+        lock.lock()
+        defer { lock.unlock() }
+        return permissionStreams.stream(initial: currentPermission)
     }
 
     /// The device of this id, when it is currently seen.
@@ -81,13 +109,173 @@ public final class DeviceBrowser: @unchecked Sendable {
         devices.first { $0.id == id.uppercased() }
     }
 
+    /// This device's name, sent in the `hello` of every connection this app opens; set by the
+    /// engine at launch and when the name changes (docs/remote.md › Device identity).
+    // DOC-GAP: docs/remote.md › Device identity uses the new name in every later `hello`, but a
+    // `RemoteEngineConnection` receives the local DeviceInfo once, at its creation; it reads the
+    // current name here, next to the device id this browser already excludes.
+    var ownDeviceName: String? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return currentOwnName
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            currentOwnName = newValue
+        }
+    }
+
+    /// The name a `hello` carries for the local device `local`.
+    func helloName(for local: DeviceInfo) -> String {
+        guard local.id.uppercased() == ownDeviceID, let name = ownDeviceName, !name.isEmpty else { return local.name }
+        return name
+    }
+
     func start() {
-        // STUB: core-sync — start the NWBrowser.
+        queue.async {
+            guard !self.isRunning else { return }
+            self.isRunning = true
+            self.startBrowser()
+        }
     }
 
     func stop() {
-        // STUB: core-sync — cancel the NWBrowser.
+        queue.sync {
+            self.isRunning = false
+            self.browser?.cancel()
+            self.browser = nil
+        }
         deviceStreams.finish()
+        permissionStreams.finish()
+    }
+
+    // MARK: Interpretation (docs/remote.md › Browsing)
+
+    /// The devices of a set of browse results: results whose `id` is missing, not a UUID or this
+    /// device's id are ignored; results with the same id are merged into the device of the first
+    /// one received; a missing or empty `name` uses the instance name. Sorted by name, then id.
+    static func devices(from results: [Result], ownDeviceID: String) -> [DiscoveredDevice] {
+        var byID: [String: DiscoveredDevice] = [:]
+        for result in results.sorted(by: { $0.sequence < $1.sequence }) {
+            guard let rawID = result.txt["id"], Identifiers.isUUID(rawID) else { continue }
+            let id = rawID.uppercased()
+            guard id != ownDeviceID.uppercased(), byID[id] == nil else { continue }
+            let name = result.txt["name"].flatMap { $0.isEmpty ? nil : $0 } ?? result.instanceName
+            byID[id] = DiscoveredDevice(id: id, name: name, proto: result.txt["proto"], endpoint: result.endpoint)
+        }
+        return byID.values.sorted { ($0.name, $0.id) < ($1.name, $1.id) }
+    }
+
+    // MARK: Browser
+
+    private func startBrowser() {
+        let descriptor = NWBrowser.Descriptor.bonjourWithTXTRecord(type: DeviceBrowser.serviceType, domain: "local.")
+        let browser = NWBrowser(for: descriptor, using: NWParameters())
+        self.browser = browser
+        browser.stateUpdateHandler = { [weak self, weak browser] state in
+            guard let self, let browser else { return }
+            self.browserStateChanged(state, browser: browser)
+        }
+        browser.browseResultsChangedHandler = { [weak self, weak browser] _, changes in
+            guard let self, let browser, browser === self.browser else { return }
+            self.apply(changes)
+        }
+        browser.start(queue: queue)
+    }
+
+    private func browserStateChanged(_ state: NWBrowser.State, browser: NWBrowser) {
+        guard browser === self.browser else { return }
+        switch state {
+        case .ready:
+            setPermission(.allowed)
+        case .waiting(let error):
+            if DeviceBrowser.isPolicyDenied(error) {
+                setPermission(.denied)
+            }
+        case .failed(let error):
+            if DeviceBrowser.isPolicyDenied(error) {
+                setPermission(.denied)
+            }
+            log.warn(.sync, "browsing failed: \(SyncServer.describe(error))")
+            // DOC-GAP: docs/remote.md › Browsing browses until the app quits but does not say
+            // what follows a failed browser; it browses again after 5 s.
+            browser.cancel()
+            self.browser = nil
+            results.removeAll()
+            publishDevices()
+            queue.asyncAfter(deadline: .now() + DeviceBrowser.restartDelay) { [weak self] in
+                guard let self, self.isRunning, self.browser == nil else { return }
+                self.startBrowser()
+            }
+        default:
+            break
+        }
+    }
+
+    private func apply(_ changes: Set<NWBrowser.Result.Change>) {
+        for change in changes {
+            switch change {
+            case .added(let result):
+                add(result)
+            case .removed(let result):
+                results[result.endpoint] = nil
+            case .changed(old: let old, new: let new, flags: _):
+                let sequence = results[old.endpoint]?.sequence
+                results[old.endpoint] = nil
+                add(new, sequence: sequence)
+            case .identical:
+                break
+            @unknown default:
+                break
+            }
+        }
+        publishDevices()
+    }
+
+    private func add(_ result: NWBrowser.Result, sequence: Int? = nil) {
+        guard case .service(let name, _, _, _) = result.endpoint else { return }
+        var txt: [String: String] = [:]
+        if case .bonjour(let record) = result.metadata {
+            for key in ["id", "name", "proto"] {
+                if case .string(let value)? = record.getEntry(for: key) {
+                    txt[key] = value
+                }
+            }
+        }
+        let order: Int
+        if let sequence {
+            order = sequence
+        } else {
+            order = nextSequence
+            nextSequence += 1
+        }
+        results[result.endpoint] = Result(sequence: order, endpoint: result.endpoint, instanceName: name, txt: txt)
+    }
+
+    private func publishDevices() {
+        let devices = DeviceBrowser.devices(from: Array(results.values), ownDeviceID: ownDeviceID)
+        lock.lock()
+        defer { lock.unlock() }
+        guard devices != currentDevices else { return }
+        currentDevices = devices
+        deviceStreams.yield(devices)
+    }
+
+    private func setPermission(_ permission: LocalNetworkPermission) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard permission != currentPermission else { return }
+        currentPermission = permission
+        permissionStreams.yield(permission)
+    }
+
+    private static func isPolicyDenied(_ error: NWError) -> Bool {
+        if case .dns(let code) = error {
+            return code == policyDenied
+        }
+        return false
     }
 }
 
@@ -98,6 +286,7 @@ extension Engine {
     // browsing; an engine browses only when it advertises (`advertisesBonjour`), so test engines
     // never browse.
     func startDeviceBrowsing() {
+        deviceBrowser.ownDeviceName = deviceInfo.name
         guard configuration.advertisesBonjour else { return }
         deviceBrowser.start()
     }

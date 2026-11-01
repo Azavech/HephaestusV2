@@ -1,4 +1,6 @@
+import Darwin
 import Foundation
+import Network
 
 /// The state of the sync server's listener (docs/remote.md › Sync server).
 public enum SyncServerState: Sendable, Hashable {
@@ -43,18 +45,32 @@ public struct SyncServerStatus: Sendable, Hashable {
 /// The sync server (docs/remote.md › Sync server): the WebSocket listener, the Bonjour
 /// advertisement, the handshake, the sessions and their event delivery, and the pairing code
 /// service of the windows of this Mac (docs/architecture.md › Local-only services).
-// STUB: core-sync — the NWListener, Bonjour advertising, the handshake and sessions of
-// docs/remote.md › Handshake to › Server connection states, and the device name changes.
-// `start` binds nothing yet, so the state stays `stopped`.
 public actor SyncServer {
+    /// The Bonjour service type (docs/remote.md › Advertising).
+    public static let serviceType = "_hephaestus2._tcp"
+
     private let secrets: SecretsStore
     private let log: LogSink
     private weak var engine: Engine?
     private let statusStreams = StreamFanOut<SyncServerStatus>()
+    let registry = SyncConnectionRegistry()
+    private let listenerQueue = DispatchQueue(label: "HephaestusV2.sync.listener")
+    private var listener: NWListener?
+    private var advertises = false
+    private var deviceName = ""
+    /// Incremented by every start and stop, so that a start still retrying gives up.
+    private var generation = 0
+    /// The timings of the listener and of the connections it accepts; tests shorten them.
+    private nonisolated let timingsBox = SyncTimingsBox()
+    var timings: SyncTimings { timingsBox.value }
 
     /// The listener state and the open sessions.
     public private(set) var status = SyncServerStatus() {
-        didSet { statusStreams.yield(status) }
+        didSet {
+            if status != oldValue {
+                statusStreams.yield(status)
+            }
+        }
     }
 
     init(secrets: SecretsStore, log: LogSink) {
@@ -81,21 +97,275 @@ public actor SyncServer {
     public func regeneratePairingCode() throws -> PairingCode {
         let code = PairingCode.generate()
         try secrets.update { $0.pairingCode = code.display }
-        // STUB: core-sync — close every connection with 4003.
+        for connection in registry.all() {
+            connection.close(from: .pairingCodeChanged)
+        }
         return code
     }
 
-    /// Starts the listener on `port` (0: a free port chosen by the system) on every interface or
-    /// on the loopback interface, and the Bonjour advertisement when `advertises` is true.
-    func start(port: Int, interface: EngineConfiguration.SyncInterface, advertises: Bool, engine: Engine) async {
-        self.engine = engine
-        // STUB: core-sync — bind the listener (5 attempts, 1 s apart) and advertise.
+    /// The `deviceName` of the last `hello` of a remote device that authenticated since launch.
+    public nonisolated func remoteDeviceName(deviceID: String) -> String? {
+        registry.deviceName(of: deviceID)
     }
 
-    /// Stops advertising, closes every session with 1001 and cancels the listener.
+    /// Sets the timings of the connections accepted from now on (tests).
+    func setTimings(_ timings: SyncTimings) {
+        timingsBox.value = timings
+    }
+
+    /// Starts the listener on `port` (0: a free port chosen by the system) on every interface or
+    /// on the loopback interface, and the Bonjour advertisement when `advertises` is true. The
+    /// bind is tried 5 times, 1 s apart; the state is then `listening(port)` or
+    /// `failed(message)`.
+    func start(port: Int, interface: EngineConfiguration.SyncInterface, advertises: Bool, deviceName: String, engine: Engine) async {
+        stopListener()
+        self.engine = engine
+        self.advertises = advertises
+        self.deviceName = deviceName
+        generation += 1
+        let current = generation
+        var message = ""
+        for attempt in 1...max(timings.bindAttempts, 1) {
+            guard current == generation else { return }
+            switch await bind(port: port, interface: interface, engine: engine) {
+            case .success(let (listener, boundPort)):
+                guard current == generation else {
+                    listener.cancel()
+                    return
+                }
+                self.listener = listener
+                watchAfterReady(listener, port: boundPort)
+                status.state = .listening(port: boundPort)
+                log.info(.sync, "listening on port \(boundPort)")
+                return
+            case .failure(let error):
+                message = error.message
+                if attempt < timings.bindAttempts {
+                    try? await Task.sleep(for: .seconds(timings.bindRetryDelay))
+                }
+            }
+        }
+        guard current == generation else { return }
+        status.state = .failed(message: message)
+        log.error(.sync, "listener failed on port \(port): \(message)")
+    }
+
+    /// Stops advertising, closes every connection with 1001, then cancels the listener; returns
+    /// once the connections ended (each within the close wait).
     func stop() async {
-        // STUB: core-sync
+        generation += 1
+        let stopping = listener
+        listener = nil
+        stopping?.service = nil
+        stopping?.newConnectionHandler = { connection in connection.cancel() }
+        let connections = registry.all()
+        for connection in connections {
+            connection.close(from: .goingAway)
+        }
+        for connection in connections {
+            await connection.waitUntilEnded()
+        }
+        stopping?.stateUpdateHandler = nil
+        stopping?.cancel()
         status = SyncServerStatus()
+    }
+
+    /// The app quits (docs/architecture.md › Shutdown): `stop()`, then the status streams end.
+    func shutdown() async {
+        await stop()
+        statusStreams.finish()
+    }
+
+    /// The device name changed: the advertisement is registered again with the new instance
+    /// name and TXT `name` (docs/remote.md › Device identity).
+    func deviceNameDidChange(_ name: String) {
+        deviceName = name
+        guard advertises, let listener else { return }
+        listener.service = service(deviceID: registryOwnDeviceID, name: name)
+    }
+
+    /// Publishes the open sessions again.
+    func refreshSessions() {
+        status.sessions = registry.openSessions
+    }
+
+    // MARK: Listener
+
+    private struct BindError: Error {
+        var message: String
+    }
+
+    private var registryOwnDeviceID: String {
+        engine?.deviceID ?? ""
+    }
+
+    /// One bind attempt: the listener once ready, with its port, or the system's error text.
+    private func bind(port: Int, interface: EngineConfiguration.SyncInterface, engine: Engine) async -> Result<(NWListener, Int), BindError> {
+        let parameters = SyncSocket.parameters(reuseLocalEndpoint: true)
+        if interface == .loopback {
+            parameters.requiredInterfaceType = .loopback
+        }
+        let listener: NWListener
+        do {
+            if port == 0 {
+                listener = try NWListener(using: parameters)
+            } else {
+                guard let nwPort = NWEndpoint.Port(rawValue: UInt16(clamping: port)), (1...65535).contains(port) else {
+                    return .failure(BindError(message: "Invalid port \(port)"))
+                }
+                listener = try NWListener(using: parameters, on: nwPort)
+            }
+        } catch {
+            return .failure(BindError(message: SyncServer.describe(error)))
+        }
+        if advertises {
+            listener.service = service(deviceID: engine.deviceID, name: deviceName)
+        }
+        let environment = SyncServerEnvironment(registry: registry, secrets: secrets, log: log, ownDeviceID: engine.deviceID,
+                                                timingsBox: timingsBox, sessionsChanged: { [weak self] in
+                                                    Task { await self?.refreshSessions() }
+                                                })
+        let registry = self.registry
+        listener.newConnectionHandler = { [weak engine] connection in
+            guard let engine else {
+                connection.cancel()
+                return
+            }
+            let session = SyncServerConnection(connection: connection, environment: environment, engine: engine)
+            registry.add(session)
+            session.start()
+        }
+        let queue = listenerQueue
+        return await withCheckedContinuation { continuation in
+            let once = ResumeOnce(continuation)
+            listener.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    once.resume(.success((listener, Int(listener.port?.rawValue ?? UInt16(port)))))
+                case .failed(let error), .waiting(let error):
+                    listener.cancel()
+                    once.resume(.failure(BindError(message: SyncServer.describe(error))))
+                case .cancelled:
+                    once.resume(.failure(BindError(message: "The listener was cancelled")))
+                default:
+                    break
+                }
+            }
+            listener.start(queue: queue)
+        }
+    }
+
+    /// After the listener is ready, a failure sets the state `failed(message)`.
+    // DOC-GAP: docs/remote.md › Sync server covers bind failures only; a listener that fails
+    // after it was ready reports `failed` with the system's error text and is not retried.
+    private func watchAfterReady(_ listener: NWListener, port: Int) {
+        listener.stateUpdateHandler = { [weak self] state in
+            guard case .failed(let error) = state else { return }
+            listener.cancel()
+            Task { await self?.listenerFailed(listener, message: SyncServer.describe(error), port: port) }
+        }
+    }
+
+    private func listenerFailed(_ failed: NWListener, message: String, port: Int) {
+        guard listener === failed else { return }
+        listener = nil
+        status.state = .failed(message: message)
+        log.error(.sync, "listener failed on port \(port): \(message)")
+    }
+
+    private func stopListener() {
+        listener?.stateUpdateHandler = nil
+        listener?.newConnectionHandler = nil
+        listener?.cancel()
+        listener = nil
+    }
+
+    /// The Bonjour service: the device name truncated to 63 bytes as the instance name, the
+    /// TXT keys `id`, `name` (truncated to 250 bytes) and `proto` (docs/remote.md › Advertising).
+    private func service(deviceID: String, name: String) -> NWListener.Service {
+        NWListener.Service(name: SyncServer.truncated(name, toUTF8Bytes: 63), type: SyncServer.serviceType,
+                           domain: nil, txtRecord: SyncServer.txtRecord(deviceID: deviceID, name: name))
+    }
+
+    /// The TXT record of the advertisement: `id`, `name` and `proto`, no other key, as DNS-SD
+    /// TXT data (each `key=value` string after its length byte).
+    // DOC-GAP: NWTXTRecord refuses a `name=` entry of 255 bytes, the size of a 250-byte name
+    // (docs/remote.md › TXT record); the record is written as raw TXT data instead.
+    static func txtRecord(deviceID: String, name: String) -> Data {
+        var data = Data()
+        for (key, value) in [("id", deviceID.uppercased()), ("name", truncated(name, toUTF8Bytes: 250)),
+                             ("proto", String(DeviceInfo.currentProtocolVersion))] {
+            let entry = Data("\(key)=\(value)".utf8)
+            data.append(UInt8(entry.count))
+            data.append(entry)
+        }
+        return data
+    }
+
+    /// `text` truncated to at most `limit` bytes of UTF-8 at a character boundary.
+    static func truncated(_ text: String, toUTF8Bytes limit: Int) -> String {
+        guard text.utf8.count > limit else { return text }
+        var result = ""
+        var count = 0
+        for character in text {
+            let length = String(character).utf8.count
+            guard count + length <= limit else { break }
+            result.append(character)
+            count += length
+        }
+        return result
+    }
+
+    /// The system's error text of a Network.framework error.
+    static func describe(_ error: Error) -> String {
+        if let error = error as? NWError {
+            switch error {
+            case .posix(let code):
+                return String(cString: strerror(code.rawValue))
+            case .dns(let code):
+                return "DNS error \(code)"
+            default:
+                return error.localizedDescription
+            }
+        }
+        return error.localizedDescription
+    }
+}
+
+/// The timings of a server, read by the connections it accepts.
+final class SyncTimingsBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current = SyncTimings.standard
+
+    var value: SyncTimings {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return current
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            current = newValue
+        }
+    }
+}
+
+/// Resumes a continuation once; later values are ignored.
+final class ResumeOnce<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Value, Never>?
+
+    init(_ continuation: CheckedContinuation<Value, Never>) {
+        self.continuation = continuation
+    }
+
+    func resume(_ value: Value) {
+        lock.lock()
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.resume(returning: value)
     }
 }
 
@@ -110,12 +380,13 @@ extension Engine {
     func startSyncServer() async {
         guard settings.syncEnabled else { return }
         await syncServer.start(port: effectiveSyncPort, interface: configuration.syncInterface,
-                               advertises: configuration.advertisesBonjour, engine: self)
+                               advertises: configuration.advertisesBonjour, deviceName: deviceInfo.name, engine: self)
     }
 
     /// `settings.update` changed `syncEnabled` or `syncPort` (docs/remote.md › Sync server):
-    /// false stops the server; true starts it; a new port while `HEPHAESTUS_SYNC_PORT` is not set
-    /// restarts it on the new port.
+    /// false stops the server (connections closed with 1001); true starts it; a new port while
+    /// `HEPHAESTUS_SYNC_PORT` is not set closes every connection with 1001 and starts a listener
+    /// on the new port.
     func syncSettingsDidChange(from old: HostSettings) async {
         let new = settings
         if old.syncEnabled && !new.syncEnabled {
@@ -130,6 +401,18 @@ extension Engine {
 
     /// docs/architecture.md › Shutdown, step 3: closes every session with 1001.
     func stopSyncServer() async {
-        await syncServer.stop()
+        await syncServer.shutdown()
+    }
+
+    /// The name of the device of a `user` actor, for the `sender` of the user messages it sends
+    /// (docs/remote.md › Request handling): this device's name for this device, otherwise the
+    /// `deviceName` of the `hello` of that remote device; its id when it never connected.
+    // DOC-GAP: the docs do not say which name a user actor of a device that never connected
+    // shows (only tests and the system make such calls); its device id is used.
+    func userDeviceName(deviceID: String) -> String {
+        if deviceID.uppercased() == self.deviceID {
+            return deviceInfo.name
+        }
+        return syncServer.remoteDeviceName(deviceID: deviceID) ?? deviceID
     }
 }
