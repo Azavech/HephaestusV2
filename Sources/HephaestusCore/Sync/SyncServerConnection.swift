@@ -110,6 +110,17 @@ final class SyncServerConnection: @unchecked Sendable {
     private var sealer: FrameSealer?
     private var opener: FrameOpener?
     private var pump: Task<Void, Never>?
+    /// The start of the last request received: the next request starts after it, so that the
+    /// requests start in the order they are received.
+    private var lastRequestStart: Task<Void, Never>?
+    /// The responses ready to be sent, by their place in the completion order, and the place of
+    /// the next one to send.
+    private var readyResponses: [Int: (id: Int, method: String, outcome: Result<Data, EngineError>)] = [:]
+    private var nextResponse = 0
+
+    // The number of requests completed, under `completionLock`.
+    private let completionLock = NSLock()
+    private var completedRequests = 0
 
     init(connection: NWConnection, environment: SyncServerEnvironment, engine: Engine) {
         let queue = DispatchQueue(label: "HephaestusV2.sync.session")
@@ -216,23 +227,41 @@ final class SyncServerConnection: @unchecked Sendable {
         }
     }
 
-    /// The response of a request; discarded when the session closed meanwhile.
-    func enqueueResponse(id: Int, method: String, outcome: Result<Data, EngineError>) {
+    /// A request completed: returns the place of its response, which is sent after the responses
+    /// of the requests that completed before it.
+    func requestCompleted() -> Int {
+        completionLock.lock()
+        defer { completionLock.unlock() }
+        completedRequests += 1
+        return completedRequests - 1
+    }
+
+    /// The response of a request, at the place `requestCompleted()` gave it; discarded when the
+    /// session closed meanwhile.
+    func enqueueResponse(place: Int, id: Int, method: String, outcome: Result<Data, EngineError>) {
         queue.async {
-            guard self.state == .open else { return }
-            var plaintext: Data
-            switch outcome {
-            case .success(let result):
-                plaintext = SyncMessageBytes.response(id: id, result: result)
-            case .failure(let error):
-                plaintext = (try? SyncMessageBytes.response(id: id, error: error)) ?? Data()
+            self.readyResponses[place] = (id, method, outcome)
+            while let response = self.readyResponses.removeValue(forKey: self.nextResponse) {
+                self.nextResponse += 1
+                self.sendResponse(id: response.id, method: response.method, outcome: response.outcome)
             }
-            if plaintext.count > SyncLimits.sessionPlaintext || plaintext.isEmpty {
-                let error = EngineError(.unavailable, "The result of \(method) is larger than 32 MB and cannot be sent to a remote device.")
-                plaintext = (try? SyncMessageBytes.response(id: id, error: error)) ?? Data()
-            }
-            self.seal(plaintext)
         }
+    }
+
+    private func sendResponse(id: Int, method: String, outcome: Result<Data, EngineError>) {
+        guard state == .open else { return }
+        var plaintext: Data
+        switch outcome {
+        case .success(let result):
+            plaintext = SyncMessageBytes.response(id: id, result: result)
+        case .failure(let error):
+            plaintext = (try? SyncMessageBytes.response(id: id, error: error)) ?? Data()
+        }
+        if plaintext.count > SyncLimits.sessionPlaintext || plaintext.isEmpty {
+            let error = EngineError(.unavailable, "The result of \(method) is larger than 32 MB and cannot be sent to a remote device.")
+            plaintext = (try? SyncMessageBytes.response(id: id, error: error)) ?? Data()
+        }
+        seal(plaintext)
     }
 
     // MARK: Input
@@ -377,8 +406,10 @@ final class SyncServerConnection: @unchecked Sendable {
         case .success(.request(let id, let method, let params)):
             guard let engine else { return }
             let actor = Actor.user(deviceID: hello.deviceID)
-            Task(priority: .medium) {
-                await engine.handleSyncRequest(id: id, method: method, params: params, actor: actor, connection: self)
+            let previous = lastRequestStart
+            lastRequestStart = Task(priority: .medium) {
+                await previous?.value
+                await engine.startSyncRequest(id: id, method: method, params: params, actor: actor, connection: self)
             }
         }
     }
@@ -426,6 +457,7 @@ final class SyncServerConnection: @unchecked Sendable {
         deadline = nil
         pump?.cancel()
         pump = nil
+        lastRequestStart = nil
         if !sent {
             socket.cancel()
         }
@@ -491,9 +523,17 @@ extension Engine {
         }
     }
 
+    /// Starts one request of a remote device and returns once its dispatch began; the request
+    /// runs on concurrently with the next ones (docs/remote.md › Request handling).
+    func startSyncRequest(id: Int, method: String, params: Data, actor: Actor, connection: SyncServerConnection) {
+        Task.immediate {
+            await self.handleSyncRequest(id: id, method: method, params: params, actor: actor, connection: connection)
+        }
+    }
+
     /// One request of a remote device (docs/remote.md › Request handling): dispatched with the
     /// actor `user` of that device, exactly as a local call. The events the call emitted are
-    /// queued before its response.
+    /// queued before its response, and the responses follow the order the requests completed.
     func handleSyncRequest(id: Int, method: String, params: Data, actor: Actor, connection: SyncServerConnection) async {
         let outcome: Result<Data, EngineError>
         do {
@@ -503,9 +543,10 @@ extension Engine {
         } catch {
             outcome = .failure(EngineError.internalError(error))
         }
+        let place = connection.requestCompleted()
         // Lets the event forwarding of this session, queued on the actor when the call emitted,
         // run before the response is queued.
         await Task.yield()
-        connection.enqueueResponse(id: id, method: method, outcome: outcome)
+        connection.enqueueResponse(place: place, id: id, method: method, outcome: outcome)
     }
 }
