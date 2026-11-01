@@ -16,9 +16,20 @@ struct WatchedProjectRoot: Sendable, Hashable {
         self.resolvedPath = FileSystemItems.resolvedPath(path)
     }
 
-    /// The project path of an event path: the path below the root, or `""` when the event
-    /// names the root itself or one of its ancestors (anything in the project may have
-    /// changed); nil when the event is outside the project.
+    /// The project path of an event: the path below the root, or `""` when the event names
+    /// the root itself or one of its ancestors (anything in the project may have changed); nil
+    /// when the event is outside the project, or only changes the metadata of the root folder
+    /// itself (its dates or attributes), which changes nothing inside the project.
+    func projectPath(of event: FileWatcher.Event) -> String? {
+        guard let path = projectPath(ofEventPath: event.path) else { return nil }
+        if path.isEmpty, !event.changesMoreThanMetadata, event.path == self.path || event.path == resolvedPath {
+            return nil
+        }
+        return path
+    }
+
+    /// The project path of an event path: the path below the root, or `""` for the root and
+    /// its ancestors; nil outside the project.
     func projectPath(ofEventPath eventPath: String) -> String? {
         for root in [resolvedPath, path] where root != "/" {
             if eventPath == root { return "" }
@@ -153,7 +164,7 @@ extension Engine {
         var dataPaths: [ProjectID: Set<String>] = [:]
         for root in roots {
             for event in events {
-                guard let projectPath = root.projectPath(ofEventPath: event.path),
+                guard let projectPath = root.projectPath(of: event),
                       let dataPath = ChangedPaths.dataPath(of: projectPath)
                 else { continue }
                 dataPaths[root.id, default: []].insert(dataPath)
@@ -213,7 +224,7 @@ extension Engine {
         for root in loadedProjectRoots() {
             var paths: Set<String> = []
             for event in events {
-                guard let path = root.projectPath(ofEventPath: event.path),
+                guard let path = root.projectPath(of: event),
                       !ProjectPaths.isInGitFolder(path), !ProjectPaths.isInChatsFolder(path)
                 else { continue }
                 paths.insert(path)

@@ -24,6 +24,15 @@ final class FileWatcher: @unchecked Sendable {
             flags & FSEventStreamEventFlags(kFSEventStreamEventFlagRootChanged) != 0
         }
 
+        /// The item was created, removed, renamed or its content modified, or anything below it
+        /// may have changed: more than its own metadata (dates, permissions, extended
+        /// attributes).
+        var changesMoreThanMetadata: Bool {
+            mustScanSubdirectories || rootChanged
+                || flags & FSEventStreamEventFlags(kFSEventStreamEventFlagItemCreated | kFSEventStreamEventFlagItemRemoved
+                    | kFSEventStreamEventFlagItemRenamed | kFSEventStreamEventFlagItemModified | kFSEventStreamEventFlagItemCloned) != 0
+        }
+
         /// Bookkeeping only: no item changed.
         var isBookkeeping: Bool {
             flags & FSEventStreamEventFlags(kFSEventStreamEventFlagHistoryDone | kFSEventStreamEventFlagEventIdsWrapped) != 0

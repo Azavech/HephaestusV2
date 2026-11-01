@@ -1,3 +1,4 @@
+import CoreServices
 import Foundation
 import Testing
 @testable import HephaestusCore
@@ -143,6 +144,18 @@ struct ChangedPathsTests {
         #expect(root.projectPath(ofEventPath: "/var/example") == "")
         #expect(root.projectPath(ofEventPath: "/var/example/ProjectX/a") == nil)
         #expect(root.projectPath(ofEventPath: "/elsewhere/a") == nil)
+
+        func event(_ path: String, _ flags: Int) -> FileWatcher.Event {
+            FileWatcher.Event(path: path, flags: FSEventStreamEventFlags(flags))
+        }
+        let metadata = kFSEventStreamEventFlagItemInodeMetaMod | kFSEventStreamEventFlagItemXattrMod | kFSEventStreamEventFlagItemIsDir
+        #expect(root.projectPath(of: event("/var/example/Project", metadata)) == nil)
+        #expect(root.projectPath(of: event(root.resolvedPath, metadata)) == nil)
+        #expect(root.projectPath(of: event("/var/example/Project", metadata | kFSEventStreamEventFlagItemRenamed)) == "")
+        #expect(root.projectPath(of: event("/var/example/Project", kFSEventStreamEventFlagRootChanged)) == "")
+        #expect(root.projectPath(of: event("/var/example/Project", kFSEventStreamEventFlagMustScanSubDirs)) == "")
+        #expect(root.projectPath(of: event("/var/example/Project/a.txt", kFSEventStreamEventFlagItemInodeMetaMod)) == "a.txt")
+        #expect(root.projectPath(of: event("/var/example", kFSEventStreamEventFlagRootChanged)) == "")
     }
 
     @Test("Data directory events concern registry.yml and settings.yml only")
