@@ -37,7 +37,7 @@ Every Mac is the main device of its own windows and of the remote devices connec
 
 Each engine has a device identity in `device.yml` ([Data model](data-model.md#device-file)): `id`, a UUID generated at first launch and never changed, and `name`, set in Settings > Devices or, when not set, the Mac's computer name. `device.info` returns DeviceInfo `{id, name, appVersion, build, protocolVersion}` with `protocolVersion` 1 for the protocol in this document ([Engine API](engine-api.md#deviceinfo)). The Device menu labels the local device "This Mac" and every other device with its name ([UI](ui.md#breadcrumb-selector)).
 
-Changing the device name re-registers the Bonjour advertisement with the new instance name and TXT `name`, and the new name is used in every later `hello` and `welcome`. Open sessions are not notified; their peers see the new name at their next `welcome`. Default chosen at design time.
+Changing the device name re-registers the Bonjour advertisement with the new instance name and TXT `name`, and the new name is used in every later `hello` and `welcome`, the next `hello` of a connection opened before the change included. Open sessions are not notified; their peers see the new name at their next `welcome`. Default chosen at design time.
 
 ### Paired devices
 
@@ -67,21 +67,22 @@ Each window chooses its device, so several windows show different devices at onc
 
 ## Sync server
 
-| Aspect                | Rule                                                                                                                                                                                                                     |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Owner                 | `SyncServer` in `Sources/HephaestusCore/Sync/`, started by the engine at launch ([Startup](architecture.md#startup)).                                                                                                    |
-| Runs when             | Setting `syncEnabled` is true (default true; "Allow remote devices" in Settings > Devices).                                                                                                                              |
-| Port                  | `HEPHAESTUS_SYNC_PORT` when set, otherwise setting `syncPort` (default 47821); values and precedence in [Environment overrides](architecture.md#environment-overrides).                                                  |
-| Addresses             | Every interface, IPv4 and IPv6.                                                                                                                                                                                          |
-| Listener              | `NWListener` with TCP and `NWProtocolWebSocket`, `allowLocalEndpointReuse` true, `autoReplyPing` true, `maximumMessageSize` 33,554,460.                                                                                  |
-| Advertising           | The Bonjour service is set on the listener, so it is advertised exactly while the listener is ready.                                                                                                                     |
-| State                 | `stopped`, `listening(port)` or `failed(message)`, published to the app as server status ([Local-only services](architecture.md#local-only-services)).                                                                   |
-| Bind failure          | The server retries once per second, 5 attempts in all, then stays `failed` until `syncEnabled` or `syncPort` changes or the app restarts, like the [MCP server](mcp.md#server-lifecycle). Default chosen at design time. |
-| `syncEnabled` → false | Stop advertising, close every connection with 1001, cancel the listener.                                                                                                                                                 |
-| `syncEnabled` → true  | Start the listener and the advertising.                                                                                                                                                                                  |
-| `syncPort` changed    | While `HEPHAESTUS_SYNC_PORT` is not set: close every connection with 1001, start a listener on the new port, advertise again. While it is set, the new value has no effect until the app runs without it.                |
-| App quits             | Close every connection with 1001 ([Shutdown](architecture.md#shutdown)).                                                                                                                                                 |
-| Outgoing connections  | Never made by the server. `RemoteEngineConnection` makes them, whatever the value of `syncEnabled`.                                                                                                                      |
+| Aspect                | Rule                                                                                                                                                                                                                                               |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Owner                 | `SyncServer` in `Sources/HephaestusCore/Sync/`, started by the engine at launch ([Startup](architecture.md#startup)).                                                                                                                              |
+| Runs when             | Setting `syncEnabled` is true (default true; "Allow remote devices" in Settings > Devices).                                                                                                                                                        |
+| Port                  | `HEPHAESTUS_SYNC_PORT` when set, otherwise setting `syncPort` (default 47821); values and precedence in [Environment overrides](architecture.md#environment-overrides).                                                                            |
+| Addresses             | Every interface, IPv4 and IPv6.                                                                                                                                                                                                                    |
+| Listener              | `NWListener` with TCP and `NWProtocolWebSocket`, `allowLocalEndpointReuse` true, `autoReplyPing` true, `maximumMessageSize` 33,554,460.                                                                                                            |
+| Advertising           | The Bonjour service is set on the listener, so it is advertised exactly while the listener is ready.                                                                                                                                               |
+| State                 | `stopped`, `listening(port)` or `failed(message)`, published to the app as server status ([Local-only services](architecture.md#local-only-services)).                                                                                             |
+| Bind failure          | The server retries once per second, 5 attempts in all, then stays `failed` until `syncEnabled` or `syncPort` changes or the app restarts, like the [MCP server](mcp.md#server-lifecycle). Default chosen at design time.                           |
+| Later failure         | A listener that fails after it was ready is cancelled and reports `failed` with the system's error text, logged as a bind failure; it is not retried until `syncEnabled` or `syncPort` changes or the app restarts. Default chosen at design time. |
+| `syncEnabled` → false | Stop advertising, close every connection with 1001, cancel the listener.                                                                                                                                                                           |
+| `syncEnabled` → true  | Start the listener and the advertising.                                                                                                                                                                                                            |
+| `syncPort` changed    | While `HEPHAESTUS_SYNC_PORT` is not set: close every connection with 1001, start a listener on the new port, advertise again. While it is set, the new value has no effect until the app runs without it.                                          |
+| App quits             | Close every connection with 1001 ([Shutdown](architecture.md#shutdown)).                                                                                                                                                                           |
+| Outgoing connections  | Never made by the server. `RemoteEngineConnection` makes them, whatever the value of `syncEnabled`.                                                                                                                                                |
 
 The server status also carries the list of open sessions (device id, device name, remote address, connected since, appVersion). The status bar of windows that show This Mac displays the number of distinct device ids in it ([UI](ui.md#status-bar)). The status is a local-only service, not part of the Engine API, so remote devices and MCP clients cannot read it.
 
@@ -109,6 +110,8 @@ The system renames the instance when another service on the network has the same
 
 Keys are lowercase ASCII. No other key is published. The record is replaced when the device name changes. The truncation lengths are Default chosen at design time.
 
+The record is written as raw DNS-SD TXT data, each `key=value` string preceded by its length byte, in the order of the table: `NWTXTRecord` refuses a `name=` entry of 255 bytes, the size reached by a 250-byte name.
+
 ### Browsing
 
 `DeviceBrowser` browses `_hephaestus2._tcp` in `local.` with TXT records (`NWBrowser.Descriptor.bonjourWithTXTRecord`) from app launch until the app quits. Each result is interpreted as follows.
@@ -122,7 +125,7 @@ Keys are lowercase ASCII. No other key is published. The record is replaced when
 | Several results with the same `id` (one per network interface) | Merged into one device. Connections use the endpoint of the first result received. |
 | A result disappears                                            | The device leaves the Nearby list at once and its online status is recomputed.     |
 
-When the browser fails with `kDNSServiceErr_PolicyDenied` (-65570), the local network permission is denied ([Local network permission](#local-network-permission)). The interpretation rules are Default chosen at design time.
+When the browser fails with `kDNSServiceErr_PolicyDenied` (-65570), the local network permission is denied ([Local network permission](#local-network-permission)). A browser that fails, for this or any other reason, is cancelled and logged, its results are dropped so that the Nearby list empties and online statuses are recomputed, and browsing starts again 5 s later. The interpretation rules and the restart are Default chosen at design time.
 
 TXT data is not authenticated. A device's identity is proven by the handshake and checked against the `welcome` ([Client checks](#client-checks)).
 
@@ -164,7 +167,7 @@ The normalized code is the input of [Key derivation](#key-derivation). A valid c
 
 ### Regenerate
 
-Regenerate in Settings > Devices, after its confirmation ([UI](ui.md#devices)), generates and saves a new code, closes every connection of the sync server (open sessions and handshakes in progress) with code 4003, and displays the new code. Every remote device then needs the new code ([Entering a new code](#entering-a-new-code)).
+Regenerate in Settings > Devices, after its confirmation ([UI](ui.md#devices)), generates and saves a new code, closes every connection of the sync server (open sessions and handshakes in progress) with code 4003, and displays the new code. Every remote device then needs the new code ([Entering a new code](#entering-a-new-code)). When `secrets.json` cannot be written, the old code stays valid, no connection is closed, and Settings shows the alert `Regenerate failed` with the storage error's message. Default chosen at design time.
 
 ### Adding a device
 
@@ -185,6 +188,7 @@ An attempt is one connection with the full handshake, without automatic retry. W
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `welcome` received | The record (id, name, host, port, lastConnected) and its code are saved, replacing a record with the same id. The attempt's connection becomes the device's connection; a connection the app already had to that device is closed with 1000. The sheet closes. A main window whose Device menu opened the sheet switches to the device. |
 | Failure            | The sheet stays open with the [failure message](#messages) under the fields; Connect is enabled again; nothing is saved.                                                                                                                                                                                                                |
+| Saving fails       | `welcome` received but the record or its code cannot be written: the attempt's connection is closed with 1000 and the sheet stays open with the storage error's message under the fields. Default chosen at design time.                                                                                                                |
 
 Connecting through the sheet to a device that is already paired replaces its address and code; this is how a device is paired again after Regenerate. The sheet's layout and texts are Default chosen at design time.
 
@@ -214,17 +218,17 @@ When a connection reaches phase `needsPairing`, the user enters the device's cur
 
 ### WebSocket
 
-| Aspect             | Rule                                                                                                                                                                                                                      |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Endpoint           | `ws://<host>:<port>/` for a stored or typed address; the Bonjour service endpoint for a discovered device. The request path is `/`.                                                                                       |
-| Version            | WebSocket version 13 (RFC 6455), `NWProtocolWebSocket` on both ends.                                                                                                                                                      |
-| TLS                | None. Confidentiality and integrity come from [Frame sealing](#frame-sealing).                                                                                                                                            |
-| Subprotocol        | None requested, none selected. Default chosen at design time.                                                                                                                                                             |
-| Extensions         | None (no compression).                                                                                                                                                                                                    |
-| Upgrade request    | The server accepts any request path and does not check upgrade headers.                                                                                                                                                   |
-| IP version         | A connection to a Bonjour service endpoint requires IPv4 (`NWProtocolIP.Options.version = .v4`); its address is the [device address](#device-address). Typed addresses use any IP version. Default chosen at design time. |
-| Message boundaries | Each protocol message is exactly one complete WebSocket message.                                                                                                                                                          |
-| Pings              | WebSocket ping and pong control frames with an empty payload. They are not encrypted and never counted as messages. Both ends answer pings automatically (`autoReplyPing`).                                               |
+| Aspect             | Rule                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Endpoint           | `ws://<host>:<port>/` for a stored or typed address. Network.framework opens a client WebSocket only to a URL, not to a Bonjour service endpoint: for a discovered device the client first opens a TCP connection to the service endpoint, takes the IPv4 address and port of its remote endpoint, cancels it at once, then opens `ws://<IPv4 address>:<port>/`. The request path is `/`. |
+| Version            | WebSocket version 13 (RFC 6455), `NWProtocolWebSocket` on both ends.                                                                                                                                                                                                                                                                                                                      |
+| TLS                | None. Confidentiality and integrity come from [Frame sealing](#frame-sealing).                                                                                                                                                                                                                                                                                                            |
+| Subprotocol        | None requested, none selected. Default chosen at design time.                                                                                                                                                                                                                                                                                                                             |
+| Extensions         | None (no compression).                                                                                                                                                                                                                                                                                                                                                                    |
+| Upgrade request    | The server accepts any request path and does not check upgrade headers.                                                                                                                                                                                                                                                                                                                   |
+| IP version         | For a discovered device, both the resolving TCP connection and the WebSocket require IPv4 (`NWProtocolIP.Options.version = .v4`); the resolved address is the [device address](#device-address). Typed addresses use any IP version. Default chosen at design time.                                                                                                                       |
+| Message boundaries | Each protocol message is exactly one complete WebSocket message.                                                                                                                                                                                                                                                                                                                          |
+| Pings              | WebSocket ping and pong control frames with an empty payload. They are not encrypted and never counted as messages. Both ends answer pings automatically (`autoReplyPing`).                                                                                                                                                                                                               |
 
 ### Frame types per phase
 
@@ -609,7 +613,7 @@ The engine encodes each envelope once ([Engine API](engine-api.md#dispatcher)); 
 - Otherwise it calls `Engine.dispatch(method:params:actor:)` with `params` as JSON data and the actor `user` carrying the session's device id. Remote users have exactly the rights of local users. An unknown method or invalid params produce the [dispatcher's error](engine-api.md#dispatcher-errors) as the response.
 - Requests start in the order they are received and run concurrently; each response is sent when its request completes, so responses can arrive in another order than their requests. A client that needs one request applied before another waits for the first response before sending the second.
 - Requests have no timeout of their own: they end with their response or with the connection.
-- The name the engine shows for a remote device (for example the `sender` of a chat `user` item) is the `deviceName` of its `hello`.
+- The name the engine shows for a remote device (for example the `sender` of a chat `user` item) is the `deviceName` of its last `hello` since launch. A `user` actor of a device that has not connected since launch, which only tests and the system produce, is named by its device id. Default chosen at design time.
 - The client sends no request before the `welcome`.
 
 ### Event delivery
@@ -643,7 +647,7 @@ The Engine API's own limits keep results and events under 32 MiB ([Limits](engin
 
 ### Unknown messages
 
-After the `welcome`, a message with an unknown `type`, a known `type` in the wrong direction, or a `response` whose id matches no pending call is ignored and logged. The client ignores events with an unknown name. During the handshake, any unexpected message closes the connection with 1002.
+After the `welcome`, a message with an unknown `type`, a known `type` in the wrong direction, or a `response` whose id matches no pending call is ignored and logged. The client ignores events with an unknown name, and events whose data does not decode as the event's type. During the handshake, any unexpected message closes the connection with 1002.
 
 ## Keepalive
 
@@ -709,7 +713,7 @@ The closing side sends a close frame with its code, then cancels the connection 
 
 ### Phases
 
-`RemoteEngineConnection` exposes a detailed `phase` and the date of its next attempt. `EngineConnection.state` ([Engine API](engine-api.md#engineconnection)) is derived from the phase; the message of a disconnected phase is the `reason` of `disconnected(reason:)`.
+`RemoteEngineConnection` exposes a detailed `phase` of type `RemoteConnectionPhase`, and `phaseUpdates`, a stream of the current phase and every change. The `waiting` case carries the message and the date of the next attempt; `needsPairing`, `sameDevice` and `replaced` carry their message. `nextAttempt` reads that date from the phase: nil unless the phase is `waiting`. `EngineConnection.state` ([Engine API](engine-api.md#engineconnection)) is derived from the phase; the message of a disconnected phase is the `reason` of `disconnected(reason:)`.
 
 | Phase          | EngineConnection.state | Retry scheduled | Meaning                                                          |
 | -------------- | ---------------------- | --------------- | ---------------------------------------------------------------- |
@@ -842,7 +846,7 @@ Windows that show This Mac never rewrite. The stored URL is unchanged, and the a
 
 ### Reverse rewrite
 
-When a remote window reports a tab's new URL after a navigation (`webTabs.update` with `url`), and the new URL's host equals the device address (case-insensitive; IPv6 compared without brackets) while the host of the tab's stored URL is `localhost`, `127.0.0.1` or `[::1]`, the URL sent is the new URL with its host replaced by the stored URL's host. Otherwise the new URL is sent unchanged. Example: stored `http://localhost:3000/`, the page navigates to `http://192.168.1.20:3000/login`, and `http://localhost:3000/login` is stored. Default chosen at design time.
+When a remote window reports a tab's new URL after a navigation (`webTabs.update` with `url`), and the new URL's host equals the device address (case-insensitive; IPv6 compared without brackets) while the host of the tab's stored URL is `localhost`, `127.0.0.1` or `[::1]`, the URL sent is the new URL with its host replaced by the stored URL's host. Otherwise the new URL is sent unchanged. Example: stored `http://localhost:3000/`, the page navigates to `http://192.168.1.20:3000/login`, and `http://localhost:3000/login` is stored. A popup stored with `webTabs.open` ([Popups](web-tabs.md#popups)) has no stored URL yet: the stored URL of its opener's tab, the nearest stored tab in its chain of openers, is the reference. Default chosen at design time.
 
 ## Remote windows
 
@@ -908,18 +912,19 @@ The Settings window always shows This Mac; the Devices tab is laid out in [UI](u
 
 The sync server and `RemoteEngineConnection` write these lines to `Logs/engine.log` with the component `sync`, in the format of [engine.log](architecture.md#enginelog). Default chosen at design time.
 
-| Event                   | Level | Message                                                                |
-| ----------------------- | ----- | ---------------------------------------------------------------------- |
-| Listener ready          | INFO  | `listening on port <port>`                                             |
-| Bind failed             | ERROR | `listener failed on port <port>: <error>`                              |
-| Session open            | INFO  | `<deviceName> (<deviceID>) connected from <address>, app <appVersion>` |
-| Handshake rejected      | WARN  | `handshake from <address> closed with <code>`                          |
-| Session closed          | INFO  | `<deviceName> (<deviceID>) disconnected, code <code>`                  |
-| Event not sent          | WARN  | `event <name> of <bytes> bytes not sent to <deviceID>`                 |
-| Unknown message ignored | WARN  | `ignored message type <type> from <deviceID>`                          |
-| Client attempt          | INFO  | `connecting to <name> at <address>`                                    |
-| Client connected        | INFO  | `connected to <name>`                                                  |
-| Client connection ended | INFO  | `connection to <name> ended, code <code>; next attempt in <n> s`       |
+| Event                   | Level | Message                                                                                                                                                                                                          |
+| ----------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Listener ready          | INFO  | `listening on port <port>`                                                                                                                                                                                       |
+| Bind failed             | ERROR | `listener failed on port <port>: <error>`                                                                                                                                                                        |
+| Session open            | INFO  | `<deviceName> (<deviceID>) connected from <address>, app <appVersion>`                                                                                                                                           |
+| Handshake rejected      | WARN  | `handshake from <address> closed with <code>`                                                                                                                                                                    |
+| Session closed          | INFO  | `<deviceName> (<deviceID>) disconnected, code <code>`                                                                                                                                                            |
+| Event not sent          | WARN  | `event <name> of <bytes> bytes not sent to <deviceID>`                                                                                                                                                           |
+| Unknown message ignored | WARN  | `ignored message type <type> from <deviceID>`                                                                                                                                                                    |
+| Client attempt          | INFO  | `connecting to <name> at <address>`                                                                                                                                                                              |
+| Client connected        | INFO  | `connected to <name>`                                                                                                                                                                                            |
+| Client connection ended | INFO  | `connection to <name> ended, code <code>; next attempt in <n> s`; without `; next attempt in <n> s` for a phase that schedules no retry (`needsPairing`, `sameDevice`, `replaced`) and for an Add Device attempt |
+| Browsing failed         | WARN  | `browsing failed: <error>`                                                                                                                                                                                       |
 
 Pairing codes, `K`, session keys, nonces, proofs and message contents are never logged.
 
@@ -927,17 +932,17 @@ Pairing codes, `K`, session keys, nonces, proofs and message contents are never 
 
 Types in `Sources/HephaestusCore/Sync/`, tested in `Tests/HephaestusCoreTests/Sync/`.
 
-| Type                         | Responsibility                                                                                                                                                                                  |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PairingCode`                | Generation, normalization (`init?(userInput:)`), `normalized`, `display`.                                                                                                                       |
-| `SyncCrypto`                 | `pairingKey(code:)`, `serverProof(key:clientNonce:serverNonce:)`, `clientProof(key:clientNonce:serverNonce:)`, `sessionKeys(key:clientNonce:serverNonce:)` as in [Cryptography](#cryptography). |
-| `FrameSealer`, `FrameOpener` | One key and one counter per direction; `seal(_:)` and `open(_:)`, with the errors `tooShort`, `badNoncePrefix`, `unexpectedCounter`, `authenticationFailed`.                                    |
-| `SyncMessage`                | Codable `hello`, `challenge`, `auth`, `welcome`, `request`, `response` and `event`; `params`, `result`, `snapshot` and `event` as [JSONValue](engine-api.md#jsonvalue).                         |
-| `SyncCloseCode`              | The close codes of [Close codes](#close-codes).                                                                                                                                                 |
-| `SyncServer`                 | Listener, Bonjour advertising, sessions, server status with the open-session list, Regenerate, device name changes.                                                                             |
-| `RemoteEngineConnection`     | `EngineConnection` to a paired device: `phase`, `nextAttempt`, backoff, keepalive, the kept `welcome` snapshot, `reconnectNow()`, `close()`, and the single attempt of the Add Device sheet.    |
-| `DeviceBrowser`              | Bonjour browsing; discovered devices `{id, name, proto, endpoint}`; permission state.                                                                                                           |
-| `PairedDevicesStore`         | `remotes.yml` records and their codes in `secrets.json`.                                                                                                                                        |
+| Type                         | Responsibility                                                                                                                                                                                                                                                                             |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PairingCode`                | Generation, normalization (`init?(userInput:)`), `normalized`, `display`.                                                                                                                                                                                                                  |
+| `SyncCrypto`                 | `pairingKey(code:)`, `serverProof(key:clientNonce:serverNonce:)`, `clientProof(key:clientNonce:serverNonce:)`, `sessionKeys(key:clientNonce:serverNonce:)` as in [Cryptography](#cryptography).                                                                                            |
+| `FrameSealer`, `FrameOpener` | One key and one counter per direction; `seal(_:)` and `open(_:)`, with the errors `tooShort`, `badNoncePrefix`, `unexpectedCounter`, `authenticationFailed`.                                                                                                                               |
+| `SyncMessage`                | Codable `hello`, `challenge`, `auth`, `welcome`, `request`, `response` and `event`; `params`, `result`, `snapshot` and `event` as [JSONValue](engine-api.md#jsonvalue).                                                                                                                    |
+| `SyncCloseCode`              | The close codes of [Close codes](#close-codes).                                                                                                                                                                                                                                            |
+| `SyncServer`                 | Listener, Bonjour advertising, sessions, server status with the open-session list, Regenerate, device name changes.                                                                                                                                                                        |
+| `RemoteEngineConnection`     | `EngineConnection` to a paired device: `phase` (`RemoteConnectionPhase`, whose `waiting` case carries the next attempt date), `nextAttempt`, `phaseUpdates`, backoff, keepalive, the kept `welcome` snapshot, `reconnectNow()`, `close()`, and the single attempt of the Add Device sheet. |
+| `DeviceBrowser`              | Bonjour browsing; discovered devices `{id, name, proto, endpoint}`; permission state.                                                                                                                                                                                                      |
+| `PairedDevicesStore`         | `remotes.yml` records and their codes in `secrets.json`.                                                                                                                                                                                                                                   |
 
 `RemoteEngineConnection`, `DeviceBrowser`, `PairedDevicesStore` and `PairingCode` are used by the UI: Device menu, Add Device sheet, Settings > Devices and reconnect view.
 
