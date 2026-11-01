@@ -1,0 +1,132 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release:
+    runs-on: xcode-27
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Check public data
+        run: scripts/check-public.sh
+
+      - name: Check docs
+        run: scripts/check-docs.sh
+
+      - name: Test
+        run: swift test
+
+      - name: Compute version
+        id: version
+        run: scripts/next-version.sh | tee -a "$GITHUB_OUTPUT"
+
+      - name: Look for an existing release
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if gh release view "v$VERSION" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release v$VERSION already exists; nothing to publish."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build app
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
+          REPOSITORY: ${{ github.repository }}
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          NOTARY_KEY_P8_BASE64: ${{ secrets.NOTARY_KEY_P8_BASE64 }}
+        run: scripts/build-app.sh --version "$VERSION" --build "$BUILD" --repository "$REPOSITORY"
+
+      - name: Zip
+        if: steps.existing.outputs.exists == 'false'
+        run: ditto -c -k --sequesterRsrc --keepParent build/HephaestusV2.app build/HephaestusV2.zip
+
+      - name: Write changelog
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          PREVIOUS_TAG: ${{ steps.version.outputs.previous_tag }}
+        run: |
+          if [ -n "$PREVIOUS_TAG" ]; then
+            git log --format='- %s' "$PREVIOUS_TAG..HEAD" > build/CHANGELOG.md
+          else
+            git log --format='- %s' HEAD > build/CHANGELOG.md
+          fi
+
+      - name: Write release.json
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
+        run: |
+          sha256=$(shasum -a 256 build/HephaestusV2.zip | awk '{print $1}')
+          size=$(stat -f %z build/HephaestusV2.zip)
+          minimum=$(plutil -extract LSMinimumSystemVersion raw build/HephaestusV2.app/Contents/Info.plist)
+          published=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          jq -n \
+            --arg version "$VERSION" \
+            --argjson build "$BUILD" \
+            --arg sha256 "$sha256" \
+            --argjson size "$size" \
+            --arg minimumSystemVersion "$minimum" \
+            --arg published "$published" \
+            --rawfile notes build/CHANGELOG.md \
+            '{version: $version, build: $build, sha256: $sha256, size: $size, minimumSystemVersion: $minimumSystemVersion, published: $published, notes: $notes}' \
+            > build/release.json
+          cat build/release.json
+
+      - name: Tag
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if ! git rev-parse -q --verify "refs/tags/v$VERSION" > /dev/null; then
+            git tag "v$VERSION" HEAD
+          fi
+          git push origin "refs/tags/v$VERSION"
+
+      - name: Publish release
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
+        run: |
+          gh release create "v$VERSION" \
+            --verify-tag \
+            --latest \
+            --title "v$VERSION($BUILD)" \
+            --notes-file build/CHANGELOG.md \
+            build/HephaestusV2.zip build/release.json
