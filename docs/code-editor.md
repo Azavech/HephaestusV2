@@ -45,8 +45,9 @@ The tree shows the root folder of the active project (a sub project shows its ow
 | Selection         | Clicking a row selects it (`ProjectViewState.selectedTreePath`). Clicking a file, or Return on a selected file, opens it ([Opening files](#opening-files)). Return on a folder expands or collapses it.                                                                                                        |
 | Refresh           | On `files.changed` for the project: when the paths contain `""`, every listed folder is listed again; otherwise each listed folder that is the parent of a changed path, is itself a changed path, or lies under a changed path, is listed again. Expansion and selection are kept for paths that still exist. |
 | Empty folder      | An expanded empty folder shows the row `Empty` in secondary color; an empty project root shows `This folder is empty.` and a `New File…` button.                                                                                                                                                               |
+| Failed root       | When listing the root fails, the tree shows the engine's message and a `Try Again` button that lists the root again.                                                                                                                                                                                           |
 
-The opacity, the icons and the refresh rule are design-time choices. Default chosen at design time.
+The opacity, the icons, the refresh rule and the failed-root state are design-time choices. Default chosen at design time.
 
 ### Context menu
 
@@ -63,10 +64,10 @@ Default chosen at design time.
 
 ### New File and New Folder
 
-The sheet `New File` or `New Folder` has the line `In <folder>` (the location, a project path, `/` for the root), a `Name` field, `Create` (default) and `Cancel`. The location is the selected folder, the folder of the selected file, or the root when nothing is selected or the empty area was clicked. Default chosen at design time.
+The sheet `New File` or `New Folder` has the line `In <folder>` (the location, a project path, `/` for the root), a `Name` field, `Create` (default) and `Cancel`. From the `+` button the location is the selected folder, the folder of the selected file, or the root when nothing is selected; from a context menu it is the row the menu was opened on (a folder, or the folder of a file), or the root for the empty area. Default chosen at design time.
 
-1. The name is trimmed. It is invalid when it is empty, starts with `/`, or has an empty, `.` or `..` component; the sheet shows `Use a name such as main.go or Sources/App.swift.` under the field. A name may contain `/`: the missing folders are created.
-2. `files.create` is called with the location joined with the name and `isDirectory` false or true. `conflict` shows `<path> already exists.` under the field; any other error shows an alert with the engine's message.
+1. The name is trimmed. It is invalid when it is empty, starts with `/`, or has an empty, `.` or `..` component; Create is disabled while the name is invalid, and once the field has been edited the sheet shows `Use a name such as main.go or Sources/App.swift.` under it. A name may contain `/`: the missing folders are created.
+2. `files.create` is called with the location joined with the name and `isDirectory` false or true. `conflict` shows `<path> already exists.` under the field; any other error shows the alert `Create failed` with the engine's message ([UI](ui.md#principles)).
 3. A new file opens in a new editor tab with an empty, clean buffer; a new folder is expanded and selected.
 
 ### Rename
@@ -75,18 +76,18 @@ The sheet `Rename “<name>”` has one field holding the item's project path wi
 
 ### Move to Trash
 
-| Item   | Alert title                              | Alert text                                                                                                                          | Buttons                             |
-| ------ | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
-| File   | `Move “<name>” to the Trash?`            | `It can be restored from the Trash of <device name>.`, plus ` Unsaved changes will be lost.` when its tab has unsaved changes       | `Move to Trash` (default), `Cancel` |
-| Folder | `Move the folder “<name>” to the Trash?` | `Everything in it is moved to the Trash of <device name>.`, plus ` Unsaved changes in <n> open files will be lost.` when it applies | `Move to Trash` (default), `Cancel` |
+| Item   | Alert title                              | Alert text                                                                                                                                                                             | Buttons                             |
+| ------ | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| File   | `Move “<name>” to the Trash?`            | `It can be restored from the Trash of <device name>.`, plus ` Unsaved changes will be lost.` when its tab has unsaved changes                                                          | `Move to Trash` (default), `Cancel` |
+| Folder | `Move the folder “<name>” to the Trash?` | `Everything in it is moved to the Trash of <device name>.`, plus ` Unsaved changes in 1 open file will be lost.` or ` Unsaved changes in <n> open files will be lost.` when it applies | `Move to Trash` (default), `Cancel` |
 
-After confirmation `files.trash` is called; the tabs of the trashed files close without saving. Default chosen at design time.
+After confirmation `files.trash` is called; the tabs of the trashed files close without saving. A failure shows the alert `Move to Trash failed` with the engine's message ([UI](ui.md#principles)) and closes no tab. Default chosen at design time.
 
 ## Editor tabs
 
 | Element      | Behaviour                                                                                                                                                                      |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Label        | The file name. When two open tabs have the same name, each also shows ` — <parent folder name>`.                                                                               |
+| Label        | The file name. When two open tabs have the same name, each also shows ` — <parent folder name>`; for a file of the project root it is the name of the project's folder.        |
 | Tooltip      | The project path.                                                                                                                                                              |
 | Dirty dot    | `●` replaces the close button while the buffer has unsaved changes; hovering the tab shows the close button instead (Brief §9.4).                                              |
 | Close button | `xmark`; closes the tab ([Closing](#closing-tabs)).                                                                                                                            |
@@ -110,7 +111,7 @@ A file opens when it is clicked in the tree, when a `file` navigation target arr
 1. When a tab already has the path, it is selected; otherwise a tab is added and selected.
 2. A new tab reads the file with `files.read` and creates its [buffer](#editor-buffers) from the result ([Large and binary files](#large-and-binary-files)).
 3. A `file` target with `line` n selects line n (its text without the line break; n is clamped to 1 through the number of lines), puts that line in the vertical middle of the view and gives the editor the focus. Without `line` the insertion point goes to the start of the file.
-4. A `file` target naming a folder reveals and selects it in the tree. A path that does not exist shows `File <path> was not found.` in the editor area.
+4. A `file` target naming a folder reveals and selects it in the tree. A path that does not exist shows `File <path> was not found.` in the editor area (the buffer's content `notFound`, [Editor buffers](#editor-buffers)).
 
 Tabs restored with a window are read again from disk; a restored tab whose file no longer exists is dropped. Buffers are never persisted ([UI](ui.md#persistence)).
 
@@ -167,15 +168,15 @@ The units other than Go and Swift are design-time choices. Default chosen at des
 
 ### Keys
 
-| Key    | Behaviour                                                                                                                                                                                                                                 |
-| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tab    | With an empty selection or a selection inside one line: replaces the selection with one unit. With a selection over several lines: inserts one unit at the start of each selected line that is not blank, and keeps those lines selected. |
-| ⇧Tab   | Removes one unit from the start of each selected line (or the insertion point's line): a leading tab, or up to the unit's number of leading spaces. Default chosen at design time.                                                        |
-| Return | [Automatic indentation](#automatic-indentation).                                                                                                                                                                                          |
-| `}`    | When everything before the insertion point on its line is spaces and tabs, one unit is removed from that indentation before the `}` is inserted. Default chosen at design time.                                                           |
-| ⌘/     | [Toggle comment](#toggle-comment).                                                                                                                                                                                                        |
-| ⌘L     | [Go to line](#go-to-line).                                                                                                                                                                                                                |
-| ⌘S     | [Saving](#saving).                                                                                                                                                                                                                        |
+| Key    | Behaviour                                                                                                                                                                                                                                         |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tab    | With an empty selection or a selection inside one line: replaces the selection with one unit. With a selection over several lines: inserts one unit at the start of each selected line that is not blank, and keeps those lines selected.         |
+| ⇧Tab   | Removes one unit from the start of each selected line (or the insertion point's line): a leading tab, or up to the unit's number of leading spaces, a tab unit counting as 4 (the tab width of [Editor](#editor)). Default chosen at design time. |
+| Return | [Automatic indentation](#automatic-indentation).                                                                                                                                                                                                  |
+| `}`    | When everything before the insertion point on its line is spaces and tabs, one unit is removed from that indentation before the `}` is inserted. Default chosen at design time.                                                                   |
+| ⌘/     | [Toggle comment](#toggle-comment).                                                                                                                                                                                                                |
+| ⌘L     | [Go to line](#go-to-line).                                                                                                                                                                                                                        |
+| ⌘S     | [Saving](#saving).                                                                                                                                                                                                                                |
 
 A selected line is a line touched by the selection, except a last line that the selection only reaches at its first column.
 
@@ -228,6 +229,7 @@ Default chosen at design time.
 | `dataBase64` or no content (the file became binary or too large) | The tab shows the matching notice of [Large and binary files](#large-and-binary-files).                                               | Banner `This file changed on disk.`; Reload shows the notice.      |
 
 - The same check runs for every buffer when a window showing a remote device reconnects, because events may have been missed.
+- A read that fails with another error (for example while the device is disconnected) leaves the buffer as it is. Default chosen at design time.
 - A newer event while a banner is shown reads the file again and keeps the banner.
 - Two buffers of the same file (two windows, or a Code tab and the Docs section) follow these rules independently.
 
@@ -272,6 +274,7 @@ public enum EditorContent: Equatable {
     case binary(size: Int)
     case tooLarge(size: Int)
     case failed(message: String)
+    case notFound                        // the path does not exist
 }
 
 public enum EditorBanner: Equatable {
@@ -279,6 +282,8 @@ public enum EditorBanner: Equatable {
     case deletedOnDisk
 }
 ```
+
+Besides this data, a buffer holds what the rules above need: the pending reveal of a `file` target (line or end of text), whether its editor has the keyboard focus (for the menu items), the size of the last read and the bytes of a binary file (Quick Look), and the window's engine connection and project. Default chosen at design time.
 
 The large-file banner is derived from `isReadOnly`. "Unsaved changes" everywhere in the app means `isDirty` ([UI](ui.md#unsaved-changes-and-quitting)); the Updater's idle check counts them too ([Updater](updater.md)).
 
@@ -657,7 +662,7 @@ Line rules are checked at the start of each line, in order; the rest of a line t
 | ----- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
 | 1     | Front matter              | The text starts with a line `---`: that line through the next line that is `---` or `...`; without a closing line, no front matter                                                                                                                                               | `comment` |
 | 2     | Fenced code block         | A line with at most 3 spaces of indentation and a fence of 3 or more backquotes or of 3 or more `~`, through the closing fence line (same character, at least as long, at most 3 spaces of indentation, then only blanks), fences included; unterminated: to the end of the text | `code`    |
-| 3     | HTML comment              | `<!--` to the next `-->`, across lines                                                                                                                                                                                                                                           | `comment` |
+| 3     | HTML comment              | `<!--` to the next `-->`, across lines; unterminated: to the end of the text                                                                                                                                                                                                     | `comment` |
 | 4     | ATX heading               | At most 3 spaces, 1 to 6 `#`, then a blank or the end of the line: the whole line                                                                                                                                                                                                | `heading` |
 | 5     | Thematic break            | A line made of 3 or more of the same character `-`, `*` or `_`, with optional blanks between: the whole line                                                                                                                                                                     | `keyword` |
 | 6     | Block quote markers       | At most 3 spaces and `>`, repeated (`> >`): each `>`                                                                                                                                                                                                                             | `keyword` |
@@ -672,11 +677,13 @@ Line rules are checked at the start of each line, in order; the rest of a line t
 | 4     | Strong      | `**text**` or `__text__` on one line, the text not empty and not starting or ending with a blank                                                | `strong`   |
 | 5     | Emphasis    | `*text*` or `_text_` with the same conditions; an `_` between two letters or digits neither opens nor closes                                    | `emphasis` |
 
+Each delimiter of rules 4 and 5 is a whole run of `*` or `_`: strong opens and closes with a run of exactly two, emphasis with a run of exactly one, and a run of three or more neither opens nor closes (`**a*b**` is one strong token).
+
 ### JSON
 
 | Order | Rule    | Match                                                                                                                                                               | Kind                                                                                                                                            |
 | ----- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | Comment | `//` to the end of the line; `/*` to the next `*/` (accepted for JSONC files)                                                                                       | `comment`                                                                                                                                       |
+| 1     | Comment | `//` to the end of the line; `/*` to the next `*/`, across lines, unterminated: to the end of the text (both accepted for JSONC files)                              | `comment`                                                                                                                                       |
 | 2     | String  | `"` to the next `"` not consumed by an escape (`\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, `\u` and 4 hexadecimal digits); unterminated: to the end of the line | `property` for the whole string when the next scalar after blanks, line terminators and comments is `:`; otherwise `string` with `escape` parts |
 | 3     | Number  | `-?(0\|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?`                                                                                                                   | `number`                                                                                                                                        |
 | 4     | Literal | `true`, `false`, `null` as whole words                                                                                                                              | `keyword`                                                                                                                                       |
@@ -689,7 +696,7 @@ Line rules are checked at the start of each line, in order; the rest of a line t
 | 1     | Comment              | `#` at the start of a line or after a blank, outside quoted scalars, to the end of the line                                                                                                                     | `comment`   |
 | 2     | Directive            | A line starting with `%`                                                                                                                                                                                        | `directive` |
 | 3     | Document marker      | `---` or `...` at the start of a line, followed by a blank or the end of the line: the marker                                                                                                                   | `directive` |
-| 4     | Block scalar content | The lines after a line whose value is a block indicator (row 9), as long as they are blank or more indented than that line                                                                                      | `string`    |
+| 4     | Block scalar content | The lines after a line whose value is a block indicator (row 9), as long as they are blank or more indented than that line: each line without its indentation                                                   | `string`    |
 | 5     | Sequence marker      | `-` followed by a blank or the end of the line, at the start of a line after indentation or after another sequence marker                                                                                       | `keyword`   |
 | 6     | Key                  | After indentation and sequence markers, a plain scalar that contains no `: ` and no ` #`, or a quoted scalar, followed by `:` and a blank or the end of the line: the scalar (the `:` is plain)                 | `property`  |
 | 7     | Quoted scalar        | `'…'` (two quotes `''` inside stand for one) or `"…"` (backslash escapes are `escape` parts), on one line; unterminated: to the end of the line                                                                 | `string`    |
@@ -699,23 +706,27 @@ Line rules are checked at the start of each line, in order; the rest of a line t
 | 11    | Number value         | A whole plain scalar value matching one of the YAML number patterns below                                                                                                                                       | `number`    |
 | 12    | Other                | one scalar                                                                                                                                                                                                      | plain       |
 
+Rules 7 and 8 apply only where a scalar starts: at the start of a value, after a `:` value indicator, after `,`, `[` or `{` in a flow collection, and after an anchor or a tag. Inside a plain scalar `'`, `"`, `&`, `*` and `!` stay plain (`don't`, `a*b`, `hi!`).
+
+In a double-quoted scalar a backslash starts an escape (YAML 1.2): `\x`, `\u` and `\U` followed by 2, 4 and 8 hexadecimal digits give an escape of 4, 6 and 10 scalars; any other backslash, an incomplete form included, gives an escape of 2 scalars (the backslash and the next scalar).
+
 YAML number patterns (regular expressions): `[-+]?(0|[1-9][0-9_]*)(\.[0-9_]*)?([eE][-+]?[0-9]+)?`, `[-+]?\.[0-9]+([eE][-+]?[0-9]+)?`, `0x[0-9a-fA-F_]+`, `0o[0-7_]+`, `0b[01_]+`, `[-+]?\.(inf|Inf|INF)`, `\.(nan|NaN|NAN)`.
 
 ### Shell
 
-| Order | Rule                   | Match                                                                                                                                                                                                                      | Kind                                                         |
-| ----- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| 1     | Shebang                | `#!` at the very start of the text, to the end of the line                                                                                                                                                                 | `comment`                                                    |
-| 2     | Comment                | `#` at the start of a word (start of a line, or after a blank, `;`, `&`, `\|` or `(`), to the end of the line                                                                                                              | `comment`                                                    |
-| 3     | Single-quoted string   | `'` to the next `'`, across lines, no escapes; unterminated: to the end of the text                                                                                                                                        | `string`                                                     |
-| 4     | ANSI-C string          | `$'` to the next `'` not consumed by an escape; a backslash and the scalar after it are an escape                                                                                                                          | `string` with `escape` parts                                 |
-| 5     | Double-quoted string   | `"` to the next `"` not consumed by an escape, across lines; unterminated: to the end of the text. Inside: a backslash followed by `$`, a backquote, `"`, a backslash or a line terminator is an escape; rows 6 to 8 apply | `string` with `escape`, `variable` and `interpolation` parts |
-| 6     | Variable               | `$` followed by a name (a letter or `_`, then letters, digits and `_`); `$` followed by one of `0`–`9`, `#`, `?`, `*`, `@`, `$`, `!`, `-`; `${` to the matching `}`                                                        | `variable`                                                   |
-| 7     | Substitution           | `$((` or `$(` to the matching `))` or `)`, counting nested parentheses: the delimiters are `interpolation` tokens and the content follows the Shell rules                                                                  | `interpolation` delimiters                                   |
-| 8     | Backquote substitution | A backquote to the next backquote not preceded by a backslash: the whole construct                                                                                                                                         | `interpolation`                                              |
-| 9     | Assignment             | A word that starts with a name directly followed by `=`: the name                                                                                                                                                          | `variable`                                                   |
-| 10    | Word                   | A run of scalars other than blanks, line terminators, `;`, `&`, `\|`, `(`, `)`, `<`, `>`, quotes, backquotes and `$`: a keyword is `keyword`, a builtin `builtin`, digits only `number`, anything else plain               | `keyword`, `builtin`, `number`                               |
-| 11    | Other                  | one scalar                                                                                                                                                                                                                 | plain                                                        |
+| Order | Rule                   | Match                                                                                                                                                                                                                             | Kind                                                         |
+| ----- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| 1     | Shebang                | `#!` at the very start of the text, to the end of the line                                                                                                                                                                        | `comment`                                                    |
+| 2     | Comment                | `#` at the start of a word (start of a line, or after a blank, `;`, `&`, `\|` or `(`), to the end of the line                                                                                                                     | `comment`                                                    |
+| 3     | Single-quoted string   | `'` to the next `'`, across lines, no escapes; unterminated: to the end of the text                                                                                                                                               | `string`                                                     |
+| 4     | ANSI-C string          | `$'` to the next `'` not consumed by an escape; a backslash and the scalar after it are an escape; unterminated: to the end of the text                                                                                           | `string` with `escape` parts                                 |
+| 5     | Double-quoted string   | `"` to the next `"` not consumed by an escape, across lines; unterminated: to the end of the text. Inside: a backslash followed by `$`, a backquote, `"`, a backslash or a line terminator is an escape; rows 6 to 8 apply        | `string` with `escape`, `variable` and `interpolation` parts |
+| 6     | Variable               | `$` followed by a name (a letter or `_`, then letters, digits and `_`); `$` followed by one of `0`–`9`, `#`, `?`, `*`, `@`, `$`, `!`, `-`; `${` to the matching `}` (nested braces counted; unterminated: to the end of the text) | `variable`                                                   |
+| 7     | Substitution           | `$((` or `$(` to the matching `))` or `)`, counting nested parentheses (a single `)` that brings the count back to zero also closes `$((`): the delimiters are `interpolation` tokens and the content follows the Shell rules     | `interpolation` delimiters                                   |
+| 8     | Backquote substitution | A backquote to the next backquote not preceded by a backslash: the whole construct; unterminated: to the end of the text                                                                                                          | `interpolation`                                              |
+| 9     | Assignment             | A word that starts with a name directly followed by `=`: the name                                                                                                                                                                 | `variable`                                                   |
+| 10    | Word                   | A run of scalars other than blanks, line terminators, `;`, `&`, `\|`, `(`, `)`, `<`, `>`, quotes, backquotes and `$`: a keyword is `keyword`, a builtin `builtin`, digits only `number`, anything else plain                      | `keyword`, `builtin`, `number`                               |
+| 11    | Other                  | one scalar                                                                                                                                                                                                                        | plain                                                        |
 
 | Group    | Words                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
