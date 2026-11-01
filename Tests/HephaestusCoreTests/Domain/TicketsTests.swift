@@ -249,7 +249,7 @@ struct TicketsTests {
             try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
             try await h.ticket("HEPH")
             _ = try await h.connection.call(BundlesCreate.self, .init(projectID: "HEPH", title: "Bundle", ticketIDs: ["HEPH-1"]))
-            await h.engine.useTrash(UnavailableTrash())
+            await h.engine.useFileTrash(.unavailable)
             let error = await engineError { try await h.connection.call(TicketsDelete.self, .init(ticketID: "HEPH-1")) }
             #expect(error == EngineError(.unavailable, "\(h.path("Heph/.hephaestus/ticket/HEPH-1.yml")) cannot be moved to the Trash: the volume has no Trash."))
             #expect(try await h.connection.call(BundlesGet.self, .init(bundleID: "HEPH-B1")).ticketIDs.isEmpty)

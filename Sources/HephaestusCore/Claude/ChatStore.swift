@@ -200,13 +200,7 @@ extension Engine {
     /// `unavailable` `<path> cannot be moved to the Trash: <reason>.`
     func moveChatItemToTrash(_ url: URL) throws {
         guard FileManager.default.fileExists(atPath: url.path) else { return }
-        do {
-            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
-            ownWrites.recordRemoval(path: url.path)
-        } catch {
-            var reason = error.localizedDescription
-            while reason.hasSuffix(".") { reason.removeLast() }
-            throw EngineError(.unavailable, "\(url.path) cannot be moved to the Trash: \(reason).")
-        }
+        try moveItemToTrash(url, path: url.path)
+        ownWrites.recordRemoval(path: url.path)
     }
 }

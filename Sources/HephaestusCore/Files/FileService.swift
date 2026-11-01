@@ -11,6 +11,8 @@ final class FileService {
 
     /// `git`, `gofmt` and `swift-format`, set by `lookUpFileTools(environment:)`.
     var tools = FileTools.notLookedUp
+    /// True once a test set the tools: the lookup of the engine start does not replace them.
+    var toolsSetByTest = false
     /// Where `files.trash` and `moveItemToTrash` move items.
     var trash = FileTrash.system
     /// docs/engine-api.md › files.write, step 2: a formatter running longer writes the text
@@ -132,12 +134,14 @@ extension Engine {
     /// the environment capture.
     func lookUpFileTools(environment: [String: String]) async {
         let tools = await FileTools.lookUp(environment: environment, log: log)
+        guard !files.toolsSetByTest else { return }
         files.tools = tools
     }
 
-    /// Sets the tools directly, for tests.
+    /// Sets the tools directly, for tests; the lookup of the engine start does not replace them.
     func useFileTools(_ tools: FileTools) {
         files.tools = tools
+        files.toolsSetByTest = true
     }
 
     /// Sets the formatter timeout, for tests.

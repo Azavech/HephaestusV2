@@ -6,16 +6,8 @@ import Foundation
 // DOC-GAP: the docs describe this work but name no Swift type for it; the type name is a
 // design choice.
 final class SkillsLibrary {
-    /// Moves an item to the Trash of the main device.
-    typealias Trash = (URL) throws -> Void
-
     /// The FSEvents watcher of the current library folder, while the engine runs.
     var watcher: SkillsLibraryWatcher?
-    /// How `skills.delete` and `skills.deleteFile` move items to the Trash; tests replace it so
-    /// that nothing reaches the user's Trash.
-    var moveToTrash: Trash = { url in
-        try FileManager.default.trashItem(at: url, resultingItemURL: nil)
-    }
 
     init() {}
 
@@ -205,15 +197,7 @@ extension Engine {
     /// Moves an item of the library to the Trash; `unavailable` with
     /// `<path> cannot be moved to the Trash: <reason>.` when it cannot be.
     func moveSkillItemToTrash(_ url: URL) throws {
-        do {
-            try skillsLibrary.moveToTrash(url)
-        } catch {
-            var reason = error.localizedDescription
-            while reason.hasSuffix(".") {
-                reason.removeLast()
-            }
-            throw EngineError(.unavailable, "\(url.path) cannot be moved to the Trash: \(reason).")
-        }
+        try moveItemToTrash(url, path: url.path)
         ownWrites.recordRemoval(path: url.path)
     }
 

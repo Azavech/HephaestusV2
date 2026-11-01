@@ -21,10 +21,6 @@ struct DomainState {
     var pendingTicketNames: [TicketID: String] = [:]
     /// Bundles whose Haiku naming is pending, with their provisional title.
     var pendingBundleNames: [BundleID: String] = [:]
-    /// Where removed ticket, bundle and attachment files go (docs/data-model.md › Atomic writes).
-    var trash: any DomainTrash = SystemTrash()
-    /// The `git` executable for `ProjectDetail.gitRemoteURL`, looked up on first use.
-    var gitExecutable: GitExecutable = .notLookedUp
     /// True once the engine stops: background naming answers are not written anymore.
     var isStopped = false
     /// True once the projects of the registry were loaded at startup.
@@ -329,13 +325,6 @@ struct LoadedProject {
     var folder: ProjectFolder {
         ProjectFolder(root: URL(fileURLWithPath: rootPath, isDirectory: true))
     }
-}
-
-/// The lookup state of the `git` executable (docs/architecture.md › Child processes, rule 5).
-enum GitExecutable: Equatable {
-    case notLookedUp
-    case missing
-    case found(String)
 }
 
 /// Lexical path rules of docs/engine-api.md › Paths for absolute paths and sub project entries.

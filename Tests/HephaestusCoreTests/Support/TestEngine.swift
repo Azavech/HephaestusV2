@@ -4,6 +4,25 @@ import Foundation
 /// A launcher that starts nothing: these tests never reach a Claude process.
 struct NoClaudeLauncher: ClaudeProcessLauncher {}
 
+extension FileTrash {
+    /// A Trash that moves items into `folder`, so that tests never fill the Trash of the user
+    /// running them: each item lands in a new sub-folder so that equal names never collide.
+    static func folder(_ folder: URL) -> FileTrash {
+        FileTrash { url in
+            let destination = folder.appendingPathComponent(UUID().uuidString, isDirectory: true)
+            try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+            try FileManager.default.moveItem(at: url, to: destination.appendingPathComponent(url.lastPathComponent))
+        }
+    }
+
+    /// A Trash that cannot be used, for the `unavailable` errors.
+    static let unavailable = FileTrash { _ in throw NoTrashFailure() }
+
+    struct NoTrashFailure: LocalizedError {
+        var errorDescription: String? { "the volume has no Trash" }
+    }
+}
+
 /// Runs `body` with a started test engine (docs/development.md › Test rules: a temporary data
 /// directory, ports 0, the sync server on the loopback interface, no Bonjour advertising) and a
 /// `LocalEngineConnection` to it, then closes both. `prepare` receives the data directory before
@@ -18,6 +37,7 @@ func withTestEngine<T>(debugTools: Bool = false, prepare: (DataDirectory) throws
         let configuration = EngineConfiguration.test(dataDirectory: directory.url, debugTools: debugTools,
                                                      claudeLauncher: NoClaudeLauncher())
         let engine = try await Engine(configuration: configuration)
+        await engine.useFileTrash(.folder(folder.appendingPathComponent("Trash", isDirectory: true)))
         await engine.start()
         let connection = await LocalEngineConnection(engine: engine)
         do {

@@ -32,16 +32,16 @@ extension Engine {
     /// Makes skills.delete and skills.deleteFile move items into `folder` instead of the user's
     /// Trash.
     func useTestTrash(_ folder: URL) {
-        skillsLibrary.moveToTrash = { url in
+        useFileTrash(FileTrash { url in
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             try FileManager.default.moveItem(at: url, to: folder.appendingPathComponent("\(UUID().uuidString)-\(url.lastPathComponent)"))
-        }
+        })
     }
 
     /// Makes moving to the Trash fail.
     func useFailingTrash() {
-        skillsLibrary.moveToTrash = { _ in
+        useFileTrash(FileTrash { _ in
             throw CocoaError(.fileWriteNoPermission)
-        }
+        })
     }
 }

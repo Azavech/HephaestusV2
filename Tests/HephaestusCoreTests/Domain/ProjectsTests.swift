@@ -299,10 +299,12 @@ struct ProjectsTests {
     @Test("ProjectDetail.gitRemoteURL is the origin remote of the git work tree")
     func gitRemote() async throws {
         try await withDomainEngine { h in
-            guard case .found(let git) = GitTool.lookUp(environment: ProcessInfo.processInfo.environment) else { return }
+            let tools = await FileTools.lookUp(environment: ProcessInfo.processInfo.environment)
+            guard let git = tools.git else { return }
+            await h.engine.useFileTools(tools)
             let root = h.projects.appendingPathComponent("Repo")
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            let environment = ProcessEnvironment.withoutHephaestusVariables(ProcessInfo.processInfo.environment)
+            let environment = tools.environment
             #expect(GitTool.run(git, ["init", "-q"], in: root.path, environment: environment)?.status == 0)
             let before = try await h.connection.call(ProjectsCreate.self, .init(rootPath: root.path, name: "Repo", identifier: "REPO",
                                                                               createDirectory: false))

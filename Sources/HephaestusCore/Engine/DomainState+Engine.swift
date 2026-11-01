@@ -180,12 +180,10 @@ extension Engine {
         let isFolder = (status.st_mode & S_IFMT) == S_IFDIR
         let files = isFolder ? Self.regularFiles(in: url) : [path]
         do {
-            try domain.trash.trashItem(at: url)
+            try moveItemToTrash(url, path: path)
         } catch {
-            var reason = error.localizedDescription
-            while reason.hasSuffix(".") { reason.removeLast() }
-            log.error(.storage, "\(path) cannot be moved to the Trash: \(reason)")
-            throw EngineError(.unavailable, "\(path) cannot be moved to the Trash: \(reason).")
+            log.error(.storage, (error as? EngineError)?.message ?? "\(path) cannot be moved to the Trash")
+            throw error
         }
         ownWrites.recordRemoval(path: path)
         for file in files {
@@ -239,28 +237,14 @@ extension Engine {
         return copy
     }
 
-    // MARK: Child process environment
-
-    /// The app's own environment without any `HEPHAESTUS_*` variable: the environment of the
-    /// `git` calls that build a ProjectDetail synchronously, and of the shim of
-    /// `childProcessEnvironment()` until integration.
-    // DOC-GAP: docs/architecture.md › Child processes runs tools with the captured login-shell
-    // environment, which core-claude provides through the async `childProcessEnvironment()`;
-    // a ProjectDetail is built synchronously with the change it describes, so its `git` call
-    // uses the app's environment (without `HEPHAESTUS_*`).
-    func appEnvironmentForTools() -> [String: String] {
-        ProcessEnvironment.withoutHephaestusVariables(ProcessInfo.processInfo.environment)
-    }
-
-    /// `git config --get remote.origin.url` run in the root; nil without git, outside a git work
-    /// tree or without an `origin` remote (docs/engine-api.md › ProjectDetail).
+    /// `git config --get remote.origin.url` run in the root with the `git` and the environment of
+    /// the tools lookup (docs/architecture.md › Child processes, rule 5); nil without git (or
+    /// before the lookup ran), outside a git work tree or without an `origin` remote
+    /// (docs/engine-api.md › ProjectDetail).
     func gitRemoteURL(root: String) -> String? {
-        if domain.gitExecutable == .notLookedUp {
-            domain.gitExecutable = GitTool.lookUp(environment: appEnvironmentForTools())
-        }
-        guard case .found(let git) = domain.gitExecutable else { return nil }
+        guard let git = files.tools.git else { return nil }
         guard let result = GitTool.run(git, ["config", "--get", "remote.origin.url"], in: root,
-                                       environment: appEnvironmentForTools()),
+                                       environment: files.tools.environment),
               result.status == 0 else { return nil }
         let url = String(decoding: result.output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         return url.isEmpty ? nil : url
@@ -269,29 +253,10 @@ extension Engine {
 
 /// The `git` tool of docs/architecture.md › Child processes, rule 5, run synchronously on the
 /// engine actor so that a ProjectDetail is built in one step with the change it describes.
-// DEPENDENCY(core-claude): the tools are looked up by the Claude CLI background tasks after the
-// environment capture; until integration the lookup runs here once, with the same rule.
 enum GitTool {
     /// Time allowed to one git call before it is killed.
     // DOC-GAP: the docs give no timeout for `git config`; 5 s.
     static let timeout: TimeInterval = 5
-
-    /// The first executable `git` in the `PATH` of `environment`; `/usr/bin/git` only when
-    /// `/usr/bin/xcode-select -p` exits with status 0.
-    static func lookUp(environment: [String: String]) -> GitExecutable {
-        for folder in (environment["PATH"] ?? "").split(separator: ":") where !folder.isEmpty {
-            let candidate = (String(folder) as NSString).appendingPathComponent("git")
-            var isDirectory: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: candidate, isDirectory: &isDirectory), !isDirectory.boolValue,
-                  FileManager.default.isExecutableFile(atPath: candidate) else { continue }
-            if candidate == "/usr/bin/git" {
-                guard let result = run("/usr/bin/xcode-select", ["-p"], in: "/", environment: environment, timeout: 10),
-                      result.status == 0 else { return .missing }
-            }
-            return .found(candidate)
-        }
-        return .missing
-    }
 
     /// Runs a tool with standard output piped and returns its exit status and output; nil when
     /// it cannot start or times out.

@@ -496,6 +496,7 @@ struct MCPServerHTTPTests {
             var configuration = EngineConfiguration.test(dataDirectory: directory.url, claudeLauncher: NoClaudeLauncher())
             configuration.mcpPort = nil
             let engine = try await Engine(configuration: configuration)
+            await engine.useFileTrash(.folder(folder.appendingPathComponent("Trash", isDirectory: true)))
             await engine.start()
             do {
                 #expect(await engine.mcpServer.state == .listening(port: first))
