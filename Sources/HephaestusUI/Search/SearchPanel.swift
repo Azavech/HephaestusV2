@@ -109,7 +109,9 @@ private struct SearchPanelCard: View {
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
             content
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background {
+            Color(nsColor: .windowBackgroundColor)
+        }
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(
             RoundedRectangle(cornerRadius: 10)
@@ -139,27 +141,46 @@ private struct SearchPanelCard: View {
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            HStack(spacing: 6) {
-                SearchChip(title: "All", isOn: window.search.isAllSelected) {
-                    window.search.selectAll()
+            // The toggle ends the chip row; a window too narrow for one row puts it under the chips.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 4) {
+                    chips
+                    Spacer(minLength: 8)
+                    toggle
                 }
-                ForEach(SearchScope.allCases, id: \.self) { scope in
-                    SearchChip(title: SearchPanelState.chipName(of: scope), isOn: window.search.scopes.contains(scope)) {
-                        window.search.toggle(scope)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 4) {
+                        chips
                     }
+                    toggle
                 }
-                Spacer(minLength: 8)
-                Picker("", selection: projectToggle) {
-                    Text("This project").tag(true)
-                    Text("All projects").tag(false)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-                .disabled(window.projectID == nil)
             }
         }
         .padding(12)
+    }
+
+    @ViewBuilder
+    private var chips: some View {
+        SearchChip(title: "All", isOn: window.search.isAllSelected) {
+            window.search.selectAll()
+        }
+        ForEach(SearchScope.allCases, id: \.self) { scope in
+            SearchChip(title: SearchPanelState.chipName(of: scope), isOn: window.search.scopes.contains(scope)) {
+                window.search.toggle(scope)
+            }
+        }
+    }
+
+    private var toggle: some View {
+        Picker("", selection: projectToggle) {
+            Text("This project").tag(true)
+            Text("All projects").tag(false)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.small)
+        .fixedSize()
+        .disabled(window.projectID == nil)
     }
 
     /// `This project` / `All projects`; a window with no active project shows `All projects`,
@@ -259,8 +280,10 @@ private struct SearchChip: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.callout)
-                .padding(.horizontal, 9)
+                .font(.subheadline)
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.horizontal, 8)
                 .padding(.vertical, 3)
                 .foregroundStyle(isOn ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
                 .background(

@@ -268,7 +268,10 @@ private struct WebTabView: View {
         .foregroundStyle(isSelected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
         .padding(.horizontal, 8)
         .frame(width: width, height: WebTabStrip.height)
-        .background(isSelected ? Color(nsColor: .controlAccentColor) : Color.clear)
+        .background {
+            Rectangle()
+                .fill(isSelected ? Color(nsColor: .controlAccentColor) : Color.clear)
+        }
         .overlay(alignment: .trailing) {
             Rectangle()
                 .fill(Color(nsColor: .separatorColor))

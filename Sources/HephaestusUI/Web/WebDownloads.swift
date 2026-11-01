@@ -227,7 +227,9 @@ struct WebDownloadsBar: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .frame(maxHeight: 120, alignment: .top)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background {
+            Color(nsColor: .windowBackgroundColor)
+        }
     }
 }
 

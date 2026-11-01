@@ -39,6 +39,11 @@ private struct WebSectionContent: View {
                     Divider()
                     WebAddressBar(controller: controller, selection: selection, tabs: tabs)
                 }
+                // The progress bar sits on the bottom edge of the address bar: SwiftUI content is
+                // kept off the web view, which AppKit draws above it.
+                .overlay(alignment: .bottom) {
+                    WebProgressBar(page: selectedPage(selection))
+                }
                 .overlayPreferenceValue(WebTabAnchorKey.self) { anchors in
                     GeometryReader { proxy in
                         if let tabID = controller.lockedNoticeTabID, let anchor = anchors[.stored(tabID)] {
@@ -56,16 +61,15 @@ private struct WebSectionContent: View {
                     Divider()
                 }
                 pageArea(selection)
-                    .overlay(alignment: .top) {
-                        WebProgressBar(page: selectedPage(selection))
-                    }
             }
             if !controller.downloads.items.isEmpty {
                 Divider()
                 WebDownloadsBar(downloads: controller.downloads)
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background {
+            Color(nsColor: .windowBackgroundColor)
+        }
         .onAppear {
             window.sectionCommands = controller
             consume(window.pendingSectionCommand)
@@ -139,18 +143,17 @@ private struct WebProgressBar: View {
     }
 }
 
-/// The page: the tab's web view, or the error view of a failed load.
+/// The page: the tab's web view, or in its place the error view of a failed load.
 private struct WebPageArea: View {
     let page: WebPage
 
     var body: some View {
-        ZStack {
-            WebViewHost(page: page)
-            if let error = page.loadError {
-                WebLoadErrorView(error: error) {
-                    page.load(storedURL: error.url)
-                }
+        if let error = page.loadError {
+            WebLoadErrorView(error: error) {
+                page.load(storedURL: error.url)
             }
+        } else {
+            WebViewHost(page: page)
         }
     }
 }
@@ -180,7 +183,9 @@ private struct WebLoadErrorView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background {
+            Color(nsColor: .windowBackgroundColor)
+        }
     }
 }
 
@@ -210,6 +215,9 @@ private struct WebViewHost: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSView {
         let container = NSView()
+        // WebKit can draw the page's background beyond the web view's bounds (under bars); the
+        // page stays inside its area so the tab strip and address bar above it stay visible.
+        container.clipsToBounds = true
         attach(to: container)
         return container
     }
