@@ -619,7 +619,7 @@ The `Ultracode` toggle, with the help text `Standing dynamic-workflow orchestrat
 | Extra High | xhigh  |
 | Max        | max    |
 
-The Effort menu button shows `Effort: <UI label>`. Items whose value is not in the selected model's `supportedEffortLevels` are disabled; when that list is empty the whole menu is disabled with the help text `This model has no effort setting`; when `settings.model` matches no entry of `claude.models`, every item is enabled. The stored effort is never rewritten when the model changes; the CLI applies its own downgrade. Default chosen at design time. At launch the value goes to `--effort`; live the engine sends `apply_flag_settings` with `{"effortLevel":"<value>"}`.
+The Effort menu button shows `Effort: <UI label>`, in every composer and at every width where it is shown. Items whose value is not in the selected model's `supportedEffortLevels` are disabled; when that list is empty the whole menu is disabled with the help text `This model has no effort setting`; when `settings.model` matches no entry of `claude.models`, every item is enabled. The stored effort is never rewritten when the model changes; the CLI applies its own downgrade. Default chosen at design time. At launch the value goes to `--effort`; live the engine sends `apply_flag_settings` with `{"effortLevel":"<value>"}`.
 
 ### Permission mode
 
@@ -661,7 +661,7 @@ The Effort menu button shows `Effort: <UI label>`. Items whose value is not in t
 | Stop (■)         | SF Symbol `stop.fill`, shown left of Send only while the chat is running; calls `chats.interrupt`.                                                         |
 | Send (↑)         | SF Symbol `arrow.up.circle.fill`. Enabled when the text is not blank or there is an attachment, the window's device is connected and the CLI is available. |
 
-- The controls row stays on one line. When it does not fit the composer's width, the Effort and Permissions buttons show only their value (`High`, `Ask Every Time`); when it still does not fit, the Model, Effort and Permissions menus are replaced by one menu button with the SF Symbol `slider.horizontal.3` holding the submenus Model (with its Ultracode toggle), Effort and Permissions, followed by the red `Allow All` capsule while that mode is selected. Default chosen at design time.
+- The controls row stays on one line. When it does not fit the composer's width, the Model, Effort and Permissions menus are replaced by one menu button with the SF Symbol `slider.horizontal.3` holding the submenus Model (with its Ultracode toggle), Effort and Permissions, followed by the red `Allow All` capsule while that mode is selected. Default chosen at design time.
 
 - Return in the text field does what an enabled Send does. While a turn is in progress, a sent message is delivered at once and Claude reads it after the current turn ([Chat states](#chat-states)).
 - Escape in the text field calls `chats.interrupt` while the chat is running; ⌘. does not.

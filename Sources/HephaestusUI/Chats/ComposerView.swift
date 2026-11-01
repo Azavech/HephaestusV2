@@ -56,20 +56,15 @@ struct ComposerView: View {
         .padding(.top, 4)
     }
 
-    /// The controls row stays on one line: when it does not fit, Effort and Permissions show only
-    /// their value; when it still does not fit, one `slider.horizontal.3` menu replaces the three
-    /// menus, followed by the red `Allow All` capsule while that mode is selected.
+    /// The controls row stays on one line: when the Model, Effort and Permissions menus do not
+    /// fit, one `slider.horizontal.3` menu replaces them, followed by the red `Allow All` capsule
+    /// while that mode is selected.
     private var controls: some View {
         let menus = ChatSettingsMenus(settings: model.settings, models: model.workspace.models) { model.changeSettings($0) }
         return ViewThatFits(in: .horizontal) {
             controlsRow {
                 ChatModelMenuButton(menus: menus)
                 ChatEffortMenuButton(menus: menus)
-                ChatPermissionsMenuButton(menus: menus)
-            }
-            controlsRow {
-                ChatModelMenuButton(menus: menus)
-                ChatEffortMenuButton(menus: menus, compact: true)
                 ChatPermissionsMenuButton(menus: menus)
             }
             controlsRow {

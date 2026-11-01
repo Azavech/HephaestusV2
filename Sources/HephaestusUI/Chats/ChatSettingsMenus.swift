@@ -40,6 +40,11 @@ struct ChatSettingsMenus {
         (selectedModel?.displayName ?? settings.model) + (settings.ultracode ? " · Ultracode" : "")
     }
 
+    /// The Effort menu button: `Effort: <UI label>`.
+    var effortTitle: String {
+        "Effort: \(settings.effort.label)"
+    }
+
     /// The selected model's effort values; nil when no entry matches the stored value, which
     /// enables every value (docs/chats.md › Effort).
     var supportedEfforts: Set<String>? {
@@ -245,14 +250,13 @@ struct ChatModelMenuButton: View {
     }
 }
 
-/// The Effort menu button: `Effort: <UI label>`, or only the value when `compact`.
+/// The Effort menu button: `Effort: <UI label>` in every composer, at every width.
 struct ChatEffortMenuButton: View {
     let menus: ChatSettingsMenus
-    var compact = false
 
     var body: some View {
         ChatMenuButton(menu: menus.effortMenu) {
-            ChatMenuButtonLabel(title: compact ? menus.settings.effort.label : "Effort: \(menus.settings.effort.label)")
+            ChatMenuButtonLabel(title: menus.effortTitle)
         }
         .disabled(menus.effortDisabled)
         .help(menus.effortDisabled ? ChatSettingsMenus.noEffortHelp : "")

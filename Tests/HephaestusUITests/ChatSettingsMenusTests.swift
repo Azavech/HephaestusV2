@@ -73,6 +73,13 @@ struct ChatSettingsMenusTests {
         #expect(changes.values.map(\.permissionMode) == [.manual, .manual, .plan])
     }
 
+    /// docs/chats.md › Effort: the button shows `Effort: <UI label>` for every value.
+    @Test(arguments: Effort.allCases)
+    func effortTitleNamesTheEffort(effort: Effort) {
+        let menus = ChatSettingsMenus(settings: ChatSettings(effort: effort), models: models) { _ in }
+        #expect(menus.effortTitle == "Effort: \(effort.label)")
+    }
+
     @Test func choiceKeepsTheOtherFields() {
         let changes = Recorder()
         var settings = ChatSettings(model: "opus", effort: .max, permissionMode: .auto)
