@@ -155,6 +155,7 @@ extension Engine {
         runtime.pendingMessages = []
         runtime.starting = false
         runtime.turnInProgress = false
+        runtime.closeAfterTurn = false
         runtime.error = true
         log.warn(.claude, "chat \(chatID.uuidString): \(text)")
         addSystemItem(text, level: .error, chatID: chatID)
@@ -207,6 +208,7 @@ extension Engine {
         runtime.error = true
         runtime.starting = false
         runtime.turnInProgress = false
+        runtime.closeAfterTurn = false
         reportChatState(chatID)
     }
 
@@ -356,31 +358,57 @@ extension Engine {
     // MARK: Turns
 
     /// The turn ends when no message is outstanding and no CLI turn is open (docs/chats.md › Turn
-    /// tracking, step 5): the metadata is written, the idle timer starts, or the process ends when
-    /// an `mcpPort` change waits for the turn.
+    /// tracking, step 5): the metadata is written, then the process ends when the chat closes
+    /// (docs/chats.md › Closing a chat) or an `mcpPort` change waits for the turn; otherwise the
+    /// idle timer starts.
     private func chatTurnEnded(_ chatID: ChatID, runtime: ChatRuntime, process: ChatProcess) {
         runtime.turnInProgress = false
         runtime.starting = false
         process.stopRequested = false
         process.stopTask?.cancel()
         process.stopTask = nil
-        if let meta = domain.chat(chatID) {
+        // A turn stopped with Stop or ending in error cancels the close.
+        let closes = runtime.closeAfterTurn && !runtime.turnReport.stopped && runtime.turnReport.resultError == nil
+        runtime.closeAfterTurn = false
+        if var meta = domain.chat(chatID) {
+            if closes { meta.closed = true }
             saveChatMetaLogging(meta, origin: .system)
         }
-        if process.terminateAfterTurn {
+        if closes {
+            log.info(.claude, "chat \(chatID.uuidString): closed")
+            closeChatProcess(process)
+        } else if process.terminateAfterTurn {
             terminateChatProcess(process)
         } else {
             startIdleTimer(chatID, process: process)
         }
     }
 
-    /// docs/chats.md › Idle termination: 20 minutes after a turn ends, standard input is closed,
-    /// SIGTERM follows 5 s later when the process is alive, SIGKILL 5 s after that.
+    /// `chats.close` (docs/chats.md › Closing a chat): during a turn the chat closes when it ends;
+    /// otherwise `closed` is written at once and the live process ends.
+    func closeChat(_ chatID: ChatID, origin: Actor) {
+        let runtime = chats.runtime(chatID)
+        if runtime.starting || runtime.turnInProgress {
+            runtime.closeAfterTurn = true
+            return
+        }
+        guard var meta = domain.chat(chatID) else { return }
+        meta.closed = true
+        saveChatMetaLogging(meta, origin: origin)
+        log.info(.claude, "chat \(chatID.uuidString): closed")
+        runtime.idleTask?.cancel()
+        runtime.idleTask = nil
+        if let process = runtime.liveProcess {
+            closeChatProcess(process)
+        }
+    }
+
+    /// docs/chats.md › Idle termination: 20 minutes after a turn ends, the process ends as
+    /// `closeChatProcess` ends it.
     private func startIdleTimer(_ chatID: ChatID, process: ChatProcess) {
         guard let runtime = chats.runtimes[chatID] else { return }
         runtime.idleTask?.cancel()
         let timeout = chats.timings.idleTimeout
-        let grace = chats.timings.idleCloseGrace
         let generation = process.generation
         runtime.idleTask = Task {
             try? await Task.sleep(for: timeout)
@@ -388,17 +416,25 @@ extension Engine {
                   !current.exited, self.chats.runtimes[chatID]?.turnInProgress == false
             else { return }
             self.log.info(.claude, "chat \(chatID.uuidString): idle termination")
-            current.terminatedByEngine = true
-            let handle = current.handle
-            handle.closeInput()
-            current.terminationTask = Task.detached {
-                try? await Task.sleep(for: grace)
-                guard !handle.hasExited else { return }
-                handle.signalGroup(SIGTERM)
-                try? await Task.sleep(for: grace)
-                guard !handle.hasExited else { return }
-                handle.signalGroup(SIGKILL)
-            }
+            self.closeChatProcess(current)
+        }
+    }
+
+    /// Idle termination and closing a chat (docs/chats.md › Signals): standard input is closed,
+    /// SIGTERM follows `idleCloseGrace` later when the process is alive, SIGKILL the same time
+    /// after that. The exit adds no error item.
+    private func closeChatProcess(_ process: ChatProcess) {
+        process.terminatedByEngine = true
+        let handle = process.handle
+        handle.closeInput()
+        let grace = chats.timings.idleCloseGrace
+        process.terminationTask = Task.detached {
+            try? await Task.sleep(for: grace)
+            guard !handle.hasExited else { return }
+            handle.signalGroup(SIGTERM)
+            try? await Task.sleep(for: grace)
+            guard !handle.hasExited else { return }
+            handle.signalGroup(SIGKILL)
         }
     }
 
@@ -598,6 +634,7 @@ extension Engine {
             runtime.pendingMessages = []
             runtime.starting = false
             runtime.turnInProgress = false
+            runtime.closeAfterTurn = false
         }
         emitChatUpdated(chatID, origin: origin)
     }
@@ -629,6 +666,9 @@ extension Engine {
                 }
             }
             let duringTurn = runtime.starting || runtime.turnInProgress
+            // A turn that ends because the process exited cancels the close (docs/chats.md ›
+            // Closing a chat).
+            if duringTurn { runtime.closeAfterTurn = false }
             let causedByEngine = process.stopRequested || process.terminatedByEngine
             var retry = false
             if process.resumed, !process.sawInit, !causedByEngine, !runtime.sessionRetried, process.stderr.reportedMissingSession,

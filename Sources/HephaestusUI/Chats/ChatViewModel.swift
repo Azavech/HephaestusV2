@@ -119,6 +119,12 @@ final class ChatViewModel {
         meta?.state ?? .idle
     }
 
+    /// The chat is closed: `This conversation is over` replaces the composer and the More menu
+    /// offers Reopen (docs/chats.md › Closing a chat).
+    var isClosed: Bool {
+        meta?.closed ?? false
+    }
+
     var transcriptState: TranscriptState? {
         if let chatID { return workspace.transcripts[chatID] }
         return TranscriptState()
@@ -570,6 +576,18 @@ final class ChatViewModel {
     func openInNewWindow() {
         guard let chatID else { return }
         app?.openChatWindow(ChatWindowValue(deviceID: workspace.deviceID, chatID: chatID))
+    }
+
+    /// Reopen in the More menu: `chats.reopen`.
+    func reopen() {
+        guard let chatID, let uuid = UUID(uuidString: chatID) else { return }
+        Task {
+            do {
+                _ = try await workspace.call(ChatsReopen.self, ChatsReopen.Params(chatID: uuid))
+            } catch {
+                alert(.failure("Reopen", error))
+            }
+        }
     }
 
     func confirmDelete() {

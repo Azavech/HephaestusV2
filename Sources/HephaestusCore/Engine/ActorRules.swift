@@ -35,16 +35,20 @@ enum ActorRules {
         throw EngineError(.forbidden, "sourcePath is accepted from Claude only.")
     }
 
-    /// chats.postQuestions: only the chat's own Claude; the external token is refused.
-    static func requireOwnChat(_ chatID: ChatID, _ actor: Actor) throws {
+    /// chats.postQuestions, and chats.close with `refusal` ownChatCloseOnly: only the chat's own
+    /// Claude; the external token is refused.
+    static func requireOwnChat(_ chatID: ChatID, _ actor: Actor, refusal: EngineError = ownChatOnly) throws {
         guard actor.kind != .system else { return }
         guard actor.chat == chatID else {
-            throw ownChatOnly
+            throw refusal
         }
     }
 
     /// The message of chats.postQuestions and of `ask_questions` with the external token.
     static let ownChatOnly = EngineError(.forbidden, "Only the chat's own Claude can ask questions.")
+
+    /// The message of chats.close and of `close_chat` with the external token.
+    static let ownChatCloseOnly = EngineError(.forbidden, "Only the chat's own Claude can close its chat.")
 
     /// tickets.setStatus: claude never changes the status of a `done` ticket.
     static func requireNotDoneTicket(_ ticket: Ticket, _ actor: Actor) throws {

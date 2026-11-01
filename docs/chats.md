@@ -151,8 +151,8 @@ Every row is one or two argv elements, in this order; no shell is involved.
 | 17  | `--plugin-dir` `<data dir>/Runtime/plugins/<project id>` | the project enables at least one skill of the library ([Skills](skills.md#generation)) |
 | 18  | `--settings` `{"ultracode":true}`                        | `settings.ultracode` is true                                                           |
 
-- Rows 14 and 15 let `ask_questions` and the read-only `hephaestus` tools run in every permission mode, and keep Claude from using the CLI's own question tool. Default chosen at design time.
-- `<pre-approved tools>` is this single argument: `mcp__hephaestus__ask_questions,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat`. Every other tool, the other `hephaestus` tools included, follows the chat's permission mode.
+- Rows 14 and 15 let `ask_questions`, `close_chat` and the read-only `hephaestus` tools run in every permission mode, and keep Claude from using the CLI's own question tool. Default chosen at design time, except for `close_chat`, which the user chose.
+- `<pre-approved tools>` is this single argument: `mcp__hephaestus__ask_questions,mcp__hephaestus__close_chat,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat`. Every other tool, the other `hephaestus` tools included, follows the chat's permission mode.
 - `--permission-mode` takes `manual` for Ask Every Time; the control request `set_permission_mode` takes `default` for the same mode ([Permission mode](#permission-mode)).
 
 Example, for a ticket chat that resumes its session in a project with enabled skills and ultracode on, with shell quoting and the prompt abbreviated:
@@ -163,7 +163,7 @@ claude -p --input-format stream-json --output-format stream-json --verbose --inc
   --model opus --effort high --permission-mode manual --allow-dangerously-skip-permissions \
   --permission-prompt-tool stdio \
   --mcp-config "$HOME/Library/Application Support/HephaestusV2/Runtime/mcp/3F2504E0-4F89-11D3-9A0C-0305E82C3301.json" \
-  --allowedTools mcp__hephaestus__ask_questions,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat \
+  --allowedTools mcp__hephaestus__ask_questions,mcp__hephaestus__close_chat,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat \
   --disallowedTools AskUserQuestion \
   --append-system-prompt "You are Claude, working inside HephaestusV2, …" \
   --plugin-dir "$HOME/Library/Application Support/HephaestusV2/Runtime/plugins/HEPH" \
@@ -221,7 +221,21 @@ When the chat has no process yet because its launch has not started it, the engi
 - When a turn ends, the engine starts a 20-minute timer; the next delivered message, or a `system/init` that starts a turn, cancels it. When it fires, the engine closes the process's stdin, sends SIGTERM when the process is still alive 5 s later, and SIGKILL 5 s after that. Default chosen at design time for the closing sequence.
 - When the app quits ([UI](ui.md#unsaved-changes-and-quitting)), for every chat with a turn in progress the engine adds the system item `Stopped because HephaestusV2 quit.` with level warning and cancels its pending permission requests; then the processes end as [Architecture](architecture.md#shutdown) specifies (SIGTERM, then SIGKILL after 3 s). Default chosen at design time.
 - `chats.delete` and `projects.remove` terminate the processes of the chats concerned: SIGTERM, then SIGKILL 5 s later.
+- Closing a chat ends its process when the current turn ends ([Closing a chat](#closing-a-chat)).
 - The next message to a chat whose process ended starts a new process with `--resume`.
+
+### Closing a chat
+
+Claude closes the chat it runs in with the MCP tool `close_chat` ([MCP](mcp.md#close_chat)), when the user asks for it or when the work of the chat is finished ([Prompt: common](#prompt-common), [Claude workflow](workflow.md#project-and-feedback-chats)). The tool is available in every chat kind and runs without a permission prompt in every permission mode ([Command line](#command-line)).
+
+- `close_chat` calls `chats.close` for the calling chat ([Engine API](engine-api.md#chatsclose)). Nothing changes at once: Claude can still finish its reply.
+- When the turn in progress ends ([Turn tracking](#turn-tracking)), the engine sets the chat's `closed` to true in the metadata write of the turn's end, which emits `chat.updated`, then ends the chat's process: it closes the process's stdin, sends SIGTERM when the process is still alive 5 s later, and SIGKILL 5 s after that, as for idle termination ([Signals](#signals)). Default chosen at design time for the closing sequence.
+- When that turn is stopped with Stop, or ends in error (the chat's state becomes error, or the turn's last `result` has `isError`), or ends because the process exited, the close is cancelled: the chat stays open and its process is handled as without the call.
+- `chats.close` for a chat without a turn in progress closes it at once. Default chosen at design time.
+- `closed` is stored in the chat's metadata file ([Data model](data-model.md#chat-metadata-file)), so a closed chat stays closed after an app restart. Closing changes neither the chat's state ([Chat states](#chat-states)) nor its transcript: the chat stays in every list with its transcript.
+- In a closed chat, the composer is replaced by the text `This conversation is over` on every client ([Composer](#composer)).
+- Reopen, in the More menu of the chat view while the chat is closed ([Chat view](#chat-view)), calls `chats.reopen` ([Engine API](engine-api.md#chatsreopen)), which sets `closed` to false and emits `chat.updated`; the composer shows again, and the next message starts a process with `--resume` ([Session and resume](#session-and-resume)).
+- A message delivered to a closed chat reopens it: `chats.send`, the answers message of a question set ([Answering](#answering)) and the report of an orchestrated ticket chat ([Orchestrated ticket chats](#orchestrated-ticket-chats)) set `closed` to false in the metadata write that follows the new `user` item, and the message is delivered as in an open chat.
 
 ### Signals
 
@@ -231,7 +245,7 @@ Every signal the engine sends to a Claude process, chat process, naming call or 
 | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
 | Stop ([Stopping a turn](#stopping-a-turn))                                           | `interrupt` request; SIGINT 5 s later when no `result` has arrived; SIGTERM 5 s after that; SIGKILL 5 s after that |
 | No `system/init` within 60 s, `chats.delete`, `projects.remove`, an `mcpPort` change | SIGTERM; SIGKILL 5 s later                                                                                         |
-| Idle termination                                                                     | stdin closed; SIGTERM 5 s later; SIGKILL 5 s after that                                                            |
+| Idle termination, closing a chat ([Closing a chat](#closing-a-chat))                 | stdin closed; SIGTERM 5 s later; SIGKILL 5 s after that                                                            |
 | Timeout of a naming call or of the models probe                                      | SIGTERM; SIGKILL 2 s later                                                                                         |
 | App quit                                                                             | SIGTERM; SIGKILL 3 s later ([Shutdown](architecture.md#shutdown))                                                  |
 
@@ -700,6 +714,7 @@ The Effort menu button shows `Effort: <UI label>`, in every composer and at ever
 - While `ClaudeStatus.checking` is true, Send is disabled and the line `Checking the Claude CLI…` with a small spinner shows above the composer.
 - When the CLI of the window's device is unavailable and `checking` is false, a banner above the composer shows the error. In a window showing This Mac it is `ClaudeStatus.error` with an `Open Settings` button that opens Settings on General. In a window showing a remote device it is `Claude CLI is not available on <device name>: <ClaudeStatus.error>`, without a button, because the Settings window edits only This Mac ([Settings window](ui.md#settings-window)).
 - When the window's device is disconnected, the composer is disabled and its placeholder is `Not connected to <device name>`.
+- In a closed chat ([Closing a chat](#closing-a-chat)), the composer is hidden and the text `This conversation is over` is shown in its place, in every chat view of the chat on every client, local windows and remote devices. The CLI banner and the line `Checking the Claude CLI…` are hidden with it. Reopen in the More menu shows the composer again ([Chat view](#chat-view)).
 - The unsent text and attachments of an existing chat are kept in memory in `DeviceWorkspace.drafts` by chat id ([UI](ui.md#deviceworkspace)); those of a draft chat stay in its view. They are not persisted.
 
 ### Linked items
@@ -867,7 +882,8 @@ Header (in the Chats section, the ticket and bundle Chats tabs and chat windows;
 
 - The title. Double-click edits it in place: Return calls `chats.rename`, Escape and leaving the field cancel. Default chosen at design time.
 - A chip with the kind and, for ticket, bundle and linked feedback chats, the ticket or bundle id; clicking the id navigates to it (`ticket` or `bundle` target), with the same window choice as [Links, images and files](#links-images-and-files).
-- Open in New Window (hidden inside a chat window) and a More menu with Rename… and Delete…. The header of a draft shows `New Chat` and the kind chip only, since nothing is stored yet. Default chosen at design time.
+- Open in New Window (hidden inside a chat window) and a More menu with Rename… and Delete…, preceded by Reopen while the chat is closed. The header of a draft shows `New Chat` and the kind chip only, since nothing is stored yet. Default chosen at design time.
+- Reopen calls `chats.reopen` ([Closing a chat](#closing-a-chat)); the composer shows again in every view of the chat. A failed call shows the alert `Reopen failed` ([Principles](ui.md#principles)). The inspector shows its picker instead of the header, so a closed project chat is reopened from a chat window or the Chats section.
 - Delete… asks `Delete the chat “<title>”?` with the informative text `Its transcript and attachments are moved to the Trash.` and the buttons Delete (destructive) and Cancel.
 
 ### UI state
@@ -903,7 +919,7 @@ The bundle chat started by Implement All or `implement_bundle` is the orchestrat
 - `<TICKET-ID>` is the ticket chat's `ticket`. The final reply is the text of the turn's last `assistant` item without `parentToolUseID`, empty when the turn has none. The error message is the text of the turn's last `system` item of level `error` when there is one, otherwise the `summary` of the turn's last `result`.
 - A turn that ends in `waitingAnswers`, on `ask_questions`, sends nothing: the orchestrator keeps waiting, and the turn that follows the answers reports.
 - Nothing is sent while the engine stops, or when the orchestrator chat no longer exists or is being deleted; `engine.log` records the skipped message.
-- The orchestrator receives the message in any state ([Chat states](#chat-states)): during one of its turns, the CLI runs it after that turn.
+- The orchestrator receives the message in any state ([Chat states](#chat-states)): during one of its turns, the CLI runs it after that turn. A closed orchestrator chat is reopened by the message ([Closing a chat](#closing-a-chat)).
 
 These rules are Default chosen at design time, except the message texts, which the user chose.
 
@@ -1002,7 +1018,7 @@ A Haiku call names tickets created without a title, bundles created without a ti
 | `chats/<chat id>/<attachment uuid>-<file name>` | the chat's attachment folder: user attachments, the feedback screenshot and tool-result images ([Data model](data-model.md#attachments))  |
 
 - The line `chats/` of `.hephaestus/.gitignore` keeps all three out of git.
-- The metadata file is rewritten atomically when the title, settings, links or `sessionStarted` change, when a user message is added and when a turn ends; each rewrite sets `updated` and emits `chat.updated`.
+- The metadata file is rewritten atomically when the title, settings, links, `sessionStarted` or `closed` change, when a user message is added and when a turn ends; each rewrite sets `updated` and emits `chat.updated`.
 - Each new item appends an `add` line; replacing an item (a permission decision or cancellation, an answer) appends an `update` line. The transcript is never rewritten; loading replays it as [Data model](data-model.md#replay) specifies.
 - `chats.delete` terminates the process, keeps the chat's cost in the project's `deletedChats` ([Deleted chats](costs.md#deleted-chats)), removes the chat id from its ticket's or bundle's `chats`, and moves the metadata file, the transcript and the attachment folder to the Trash ([Engine API](engine-api.md#chatsdelete)). Claude's own session files are left untouched. From the moment `chats.delete` starts, the engine ignores every line the chat's terminating process still writes, adds no item, writes no file and emits no event for that chat.
 - `ChatMeta`, as returned by the API, is the metadata plus `projectID` and `state` ([Engine API](engine-api.md#chat-metadata-in-the-api)).
@@ -1022,6 +1038,8 @@ The method contract (actors, parameters, results, errors, events) is in [Engine 
 | `chats.answerPermission` | [Answer](#answer), [Cancellation](#cancellation)                                                                                                                                                                                                 |
 | `chats.postQuestions`    | [Posting questions](#posting-questions)                                                                                                                                                                                                          |
 | `chats.answerQuestion`   | [Answering](#answering)                                                                                                                                                                                                                          |
+| `chats.close`            | [Closing a chat](#closing-a-chat)                                                                                                                                                                                                                |
+| `chats.reopen`           | [Closing a chat](#closing-a-chat)                                                                                                                                                                                                                |
 | `chats.implementTicket`  | [Implement and feedback chats](#implement-and-feedback-chats), [Orchestrated ticket chats](#orchestrated-ticket-chats), [Prompt: implement-ticket](#prompt-implement-ticket), [Prompt: implement-bundle-ticket](#prompt-implement-bundle-ticket) |
 | `chats.implementBundle`  | [Implement and feedback chats](#implement-and-feedback-chats), [Prompt: implement-bundle](#prompt-implement-bundle)                                                                                                                              |
 | `chats.createFeedback`   | [Implement and feedback chats](#implement-and-feedback-chats), [Prompt: feedback](#prompt-feedback)                                                                                                                                              |
@@ -1198,7 +1216,7 @@ HephaestusV2 gives you the MCP server "hephaestus". Its tools appear to you as m
 - Bundles, groups of tickets implemented together: list_bundles, get_bundle, create_bundle, update_bundle, set_bundle_status, delete_bundle, implement_bundle (starts a new chat that implements a bundle).
 - Questions to the user: ask_questions.
 - Search and documentation: search (projects, tickets, bundles, docs, code, chats, skills and web tabs), list_docs.
-- Chats: list_chats, get_chat (a chat and its transcript, for example another chat of the same ticket), rename_chat.
+- Chats: list_chats, get_chat (a chat and its transcript, for example another chat of the same ticket), rename_chat, close_chat (closes the chat you run in).
 - The project's integrated browser: list_web_tabs, open_web_tab, update_web_tab, move_web_tab, close_web_tab.
 - The HephaestusV2 skills library: list_skills, get_skill, create_skill, update_skill, delete_skill, set_skill_enabled (enables or disables a skill in a project).
 - Navigation: open_in_app (shows the user a project, ticket, bundle, chat, doc, file, skill, web tab or section of a project).
@@ -1381,6 +1399,17 @@ When the first message of your ticket chat says that a bundle chat started it, y
 
 - In a project chat, plan and work freely, always following these rules. To implement tickets or a bundle from a project chat, call implement_ticket or implement_bundle, which start dedicated chats; implement in the project chat itself only when the user asks for that.
 - In a feedback chat, work out what the feedback means from the comment, the screenshot and the context, asking questions when it is unclear; then create its ticket with the screenshot path as an attachment and summarize the ticket. Implement it there only when the user asks for that.
+
+# Closing the chat
+
+close_chat closes the chat you run in. After the call, finish your reply: when your turn ends, HephaestusV2 ends your session and shows the user that the conversation is over, until the user reopens the chat. Call close_chat:
+
+- when the user asks you to close the chat;
+- in a ticket chat, once you have set its ticket to done;
+- in a bundle chat, once every ticket has been implemented or skipped and you have pushed;
+- in a feedback chat, once you have created its ticket.
+
+Close a project chat only when the user asks for it.
 
 # When the project is HephaestusV2
 
@@ -1569,3 +1598,4 @@ Follow "Implementing a bundle" as its orchestrator: take the tickets in this ord
 - R109: The user can skip a question; Claude then leaves that point out and mentions it in its reply.
 - R111: Implement All runs one ticket chat per ticket, one at a time, coordinated by the bundle chat that started them, and pushes once at the end.
 - R112: Main windows show the Claude plan's weekly usage in the status bar as a small round progress indicator; a click shows the percentage used, when the week resets and the overage status.
+- R113: Claude can close the chat it runs in when the user asks or its work is finished; a closed chat shows `This conversation is over` in place of its composer until the user reopens it.

@@ -145,7 +145,11 @@ private struct ChatViewContent: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 pinnedCards(maxHeight: geometry.size.height / 2)
                 ChatStatusLine(model: model)
-                ComposerView(model: model)
+                if model.isClosed {
+                    ChatClosedLine()
+                } else {
+                    ComposerView(model: model)
+                }
             }
         }
         .background(isInInspector ? Color.clear : Color(nsColor: .windowBackgroundColor))
@@ -330,10 +334,29 @@ struct ChatStatusLine: View {
     }
 }
 
+// MARK: - Closed chat
+
+/// `This conversation is over`, in place of the composer of a closed chat (docs/chats.md ›
+/// Composer).
+struct ChatClosedLine: View {
+    static let text = "This conversation is over"
+
+    var body: some View {
+        Text(Self.text)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 10)
+            .padding(.top, 12)
+            .padding(.bottom, 16)
+    }
+}
+
 // MARK: - Header
 
 /// The title (double-click edits it in place: Return renames, Escape cancels), the kind chip with
-/// the linked ticket or bundle id, Open in New Window and the More menu with Rename… and Delete….
+/// the linked ticket or bundle id, Open in New Window and the More menu with Reopen while the chat
+/// is closed, Rename… and Delete….
 struct ChatHeader: View {
     @Bindable var model: ChatViewModel
     let isInChatWindow: Bool
@@ -386,6 +409,11 @@ struct ChatHeader: View {
                     .accessibilityLabel("Open in New Window")
                 }
                 Menu {
+                    if model.isClosed {
+                        Button("Reopen") {
+                            model.reopen()
+                        }
+                    }
                     Button("Rename…") {
                         model.startRename()
                     }

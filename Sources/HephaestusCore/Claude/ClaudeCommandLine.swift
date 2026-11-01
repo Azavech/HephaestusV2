@@ -5,7 +5,7 @@ import Foundation
 enum ClaudeCommandLine {
     /// Row 14: the tools that run in every permission mode.
     static let preApprovedTools = [
-        "ask_questions", "list_projects", "get_project", "list_tickets", "get_ticket", "list_bundles", "get_bundle", "search",
+        "ask_questions", "close_chat", "list_projects", "get_project", "list_tickets", "get_ticket", "list_bundles", "get_bundle", "search",
         "list_docs", "list_web_tabs", "list_skills", "get_skill", "list_chats", "get_chat",
     ].map { "mcp__hephaestus__\($0)" }.joined(separator: ",")
 

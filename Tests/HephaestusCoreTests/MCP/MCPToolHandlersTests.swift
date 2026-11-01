@@ -164,6 +164,25 @@ struct MCPToolHandlersTests {
             == .failure(MCPToolError(code: .conflict, message: "A question set is waiting.")))
     }
 
+    @Test("close_chat: the external token fails before validation; a chat token closes its own chat")
+    func closeChat() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        let refused = try await Self.call(handlers, "close_chat", #"{"chatID":"x"}"#, actor: Self.external)
+        #expect(refused == .failure(MCPToolError(code: .forbidden, message: "Only the chat's own Claude can close its chat.")))
+        #expect(engine.calls.isEmpty)
+
+        #expect(try await Self.call(handlers, "close_chat", #"{"chatID":"x"}"#) == .failure(MCPToolError(code: .invalid, message: "chatID: unknown argument.")))
+        #expect(engine.calls.isEmpty)
+
+        engine.answer("chats.close", .success("{}"))
+        #expect(try await Self.call(handlers, "close_chat", "{}") == .success("{}"))
+        let call = try #require(engine.calls.last)
+        #expect(call.method == "chats.close")
+        #expect(call.params == .object(["chatID": .string(Self.chatID.uuidString)]))
+        #expect(call.actor == Self.chat)
+    }
+
     @Test("Target kinds: required properties in the table's order, then unused ones in schema order", arguments: [
         (#"{"kind":"doc"}"#, "target.projectID: required for kind doc."),
         (#"{"kind":"doc","projectID":"HEPH"}"#, "target.path: required for kind doc."),

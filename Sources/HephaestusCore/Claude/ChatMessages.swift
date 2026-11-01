@@ -52,8 +52,9 @@ extension Engine {
     }
 
     /// Appends the `user` item with the stored attachments and `sender`, delivers the message to
-    /// the chat's Claude process, writes the metadata (`chat.updated`), and starts the naming
-    /// when this is the chat's first user message with text (docs/chats.md › User messages).
+    /// the chat's Claude process, writes the metadata (`chat.updated`) with `closed` false, and
+    /// starts the naming when this is the chat's first user message with text (docs/chats.md ›
+    /// User messages, › Closing a chat).
     func sendChatMessage(_ chatID: ChatID, text: String, attachments stored: [(Attachment, Data)], sender: String,
                          origin: Actor) throws {
         let meta = try requireChat(chatID)
@@ -81,7 +82,10 @@ extension Engine {
                            chatID: chatID, origin: origin)
         if !text.isEmpty { chats.hasTextMessage[chatID] = true }
         deliverChatMessage(chatID, ChatMessageLine(data: ControlLines.userMessage(text: sent, images: images, uuid: itemID), uuid: itemID))
-        try saveChatMeta(domain.chat(chatID) ?? meta, origin: origin)
+        var current = domain.chat(chatID) ?? meta
+        // A message reopens a closed chat (docs/chats.md › Closing a chat).
+        current.closed = false
+        try saveChatMeta(current, origin: origin)
         if startsNaming { startChatNaming(chatID, firstMessage: text) }
     }
 

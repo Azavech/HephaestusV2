@@ -524,6 +524,7 @@ chats:
 | updated            | `updated`        | `Date`                                 | no       | `created`               | Set to the current time whenever the file is written: when the metadata changes, when a user message is sent and when a turn ends. Default chosen at design time.                                                                                  |
 | settings           | `settings`       | `ChatSettings`                         | no       | `ChatSettings` defaults | Current settings of the chat ([Chat settings](#chat-settings)).                                                                                                                                                                                    |
 | sessionStarted     | `sessionStarted` | `Bool`                                 | no       | `false`                 | `true` once the Claude CLI has created the session; later launches resume it ([Chats](chats.md)).                                                                                                                                                  |
+| closed             | `closed`         | `Bool`                                 | no       | `false`                 | `true` once the chat is closed: its Claude process has ended and its composer is replaced by `This conversation is over`. Reopen, and any message delivered to the chat, set it back to `false` ([Closing a chat](chats.md#closing-a-chat)).       |
 | projectID          | `projectID`      | `ProjectID`                            | —        | `""`                    | Runtime only: the project whose folder holds the file. Never written to the file and ignored when read from it; always present in the engine API. Default chosen at design time.                                                                   |
 | state              | `state`          | [`ChatState`](engine-api.md#chatstate) | —        | `idle`                  | Runtime only: never written to the file and ignored when read from it; always present in the engine API.                                                                                                                                           |
 | costUSD            | `costUSD`        | `Double?`                              | —        | `null`                  | Runtime only: the chat's cost ([Chat cost](costs.md#chat-cost)), null when the chat has no cost or its transcript has not been replayed yet. Never written to the file and ignored when read from it; always present in the engine API.            |
@@ -572,6 +573,7 @@ settings:
   permissionMode: manual
   ultracode: false
 sessionStarted: true
+closed: false
 ```
 
 A ticket chat:
@@ -592,6 +594,7 @@ settings:
   permissionMode: acceptEdits
   ultracode: true
 sessionStarted: true
+closed: false
 ```
 
 A bundle chat:
@@ -612,9 +615,10 @@ settings:
   permissionMode: bypassPermissions
   ultracode: false
 sessionStarted: false
+closed: false
 ```
 
-The feedback chat that created HEPH-12:
+The feedback chat that created HEPH-12, closed by Claude once the ticket was created ([Closing a chat](chats.md#closing-a-chat)):
 
 ```yaml
 # .hephaestus/chats/B5A4C3D2-E1F0-4A9B-8C7D-6E5F4A3B2C1D.yml
@@ -632,6 +636,7 @@ settings:
   permissionMode: manual
   ultracode: false
 sessionStarted: true
+closed: true
 ```
 
 ## Chat transcript file
@@ -1311,3 +1316,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R110: A bundle has a status: todo, in progress or done; Implement All sets it to in progress and is disabled until the user sets it back to To Do.
 - R111: Implement All runs one ticket chat per ticket, one at a time, coordinated by the bundle chat that started them, and pushes once at the end.
 - R112: Main windows show the Claude plan's weekly usage in the status bar as a small round progress indicator; a click shows the percentage used, when the week resets and the overage status.
+- R113: Claude can close the chat it runs in when the user asks or its work is finished; a closed chat shows `This conversation is over` in place of its composer until the user reopens it.

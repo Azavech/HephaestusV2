@@ -131,6 +131,34 @@ public enum ChatsDelete: EngineMethod {
     public typealias Result = Empty
 }
 
+/// `chats.close`: closes the calling chat when its turn ends (docs/chats.md › Closing a chat).
+/// Actors: claude, the chat's own Claude only.
+public enum ChatsClose: EngineMethod {
+    public static let name = "chats.close"
+    public struct Params: Codable, Sendable, Hashable {
+        /// Must be the actor's chatID.
+        public var chatID: ChatID
+
+        public init(chatID: ChatID) {
+            self.chatID = chatID
+        }
+    }
+    public typealias Result = Empty
+}
+
+/// `chats.reopen`: clears the closed state of a chat. Actors: user.
+public enum ChatsReopen: EngineMethod {
+    public static let name = "chats.reopen"
+    public struct Params: Codable, Sendable, Hashable {
+        public var chatID: ChatID
+
+        public init(chatID: ChatID) {
+            self.chatID = chatID
+        }
+    }
+    public typealias Result = ChatMeta
+}
+
 /// `chats.answerPermission`. Actors: user.
 public enum ChatsAnswerPermission: EngineMethod {
     public static let name = "chats.answerPermission"

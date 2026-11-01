@@ -192,6 +192,21 @@ struct PromptAndNamingTests {
         }
     }
 
+    @Test("The common prompt lists close_chat and says when to call it")
+    func closeChatPrompt() throws {
+        let common = Prompts.text(.common)
+        #expect(common.contains("- Chats: list_chats, get_chat (a chat and its transcript, for example another chat of the same ticket), rename_chat, close_chat (closes the chat you run in)."))
+        let lower = try #require(common.range(of: "# Closing the chat")).lowerBound
+        let upper = try #require(common.range(of: "# When the project is HephaestusV2")).lowerBound
+        let section = String(common[lower..<upper])
+        #expect(section.contains("After the call, finish your reply: when your turn ends, HephaestusV2 ends your session"))
+        #expect(section.contains("- when the user asks you to close the chat;"))
+        #expect(section.contains("- in a ticket chat, once you have set its ticket to done;"))
+        #expect(section.contains("- in a bundle chat, once every ticket has been implemented or skipped and you have pushed;"))
+        #expect(section.contains("- in a feedback chat, once you have created its ticket."))
+        #expect(section.contains("Close a project chat only when the user asks for it."))
+    }
+
     @Test("Naming inputs: the label line, then the text cut at 4,000 characters")
     func namingInputs() {
         #expect(HaikuTitleNamer.input(for: .ticket(description: "Problem\nX")) == "Ticket description:\nProblem\nX")

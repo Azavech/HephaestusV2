@@ -320,6 +320,7 @@ The format of this comment is a default. Default chosen at design time.
 - To implement tickets from a project chat, Claude calls `implement_ticket` or `implement_bundle`, which start dedicated chats. It implements in the project chat itself only when the user asks for that, and then follows the implementation workflow there. Default chosen at design time.
 - In a feedback chat ([Feedback](feedback.md)), Claude works out what the feedback means from the comment, the screenshot and the context, asking questions when it is unclear. It then calls `create_ticket` in the feedback project with the template and the screenshot path as an attachment, and summarizes the ticket.
 - Claude implements the new ticket in the feedback chat only when the user asks, and then follows the implementation workflow. Default chosen at design time.
+- Claude closes the chat it runs in with `close_chat` when the user asks for it, and when the work of the chat is finished: in a ticket chat once it has set the ticket to `done`, in a bundle chat once every ticket has been implemented or skipped and the push is done, in a feedback chat once it has created the ticket. It closes a project chat only when the user asks. After the call it finishes its reply; the chat closes when the turn ends, and the user can reopen it ([Chats](chats.md#closing-a-chat)).
 
 ## Self-update loop
 
@@ -354,6 +355,7 @@ When the project is HephaestusV2 itself (the registered project whose git remote
 | Questions are labelled in order, with 2 to 10 options and exactly one recommended | `chats.postQuestions`                  | `invalid`         |
 | A chat has at most one unanswered question set                                    | `chats.postQuestions`                  | `conflict`        |
 | `ask_questions` needs a chat token                                                | MCP server                             | see [MCP](mcp.md) |
+| `close_chat` needs a chat token and closes only the calling chat                  | MCP server, `chats.close`              | see [MCP](mcp.md) |
 | A `done` ticket is not implemented                                                | `chats.implementTicket`                | `conflict`        |
 | A bundle is implemented only when one of its tickets is not `done`                | `chats.implementBundle`                | `conflict`        |
 | A bundle is implemented only when its status is `todo`                            | `chats.implementBundle`                | `conflict`        |
@@ -477,3 +479,4 @@ Notes
 - R109: The user can skip a question; Claude then leaves that point out and mentions it in its reply.
 - R110: A bundle has a status: todo, in progress or done; Implement All sets it to in progress and is disabled until the user sets it back to To Do.
 - R111: Implement All runs one ticket chat per ticket, one at a time, coordinated by the bundle chat that started them, and pushes once at the end.
+- R113: Claude can close the chat it runs in when the user asks or its work is finished; a closed chat shows `This conversation is over` in place of its composer until the user reopens it.

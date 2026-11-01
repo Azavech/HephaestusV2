@@ -114,8 +114,8 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | MCP request with the external token    | claude, chatID `external`                       |
 | Engine-internal work and tests         | system                                          |
 
-- **user** may call every method except `chats.postQuestions`. Local and remote users have the same rights.
-- **claude** may call only the 43 methods that MCP tools map to (the Actors column says "claude"), with the rules below. Any other method fails with `forbidden` before its params are decoded.
+- **user** may call every method except `chats.postQuestions` and `chats.close`. Local and remote users have the same rights.
+- **claude** may call only the 44 methods that MCP tools map to (the Actors column says "claude"), with the rules below. Any other method fails with `forbidden` before its params are decoded.
 - **system** may call every method, without restrictions.
 
 ### Rules for Claude
@@ -129,6 +129,7 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | projects.update                              | `chatDefaults` must be absent.                                                                                                                                                         | forbidden |
 | chats.implementTicket, chats.implementBundle | `settings` must be absent; the new chat uses the project's defaults.                                                                                                                   | forbidden |
 | chats.postQuestions                          | Only the chat's own Claude may call it: the actor's chatID must equal the `chatID` param; the external token is refused.                                                               | forbidden |
+| chats.close                                  | Only the chat's own Claude may call it: the actor's chatID must equal the `chatID` param; the external token is refused (`Only the chat's own Claude can close its chat.`).            | forbidden |
 | ui.open                                      | `deviceID` is ignored; the event targets the chat's driving device ([ui.open](#uiopen)).                                                                                               | none      |
 | webTabs.update                               | `locked` false is refused (`Only the user can unlock a tab.`): only the user unlocks a tab, so Claude never closes a locked tab.                                                       | forbidden |
 | projects.remove                              | The project that holds the calling chat, or one of its ancestors, is refused (`A chat cannot remove the project it belongs to.`): removing it would end the chat's own Claude process. | forbidden |
@@ -217,6 +218,8 @@ The first column lists every engine method; it is the list the docs conformance 
 | `chats.updateSettings`     | ChatsUpdateSettings     | chatID, settings                                           | ChatMeta         | user         |
 | `chats.rename`             | ChatsRename             | chatID, title                                              | ChatMeta         | user, claude |
 | `chats.delete`             | ChatsDelete             | chatID                                                     | Empty            | user         |
+| `chats.close`              | ChatsClose              | chatID                                                     | Empty            | claude       |
+| `chats.reopen`             | ChatsReopen             | chatID                                                     | ChatMeta         | user         |
 | `chats.answerPermission`   | ChatsAnswerPermission   | chatID, requestID, decision, message?                      | Empty            | user         |
 | `chats.postQuestions`      | ChatsPostQuestions      | chatID, questions                                          | QuestionSet      | claude       |
 | `chats.answerQuestion`     | ChatsAnswerQuestion     | chatID, questionSetID, label, answer                       | Empty            | user         |
@@ -834,7 +837,7 @@ Chat states and their transitions, Claude processes, CLI flags, the stream-json 
 
 ### Chat metadata in the API
 
-Every ChatMeta returned by a method or carried by chat.updated has three fields computed by the engine and never written to `chats/<chatID>.yml`. They are the runtime keys `projectID`, `state` and `costUSD` of [ChatMeta](data-model.md#chat-metadata-file). The engine emits chat.updated when the chat's `costUSD` changes, followed by projects.changed, since the `ownCostUSD` and `costUSD` of its project and of the project's ancestors change with it ([Live updates](costs.md#live-updates)).
+Every ChatMeta returned by a method or carried by chat.updated has the fields of the metadata file, `closed` included, which tells every client that the chat is closed ([Chats](chats.md#closing-a-chat)), and three fields computed by the engine and never written to `chats/<chatID>.yml`. They are the runtime keys `projectID`, `state` and `costUSD` of [ChatMeta](data-model.md#chat-metadata-file). The engine emits chat.updated when the chat's `costUSD` changes, followed by projects.changed, since the `ownCostUSD` and `costUSD` of its project and of the project's ancestors change with it ([Live updates](costs.md#live-updates)).
 
 The **driving device** of a chat is the device of the user actor that last called `chats.create` with a message, `chats.send`, `chats.answerQuestion`, `chats.answerPermission`, `chats.implementTicket`, `chats.implementBundle` or `chats.createFeedback` for it since the engine started; it is kept in memory only. A `ui.open` call made by that chat's Claude targets it. Default chosen at design time.
 
@@ -914,6 +917,7 @@ Swift type `ChatsSend` · actors: user · result: [Empty](#empty)
 - Accepted in every state ([Chats](chats.md#chat-states)). With a live Claude process the message is written to it at once; during a turn (states `starting`, `running`, `waitingPermission`) the CLI runs it after its CLI turn in progress, and the chat stays running until Claude has finished it ([Chats](chats.md#turn-tracking)). In the state `waitingAnswers` the message is delivered as in `idle` and leaves the question set unchanged. Without a live process, in any state, `error` included, a process is launched first. Default chosen at design time.
 - Appends a `user` item with the text, the stored attachments and `sender` the name of the actor's device, then delivers the message to the chat's Claude process, launching it first when it is not running ([Chats](chats.md#user-messages)).
 - The first user message of a chat that has text starts its naming with Haiku ([Chats](chats.md#haiku-naming)).
+- In a closed chat the message reopens the chat: `closed` becomes false in the metadata write that follows the `user` item ([Chats](chats.md#closing-a-chat)).
 - Returns once the message is accepted; Claude's answer arrives as events.
 
 | Error       | When                                                                                                                                                     |
@@ -999,6 +1003,45 @@ Steps ([Chats](chats.md#persistence)):
 | internal    | project.yml cannot be written.       |
 
 Events: project.updated when an entry was appended to `deletedChats`, ticket.updated or bundle.updated, chat.deleted.
+
+### chats.close
+
+Swift type `ChatsClose` · actors: claude (the chat's own Claude only) · result: [Empty](#empty)
+
+Called by the MCP tool `close_chat`, which fills `chatID` from its token ([MCP server](mcp.md#close_chat)).
+
+| Param  | Type   | Required | Description                          |
+| ------ | ------ | -------- | ------------------------------------ |
+| chatID | ChatID | yes      | Chat id; must be the actor's chatID. |
+
+During a turn, marks the chat to close when that turn ends: the engine then sets `closed` to true in the chat's metadata file and ends its Claude process, unless the turn is stopped with Stop, ends in error or ends because the process exited ([Chats](chats.md#closing-a-chat)). Without a turn in progress, the chat closes at once. A chat that is already closed is left unchanged.
+
+| Error     | When                                                                                    |
+| --------- | --------------------------------------------------------------------------------------- |
+| invalid   | chatID is not a UUID.                                                                   |
+| notFound  | No such chat.                                                                           |
+| forbidden | The actor is not this chat's Claude (`Only the chat's own Claude can close its chat.`). |
+
+Events: none during a turn; chat.updated when the chat closes.
+
+### chats.reopen
+
+Swift type `ChatsReopen` · actors: user · result: [ChatMeta](data-model.md#chat-metadata-file)
+
+Called by Reopen in the More menu of a closed chat ([Chats](chats.md#chat-view)).
+
+| Param  | Type   | Required | Description |
+| ------ | ------ | -------- | ----------- |
+| chatID | ChatID | yes      | Chat id.    |
+
+Sets `closed` to false in the chat's metadata file. The next message starts a Claude process with `--resume` ([Chats](chats.md#closing-a-chat)). A chat that is not closed is returned unchanged.
+
+| Error    | When                  |
+| -------- | --------------------- |
+| invalid  | chatID is not a UUID. |
+| notFound | No such chat.         |
+
+Events: chat.updated when the chat was closed.
 
 ### chats.answerPermission
 
@@ -2720,3 +2763,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R109: The user can skip a question; Claude then leaves that point out and mentions it in its reply.
 - R110: A bundle has a status: todo, in progress or done; Implement All sets it to in progress and is disabled until the user sets it back to To Do.
 - R112: Main windows show the Claude plan's weekly usage in the status bar as a small round progress indicator; a click shows the percentage used, when the week resets and the overage status.
+- R113: Claude can close the chat it runs in when the user asks or its work is finished; a closed chat shows `This conversation is over` in place of its composer until the user reopens it.

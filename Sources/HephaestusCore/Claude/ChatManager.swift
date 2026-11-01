@@ -106,8 +106,12 @@ final class ChatRuntime {
     var lastDeltaFlush: ContinuousClock.Instant?
     var idleTask: Task<Void, Never>?
     /// What the current turn's report to an orchestrator chat says (docs/chats.md › Orchestrated
-    /// ticket chats).
+    /// ticket chats); also tells whether the turn was stopped or ended in error.
     var turnReport = TurnReport()
+    /// `chats.close` was called during the current turn: the chat closes when the turn ends,
+    /// unless it is stopped, ends in error or ends because the process exited (docs/chats.md ›
+    /// Closing a chat).
+    var closeAfterTurn = false
 
     /// The process can take a message now: it runs and the engine is not ending it.
     var liveProcess: ChatProcess? {

@@ -14,7 +14,7 @@ HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server th
 | JSON-RPC methods  | `initialize`, `ping`, `tools/list`, `tools/call`; every notification is accepted and ignored                                                             |
 | Server name       | `hephaestus`, in `serverInfo` and as the server's key in Claude's MCP configuration, so Claude names the tools `mcp__hephaestus__<tool>`                 |
 | Authentication    | `Authorization: Bearer <token>` with a chat token or the external token                                                                                  |
-| Tools             | The 43 tools of the [tool catalogue](#tool-catalogue), plus 3 [debug tools](#debug-tools) when `HEPHAESTUS_DEBUG_TOOLS=1`                                |
+| Tools             | The 44 tools of the [tool catalogue](#tool-catalogue), plus 3 [debug tools](#debug-tools) when `HEPHAESTUS_DEBUG_TOOLS=1`                                |
 
 Every tool call runs an engine method ([Engine API](engine-api.md)) with the actor `claude`. The engine validates it exactly as it validates a call from the UI or from a remote device and emits the same events, so every client, local or remote, shows the change live.
 
@@ -127,7 +127,7 @@ The chat tokens are created, kept and revoked as this table states. Default chos
 
 - A relaunch of a chat's process issues a new token. Sub-agents of the chat run in the same process and use the same token.
 - The external token is read and regenerated only through the external MCP token service of the windows of this Mac; no engine method or MCP tool exposes it ([Architecture](architecture.md#local-only-services)). Regenerate (Settings > MCP, [UI](ui.md)) replaces it at once: requests with the old token get 401, and terminal sessions must add the server again ([External use](#external-use)). When `secrets.json` cannot be written, the old token stays valid and Settings shows the alert `Regenerate failed` with the storage error's message. Default chosen at design time.
-- A chat token identifies the calling chat: `ask_questions` posts its questions to that chat, and `open_in_app` reaches that chat's driving device.
+- A chat token identifies the calling chat: `ask_questions` posts its questions to that chat, `close_chat` closes that chat, and `open_in_app` reaches that chat's driving device.
 - Tokens are never logged.
 
 ## JSON-RPC
@@ -251,7 +251,7 @@ The element for `get_bundle`:
 The call goes through these steps:
 
 1. The JSON-RPC checks of `name` and `arguments` ([Protocol errors](#protocol-errors)).
-2. Availability for the token: `ask_questions` with the external token fails.
+2. Availability for the token: `ask_questions` and `close_chat` with the external token fail.
 3. [Argument validation](#argument-validation) against the tool's input schema.
 4. The rules of the tool, given in its section.
 5. [Path expansion](#path-expansion).
@@ -368,6 +368,7 @@ A chat token runs every engine call as the actor `claude` with the chat's id, th
 | A comment added by Claude has `author: claude`                                                     | tickets.addComment ([Tickets](tickets.md#comments))                                                | —                      |
 | Claude never sets a ticket title at creation, chat settings or project chat defaults               | The tools never send these params ([Engine API](engine-api.md#rules-for-claude))                   | —                      |
 | Only the chat's own Claude asks questions                                                          | `ask_questions`, chats.postQuestions                                                               | `forbidden`            |
+| Only the chat's own Claude closes its chat                                                         | `close_chat`, chats.close                                                                          | `forbidden`            |
 | A feedback chat is linked to the ticket it creates                                                 | tickets.create ([Feedback](feedback.md#resulting-ticket))                                          | —                      |
 | Claude never unlocks a web tab, so it never closes a locked tab                                    | webTabs.update, webTabs.close ([Engine API](engine-api.md#rules-for-claude))                       | `forbidden`            |
 | A chat never removes the project it belongs to                                                     | projects.remove ([Engine API](engine-api.md#rules-for-claude))                                     | `forbidden`            |
@@ -409,6 +410,7 @@ The table lists every tool in the order of `tools/list`. "Required inputs" holds
 | `list_chats`        | `projectID`                     | —                                | chats.list               | [ChatMeta]       |
 | `get_chat`          | `chatID`                        | —                                | chats.get                | ChatTranscript   |
 | `rename_chat`       | `chatID`, `title`               | —                                | chats.rename             | ChatMeta         |
+| `close_chat`        | —                               | —                                | chats.close              | `{}`             |
 | `search`            | `query`                         | `scopes`, `projectID`            | search.query             | [SearchResult]   |
 | `list_docs`         | `projectID`                     | —                                | docs.list                | [DocEntry]       |
 | `list_web_tabs`     | `projectID`                     | —                                | webTabs.list             | [WebTab]         |
@@ -1500,6 +1502,32 @@ Input schema:
 }
 ```
 
+### close_chat
+
+- **Engine call:** chats.close with `chatID` = the calling chat ([Engine API](engine-api.md#chatsclose)). The chat closes when the current turn ends, so Claude can still finish its reply; Stop or an error in that turn cancels the close ([Chats](chats.md#closing-a-chat)).
+- **Availability:** chat tokens only. With the external token the call fails before argument validation with `Only the chat's own Claude can close its chat.`, the message of chats.close for that case. The tool is listed for every token. Default chosen at design time.
+- **Permission:** pre-approved, so it runs without a permission prompt in every permission mode ([Chats](chats.md#command-line)).
+- **Result:** `{}`.
+- **Errors:**
+  - The external token (`forbidden`, message above).
+  - The chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatsclose)).
+
+Description:
+
+```text
+Close the chat you run in. You can still finish your reply: when your turn ends, HephaestusV2 ends your session and the chat shows "This conversation is over" until the user reopens it. Call it when the user asks you to close the chat, or when the work of the chat is finished. Only available in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}
+```
+
 ### search
 
 - **Engine call:** search.query with `query`, and `scopes` and `projectID` when given. `limit` is never sent, so the default of search.query applies ([Engine API](engine-api.md#searchquery)). Matching, ranking and the project filter are in [Search](search.md).
@@ -2048,7 +2076,7 @@ claude mcp add --transport http hephaestus http://127.0.0.1:47820/mcp --header "
 ```
 
 - Calls run as `claude` with chatID `external`: the [actor rules](#actor-rules) apply, tickets created this way have `createdBy: claude` and comments `author: claude`.
-- `ask_questions` fails, so Claude asks its questions in plain text ([Workflow](workflow.md#plain-text-questions)); `open_in_app` makes every client navigate.
+- `ask_questions` fails, so Claude asks its questions in plain text ([Workflow](workflow.md#plain-text-questions)); `close_chat` fails, as there is no chat to close; `open_in_app` makes every client navigate.
 - These sessions do not receive the app's system prompts ([Chats](chats.md)); the tool descriptions state what Claude needs: the ticket template, the statuses Claude may set and how questions are asked.
 - The token survives app restarts and updates. After Regenerate or a port change, the server must be removed with `claude mcp remove hephaestus` and the new command run, as `claude mcp add` refuses a name that already exists.
 
@@ -2466,3 +2494,4 @@ Unauthorized: missing or invalid bearer token.
 - R108: The user moves between the questions of a set, answers them in any order and can change an answer until every question has one.
 - R109: The user can skip a question; Claude then leaves that point out and mentions it in its reply.
 - R110: A bundle has a status: todo, in progress or done; Implement All sets it to in progress and is disabled until the user sets it back to To Do.
+- R113: Claude can close the chat it runs in when the user asks or its work is finished; a closed chat shows `This conversation is over` in place of its composer until the user reopens it.

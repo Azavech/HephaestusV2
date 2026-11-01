@@ -97,7 +97,7 @@ public enum EngineMethods {
         BundlesList.self, BundlesGet.self, BundlesCreate.self, BundlesUpdate.self, BundlesSetStatus.self,
         BundlesDelete.self,
         ChatsList.self, ChatsGet.self, ChatsCreate.self, ChatsSend.self, ChatsInterrupt.self,
-        ChatsUpdateSettings.self, ChatsRename.self, ChatsDelete.self, ChatsAnswerPermission.self,
+        ChatsUpdateSettings.self, ChatsRename.self, ChatsDelete.self, ChatsClose.self, ChatsReopen.self, ChatsAnswerPermission.self,
         ChatsPostQuestions.self, ChatsAnswerQuestion.self, ChatsImplementTicket.self, ChatsImplementBundle.self,
         ChatsCreateFeedback.self,
         ClaudeModels.self, ClaudeStatusMethod.self, ClaudePlanUsage.self, ClaudeReportPlanUsage.self,

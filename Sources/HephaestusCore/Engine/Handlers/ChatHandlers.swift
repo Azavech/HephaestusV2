@@ -28,6 +28,12 @@ extension Engine {
         register(ChatsDelete.self, actors: [.user]) { [unowned self] params, actor in
             try await self.chatsDelete(params, actor)
         }
+        register(ChatsClose.self, actors: [.claude]) { [unowned self] params, actor in
+            try await self.chatsClose(params, actor)
+        }
+        register(ChatsReopen.self, actors: [.user]) { [unowned self] params, actor in
+            try await self.chatsReopen(params, actor)
+        }
         register(ChatsAnswerPermission.self, actors: [.user]) { [unowned self] params, actor in
             try await self.chatsAnswerPermission(params, actor)
         }
@@ -348,6 +354,27 @@ extension Engine {
         domain.removeChat(chatID)
         emit(ChatDeletedEvent.self, .init(projectID: meta.projectID, chatID: chatID), origin: actor)
         return Empty()
+    }
+
+    // MARK: Closing
+
+    /// `chats.close` (docs/chats.md › Closing a chat): during a turn the chat closes when the turn
+    /// ends; without a turn in progress it closes at once.
+    func chatsClose(_ params: ChatsClose.Params, _ actor: Actor) async throws -> Empty {
+        try ActorRules.requireOwnChat(params.chatID, actor, refusal: ActorRules.ownChatCloseOnly)
+        let meta = try requireChat(params.chatID)
+        guard !meta.closed else { return Empty() }
+        closeChat(params.chatID, origin: actor)
+        return Empty()
+    }
+
+    /// `chats.reopen` (docs/chats.md › Closing a chat): `closed` becomes false; the next message
+    /// resumes the session.
+    func chatsReopen(_ params: ChatsReopen.Params, _ actor: Actor) async throws -> ChatMeta {
+        var meta = try requireChat(params.chatID)
+        guard meta.closed else { return meta }
+        meta.closed = false
+        return try saveChatMeta(meta, origin: actor)
     }
 
     // MARK: Permissions and questions

@@ -18,6 +18,10 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     public var updated: Date
     public var settings: ChatSettings
     public var sessionStarted: Bool
+    /// The chat is closed: its Claude process has ended and its composer is replaced by
+    /// `This conversation is over` until Reopen or the next message (docs/chats.md › Closing a
+    /// chat).
+    public var closed: Bool
     /// Runtime only: the project whose folder holds the file. Never written to the file and
     /// ignored when read from it; always present in the engine API.
     public var projectID: ProjectID
@@ -35,7 +39,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
 
     public init(schema: Int = 1, id: ChatID, title: String = ChatMeta.defaultTitle, kind: ChatKind,
                 ticketID: TicketID? = nil, bundleID: BundleID? = nil, orchestratorChatID: ChatID? = nil, created: Date, updated: Date? = nil,
-                settings: ChatSettings = ChatSettings(), sessionStarted: Bool = false, projectID: ProjectID = "",
+                settings: ChatSettings = ChatSettings(), sessionStarted: Bool = false, closed: Bool = false, projectID: ProjectID = "",
                 state: ChatState = .idle, costUSD: Double? = nil, unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
         self.id = id
@@ -48,6 +52,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         self.updated = updated ?? created
         self.settings = settings
         self.sessionStarted = sessionStarted
+        self.closed = closed
         self.projectID = projectID
         self.state = state
         self.costUSD = costUSD
@@ -55,7 +60,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     }
 
     static let fileKeys: Set<String> = [
-        "schema", "id", "title", "kind", "ticket", "bundle", "orchestrator", "created", "updated", "settings", "sessionStarted",
+        "schema", "id", "title", "kind", "ticket", "bundle", "orchestrator", "created", "updated", "settings", "sessionStarted", "closed",
     ]
     static let runtimeKeys: Set<String> = ["projectID", "state", "costUSD"]
 
@@ -74,6 +79,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         updated = try c.optionalDate("updated") ?? created
         settings = try c.value("settings", default: ChatSettings())
         sessionStarted = try c.value("sessionStarted", default: false)
+        closed = try c.value("closed", default: false)
         if c.isYAML {
             projectID = ""
             state = .idle
@@ -103,6 +109,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         try c.encodeDate(updated, "updated")
         try c.encode(settings, "settings")
         try c.encode(sessionStarted, "sessionStarted")
+        try c.encode(closed, "closed")
         if !c.isYAML {
             try c.encode(projectID, "projectID")
             try c.encode(state, "state")

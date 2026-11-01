@@ -278,6 +278,21 @@ struct ModelCodingTests {
         #expect(decoded.state == .waitingAnswers)
     }
 
+    @Test("closed of ChatMeta: false when absent, always written, persisted in files and carried in JSON")
+    func chatMetaClosed() throws {
+        let yaml = "id: 3F2504E0-4F89-11D3-9A0C-0305E82C3301\nkind: project\ncreated: 2026-10-31T13:00:00Z\n"
+        var meta = try YAMLCoding.decode(ChatMeta.self, from: yaml)
+        #expect(!meta.closed)
+        #expect(meta.unknownKeys.isEmpty)
+        #expect(try YAMLCoding.encode(meta).contains("sessionStarted: false\nclosed: false\n"))
+        meta.closed = true
+        let written = try YAMLCoding.encode(meta)
+        #expect(written.contains("closed: true\n"))
+        #expect(try YAMLCoding.decode(ChatMeta.self, from: written).closed)
+        let json = try StorageJSON.lineEncoder().encode(meta)
+        #expect(try StorageJSON.decoder().decode(ChatMeta.self, from: json).closed)
+    }
+
     // MARK: Chat items
 
     @Test("Chat items carry their type, id and created")

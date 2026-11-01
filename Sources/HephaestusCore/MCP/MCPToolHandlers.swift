@@ -61,6 +61,9 @@ struct MCPToolHandlers: Sendable {
         if tool.handling == .askQuestions, actor.chat == nil {
             throw MCPToolError(.forbidden, "Only the chat's own Claude can ask questions.")
         }
+        if tool.handling == .closeChat, actor.chat == nil {
+            throw MCPToolError(.forbidden, "Only the chat's own Claude can close its chat.")
+        }
         // Step 3: argument validation, `null` properties removed.
         let cleaned = MCPSchemaValidator.removingNulls(arguments)
         if let error = MCPSchemaValidator().validate(cleaned, against: tool.inputSchema) {
@@ -123,6 +126,11 @@ struct MCPToolHandlers: Sendable {
             let params: JSONValue = .object(["chatID": .string(chatID), "questions": args["questions"] ?? .array([])])
             _ = try await engineText(tool, params: params, actor: actor)
             return Self.questionsShownText
+
+        case .closeChat:
+            // Step 2 made sure the token is a chat token.
+            let chatID = actor.chat?.uuidString.uppercased() ?? ""
+            return try await engineText(tool, params: .object(["chatID": .string(chatID)]), actor: actor)
 
         case .openInApp:
             let target = args["target"]?.objectValue ?? [:]

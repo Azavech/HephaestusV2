@@ -841,6 +841,22 @@ extension MCPToolCatalog {
             handling: .forward
         ),
         MCPToolDefinition(
+            name: "close_chat",
+            description: #"""
+            Close the chat you run in. You can still finish your reply: when your turn ends, HephaestusV2 ends your session and the chat shows "This conversation is over" until the user reopens it. Call it when the user asks you to close the chat, or when the work of the chat is finished. Only available in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "chats.close",
+            handling: .closeChat
+        ),
+        MCPToolDefinition(
             name: "search",
             description: #"""
             Search HephaestusV2: projects, tickets, bundles, docs, code, chats, skills and web tabs. Matching is case-insensitive and every whitespace-separated term must appear. projectID limits the search to one project; scopes limits the kinds searched. Each result has a target that open_in_app accepts.
