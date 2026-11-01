@@ -138,26 +138,36 @@ enum CodeSearch {
     /// is at most 1 MB and is text: no NUL byte and valid UTF-8. Lines are separated by `\n`; a
     /// `\r` at the end of a line is removed before matching.
     static func matches(in file: File, terms: SearchTerms, limit: Int) -> [RankedResult] {
-        guard limit > 0, file.size <= maximumFileSize, let data = try? Data(contentsOf: file.url),
-              data.count <= maximumFileSize, !data.contains(0),
-              let text = String(validating: data, as: UTF8.self), terms.allContained(in: text)
+        guard limit > 0, file.size <= maximumFileSize, let data = try? Data(contentsOf: file.url), data.count <= maximumFileSize
         else { return [] }
-        var results: [RankedResult] = []
-        var number = 0
-        for var line in data.split(separator: 0x0A, omittingEmptySubsequences: false) {
-            number += 1
-            if line.last == 0x0D {
-                line = line.dropLast()
-            }
-            let lineText = String(decoding: line, as: UTF8.self)
-            guard terms.allContained(in: lineText) else { continue }
+        let bytes = [UInt8](data)
+        // A line holding every term exists only when the whole text holds every term.
+        guard memchr(bytes, 0, bytes.count) == nil, let text = String(validating: bytes, as: UTF8.self),
+              terms.allContained(in: text)
+        else { return [] }
+        let lines = lineRanges(bytes)
+        let matching = lines.indices.lazy.filter { terms.allContained(in: String(decoding: bytes[lines[$0]], as: UTF8.self)) }.prefix(limit)
+        return Array(matching).map { index in
+            let number = index + 1
+            let lineText = String(decoding: bytes[lines[index]], as: UTF8.self)
             let result = SearchResult(id: "code:\(file.projectID):\(file.path):\(number)", kind: .code, projectID: file.projectID,
                                       title: "\(file.path):\(number)", subtitle: file.projectName,
                                       snippet: SearchSnippet.make(lineText, terms: terms.terms),
                                       target: .file(projectID: file.projectID, path: file.path, line: number))
-            results.append(RankedResult(result: result, level: 3, date: file.modified, key: file.path, line: number))
-            if results.count == limit { break }
+            return RankedResult(result: result, level: 3, date: file.modified, key: file.path, line: number)
         }
-        return results
+    }
+
+    /// The byte ranges of the lines, separated by `\n`, each without a final `\r`.
+    static func lineRanges(_ bytes: [UInt8]) -> [Range<Int>] {
+        var ranges: [Range<Int>] = []
+        var start = 0
+        while true {
+            let end = bytes[start...].firstIndex(of: 0x0A) ?? bytes.count
+            ranges.append(start..<(end > start && bytes[end - 1] == 0x0D ? end - 1 : end))
+            guard end < bytes.count else { break }
+            start = end + 1
+        }
+        return ranges
     }
 }

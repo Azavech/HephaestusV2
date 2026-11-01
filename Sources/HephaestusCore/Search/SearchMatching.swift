@@ -20,7 +20,15 @@ struct SearchTerms: Hashable, Sendable {
     /// A field contains a term when the term occurs in it, compared with Foundation's
     /// `.caseInsensitive` option; diacritics are significant.
     static func field(_ text: String, contains term: String) -> Bool {
-        text.range(of: term, options: .caseInsensitive) != nil
+        firstOccurrence(of: term, in: text) != nil
+    }
+
+    /// The first occurrence of `term` in `text` with Foundation's `.caseInsensitive` option.
+    /// `NSString` searches about twenty times faster than `String.range(of:options:)` with the
+    /// same option, which matters for whole files.
+    static func firstOccurrence(of term: String, in text: String) -> Range<String.Index>? {
+        let found = (text as NSString).range(of: term, options: .caseInsensitive)
+        return found.location == NSNotFound ? nil : Range(found, in: text)
     }
 
     /// True when `text` contains every term.
@@ -76,7 +84,7 @@ enum SearchSnippet {
         guard characters.count > maximumLength else { return text }
         var first = characters.count
         for term in terms {
-            if let range = text.range(of: term, options: .caseInsensitive) {
+            if let range = SearchTerms.firstOccurrence(of: term, in: text) {
                 first = min(first, text[..<range.lowerBound].count)
             }
         }
