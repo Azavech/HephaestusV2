@@ -104,6 +104,20 @@ struct PairedDevicesAndIdentityTests {
         #expect(DiscoveredDevice(id: "x", name: "x", proto: "2", endpoint: service("x")).isCompatible == false)
     }
 
+    @Test("Browser states: a failure, or a wait with PolicyDenied, restarts browsing")
+    func browserStates() {
+        let denied = NWError.dns(DNSServiceErrorType(DeviceBrowser.policyDenied))
+        let other = NWError.dns(DNSServiceErrorType(kDNSServiceErr_NoRouter))
+        #expect(DeviceBrowser.outcome(of: .ready) == .allowed)
+        #expect(DeviceBrowser.outcome(of: .waiting(denied)) == .restart(denied, denied: true))
+        #expect(DeviceBrowser.outcome(of: .failed(denied)) == .restart(denied, denied: true))
+        #expect(DeviceBrowser.outcome(of: .failed(other)) == .restart(other, denied: false))
+        #expect(DeviceBrowser.outcome(of: .waiting(other)) == .none)
+        #expect(DeviceBrowser.outcome(of: .setup) == .none)
+        #expect(DeviceBrowser.outcome(of: .cancelled) == .none)
+        #expect(SyncServer.describe(denied) == "DNS error -65570")
+    }
+
     @Test("Renaming the device: trimmed, stored in device.yml, empty uses the computer name")
     func rename() async throws {
         try await withTestEngine { engine, _, _ in

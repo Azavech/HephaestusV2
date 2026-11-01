@@ -185,22 +185,42 @@ public final class DeviceBrowser: @unchecked Sendable {
         browser.start(queue: queue)
     }
 
-    private func browserStateChanged(_ state: NWBrowser.State, browser: NWBrowser) {
-        guard browser === self.browser else { return }
+    /// What a browser state leads to (docs/remote.md › Browsing).
+    enum StateOutcome: Equatable {
+        case none
+        /// The browser is ready: the local network permission is allowed.
+        case allowed
+        /// The browser failed, or waits with `kDNSServiceErr_PolicyDenied`: it is cancelled,
+        /// logged and restarted; `denied` is true for `kDNSServiceErr_PolicyDenied`.
+        case restart(NWError, denied: Bool)
+    }
+
+    static func outcome(of state: NWBrowser.State) -> StateOutcome {
         switch state {
         case .ready:
-            setPermission(.allowed)
-        case .waiting(let error):
-            if DeviceBrowser.isPolicyDenied(error) {
-                setPermission(.denied)
-            }
+            return .allowed
+        case .waiting(let error) where isPolicyDenied(error):
+            return .restart(error, denied: true)
         case .failed(let error):
-            if DeviceBrowser.isPolicyDenied(error) {
+            return .restart(error, denied: isPolicyDenied(error))
+        default:
+            return .none
+        }
+    }
+
+    private func browserStateChanged(_ state: NWBrowser.State, browser: NWBrowser) {
+        guard browser === self.browser else { return }
+        switch DeviceBrowser.outcome(of: state) {
+        case .none:
+            break
+        case .allowed:
+            setPermission(.allowed)
+        case .restart(let error, let denied):
+            if denied {
                 setPermission(.denied)
             }
             log.warn(.sync, "browsing failed: \(SyncServer.describe(error))")
-            // DOC-GAP: docs/remote.md › Browsing browses until the app quits but does not say
-            // what follows a failed browser; it browses again after 5 s.
+            // docs/remote.md › Browsing: results dropped, browsing again 5 s later.
             browser.cancel()
             self.browser = nil
             results.removeAll()
@@ -209,8 +229,6 @@ public final class DeviceBrowser: @unchecked Sendable {
                 guard let self, self.isRunning, self.browser == nil else { return }
                 self.startBrowser()
             }
-        default:
-            break
         }
     }
 
