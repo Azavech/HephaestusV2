@@ -167,6 +167,7 @@ struct RunsAndUITests {
             let valid: [NavigationTarget] = [
                 .project(projectID: "heph"), .file(projectID: "HEPH", path: "docs/index.md", line: 3),
                 .webTab(projectID: "HEPH", tabID: tab.id), .section(projectID: "HEPH", section: .web),
+                .section(projectID: "HEPH", section: .settings),
             ]
             for target in valid {
                 _ = try await h.connection.call(UIOpen.self, .init(target: target))

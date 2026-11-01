@@ -240,6 +240,24 @@ struct MCPToolHandlersTests {
             == .failure(MCPToolError(code: .notFound, message: "No window with id 7.")))
     }
 
+    @Test("open_in_app and debug_navigate accept a section target with settings")
+    func settingsSection() async throws {
+        let target = #"{"kind":"section","projectID":"HEPH","section":"settings"}"#
+        let engine = RecordedEngine()
+        #expect(try await Self.call(Self.handlers(engine), "open_in_app", #"{"target":\#(target)}"#, actor: Self.external) == .success("{}"))
+        #expect(engine.calls.last?.method == "ui.open")
+        #expect(engine.calls.last?.params == .object(["target": try jsonValue(target)]))
+
+        let ui = FakeDebugUI(windows: [Self.window],
+                             screenshot: .success(DebugScreenshot(path: "/Users/example/shot.png", width: 2880, height: 1800)))
+        let result = try await Self.call(Self.handlers(RecordedEngine(), debugUI: ui), "debug_navigate", #"{"target":\#(target)}"#)
+        guard case .success = result else {
+            Issue.record("debug_navigate failed: \(result)")
+            return
+        }
+        #expect(ui.navigations == [.section(projectID: "HEPH", section: .settings)])
+    }
+
     @Test("Attachment names and content types")
     func attachmentNames() {
         #expect(MCPToolHandlers.attachmentName(path: "/a/b/c.txt") == "c.txt")
