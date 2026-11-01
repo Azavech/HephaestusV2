@@ -62,13 +62,16 @@ final class SkillEditorState {
         self.workspace = workspace
     }
 
-    /// The form, then the open extra file, when they have unsaved changes; each prompts
-    /// `Do you want to save the changes to “<name>”?` (docs/skills.md › Saving).
+    /// The skill, when its form or its open extra file has unsaved changes: one unsaved editor
+    /// with one prompt, `Do you want to save the changes to “<name>”?` (docs/skills.md › Saving;
+    /// docs/ui.md › Unsaved changes and quitting).
     var unsavedEditors: [any UnsavedEditor] {
-        var editors: [any UnsavedEditor] = []
-        if form.hasUnsavedChanges { editors.append(form) }
-        if let file, file.hasUnsavedChanges { editors.append(file) }
-        return editors
+        hasUnsavedChanges ? [SkillUnsavedChanges(editor: self)] : []
+    }
+
+    /// True when the form or the open extra file has unsaved changes.
+    var hasUnsavedChanges: Bool {
+        form.hasUnsavedChanges || (file?.hasUnsavedChanges ?? false)
     }
 
     /// The body editor or the open extra file's editor while its text view has the keyboard
@@ -476,16 +479,33 @@ final class SkillForm {
     }
 }
 
-extension SkillForm: UnsavedEditor {
+/// A skill whose form or open extra file has unsaved changes, as one unsaved editor with one
+/// prompt (docs/skills.md › Saving; docs/ui.md › Unsaved changes and quitting).
+@MainActor
+final class SkillUnsavedChanges: UnsavedEditor {
+    let editor: SkillEditorState
+
+    init(editor: SkillEditorState) {
+        self.editor = editor
+    }
+
+    var hasUnsavedChanges: Bool {
+        editor.hasUnsavedChanges
+    }
+
     var savePromptTitle: String {
-        "Do you want to save the changes to “\(editor?.skillName ?? savedName)”?"
+        "Do you want to save the changes to “\(editor.skillName)”?"
     }
 
     var savePromptMessage: String? { nil }
 
+    /// Save of the prompt: the form, then the open extra file, those that have changes; a failure
+    /// is shown and rethrown.
     func save() async throws {
-        guard let editor else { return }
         try await editor.saveForm()
+        if let file = editor.file {
+            try await editor.saveFile(file)
+        }
     }
 }
 
@@ -559,6 +579,7 @@ final class SkillExtraFile {
     }
 }
 
+/// The open extra file's own prompt, shown when another extra file is opened.
 extension SkillExtraFile: UnsavedEditor {
     var savePromptTitle: String {
         "Do you want to save the changes to “\(editor?.skillName ?? path)”?"
