@@ -1,0 +1,250 @@
+import Foundation
+
+// docs/engine-api.md › Chats. Every ChatMeta in a result carries `projectID` and `state`
+// (docs/engine-api.md › Chat metadata in the API).
+
+/// `chats.list`: every chat of the project, sorted by `updated` descending. Actors: user, claude.
+public enum ChatsList: EngineMethod {
+    public static let name = "chats.list"
+    public struct Params: Codable, Sendable, Hashable {
+        public var projectID: ProjectID
+
+        public init(projectID: ProjectID) {
+            self.projectID = projectID
+        }
+    }
+    public typealias Result = [ChatMeta]
+}
+
+/// `chats.get`: the metadata and every transcript item. Actors: user, claude.
+public enum ChatsGet: EngineMethod {
+    public static let name = "chats.get"
+    public struct Params: Codable, Sendable, Hashable {
+        public var chatID: ChatID
+
+        public init(chatID: ChatID) {
+            self.chatID = chatID
+        }
+    }
+    public typealias Result = ChatTranscript
+}
+
+/// `chats.create`. Actors: user.
+public enum ChatsCreate: EngineMethod {
+    public static let name = "chats.create"
+    public struct Params: Codable, Sendable, Hashable {
+        public var projectID: ProjectID
+        /// `project`, `ticket` or `bundle`; feedback chats come from `chats.createFeedback`.
+        public var kind: ChatKind
+        /// Required for kind ticket and refused for another kind.
+        public var ticketID: TicketID?
+        /// Required for kind bundle and refused for another kind.
+        public var bundleID: BundleID?
+        /// Default: the project's `chatDefaults`, else the host `defaultChatSettings`.
+        public var settings: ChatSettings?
+        /// First message, sent as by `chats.send`.
+        public var message: ChatMessageInput?
+
+        public init(projectID: ProjectID, kind: ChatKind, ticketID: TicketID? = nil, bundleID: BundleID? = nil,
+                    settings: ChatSettings? = nil, message: ChatMessageInput? = nil) {
+            self.projectID = projectID
+            self.kind = kind
+            self.ticketID = ticketID
+            self.bundleID = bundleID
+            self.settings = settings
+            self.message = message
+        }
+    }
+    public typealias Result = ChatMeta
+}
+
+/// `chats.send`. Actors: user.
+public enum ChatsSend: EngineMethod {
+    public static let name = "chats.send"
+    public struct Params: Codable, Sendable, Hashable {
+        public var chatID: ChatID
+        public var message: ChatMessageInput
+
+        public init(chatID: ChatID, message: ChatMessageInput) {
+            self.chatID = chatID
+            self.message = message
+        }
+    }
+    public typealias Result = Empty
+}
+
+/// `chats.interrupt`: the stop sequence of a running turn. Actors: user.
+public enum ChatsInterrupt: EngineMethod {
+    public static let name = "chats.interrupt"
+    public struct Params: Codable, Sendable, Hashable {
+        public var chatID: ChatID
+
+        public init(chatID: ChatID) {
+            self.chatID = chatID
+        }
+    }
+    public typealias Result = Empty
+}
+
+/// `chats.updateSettings`. Actors: user.
+public enum ChatsUpdateSettings: EngineMethod {
+    public static let name = "chats.updateSettings"
+    public struct Params: Codable, Sendable, Hashable {
+        public var chatID: ChatID
+        /// Complete settings replacing the chat's.
+        public var settings: ChatSettings
+
+        public init(chatID: ChatID, settings: ChatSettings) {
+            self.chatID = chatID
+            self.settings = settings
+        }
+    }
+    public typealias Result = ChatMeta
+}
+
+/// `chats.rename`. Actors: user, claude.
+public enum ChatsRename: EngineMethod {
+    public static let name = "chats.rename"
+    public struct Params: Codable, Sendable, Hashable {
+        public var chatID: ChatID
+        /// New title, trimmed, 1 to 100 characters on one line.
+        public var title: String
+
+        public init(chatID: ChatID, title: String) {
+            self.chatID = chatID
+            self.title = title
+        }
+    }
+    public typealias Result = ChatMeta
+}
+
+/// `chats.delete`. Actors: user.
+public enum ChatsDelete: EngineMethod {
+    public static let name = "chats.delete"
+    public struct Params: Codable, Sendable, Hashable {
+        public var chatID: ChatID
+
+        public init(chatID: ChatID) {
+            self.chatID = chatID
+        }
+    }
+    public typealias Result = Empty
+}
+
+/// `chats.answerPermission`. Actors: user.
+public enum ChatsAnswerPermission: EngineMethod {
+    public static let name = "chats.answerPermission"
+    public struct Params: Codable, Sendable, Hashable {
+        public var chatID: ChatID
+        /// `requestID` of a `permissionRequest` item of the chat.
+        public var requestID: String
+        public var decision: PermissionDecision
+        /// Sent to Claude with a `deny`; ignored with `allow` and `allowAlways`.
+        public var message: String?
+
+        public init(chatID: ChatID, requestID: String, decision: PermissionDecision, message: String? = nil) {
+            self.chatID = chatID
+            self.requestID = requestID
+            self.decision = decision
+            self.message = message
+        }
+    }
+    public typealias Result = Empty
+}
+
+/// `chats.postQuestions`: called by the MCP tool `ask_questions`. Actors: claude (the chat's own
+/// Claude only).
+public enum ChatsPostQuestions: EngineMethod {
+    public static let name = "chats.postQuestions"
+    public struct Params: Codable, Sendable, Hashable {
+        /// Must be the actor's chatID.
+        public var chatID: ChatID
+        /// 1–26 questions labelled `A`, `B`, `C` and so on, in order.
+        public var questions: [Question]
+
+        public init(chatID: ChatID, questions: [Question]) {
+            self.chatID = chatID
+            self.questions = questions
+        }
+    }
+    public typealias Result = QuestionSet
+}
+
+/// `chats.answerQuestion`. Actors: user.
+public enum ChatsAnswerQuestion: EngineMethod {
+    public static let name = "chats.answerQuestion"
+    public struct Params: Codable, Sendable, Hashable {
+        public var chatID: ChatID
+        public var questionSetID: UUID
+        /// Label of the first unanswered question of the set.
+        public var label: String
+        /// The chosen option's label or free text; trimmed; not empty.
+        public var answer: String
+
+        public init(chatID: ChatID, questionSetID: UUID, label: String, answer: String) {
+            self.chatID = chatID
+            self.questionSetID = questionSetID
+            self.label = label
+            self.answer = answer
+        }
+    }
+    public typealias Result = Empty
+}
+
+/// `chats.implementTicket`. Actors: user, claude.
+public enum ChatsImplementTicket: EngineMethod {
+    public static let name = "chats.implementTicket"
+    public struct Params: Codable, Sendable, Hashable {
+        public var ticketID: TicketID
+        /// Default: the project's `chatDefaults`, else the host `defaultChatSettings`. Must be
+        /// absent for claude.
+        public var settings: ChatSettings?
+
+        public init(ticketID: TicketID, settings: ChatSettings? = nil) {
+            self.ticketID = ticketID
+            self.settings = settings
+        }
+    }
+    public typealias Result = ChatMeta
+}
+
+/// `chats.implementBundle`. Actors: user, claude.
+public enum ChatsImplementBundle: EngineMethod {
+    public static let name = "chats.implementBundle"
+    public struct Params: Codable, Sendable, Hashable {
+        public var bundleID: BundleID
+        /// Default: the project's `chatDefaults`, else the host `defaultChatSettings`. Must be
+        /// absent for claude.
+        public var settings: ChatSettings?
+
+        public init(bundleID: BundleID, settings: ChatSettings? = nil) {
+            self.bundleID = bundleID
+            self.settings = settings
+        }
+    }
+    public typealias Result = ChatMeta
+}
+
+/// `chats.createFeedback`: called by the feedback sheet. Actors: user.
+public enum ChatsCreateFeedback: EngineMethod {
+    public static let name = "chats.createFeedback"
+    public struct Params: Codable, Sendable, Hashable {
+        public var projectID: ProjectID
+        /// The user's comment; may be empty.
+        public var comment: String
+        /// The captured window: contentType `image/png`, content in `dataBase64`.
+        public var screenshot: AttachmentUpload
+        public var context: FeedbackContext
+        public var settings: ChatSettings?
+
+        public init(projectID: ProjectID, comment: String, screenshot: AttachmentUpload, context: FeedbackContext,
+                    settings: ChatSettings? = nil) {
+            self.projectID = projectID
+            self.comment = comment
+            self.screenshot = screenshot
+            self.context = context
+            self.settings = settings
+        }
+    }
+    public typealias Result = ChatMeta
+}

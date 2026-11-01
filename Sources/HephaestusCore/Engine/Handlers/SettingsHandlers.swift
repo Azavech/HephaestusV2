@@ -1,0 +1,71 @@
+import Foundation
+
+extension Engine {
+    /// docs/engine-api.md › Settings.
+    func registerSettingsHandlers() {
+        register(SettingsGet.self, actors: [.user]) { [unowned self] _, _ in
+            await self.settings
+        }
+        register(SettingsUpdate.self, actors: [.user]) { [unowned self] params, actor in
+            try await self.updateSettings(params, actor)
+        }
+    }
+
+    /// `settings.update` (docs/engine-api.md › settings.update): applies the present params,
+    /// checks the HostSettings rules, the feedback project and the skills folder, writes
+    /// settings.yml, emits `settings.updated`, then applies the effects of the changed keys.
+    /// A call that changes nothing writes nothing and emits nothing.
+    func updateSettings(_ params: SettingsUpdate.Params, _ actor: Actor) async throws -> HostSettings {
+        var patch = params
+        if case .set(let id) = patch.feedbackProjectID {
+            patch.feedbackProjectID = .set(id.uppercased())
+        }
+        let old = settings
+        let new = patch.applied(to: old)
+        do {
+            try new.validate()
+        } catch let error as ValidationError {
+            throw EngineError(error)
+        }
+        if case .set(let id) = patch.feedbackProjectID, !domain.isLoaded(id) {
+            throw EngineError.notFound("Project", id)
+        }
+        let newSkillsFolder = new.skillsLibraryURL(dataDirectory: dataDirectory)
+        let skillsFolderChanged = newSkillsFolder != old.skillsLibraryURL(dataDirectory: dataDirectory)
+        if skillsFolderChanged {
+            // DOC-GAP: docs/engine-api.md › settings.update fails with `invalid` when the new
+            // skills folder cannot be created but gives no message; it uses the form
+            // `<param>: <reason>.` of docs/engine-api.md › Messages.
+            do {
+                try FileManager.default.createDirectory(at: newSkillsFolder, withIntermediateDirectories: true)
+            } catch {
+                throw EngineError.invalid("skillsLibraryPath", "\(newSkillsFolder.path) cannot be created")
+            }
+        }
+        guard new != old else { return old }
+
+        do {
+            try DeviceFileStore.write(new, to: dataDirectory)
+        } catch let error as StorageError {
+            throw EngineError.storage(error)
+        }
+        settings = new
+        emit(SettingsUpdatedEvent.self, new, origin: actor)
+
+        if new.claudePath != old.claudePath {
+            await claudePathDidChange()
+        }
+        if new.mcpPort != old.mcpPort, configuration.mcpPort == nil {
+            await moveMCPServer()
+            await mcpPortDidChange()
+        }
+        if new.syncEnabled != old.syncEnabled || new.syncPort != old.syncPort {
+            await syncSettingsDidChange(from: old)
+        }
+        if skillsFolderChanged {
+            await skillsLibraryFolderDidChange()
+            emit(SkillsChangedEvent.self, skillSummaries(), origin: actor)
+        }
+        return new
+    }
+}

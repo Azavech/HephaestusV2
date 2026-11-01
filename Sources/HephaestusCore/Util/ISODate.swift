@@ -31,8 +31,20 @@ public enum ISODate {
     /// offset `±HH:MM`. Fractions are dropped and offsets converted to UTC. Any other form
     /// gives nil.
     public static func date(from string: String) -> Date? {
+        parse(string, keepingMilliseconds: false)
+    }
+
+    /// The engine API form of `date(from:)`: the same forms, with the fraction of a second kept
+    /// to the millisecond (docs/engine-api.md › JSON encoding), so that a `modified` date read
+    /// back as `expectedModified` compares equal.
+    public static func apiDate(from string: String) -> Date? {
+        parse(string, keepingMilliseconds: true)
+    }
+
+    private static func parse(_ string: String, keepingMilliseconds: Bool) -> Date? {
         let scalars = Array(string.utf8)
         var index = 0
+        var milliseconds = 0
 
         func digits(_ count: Int) -> Int? {
             guard index + count <= scalars.count else { return nil }
@@ -64,9 +76,15 @@ public enum ISODate {
             index += 1
             let start = index
             while index < scalars.count, scalars[index] >= 0x30, scalars[index] <= 0x39 {
+                if index - start < 3 {
+                    milliseconds = milliseconds * 10 + Int(scalars[index] - 0x30)
+                }
                 index += 1
             }
             guard index > start else { return nil }
+            for _ in min(index - start, 3)..<3 {
+                milliseconds *= 10
+            }
         }
 
         var offsetSeconds = 0
@@ -91,7 +109,8 @@ public enum ISODate {
 
         let days = daysFromCivil(year: year, month: month, day: day)
         let total = Int64(days) * 86_400 + Int64(hour * 3600 + minute * 60 + second) - Int64(offsetSeconds)
-        return Date(timeIntervalSince1970: TimeInterval(total))
+        guard keepingMilliseconds, milliseconds > 0 else { return Date(timeIntervalSince1970: TimeInterval(total)) }
+        return Date(timeIntervalSince1970: (Double(total * 1000) + Double(milliseconds)) / 1000)
     }
 
     /// The current time truncated to whole seconds, as the engine stores times.
