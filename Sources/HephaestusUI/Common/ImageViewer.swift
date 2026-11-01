@@ -288,34 +288,40 @@ struct ImageViewerWindow: View {
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
-            Text("\(Int((model.zoom * 100).rounded())) %")
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-                .frame(minWidth: 48)
+            if loadedData != nil {
+                Text("\(Int((model.zoom * 100).rounded())) %")
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .frame(minWidth: 48)
+            }
             Button {
                 model.zoomOut()
             } label: {
                 Label("Zoom Out", systemImage: "minus.magnifyingglass")
             }
             .help("Zoom Out")
+            .disabled(loadedData == nil)
             Button {
                 model.zoomIn()
             } label: {
                 Label("Zoom In", systemImage: "plus.magnifyingglass")
             }
             .help("Zoom In")
+            .disabled(loadedData == nil)
             Button {
                 model.actualSize()
             } label: {
                 Label("Actual Size", systemImage: "1.magnifyingglass")
             }
             .help("Actual Size")
+            .disabled(loadedData == nil)
             Button {
                 model.fit()
             } label: {
                 Label("Fit", systemImage: "arrow.up.left.and.arrow.down.right")
             }
             .help("Fit")
+            .disabled(loadedData == nil)
             Button {
                 saveAs()
             } label: {
