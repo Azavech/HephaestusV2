@@ -76,6 +76,8 @@ enum SkillsLibraryReader {
 
     /// The skill paths of every regular file of a skill folder except its SKILL.md, recursively,
     /// skipping names that start with `.`, sorted by path. Symbolic links are not followed.
+    // DOC-GAP: docs/data-model.md › SKILL.md format lists "every regular file"; a symbolic link
+    // inside a skill is not a regular file, so it is neither listed nor followed.
     static func extraFiles(of folder: URL) -> [String] {
         let caseSensitive = isCaseSensitiveVolume(folder)
         var files: [String] = []

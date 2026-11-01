@@ -93,6 +93,8 @@ extension Engine {
         if renamed {
             let destination = library.appendingPathComponent(finalName, isDirectory: true)
             guard !SkillsLibraryReader.itemExists(destination) else {
+                // DOC-GAP: docs/engine-api.md › skills.update quotes no conflict message; it is the
+                // message of skills.create.
                 throw EngineError(.conflict, "A skill named \(finalName) already exists.")
             }
             do {
@@ -199,6 +201,8 @@ extension Engine {
     /// removes it when present; enabling requires the skill to exist. A changed list rebuilds the
     /// project's plugin.
     func skillsSetEnabled(_ params: SkillsSetEnabled.Params, _ actor: Actor) async throws -> ProjectDetail {
+        // DOC-GAP: docs/engine-api.md › skills.setEnabled lists only `notFound`; a malformed
+        // identifier fails with `invalid`, the rule of docs/engine-api.md › Identifiers.
         guard let projectID = Identifiers.normalizedProjectID(params.projectID) else {
             throw EngineError.invalid("projectID", "use 2 to 8 letters A–Z")
         }

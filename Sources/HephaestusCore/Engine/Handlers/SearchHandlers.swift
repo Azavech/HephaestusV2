@@ -21,6 +21,8 @@ extension Engine {
         }
         var projectIDs = domain.loadedProjectIDs()
         if let requested = params.projectID {
+            // DOC-GAP: docs/engine-api.md › search.query lists `notFound` for projectID; a
+            // malformed identifier fails with `invalid`, the rule of docs/engine-api.md › Identifiers.
             guard let projectID = Identifiers.normalizedProjectID(requested) else {
                 throw EngineError.invalid("projectID", "use 2 to 8 letters A–Z")
             }

@@ -55,6 +55,9 @@ final class SkillsLibrary {
     }
 
     /// A skill name received from a client: the name format, else `invalid`.
+    // DOC-GAP: the error tables of docs/engine-api.md › skills.get, skills.delete and the file
+    // methods list only `notFound`; a malformed name fails with `invalid`, the rule of
+    // docs/engine-api.md › Identifiers for every id.
     static func checkedName(_ name: String, field: String = "name") throws -> String {
         do {
             return try ModelRules.skillName(name, field: field)
