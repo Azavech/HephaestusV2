@@ -212,6 +212,8 @@ struct ConsoleOutputView: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = true
         scrollView.borderType = .noBorder
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentInsets = NSEdgeInsets()
         if let textView = scrollView.documentView as? NSTextView {
             textView.isEditable = false
             textView.isSelectable = true
@@ -224,7 +226,11 @@ struct ConsoleOutputView: NSViewRepresentable {
             textView.textContainer?.widthTracksTextView = true
             textView.isHorizontallyResizable = false
             textView.setAccessibilityLabel("Console output")
+            // TextKit 1 with non-contiguous layout: exact document heights for following the end,
+            // and layout of only what is shown for long outputs.
+            textView.layoutManager?.allowsNonContiguousLayout = true
         }
+        context.coordinator.observeScrolling(of: scrollView)
         return scrollView
     }
 
@@ -234,7 +240,7 @@ struct ConsoleOutputView: NSViewRepresentable {
     }
 
     @MainActor
-    final class Coordinator {
+    final class Coordinator: NSObject {
         static let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
         private static let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.textColor]
         private static let droppedLineLength = (ConsoleBuffer.droppedLine + "\n").utf16.count
@@ -245,6 +251,22 @@ struct ConsoleOutputView: NSViewRepresentable {
         private var lineCount = 0
         private var partialLength = 0
         private var dropped = false
+        /// True while new output keeps the view at the end: the user has not scrolled away from it.
+        private var following = true
+
+        /// A scroll by the user decides whether new output follows: it does while the view shows
+        /// the end of the text.
+        func observeScrolling(of scrollView: NSScrollView) {
+            NotificationCenter.default.addObserver(self, selector: #selector(userScrolled(_:)),
+                                                   name: NSScrollView.didLiveScrollNotification, object: scrollView)
+            NotificationCenter.default.addObserver(self, selector: #selector(userScrolled(_:)),
+                                                   name: NSScrollView.didEndLiveScrollNotification, object: scrollView)
+        }
+
+        @objc private func userScrolled(_ notification: Notification) {
+            guard let scrollView = notification.object as? NSScrollView else { return }
+            following = Self.isScrolledToEnd(scrollView)
+        }
 
         func update(_ textView: NSTextView, in scrollView: NSScrollView, runID: String, console: ConsoleBuffer) {
             guard let storage = textView.textStorage else { return }
@@ -252,7 +274,6 @@ struct ConsoleOutputView: NSViewRepresentable {
                 && console.firstLineNumber == firstLineNumber && console.partial.utf16.count == partialLength
                 && console.dropped == dropped
             guard !unchanged else { return }
-            let atEnd = Self.isScrolledToEnd(scrollView)
             let rebuild = runID != self.runID || console.clearCount != clearCount || console.firstLineNumber >= lineCount
                 && console.firstLineNumber > firstLineNumber
             storage.beginEditing()
@@ -292,8 +313,24 @@ struct ConsoleOutputView: NSViewRepresentable {
             lineCount = console.lineCount
             partialLength = console.partial.utf16.count
             dropped = console.dropped
-            if atEnd || rebuild {
-                textView.scrollToEndOfDocument(nil)
+            if rebuild {
+                following = true
+            }
+            if following {
+                scrollToEnd(textView)
+            }
+        }
+
+        /// Shows the end of the text. The end is laid out first, and the scroll is repeated once
+        /// the layout has settled, so that the document has its final height.
+        private func scrollToEnd(_ textView: NSTextView) {
+            textView.scrollRangeToVisible(NSRange(location: textView.textStorage?.length ?? 0, length: 0))
+            textView.scrollToEndOfDocument(nil)
+            DispatchQueue.main.async { [weak self, weak textView] in
+                MainActor.assumeIsolated {
+                    guard let self, self.following, let textView else { return }
+                    textView.scrollToEndOfDocument(nil)
+                }
             }
         }
 
@@ -301,7 +338,7 @@ struct ConsoleOutputView: NSViewRepresentable {
         private static func isScrolledToEnd(_ scrollView: NSScrollView) -> Bool {
             guard let document = scrollView.documentView else { return true }
             let visible = scrollView.contentView.documentVisibleRect
-            return visible.maxY >= document.bounds.maxY - 4
+            return visible.maxY >= document.bounds.maxY - 20
         }
     }
 }
