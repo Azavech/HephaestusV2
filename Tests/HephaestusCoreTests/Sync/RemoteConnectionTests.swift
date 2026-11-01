@@ -232,6 +232,35 @@ struct RemoteConnectionTests {
         }
     }
 
+    @Test("Held events are yielded in their order once the first snapshot.get returned")
+    func heldEventsAfterSnapshot() async throws {
+        let server = try await FakeSyncServer()
+        defer { server.stop() }
+        try await withPairedConnection(server: server, code: SyncCryptoTests.code) { connection, _, _ in
+            let peer = try #require(await server.nextPeer())
+            var keys = try await peer.serverHandshake(script, snapshot: fakeSnapshot(device: Self.mainInfo))
+            #expect(await phase(of: connection) { $0 == .connected } == .connected)
+            let held = [EngineEventEnvelope(name: SkillsChangedEvent.name, origin: .system, data: []),
+                        EngineEventEnvelope(name: SettingsUpdatedEvent.name, origin: .system, data: try EngineJSON.jsonValue(HostSettings()))]
+            for envelope in held {
+                peer.sendBinary(try keys.sealer.seal(SyncMessageBytes.event(envelope: try EngineJSON.encode(envelope))))
+            }
+            try await Task.sleep(for: .milliseconds(100))
+            let order = Collected<String>()
+            let events = connection.events
+            let consumer = Task {
+                for await envelope in events {
+                    order.append(envelope.name)
+                }
+            }
+            #expect(try await connection.call(SnapshotGet.self).device == Self.mainInfo)
+            order.append("returned")
+            try await Task.sleep(for: .milliseconds(300))
+            consumer.cancel()
+            #expect(order.values == ["returned", SkillsChangedEvent.name, SettingsUpdatedEvent.name])
+        }
+    }
+
     @Test("A server that answers no ping: the client cancels after the silence limit")
     func clientSilence() async throws {
         let server = try await FakeSyncServer(autoReplyPing: false)

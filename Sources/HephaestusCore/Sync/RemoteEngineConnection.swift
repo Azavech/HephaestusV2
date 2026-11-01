@@ -230,7 +230,7 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
     private var sealer: FrameSealer?
     private var opener: FrameOpener?
     private var nextRequestID = 1
-    private var pending: [Int: CheckedContinuation<JSONValue, Error>] = [:]
+    private var pending: [Int: CheckedContinuation<Reply, Error>] = [:]
     private var keptSnapshot: JSONValue?
     /// Events received since the welcome, until the first `snapshot.get` returns; nil when not
     /// holding.
@@ -378,7 +378,9 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
     }
 
     /// Sends a `request` and waits for its `response` (docs/remote.md › Session messages). The
-    /// first `snapshot.get` after a welcome returns the welcome's snapshot without a round trip.
+    /// first `snapshot.get` after a welcome returns the welcome's snapshot without a round trip;
+    /// the events held since that welcome are released once it returned
+    /// (docs/remote.md › Welcome snapshot).
     public func call<M: EngineMethod>(_ method: M.Type, _ params: M.Params) async throws -> M.Result {
         let paramsData: Data
         do {
@@ -386,11 +388,33 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
         } catch {
             throw EngineError.internalError(error)
         }
-        let result: JSONValue = try await withCheckedThrowingContinuation { continuation in
+        let reply: Reply = try await withCheckedThrowingContinuation { continuation in
             queue.async {
                 self.send(method: M.name, params: paramsData, continuation: continuation)
             }
         }
+        switch reply {
+        case .result(let result):
+            return try RemoteEngineConnection.decode(M.self, from: result)
+        case .welcomeSnapshot(let snapshot, let attempt):
+            defer {
+                queue.async {
+                    self.releaseHeldEvents(attempt: attempt)
+                }
+            }
+            return try RemoteEngineConnection.decode(M.self, from: snapshot)
+        }
+    }
+
+    /// What a call receives from the state machine.
+    private enum Reply: Sendable {
+        /// The `result` of the call's response.
+        case result(JSONValue)
+        /// The snapshot of the welcome of attempt `attempt`, kept for the first `snapshot.get`.
+        case welcomeSnapshot(JSONValue, attempt: Int)
+    }
+
+    private static func decode<M: EngineMethod>(_ method: M.Type, from result: JSONValue) throws -> M.Result {
         do {
             return try EngineJSON.decode(M.Result.self, from: result)
         } catch {
@@ -734,7 +758,7 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
                 log.warn(.sync, "ignored message type response from \(deviceInfo?.id ?? currentDevice.id.uuidString)")
                 return
             }
-            continuation.resume(with: outcome.mapError { $0 as Error })
+            continuation.resume(with: outcome.map(Reply.result).mapError { $0 as Error })
         case .success(.event(let envelope)):
             guard RemoteEngineConnection.knownEvents.contains(envelope.name) else { return }
             if heldEvents != nil {
@@ -762,15 +786,15 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
 
     // MARK: Calls
 
-    private func send(method: String, params: Data, continuation: CheckedContinuation<JSONValue, Error>) {
+    private func send(method: String, params: Data, continuation: CheckedContinuation<Reply, Error>) {
         guard phase == .connected, stage == .connected, let socket, var sealer else {
             continuation.resume(throwing: notConnected)
             return
         }
         if method == SnapshotGet.name, let snapshot = keptSnapshot {
+            // The held events stay held until the call returned the snapshot.
             keptSnapshot = nil
-            releaseHeldEvents()
-            continuation.resume(returning: snapshot)
+            continuation.resume(returning: .welcomeSnapshot(snapshot, attempt: attemptID))
             return
         }
         let id = nextRequestID
@@ -803,8 +827,10 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
         EngineError(.unavailable, "Not connected to \(name).")
     }
 
-    private func releaseHeldEvents() {
-        guard let held = heldEvents else { return }
+    /// Yields the events held since the welcome of attempt `attempt`, in their order of arrival,
+    /// and stops holding; nothing when another attempt started meanwhile.
+    private func releaseHeldEvents(attempt: Int) {
+        guard attempt == attemptID, let held = heldEvents else { return }
         heldEvents = nil
         for envelope in held {
             eventStreams.yield(envelope)
