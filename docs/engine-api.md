@@ -884,7 +884,7 @@ Swift type `ChatsSend` · actors: user · result: [Empty](#empty)
 | chatID  | ChatID                                | yes      | Chat id.              |
 | message | [ChatMessageInput](#chatmessageinput) | yes      | Text and attachments. |
 
-- Accepted in every state ([Chats](chats.md#chat-states)). With a live Claude process the message is written to it at once; during a turn (states `starting`, `running`, `waitingPermission`) the CLI runs it after the current turn. In the state `waitingAnswers` the message is delivered as in `idle` and leaves the question set unchanged. Without a live process, in any state, `error` included, a process is launched first. Default chosen at design time.
+- Accepted in every state ([Chats](chats.md#chat-states)). With a live Claude process the message is written to it at once; during a turn (states `starting`, `running`, `waitingPermission`) the CLI runs it after its CLI turn in progress, and the chat stays running until Claude has finished it ([Chats](chats.md#turn-tracking)). In the state `waitingAnswers` the message is delivered as in `idle` and leaves the question set unchanged. Without a live process, in any state, `error` included, a process is launched first. Default chosen at design time.
 - Appends a `user` item with the text, the stored attachments and `sender` the name of the actor's device, then delivers the message to the chat's Claude process, launching it first when it is not running ([Chats](chats.md#user-messages)).
 - The first user message of a chat that has text starts its naming with Haiku ([Chats](chats.md#haiku-naming)).
 - Returns once the message is accepted; Claude's answer arrives as events.

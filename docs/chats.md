@@ -29,7 +29,7 @@ HephaestusV2 talks to Claude through the Claude CLI. Every chat is one Claude Co
 | waitingAnswers    | No turn in progress and the chat has a question set that is not completed.                                       | Waiting for your answers           |
 | error             | The process failed to start, or exited with a non-zero status during a turn. The next message clears it.         | Claude stopped with an error (red) |
 
-- A turn starts when the engine writes a user message to the process. It ends when a `result` message arrives whose `queued_turn_count` is 0 or absent; a `result` with `queued_turn_count` greater than 0 keeps the turn going.
+- A turn is the time Claude spends on the messages the engine wrote to the process. It starts when the engine writes a user message while the chat has no turn in progress, or when a `system/init` arrives while none is in progress (a CLI turn the CLI starts on its own). It ends when no message the engine wrote is outstanding and no CLI turn is open ([Turn tracking](#turn-tracking)); a turn can thus span several CLI turns.
 - When several states apply, the chat takes the first one of this order: error, waitingPermission, starting, running, waitingAnswers, idle.
 - A chat is running while its state is starting, running or waitingPermission; the quit confirmation ([UI](ui.md#unsaved-changes-and-quitting)) and the idle check before an automatic update ([Updater](updater.md#restart-rules)) use this definition. The status bar counts starting and running chats as running, and waitingPermission and waitingAnswers chats as waiting ([UI](ui.md#status-bar)).
 - `m:ss` counts the time since this client saw the state become running.
@@ -43,11 +43,12 @@ HephaestusV2 talks to Claude through the Claude CLI. Every chat is one Claude Co
 | starting                             | no `system/init` within 60 s, or the process cannot be spawned                          | error                   |
 | running                              | `control_request` `can_use_tool` arrives                                                | waitingPermission       |
 | waitingPermission                    | the last pending permission request is answered or cancelled                            | running                 |
-| running, waitingPermission           | `result` with `queued_turn_count` 0 or absent                                           | idle, or waitingAnswers |
+| idle, waitingAnswers                 | `system/init` arrives from the live process                                             | running                 |
+| running, waitingPermission           | the turn ends ([Turn tracking](#turn-tracking))                                         | idle, or waitingAnswers |
 | starting, running, waitingPermission | the process exits with a non-zero status, not after Stop or a termination by the engine | error                   |
 | starting, running, waitingPermission | the process exits after Stop or a termination by the engine, or with status 0           | idle, or waitingAnswers |
 
-`chats.send` accepts a message in every state ([Engine API](engine-api.md#chatssend)). During a turn the message is written to the process at once and the CLI runs it after the current turn, whose `result` then carries a `queued_turn_count` greater than 0. A message sent while a question set waits leaves the set unchanged.
+`chats.send` accepts a message in every state ([Engine API](engine-api.md#chatssend)). During a turn the message is written to the process at once; the CLI keeps it in its queue until its CLI turn in progress ends, then runs it, together with the other messages waiting there, as a CLI turn of its own, and the chat stays running until that CLI turn ends ([Turn tracking](#turn-tracking)). A message sent while a question set waits leaves the set unchanged.
 
 ## Claude CLI
 
@@ -185,13 +186,14 @@ Before every launch the engine writes `<data dir>/Runtime/mcp/<chat id>.json` wi
 Each message written to stdin is one line of compact UTF-8 JSON ending with `\n`:
 
 ```json
-{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Why does the build fail?\n\nAttached files:\n- /Users/example/Developer/HephaestusV2/.hephaestus/chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301/9B2D6C1E-0F4A-4E8B-A1C2-3D4E5F607182-build.log"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo…"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Why does the build fail?\n\nAttached files:\n- /Users/example/Developer/HephaestusV2/.hephaestus/chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301/9B2D6C1E-0F4A-4E8B-A1C2-3D4E5F607182-build.log"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo…"}}]},"uuid":"7C3E1F0A-2B4D-4E6F-8A9B-0C1D2E3F4A5B"}
 ```
 
 - The engine first stores every attachment in the chat's attachment folder `chats/<chat id>/` ([Data model](data-model.md#attachments)). The stored `name` and `contentType` follow [AttachmentUpload](engine-api.md#attachmentupload).
 - An attachment whose content type is `image/png`, `image/jpeg`, `image/gif` or `image/webp` and whose size is at most 5,000,000 bytes becomes an `image` block with `media_type` = its content type and `data` = its base64 content. Default chosen at design time.
 - Every other attachment is listed in the text. The text sent is the message text; when files are listed, a blank line (only when the message text is not empty), the line `Attached files:` and one line `- <absolute path of the stored file>` per file follow it.
 - The `text` block is left out when the text sent is empty. The content is the `text` block followed by the `image` blocks in attachment order.
+- `uuid` is the `id` of the message's `user` item; the CLI reports what it does with the message under this id ([Turn tracking](#turn-tracking)). Default chosen at design time.
 - The `user` item stores the message text without the `Attached files:` lines ([Data model](data-model.md#user-item)).
 - Its `sender` is the name of the device of a `user` actor ([Request handling](remote.md#request-handling)), `Claude` for a `claude` actor, and the main device's name for the `system` actor. Default chosen at design time.
 
@@ -206,8 +208,8 @@ Each message written to stdin is one line of compact UTF-8 JSON ending with `\n`
 
 1. Denies every pending permission request of the chat with the message `The user stopped Claude.` ([Answer](#answer)); `decidedBy` is the name of the device that pressed Stop. Default chosen at design time.
 2. Adds the system item `Stopped by <device name>.` with level info. Default chosen at design time.
-3. Writes the control request `interrupt`.
-4. When the turn has not ended 5 s later, sends SIGINT to the process; when the process is still alive 5 s after that, SIGTERM; SIGKILL 5 s after the SIGTERM when it is still alive ([Signals](#signals)).
+3. Writes the control request `interrupt`. The CLI ends its CLI turn in progress with a `result` ([Turn result](#turn-result)). The messages waiting in its queue are not dropped: the CLI runs them next and the chat stays running ([Turn tracking](#turn-tracking)); Stop again stops them.
+4. When no `result` has arrived 5 s later, sends SIGINT to the process; when the process is still alive 5 s after that, SIGTERM; SIGKILL 5 s after the SIGTERM when it is still alive ([Signals](#signals)).
 
 An exit caused by these signals adds no error item.
 
@@ -215,7 +217,7 @@ When the chat has no process yet because its launch has not started it, the engi
 
 ### Idle termination and quitting
 
-- When a turn ends, the engine starts a 20-minute timer; the next delivered message cancels it. When it fires, the engine closes the process's stdin, sends SIGTERM when the process is still alive 5 s later, and SIGKILL 5 s after that. Default chosen at design time for the closing sequence.
+- When a turn ends, the engine starts a 20-minute timer; the next delivered message, or a `system/init` that starts a turn, cancels it. When it fires, the engine closes the process's stdin, sends SIGTERM when the process is still alive 5 s later, and SIGKILL 5 s after that. Default chosen at design time for the closing sequence.
 - When the app quits ([UI](ui.md#unsaved-changes-and-quitting)), for every chat with a turn in progress the engine adds the system item `Stopped because HephaestusV2 quit.` with level warning and cancels its pending permission requests; then the processes end as [Architecture](architecture.md#shutdown) specifies (SIGTERM, then SIGKILL after 3 s). Default chosen at design time.
 - `chats.delete` and `projects.remove` terminate the processes of the chats concerned: SIGTERM, then SIGKILL 5 s later.
 - The next message to a chat whose process ended starts a new process with `--resume`.
@@ -224,13 +226,13 @@ When the chat has no process yet because its launch has not started it, the engi
 
 Every signal the engine sends to a Claude process, chat process, naming call or models probe, goes to its process group (`killpg`), so the commands it started (Bash tool commands, local MCP servers) receive it too. A sequence stops as soon as the process has exited. Default chosen at design time.
 
-| Trigger                                                                              | Sequence                                                                                                          |
-| ------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| Stop ([Stopping a turn](#stopping-a-turn))                                           | `interrupt` request; SIGINT 5 s later when the turn has not ended; SIGTERM 5 s after that; SIGKILL 5 s after that |
-| No `system/init` within 60 s, `chats.delete`, `projects.remove`, an `mcpPort` change | SIGTERM; SIGKILL 5 s later                                                                                        |
-| Idle termination                                                                     | stdin closed; SIGTERM 5 s later; SIGKILL 5 s after that                                                           |
-| Timeout of a naming call or of the models probe                                      | SIGTERM; SIGKILL 2 s later                                                                                        |
-| App quit                                                                             | SIGTERM; SIGKILL 3 s later ([Shutdown](architecture.md#shutdown))                                                 |
+| Trigger                                                                              | Sequence                                                                                                           |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| Stop ([Stopping a turn](#stopping-a-turn))                                           | `interrupt` request; SIGINT 5 s later when no `result` has arrived; SIGTERM 5 s after that; SIGKILL 5 s after that |
+| No `system/init` within 60 s, `chats.delete`, `projects.remove`, an `mcpPort` change | SIGTERM; SIGKILL 5 s later                                                                                         |
+| Idle termination                                                                     | stdin closed; SIGTERM 5 s later; SIGKILL 5 s after that                                                            |
+| Timeout of a naming call or of the models probe                                      | SIGTERM; SIGKILL 2 s later                                                                                         |
+| App quit                                                                             | SIGTERM; SIGKILL 3 s later ([Shutdown](architecture.md#shutdown))                                                  |
 
 ### Exit handling and logs
 
@@ -278,26 +280,27 @@ Requests from the CLI to the engine:
 
 Every stdout line is one JSON object. A line that is not valid JSON, or longer than 64 MB, is logged and skipped. The table is the complete mapping; the field names are those of Claude Code 2.1.309, checked against the captures in `Tests/HephaestusCoreTests/Fixtures/`.
 
-| Line `type`                                        | Condition                                                                                                                                        | Handling                                                                                                                      |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `system`                                           | `subtype` `init`, first one of this process                                                                                                      | `system` item ([Session start item](#session-start-item)); MCP check; `sessionStarted` set; the state leaves starting         |
-| `system`                                           | `subtype` `init`, later ones                                                                                                                     | ignored                                                                                                                       |
-| `system`                                           | `subtype` `status` with a `permissionMode` field                                                                                                 | the chat's permission mode follows it ([Mode changes made by the CLI](#mode-changes-made-by-the-cli))                         |
-| `system`                                           | any other `subtype` (`status` without `permissionMode`, `task_summary`, `post_turn_summary`, `thinking_tokens`, others)                          | ignored                                                                                                                       |
-| `stream_event`                                     | `event.type` `content_block_start`                                                                                                               | opens a block ([Streaming](#streaming))                                                                                       |
-| `stream_event`                                     | `event.type` `content_block_delta`, `event.delta.type` `text_delta`                                                                              | appends `event.delta.text` to the block; `chat.delta` kind `text`                                                             |
-| `stream_event`                                     | `event.type` `content_block_delta`, `event.delta.type` `thinking_delta`                                                                          | appends `event.delta.thinking` to the block; `chat.delta` kind `thinking`                                                     |
-| `stream_event`                                     | `event.type` `content_block_delta`, `event.delta.type` `input_json_delta`                                                                        | appends `event.delta.partial_json` to the block; `chat.delta` kind `toolInput`                                                |
-| `stream_event`                                     | any other `event.type` or `event.delta.type` (`signature_delta`, `content_block_stop`, `message_start`, `message_delta`, `message_stop`, others) | ignored, not logged                                                                                                           |
-| `assistant`                                        | always                                                                                                                                           | one item per block of `message.content` ([Assistant blocks](#assistant-blocks))                                               |
-| `user`                                             | `message.content` is an array that contains `tool_result` blocks                                                                                 | one `toolResult` item per `tool_result` block ([Tool results](#tool-results))                                                 |
-| `user`                                             | otherwise                                                                                                                                        | ignored                                                                                                                       |
-| `control_request`                                  | `request.subtype` `can_use_tool`                                                                                                                 | `permissionRequest` item, state waitingPermission ([Permission prompts](#permission-prompts))                                 |
-| `control_request`                                  | any other `request.subtype`                                                                                                                      | error answer ([Control protocol](#control-protocol))                                                                          |
-| `control_response`                                 | always                                                                                                                                           | matched by `response.request_id` ([Control protocol](#control-protocol))                                                      |
-| `control_cancel_request`                           | always                                                                                                                                           | cancels the pending permission request `request_id`                                                                           |
-| `result`                                           | always                                                                                                                                           | finalizes the open blocks, `result` item ([Turn result](#turn-result)); ends the turn when `queued_turn_count` is 0 or absent |
-| `rate_limit_event`, `keep_alive`, any other `type` | always                                                                                                                                           | ignored                                                                                                                       |
+| Line `type`                                        | Condition                                                                                                                                        | Handling                                                                                                                                                                  |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `system`                                           | `subtype` `init`, first one of this process                                                                                                      | `system` item ([Session start item](#session-start-item)); MCP check; `sessionStarted` set; the state leaves starting; a CLI turn opens ([Turn tracking](#turn-tracking)) |
+| `system`                                           | `subtype` `init`, later ones                                                                                                                     | a CLI turn opens ([Turn tracking](#turn-tracking)); no item                                                                                                               |
+| `system`                                           | `subtype` `status` with a `permissionMode` field                                                                                                 | the chat's permission mode follows it ([Mode changes made by the CLI](#mode-changes-made-by-the-cli))                                                                     |
+| `system`                                           | any other `subtype` (`status` without `permissionMode`, `task_summary`, `post_turn_summary`, `thinking_tokens`, others)                          | ignored                                                                                                                                                                   |
+| `stream_event`                                     | `event.type` `content_block_start`                                                                                                               | opens a block ([Streaming](#streaming))                                                                                                                                   |
+| `stream_event`                                     | `event.type` `content_block_delta`, `event.delta.type` `text_delta`                                                                              | appends `event.delta.text` to the block; `chat.delta` kind `text`                                                                                                         |
+| `stream_event`                                     | `event.type` `content_block_delta`, `event.delta.type` `thinking_delta`                                                                          | appends `event.delta.thinking` to the block; `chat.delta` kind `thinking`                                                                                                 |
+| `stream_event`                                     | `event.type` `content_block_delta`, `event.delta.type` `input_json_delta`                                                                        | appends `event.delta.partial_json` to the block; `chat.delta` kind `toolInput`                                                                                            |
+| `stream_event`                                     | any other `event.type` or `event.delta.type` (`signature_delta`, `content_block_stop`, `message_start`, `message_delta`, `message_stop`, others) | ignored, not logged                                                                                                                                                       |
+| `assistant`                                        | always                                                                                                                                           | one item per block of `message.content` ([Assistant blocks](#assistant-blocks))                                                                                           |
+| `user`                                             | `message.content` is an array that contains `tool_result` blocks                                                                                 | one `toolResult` item per `tool_result` block ([Tool results](#tool-results))                                                                                             |
+| `user`                                             | otherwise                                                                                                                                        | ignored                                                                                                                                                                   |
+| `control_request`                                  | `request.subtype` `can_use_tool`                                                                                                                 | `permissionRequest` item, state waitingPermission ([Permission prompts](#permission-prompts))                                                                             |
+| `control_request`                                  | any other `request.subtype`                                                                                                                      | error answer ([Control protocol](#control-protocol))                                                                                                                      |
+| `control_response`                                 | always                                                                                                                                           | matched by `response.request_id` ([Control protocol](#control-protocol))                                                                                                  |
+| `control_cancel_request`                           | always                                                                                                                                           | cancels the pending permission request `request_id`                                                                                                                       |
+| `result`                                           | always                                                                                                                                           | finalizes the open blocks, `result` item ([Turn result](#turn-result)); the CLI turn closes ([Turn tracking](#turn-tracking))                                             |
+| `command_lifecycle`                                | always                                                                                                                                           | the state of the message `command_uuid` ([Turn tracking](#turn-tracking))                                                                                                 |
+| `rate_limit_event`, `keep_alive`, any other `type` | always                                                                                                                                           | ignored                                                                                                                                                                   |
 
 Ignored lines, except `stream_event` lines, are logged in the chat's log file. Every new or replaced item is appended to the transcript and emitted as `chat.item` {chatID, item} ([Data model](data-model.md#transcript-writes)).
 
@@ -380,7 +383,45 @@ A `result` line becomes a `result` item:
 | `isError`    | `is_error`                                                                                                                                                                                                                                            |
 | `summary`    | null when `is_error` is false; else `result` when `subtype` is `success`, else the `errors` strings joined with `\n`, else the `subtype` (`error_during_execution`, `error_max_turns`, `error_max_budget_usd`, `error_max_structured_output_retries`) |
 
-Then the turn ends when `queued_turn_count` is 0 or absent; the idle timer starts and `chat.updated` reports the new state.
+Then the CLI turn closes ([Turn tracking](#turn-tracking)). `queued_turn_count` is not used: Claude Code 2.1.309 sends 0 even when messages wait in its queue.
+
+### Turn tracking
+
+Claude Code 2.1.309 runs the messages as CLI turns: a `system/init` line, the lines of Claude's work, then a `result` line. A message written during a CLI turn waits in the CLI's queue; when the CLI turn ends, the CLI runs every waiting message together as the next CLI turn, which starts with a new `system/init`. The CLI reports each message by the `uuid` of its line ([User messages](#user-messages)) in `command_lifecycle` lines:
+
+```json
+{"type":"command_lifecycle","command_uuid":"7C3E1F0A-2B4D-4E6F-8A9B-0C1D2E3F4A5B","state":"started","uuid":"1a63b051-eb56-4e4d-a9b2-7b8fff546781","session_id":"3F2504E0-4F89-11D3-9A0C-0305E82C3301"}
+```
+
+| `state`     | Sent when                                                                |
+| ----------- | ------------------------------------------------------------------------ |
+| `queued`    | the CLI has read the message                                             |
+| `started`   | the CLI turn that runs the message begins, just before its `system/init` |
+| `completed` | after the `result` of that CLI turn                                      |
+| `cancelled` | after the `result` of that CLI turn, when Stop interrupted it            |
+
+For each process the engine keeps the outstanding messages, those it wrote and that are not finished, each with the last `state` reported, and whether a CLI turn is open:
+
+1. Writing a user message to the process adds it as outstanding, with no state.
+2. `system/init` opens a CLI turn. When the chat has no turn in progress, a turn starts: the idle timer is cancelled and the state becomes running.
+3. `command_lifecycle` records the `state` of the outstanding message `command_uuid`; a state other than `queued` and `started` finishes it. A line that names no outstanding message is ignored.
+4. `result` closes the CLI turn and finishes every outstanding message whose state is `started`. When none has that state, it finishes the oldest outstanding message that has no state, so that a turn still ends when the CLI sends no `command_lifecycle` lines.
+5. When step 3 or 4 leaves no outstanding message and no open CLI turn during a turn, the turn ends: the metadata file is rewritten, the idle timer starts and `chat.updated` reports the new state.
+6. When the process exits, its outstanding messages are dropped ([Exit handling and logs](#exit-handling-and-logs)).
+
+These rules are Default chosen at design time. Example with Claude Code 2.1.309, a new process and the messages A and B written 0.3 s apart:
+
+| Line read, or message written                       | Outstanding         | CLI turn | State    |
+| --------------------------------------------------- | ------------------- | -------- | -------- |
+| A written                                           | A                   | closed   | starting |
+| `command_lifecycle` A `queued`, then A `started`    | A started           | closed   | starting |
+| `system/init`                                       | A started           | open     | running  |
+| B written; `command_lifecycle` B `queued`           | A started, B queued | open     | running  |
+| `result` of A                                       | B queued            | closed   | running  |
+| `command_lifecycle` A `completed`, then B `started` | B started           | closed   | running  |
+| `system/init`                                       | B started           | open     | running  |
+| `result` of B                                       | none                | closed   | idle     |
+| `command_lifecycle` B `completed`                   | none                | closed   | idle     |
 
 ### Sub-agents
 

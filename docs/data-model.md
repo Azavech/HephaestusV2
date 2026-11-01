@@ -621,17 +621,17 @@ Swift type `ChatItem`: an enum whose case is selected by the key `type` and whos
 | id         | `id`      | `String`       | yes      | —       | Unique within the transcript; opaque to readers. [Chats](chats.md) defines how the engine forms it. |
 | created    | `created` | `Date`         | yes      | —       | Time the engine created the item.                                                                   |
 
-| `type`              | Swift case           | Payload type            | Item                                            |
-| ------------------- | -------------------- | ----------------------- | ----------------------------------------------- |
-| `user`              | `.user`              | `UserItem`              | A message sent to Claude.                       |
-| `assistant`         | `.assistant`         | `AssistantItem`         | A text block written by Claude.                 |
-| `thinking`          | `.thinking`          | `ThinkingItem`          | A thinking block.                               |
-| `toolUse`           | `.toolUse`           | `ToolUseItem`           | A tool call, MCP calls included.                |
-| `toolResult`        | `.toolResult`        | `ToolResultItem`        | The result of a tool call.                      |
-| `permissionRequest` | `.permissionRequest` | `PermissionRequestItem` | A request to allow a tool call.                 |
-| `questions`         | `.questions`         | `QuestionsItem`         | A set of labelled questions.                    |
-| `system`            | `.system`            | `SystemItem`            | A line from the app, such as the session start. |
-| `result`            | `.result`            | `ResultItem`            | The end of a turn.                              |
+| `type`              | Swift case           | Payload type            | Item                                                     |
+| ------------------- | -------------------- | ----------------------- | -------------------------------------------------------- |
+| `user`              | `.user`              | `UserItem`              | A message sent to Claude.                                |
+| `assistant`         | `.assistant`         | `AssistantItem`         | A text block written by Claude.                          |
+| `thinking`          | `.thinking`          | `ThinkingItem`          | A thinking block.                                        |
+| `toolUse`           | `.toolUse`           | `ToolUseItem`           | A tool call, MCP calls included.                         |
+| `toolResult`        | `.toolResult`        | `ToolResultItem`        | The result of a tool call.                               |
+| `permissionRequest` | `.permissionRequest` | `PermissionRequestItem` | A request to allow a tool call.                          |
+| `questions`         | `.questions`         | `QuestionsItem`         | A set of labelled questions.                             |
+| `system`            | `.system`            | `SystemItem`            | A line from the app, such as the session start.          |
+| `result`            | `.result`            | `ResultItem`            | The end of a CLI turn ([Chats](chats.md#turn-tracking)). |
 
 ```swift
 public enum ChatItem: Codable, Sendable, Hashable, Identifiable {
