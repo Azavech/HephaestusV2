@@ -27,6 +27,7 @@ public struct AppCommands: Commands {
         }
         CommandGroup(replacing: .printItem) {}
         CommandGroup(after: .textEditing) {
+            FindCommands()
             ToggleCommentCommand()
         }
         CommandGroup(replacing: .sidebar) {
@@ -161,6 +162,51 @@ private struct FileCloseAndSaveCommands: View {
 }
 
 // MARK: - Edit
+
+/// Edit ▸ Find: each item sends `performTextFinderAction:` with its `NSTextFinder.Action` as tag
+/// to the first responder (an editor, the Docs preview, a web page or a chat transcript), which
+/// shows its find bar or acts on it; Jump to Selection sends `centerSelectionInVisibleArea:`
+/// (docs/ui.md › Menus and keyboard shortcuts, note 1).
+// DOC-GAP: SwiftUI menu items are not validated through the responder chain; the items stay
+// enabled, and an item the focused view cannot perform beeps.
+private struct FindCommands: View {
+    private static let finderAction = #selector(NSResponder.performTextFinderAction(_:))
+
+    var body: some View {
+        Menu("Find") {
+            item("Find…", tag: NSTextFinder.Action.showFindInterface.rawValue, "f")
+            item("Find and Replace…", tag: NSTextFinder.Action.showReplaceInterface.rawValue, "f", modifiers: [.command, .option])
+            item("Find Next", tag: NSTextFinder.Action.nextMatch.rawValue, "g")
+            item("Find Previous", tag: NSTextFinder.Action.previousMatch.rawValue, "g", modifiers: [.command, .shift])
+            item("Use Selection for Find", tag: NSTextFinder.Action.setSearchString.rawValue, "e")
+            item("Jump to Selection", action: #selector(NSResponder.centerSelectionInVisibleArea(_:)), "j")
+        }
+    }
+
+    private func item(_ title: String, action: Selector = finderAction, tag: Int = 0, _ key: KeyEquivalent,
+                      modifiers: EventModifiers = .command) -> some View {
+        Button(title) {
+            Self.perform(action, tag: tag)
+        }
+        .keyboardShortcut(key, modifiers: modifiers)
+    }
+
+    /// Sends the action to the first responder that implements it and validates it.
+    @MainActor
+    static func perform(_ action: Selector, tag: Int) {
+        let sender = NSMenuItem()
+        sender.action = action
+        sender.tag = tag
+        let target = NSApp.target(forAction: action, to: nil, from: sender)
+        if let validator = target as? NSUserInterfaceValidations, !validator.validateUserInterfaceItem(sender) {
+            NSSound.beep()
+            return
+        }
+        if target == nil || !NSApp.sendAction(action, to: target, from: sender) {
+            NSSound.beep()
+        }
+    }
+}
 
 private struct ToggleCommentCommand: View {
     @FocusedValue(\.windowState) private var focused
