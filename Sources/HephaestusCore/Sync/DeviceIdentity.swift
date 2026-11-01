@@ -7,21 +7,26 @@ extension Engine {
         deviceInfo
     }
 
+    /// The device name shown in Settings > Devices (docs/remote.md › Device identity): the name
+    /// set there, or the Mac's computer name when none is set.
+    public func deviceNameSetting() -> String {
+        deviceInfo.name
+    }
+
     /// Settings > Devices › This device's name (docs/remote.md › Device identity): the name is
-    /// trimmed; an empty or nil name stores no name, and the Mac's computer name is used; a name
-    /// that is not one line of 1 to 63 UTF-8 bytes fails with `invalid`. The name is written to
+    /// trimmed; an empty name stores no name, and the Mac's computer name is used; a name that is
+    /// not one line of 1 to 63 UTF-8 bytes fails with `invalid`. The name is written to
     /// device.yml, the Bonjour advertisement is registered again with the new instance name and
     /// TXT `name`, and every later `hello` and `welcome` carries it. Open sessions are not
-    /// notified. Returns the new DeviceInfo.
-    @discardableResult
-    public func renameDevice(to name: String?) async throws -> DeviceInfo {
+    /// notified and no engine event is emitted. A storage failure throws `internal`.
+    public func renameDevice(to name: String) async throws {
         let stored: String?
         do {
             stored = try ModelRules.deviceName(name)
         } catch let error as ValidationError {
             throw EngineError(error)
         }
-        guard stored != device.name else { return deviceInfo }
+        guard stored != device.name else { return }
         var updated = device
         updated.name = stored
         do {
@@ -30,9 +35,8 @@ extension Engine {
             throw EngineError.storage(error)
         }
         device = updated
-        let info = deviceInfo
-        deviceBrowser.ownDeviceName = info.name
-        await syncServer.deviceNameDidChange(info.name)
-        return info
+        let name = deviceInfo.name
+        deviceBrowser.ownDeviceName = name
+        await syncServer.deviceNameDidChange(name)
     }
 }

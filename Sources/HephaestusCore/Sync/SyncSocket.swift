@@ -62,6 +62,9 @@ final class SyncSocket: @unchecked Sendable {
     let queue: DispatchQueue
     private let closeWait: TimeInterval
     private var handler: ((Input) -> Void)?
+    /// Keeps the socket alive from `start` until the connection ended, so that a close frame's
+    /// wait and cancel complete after its owner released it.
+    private var retainedSelf: SyncSocket?
     private var endWaiters: [CheckedContinuation<Void, Never>] = []
     /// True once the WebSocket is open.
     private(set) var isReady = false
@@ -98,6 +101,7 @@ final class SyncSocket: @unchecked Sendable {
     /// Starts the connection; `handler` receives every input until `.ended`.
     func start(_ handler: @escaping (Input) -> Void) {
         self.handler = handler
+        retainedSelf = self
         connection.stateUpdateHandler = { [weak self] state in
             self?.stateChanged(state)
         }
@@ -255,6 +259,7 @@ final class SyncSocket: @unchecked Sendable {
         for waiter in waiters {
             waiter.resume()
         }
+        retainedSelf = nil
     }
 }
 

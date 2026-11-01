@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import Testing
 @testable import HephaestusCore
 
@@ -246,6 +247,45 @@ struct RemoteConnectionTests {
             #expect(lost?.message == "The connection to Studio was lost.")
             // Cancelled without a close frame.
             #expect(await peer.closeCode() == SyncCloseCode.abnormalClosure)
+        }
+    }
+
+    @Test("No WebSocket upgrade within the connect timeout: the device cannot be reached")
+    func connectTimeout() async throws {
+        // A TCP listener that accepts and never answers the upgrade request.
+        let parameters = NWParameters.tcp
+        parameters.requiredInterfaceType = .loopback
+        let listener = try NWListener(using: parameters)
+        let held = Collected<NWConnection>()
+        listener.newConnectionHandler = { connection in
+            held.append(connection)
+            connection.start(queue: .global())
+        }
+        let port: Int = try await withCheckedThrowingContinuation { continuation in
+            let once = ResumeOnceThrowing(continuation)
+            listener.stateUpdateHandler = { state in
+                switch state {
+                case .ready: once.resume(.success(Int(listener.port!.rawValue)))
+                case .failed(let error): once.resume(.failure(error))
+                default: break
+                }
+            }
+            listener.start(queue: DispatchQueue(label: "test.tcp"))
+        }
+        defer {
+            listener.cancel()
+            held.values.forEach { $0.cancel() }
+        }
+        var timings = SyncTimings.fast
+        timings.connect = 0.4
+        try await withTestEngine { remote, _, _ in
+            let device = try storePairing(on: remote, deviceID: Self.mainID, port: port, code: SyncCryptoTests.code)
+            let connection = RemoteEngineConnection(device: device, local: await remote.localDeviceInfo(), pairedDevices: remote.pairedDevices,
+                                                    browser: remote.deviceBrowser, log: MemoryLog(), timings: timings)
+            defer { connection.close() }
+            let phase = await phase(of: connection) { $0.isWaiting }
+            #expect(phase?.message == "Can't reach Studio.")
+            #expect(!held.values.isEmpty)
         }
     }
 

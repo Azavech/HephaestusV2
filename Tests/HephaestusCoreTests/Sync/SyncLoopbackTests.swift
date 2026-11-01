@@ -9,6 +9,19 @@ private enum UnknownMethod: EngineMethod {
     typealias Result = Empty
 }
 
+/// A method that returns more than 32 MiB of JSON.
+private enum HugeResult: EngineMethod {
+    static let name = "test.huge"
+    typealias Params = Empty
+    typealias Result = String
+}
+
+/// An event whose payload is larger than 32 MiB.
+private enum HugeEvent: EngineEvent {
+    static let name = SkillsChangedEvent.name
+    typealias Payload = String
+}
+
 /// Two engines on 127.0.0.1: the remote one pairs with the main one and works through a
 /// `RemoteEngineConnection` (docs/remote.md, docs/development.md › Test targets).
 @Suite("Sync loopback")
@@ -316,11 +329,35 @@ struct SyncLoopbackTests {
         }
     }
 
+    @Test("Responses and events over 32 MiB are not sent to remote devices")
+    func oversizedOutput() async throws {
+        try await withTwoEngines { main, mainLocal, remote, _ in
+            await main.register(HugeResult.self, actors: [.user]) { _, _ in String(repeating: "a", count: 33_554_432) }
+            let connection = try await pair(remote, with: main)
+            defer { connection.close() }
+            #expect(await engineError { try await connection.call(HugeResult.self) }
+                == EngineError(.unavailable, "The result of test.huge is larger than 32 MB and cannot be sent to a remote device."))
+
+            _ = try await connection.call(SnapshotGet.self)
+            let remoteEvents = connection.events
+            let localEvents = mainLocal.events
+            await main.emit(HugeEvent.self, String(repeating: "b", count: 33_554_432), origin: .system)
+            await main.emit(SkillsChangedEvent.self, [], origin: .system)
+            let remoteEvent = try #require(await firstElement(of: remoteEvents))
+            #expect(remoteEvent.data == [])
+            let local = try #require(await firstElement(of: localEvents))
+            #expect(local.data.stringValue?.count == 33_554_432)
+            let logText = try String(contentsOf: main.dataDirectory.engineLogFile, encoding: .utf8)
+            #expect(logText.contains("WARN sync: event skills.changed of 33554520 bytes not sent to \(remote.deviceID)"))
+            #expect(connection.phase == .connected)
+        }
+    }
+
     @Test("The device name: renaming changes the hello of later connections")
     func renaming() async throws {
         try await withTwoEngines { main, _, remote, _ in
-            let info = try await remote.renameDevice(to: "  Laptop  ")
-            #expect(info.name == "Laptop")
+            try await remote.renameDevice(to: "  Laptop  ")
+            #expect(await remote.localDeviceInfo().name == "Laptop")
             let connection = try await pair(remote, with: main)
             defer { connection.close() }
             #expect(main.syncServer.remoteDeviceName(deviceID: remote.deviceID) == "Laptop")
