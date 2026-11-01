@@ -356,7 +356,7 @@ Each `tool_result` block of a `user` line becomes one `toolResult` item:
 | `isError`   | block `is_error`; false when absent                                                                                                                                                                                     |
 | `images`    | one Attachment per `image` block of `content`, stored in the chat's attachment folder with the name `image-<n>.<png, jpg, gif or webp>`, `<n>` counting from 1 in each result ([Data model](data-model.md#attachments)) |
 
-An `image` block whose `source.type` is not `base64` holds no data and is left out. An image of another media type takes the media type's subtype as extension (`image/bmp` gives `bmp`), `bin` when it has none. Default chosen at design time.
+An `image` block whose `source.type` is not `base64` holds no data and is left out; one without `source.media_type` counts as `image/png`. An image of another media type takes the media type's subtype as extension (`image/bmp` gives `bmp`), `bin` when it has none. Default chosen at design time.
 
 A `toolResult` whose `toolUseID` matches no `toolUse` item is kept and rendered alone ([Item rendering](#item-rendering)).
 

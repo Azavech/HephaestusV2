@@ -555,7 +555,7 @@ Messages to Swift (`window.webkit.messageHandlers.hephaestus.postMessage`), the 
 | `{"action":"copy","text":"…"}`                       | a code block's Copy button is clicked; Swift puts the text on the general pasteboard as plain text                                |
 
 - `doc.js` handles every click on an `a` element with `href`: it prevents the default action; a `href` starting with `#` scrolls with `scrollToFragment`; any other sends `openLink`.
-- An `img` that fails to load is replaced by `<span class="md-image-broken">` titled with the image's `src`, whose text is `Image not found: ` followed by the alt text, or the last path component of the `src` when the alt text is empty. `doc.js` builds it with DOM methods (`textContent`), never with HTML strings.
+- An `img` that fails to load is replaced by `<span class="md-image-broken">` titled with the image's `src`, whose text is `Image not found: ` followed by the alt text, or, when the alt text is empty, the last path component of the `src` without its query and fragment, percent-decoded (`flow%20chart.png` reads `flow chart.png`; invalid percent-encoding is kept as written). `doc.js` builds it with DOM methods (`textContent`), never with HTML strings.
 - The navigation delegate allows only the initial load of `doc.html` and cancels every other navigation.
 - The context menu keeps Copy, Copy Link, Copy Image and Look Up and removes every other item. The text is selectable; ⌘A selects the whole doc and ⌘C copies the selection as plain text.
 - Messages with an unknown `action` are ignored.
