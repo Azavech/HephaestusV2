@@ -200,3 +200,46 @@ enum TicketMarkdown {
         }
     }
 }
+
+/// The list and the detail of the Tickets and Bundles sections, separated by a draggable divider:
+/// the list is at least 240 pt wide and starts at 320 pt, the detail is at least 300 pt
+/// (docs/tickets.md › Tickets section, › Bundles section).
+struct ListDetailSplit<ListContent: View, DetailContent: View>: View {
+    @Binding var listWidth: CGFloat
+    @ViewBuilder var list: ListContent
+    @ViewBuilder var detail: DetailContent
+    @State private var dragStartWidth: CGFloat?
+
+    static var minListWidth: CGFloat { 240 }
+    static var minDetailWidth: CGFloat { 300 }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let maxList = max(Self.minListWidth, geometry.size.width - Self.minDetailWidth - 1)
+            let width = min(max(listWidth, Self.minListWidth), maxList)
+            HStack(spacing: 0) {
+                list
+                    .frame(width: width)
+                Rectangle()
+                    .fill(Color(nsColor: .separatorColor))
+                    .frame(width: 1)
+                    .overlay {
+                        Color.clear
+                            .frame(width: 9)
+                            .contentShape(Rectangle())
+                            .pointerStyle(.columnResize)
+                            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                                .onChanged { value in
+                                    let start = dragStartWidth ?? width
+                                    dragStartWidth = start
+                                    listWidth = min(max(start + value.translation.width, Self.minListWidth), maxList)
+                                }
+                                .onEnded { _ in dragStartWidth = nil })
+                    }
+                    .zIndex(1)
+                detail
+                    .frame(minWidth: Self.minDetailWidth, maxWidth: .infinity)
+            }
+        }
+    }
+}

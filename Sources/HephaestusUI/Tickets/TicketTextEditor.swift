@@ -33,18 +33,23 @@ struct TicketTextEditor: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSTextView.scrollableTextView()
+        let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
-        let old = scrollView.documentView as? NSTextView
-        let textView = TicketNSTextView(frame: old?.frame ?? .zero, textContainer: nil)
+        // A TextKit 1 stack, so that layout and measuring behave the same on every system.
+        let storage = NSTextStorage()
+        let layout = NSLayoutManager()
+        storage.addLayoutManager(layout)
+        let container = NSTextContainer(size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
+        container.widthTracksTextView = true
+        layout.addTextContainer(container)
+        let textView = TicketNSTextView(frame: .zero, textContainer: container)
         textView.autoresizingMask = [.width]
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
-        textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         textView.minSize = NSSize(width: 0, height: 0)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.isRichText = false
@@ -55,6 +60,8 @@ struct TicketTextEditor: NSViewRepresentable {
         textView.isAutomaticTextReplacementEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
         textView.drawsBackground = false
+        textView.textColor = .textColor
+        textView.insertionPointColor = .textColor
         textView.textContainerInset = NSSize(width: 4, height: 6)
         textView.delegate = context.coordinator
         textView.owner = context.coordinator
@@ -69,9 +76,9 @@ struct TicketTextEditor: NSViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSScrollView, context: Context) -> CGSize? {
-        guard let textView = context.coordinator.textView, let layout = textView.layoutManager else { return nil }
+        guard let textView = context.coordinator.textView else { return nil }
         let width = proposal.width ?? nsView.frame.width
-        let lineHeight = layout.defaultLineHeight(for: font)
+        let lineHeight = Self.measuringLayout.defaultLineHeight(for: font)
         let inset = textView.textContainerInset
         let padding = (textView.textContainer?.lineFragmentPadding ?? 5) * 2
         let textWidth = max(1, width - inset.width * 2 - padding - 16)
@@ -84,6 +91,9 @@ struct TicketTextEditor: NSViewRepresentable {
         let lines = max(CGFloat(minLines), min(CGFloat(maxLines), (measured / lineHeight).rounded(.up)))
         return CGSize(width: proposal.width ?? 200, height: lines * lineHeight + inset.height * 2)
     }
+
+    /// Measures line heights without touching the editor's own layout.
+    @MainActor private static let measuringLayout = NSLayoutManager()
 
     @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -98,12 +108,14 @@ struct TicketTextEditor: NSViewRepresentable {
         func update(_ parent: TicketTextEditor) {
             self.parent = parent
             guard let textView else { return }
-            if textView.string != parent.text, !textView.hasMarkedText() {
-                textView.string = parent.text
-            }
             if textView.font != parent.font {
                 textView.font = parent.font
-                textView.typingAttributes[.font] = parent.font
+                textView.typingAttributes = [.font: parent.font, .foregroundColor: NSColor.textColor]
+            }
+            if textView.string != parent.text, !textView.hasMarkedText() {
+                textView.string = parent.text
+                textView.font = parent.font
+                textView.textColor = .textColor
             }
             textView.placeholder = parent.placeholder
             if parent.focusRequest != lastFocusRequest {

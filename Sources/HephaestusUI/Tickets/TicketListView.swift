@@ -36,9 +36,12 @@ struct TicketListView: View {
             header
                 .padding(.horizontal, 8)
                 .padding(.vertical, 7)
+                .frame(maxWidth: .infinity, alignment: .leading)
             Divider()
             content
         }
+        .frame(maxWidth: .infinity)
+        .clipped()
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
@@ -55,6 +58,7 @@ struct TicketListView: View {
             }
             VStack(alignment: .leading, spacing: 6) {
                 statusFilter
+                    .frame(maxWidth: .infinity)
                 HStack(spacing: 8) {
                     filterField
                     bundleButton
@@ -75,7 +79,7 @@ struct TicketListView: View {
         }
         .pickerStyle(.segmented)
         .labelsHidden()
-        .fixedSize()
+        .controlSize(.small)
     }
 
     private var filterField: some View {
@@ -170,24 +174,24 @@ struct TicketListView: View {
     }
 
     static let columns: [ItemTableColumn<Ticket>] = [
-        ItemTableColumn(id: TicketListState.SortColumn.id.rawValue, title: "ID", minWidth: 56, idealWidth: 76, maxWidth: 120) { ticket in
+        ItemTableColumn(id: TicketListState.SortColumn.id.rawValue, title: "ID", minWidth: 56, idealWidth: 72, maxWidth: 84) { ticket in
             AnyView(Text(ticket.id)
                 .font(.system(size: 12, design: .monospaced))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading))
         },
-        ItemTableColumn(id: TicketListState.SortColumn.title.rawValue, title: "Title", minWidth: 80, idealWidth: 220) { ticket in
+        ItemTableColumn(id: TicketListState.SortColumn.title.rawValue, title: "Title", minWidth: 60, idealWidth: 220) { ticket in
             AnyView(Text(ticket.title)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .help(ticket.title))
         },
-        ItemTableColumn(id: TicketListState.SortColumn.status.rawValue, title: "Status", minWidth: 84, idealWidth: 94, maxWidth: 120) { ticket in
+        ItemTableColumn(id: TicketListState.SortColumn.status.rawValue, title: "Status", minWidth: 84, idealWidth: 90, maxWidth: 84) { ticket in
             AnyView(StatusCapsule(status: ticket.status)
                 .frame(maxWidth: .infinity, alignment: .leading))
         },
-        ItemTableColumn(id: TicketListState.SortColumn.created.rawValue, title: "Created", minWidth: 100, idealWidth: 150, maxWidth: 220) { ticket in
+        ItemTableColumn(id: TicketListState.SortColumn.created.rawValue, title: "Created", minWidth: 90, idealWidth: 140, maxWidth: 220) { ticket in
             AnyView(Text(TicketFormat.created(ticket.created))
                 .lineLimit(1)
                 .foregroundStyle(.secondary)

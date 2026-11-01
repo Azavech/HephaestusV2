@@ -67,6 +67,8 @@ final class TicketWindowStore {
     var chatSelection: [String: String] = [:]
     /// The Chats tabs that show a draft chat, by `<deviceID>/<ticket or bundle id>`.
     var draftChats: Set<String> = []
+    /// The width of the ticket list and of the bundle list, which share their divider.
+    var listWidth: CGFloat = 320
     /// The sort order of the bundle list, by `<deviceID>/<project id>`.
     var bundleSorts: [String: ItemTableSort] = [:]
 

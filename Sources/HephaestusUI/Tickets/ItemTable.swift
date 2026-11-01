@@ -64,8 +64,10 @@ struct ItemTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.ID
         table.allowsColumnReordering = false
         table.allowsColumnSelection = false
         table.allowsEmptySelection = true
-        table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
-        table.intercellSpacing = NSSize(width: 8, height: 2)
+        // The columns start at their minimum width; the first columns grow up to their maximum,
+        // so the Title column takes the remaining width.
+        table.columnAutoresizingStyle = .sequentialColumnAutoresizingStyle
+        table.intercellSpacing = NSSize(width: 6, height: 2)
         table.dataSource = context.coordinator
         table.delegate = context.coordinator
         table.target = context.coordinator
@@ -76,7 +78,7 @@ struct ItemTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.ID
             let tableColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(column.id))
             tableColumn.title = column.title
             tableColumn.minWidth = column.minWidth
-            tableColumn.width = column.idealWidth
+            tableColumn.width = column.minWidth
             tableColumn.maxWidth = column.maxWidth
             if column.sortable, onSortChange != nil {
                 tableColumn.sortDescriptorPrototype = NSSortDescriptor(key: column.id, ascending: true)
@@ -86,7 +88,7 @@ struct ItemTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.ID
         let scrollView = NSScrollView()
         scrollView.documentView = table
         scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
+        scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
         context.coordinator.table = table

@@ -45,11 +45,11 @@ struct BundlesSectionView: View {
     }
 
     var body: some View {
-        HSplitView {
+        @Bindable var store = store
+        ListDetailSplit(listWidth: $store.listWidth) {
             list
-                .frame(minWidth: 240, idealWidth: 320, maxHeight: .infinity)
+        } detail: {
             detail
-                .frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -149,30 +149,32 @@ struct BundlesSectionView: View {
                 )
             }
         }
+        .frame(maxWidth: .infinity)
+        .clipped()
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
     static let columns: [ItemTableColumn<BundleRow>] = [
-        ItemTableColumn(id: "id", title: "ID", minWidth: 60, idealWidth: 80, maxWidth: 120) { row in
+        ItemTableColumn(id: "id", title: "ID", minWidth: 60, idealWidth: 76, maxWidth: 88) { row in
             AnyView(Text(row.id)
                 .font(.system(size: 12, design: .monospaced))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading))
         },
-        ItemTableColumn(id: "title", title: "Title", minWidth: 80, idealWidth: 200) { row in
+        ItemTableColumn(id: "title", title: "Title", minWidth: 60, idealWidth: 200) { row in
             AnyView(Text(row.title)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .help(row.title))
         },
-        ItemTableColumn(id: "progress", title: "Progress", minWidth: 70, idealWidth: 90, maxWidth: 130) { row in
+        ItemTableColumn(id: "progress", title: "Progress", minWidth: 72, idealWidth: 84, maxWidth: 72) { row in
             AnyView(Text(row.progressText)
                 .lineLimit(1)
                 .monospacedDigit()
                 .frame(maxWidth: .infinity, alignment: .leading))
         },
-        ItemTableColumn(id: "created", title: "Created", minWidth: 100, idealWidth: 150, maxWidth: 220) { row in
+        ItemTableColumn(id: "created", title: "Created", minWidth: 90, idealWidth: 140, maxWidth: 220) { row in
             AnyView(Text(TicketFormat.created(row.created))
                 .lineLimit(1)
                 .foregroundStyle(.secondary)

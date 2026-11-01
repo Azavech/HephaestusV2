@@ -13,11 +13,11 @@ struct TicketsSectionView: View {
     }
 
     var body: some View {
-        HSplitView {
+        @Bindable var store = TicketWindowStore.store(for: window)
+        ListDetailSplit(listWidth: $store.listWidth) {
             TicketListView(window: window, workspace: workspace, projectID: projectID)
-                .frame(minWidth: 240, idealWidth: 320, maxHeight: .infinity)
+        } detail: {
             detail
-                .frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
