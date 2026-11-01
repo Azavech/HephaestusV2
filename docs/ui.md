@@ -97,6 +97,7 @@ The principal toolbar item shows up to three segments separated by the symbol `c
 - The current device, top-level project and active project carry a checkmark in their menus.
 - Choosing a device changes only this window: the window shows the reconnect view until the device's workspace is connected, then the device's default project ([Project selector](projects.md#project-selector)).
 - A segment title longer than 240 points is truncated in the middle.
+- The selector has 12 points of horizontal padding on each side, between the border of the toolbar item's pill and its first and last segments.
 - While the window's device is not connected, the Project and Sub project segments are disabled and show their last titles dimmed.
 
 The segment icons, the dot in the Device title, the 240-point truncation and the disabled state are design-time choices. Default chosen at design time.

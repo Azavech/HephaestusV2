@@ -20,6 +20,7 @@ struct BreadcrumbSelector: View {
                 subProjectSegment(topLevel)
             }
         }
+        .padding(.horizontal, 12)
     }
 
     private var chevron: some View {
