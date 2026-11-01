@@ -26,8 +26,9 @@ extension Engine {
     }
 
     /// The target with its ids in their stored uppercase form, after checking that every
-    /// project, ticket, bundle, chat, skill, web tab, doc or file it names exists and that `line`
-    /// is at least 1.
+    /// project, ticket, bundle, chat, skill, web tab or doc it names exists, that a `file` target
+    /// names an existing file, or an existing folder when it has no `line`, and that `line` is at
+    /// least 1.
     func checkedTarget(_ target: NavigationTarget) throws -> NavigationTarget {
         switch target {
         case .project(let projectID):
@@ -41,14 +42,14 @@ extension Engine {
             return target
         case .doc(let projectID, let path, let fragment):
             let id = try loadedProjectID(projectID)
-            let checked = try existingProjectFile(path, in: id, kind: "Doc")
+            let checked = try existingProjectItem(path, in: id, kind: "Doc", folderAllowed: false)
             return .doc(projectID: id, path: checked, fragment: fragment)
         case .file(let projectID, let path, let line):
             if let line, line < 1 {
                 throw EngineError.invalid("line", "use a line number of at least 1")
             }
             let id = try loadedProjectID(projectID)
-            let checked = try existingProjectFile(path, in: id, kind: "File")
+            let checked = try existingProjectItem(path, in: id, kind: "File", folderAllowed: line == nil)
             return .file(projectID: id, path: checked, line: line)
         case .skill(let name):
             _ = try validated { try ModelRules.skillName(name) }
@@ -68,14 +69,15 @@ extension Engine {
         }
     }
 
-    /// A project path that names an existing file of a loaded project (not a folder).
-    private func existingProjectFile(_ path: String, in projectID: ProjectID, kind: String) throws -> String {
+    /// A project path that names an existing file of a loaded project, or an existing folder
+    /// when `folderAllowed`.
+    private func existingProjectItem(_ path: String, in projectID: ProjectID, kind: String, folderAllowed: Bool) throws -> String {
         guard let checked = DomainPaths.projectPath(path), !checked.isEmpty else {
             throw EngineError.invalid("path", "use a project path with / separators and no empty, . or .. component")
         }
         let url = URL(fileURLWithPath: loaded(projectID).rootPath, isDirectory: true).appendingPathComponent(checked)
         var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), !isDirectory.boolValue else {
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), folderAllowed || !isDirectory.boolValue else {
             throw EngineError.notFound(kind, checked)
         }
         return checked

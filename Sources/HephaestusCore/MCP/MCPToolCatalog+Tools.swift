@@ -1164,7 +1164,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "open_in_app",
             description: #"""
-            Show something to the user in HephaestusV2: a project, ticket, bundle, chat, doc (optionally at a heading), file (optionally at a line), skill, web tab or project section. The app shows it on the device the user is chatting from.
+            Show something to the user in HephaestusV2: a project, ticket, bundle, chat, doc (optionally at a heading), file (optionally at a line) or folder of the code tree, skill, web tab or project section. The app shows it on the device the user is chatting from.
             """#,
             inputSchema: schema(#"""
             {

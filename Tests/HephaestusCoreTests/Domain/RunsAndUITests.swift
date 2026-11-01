@@ -170,6 +170,13 @@ struct RunsAndUITests {
             for target in valid {
                 _ = try await h.connection.call(UIOpen.self, .init(target: target))
             }
+            // A file target without line may name a folder, which the client reveals in the tree.
+            _ = try await h.connection.call(UIOpen.self, .init(target: .file(projectID: "heph", path: "Sources/", line: nil)))
+            let folder = UIOpenEvent.Payload(target: .file(projectID: "HEPH", path: "Sources", line: nil))
+            let received = await events.wait { all in
+                all.contains { $0.name == UIOpenEvent.name && (try? $0.payload(UIOpenEvent.self)) == folder }
+            }
+            #expect(received.contains { $0.name == UIOpenEvent.name && (try? $0.payload(UIOpenEvent.self)) == folder })
             func error(_ target: NavigationTarget) async -> EngineError? {
                 await engineError { try await h.connection.call(UIOpen.self, .init(target: target)) }
             }
@@ -180,7 +187,9 @@ struct RunsAndUITests {
             #expect(await error(.project(projectID: "NONE")) == EngineError(.notFound, "Project NONE not found."))
             #expect(await error(.doc(projectID: "HEPH", path: "docs/missing.md")) == EngineError(.notFound, "Doc docs/missing.md not found."))
             #expect(await error(.doc(projectID: "HEPH", path: "docs/../x"))?.code == .invalid)
-            #expect(await error(.file(projectID: "HEPH", path: "Sources", line: nil)) == EngineError(.notFound, "File Sources not found."))
+            #expect(await error(.file(projectID: "HEPH", path: "Sources", line: 1)) == EngineError(.notFound, "File Sources not found."))
+            #expect(await error(.file(projectID: "HEPH", path: "Missing", line: nil)) == EngineError(.notFound, "File Missing not found."))
+            #expect(await error(.doc(projectID: "HEPH", path: "docs")) == EngineError(.notFound, "Doc docs not found."))
             #expect(await error(.file(projectID: "HEPH", path: "/etc/hosts", line: nil))?.code == .invalid)
             #expect(await error(.file(projectID: "HEPH", path: "docs/index.md", line: 0))?.code == .invalid)
             #expect(await error(.skill(name: "Not A Skill"))?.code == .invalid)
