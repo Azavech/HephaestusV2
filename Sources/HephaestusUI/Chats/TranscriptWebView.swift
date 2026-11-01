@@ -380,6 +380,8 @@ final class TranscriptWKWebView: WKWebView, WKNavigationDelegate, WKUIDelegate {
         }
     }
 
+    // DOC-GAP: docs/chats.md › Transcript view does not list the context menu; it keeps the items
+    // of the doc preview (docs/documentation-viewer.md › Preview web view).
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         let kept: Set<String> = [
             "WKMenuItemIdentifierCopy", "WKMenuItemIdentifierCopyLink", "WKMenuItemIdentifierCopyImage",

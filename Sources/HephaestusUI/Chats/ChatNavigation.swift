@@ -125,6 +125,10 @@ enum ChatNavigator {
         let rootPath = workspace.project(projectID)?.rootPath
         guard let resolved = ChatLinkPath.resolve(href, projectRootPath: rootPath) else { return }
         let docsPath = workspace.details[projectID]?.project.docsPath ?? "docs"
+        // DOC-GAP: docs/chats.md › Links, images and files opens `.md` files under docsPath in the
+        // Docs section, while docs/documentation-viewer.md › Link activation also accepts
+        // `.markdown`; chats follow their own document. A Code link takes the line of a GitHub line
+        // fragment (`L<n>`) as the doc preview does.
         let target: NavigationTarget
         if resolved.path.lowercased().hasSuffix(".md"), resolved.path.hasPrefix(docsPath + "/") {
             target = .doc(projectID: projectID, path: resolved.path)
@@ -160,6 +164,8 @@ enum ChatNavigator {
                 try data.write(to: file, options: .atomic)
                 ChatQuickLook.shared.show(file)
             } catch {
+                // DOC-GAP: no alert title is given for a file of a transcript that cannot be read;
+                // it is the failed-call alert of `Open`.
                 ChatAlerts.failure("Open", error, in: window, app: app)
             }
         }

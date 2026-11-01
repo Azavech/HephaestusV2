@@ -266,6 +266,7 @@ struct ChatHeader: View {
                         titleFocused = true
                     }
                     .onChange(of: titleFocused) { _, focused in
+                        // DOC-GAP: only Return and Escape are specified; leaving the field cancels.
                         if !focused {
                             model.cancelRename()
                         }
@@ -282,6 +283,9 @@ struct ChatHeader: View {
             }
             KindChip(model: model)
             Spacer(minLength: 8)
+            // DOC-GAP: docs/chats.md › Chat view does not describe the header of a draft; it shows
+            // `New Chat` and the kind chip, without Open in New Window and the More menu, since
+            // nothing is stored yet.
             if model.meta != nil {
                 if !isInChatWindow {
                     Button {

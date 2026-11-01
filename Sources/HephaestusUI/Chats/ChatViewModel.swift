@@ -220,6 +220,8 @@ final class ChatViewModel {
                     onCreated?(meta)
                 }
             } catch {
+                // DOC-GAP: docs/chats.md › Composer clears the composer on Send but does not say what
+                // a failed send does; the message comes back when the composer is still empty.
                 let current = composer
                 if current.text.isEmpty, current.attachments.isEmpty {
                     composer = sent

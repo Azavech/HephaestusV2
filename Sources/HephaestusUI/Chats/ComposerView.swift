@@ -12,7 +12,6 @@ import SwiftUI
 /// ```
 struct ComposerView: View {
     @Bindable var model: ChatViewModel
-    @Environment(AppModel.self) private var app
 
     var body: some View {
         let workspace = model.workspace

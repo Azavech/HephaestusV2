@@ -211,6 +211,8 @@ enum TranscriptRenderer {
         return html + "</div>"
     }
 
+    // DOC-GAP: docs/chats.md › Item rendering writes `<tool>`; an MCP tool shows its short name and
+    // the badge `MCP · <server>`, as the permission card does.
     private static func permissionHTML(_ request: PermissionRequestItem) -> String {
         let (server, name) = ToolUseItem.splitToolName(request.toolName)
         var html = "<div class=\"perm-line\"><div class=\"perm-main\"><span class=\"perm-tool\">\(escape(name))</span>"
@@ -280,6 +282,9 @@ enum TranscriptRenderer {
         return marks + language + "\n" + code + (code.hasSuffix("\n") ? "" : "\n") + marks
     }
 
+    // DOC-GAP: docs/chats.md › Tool cards highlights `content` "by the file extension" without a
+    // table; the extension, lowercased, is the code block's language word, so the extensions of
+    // docs/documentation-viewer.md › Code blocks are highlighted and the others are plain.
     /// The language word of a file for the code block of a `Write` input
     /// (docs/documentation-viewer.md › Code blocks): its extension, lowercased.
     static func languageWord(forPath path: String) -> String {
