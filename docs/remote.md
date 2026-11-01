@@ -528,7 +528,7 @@ The server then derives `kC2S` and `kS2C`, closes the older open session with th
 
 | Message            | Check                                                                                                           | On failure                                                  |
 | ------------------ | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `challenge`        | Text frame of at most 4,096 bytes; JSON object with `type` `challenge`; `nonce` and `proof` decode to 32 bytes. | Close 1002.                                                 |
+| `challenge`        | Text frame of at most 4,096 bytes; JSON object with `type` `challenge`; `nonce` and `proof` decode to 32 bytes. | Close 1009 (size), otherwise 1002.                          |
 | `challenge`        | `proof` equals the server proof (constant time).                                                                | Close 4002 without sending `auth`; phase `needsPairing`.    |
 | First binary frame | [Receiving a frame](#receiving-a-frame) with expected counter 0.                                                | Close 4004 or 4005.                                         |
 | First binary frame | JSON object with `type` `welcome`; `device` and `snapshot` decode.                                              | Close 1002.                                                 |
