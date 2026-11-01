@@ -292,17 +292,15 @@ struct MCPRequestHandler: Sendable {
     var log: LogSink
     var tools: MCPToolHandlers
 
-    /// Steps 2 to 7: Origin, path, method, authorization, declared size, protocol version. The
-    /// actor of the bearer token, or the rejection.
+    /// Steps 2 to 6: Origin, path, method, authorization, declared size. The actor of the bearer
+    /// token, or the rejection. The protocol version is checked with the JSON-RPC method
+    /// (docs/mcp.md › Protocol version).
     func admit(_ head: HTTPRequestHead) async -> Result<Actor, HTTPRejection> {
         if !head.values("Origin").isEmpty { return .failure(.origin) }
         if head.path != "/mcp" { return .failure(.notFound) }
         if head.method != "POST" { return .failure(.methodNotAllowed) }
         guard let actor = await authorize(head) else { return .failure(.unauthorized) }
         if let length = head.contentLength, length > HTTPRequestParser.bodyLimit { return .failure(.bodyTooLarge) }
-        for value in head.values("MCP-Protocol-Version") where !MCPProtocol.versions.contains(value) {
-            return .failure(.unsupportedProtocolVersion(value))
-        }
         return .success(actor)
     }
 
@@ -321,26 +319,36 @@ struct MCPRequestHandler: Sendable {
         return await tokens.actor(forToken: String(token))
     }
 
-    /// Step 10: the JSON-RPC response object of a body; nil for a notification or a response
-    /// from the client, answered with 202 (docs/mcp.md › Message classification).
-    func respond(to body: Data, actor: Actor) async -> JSONValue? {
+    /// Step 9: the answer to a body: a JSON-RPC response object, 202 for a notification or a
+    /// response from the client (docs/mcp.md › Message classification), or the 400 of an
+    /// unsupported protocol version (docs/mcp.md › Protocol version).
+    func respond(to body: Data, head: HTTPRequestHead, actor: Actor) async -> MCPAnswer {
         switch JSONRPCMessage.classify(body) {
         case .invalid(let code, let message):
-            return JSONRPCResponse.error(id: nil, code: code, message: message)
+            return .json(JSONRPCResponse.error(id: nil, code: code, message: message))
         case .notification, .response:
-            return nil
+            return .accepted
         case .request(let id, let method, let params):
-            return await handle(id: id, method: method, params: params, actor: actor)
+            return await handle(id: id, method: method, params: params, head: head, actor: actor)
         }
     }
 
-    /// docs/mcp.md › Methods; -32601 is checked before -32602.
-    private func handle(id: JSONRPCID, method: String, params: JSONValue?, actor: Actor) async -> JSONValue {
-        func failure(_ code: Int, _ message: String) -> JSONValue {
-            JSONRPCResponse.error(id: id, code: code, message: message)
+    /// The methods whose requests need a negotiated protocol version (docs/mcp.md › Protocol
+    /// version); `initialize` negotiates it.
+    static let versionedMethods: Set<String> = ["ping", "tools/list", "tools/call"]
+
+    /// docs/mcp.md › Methods; -32601 is checked before the protocol version, the protocol version
+    /// before -32602.
+    private func handle(id: JSONRPCID, method: String, params: JSONValue?, head: HTTPRequestHead, actor: Actor) async -> MCPAnswer {
+        func failure(_ code: Int, _ message: String) -> MCPAnswer {
+            .json(JSONRPCResponse.error(id: id, code: code, message: message))
         }
-        guard ["initialize", "ping", "tools/list", "tools/call"].contains(method) else {
+        guard method == "initialize" || Self.versionedMethods.contains(method) else {
             return failure(JSONRPCError.methodNotFound, "Method not found: \(method)")
+        }
+        if Self.versionedMethods.contains(method),
+           let unsupported = head.values("MCP-Protocol-Version").first(where: { !MCPProtocol.versions.contains($0) }) {
+            return .rejected(.unsupportedProtocolVersion(unsupported))
         }
         var object: [String: JSONValue] = [:]
         if let params {
@@ -355,15 +363,15 @@ struct MCPRequestHandler: Sendable {
                 return failure(JSONRPCError.invalidParams, "Invalid params: protocolVersion must be a string")
             }
             let version = MCPProtocol.versions.contains(requested) ? requested : MCPProtocol.versions[0]
-            return JSONRPCResponse.result(id: id, .object([
+            return .json(JSONRPCResponse.result(id: id, .object([
                 "protocolVersion": .string(version),
                 "capabilities": .object(["tools": .object(["listChanged": false])]),
                 "serverInfo": .object(["name": .string(MCPProtocol.serverName), "version": .string(appVersion)]),
-            ]))
+            ])))
         case "ping":
-            return JSONRPCResponse.result(id: id, .object([:]))
+            return .json(JSONRPCResponse.result(id: id, .object([:])))
         case "tools/list":
-            return JSONRPCResponse.result(id: id, MCPToolCatalog.toolsListResult(debugTools: debugTools))
+            return .json(JSONRPCResponse.result(id: id, MCPToolCatalog.toolsListResult(debugTools: debugTools)))
         default:
             guard case .string(let name)? = object["name"] else {
                 return failure(JSONRPCError.invalidParams, "Invalid params: name must be a string")
@@ -375,8 +383,8 @@ struct MCPRequestHandler: Sendable {
             guard let tool = MCPToolCatalog.tool(named: name, debugTools: debugTools) else {
                 return failure(JSONRPCError.invalidParams, "Unknown tool: \(name)")
             }
-            return JSONRPCResponse.result(id: id, await callTool(tool, arguments: arguments.isNull ? .object([:]) : arguments,
-                                                                  actor: actor))
+            return .json(JSONRPCResponse.result(id: id, await callTool(tool, arguments: arguments.isNull ? .object([:]) : arguments,
+                                                                         actor: actor)))
         }
     }
 
@@ -405,6 +413,16 @@ struct MCPRequestHandler: Sendable {
             "isError": .bool(isError),
         ])
     }
+}
+
+/// What step 9 answers to a body (docs/mcp.md › Request handling).
+enum MCPAnswer: Sendable {
+    /// 200 with a JSON-RPC response.
+    case json(JSONValue)
+    /// 202 for a notification or a response from the client.
+    case accepted
+    /// A rejection: the 400 of an unsupported protocol version.
+    case rejected(HTTPRejection)
 }
 
 // MARK: - Connections
@@ -487,7 +505,7 @@ final class MCPConnection: @unchecked Sendable {
             guard let head = parsedHead, let server else { return }
             let handler = await server.requestHandler()
 
-            // Steps 2 to 7.
+            // Steps 2 to 6.
             let actor: Actor
             switch await handler.admit(head) {
             case .failure(let rejection):
@@ -497,12 +515,12 @@ final class MCPConnection: @unchecked Sendable {
                 actor = tokenActor
             }
 
-            // Step 8: interim 100 Continue.
+            // Step 7: interim 100 Continue.
             if head.expectsContinue {
                 guard await send(HTTPResponse.continueBytes, final: false) else { return }
             }
 
-            // Step 9: the body.
+            // Step 8: the body.
             parser.beginBody(of: head)
             var body: Data?
             do {
@@ -519,25 +537,31 @@ final class MCPConnection: @unchecked Sendable {
                 return
             }
 
-            // Step 10: JSON-RPC. The call runs to its end even when the client goes away; its
+            // Step 9: JSON-RPC. The call runs to its end even when the client goes away; its
             // result is then dropped (docs/mcp.md › Connections).
             let closes = !head.keepsAlive
             let response: HTTPResponse
-            if let json = await handler.respond(to: body ?? Data(), actor: actor) {
+            switch await handler.respond(to: body ?? Data(), head: head, actor: actor) {
+            case .json(let json):
                 response = .json(JSONRPCResponse.encode(json), closes: closes)
-            } else {
+            case .accepted:
                 response = .accepted(closes: closes)
+            case .rejected(let rejection):
+                await reject(rejection, head: head)
+                return
             }
             guard await send(response.serialized(), final: closes), !closes, !draining() else { return }
         }
     }
 
     /// Sends a rejection with `Connection: close` and closes the connection (docs/mcp.md ›
-    /// Request handling); logged as `<status> <method> <path>: <body of the response>`.
-    // DOC-GAP: docs/mcp.md › Logging gives `<method> <path>` for a rejected request; a head that
-    // could not be parsed has neither, and `-` stands for each.
+    /// Request handling); logged as `<status> <method> <path>: <body of the response>`, `-`
+    /// standing for the method and the path of a head that could not be parsed, except the 405
+    /// of `GET /mcp`, the SSE stream that MCP clients try to open (docs/mcp.md › Logging).
     private func reject(_ rejection: HTTPRejection, head: HTTPRequestHead?) async {
-        log.warn(.mcp, "\(rejection.status) \(head?.method ?? "-") \(head?.path ?? "-"): \(rejection.text)")
+        if !(rejection == .methodNotAllowed && head?.method == "GET" && head?.path == "/mcp") {
+            log.warn(.mcp, "\(rejection.status) \(head?.method ?? "-") \(head?.path ?? "-"): \(rejection.text)")
+        }
         guard await send(rejection.response.serialized(), final: true) else { return }
         // The rest of the request is read and dropped until the client closes, so that its
         // unread bytes do not reset the connection before the client reads the response.

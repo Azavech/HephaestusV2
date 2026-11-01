@@ -57,6 +57,75 @@ struct MCPServerHTTPTests {
         }
     }
 
+    @Test("Protocol version: checked on ping, tools/list and tools/call only, after -32601 and before -32602")
+    func protocolVersion() async throws {
+        try await withTestEngine { engine, _, _ in
+            let port = try await Self.port(engine)
+            let token = await engine.tokens.externalToken
+            let newer = ["MCP-Protocol-Version": "2026-07-28"]
+            let unsupported = "Bad Request: unsupported MCP-Protocol-Version 2026-07-28; supported: 2025-06-18, 2025-03-26."
+            for body in [#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#, #"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#,
+                         MCPHTTP.toolCall("list_projects"), #"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{}}"#] {
+                let reply = try await MCPHTTP.post(port: port, token: token, body, headers: newer)
+                #expect(reply.status == 400, "\(body)")
+                #expect(reply.text == unsupported)
+            }
+            // initialize negotiates the version whatever the header.
+            let initialize = try await MCPHTTP.post(port: port, token: token,
+                                                    #"{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2026-07-28"}}"#,
+                                                    headers: newer)
+            #expect(try MCPHTTP.result(initialize)["protocolVersion"] == "2025-06-18")
+            // Other methods get -32601, notifications 202.
+            let discover = try await MCPHTTP.post(port: port, token: token, #"{"jsonrpc":"2.0","id":"d","method":"server/discover"}"#,
+                                                  headers: newer)
+            #expect(try discover.json()
+                == jsonValue(#"{"jsonrpc":"2.0","id":"d","error":{"code":-32601,"message":"Method not found: server/discover"}}"#))
+            #expect(try await MCPHTTP.post(port: port, token: token, #"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+                                           headers: newer).status == 202)
+            // Without the header, and with a supported one, the requests are handled.
+            #expect(try await MCPHTTP.post(port: port, token: token, #"{"jsonrpc":"2.0","id":4,"method":"tools/list"}"#).status == 200)
+            #expect(try await MCPHTTP.post(port: port, token: token, #"{"jsonrpc":"2.0","id":5,"method":"tools/list"}"#,
+                                           headers: ["MCP-Protocol-Version": "2025-03-26"]).status == 200)
+        }
+    }
+
+    @Test("The connection of the Claude CLI 2.1.309 succeeds without a 400 and without a WARN line")
+    func claudeCLIConnection() async throws {
+        try await withTestEngine { engine, _, _ in
+            let port = try await Self.port(engine)
+            let token = await engine.tokens.externalToken
+            let common = ["Accept": "application/json, text/event-stream",
+                          "User-Agent": "claude-code/2.1.309 (claude-desktop, agent-sdk/0.3.309)"]
+            // The requests the CLI sent to a capture server (docs/mcp.md › initialize), in order.
+            let discoverBody = #"{"jsonrpc":"2.0","id":"server-discover-probe-1","method":"server/discover","params":{"_meta":{"#
+                + #""io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"claude-code","#
+                + #""title":"Claude Code","version":"2.1.309"},"io.modelcontextprotocol/clientCapabilities":{"roots":{"listChanged":true},"#
+                + #""elicitation":{"form":{},"url":{}}}}}}"#
+            let discover = try await MCPHTTP.post(port: port, token: token, discoverBody,
+                                                  headers: common.merging(["mcp-method": "server/discover",
+                                                                           "mcp-protocol-version": "2026-07-28"]) { $1 })
+            #expect(discover.status == 200)
+            #expect(try discover.json().objectValue?["error"]?.objectValue?["code"] == -32601)
+            let initializeBody = #"{"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{"roots":"#
+                + #"{"listChanged":true},"elicitation":{"form":{},"url":{}}},"clientInfo":{"name":"claude-code","title":"Claude Code","#
+                + #""version":"2.1.309"}},"jsonrpc":"2.0","id":0}"#
+            let initialize = try await MCPHTTP.post(port: port, token: token, initializeBody, headers: common)
+            #expect(try MCPHTTP.result(initialize)["protocolVersion"] == "2025-06-18")
+            let negotiated = common.merging(["mcp-protocol-version": "2025-06-18"]) { $1 }
+            #expect(try await MCPHTTP.post(port: port, token: token, #"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+                                           headers: negotiated).status == 202)
+            let stream = try await MCPHTTP.request(port: port, method: "GET", token: token,
+                                                   headers: negotiated.merging(["Accept": "text/event-stream"]) { $1 })
+            #expect(stream.status == 405)
+            let list = try await MCPHTTP.post(port: port, token: token, #"{"method":"tools/list","jsonrpc":"2.0","id":1}"#,
+                                              headers: negotiated)
+            #expect(try MCPHTTP.result(list)["tools"]?.arrayValue?.isEmpty == false)
+            let log = try Self.engineLog(engine)
+            #expect(!log.contains(" WARN "))
+            #expect(!log.contains(" 400 "))
+        }
+    }
+
     @Test("Notifications and client responses get 202 with an empty body")
     func notifications() async throws {
         try await withTestEngine { engine, _, _ in
@@ -115,15 +184,18 @@ struct MCPServerHTTPTests {
             // The scheme matches case-insensitively and several spaces may follow it.
             #expect(try await MCPHTTP.request(port: port, token: nil, body: ping, headers: ["Authorization": "bEaReR   \(token)"]).status == 200)
 
-            // Step 7.
+            // Step 9: the protocol version of a ping.
             let version = try await MCPHTTP.request(port: port, token: token, body: ping, headers: ["MCP-Protocol-Version": "2024-11-05"])
             #expect(version.status == 400)
+            #expect(version.header("Connection") == "close")
             #expect(version.text == "Bad Request: unsupported MCP-Protocol-Version 2024-11-05; supported: 2025-06-18, 2025-03-26.")
             #expect(try await MCPHTTP.request(port: port, token: token, body: ping, headers: ["MCP-Protocol-Version": "2025-06-18"]).status == 200)
 
-            // Rejections are logged without the token.
+            // Rejections are logged without the token; the 405 of GET /mcp is not logged.
             let log = try Self.engineLog(engine)
-            #expect(log.contains("WARN mcp: 405 GET /mcp: Method Not Allowed: use POST.\n"))
+            #expect(!log.contains("405 GET /mcp"))
+            #expect(log.contains("WARN mcp: 405 DELETE /mcp: Method Not Allowed: use POST.\n"))
+            #expect(log.contains("WARN mcp: 400 POST /mcp: Bad Request: unsupported MCP-Protocol-Version 2024-11-05; supported: 2025-06-18, 2025-03-26.\n"))
             #expect(log.contains("WARN mcp: 401 POST /mcp: Unauthorized: missing or invalid bearer token.\n"))
             #expect(log.contains("WARN mcp: 404 GET /.well-known/oauth-authorization-server: Not Found: the MCP endpoint is /mcp.\n"))
             #expect(!log.contains(token))
