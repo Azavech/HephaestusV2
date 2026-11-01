@@ -220,7 +220,7 @@ private struct ChatViewContent: View {
     // MARK: Pinned cards
 
     /// The permission card, then the questions card; together at most half of the view's height,
-    /// scrolling inside.
+    /// scrolling inside only when they are taller than that, without bounce while they fit.
     @ViewBuilder
     private func pinnedCards(maxHeight: CGFloat) -> some View {
         let state = model.chatID.flatMap { workspace.transcripts[$0] }
@@ -251,6 +251,8 @@ private struct ChatViewContent: View {
                     cardsHeight = height
                 }
             }
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollDisabled(cardsHeight + 1 <= max(maxHeight, 80))
             .frame(height: min(cardsHeight + 1, max(maxHeight, 80)))
         }
     }
