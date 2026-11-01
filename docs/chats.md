@@ -841,7 +841,7 @@ New Chat (⌥⌘N, or a New Chat button) shows a draft: an empty chat view whose
 
 ### Chat view
 
-From top to bottom: the header, the transcript, the pinned permission card, the pinned questions card, the status line ([Chat states](#chat-states)), the composer. The pinned cards take at most half of the view's height. They scroll inside that space only when they are taller than it; while they fit, they neither scroll nor bounce under a scroll gesture.
+From top to bottom: the header, the transcript, the pinned permission card, the pinned questions card, the status line ([Chat states](#chat-states)), the composer. The pinned cards take at most half of the view's height. They scroll inside that space only when they are taller than it; while they fit, they neither scroll nor bounce under a scroll gesture. In both cases, wide code blocks and tables inside the cards scroll horizontally inside their own box.
 
 The chat view's background is the window background colour, except in the inspector, where it draws none and shows the inspector's frosted material, with a transparent transcript ([Web view and bridge](#web-view-and-bridge)).
 

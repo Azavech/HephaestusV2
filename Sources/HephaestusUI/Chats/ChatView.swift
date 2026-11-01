@@ -220,7 +220,8 @@ private struct ChatViewContent: View {
     // MARK: Pinned cards
 
     /// The permission card, then the questions card; together at most half of the view's height,
-    /// scrolling inside only when they are taller than that, without bounce while they fit.
+    /// scrolling inside only when they are taller than that, without bounce while they fit, their
+    /// code blocks and tables always scrolling horizontally.
     @ViewBuilder
     private func pinnedCards(maxHeight: CGFloat) -> some View {
         let state = model.chatID.flatMap { workspace.transcripts[$0] }
@@ -250,6 +251,9 @@ private struct ChatViewContent: View {
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
                     cardsHeight = height
                 }
+                // `scrollDisabled` below reaches every nested scroll view through the environment;
+                // code blocks and tables in the cards keep their horizontal scrolling.
+                .environment(\.isScrollEnabled, true)
             }
             .scrollBounceBehavior(.basedOnSize)
             .scrollDisabled(cardsHeight + 1 <= max(maxHeight, 80))
