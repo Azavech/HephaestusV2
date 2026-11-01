@@ -155,6 +155,8 @@ struct FileTreeView: View {
     }
 
     /// The context menu of a row or of the empty area (docs/code-editor.md › Context menu).
+    // DOC-GAP: docs/code-editor.md › New File and New Folder takes the location from the selection;
+    // from a row's context menu it is taken from the row the menu was opened on.
     private func menu(for row: OutlineRow?) -> [OutlineMenuItem] {
         let location: String
         if let row {

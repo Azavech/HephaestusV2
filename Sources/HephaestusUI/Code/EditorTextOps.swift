@@ -58,6 +58,8 @@ enum EditorTextOps {
     }
 
     /// The number of spaces one unit stands for: its length, 4 for a tab (a tab is 4 columns).
+    // DOC-GAP: docs/code-editor.md › Keys (⇧Tab) removes "up to the unit's number of leading
+    // spaces" without a number for the tab unit; a tab counts as 4 columns (› Editor, Tabs).
     static func unitWidth(_ unit: String) -> Int {
         unit == "\t" ? 4 : unit.utf16.count
     }

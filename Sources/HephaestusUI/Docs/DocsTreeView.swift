@@ -18,6 +18,8 @@ struct DocsTreeView: View {
                 Text("Docs")
                     .fontWeight(.semibold)
                 Spacer(minLength: 0)
+                // DOC-GAP: docs/documentation-viewer.md › New Doc does not name the folder of the `+`
+                // button; it is the docs folder, as for the empty area.
                 Button {
                     DocActions.newDoc(in: tree.docsPath, window: window, projectID: projectID)
                 } label: {
