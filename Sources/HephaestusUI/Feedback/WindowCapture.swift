@@ -25,17 +25,25 @@ enum WindowCapture {
     static let maximumPNGSize = 5_000_000
 
     /// Steps 1 to 4: the frame view of the window (title bar, toolbar and content) rendered with
-    /// `cacheDisplay` at the backing scale, every visible `WKWebView` snapshotted and drawn over its
+    /// `cacheDisplay` at the backing scale, every visible `WKWebView` snapshotted and drawn at its
     /// area, then encoded as PNG; again at 1 pixel per point when the PNG is too large.
     static func capture(_ window: NSWindow) async throws -> Image {
         guard let root = window.contentView?.superview ?? window.contentView, !root.bounds.isEmpty else {
             throw Failure()
         }
         let snapshots = await webSnapshots(in: root)
-        if let image = render(root, onePixelPerPoint: false, snapshots: snapshots), image.png.count <= maximumPNGSize {
+        // The snapshots and the rendering run in the same main-queue turn, so the covers are never
+        // displayed.
+        let covers = cover(snapshots)
+        defer {
+            for cover in covers {
+                cover.removeFromSuperview()
+            }
+        }
+        if let image = render(root, onePixelPerPoint: false), image.png.count <= maximumPNGSize {
             return image
         }
-        guard let image = render(root, onePixelPerPoint: true, snapshots: snapshots) else {
+        guard let image = render(root, onePixelPerPoint: true) else {
             throw Failure()
         }
         return image
@@ -44,12 +52,13 @@ enum WindowCapture {
     // MARK: Rendering
 
     private struct WebSnapshot {
-        /// The web view's visible rect in the root view's unflipped coordinates.
+        let webView: WKWebView
+        /// The web view's visible rect, in its own coordinates.
         let rect: NSRect
         let image: NSImage
     }
 
-    private static func render(_ root: NSView, onePixelPerPoint: Bool, snapshots: [WebSnapshot]) -> Image? {
+    private static func render(_ root: NSView, onePixelPerPoint: Bool) -> Image? {
         let bounds = root.bounds
         let bitmap: NSBitmapImageRep
         if onePixelPerPoint {
@@ -64,16 +73,26 @@ enum WindowCapture {
             bitmap = rep
         }
         root.cacheDisplay(in: bounds, to: bitmap)
-        if !snapshots.isEmpty, let context = NSGraphicsContext(bitmapImageRep: bitmap) {
-            NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current = context
-            for snapshot in snapshots {
-                snapshot.image.draw(in: snapshot.rect)
-            }
-            NSGraphicsContext.restoreGraphicsState()
-        }
         guard let png = bitmap.representation(using: .png, properties: [:]) else { return nil }
         return Image(png: png, width: bitmap.pixelsWide, height: bitmap.pixelsHigh)
+    }
+
+    /// Puts each snapshot in an image view right above its web view, so that the rendering draws
+    /// it at the web view's place in the view order: views drawn over the web view (the search
+    /// panel, the update banner) stay over it, as on screen.
+    // DOC-GAP: docs/feedback.md › Screenshot capture, step 3, draws the snapshots over the result
+    // of step 2, which also covers the views drawn above the web views; they are drawn in the
+    // web views' place instead.
+    private static func cover(_ snapshots: [WebSnapshot]) -> [NSView] {
+        snapshots.compactMap { snapshot in
+            guard let superview = snapshot.webView.superview else { return nil }
+            let cover = NSImageView(frame: snapshot.webView.convert(snapshot.rect, to: superview))
+            cover.image = snapshot.image
+            cover.imageScaling = .scaleAxesIndependently
+            cover.imageFrameStyle = .none
+            superview.addSubview(cover, positioned: .above, relativeTo: snapshot.webView)
+            return cover
+        }
     }
 
     // MARK: Web views
@@ -85,11 +104,7 @@ enum WindowCapture {
         for webView in webViews(in: root) where !webView.isHiddenOrHasHiddenAncestor && !webView.visibleRect.isEmpty {
             let visible = webView.visibleRect
             guard let image = await snapshot(webView, rect: visible) else { continue }
-            var rect = webView.convert(visible, to: root)
-            if root.isFlipped {
-                rect.origin.y = root.bounds.height - rect.maxY
-            }
-            result.append(WebSnapshot(rect: rect, image: image))
+            result.append(WebSnapshot(webView: webView, rect: visible, image: image))
         }
         return result
     }
