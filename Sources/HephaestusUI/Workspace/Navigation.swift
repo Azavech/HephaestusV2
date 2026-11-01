@@ -148,7 +148,7 @@ extension WindowState {
             }
             CodeDocsStore.shared.entry(window: self, projectID: resolvedProjectID).applyDocTarget(path: path, fragment: fragment)
         case .file(_, let path, let line):
-            updateViewState { $0.revealFile(path: path, line: line) }
+            await revealFileTarget(path: path, line: line, projectID: resolvedProjectID)
         case .skill(let name):
             guard viewState.selectedSkillName != name else { return }
             let unsaved = viewState.skillEditor?.unsavedEditors ?? []
