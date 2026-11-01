@@ -51,7 +51,7 @@ enum WindowPlacement {
         guard screen == nil, let requested else { return }
         var effective = requested
         if requested == .builtin, builtinScreen == nil {
-            // DOC-GAP: docs/architecture.md › Window placement asks for a warning without its text.
+            // docs/architecture.md › Window placement, `builtin`
             log?.warn(.ui, "HEPHAESTUS_WINDOW_SCREEN=builtin: this Mac has no built-in display; windows open offscreen")
             effective = .offscreen
         }

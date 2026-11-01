@@ -79,8 +79,8 @@ public enum MarkdownLinks {
         if let question = rest.firstIndex(of: "?") {
             rest = rest[..<question]
         }
-        // DOC-GAP: docs/documentation-viewer.md › Path resolution does not say what an empty
-        // reference (only a fragment or a query) resolves to; it resolves to nothing.
+        // A reference made of a fragment or a query only resolves to nothing
+        // (docs/documentation-viewer.md › Path resolution, step 1).
         guard !rest.isEmpty, let decoded = String(rest).removingPercentEncoding else { return nil }
 
         let root = options.projectRootPath.map(normalizedRoot)
@@ -89,8 +89,8 @@ public enum MarkdownLinks {
             // 2. A file URL.
             var path = Substring(decoded)
             if path.hasPrefix("//") {
-                // DOC-GAP: the docs do not say how a host is handled; `file://localhost/…` and
-                // `file:///…` are accepted, any other host resolves to nothing.
+                // The host is empty or `localhost`, any other host resolves to nothing
+                // (docs/documentation-viewer.md › Path resolution, step 2).
                 let afterSlashes = path.dropFirst(2)
                 let hostEnd = afterSlashes.firstIndex(of: "/") ?? afterSlashes.endIndex
                 let host = afterSlashes[..<hostEnd]

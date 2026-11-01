@@ -185,8 +185,7 @@ final class WebDownloads {
     static func safeName(_ name: String) -> String {
         let cleaned = name.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_")
         let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
-        // DOC-GAP: docs/web-tabs.md › Downloads does not name a file without a suggested name;
-        // WebKit always suggests one, and an empty one becomes `download`.
+        // A name that is empty, `.` or `..` becomes `download` (docs/web-tabs.md › Downloads).
         return trimmed.isEmpty || trimmed == "." || trimmed == ".." ? "download" : trimmed
     }
 

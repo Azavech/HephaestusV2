@@ -1,8 +1,7 @@
 import Foundation
 
-// DOC-GAP: docs/updater.md › Swift shape lists no type for the app side's start conditions and
-// texts; they live in UpdaterCore, as pure functions of their inputs, so that UpdaterCoreTests
-// cover them (HephaestusUI has no test target).
+// The app side's start conditions and texts, pure functions of their inputs so that
+// UpdaterCoreTests cover them (docs/updater.md › Swift shape).
 
 /// docs/updater.md › Starting the Updater: the conditions under which the app does not start the
 /// Updater, evaluated once per launch in order.
@@ -143,8 +142,8 @@ public struct UpdateArea: Sendable, Hashable {
         case .error:
             return UpdateArea(row: 9, text: status.message ?? "", controls: .tryAgain)
         case .installing:
-            // DOC-GAP: docs/updater.md › About window has no row for state `installing` (the app
-            // quits when it arrives after its own request); it shows `Installing…` like row 2.
+            // Row 10, reported as row 2 whose text it shows (docs/updater.md › About window,
+            // › Swift shape).
             return UpdateArea(row: 2, text: UpdaterTexts.installing, showsProgress: true)
         case .idle, .checking:
             return UpdateArea(row: 4, text: UpdaterTexts.checking, showsProgress: true)

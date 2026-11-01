@@ -113,9 +113,8 @@ struct WebTabStrip: View {
         case .stored(let tab):
             return tab.title.isEmpty ? host(of: tab.url) : tab.title
         case .popup(let page):
-            // DOC-GAP: docs/web-tabs.md › Tab strip labels stored tabs and the placeholder only; a
-            // popup that is not stored yet is labelled like a stored tab from its page, else
-            // `New Tab`.
+            // A popup that is not stored yet: its page's title, else its URL's host, else `New Tab`
+            // (docs/web-tabs.md › Tab strip, Label).
             if !page.pageTitle.isEmpty { return page.pageTitle }
             if let host = page.pageURL?.host, !host.isEmpty { return host }
             return "New Tab"
@@ -182,8 +181,7 @@ struct WebTabStrip: View {
             }
             .disabled(!storedTabs.contains { $0.id != tab.id && !$0.locked })
         case .popup, .placeholder:
-            // DOC-GAP: docs/web-tabs.md › Context menu gives the placeholder Close only; a popup
-            // that is not stored yet gets the same menu.
+            // docs/web-tabs.md › Context menu: Close only.
             Button("Close") {
                 controller.closeLocal(item.id)
             }

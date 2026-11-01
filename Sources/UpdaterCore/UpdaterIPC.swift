@@ -96,8 +96,7 @@ public enum UpdaterIPC {
         guard pid(of: userInfo) == expectedPID else { return nil }
         switch name {
         case check:
-            // DOC-GAP: docs/updater.md › IPC always sends both settings with `check`; a value that is
-            // missing or of another type is not adopted.
+            // A value that is missing or of another type is not adopted (docs/updater.md › IPC).
             return .check(intervalMinutes: userInfo?[Key.intervalMinutes] as? Int, autoUpdate: userInfo?[Key.autoUpdate] as? Bool)
         case install:
             return .install

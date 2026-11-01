@@ -609,9 +609,7 @@ public struct EngineEventEnvelope: Codable, Sendable, Hashable {
     }
 
     /// Decodes `data` as the payload of `event`; throws EngineError invalid when `name` is not
-    /// `event.name`.
-    // DOC-GAP: docs/engine-api.md › EngineEvent gives no message for these failures; they use
-    // the form of docs/engine-api.md › Messages.
+    /// `event.name`, with the messages of docs/engine-api.md › EngineEvent.
     public func payload<E: EngineEvent>(_ event: E.Type) throws -> E.Payload {
         guard name == E.name else {
             throw EngineError(.invalid, "Event \(name) is not \(E.name).")

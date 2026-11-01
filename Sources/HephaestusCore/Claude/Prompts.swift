@@ -151,8 +151,7 @@ enum Prompts {
             if offset < fullCount {
                 text += "\n\nTicket \(number) of \(tickets.count):\n" + (ticket.rendering ?? deletedTicket)
             } else {
-                // DOC-GAP: docs/chats.md › Rendered blocks does not cover a deleted ticket in this
-                // line; its title is `(deleted)`.
+                // A deleted ticket's title is `(deleted)` (docs/chats.md › Rendered blocks).
                 text += "\n\nTicket \(number) of \(tickets.count): \(ticket.id) \(ticket.title ?? "(deleted)") (call get_ticket for its content)"
             }
         }

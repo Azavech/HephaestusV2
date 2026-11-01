@@ -4,8 +4,6 @@ import Foundation
 /// project roots and of the data directory, `files.changed` batching, and moving items to the
 /// Trash (docs/architecture.md › HephaestusCore folders, docs/engine-api.md › Files). Used only
 /// on the engine actor.
-// DOC-GAP: the docs describe this work but name no Swift type for it; the type name is a
-// design choice.
 final class FileService {
     // MARK: Tools and Trash
 

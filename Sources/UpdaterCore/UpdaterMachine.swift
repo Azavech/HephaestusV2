@@ -155,8 +155,7 @@ public actor UpdaterMachine {
             // The running check schedules the next one when it ends.
             postStatus()
         case .downloading, .ready, .installing:
-            // DOC-GAP: docs/updater.md › Check schedule counts the interval from the end of the
-            // previous check; a due check skipped in these states counts as one.
+            // A skipped due check counts as a check (docs/updater.md › Check schedule).
             postStatus()
             schedule(after: interval)
         }

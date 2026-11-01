@@ -75,8 +75,7 @@ public final class EngineLog: LogSink, @unchecked Sendable {
 
     /// One line without its LF: `<UTC time with milliseconds> <LEVEL> <component>: <message>`.
     public static func line(date: Date, level: LogLevel, component: LogComponent, message: String) -> String {
-        // DOC-GAP: docs/architecture.md › engine.log defines one line per entry but not how a
-        // message containing line breaks is written; CR and LF are written as \r and \n.
+        // CR and LF are written as \r and \n (docs/architecture.md › engine.log, Lines).
         let singleLine = message
             .replacingOccurrences(of: "\r", with: "\\r")
             .replacingOccurrences(of: "\n", with: "\\n")

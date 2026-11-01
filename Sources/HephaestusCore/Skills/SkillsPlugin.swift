@@ -2,9 +2,8 @@ import Darwin
 import Foundation
 
 /// Prepares the generated skills plugin of a project, `Runtime/plugins/<projectID>/`, passed to
-/// its chat processes with `--plugin-dir` (docs/skills.md › Generated plugin).
-// DOC-GAP: the docs describe the generated plugin but name no Swift type for it;
-// `SkillsPluginProvider` is the seam the chat launch and `skills.*` call.
+/// its chat processes with `--plugin-dir` (docs/skills.md › Generated plugin). The chat launch
+/// and the `skills.*` methods call it (docs/architecture.md › HephaestusCore folders).
 public protocol SkillsPluginProvider: Sendable {
     /// Regenerates the plugin folder of a project from its enabled skills and the library, and
     /// returns the folder to pass with `--plugin-dir`. Throws on a file system error; the launch

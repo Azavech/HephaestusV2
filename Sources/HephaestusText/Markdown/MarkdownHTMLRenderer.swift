@@ -82,8 +82,8 @@ struct HTMLWriter {
         output += item.checkbox == nil ? "<li>" : "<li class=\"md-task\">"
         var checkbox = item.checkbox.map { $0 ? "<input type=\"checkbox\" disabled checked> " : "<input type=\"checkbox\" disabled> " }
         if let pending = checkbox, !Self.startsWithParagraph(item.blocks) {
-            // DOC-GAP: docs/documentation-viewer.md › HTML output does not say where the checkbox
-            // goes when the item does not start with inline content; it starts the item.
+            // An item that does not start with a paragraph starts with the checkbox
+            // (docs/documentation-viewer.md › HTML output, task list item).
             output += pending
             checkbox = nil
         }

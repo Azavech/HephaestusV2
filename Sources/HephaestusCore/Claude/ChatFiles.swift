@@ -42,9 +42,8 @@ enum ChatAttachments {
         return attachment
     }
 
-    /// The extension of a tool-result image: png, jpg, gif or webp.
-    // DOC-GAP: docs/chats.md › Tool results lists four extensions; another media type takes the
-    // preferred extension of its type, else `bin`.
+    /// The extension of a tool-result image: png, jpg, gif or webp; another media type takes its
+    /// subtype, else `bin` (docs/chats.md › Tool results).
     static func imageExtension(_ mediaType: String) -> String {
         switch mediaType {
         case "image/png": return "png"

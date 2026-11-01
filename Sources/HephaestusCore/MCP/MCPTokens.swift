@@ -32,10 +32,8 @@ public actor MCPTokenStore {
     }
 
     /// Replaces the external token at once and saves it in `secrets.json`; requests with the old
-    /// token get 401 from then on.
-    // DOC-GAP: docs/mcp.md › Swift shape writes `regenerateExternalToken() -> String`; writing
-    // secrets.json can fail, so the function throws the StorageError, and the old token stays
-    // valid then.
+    /// token get 401 from then on. Throws the storage error when `secrets.json` cannot be
+    /// written; the old token then stays valid (docs/mcp.md › Swift shape).
     @discardableResult
     public func regenerateExternalToken() throws -> String {
         let token = RandomIDs.externalToken()

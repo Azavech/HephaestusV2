@@ -91,8 +91,8 @@ public actor MCPServer {
     func start(port: Int, engine: Engine) async {
         self.engine = engine
         await start(port: port) { [weak engine] method, params, actor in
-            // DOC-GAP: no document names the failure of a call that arrives while the engine is
-            // being released; the server is closed before, so this is a last guard.
+            // The server is closed before the engine is released, so this is a last guard
+            // (docs/mcp.md › Server lifecycle).
             guard let engine else { throw EngineError(.unavailable, "The engine is stopped.") }
             return try await engine.dispatch(method: method, params: params, actor: actor)
         }
@@ -129,11 +129,8 @@ public actor MCPServer {
     }
 
     /// Closes the current listener, lets the open connections end after their current request,
-    /// then binds `port` with up to 5 attempts one second apart.
-    // DOC-GAP: docs/mcp.md › Server lifecycle names the states but not the one between two bind
-    // attempts or during a move; the server is not listening then, so it is `stopped`. `start`
-    // and `move` return once the outcome is known, so a busy port delays `Engine.start()` by the
-    // 4 seconds of the retries.
+    /// then binds `port` with up to 5 attempts one second apart; the state is `stopped` between
+    /// two attempts (docs/mcp.md › Server lifecycle).
     private func listen(on port: Int) async {
         generation += 1
         let current = generation
@@ -221,9 +218,8 @@ public actor MCPServer {
         }
     }
 
-    /// A listener that fails after it was ready leaves the server failed.
-    // DOC-GAP: docs/mcp.md › Server lifecycle defines failures at bind time only; a listener
-    // failing later is reported as `failed(message)` and logged as a bind failed for good.
+    /// A listener that fails after it was ready leaves the server failed, without retries
+    /// (docs/mcp.md › Server lifecycle).
     private func listenerFailed(_ message: String, generation: Int) {
         guard generation == self.generation, listener != nil else { return }
         listener?.cancel()
@@ -309,8 +305,7 @@ struct MCPRequestHandler: Sendable {
     /// constant time with the live chat tokens and the external token.
     private func authorize(_ head: HTTPRequestHead) async -> Actor? {
         let values = head.values("Authorization")
-        // DOC-GAP: docs/mcp.md › Authentication does not mention a request with several
-        // Authorization fields; it is malformed, 401.
+        // Several Authorization fields get 401 (docs/mcp.md › Authentication).
         guard values.count == 1, let space = values[0].firstIndex(of: " ") else { return nil }
         let value = values[0]
         guard value[..<space].caseInsensitiveCompare("Bearer") == .orderedSame else { return nil }

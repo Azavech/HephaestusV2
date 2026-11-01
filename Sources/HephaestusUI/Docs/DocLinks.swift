@@ -120,8 +120,8 @@ enum DocLinks {
         case nil, "file":
             guard let (path, fragment) = resolve(url, baseDirectory: baseDirectory, projectRootPath: projectRootPath),
                   !path.isEmpty else {
-                // DOC-GAP: docs/documentation-viewer.md › Link activation does not say what a
-                // link to the project root itself does; it does nothing, as the root is no file.
+                // A path that resolves to nothing or to the project root itself does nothing
+                // (docs/documentation-viewer.md › Link activation).
                 return .none
             }
             let folder = docsPath.hasSuffix("/") ? String(docsPath.dropLast()) : docsPath
@@ -150,10 +150,9 @@ enum DocLinks {
         return nil
     }
 
-    /// A fragment as written in an `href`, percent-decoded when it is valid percent-encoding.
-    // DOC-GAP: docs/documentation-viewer.md › Preview web view compares the fragment with element
-    // ids but does not say whether it is percent-decoded; it is, so that `#%C3%BCber-uns` reaches
-    // the heading `über-uns`.
+    /// A fragment as written in an `href`, percent-decoded when it is valid percent-encoding, so
+    /// that `#%C3%BCber-uns` reaches the heading `über-uns` (docs/documentation-viewer.md ›
+    /// Preview web view).
     static func decodedFragment(_ fragment: String) -> String {
         fragment.removingPercentEncoding ?? fragment
     }

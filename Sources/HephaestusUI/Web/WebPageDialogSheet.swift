@@ -4,9 +4,6 @@ import SwiftUI
 
 /// A JavaScript dialog of a web tab: the page's host as title, the message, and OK (plus Cancel
 /// for `confirm` and `prompt`, and a text field for `prompt`).
-// DOC-GAP: docs/web-tabs.md › Page permissions and dialogs says "OK (plus Cancel and a text field
-// for `confirm` and `prompt`)"; a text field only makes sense for `prompt`, so `confirm` gets
-// Cancel without a field.
 struct WebPageDialogSheet: View {
     let window: WindowState
     let tabID: String

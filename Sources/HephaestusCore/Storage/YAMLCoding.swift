@@ -8,12 +8,9 @@ import Yams
 /// with the conversion table of docs/data-model.md › Unknown keys.
 ///
 /// Writing: block style with two-space indentation, literal block style for strings with a line
-/// break, quotes around strings YAML would read as another type, unlimited line width. Every
-/// other layout detail is the emitter's.
-// DOC-GAP: the examples of docs/data-model.md indent block sequences inside a mapping
-// (`subprojects:` then `  - backend`); libyaml, the emitter of Yams, writes them without that
-// indentation (`- backend`) and has no option for it. The decoded values and the key order, the
-// contract of docs/data-model.md › Keys and values, are the same.
+/// break, quotes around strings YAML would read as another type, unlimited line width. A
+/// sequence that is the value of a key is not indented, the only layout libyaml writes. Every
+/// other layout detail is the emitter's (docs/data-model.md › Keys and values).
 public enum YAMLCoding {
     /// Encodes a value with the writing rules.
     public static func encode<T: Encodable>(_ value: T) throws -> String {

@@ -22,9 +22,8 @@ enum YAMLTokenizer {
 
             if let block = blockIndentation {
                 if contentStart == lineEnd || indentation > block {
-                    // 4. Block scalar content.
-                    // DOC-GAP: docs/code-editor.md › YAML does not say which part of a content line
-                    // the token covers; it covers the line without its indentation.
+                    // 4. Block scalar content: the line without its indentation
+                    // (docs/code-editor.md › YAML).
                     sink.add(contentStart, lineEnd, .string)
                     continue
                 }
@@ -103,9 +102,9 @@ enum YAMLTokenizer {
         /// tags, block indicators, literal and number values. Returns true when the line ends
         /// with a block indicator.
         ///
-        /// DOC-GAP: docs/code-editor.md › YAML does not say where rules 7 and 8 apply; quoted
-        /// scalars, anchors, aliases and tags are recognized only where a value starts, so that
-        /// `don't`, `a*b` or `hi!` inside a plain scalar stay plain.
+        /// Quoted scalars, anchors, aliases and tags are recognized only where a scalar starts, so
+        /// that `don't`, `a*b` or `hi!` inside a plain scalar stay plain (docs/code-editor.md ›
+        /// YAML, rules 7 and 8).
         func values(from position: Int, _ sink: inout TokenSink) -> Bool {
             var index = position
             var atScalarStart = true
@@ -289,9 +288,8 @@ enum YAMLTokenizer {
             return (end, escapes)
         }
 
-        /// DOC-GAP: docs/code-editor.md › YAML does not list the escape forms; `\x`, `\u` and
-        /// `\U` take 2, 4 and 8 hexadecimal digits when present, every other escape is the
-        /// backslash and one scalar (YAML 1.2 escapes).
+        /// `\x`, `\u` and `\U` take 2, 4 and 8 hexadecimal digits when present, every other escape
+        /// is the backslash and one scalar (docs/code-editor.md › YAML, YAML 1.2 escapes).
         private func escapeLength(_ start: Int) -> Int {
             let digits: Int
             switch text[start + 1] {

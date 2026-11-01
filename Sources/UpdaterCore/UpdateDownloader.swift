@@ -94,9 +94,8 @@ public struct UpdateDownloader: Sendable {
         }
     }
 
-    /// Downloads `url` (redirects followed) and moves the complete file to `destination`.
-    // DOC-GAP: docs/updater.md › Download and verification does not define an answer other than
-    // 2xx; it fails step 2 with the description `The server answered HTTP <status>.`.
+    /// Downloads `url` (redirects followed) and moves the complete file to `destination`; an answer
+    /// that is not 2xx fails step 2 (docs/updater.md › Download and verification).
     func fetch(_ url: URL, to destination: URL) async throws {
         let request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: Self.requestTimeout)
         let (temporary, response) = try await session.download(for: request)

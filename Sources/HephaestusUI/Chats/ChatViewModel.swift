@@ -224,8 +224,7 @@ final class ChatViewModel {
                     onCreated?(meta)
                 }
             } catch {
-                // DOC-GAP: docs/chats.md › Composer clears the composer on Send but does not say what
-                // a failed send does; the message comes back when the composer is still empty.
+                // The message comes back when the composer is still empty (docs/chats.md › Composer).
                 let current = composer
                 if current.text.isEmpty, current.attachments.isEmpty {
                     composer = sent
@@ -258,8 +257,7 @@ final class ChatViewModel {
             do {
                 _ = try await workspace.call(ChatsUpdateSettings.self, ChatsUpdateSettings.Params(chatID: uuid, settings: new))
             } catch {
-                // DOC-GAP: docs/ui.md › Principles names the alert of a failed menu item by its
-                // title; the settings menus use `Chat Settings`.
+                // docs/ui.md › Principles, Errors.
                 alert(.failure("Chat Settings", error))
             }
         }

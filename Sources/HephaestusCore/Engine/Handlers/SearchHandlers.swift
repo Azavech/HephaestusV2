@@ -14,15 +14,13 @@ extension Engine {
     /// other calls meanwhile. It changes nothing and emits no event.
     func searchQuery(_ params: SearchQuery.Params, _ actor: Actor) async throws -> [SearchResult] {
         let limit = params.limit ?? SearchRunner.defaultLimit
-        // DOC-GAP: docs/engine-api.md › search.query fails with `invalid` for a limit outside
-        // 1–1,000 but quotes no message; it uses the form `<param>: <reason>.`.
+        // docs/engine-api.md › search.query, errors
         guard SearchRunner.limits.contains(limit) else {
             throw EngineError.invalid("limit", "use a number from 1 to 1000")
         }
         var projectIDs = domain.loadedProjectIDs()
         if let requested = params.projectID {
-            // DOC-GAP: docs/engine-api.md › search.query lists `notFound` for projectID; a
-            // malformed identifier fails with `invalid`, the rule of docs/engine-api.md › Identifiers.
+            // docs/engine-api.md › search.query, errors; › Identifiers
             guard let projectID = Identifiers.normalizedProjectID(requested) else {
                 throw EngineError.invalid("projectID", "use 2 to 8 letters A–Z")
             }
@@ -47,9 +45,8 @@ extension Engine {
             ))
         }
         var git: SearchGit?
-        // DOC-GAP: docs/search.md › File list runs git with the login-shell environment; until
-        // the capture and the tools lookup are done, code search walks the folders as it does
-        // without git (docs/architecture.md › Child processes, rule 5).
+        // Until the tools lookup has found git, code search walks the folders (docs/search.md ›
+        // File list, docs/architecture.md › Child processes, rule 5).
         if scopes.contains(.code), let executable = files.tools.git {
             git = SearchGit(executable: executable, environment: files.tools.environment)
         }

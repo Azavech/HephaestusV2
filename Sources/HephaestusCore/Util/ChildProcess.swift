@@ -283,10 +283,8 @@ public struct ProcessResult: Sendable {
 public enum ChildProcessRunner {
     /// Starts the request with standard output and error piped, writes `input` to standard
     /// input when given, and waits for the exit. When `timeout` passes first, the process
-    /// group receives SIGTERM, then SIGKILL `killGrace` later.
-    // DOC-GAP: docs/architecture.md › Child processes gives timeouts for some tools (10 s for the
-    // environment capture and `xcrun --find`) but no kill sequence for a tool that times out;
-    // this uses the sequence of the naming calls (SIGTERM, then SIGKILL 2 s later, docs/chats.md › Signals).
+    /// group receives SIGTERM, then SIGKILL `killGrace` later (docs/architecture.md › Child
+    /// processes, rule 6).
     public static func run(_ request: ChildProcessRequest, input: Data? = nil, timeout: Duration? = nil,
                            killGrace: Duration = .seconds(2)) async throws -> ProcessResult {
         var request = request

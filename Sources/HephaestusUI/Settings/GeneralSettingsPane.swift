@@ -142,8 +142,7 @@ struct GeneralSettingsPane: View {
             items.append(IndentedPopUpButton.Item(tag: project.id, title: project.name, indentation: depth(of: project)))
         }
         if let stored = settings?.feedbackProjectID, workspace.project(stored) == nil {
-            // DOC-GAP: docs/ui.md › General does not place the missing project's item; it ends the
-            // list.
+            // The missing project's item ends the list (docs/ui.md › General).
             items.append(.separator())
             items.append(IndentedPopUpButton.Item(tag: stored, title: "Missing project (\(stored))"))
         }

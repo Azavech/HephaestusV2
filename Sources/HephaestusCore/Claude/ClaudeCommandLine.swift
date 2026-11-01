@@ -47,9 +47,8 @@ enum ClaudeCommandLine {
     }
 
     /// The line each launch appends to the chat's log: `--- <ISO-8601 date> launch: <argv> ---`,
-    /// with the value of `--append-system-prompt` replaced by `<N characters>`.
-    // DOC-GAP: docs/chats.md › Exit handling and logs does not say how `<argv>` is written; the
-    // arguments are joined with spaces, those with spaces or quotes in single quotes.
+    /// with the value of `--append-system-prompt` replaced by `<N characters>` and the arguments
+    /// quoted as docs/chats.md › Exit handling and logs states.
     static func launchLogLine(argv: [String], date: Date) -> String {
         var parts: [String] = []
         var replaceNext = false

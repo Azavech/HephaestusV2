@@ -145,9 +145,8 @@ struct NewSkillSheet: View {
             }
             dismiss()
             await SkillActions.select(name, window: window, workspace: workspace, projectID: projectID, startEditing: true)
-            // DOC-GAP: docs/skills.md › New Skill sheet does not say what happens when the skill is
-            // created but enabling it fails; the skill is selected and the failure shows as the
-            // alert of a failed control (docs/ui.md › Principles).
+            // A created skill whose enabling failed is still selected, then the failure shows
+            // (docs/skills.md › New Skill sheet).
             if let enableError {
                 window.alert = .failure("Enable in \(projectName)", enableError)
             }

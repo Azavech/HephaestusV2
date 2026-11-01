@@ -77,9 +77,8 @@ struct SkillDocument: Hashable, Sendable {
     }
 
     private static func frontmatter(_ yaml: String, folderName: String) throws -> SkillFrontmatter {
-        // DOC-GAP: docs/data-model.md › SKILL.md format skips a folder whose frontmatter is not a
-        // YAML mapping but does not say what an empty frontmatter (`---` followed by `---`) is;
-        // it is read as an empty mapping.
+        // An empty frontmatter, or one of white space only, is an empty mapping
+        // (docs/data-model.md › SKILL.md format, rule 1).
         guard !yaml.allSatisfy({ $0.isWhitespace }) else {
             return SkillFrontmatter(name: folderName)
         }

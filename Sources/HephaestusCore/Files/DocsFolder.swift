@@ -9,10 +9,8 @@ enum DocsFolder {
         return lowercased.hasSuffix(".md") || lowercased.hasSuffix(".markdown")
     }
 
-    /// Adds the docs of `folder` and of its sub folders. Names starting with `.` are skipped.
-    // DOC-GAP: docs/engine-api.md › docs.list does not say whether symbolic links to folders
-    // are followed; they are not, so a link cycle cannot make the listing endless. Symbolic
-    // links to files are listed like files.
+    /// Adds the docs of `folder` and of its sub folders. Names starting with `.` are skipped;
+    /// symbolic links to folders are not followed (docs/engine-api.md › docs.list).
     static func collect(folder: String, projectPath: String, into entries: inout [DocEntry]) {
         guard let names = try? FileSystemItems.names(in: folder) else { return }
         for name in names where !name.hasPrefix(".") {

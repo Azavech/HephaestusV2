@@ -115,8 +115,8 @@ struct PortField: View {
     private func commit(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         guard let port = Int(trimmed) else {
-            // DOC-GAP: docs/ui.md › Devices and › MCP give no message for a value that is not a
-            // number; it gets the engine's message of an out-of-range port.
+            // A value that is not a number gets the engine's message of an out-of-range port
+            // (docs/ui.md › Devices, › MCP).
             message = ValidationError.invalid(key, "use a port from 1024 to 65535").message
             return
         }

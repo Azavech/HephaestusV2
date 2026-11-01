@@ -19,10 +19,7 @@ struct FileTools: Sendable, Equatable {
     }
 
     /// Before the lookup has run, no tool is known: nothing is formatted and `isIgnored` is
-    /// absent, as when the tools are not found.
-    // DOC-GAP: docs/architecture.md › Child processes looks the tools up once, after the
-    // environment capture, and says nothing of calls made before that; until then the tools
-    // count as not found.
+    /// absent, as when the tools are not found (docs/architecture.md › Child processes, rule 5).
     static let notLookedUp = FileTools(environment: [:])
 
     /// Timeout of `xcrun --find swift-format` and of `xcode-select -p`.
@@ -38,8 +35,7 @@ struct FileTools: Sendable, Equatable {
         let path = environment["PATH"]
         var git = executable(named: "git", inPATH: path)
         if git == "/usr/bin/git" {
-            // DOC-GAP: docs/architecture.md › Child processes gives no timeout for
-            // `xcode-select -p`; it uses the 10 s of the other lookup command.
+            // docs/architecture.md › Child processes, rule 5 (timeout 10 s)
             let request = ChildProcessRequest(executable: xcodeSelect, arguments: ["-p"], environment: childEnvironment)
             let result = try? await ChildProcessRunner.run(request, timeout: lookupTimeout)
             if result == nil || result?.timedOut == true || result?.termination.isSuccess != true {
@@ -125,8 +121,7 @@ struct FileTools: Sendable, Equatable {
             log?.info(.files, "\(name) failed (\(result.termination)); the file is written unformatted")
             return nil
         }
-        // DOC-GAP: docs/engine-api.md › files.write writes the formatter's standard output; an
-        // output that is not valid UTF-8 cannot be the text of the file, so it is not used.
+        // An output that is not valid UTF-8 is not used (docs/engine-api.md › files.write, step 2).
         guard let formatted = String(validating: result.standardOutput, as: UTF8.self) else {
             log?.warn(.files, "\(name) wrote output that is not UTF-8; the file is written unformatted")
             return nil
@@ -136,9 +131,8 @@ struct FileTools: Sendable, Equatable {
 
     // MARK: git check-ignore
 
-    /// Timeout of `git check-ignore`.
-    // DOC-GAP: docs/engine-api.md › FileEntry gives no timeout for `git check-ignore`; it uses
-    // the 10 s of the other tool runs. A timed-out run leaves `isIgnored` absent.
+    /// Timeout of `git check-ignore`; a timed-out run leaves `isIgnored` absent
+    /// (docs/engine-api.md › FileEntry).
     static let checkIgnoreTimeout: Duration = .seconds(10)
 
     /// The names of `folder` that git ignores (`git check-ignore -z --stdin`, run in `folder`,

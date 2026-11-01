@@ -8,10 +8,8 @@ struct CachedModel: Sendable, Hashable {
     var resolvedModel: String?
 
     /// The entries of `response.models` of an `initialize` answer, in order. An entry without a
-    /// string `value` is skipped.
-    // DOC-GAP: docs/chats.md › Models maps the four fields but does not cover an entry without
-    // `value`, `displayName` or `description`; an entry without `value` is skipped, a missing
-    // `displayName` is the value and a missing `description` is empty.
+    /// string `value` is skipped; a missing `displayName` is the value and a missing `description`
+    /// is empty (docs/chats.md › Models).
     static func parse(_ models: JSONValue?) -> [CachedModel]? {
         guard let entries = models?.arrayValue else { return nil }
         return entries.compactMap { entry in
@@ -29,9 +27,8 @@ struct CachedModel: Sendable, Hashable {
 struct ClaudeCLITimings: Sendable {
     /// `--version`, docs/chats.md › Version and status.
     var versionTimeout: Duration = .seconds(10)
-    /// The CLI lookup in the login shell (candidate 4 of docs/chats.md › Locating the CLI).
-    // DOC-GAP: docs/chats.md › Locating the CLI gives no timeout for candidate 4; it uses the 10 s
-    // of the environment capture.
+    /// The CLI lookup in the login shell (candidate 4 of docs/chats.md › Locating the CLI), with
+    /// the 10 s of the environment capture.
     var loginShellTimeout: Duration = .seconds(10)
     /// The models probe (docs/chats.md › Models).
     var probeTimeout: Duration = .seconds(30)
@@ -44,10 +41,8 @@ struct ClaudeCLITimings: Sendable {
 }
 
 /// The Claude CLI of the device: the login-shell environment, the location of the CLI, its
-/// `ClaudeStatus` and the model list (docs/chats.md › Claude CLI). Used only on the
-/// engine actor.
-// DOC-GAP: the docs describe this work but name no Swift type for it; the type name is a
-// design choice.
+/// `ClaudeStatus` and the model list (docs/chats.md › Claude CLI, docs/architecture.md ›
+/// HephaestusCore folders). Used only on the engine actor.
 final class ClaudeCLI {
     /// The current status: `checking` from engine start until the CLI has been located and
     /// `--version` has answered.
@@ -266,11 +261,8 @@ extension Engine {
         }
     }
 
-    /// `<first line of stderr, or "exit code <n>", or "timeout">` of docs/chats.md › Version and
-    /// status.
-    // DOC-GAP: the docs cover an exit status, a timeout and a missing version; a process killed by
-    // a signal is described as `exit code <128 + signal>`, the exit code of `run.finished`, and a
-    // spawn failure by the system's error.
+    /// `<reason>` of docs/chats.md › Version and status: `timeout`, the system's error of a spawn
+    /// failure, the first line of stderr, or `exit code <n>` (128 + the signal for a signal).
     private static func versionFailure(_ result: HelperResult) -> String {
         if result.timedOut { return "timeout" }
         if let spawnError = result.spawnError { return spawnError }
@@ -347,8 +339,7 @@ extension Engine {
         }
         let status = claudeCLI.status
         guard status.available, let path = status.path, let environment = claudeCLI.loginEnvironment else {
-            // DOC-GAP: the docs give no message for `unavailable` here; it is the status error, or
-            // a sentence saying the CLI is still being checked.
+            // docs/chats.md › Version and status: the status error, or the still-checking message.
             throw EngineError(.unavailable, status.error ?? "The Claude CLI is not available yet; it is still being checked.")
         }
         return ClaudeLaunchContext(path: path, environment: ProcessEnvironment.claudeEnvironment(from: environment))

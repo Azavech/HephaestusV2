@@ -75,8 +75,7 @@ enum JSONTokenizer {
                 }
                 position += 1
             }
-            // DOC-GAP: docs/code-editor.md › JSON does not say where an unterminated block comment
-            // ends; like Go's, it runs to the end of the text.
+            // Unterminated: to the end of the text (docs/code-editor.md › JSON, row 1).
             return text.count
         }
         return nil

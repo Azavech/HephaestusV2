@@ -60,8 +60,7 @@ struct NewDocSheet: View {
         .onAppear {
             selection = TextSelection(range: ProjectPaths.lastComponentSelection(in: name, withoutExtension: true))
         }
-        // DOC-GAP: the docs give the alert's message (the engine's) but no title; docs/ui.md ›
-        // Principles names the button pressed: `Create failed`.
+        // docs/documentation-viewer.md › New Doc, step 4.
         .alert("Create failed", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
             Button("OK") {}
         } message: {

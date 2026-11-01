@@ -54,9 +54,8 @@
   }
 
   // An img that fails to load becomes <span class="md-image-broken"> titled with its src, whose
-  // text is "Image not found: " and the alt text, or the last path component of the src.
-  // DOC-GAP: the docs do not say whether that component is percent-decoded; it is, so that
-  // `flow%20chart.png` reads `flow chart.png`.
+  // text is "Image not found: " and the alt text, or the last path component of the src,
+  // percent-decoded (docs/documentation-viewer.md › Preview web view).
   function replaceBrokenImage(image) {
     var source = image.getAttribute("src") || "";
     var alt = image.getAttribute("alt") || "";

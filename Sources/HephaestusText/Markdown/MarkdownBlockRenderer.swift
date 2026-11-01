@@ -26,10 +26,8 @@ enum CodeBlockLanguage {
     }
 
     /// The label: the word lowercased, only `a`–`z`, `0`–`9`, `+`, `#`, `.`, `_` and `-`, at
-    /// most 32 characters.
-    ///
-    /// DOC-GAP: docs/documentation-viewer.md › Code blocks does not say what a word that
-    /// filters to nothing gives; it gives no label, like a block without an info string.
+    /// most 32 characters; a word that filters to nothing gives no label
+    /// (docs/documentation-viewer.md › Code blocks).
     static func label(forWord word: String) -> String? {
         let allowed = Set("abcdefghijklmnopqrstuvwxyz0123456789+#._-".unicodeScalars)
         var label = String.UnicodeScalarView()
@@ -207,8 +205,8 @@ struct MarkdownConverter {
             case is LineBreak:
                 result.append(.lineBreak)
             case let attributes as InlineAttributes:
-                // DOC-GAP: swift-markdown parses `^[text](attributes)` as inline attributes, which
-                // GFM does not have; GFM reads `^` and a link, so it is rendered that way.
+                // swift-markdown's inline attributes `^[text](attributes)` render as GFM reads
+                // them: `^` and a link (docs/documentation-viewer.md › Supported syntax).
                 result.append(.text("^"))
                 let destination = attributes.attributes.trimmingCharacters(in: .whitespaces)
                 result.append(contentsOf: self.link(destination: destination, title: nil,
@@ -247,11 +245,8 @@ struct MarkdownConverter {
         return result
     }
 
-    /// The plain text of an image description, inline markup removed; line breaks are spaces.
-    ///
-    /// DOC-GAP: docs/documentation-viewer.md › HTML output does not say whether inline HTML
-    /// belongs to the plain text; it does, as the renderers show inline HTML as text (and as
-    /// CommonMark's alt text does). HTML comments are left out.
+    /// The plain text of an image description, inline markup removed, inline HTML as its source
+    /// except HTML comments; line breaks are spaces (docs/documentation-viewer.md › HTML output).
     static func altText<S: Sequence>(_ children: S) -> String where S.Element == Markup {
         var text = ""
         for child in children {

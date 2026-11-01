@@ -53,8 +53,7 @@ struct ChatsSectionView: View {
         .task(id: ObjectIdentifier(workspace)) {
             for await event in workspace.events() {
                 if case .chatDeleted(let payload) = event.event, payload.chatID.uuidString == selectedChatID {
-                    // DOC-GAP: docs/chats.md › Where chats appear names no fallback when the selected
-                    // chat is deleted; the section clears its selection.
+                    // A deleted selected chat clears the selection (docs/chats.md › Where chats appear).
                     window.updateViewState(of: projectID) { $0.selectedChatID = nil }
                 }
             }
@@ -75,8 +74,7 @@ struct ChatsSectionView: View {
             Divider()
             List(selection: Binding(get: { draft == nil ? selectedChatID : nil }, set: select)) {
                 ForEach(groups, id: \.kind) { group in
-                    // DOC-GAP: the groups have no titles in the docs; they show the kind's name
-                    // (`Project`, `Ticket`, `Bundle`, `Feedback`), as the kind chip does.
+                    // Titled with the kind's name, as the kind chip (docs/chats.md › Where chats appear).
                     Section(ChatFormat.kindTitle(group.kind)) {
                         ForEach(group.chats) { meta in
                             row(meta)
@@ -172,9 +170,8 @@ struct ChatsSectionView: View {
         window.updateViewState(of: projectID) { $0.selectedChatID = chatID }
     }
 
-    /// Rename… of a row edits its title in place: Return renames, Escape cancels.
-    // DOC-GAP: docs/chats.md › Where chats appear lists Rename… without its form; it edits in
-    // place like the chat view's title.
+    /// Rename… of a row edits its title in place, as the chat view's title: Return renames, Escape
+    /// and leaving the field cancel (docs/chats.md › Where chats appear, › Chat view).
     private func startRename(_ meta: ChatMeta) {
         renameText = meta.title
         renamingChatID = meta.id.uuidString
@@ -199,8 +196,7 @@ struct ChatsSectionView: View {
                 NotFoundView(kind: "Chat", id: chatID)
             }
         } else {
-            // DOC-GAP: docs/chats.md › Where chats appear gives no content for the chat view while
-            // no chat is selected; it stays empty.
+            // Empty while no chat is selected (docs/chats.md › Where chats appear).
             Color(nsColor: .windowBackgroundColor)
         }
     }

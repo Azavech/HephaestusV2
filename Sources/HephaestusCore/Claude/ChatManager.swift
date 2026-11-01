@@ -25,9 +25,8 @@ struct ChatTimings: Sendable {
 /// The chats at runtime: Claude chat processes, their stream-json mapping and control protocol,
 /// the computed `state` of each chat, pending permission requests, question sets, driving
 /// devices, the chat tokens of each launch and idle termination (docs/chats.md). Used only on the
-/// engine actor; the chat metadata files are loaded with their project (`DomainState`).
-// DOC-GAP: the docs describe this work but name no Swift type for it; the type name is a
-// design choice.
+/// engine actor; the chat metadata files are loaded with their project (`DomainState`)
+/// (docs/architecture.md › HephaestusCore folders).
 final class ChatManager {
     /// The runtime state of the chats that had a process or a message since the engine started.
     var runtimes: [ChatID: ChatRuntime] = [:]

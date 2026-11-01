@@ -50,8 +50,7 @@ struct FileTreeView: View {
     @ViewBuilder
     private func content(_ tree: FileTreeModel, _ state: ProjectViewState) -> some View {
         if let error = tree.errors[""] {
-            // DOC-GAP: docs/code-editor.md › File tree gives no state for a root listing that
-            // fails; the engine's message is shown with Try Again.
+            // docs/code-editor.md › File tree, Failed root
             VStack(spacing: 8) {
                 Text(error)
                     .foregroundStyle(.secondary)
@@ -154,9 +153,9 @@ struct FileTreeView: View {
         }
     }
 
-    /// The context menu of a row or of the empty area (docs/code-editor.md › Context menu).
-    // DOC-GAP: docs/code-editor.md › New File and New Folder takes the location from the selection;
-    // from a row's context menu it is taken from the row the menu was opened on.
+    /// The context menu of a row or of the empty area (docs/code-editor.md › Context menu). New
+    /// File and New Folder take their location from the row the menu was opened on, or the root
+    /// for the empty area (docs/code-editor.md › New File and New Folder).
     private func menu(for row: OutlineRow?) -> [OutlineMenuItem] {
         let location: String
         if let row {

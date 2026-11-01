@@ -4,10 +4,9 @@ import Foundation
 /// tickets, bundles and chat metadata (docs/data-model.md › Loading, docs/architecture.md ›
 /// Startup step 4). It lives on the engine actor; handlers read and change it with no `await`
 /// between the read and the write (docs/architecture.md › Concurrency). The engine API answers
-/// from this state, except for transcripts, attachments and the project's other files.
-// DOC-GAP: the docs assign no type or folder to the in-memory project data; it is engine state,
-// so it lives in `Engine/`. Chat metadata is loaded with its project here; the runtime state of
-// chats (processes, `state`, pending requests, driving devices) belongs to `ChatManager`.
+/// from this state, except for transcripts, attachments and the project's other files. The
+/// runtime state of chats (processes, `state`, pending requests, driving devices) belongs to
+/// `ChatManager` (docs/architecture.md › HephaestusCore folders).
 struct DomainState {
     /// `registry.yml` as last loaded or written.
     var registry: Registry

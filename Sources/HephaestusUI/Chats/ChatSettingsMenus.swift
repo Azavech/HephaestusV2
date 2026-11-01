@@ -40,10 +40,8 @@ struct ChatSettingsMenus {
         (selectedModel?.displayName ?? settings.model) + (settings.ultracode ? " · Ultracode" : "")
     }
 
-    /// The selected model's effort values; nil when no entry matches the stored value.
-    // DOC-GAP: docs/chats.md › Effort disables the values that are not in the selected model's
-    // supportedEffortLevels but does not cover a stored model value that matches no entry; every
-    // value is enabled then.
+    /// The selected model's effort values; nil when no entry matches the stored value, which
+    /// enables every value (docs/chats.md › Effort).
     var supportedEfforts: Set<String>? {
         selectedModel.map { Set($0.supportedEffortLevels) }
     }

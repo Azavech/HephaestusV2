@@ -35,8 +35,8 @@ public enum LoginShellEnvironment {
                 return processEnvironment
             }
             let captured = ProcessEnvironment.parseNULSeparated(result.standardOutput)
-            // DOC-GAP: docs/chats.md › Environment does not cover a successful capture without any
-            // variable; it is treated as a failure so that children never start without PATH.
+            // An output without any variable counts as a failure, so that no child starts without
+            // PATH (docs/chats.md › Environment).
             guard !captured.isEmpty else {
                 log?.warn(.claude, "the login-shell environment capture returned nothing; using the app's environment")
                 return processEnvironment

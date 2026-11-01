@@ -33,9 +33,7 @@ extension Engine {
         let newSkillsFolder = new.skillsLibraryURL(dataDirectory: dataDirectory)
         let skillsFolderChanged = newSkillsFolder != old.skillsLibraryURL(dataDirectory: dataDirectory)
         if skillsFolderChanged {
-            // DOC-GAP: docs/engine-api.md › settings.update fails with `invalid` when the new
-            // skills folder cannot be created but gives no message; it uses the form
-            // `<param>: <reason>.` of docs/engine-api.md › Messages.
+            // docs/engine-api.md › settings.update, errors
             do {
                 try FileManager.default.createDirectory(at: newSkillsFolder, withIntermediateDirectories: true)
             } catch {

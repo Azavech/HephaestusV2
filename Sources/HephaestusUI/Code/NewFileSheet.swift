@@ -54,8 +54,7 @@ struct NewFileSheet: View {
         }
         .padding(20)
         .frame(width: 420)
-        // DOC-GAP: the docs give the alert's message (the engine's) but no title; docs/ui.md ›
-        // Principles names the button pressed: `Create failed`.
+        // docs/code-editor.md › New File and New Folder, step 2.
         .alert("Create failed", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
             Button("OK") {}
         } message: {

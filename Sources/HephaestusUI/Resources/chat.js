@@ -380,7 +380,7 @@
     if (link) {
       event.preventDefault();
       var href = link.getAttribute("href");
-      // DOC-GAP: a `#fragment` link has no target in a transcript; it does nothing.
+      // A `#fragment` link does nothing (docs/chats.md › Links, images and files).
       if (href && href.charAt(0) !== "#") {
         post({ action: "openLink", url: href, commandKey: !!event.metaKey });
       }

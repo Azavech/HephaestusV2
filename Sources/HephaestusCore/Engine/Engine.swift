@@ -323,9 +323,8 @@ public actor Engine {
                    appVersion: configuration.appVersion, build: configuration.build)
     }
 
-    /// The Mac's computer name (System Settings > General > About).
-    // DOC-GAP: docs/data-model.md › Device file uses the computer name when device.yml has no
-    // name, but says nothing of a Mac whose computer name cannot be read; `Mac` is used then.
+    /// The Mac's computer name (System Settings > General > About), or `Mac` when it cannot be
+    /// read (docs/data-model.md › Device file).
     private static func readComputerName() -> String {
         if let name = SCDynamicStoreCopyComputerName(nil, nil) as String?, !name.isEmpty {
             return name

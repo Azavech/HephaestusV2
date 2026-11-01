@@ -186,11 +186,8 @@ struct MCPToolHandlers: Sendable {
         }
     }
 
-    /// The `NavigationTarget` of a checked `target` argument.
-    // DOC-GAP: docs/mcp.md › debug_navigate calls no engine method, so nothing names the error of
-    // a target whose ids cannot be decoded (a `chatID` or `tabID` that is not a UUID). It is
-    // `invalid` with `target.<property>: <reason>.`, the reasons of the dispatcher's decoding
-    // errors.
+    /// The `NavigationTarget` of a checked `target` argument; ids that do not decode fail with
+    /// `invalid` and `target.<property>: <reason>.` (docs/mcp.md › debug_navigate).
     static func navigationTarget(_ object: [String: JSONValue]) throws -> NavigationTarget {
         do {
             return try EngineJSON.decode(NavigationTarget.self, from: .object(object))

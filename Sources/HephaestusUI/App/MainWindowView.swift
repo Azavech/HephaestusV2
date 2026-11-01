@@ -128,8 +128,7 @@ private struct MainWindowColumns: View {
             } else if let projectID = state.projectID, let project = workspace.project(projectID) {
                 ProjectColumns(state: state, workspace: workspace, project: project)
             } else {
-                // DOC-GAP: the docs define no state for the moment between the snapshot and the
-                // choice of the default project; the device's loading state stays.
+                // The window has not chosen its project yet (docs/ui.md › Empty states).
                 LoadingStateView(text: "Loading \(workspace.deviceName)…")
             }
         }

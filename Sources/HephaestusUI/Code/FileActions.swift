@@ -86,9 +86,7 @@ enum FileActions {
             alert.messageText = "Move the folder “\(name)” to the Trash?"
             var text = "Everything in it is moved to the Trash of \(workspace.deviceName)."
             if unsaved > 0 {
-                // DOC-GAP: docs/code-editor.md › Move to Trash writes ` Unsaved changes in <n> open
-                // files will be lost.`; with one file it reads `1 open file`, as the other counted
-                // texts of the docs do.
+                // docs/code-editor.md › Move to Trash
                 text += unsaved == 1 ? " Unsaved changes in 1 open file will be lost." : " Unsaved changes in \(unsaved) open files will be lost."
             }
             alert.informativeText = text
@@ -118,8 +116,7 @@ enum FileActions {
                 }
             }
         } catch {
-            // DOC-GAP: docs/code-editor.md › Move to Trash gives no failure text; the alert of
-            // docs/ui.md › Principles names the button pressed, `Move to Trash failed`.
+            // Alert `Move to Trash failed`; no tab closes (docs/code-editor.md › Move to Trash).
             window.alert = .failure("Move to Trash", error)
         }
         for buffer in affected {

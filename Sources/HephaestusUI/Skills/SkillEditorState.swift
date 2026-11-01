@@ -14,10 +14,8 @@ final class SkillEditorState {
     /// The skill the form shows: its saved name, which follows a rename made by this form.
     private(set) var skillName: String
     let projectID: String
-    /// The body's mode: Edit, Preview or Split.
-    // DOC-GAP: docs/skills.md › Editor names the three modes but no default or lifetime; the mode
-    // starts as Preview, as the Docs section's (docs/documentation-viewer.md › Modes), and is kept
-    // when the window selects another skill of the project.
+    /// The body's mode: Edit, Preview or Split; it starts as Preview and is kept when the window
+    /// selects another skill of the project (docs/skills.md › Editor).
     var bodyMode: DocMode
     /// The form: name, description and body.
     let form: SkillForm
@@ -151,11 +149,8 @@ final class SkillEditorState {
     }
 
     /// `skills.get` answered `notFound`: the selection shows `Skill <name> was not found.` unless
-    /// the form has unsaved changes, which keep the editor with the conflict banner.
-    // DOC-GAP: docs/skills.md › Saving does not say what a form with unsaved changes shows when its
-    // skill is deleted or renamed elsewhere; it keeps the editor with the banner `This skill was
-    // changed elsewhere.`: Reload discards the changes, Keep Mine keeps them and the next save
-    // reports the engine's error.
+    /// the form has unsaved changes, which keep the editor with the conflict banner
+    /// (docs/skills.md › Saving).
     private func skillDisappeared(_ error: EngineError) {
         loadError = error
         if hasLoaded, !unsavedEditors.isEmpty {
@@ -342,10 +337,8 @@ final class SkillEditorState {
     // MARK: Extra files
 
     /// Opens an extra file under the files list, or closes it with nil. When the open file has
-    /// unsaved changes its prompt is shown first; Cancel keeps it open and returns false.
-    // DOC-GAP: docs/skills.md › Editor does not say what selecting another extra file does to
-    // unsaved changes of the open one; it shows the editor's own prompt, as selecting another skill
-    // does.
+    /// unsaved changes its prompt is shown first; Cancel keeps it open and returns false
+    /// (docs/skills.md › Editor).
     @discardableResult
     func openFile(_ path: String?) async -> Bool {
         if let file, file.path == path { return true }
@@ -567,8 +560,8 @@ final class SkillExtraFile {
             buffer.content = .binary(size: content.size)
             kind = .image(data)
         } else {
-            // DOC-GAP: docs/skills.md › Editor has three views; a file above 20 MiB, returned
-            // without content, shows the binary notice with its size, an image included.
+            // Any other file, and a file above 20 MiB, returned without content, an image
+            // included: the binary notice (docs/skills.md › Editor, Extra file view).
             buffer.content = .binary(size: content.size)
             kind = .binary(size: content.size)
         }

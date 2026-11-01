@@ -88,11 +88,8 @@ enum ProjectPaths {
     }
 
     /// True when `path` is a chats folder `.hephaestus/chats` or lies inside one: the project's
-    /// own, or that of a sub project folder inside it.
-    // DOC-GAP: docs/engine-api.md › Files refuses `.hephaestus/chats` and every path inside it,
-    // and files.changed skips `.hephaestus/chats/`; the chats folder of a sub project lies at
-    // `<sub project>/.hephaestus/chats` in its parent, and its only writer is the engine too, so
-    // the rule applies to a `.hephaestus/chats` pair of components at any depth.
+    /// own, or that of a sub project folder inside it (docs/engine-api.md › Files, › Changes made
+    /// outside the engine).
     static func isInChatsFolder(_ path: String) -> Bool {
         let parts = components(path)
         guard parts.count >= 2 else { return false }
@@ -102,10 +99,8 @@ enum ProjectPaths {
         return false
     }
 
-    /// True when `path` is a `.git` item or lies inside one, at any depth.
-    // DOC-GAP: docs/engine-api.md › Changes made outside the engine skips changes inside `.git/`
-    // without saying whether the repositories of sub projects or nested work trees count; every
-    // `.git` component is skipped, so a sub project's own repository adds no events either.
+    /// True when `path` is a `.git` item or lies inside one, at any depth
+    /// (docs/engine-api.md › Changes made outside the engine).
     static func isInGitFolder(_ path: String) -> Bool {
         components(path).contains(".git")
     }

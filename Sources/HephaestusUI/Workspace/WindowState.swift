@@ -128,9 +128,8 @@ extension WindowState: @MainActor Codable {
         case deviceID, projectID, state
     }
 
-    // DOC-GAP: docs/ui.md › WindowState types `projectStates` as `[ProjectKey: ProjectViewState]`
-    // without a JSON form; it is encoded as an array of `{deviceID, projectID, state}` objects
-    // sorted by device and project, since JSON object keys must be strings.
+    // `projectStates` is encoded as an array of `{deviceID, projectID, state}` objects sorted by
+    // device and project (docs/ui.md › WindowState).
     convenience init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.init(id: try c.decode(UUID.self, forKey: .id), deviceID: try c.decode(String.self, forKey: .deviceID))
@@ -206,10 +205,8 @@ struct ProjectViewState {
     var inspectorChatID: String?
     /// True while the inspector shows a draft opened with New Chat.
     var inspectorShowsDraft = false
-    /// Open editor tabs in order, with their buffers.
-    // DOC-GAP: docs/architecture.md › WindowState encodes "every property" for debug_ui_state while
-    // docs/ui.md › WindowState never persists buffers; buffers are never encoded, and a tab encodes
-    // its path only (docBuffer and skillEditor are left out).
+    /// Open editor tabs in order, with their buffers. Buffers are never encoded: a tab encodes its
+    /// path only, and docBuffer and skillEditor are left out (docs/architecture.md › WindowState).
     var editorTabs: [EditorTabState] = []
     /// Project path of the selected editor tab.
     var selectedEditorPath: String?
@@ -248,10 +245,8 @@ struct ProjectViewState {
     /// Comment composer drafts by ticket id; an empty draft is removed (docs/tickets.md ›
     /// Comments).
     var commentDrafts: [String: CommentDraft] = [:]
-    /// The skill form and the open extra file of the Skills section (docs/skills.md › Saving);
-    /// never encoded.
-    // DOC-GAP: docs/skills.md › Saving says the skill form belongs to the window but names no
-    // field of ProjectViewState; it is `skillEditor`.
+    /// The skill form and the open extra file of the Skills section; never encoded
+    /// (docs/skills.md › Editor).
     var skillEditor: SkillEditorState?
 
     /// The editors of this project with unsaved changes: editor tabs in order, the doc buffer, then

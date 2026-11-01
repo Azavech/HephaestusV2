@@ -2,9 +2,8 @@ import Darwin
 import Foundation
 
 /// The skills library folder: `skills.*` reads and writes, SKILL.md parsing and the library
-/// watcher (docs/skills.md › Library). Used only on the engine actor.
-// DOC-GAP: the docs describe this work but name no Swift type for it; the type name is a
-// design choice.
+/// watcher (docs/skills.md › Library, docs/architecture.md › HephaestusCore folders). Used only
+/// on the engine actor.
 final class SkillsLibrary {
     /// The FSEvents watcher of the current library folder, while the engine runs.
     var watcher: SkillsLibraryWatcher?
@@ -31,8 +30,7 @@ final class SkillsLibrary {
         if path.hasSuffix("/") {
             path.removeLast()
         }
-        // DOC-GAP: docs/engine-api.md › Paths refuses `""` where a method does not accept it but
-        // quotes no message; it uses the form `<param>: <reason>.`.
+        // docs/engine-api.md › Paths: `""` fails with `<param>: <reason>.`
         guard !path.isEmpty else {
             throw EngineError.invalid("path", "name a file or folder of the skill")
         }
@@ -46,10 +44,8 @@ final class SkillsLibrary {
         }
     }
 
-    /// A skill name received from a client: the name format, else `invalid`.
-    // DOC-GAP: the error tables of docs/engine-api.md › skills.get, skills.delete and the file
-    // methods list only `notFound`; a malformed name fails with `invalid`, the rule of
-    // docs/engine-api.md › Identifiers for every id.
+    /// A skill name received from a client: the name format, else `invalid`
+    /// (docs/engine-api.md › Identifiers).
     static func checkedName(_ name: String, field: String = "name") throws -> String {
         do {
             return try ModelRules.skillName(name, field: field)
@@ -153,9 +149,8 @@ extension Engine {
         emit(SkillsChangedEvent.self, skillSummaries(), origin: .system)
     }
 
-    /// The library folder, created when missing; `unavailable` when it cannot be created or read.
-    // DOC-GAP: docs/engine-api.md › skills.list fails with `unavailable` when the library folder
-    // cannot be read or created but quotes no message.
+    /// The library folder, created when missing; `unavailable` when it cannot be created or read
+    /// (docs/engine-api.md › skills.list).
     func readableSkillsLibraryFolder() throws -> URL {
         let folder = skillsLibraryFolder
         do {

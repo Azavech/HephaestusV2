@@ -114,9 +114,9 @@ final class DocsTreeModel {
                     }
                 })
                 if list.isEmpty {
-                    // DOC-GAP: `docs.list` gives an empty list for a missing folder, while
-                    // docs/documentation-viewer.md › Empty states tells the two cases apart;
-                    // `files.list` of the folder does (notFound or invalid: no folder).
+                    // `docs.list` gives an empty list for a missing folder too; `files.list` of
+                    // the folder tells the two cases apart, notFound or invalid meaning no folder
+                    // (docs/documentation-viewer.md › Empty states).
                     do {
                         _ = try await workspace.call(FilesList.self, FilesList.Params(projectID: projectID, path: folder))
                         self?.folderExists = true

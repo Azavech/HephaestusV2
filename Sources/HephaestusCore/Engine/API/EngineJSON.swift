@@ -70,12 +70,8 @@ enum APIEnumCoding {
 }
 
 /// The coding path and the reason of a decoding error, for the message
-/// `Invalid params for <name>: <coding path>: <reason>.` (docs/engine-api.md › Dispatcher errors).
-// DOC-GAP: docs/engine-api.md › Dispatcher errors gives the form of the message but neither the
-// form of the coding path nor the reason texts. The path uses the form of docs/mcp.md ›
-// Validation messages (`questions[1].options[0].label`), `params` names the params object
-// itself, and the reasons follow docs/mcp.md › Validation messages where they apply
-// (`required`, `must be a string`, `must be one of …`).
+/// `Invalid params for <name>: <coding path>: <reason>.`, with the coding path and the reasons of
+/// docs/engine-api.md › Dispatcher errors.
 enum DecodingErrorDescription {
     static func describe(_ error: Error) -> (path: String, reason: String) {
         guard let error = error as? DecodingError else {

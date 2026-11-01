@@ -5,10 +5,8 @@ import HephaestusCore
 import SwiftUI
 
 /// The sheet shown on a main window (docs/ui.md › WindowState). Each sheet's view belongs to the
-/// folder of its document; setting `WindowState.sheet` to nil closes it.
-// DOC-GAP: docs/ui.md › WindowState defines WindowSheet only as "one case per sheet that a
-// document attaches to a main window"; the cases and their associated values below are the sheets
-// of those documents, with the values each sheet needs to open.
+/// folder of its document; setting `WindowState.sheet` to nil closes it. The cases and their
+/// values are those of docs/ui.md › WindowState.
 public enum WindowSheet: Codable, Hashable, Sendable, Identifiable {
     /// New Project sheet (docs/projects.md › Creating a project).
     case newProject

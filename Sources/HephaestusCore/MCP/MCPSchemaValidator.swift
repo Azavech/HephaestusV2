@@ -189,11 +189,9 @@ public struct MCPSchemaValidator: Sendable {
 
 // MARK: - Property order
 
-// DOC-GAP: docs/mcp.md › Swift shape types the schema of `validate(_:against:)` as a
-// `JSONValue`, whose objects are dictionaries without order, while docs/mcp.md › Validation order
-// checks the present properties, and docs/mcp.md › Target kinds the unused target properties, in
-// the order of `properties`. That order is kept aside when the catalogue parses its schema texts
-// (`MCPToolCatalog.schema(_:)`) and looked up by the `properties` object.
+// A `JSONValue` object has no member order; the order of `properties` is kept aside when the
+// catalogue parses its schema texts (`MCPToolCatalog.schema(_:)`) and looked up by the
+// `properties` object (docs/mcp.md › Swift shape, MCPSchemaValidator).
 extension MCPSchemaValidator {
     private final class PropertyOrders: @unchecked Sendable {
         private let lock = NSLock()

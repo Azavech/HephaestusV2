@@ -10,10 +10,7 @@ public struct MCPToolDefinition: Sendable, Hashable {
     public var inputSchema: JSONValue
     public var isDebug: Bool
     /// The engine method the tool calls (docs/mcp.md › Tool catalogue); nil for the debug tools,
-    /// which go through `MCPDebugUI`.
-    // DOC-GAP: docs/mcp.md › Swift shape lists `name`, `description`, `inputSchema` and `isDebug`;
-    // `engineMethod` and `handling` hold the "Engine method" column of the catalogue and the
-    // tool's own rules so that the table is data.
+    /// which go through `MCPDebugUI` (docs/mcp.md › Swift shape).
     public var engineMethod: String?
     /// How the MCP layer turns the arguments into the method's params and its result into text.
     public var handling: MCPToolHandling

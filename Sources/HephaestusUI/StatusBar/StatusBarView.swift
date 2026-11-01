@@ -106,8 +106,7 @@ struct StatusBarView: View {
         }
     }
 
-    // DOC-GAP: docs/ui.md › Status bar gives the MCP item's text for `listening` and `failed` only;
-    // while the server is `stopped` (before it starts or after it stops) the item is hidden.
+    /// Hidden while the server is `stopped` (docs/ui.md › Status bar).
     @ViewBuilder
     private var mcpItem: some View {
         switch app.mcpState {

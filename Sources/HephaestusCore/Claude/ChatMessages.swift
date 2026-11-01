@@ -7,8 +7,8 @@ extension Engine {
     // MARK: Senders
 
     /// The `sender` of a user message (docs/data-model.md › User item): the name of the device of
-    /// a user actor (`userDeviceName(deviceID:)`), `Claude` for a claude actor.
-    // DOC-GAP: the docs give no sender for the system actor; it writes with this device's name.
+    /// a user actor (`userDeviceName(deviceID:)`), `Claude` for a claude actor, and this (the
+    /// main) device's name for the system actor (docs/chats.md › User messages).
     func senderName(_ actor: Actor) -> String {
         switch actor {
         case .claude: return "Claude"
@@ -31,7 +31,7 @@ extension Engine {
     func prepareMessage(_ message: ChatMessageInput, projectRoot: URL) throws -> [ChatAttachments.Prepared] {
         let uploads = message.attachments ?? []
         guard !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !uploads.isEmpty else {
-            // DOC-GAP: docs/engine-api.md › chats.send gives no message for an empty message.
+            // docs/engine-api.md › chats.send, errors
             throw EngineError.invalid("message", "write a text or attach a file")
         }
         return try ChatAttachments.prepare(uploads, projectRoot: projectRoot)
@@ -116,8 +116,7 @@ extension Engine {
             ? context.deviceName : "\(context.deviceName), connected to \(context.mainDeviceName)"
         lines.append("- Device: \(device)")
         if let projectID = context.projectID {
-            // DOC-GAP: docs/chats.md › Feedback message names the project; a project that is not
-            // loaded is named by its identifier.
+            // A project that is not loaded is named by its identifier (docs/chats.md › Feedback message).
             lines.append("- Project: \(projectName ?? projectID) (\(projectID))")
         }
         if let section = context.section { lines.append("- Section: \(section.rawValue)") }
@@ -175,8 +174,7 @@ extension Engine {
                 return nil
             }.first
             values["feedbackContext"] = Prompts.feedbackContext(fromFirstMessage: first?.text)
-            // DOC-GAP: docs/chats.md › Placeholders does not cover a first message without an
-            // attachment; the path is then `none`.
+            // `none` without an attachment (docs/chats.md › Placeholders).
             values["screenshotPath"] = first?.attachments.first.map { root.appendingPathComponent(".hephaestus/" + $0.path).path } ?? "none"
         }
         return Prompts.systemPrompt(kind: meta.kind, values: values)

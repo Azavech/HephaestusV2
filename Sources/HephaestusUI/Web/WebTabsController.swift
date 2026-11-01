@@ -597,9 +597,7 @@ final class WebTabsController: SectionCommandHandler {
                 }
                 self.select(.stored(tab.id))
             } catch {
-                // DOC-GAP: docs/web-tabs.md › New tab does not say how a failed `webTabs.open` of the
-                // placeholder shows; it is the failure alert of docs/ui.md › Principles, named
-                // after the placeholder's label.
+                // The placeholder stays; alert `New Tab failed` (docs/web-tabs.md › New tab, step 3).
                 self?.alert("New Tab", error)
             }
         }
@@ -677,8 +675,8 @@ final class WebTabsController: SectionCommandHandler {
             do {
                 _ = try await workspace.call(WebTabsMove.self, .init(projectID: key.projectID, tabID: tabID, toIndex: toIndex))
             } catch {
-                // DOC-GAP: docs/web-tabs.md › Tab strip does not say how a failed move shows; the
-                // tab goes back to its place and the failure is logged.
+                // The tab goes back to its place and the failure is logged (docs/web-tabs.md › Tab
+                // strip, Reordering).
                 self?.pendingMove = nil
                 self?.log("webTabs.move of tab \(tabID.uuidString) in \(key.projectID) failed: \(errorMessage(error))")
             }
@@ -758,8 +756,8 @@ final class WebTabsController: SectionCommandHandler {
               let url = page.webView.url, let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
               let key, let workspace = window?.workspace, workspace.deviceID == key.deviceID, workspace.isConnected else { return }
         let ancestor = storedAncestor(of: page)
-        // DOC-GAP: docs/remote.md › Reverse rewrite is defined for a tab's stored URL; a popup has
-        // none yet, so its opener's stored tab is the reference.
+        // A popup has no stored URL yet: its nearest stored opener is the reference of the
+        // reverse rewrite (docs/remote.md › Reverse rewrite).
         let stored = storedForm(of: url.absoluteString, tabID: ancestor)
         let index = ancestor.flatMap { id in currentTabs.firstIndex { $0.id == id } }.map { $0 + 1 }
         let title = Self.cleanedTitle(page.pageTitle)
@@ -1019,8 +1017,8 @@ final class WebTabsController: SectionCommandHandler {
         window?.alert = .failure(itemTitle, error)
     }
 
-    // DOC-GAP: docs/web-tabs.md › Storing what the page shows writes failures "to the window's
-    // log"; windows have no log of their own, so they go to This Mac's engine.log as `ui`.
+    /// A warning of the component `ui` in This Mac's engine.log (docs/web-tabs.md › Storing what
+    /// the page shows, step 3).
     private func log(_ message: String) {
         window?.app?.engine.log.warn(.ui, message)
     }

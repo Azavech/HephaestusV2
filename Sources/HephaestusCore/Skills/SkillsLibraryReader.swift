@@ -50,9 +50,8 @@ enum SkillsLibraryReader {
         guard !name.hasPrefix(".") else { return nil }
         let folder = library.appendingPathComponent(name, isDirectory: true)
         guard isDirectory(folder) else { return nil }
-        // DOC-GAP: docs/skills.md › Library logs "each skipped folder" while docs/data-model.md ›
-        // SKILL.md format logs only the SKILL.md failures; hidden folders are skipped without a
-        // log line, every other skipped folder is logged.
+        // Hidden entries and entries that are not folders are skipped without a log line, every
+        // other skipped folder is logged (docs/skills.md › Library).
         guard Identifiers.isSkillName(name) else {
             log?.warn(.skills, "\(folder.path) skipped: \(name) is not a valid skill name")
             return nil
@@ -75,9 +74,8 @@ enum SkillsLibraryReader {
     }
 
     /// The skill paths of every regular file of a skill folder except its SKILL.md, recursively,
-    /// skipping names that start with `.`, sorted by path. Symbolic links are not followed.
-    // DOC-GAP: docs/data-model.md › SKILL.md format lists "every regular file"; a symbolic link
-    // inside a skill is not a regular file, so it is neither listed nor followed.
+    /// skipping names that start with `.`, sorted by path. A symbolic link is neither listed nor
+    /// followed (docs/data-model.md › SKILL.md format).
     static func extraFiles(of folder: URL) -> [String] {
         let caseSensitive = isCaseSensitiveVolume(folder)
         var files: [String] = []
@@ -101,10 +99,8 @@ enum SkillsLibraryReader {
     }
 
     /// True when the skill path `path` names the skill's SKILL.md: equal to `SKILL.md`, or equal
-    /// ignoring case on a case-insensitive volume, where `skill.md` is the same file.
-    // DOC-GAP: docs/skills.md › Skill files refuses `SKILL.md` in skills.writeFile and
-    // skills.deleteFile; on a case-insensitive volume a case variant names the same file and is
-    // refused too.
+    /// ignoring case on a case-insensitive volume, where `skill.md` is the same file
+    /// (docs/skills.md › Skill files).
     static func isSkillFile(_ path: String, caseSensitive: Bool) -> Bool {
         path == skillFileName || (!caseSensitive && path.lowercased() == skillFileName.lowercased())
     }

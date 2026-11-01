@@ -138,8 +138,7 @@ enum ShellTokenizer {
                 updated.depth += 1
             } else if scalar == ascii(")") {
                 if frame.depth == 0 {
-                    // DOC-GAP: docs/code-editor.md › Shell does not say how `$((` ends with a
-                    // single `)`; that `)` closes it.
+                    // A single `)` also closes `$((` (docs/code-editor.md › Shell, row 7).
                     let end = arithmetic && next == ascii(")") ? index + 2 : index + 1
                     sink.add(index, end, .interpolation)
                     stack.removeLast()
@@ -242,8 +241,7 @@ enum ShellTokenizer {
             }
             position += 1
         }
-        // DOC-GAP: docs/code-editor.md › Shell does not say where an unterminated `$'` string
-        // ends; like a single-quoted string, it runs to the end of the text.
+        // Unterminated: to the end of the text (docs/code-editor.md › Shell, row 4).
         sink.add(segment, text.count, .string)
         return text.count
     }
@@ -264,8 +262,7 @@ enum ShellTokenizer {
                 }
                 position += 1
             }
-            // DOC-GAP: docs/code-editor.md › Shell does not say where `${` without a matching `}`
-            // ends; it runs to the end of the text like the other unterminated constructs.
+            // Unterminated: to the end of the text (docs/code-editor.md › Shell, row 6).
             return text.count
         }
         if let end = text.identifierEnd(at: index + 1) {
@@ -286,8 +283,7 @@ enum ShellTokenizer {
             }
             position += 1
         }
-        // DOC-GAP: docs/code-editor.md › Shell does not say where an unterminated backquote
-        // substitution ends; it runs to the end of the text.
+        // Unterminated: to the end of the text (docs/code-editor.md › Shell, row 8).
         return text.count
     }
 

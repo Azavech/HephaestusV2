@@ -80,9 +80,8 @@ enum SkillActions {
         editor.fileWasTrashed(path)
     }
 
-    /// `Move to Trash` (destructive) and `Cancel` (Escape) as a sheet of the window.
-    // DOC-GAP: docs/skills.md › Move to Trash does not name the default button; Move to Trash is
-    // the default, as in docs/code-editor.md › Move to Trash.
+    /// `Move to Trash` (destructive, default) and `Cancel` (Escape) as a sheet of the window
+    /// (docs/skills.md › Move to Trash).
     private static func confirmTrash(title: String, message: String?, window: WindowState) async -> Bool {
         let alert = NSAlert()
         alert.messageText = title
@@ -109,10 +108,10 @@ enum SkillLibraryLocation {
         return settings.skillsLibraryURL(dataDirectory: app.engine.dataDirectory)
     }
 
-    /// The library folder with the home folder written `~`.
-    // DOC-GAP: a remote device's data directory and home folder are not part of its snapshot; a
-    // remote library without `skillsLibraryPath` is shown at its default place, and a path under
-    // `/Users/<name>` is written with `~`.
+    /// The library folder with the home folder written `~`. A remote snapshot carries neither the
+    /// data directory nor the home folder: a remote library without `skillsLibraryPath` is shown at
+    /// its default place, and a path under `/Users/<name>` is written with `~` (docs/skills.md ›
+    /// Remote windows).
     static func displayPath(of workspace: DeviceWorkspace) -> String {
         if let url = localURL(of: workspace) {
             return abbreviated(url.path, home: NSHomeDirectory())

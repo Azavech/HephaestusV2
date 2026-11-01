@@ -47,10 +47,8 @@ struct HeadingAnchors {
     }
 
     /// Step 1: the heading's text, code span contents and link texts, emphasis removed, images
-    /// left out, line breaks as spaces.
-    ///
-    /// DOC-GAP: docs/documentation-viewer.md › Heading anchors does not mention inline HTML; it
-    /// is left out, as GitHub renders it as elements whose tags are not text.
+    /// and inline HTML left out, line breaks as spaces (docs/documentation-viewer.md › Heading
+    /// anchors).
     static func text<S: Sequence>(of children: S) -> String where S.Element == Markup {
         var text = ""
         for child in children {

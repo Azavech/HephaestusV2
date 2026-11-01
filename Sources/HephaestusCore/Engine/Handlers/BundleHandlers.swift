@@ -52,8 +52,7 @@ extension Engine {
         let bundleID = Identifiers.bundleID(project: projectID, number: number)
         // 3. Write the bundle file.
         let tickets = ticketIDs.compactMap { domain.ticket($0) }
-        // DOC-GAP: docs/tickets.md › Bundle rules cuts the joined titles at 60 characters; the cut
-        // can end with white space, which a title may not (docs/data-model.md › Text), so it is trimmed.
+        // Cut to 60 characters, then trimmed (docs/tickets.md › Bundle rules).
         let provisional = TicketTemplate.provisionalBundleTitle(ticketTitles: tickets.map(\.title))
             .trimmingCharacters(in: .whitespaces)
         let now = ISODate.now()
@@ -109,11 +108,8 @@ extension Engine {
 
     /// The ticket ids of a bundle, uppercased and checked by the rules of docs/tickets.md ›
     /// Bundle rules: a well-formed id (`invalid`), of this project (`invalid`), listed once
-    /// (`invalid`), then an existing ticket (`notFound`).
-    // DOC-GAP: docs/engine-api.md › bundles.update applies the rules of bundles.create, which
-    // refuse an unknown ticket, but docs/tickets.md keeps the ids whose ticket file is missing
-    // and lets the user reorder and remove the others; an id already in the bundle is therefore
-    // accepted without its ticket.
+    /// (`invalid`), then an existing ticket (`notFound`); an id in `alreadyListed` is accepted
+    /// without its ticket (docs/engine-api.md › bundles.update).
     func bundleTicketIDs(_ values: [TicketID], projectID: ProjectID, alreadyListed: Set<TicketID>) throws -> [TicketID] {
         var result: [TicketID] = []
         var seen = Set<TicketID>()

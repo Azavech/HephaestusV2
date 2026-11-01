@@ -52,9 +52,8 @@ extension AppModel {
             }
             exit(DataDirectoryLock.inUseExitStatus)
         } catch {
-            // DOC-GAP: docs/architecture.md › Startup defines exits 64 and 75 only; a data directory
-            // that cannot be created, locked or loaded for another reason writes its error to
-            // standard error and exits with 74 (EX_IOERR).
+            // Any other failure to create, lock or load the data directory: status 74, no alert
+            // (docs/architecture.md › Startup, step 2).
             exitWithMessage("HephaestusV2: \(errorMessage(error))", status: 74)
         }
         waitFor { await engine.start() }
@@ -87,8 +86,8 @@ extension AppModel {
         guard environment.restoresWindowState,
               let data = UserDefaults.standard.data(forKey: windowsAtRestartDefaultsKey) else { return nil }
         UserDefaults.standard.removeObject(forKey: windowsAtRestartDefaultsKey)
-        // DOC-GAP: docs/ui.md › Windows does not cover an unreadable `windowsAtRestart`; it counts
-        // as absent, so macOS restoration or the default main window applies.
+        // A value that cannot be decoded counts as absent, so macOS restoration or the default
+        // main window applies (docs/ui.md › Windows).
         return try? JSONDecoder().decode([RestartWindowRecord].self, from: data)
     }
 

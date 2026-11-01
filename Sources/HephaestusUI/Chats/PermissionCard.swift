@@ -152,9 +152,8 @@ enum PermissionPreview {
     /// `Bash`: `command` in monospace, then `description`; `Write`: `file_path`, then `content` in
     /// monospace; `Edit`: `file_path`, then `old_string` on red and `new_string` on green, in
     /// monospace; `ExitPlanMode`: `plan` as Markdown; `WebFetch`: `url`, then `prompt`; any other
-    /// tool: the input as JSON with 2-space indentation, in monospace.
-    // DOC-GAP: the table does not give the font of `file_path` and `url`; paths and URLs use SF Mono
-    // (docs/ui.md › Principles, Appearance). A tool whose fields are missing shows its JSON.
+    /// tool, or a tool whose fields are missing: the input as JSON with 2-space indentation, in
+    /// monospace. Paths and URLs are monospace too (docs/chats.md › Pinned permission card).
     static func segments(for request: PermissionRequestItem) -> [Segment] {
         let input = request.input
         var segments: [Segment] = []

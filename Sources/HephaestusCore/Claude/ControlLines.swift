@@ -117,7 +117,7 @@ enum ControlLines {
         case .auto: return "Auto"
         case .dontAsk: return "Don't ask"
         case .bypassPermissions: return "Allow all"
-        // DOC-GAP: the table lists six modes; another value reported by the CLI is shown as is.
+        // Another value is shown as the CLI reports it (docs/chats.md › Session start item).
         case nil: return cliValue
         }
     }

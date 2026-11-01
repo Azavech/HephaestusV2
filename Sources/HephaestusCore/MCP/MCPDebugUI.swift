@@ -8,9 +8,7 @@ import Foundation
 ///
 /// The throwing functions throw `EngineError`, whose message becomes the tool result's text:
 /// `No window with id <id>.` (`notFound`), `No window is open.` (`unavailable`), or `internal`
-/// naming the system error (docs/mcp.md › debug_screenshot).
-// DOC-GAP: docs/mcp.md › Swift shape declares `throws` without an error type; implementations
-// throw `EngineError`, which carries the code and the message the tool result needs.
+/// naming the system error (docs/mcp.md › debug_screenshot, › Swift shape).
 public protocol MCPDebugUI: AnyObject, Sendable {
     /// The `WindowInfo` of every visible window, sheets included, front to back.
     func windows() async -> [WindowInfo]

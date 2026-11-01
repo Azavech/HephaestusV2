@@ -131,10 +131,9 @@ struct StreamMapper {
         return [.ignored(subtype.map { "ignored system/\($0)" } ?? "ignored system")]
     }
 
-    /// docs/chats.md › Session start item.
+    /// docs/chats.md › Session start item; the chat's settings stand for a missing `model` or
+    /// `permissionMode`.
     func sessionStartText(_ line: [String: JSONValue]) -> String {
-        // DOC-GAP: docs/chats.md › Session start item does not cover a `system/init` without
-        // `model` or `permissionMode`; the chat's settings name them then.
         let model = line["model"]?.stringValue ?? settings.model
         let mode = line["permissionMode"]?.stringValue ?? ControlLines.cliMode(settings.permissionMode)
         var text = "Session started · \(modelName(model)) · effort \(settings.effort.rawValue) · \(ControlLines.systemLineLabel(mode))"
@@ -337,8 +336,8 @@ struct StreamMapper {
                     case "text":
                         texts.append(object?["text"]?.stringValue ?? "")
                     case "image":
-                        // DOC-GAP: docs/chats.md › Tool results stores the base64 images; an image
-                        // block with another source kind holds no data and is left out.
+                        // Only `base64` sources hold data; a missing `media_type` counts as
+                        // `image/png` (docs/chats.md › Tool results).
                         if let source = object?["source"]?.objectValue, source["type"]?.stringValue == "base64",
                            let data = source["data"]?.stringValue {
                             images.append(ToolResultImage(mediaType: source["media_type"]?.stringValue ?? "image/png", base64: data))

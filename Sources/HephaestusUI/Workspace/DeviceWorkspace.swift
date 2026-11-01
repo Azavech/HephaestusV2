@@ -264,8 +264,7 @@ final class DeviceWorkspace {
 
     private func receive(_ envelope: EngineEventEnvelope) {
         guard let decoded = try? envelope.decoded() else {
-            // DOC-GAP: the docs do not say what a client does with an event whose payload does
-            // not decode; it is ignored like an unknown message (docs/remote.md › Unknown messages).
+            // An event whose data does not decode is ignored (docs/remote.md › Unknown messages).
             return
         }
         var event = WorkspaceEvent(origin: envelope.origin, event: decoded)

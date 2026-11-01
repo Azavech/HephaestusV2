@@ -22,10 +22,8 @@ public struct ValidationError: Error, Equatable, Sendable, CustomStringConvertib
         self.message = message
     }
 
-    /// `<field>: <rule>.`, the form of `identifier: use 2 to 8 letters A–Z.`
-    // DOC-GAP: docs/data-model.md › Write rules asks for "a message naming the field and the rule"
-    // without a format; rules whose message the docs do not give use the form of the
-    // projects.create message `identifier: use 2 to 8 letters A–Z.`.
+    /// `<field>: <rule>.`, the form of `identifier: use 2 to 8 letters A–Z.`, for the rules whose
+    /// message no document gives (docs/data-model.md › Write rules).
     public static func invalid(_ field: String, _ rule: String) -> ValidationError {
         ValidationError(kind: .invalid, field: field, message: "\(field): \(rule).")
     }

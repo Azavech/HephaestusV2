@@ -2,8 +2,7 @@ import Foundation
 
 /// The command line of the Updater (docs/updater.md › Command line):
 /// `Updater --app <bundle path> --pid <app pid> --interval <minutes> --auto-update <true|false>`.
-// DOC-GAP: docs/updater.md › Swift shape does not list a type for the command line; it lives in
-// UpdaterCore so that it can be tested. The reason texts are design choices.
+/// In UpdaterCore so that it can be tested (docs/updater.md › Swift shape).
 public struct UpdaterArguments: Sendable, Hashable {
     public static let usageExitStatus: Int32 = 64
 

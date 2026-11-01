@@ -36,10 +36,8 @@ public protocol ClaudeProcess: AnyObject, Sendable {
 /// integration reads: the login-shell environment and the files it looks the CLI and the tools
 /// up in. The app uses `SystemClaudeProcessLauncher`; tests use an in-memory launcher that
 /// replays fixture lines (docs/architecture.md › Engine configuration, docs/development.md ›
-/// Test rules).
-// DOC-GAP: the docs name `ClaudeProcessLauncher` and its two implementations but not its
-// members. Every access of the Claude integration to the machine goes through it, so that
-// tests never run the user's shell or CLI and never depend on the user's files.
+/// Test rules). Every access of the Claude integration to the machine goes through it, so that
+/// tests never run the user's shell or CLI and never depend on the user's files.
 public protocol ClaudeProcessLauncher: Sendable {
     /// The login-shell environment (docs/chats.md › Environment): the variables of
     /// `/bin/zsh -lic 'env -0'`, or `processEnvironment` when the capture fails.

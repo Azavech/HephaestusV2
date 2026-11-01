@@ -25,8 +25,7 @@ extension Engine {
         var status = stat()
         guard stat(realFile, &status) == 0, (status.st_mode & S_IFMT) == S_IFREG else { throw missing }
         let fileName = url.lastPathComponent
-        // DOC-GAP: docs/engine-api.md › attachments.read gives no message for a file larger than
-        // 20 MiB; it uses the message of docs/tickets.md › Errors for such a file.
+        // docs/engine-api.md › attachments.read, errors
         let name = Self.attachmentName(fromFileName: fileName)
         guard status.st_size <= AttachmentUploads.maximumSize else { throw AttachmentUploads.tooLarge(name) }
         guard let data = FileManager.default.contents(atPath: realFile) else { throw missing }

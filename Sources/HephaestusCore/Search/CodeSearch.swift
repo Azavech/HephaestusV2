@@ -12,13 +12,11 @@ enum CodeSearch {
     static let maximumPaths = 50_000
     /// Directories the walk skips at any depth.
     static let skippedDirectoryNames: Set<String> = [".git", ".build", "build", "DerivedData", "node_modules"]
-    /// The chats folder, which the code scope never reads.
-    // DOC-GAP: docs/search.md › File list skips `.hephaestus/chats` in the walk and relies on
-    // `.hephaestus/.gitignore` inside a git work tree; it is also left out of the git list, so that
-    // the code scope never reads chat files, as docs/search.md › File list states.
+    /// The chats folder, which the code scope never reads: skipped by the walk and removed from
+    /// the git list (docs/search.md › File list, steps 3 and 5).
     static let chatsFolder = ".hephaestus/chats"
-    // DOC-GAP: docs/search.md › File list gives the git commands no timeout; a git command that
-    // runs longer than this is ended and counts as failed, so a search cannot hang.
+    /// A git command that runs longer is ended and counts as failed (docs/search.md › File list,
+    /// step 1).
     static let gitTimeout: Duration = .seconds(30)
 
     /// A listed file with what its stat said.

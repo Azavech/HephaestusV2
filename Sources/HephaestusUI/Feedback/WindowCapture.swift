@@ -131,10 +131,8 @@ enum WindowCapture {
 
     /// Puts each snapshot in an image view right above its web view, so that the rendering draws
     /// it at the web view's place in the view order: views drawn over the web view (the search
-    /// panel, the update banner) stay over it, as on screen.
-    // DOC-GAP: docs/feedback.md › Screenshot capture, step 3, draws the snapshots over the result
-    // of step 2, which also covers the views drawn above the web views; they are drawn in the
-    // web views' place instead.
+    /// panel, the update banner) stay over it, as on screen (docs/feedback.md › Screenshot capture,
+    /// step 3).
     private static func cover(_ snapshots: [WebSnapshot]) -> [NSView] {
         snapshots.compactMap { snapshot in
             guard let superview = snapshot.webView.superview else { return nil }

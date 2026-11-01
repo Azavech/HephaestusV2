@@ -54,12 +54,8 @@ enum ChangedPaths {
     /// The sorted distinct paths of `paths`, `[""]` when it holds the root. When more than
     /// `limit` paths remain, each is replaced by its ancestor at one depth for every path, the
     /// deepest that brings the distinct paths to `limit` or fewer; `[""]` when even the
-    /// top-level entries are more than `limit`.
-    // DOC-GAP: docs/engine-api.md › Limits replaces each path by "its ancestor at the smallest
-    // depth that brings the distinct paths to 500 or fewer". Read literally, that is always
-    // depth 1 (top-level entries), which would make the depth search meaningless; the depth is
-    // searched from the deepest one down, so the event keeps as much detail as fits in 500
-    // paths. Both readings send `[""]` only when more than 500 top-level entries changed.
+    /// top-level entries are more than `limit`. The depth is searched from the deepest one down
+    /// (docs/engine-api.md › Limits, files.changed events).
     static func limited(_ paths: Set<String>, limit: Int = ChangedPaths.limit) -> [String] {
         if paths.contains("") { return [""] }
         guard paths.count > limit else { return paths.sorted() }

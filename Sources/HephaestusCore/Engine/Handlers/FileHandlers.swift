@@ -280,9 +280,7 @@ extension Engine {
         case .brokenLink:
             throw EngineError.notFound("File", path)
         case .special:
-            // DOC-GAP: docs/engine-api.md › files.read does not cover FIFOs, sockets and
-            // devices, which reading would block on or never end; they are refused as not
-            // being files.
+            // FIFOs, sockets and devices (docs/engine-api.md › files.read, errors).
             throw EngineError.invalid("path", "\(path) is not a regular file")
         }
     }
@@ -307,10 +305,7 @@ extension Engine {
     }
 
     /// files.rename and files.trash refuse the project's data folder and project file, and
-    /// those of the loaded sub projects inside it.
-    // DOC-GAP: docs/engine-api.md › files.rename and › files.trash protect `.hephaestus` and
-    // `.hephaestus/project.yml`; a sub project's are the same items at `<sub project>/` in its
-    // parent, so they are protected there too.
+    /// those of the loaded sub projects inside it (docs/engine-api.md › files.rename, › files.trash).
     private func checkNotDataFolder(_ path: String, root: FileProjectRoot) throws {
         var prefixes = [""]
         for other in loadedProjectRoots() where other.path.hasPrefix(root.path == "/" ? "/" : root.path + "/") {

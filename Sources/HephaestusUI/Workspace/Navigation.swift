@@ -93,9 +93,8 @@ extension WindowState {
         case .bundle(let bundleID):
             resolvedProjectID = Identifiers.projectID(of: bundleID) ?? bundleID
         case .chat(let chatID):
-            // DOC-GAP: docs/ui.md › Resolving a target takes the project of the chat's ChatMeta but
-            // does not cover a chat whose metadata the workspace lacks; the active project is
-            // used, and the Chats section shows the not-found text.
+            // Without the chat's metadata, the active project, else the default one; the Chats
+            // section then shows the not-found text (docs/ui.md › Resolving a target).
             resolvedProjectID = workspace.chats[chatID.uuidString]?.projectID ?? projectID ?? defaultProjectID(in: workspace)
         case .skill:
             resolvedProjectID = projectID ?? defaultProjectID(in: workspace)

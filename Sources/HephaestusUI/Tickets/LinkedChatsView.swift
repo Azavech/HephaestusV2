@@ -173,9 +173,7 @@ struct LinkedChatsView: View {
         VStack(spacing: 10) {
             Text("No Chats")
                 .font(.title3.weight(.semibold))
-            // DOC-GAP: docs/tickets.md › Bundles section gives the bundle's Chats tab the ticket's
-            // empty state "with Implement All in place of Implement"; its text is adapted the same
-            // way.
+            // docs/tickets.md › Ticket chats and Implement, › Bundles section (Chats tab).
             Text(owner.kind == .ticket
                  ? "Implement lets Claude implement this ticket. New Chat opens a conversation about it."
                  : "Implement All lets Claude implement this bundle. New Chat opens a conversation about it.")

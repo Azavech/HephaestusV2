@@ -20,9 +20,7 @@ public struct SkillFrontmatter: Codable, Sendable, Hashable {
 
     /// Decodes a frontmatter mapping. When `ModelCoding.skillFolderNameKey` is set in
     /// `userInfo`, the folder name replaces a `name` that is missing or differs from it;
-    /// otherwise a missing `name` reads as "".
-    // DOC-GAP: docs/data-model.md › Skill file gives `name` the default "folder name", which a
-    // decoder only knows when the caller passes it; without it a missing name decodes as "".
+    /// otherwise a missing `name` reads as "" (docs/data-model.md › SKILL.md format).
     public init(from decoder: Decoder) throws {
         let c = try ModelDecodingContainer(decoder)
         let folderName = c.userInfo[ModelCoding.skillFolderNameKey] as? String

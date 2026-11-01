@@ -235,9 +235,8 @@ struct NewProjectSheet: View {
             + workspace.descendants(of: top.id).map { IndentedPopUpButton.Item(tag: $0.project.id, title: $0.project.name, indentation: $0.depth) }
     }
 
-    /// In New Folder mode the parent folder starts at the parent project's root.
-    // DOC-GAP: docs/projects.md › Sub projects gives the parent folder's start value only for the
-    // initial parent; choosing another parent moves the parent folder to that parent's root.
+    /// In New Folder mode the parent folder starts at the parent project's root, and choosing
+    /// another parent moves it to that parent's root (docs/projects.md › Sub projects).
     private func selectParent(_ id: String) {
         guard id != selectedParentID else { return }
         selectedParentID = id
@@ -260,9 +259,8 @@ struct NewProjectSheet: View {
         return "Choose a folder inside “\(parent.name)”."
     }
 
-    /// The note of a project folder inside a loaded project.
-    // DOC-GAP: docs/projects.md › Creating a project shows the inside-a-project note in the New
-    // Project sheet; the New Sub Project sheet names its parent itself, so it shows no note.
+    /// The note of a project folder inside a loaded project; the New Sub Project sheet shows none
+    /// (docs/projects.md › Creating a project).
     private var insideNote: String? {
         guard !isSubProject, !projectFolder.isEmpty,
               let owner = ProjectRules.innermostProject(containing: projectFolder, in: workspace.projects) else { return nil }

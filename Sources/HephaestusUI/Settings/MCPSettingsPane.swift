@@ -73,8 +73,7 @@ struct MCPSettingsPane: View {
         case .failed(let message):
             return "Not listening: \(message)"
         case .stopped:
-            // DOC-GAP: docs/ui.md › MCP gives no status text while the server is stopped (before it
-            // starts); the line stays empty.
+            // Empty before the server starts (docs/ui.md › MCP).
             return ""
         }
     }

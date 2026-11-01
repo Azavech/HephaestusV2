@@ -16,8 +16,8 @@ failed=0
 # 1. Index: each .md file under docs/, except docs/README.md, is the target of an inline link
 #    `](<target>)` of docs/README.md, <target> being its path relative to docs/, optionally prefixed
 #    by `./` and followed by `#<fragment>`.
-# DOC-GAP: docs/ci.md › check-docs.sh writes `<path> is not linked` without saying what <path> is
-# relative to; it is the path relative to the repository root, like the paths of check-public.sh.
+#    The finding names the file by its path relative to the repository root (docs/ci.md ›
+#    check-docs.sh).
 if [ ! -f docs/README.md ]; then
   echo "docs/README.md is missing"
   failed=1

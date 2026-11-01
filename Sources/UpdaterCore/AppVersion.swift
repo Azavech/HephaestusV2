@@ -14,9 +14,8 @@ public struct AppVersion: Sendable, Hashable, Codable {
     }
 
     /// Reads `CFBundleShortVersionString` and `CFBundleVersion`; nil when `CFBundleVersion` is
-    /// missing or not a decimal integer.
-    // DOC-GAP: docs/updater.md › Swift shape does not say what a missing
-    // CFBundleShortVersionString gives; it reads as "".
+    /// missing or not a decimal integer; a missing `CFBundleShortVersionString` reads as `""`
+    /// (docs/updater.md › Swift shape).
     public init?(infoPlist: [String: Any]) {
         guard let build = AppVersion.decimalBuild(infoPlist["CFBundleVersion"]) else { return nil }
         self.version = infoPlist["CFBundleShortVersionString"] as? String ?? ""

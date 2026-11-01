@@ -24,9 +24,8 @@ public enum NamingSubject: Sendable, Hashable {
 
 /// Names tickets, bundles and chats (docs/chats.md › Haiku naming). The engine applies a title
 /// only while the subject still has its provisional title; a nil answer keeps the provisional
-/// title.
-// DOC-GAP: the docs describe Haiku naming but name no Swift type for it; `TitleNamer` is the seam
-// the engine calls, so that tests can provide another implementation.
+/// title. The engine calls it, so that tests can provide another implementation
+/// (docs/architecture.md › HephaestusCore folders).
 public protocol TitleNamer: Sendable {
     /// The cleaned title for `subject` (docs/chats.md › Output cleanup), or nil after a failure,
     /// a timeout or an empty answer.

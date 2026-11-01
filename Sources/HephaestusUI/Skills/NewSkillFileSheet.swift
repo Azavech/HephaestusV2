@@ -80,9 +80,8 @@ struct NewSkillFileSheet: View {
     private func create() {
         guard canCreate else { return }
         let path = normalizedPath
-        // DOC-GAP: docs/skills.md › Editor does not say what Create does with the path of an
-        // existing file, which `skills.writeFile` would empty; the sheet refuses it with the text of
-        // docs/code-editor.md › New File and New Folder.
+        // An existing extra file or folder, which `skills.writeFile` would empty, is refused
+        // (docs/skills.md › Editor).
         if let files = editor?.files, files.contains(where: { $0 == path || $0.hasPrefix(path + "/") }) {
             failure = "\(path) already exists."
             return

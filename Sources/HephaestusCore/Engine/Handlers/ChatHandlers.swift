@@ -173,8 +173,8 @@ extension Engine {
         if let settings = params.settings { try Engine.validated { try settings.validate() } }
         func checkBundle() throws -> TicketBundle {
             guard let bundle = domain.bundle(bundleID) else { throw EngineError.notFound("Bundle", bundleID) }
-            // DOC-GAP: docs/engine-api.md › chats.implementBundle counts the tickets that are not
-            // done; an id whose ticket no longer exists is not a ticket left to implement.
+            // An id whose ticket no longer exists is not a ticket left to implement
+            // (docs/engine-api.md › chats.implementBundle, errors).
             guard bundle.ticketIDs.contains(where: { domain.ticket($0).map { $0.status != .done } ?? false }) else {
                 throw EngineError(.conflict, "\(bundleID) has no ticket left to implement.")
             }
@@ -199,8 +199,7 @@ extension Engine {
     func chatsCreateFeedback(_ params: ChatsCreateFeedback.Params, _ actor: Actor) async throws -> ChatMeta {
         try ActorRules.requireNoSourcePath([params.screenshot], actor)
         let projectID = try Engine.projectIdentifier(params.projectID)
-        // DOC-GAP: docs/engine-api.md › chats.createFeedback lists the screenshot errors without
-        // messages; they use the form `<param>: <reason>.` and the attachment size message.
+        // docs/engine-api.md › chats.createFeedback, errors
         guard params.screenshot.contentType == "image/png" else { throw EngineError.invalid("screenshot", "use a PNG image (image/png)") }
         guard let base64 = params.screenshot.dataBase64 else { throw EngineError.invalid("screenshot", "give its content in dataBase64") }
         guard let screenshot = Data(base64Encoded: base64) else { throw EngineError.invalid("screenshot", "dataBase64 is not valid base64") }
@@ -359,7 +358,7 @@ extension Engine {
         let chatID = params.chatID
         let answer = ModelRules.normalizedLineBreaks(params.answer.trimmingCharacters(in: .whitespacesAndNewlines))
         guard (1...10_000).contains(answer.count) else {
-            // DOC-GAP: docs/engine-api.md › chats.answerQuestion gives no message for this rule.
+            // docs/engine-api.md › chats.answerQuestion, errors
             throw EngineError.invalid("answer", "use 1 to 10,000 characters")
         }
         func check() throws -> (set: QuestionsItem, completes: Bool) {

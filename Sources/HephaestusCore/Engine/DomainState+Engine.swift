@@ -48,10 +48,8 @@ extension Engine {
     }
 
     /// A loaded ticket: `invalid` for a malformed id, `notFound` when its project or file does
-    /// not exist, `internal` when its file exists but never loaded (docs/tickets.md › Errors).
-    // DOC-GAP: docs/engine-api.md lists the `internal` error of a ticket file that never loaded
-    // for tickets.get only; docs/tickets.md › Errors gives it without a method, so every method
-    // that names such a ticket fails with it.
+    /// not exist, `internal` when its file exists but never loaded, in every method
+    /// (docs/tickets.md › Errors, docs/engine-api.md › Tickets).
     func existingTicket(_ value: String) throws -> Ticket {
         let id = try normalizedTicketID(value)
         if let ticket = domain.ticket(id) {
@@ -170,9 +168,8 @@ extension Engine {
     }
 
     /// Moves a file or folder to the Trash and records the removal; nothing happens when it does
-    /// not exist. Fails with `unavailable` and `<path> cannot be moved to the Trash: <reason>.`
-    // DOC-GAP: docs/engine-api.md › Writes and consistency does not say which form `<path>` takes;
-    // the absolute path of the item on the main device is used.
+    /// not exist. Fails with `unavailable` and `<path> cannot be moved to the Trash: <reason>.`,
+    /// `<path>` being the item's absolute path (docs/engine-api.md › Writes and consistency).
     func moveToTrash(_ url: URL) throws {
         let path = url.standardizedFileURL.path
         var status = stat()
@@ -254,8 +251,8 @@ extension Engine {
 /// The `git` tool of docs/architecture.md › Child processes, rule 5, run synchronously on the
 /// engine actor so that a ProjectDetail is built in one step with the change it describes.
 enum GitTool {
-    /// Time allowed to one git call before it is killed.
-    // DOC-GAP: the docs give no timeout for `git config`; 5 s.
+    /// Time allowed to one git call before it is killed (docs/architecture.md › Child processes,
+    /// the table of tool runs).
     static let timeout: TimeInterval = 5
 
     /// Time between SIGTERM and SIGKILL for a call that timed out (docs/architecture.md › Child

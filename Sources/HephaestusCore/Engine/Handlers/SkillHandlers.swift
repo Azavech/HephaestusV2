@@ -93,8 +93,7 @@ extension Engine {
         if renamed {
             let destination = library.appendingPathComponent(finalName, isDirectory: true)
             guard !SkillsLibraryReader.itemExists(destination) else {
-                // DOC-GAP: docs/engine-api.md › skills.update quotes no conflict message; it is the
-                // message of skills.create.
+                // docs/engine-api.md › skills.update, errors
                 throw EngineError(.conflict, "A skill named \(finalName) already exists.")
             }
             do {
@@ -160,8 +159,7 @@ extension Engine {
             throw EngineError(.invalid, "Use skills.update to change SKILL.md.")
         }
         let data = Data(params.text.utf8)
-        // DOC-GAP: docs/engine-api.md › skills.writeFile refuses a text larger than 20 MiB with
-        // `invalid` but quotes no message; it uses the form `<param>: <reason>.`.
+        // docs/engine-api.md › skills.writeFile, errors
         guard data.count <= SkillsLibrary.maximumWriteSize else {
             throw EngineError.invalid("text", "use at most 20 MiB of UTF-8")
         }
@@ -201,8 +199,7 @@ extension Engine {
     /// removes it when present; enabling requires the skill to exist. A changed list rebuilds the
     /// project's plugin.
     func skillsSetEnabled(_ params: SkillsSetEnabled.Params, _ actor: Actor) async throws -> ProjectDetail {
-        // DOC-GAP: docs/engine-api.md › skills.setEnabled lists only `notFound`; a malformed
-        // identifier fails with `invalid`, the rule of docs/engine-api.md › Identifiers.
+        // docs/engine-api.md › skills.setEnabled, errors; › Identifiers
         guard let projectID = Identifiers.normalizedProjectID(params.projectID) else {
             throw EngineError.invalid("projectID", "use 2 to 8 letters A–Z")
         }
@@ -240,10 +237,8 @@ enum SkillLists {
         skills.contains(name) ? skills : skills + [name]
     }
 
-    /// A rename replaces the old name with the new one at the same position.
-    // DOC-GAP: docs/data-model.md › Enabled skills keeps the list without duplicates but does not
-    // say what a rename does to a list that already names the new name (a missing skill); the new
-    // name stays at the old name's position and its other occurrence is removed.
+    /// A rename replaces the old name with the new one at the same position; another occurrence
+    /// of the new name is removed (docs/data-model.md › Enabled skills).
     static func renaming(_ oldName: String, to newName: String, in skills: [String]) -> [String] {
         guard let position = skills.firstIndex(of: oldName) else { return skills }
         var result = skills

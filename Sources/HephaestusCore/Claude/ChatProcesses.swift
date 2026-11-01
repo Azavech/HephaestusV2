@@ -591,8 +591,7 @@ extension Engine {
                 }
             }
         } else if runtime.process == nil {
-            // DOC-GAP: docs/chats.md › Stopping a turn assumes a process; while the launch has not
-            // started it yet, the messages waiting for it are dropped and the chat is idle.
+            // No process yet: the messages waiting for it are dropped (docs/chats.md › Stopping a turn).
             runtime.pendingMessages = []
             runtime.starting = false
             runtime.turnInProgress = false

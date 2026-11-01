@@ -61,9 +61,8 @@ private struct ChatWindowContent: View {
         }
     }
 
-    /// The chat's title, following every rename.
-    // DOC-GAP: docs/ui.md › Windows gives no title before the chat's metadata is known; it is
-    // empty until then.
+    /// The chat's title, following every rename; empty until the chat's metadata is known
+    /// (docs/ui.md › Windows).
     private func title(_ workspace: DeviceWorkspace?) -> String {
         workspace?.chats[value.chatID]?.title ?? ""
     }

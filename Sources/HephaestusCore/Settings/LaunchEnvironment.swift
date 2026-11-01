@@ -87,10 +87,8 @@ public struct LaunchEnvironment: Sendable, Hashable {
     /// - `HEPHAESTUS_DATA_DIR` is created with its intermediate folders, mode 0700, when missing.
     ///
     /// The variables are checked in the order of the table, then the unknown ones in name
-    /// order; the first invalid one is reported. The data directory is created last.
-    // DOC-GAP: docs/architecture.md › Environment overrides defines the message form
-    // `HephaestusV2: <NAME>: <reason>` but neither the reason texts nor which variable is reported
-    // when several are invalid; the reasons below and the table order are design choices.
+    /// order; the first invalid one is reported. The data directory is created last. The reason
+    /// texts are those of docs/architecture.md › Environment overrides, rule 3.
     public static func parse(_ environment: [String: String],
                              homeDirectory: String = NSHomeDirectory()) throws -> LaunchEnvironment {
         func value(_ name: String) -> String? {

@@ -3,9 +3,8 @@ import Foundation
 /// The in-memory `secrets.json` of a running engine and its writes (docs/data-model.md › Secrets
 /// file). The pairing code (sync server), the external MCP token (MCP token store) and the codes
 /// of paired devices (paired devices store) live in this one file, so their services change it
-/// through this store, one change at a time, and never overwrite each other's change.
-// DOC-GAP: the docs name no type for the in-memory secrets.json; three local-only services
-// write it, so one store serializes their changes.
+/// through this store, one change at a time, and never overwrite each other's change
+/// (docs/architecture.md › HephaestusCore folders).
 public final class SecretsStore: @unchecked Sendable {
     public let directory: DataDirectory
     private let lock = NSLock()

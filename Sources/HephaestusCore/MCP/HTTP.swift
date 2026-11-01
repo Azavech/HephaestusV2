@@ -114,10 +114,7 @@ struct HTTPRequestParser: Sendable {
     }
 
     /// The next request head; nil when more bytes are needed. Empty lines before the request
-    /// line are skipped.
-    // DOC-GAP: docs/mcp.md › Request handling, step 1 does not mention empty lines before the
-    // request line; they are skipped, as RFC 9112 › 2.2 recommends, for clients that end a body
-    // with an extra CRLF.
+    /// line are skipped, as RFC 9112 › 2.2 recommends (docs/mcp.md › Request handling, step 1).
     mutating func nextHead() throws(HTTPParseError) -> HTTPRequestHead? {
         while start < buffer.count {
             if buffer[start] == 0x0A {
@@ -197,8 +194,8 @@ struct HTTPRequestParser: Sendable {
             case .trailers(let bytes):
                 let before = start
                 guard let line = try nextLine() else { return nil }
-                // DOC-GAP: docs/mcp.md › Request handling, step 9 ignores trailer fields but sets
-                // no limit on them; a trailer section longer than the head limit is malformed.
+                // A trailer section longer than the head limit is malformed (docs/mcp.md ›
+                // Request handling, step 8).
                 let total = bytes + (start - before)
                 if total > Self.headLimit { throw .malformed }
                 if line.isEmpty {
@@ -213,9 +210,8 @@ struct HTTPRequestParser: Sendable {
         return Data()
     }
 
-    /// The next line of a chunked body without its CRLF or LF; nil when it is not complete.
-    // DOC-GAP: docs/mcp.md › Request handling, step 9 sets no limit on a chunk-size line; one
-    // longer than the head limit is malformed.
+    /// The next line of a chunked body without its CRLF or LF; nil when it is not complete. A
+    /// line longer than the head limit is malformed (docs/mcp.md › Request handling, step 8).
     private mutating func nextLine() throws(HTTPParseError) -> ArraySlice<UInt8>? {
         var index = start
         while index < buffer.count {

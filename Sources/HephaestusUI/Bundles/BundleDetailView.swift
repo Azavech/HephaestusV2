@@ -235,8 +235,7 @@ struct BundleDetailView: View {
         order.removeAll { moving.contains($0) }
         order.insert(contentsOf: moved, at: min(insertion, order.count))
         guard order != bundle.ticketIDs else { return }
-        // DOC-GAP: docs/tickets.md › Bundles section gives no item title for a failed reordering;
-        // its alert is `Reorder failed`.
+        // A failure shows `Reorder failed` (docs/tickets.md › Bundles section, Tickets tab).
         update(bundle.id, ticketIDs: order, itemTitle: "Reorder")
     }
 

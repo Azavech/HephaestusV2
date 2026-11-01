@@ -18,8 +18,7 @@ struct DocsTreeView: View {
                 Text("Docs")
                     .fontWeight(.semibold)
                 Spacer(minLength: 0)
-                // DOC-GAP: docs/documentation-viewer.md › New Doc does not name the folder of the `+`
-                // button; it is the docs folder, as for the empty area.
+                // New Doc… in the docs folder (docs/documentation-viewer.md › Layout, tree header).
                 Button {
                     DocActions.newDoc(in: tree.docsPath, window: window, projectID: projectID)
                 } label: {
@@ -181,8 +180,7 @@ enum DocActions {
         if isFolder {
             let count = tree.docCount(under: path)
             alert.messageText = "Move the folder “\(name)” to the Trash?"
-            // DOC-GAP: docs/documentation-viewer.md › Move to Trash writes `Its <n> docs`; with one
-            // doc it reads `Its 1 doc`, as the other counted texts of the docs do.
+            // `Its 1 doc` or `Its <n> docs` (docs/documentation-viewer.md › Move to Trash).
             let docs = count == 1 ? "1 doc" : "\(count) docs"
             alert.informativeText = "Its \(docs) and every other file in it are moved to the Trash of \(workspace.deviceName)."
         } else {
@@ -212,8 +210,7 @@ enum DocActions {
                 tree.treeSelection = nil
             }
         } catch {
-            // DOC-GAP: docs/documentation-viewer.md › Move to Trash gives no failure text; the alert
-            // of docs/ui.md › Principles names the button pressed, `Move to Trash failed`.
+            // docs/documentation-viewer.md › Move to Trash: `Move to Trash failed`.
             window.alert = .failure("Move to Trash", error)
         }
         buffer?.releaseChecks()

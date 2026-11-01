@@ -603,10 +603,8 @@ extension WindowSheet {
 }
 
 /// One window of `windowsAtRestart`: the persisted `WindowState` of a main window, or the
-/// `ChatWindowValue` of a chat window.
-// DOC-GAP: docs/ui.md › Windows says `windowsAtRestart` is JSON-encoded without its shape; it is an
-// array, front to back, of `{"main": <persisted WindowState JSON text>}` or `{"chat": {deviceID,
-// chatID}}`.
+/// `ChatWindowValue` of a chat window: `{"main": <persisted WindowState JSON text>}` or
+/// `{"chat": {deviceID, chatID}}` (docs/ui.md › Windows).
 struct RestartWindowRecord: Codable {
     var main: String?
     var chat: ChatWindowValue?

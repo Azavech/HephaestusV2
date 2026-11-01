@@ -95,10 +95,9 @@ final class EditorBuffer {
 
     // MARK: State beyond docs/code-editor.md › Editor buffers
 
-    // DOC-GAP: docs/code-editor.md › Editor buffers declares the buffer's data only; the
-    // properties below hold what the rules of Opening files, Large and binary files, Saving and
-    // Changes on disk need: the reveal of a `file` target, the editor's focus for the menu items,
-    // the size and bytes of a binary file (Quick Look), and the connection to the window's engine.
+    // The reveal of a `file` target, the editor's focus for the menu items, the size and bytes of
+    // a binary file (Quick Look), and the connection to the window's engine (docs/code-editor.md ›
+    // Editor buffers).
 
     /// A reveal for the editor once the text is shown.
     var pendingReveal: EditorReveal?
@@ -390,8 +389,7 @@ final class EditorBuffer {
                 break
             }
         case .failure:
-            // DOC-GAP: docs/code-editor.md › Changes on disk lists no row for a read that fails
-            // otherwise (for example a disconnected device); the buffer is left as it is.
+            // Another error leaves the buffer as it is (docs/code-editor.md › Changes on disk).
             break
         }
     }
@@ -639,9 +637,7 @@ enum EditorContent: Equatable {
     case binary(size: Int)
     case tooLarge(size: Int)
     case failed(message: String)
-    // DOC-GAP: docs/code-editor.md › Editor buffers lists no case for a path that does not exist,
-    // while › Opening files step 4 shows `File <path> was not found.` in the editor area (and
-    // docs/documentation-viewer.md › Empty states `Doc <path> was not found.`); this case shows it.
+    /// The path does not exist (docs/code-editor.md › Opening files, step 5).
     case notFound
 }
 

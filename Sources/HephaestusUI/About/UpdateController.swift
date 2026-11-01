@@ -127,8 +127,7 @@ final class UpdateController {
             self.process = process
             app?.engine.log.info(.ui, "updater started")
         } catch {
-            // DOC-GAP: docs/updater.md › Launch and supervision does not separate a failed start
-            // from an exit; it is supervised the same way.
+            // A start that fails is handled as an exit (docs/updater.md › Launch and supervision).
             app?.engine.log.warn(.ui, "updater could not start: \(error.localizedDescription)")
             updaterExited(status: -1)
         }
@@ -320,10 +319,8 @@ final class UpdateController {
 
     // MARK: Update-ready banner
 
-    /// docs/updater.md › Update-ready banner: state `ready`, Install not chosen, the restart
-    /// sequence not started.
-    // DOC-GAP: docs/updater.md › Update-ready banner does not say what happens once the Updater
-    // stopped for good; the banner is hidden then, since no restart could install the update.
+    /// docs/updater.md › Update-ready banner: the Updater running, state `ready`, Install not
+    /// chosen, the restart sequence not started.
     var bannerVisible: Bool {
         isRunning && app?.updaterStatus.state == .ready && !installChosen && !restartInProgress
     }
@@ -378,8 +375,8 @@ final class UpdateController {
             return
         }
         app.engine.log.warn(.ui, "the updater did not answer installing")
-        // DOC-GAP: docs/ui.md › Windows does not say what becomes of `windowsAtRestart` when the
-        // restart does not happen; the key is deleted so that the next launch restores as usual.
+        // The restart does not happen: the key is deleted so that the next launch restores as
+        // usual (docs/ui.md › Windows).
         if app.persistsWindowState {
             UserDefaults.standard.removeObject(forKey: AppModel.windowsAtRestartDefaultsKey)
         }

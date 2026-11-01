@@ -141,9 +141,8 @@ struct ProjectChatPanel: View {
     }
 
     /// The state indicator of a menu item: none for idle, a spinner symbol for starting and
-    /// running, an orange dot while waiting, a red dot for error.
-    // DOC-GAP: docs/ui.md › Inspector shows the state indicator in a pop-up menu, where a spinner
-    // cannot animate; the menu shows the `progress.indicator` symbol instead.
+    /// running, since a spinner cannot animate in a menu, an orange dot while waiting, a red dot
+    /// for error (docs/ui.md › Inspector).
     static func stateImage(_ state: ChatState) -> NSImage? {
         let image: NSImage?
         switch state {

@@ -25,9 +25,7 @@ extension Engine {
         do {
             names = try FileSystemItems.names(in: path)
         } catch {
-            // DOC-GAP: docs/engine-api.md › fs.browse lists no error for a folder that exists
-            // but cannot be read (no permission); it fails with `internal`, the code of file
-            // system errors.
+            // docs/engine-api.md › fs.browse, errors
             throw Engine.fileSystemError("\(path) cannot be read", error)
         }
         var entries: [BrowseResult.Entry] = []

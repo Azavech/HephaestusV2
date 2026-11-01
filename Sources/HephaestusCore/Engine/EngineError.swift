@@ -60,9 +60,8 @@ extension EngineError {
 
     /// `internal` `Internal error: <localized description>.`
     public static func internalError(_ error: Error) -> EngineError {
-        // DOC-GAP: docs/engine-api.md › Dispatcher errors writes `<localized description>`; a Swift
-        // error without a localized description (StorageError, for example) is described by its
-        // `description`, which names the failure, where Foundation's generic text would not.
+        // A Swift error without a localized description (StorageError, for example) is described
+        // by its `description`; a final period is dropped (docs/engine-api.md › Dispatcher errors).
         var description = error is LocalizedError || type(of: error) is NSError.Type
             ? error.localizedDescription
             : String(describing: error)

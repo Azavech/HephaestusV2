@@ -51,8 +51,7 @@ enum TypedAddress: Equatable {
     static func isLocalHostPart(_ hostPart: String) -> Bool {
         if endsWithPort(hostPart) { return true }
         let name = hostPart.lowercased()
-        // DOC-GAP: docs/web-tabs.md › Typed addresses does not say whether `localhost` and `.local`
-        // are compared case-insensitively; host names are, so they are here.
+        // Compared case-insensitively (docs/web-tabs.md › Typed addresses).
         return name == "localhost" || isIPv4(name) || isBracketedIPv6(name) || (name.hasSuffix(".local") && name.count > 6)
     }
 

@@ -49,9 +49,8 @@ extension Engine {
         guard !DomainPaths.hasDataFolderComponent(rootPath) else {
             throw EngineError.invalid("rootPath", "use a folder outside .hephaestus")
         }
-        // DOC-GAP: docs/engine-api.md › projects.create checks the parent at step 6, after the
-        // folder may have been created; the parent is checked with the other params first, so
-        // that a failing call creates no folder.
+        // The parent is checked here, so that a failing call creates no folder
+        // (docs/engine-api.md › projects.create, step 2).
         var parentID: ProjectID?
         if let rawParent = params.parentID {
             let id = try loadedProjectID(rawParent, param: "parentID")
@@ -128,8 +127,7 @@ extension Engine {
         do {
             project = try ProjectFileStore.readProject(folder)
         } catch let error as StorageError {
-            // DOC-GAP: docs/engine-api.md › projects.open asks for a message naming the field
-            // without a format; it is `project.yml: <field>: <reason>.`.
+            // docs/engine-api.md › projects.open, errors
             throw EngineError(.invalid, "project.yml: \(Self.trimmedReason(error.reason)).")
         }
         // 4. No identifier of the project or of its descendants is used at another root.

@@ -26,9 +26,8 @@ enum MarkdownTokenizer {
                 continue
             }
             if text.matches("<!--", at: lineStart) {
-                // 3. HTML comment; the rest of its last line gets the inline rules.
-                // DOC-GAP: docs/code-editor.md › Markdown does not say where an unterminated
-                // comment ends; like the fenced code block, it runs to the end of the text.
+                // 3. HTML comment; the rest of its last line gets the inline rules. Unterminated:
+                // to the end of the text (docs/code-editor.md › Markdown).
                 var end = count
                 var position = lineStart + 4
                 while position < count {
@@ -341,9 +340,8 @@ enum MarkdownTokenizer {
     /// not start or end with a blank; an `_` between two letters or digits neither opens nor
     /// closes.
     ///
-    /// DOC-GAP: docs/code-editor.md › Markdown does not say how runs of `*` or `_` are read;
-    /// each delimiter is a whole run, so `*` is a run of one and `**` a run of two, and longer
-    /// runs neither open nor close.
+    /// Each delimiter is a whole run of `*` or `_`: a run of one or two, and longer runs neither
+    /// open nor close (docs/code-editor.md › Markdown).
     private static func delimitedEnd(_ text: ScalarText, _ start: Int, _ end: Int, length: Int) -> Int? {
         let delimiter = text[start]
         let isUnderscore = delimiter == ascii("_")

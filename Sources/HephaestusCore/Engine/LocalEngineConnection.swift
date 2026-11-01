@@ -107,10 +107,8 @@ public final class LocalEngineConnection: EngineConnection, @unchecked Sendable 
         return isClosed
     }
 
-    /// `unavailable` for a call made after `close()`.
-    // DOC-GAP: docs/engine-api.md › EngineConnection says later calls throw `unavailable`
-    // without a message for the local connection; it uses the message of a remote connection
-    // that is not connected (docs/remote.md › Errors produced by the connection).
+    /// `unavailable` for a call made after `close()`, with the message of a remote connection that
+    /// is not connected (docs/engine-api.md › EngineConnection).
     private var notConnected: EngineError {
         EngineError(.unavailable, "Not connected to \(deviceInfo?.name ?? "this Mac").")
     }
@@ -123,9 +121,8 @@ public final class LocalEngineConnection: EngineConnection, @unchecked Sendable 
         eventStreams.yield(envelope)
     }
 
-    /// The engine stopped and finished the subscription: the connection closes.
-    // DOC-GAP: the docs do not say what a LocalEngineConnection does when its engine stops (the
-    // app quits then); it closes as `close()` does.
+    /// The engine stopped and finished the subscription: the connection closes as `close()` does
+    /// (docs/engine-api.md › EngineConnection).
     private func engineStopped() {
         close()
     }

@@ -12,12 +12,12 @@ extension DeviceWorkspace {
                            replace: { applySnapshot($0, afterReconnect: afterReconnect) },
                            replay: { event in var event = event; apply(&event) })
         } catch {
-            // DOC-GAP: the docs do not say what a workspace shows when `snapshot.get` fails on a
-            // connected device; the window keeps its loading state until the next connection.
+            // The window keeps its loading state until the next connection (docs/ui.md › Empty
+            // states).
             return
         }
-        // DOC-GAP: the docs give no failure state for the device-level seeding calls
-        // `claude.models` and `chats.list`; a failure leaves the data as the events make it.
+        // `claude.models` and `chats.list` have no failure state (docs/ui.md › DeviceWorkspace,
+        // Loading step 2).
         _ = try? await seed({ try await call(ClaudeModels.self) },
                             replace: { models = $0 },
                             replay: { event in var event = event; apply(&event) })

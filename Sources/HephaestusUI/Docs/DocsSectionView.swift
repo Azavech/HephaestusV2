@@ -151,8 +151,7 @@ private struct DocsViewer: View {
         case .binary, .tooLarge:
             EditorNotice(symbol: nil, title: "\(buffer.name) is not a UTF-8 text file.")
         case .failed(let message):
-            // DOC-GAP: docs/documentation-viewer.md › Empty states gives no text for a doc whose
-            // read fails; the code editor's failure notice is shown.
+            // The code editor's failure notice (docs/documentation-viewer.md › Empty states).
             VStack(spacing: 10) {
                 Text("The file could not be opened.")
                     .font(.headline)

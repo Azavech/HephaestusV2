@@ -1,11 +1,8 @@
 import Foundation
 
 /// `<data dir>/settings.yml`: the host settings (docs/data-model.md › Settings file). The rules
-/// that use the environment (paths, ports in effect) are in `Settings/`.
-// DOC-GAP: docs/data-model.md › Swift types puts every type of that page in `Models/`, while
-// docs/architecture.md › HephaestusCore folders lists "Host settings" under `Settings/`. The
-// persisted type lives in `Models/` with the other file types; its rules are in
-// `Settings/HostSettingsRules.swift`.
+/// that use the environment (paths, ports in effect) are in `Settings/HostSettingsRules.swift`
+/// (docs/data-model.md › Swift types, docs/architecture.md › HephaestusCore folders).
 public struct HostSettings: Codable, Sendable, Hashable {
     public var schema: Int
     public var claudePath: String?

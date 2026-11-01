@@ -2,11 +2,10 @@ import Foundation
 
 /// GFM extended URL autolinks (`www.…`, `http://…`, `https://…`) found in text.
 ///
-/// DOC-GAP: docs/documentation-viewer.md › Renderer says the parser runs the GFM autolink
-/// extension, but swift-markdown 0.9 does not attach it. The renderers therefore find extended
+/// swift-markdown 0.9 does not attach the GFM autolink extension, so the renderers find extended
 /// URL autolinks in text themselves, with the rules of cmark-gfm's extension (valid domain,
-/// trailing punctuation, parentheses and entity references). E-mail addresses stay text, which
-/// is also what the docs render for e-mail autolinks.
+/// trailing punctuation, parentheses and entity references); e-mail addresses stay text
+/// (docs/documentation-viewer.md › Renderer).
 enum ExtendedAutolinks {
     enum Piece: Equatable {
         case text(String)

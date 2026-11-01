@@ -35,8 +35,7 @@ enum AttachmentUploads {
             let data: Data
             switch (upload.dataBase64, upload.sourcePath) {
             case (let base64?, nil):
-                // DOC-GAP: docs/engine-api.md › AttachmentUpload gives no message for invalid base64;
-                // it uses the form `<param>: <reason>.` of docs/engine-api.md › Messages.
+                // docs/engine-api.md › AttachmentUpload, rules
                 guard let decoded = Data(base64Encoded: base64) else {
                     throw EngineError.invalid("\(param)[\(index)].dataBase64", "use standard base64 with padding")
                 }
@@ -45,8 +44,7 @@ enum AttachmentUploads {
             case (nil, let sourcePath?):
                 data = try read(sourcePath: sourcePath, projectRoot: projectRoot, homeDirectory: homeDirectory, name: upload.name)
             default:
-                // DOC-GAP: docs/engine-api.md › AttachmentUpload gives no message for both or neither
-                // of dataBase64 and sourcePath; it uses the form `<param>: <reason>.`.
+                // docs/engine-api.md › AttachmentUpload, rules
                 throw EngineError.invalid("\(param)[\(index)]", "send exactly one of dataBase64 and sourcePath")
             }
             total += data.count
@@ -109,8 +107,8 @@ enum AttachmentUploads {
             stem = String(name[..<dot])
             fileExtension = String(name[dot...])
         }
-        // DOC-GAP: docs/engine-api.md › AttachmentUpload shortens the part before the extension;
-        // when the extension alone is too long, the whole name is shortened from its end.
+        // An extension that alone is too long: the whole name is shortened from its end
+        // (docs/engine-api.md › AttachmentUpload).
         if fileExtension.utf8.count >= budget {
             stem = name
             fileExtension = ""

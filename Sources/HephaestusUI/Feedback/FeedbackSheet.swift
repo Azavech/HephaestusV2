@@ -216,8 +216,7 @@ struct FeedbackSheet: View {
         guard workspace.isConnected else {
             return "Not connected to \(name). Send is available when the connection is back."
         }
-        // DOC-GAP: docs/feedback.md › Feedback sheet does not cover a receiving device whose Claude
-        // status is not known yet (no snapshot); it reads as still checking.
+        // A status not known yet (no snapshot) reads as checking (docs/feedback.md › Feedback sheet).
         guard let status = workspace.claudeStatus, !status.checking else {
             return "Checking the Claude CLI on \(name)…"
         }

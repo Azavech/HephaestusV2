@@ -118,9 +118,7 @@ enum SearchRunner {
         let file = ProjectFolder(root: data.root).transcriptFile(meta.id)
         let body = transcripts.texts(chatID: meta.id, file: file, log: log)
         guard let level = terms.level(id: id, titles: [meta.title], body: body) else { return nil }
-        // DOC-GAP: docs/engine-api.md › SearchResult writes the chat subtitle
-        // `<project name> · <chat kind>` but gives no label for the kinds; the stored value
-        // (`project`, `ticket`, `bundle`, `feedback`) is used.
+        // `<chat kind>` is the stored kind (docs/engine-api.md › SearchResult).
         let result = SearchResult(id: "chat:\(id)", kind: .chats, projectID: data.project.id, title: meta.title,
                                   subtitle: "\(data.project.name) · \(meta.kind.rawValue)", snippet: terms.snippet(fromFirstOf: body),
                                   target: .chat(chatID: meta.id))
@@ -146,8 +144,7 @@ enum SearchRunner {
             let description = skill.document.frontmatter.description
             let body = [description, skill.document.body]
             guard let level = terms.level(id: skill.name, titles: [skill.name], body: body) else { return nil }
-            // DOC-GAP: docs/engine-api.md › SearchResult gives the skill description as subtitle;
-            // an empty description gives no subtitle.
+            // An empty description gives no subtitle (docs/engine-api.md › SearchResult).
             let result = SearchResult(id: "skill:\(skill.name)", kind: .skills, title: skill.name,
                                       subtitle: description.isEmpty ? nil : description, snippet: terms.snippet(fromFirstOf: body),
                                       target: .skill(name: skill.name))

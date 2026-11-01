@@ -145,7 +145,7 @@ enum TranscriptRenderer {
         }
         html += "<span class=\"tool-summary\">\(escape(summary))</span>"
         if steps > 0 {
-            // DOC-GAP: docs/chats.md › Tool cards writes `<n> steps`; one step reads `1 step`.
+            // `<n> steps`, `1 step` for one (docs/chats.md › Tool cards).
             html += "<span class=\"tool-steps-count\">\(steps) \(steps == 1 ? "step" : "steps")</span>"
         }
         html += "<span class=\"tool-trailing\">"
@@ -211,8 +211,8 @@ enum TranscriptRenderer {
         return html + "</div>"
     }
 
-    // DOC-GAP: docs/chats.md › Item rendering writes `<tool>`; an MCP tool shows its short name and
-    // the badge `MCP · <server>`, as the permission card does.
+    /// The line of a `permissionRequest` item; an MCP tool shows its short name and the badge
+    /// `MCP · <server>` (docs/chats.md › Item rendering).
     private static func permissionHTML(_ request: PermissionRequestItem) -> String {
         let (server, name) = ToolUseItem.splitToolName(request.toolName)
         var html = "<div class=\"perm-line\"><div class=\"perm-main\"><span class=\"perm-tool\">\(escape(name))</span>"
@@ -282,11 +282,8 @@ enum TranscriptRenderer {
         return marks + language + "\n" + code + (code.hasSuffix("\n") ? "" : "\n") + marks
     }
 
-    // DOC-GAP: docs/chats.md › Tool cards highlights `content` "by the file extension" without a
-    // table; the extension, lowercased, is the code block's language word, so the extensions of
-    // docs/documentation-viewer.md › Code blocks are highlighted and the others are plain.
-    /// The language word of a file for the code block of a `Write` input
-    /// (docs/documentation-viewer.md › Code blocks): its extension, lowercased.
+    /// The language word of a file for the code block of a `Write` input: its extension, lowercased
+    /// (docs/chats.md › Tool cards, docs/documentation-viewer.md › Code blocks).
     static func languageWord(forPath path: String) -> String {
         let name = (path as NSString).lastPathComponent
         let ext = (name as NSString).pathExtension.lowercased()

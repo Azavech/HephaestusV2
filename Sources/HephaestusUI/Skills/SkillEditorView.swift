@@ -281,10 +281,8 @@ private struct SkillBodyPart: View {
             })
     }
 
-    /// The shared Markdown renderer, natively (docs/documentation-viewer.md › Block model).
-    // DOC-GAP: docs/skills.md › Editor uses the shared Markdown renderer without stating the
-    // options of docs/documentation-viewer.md › Renderer; the body has no front matter and no
-    // project folder, so it is rendered as `MarkdownView` renders ticket descriptions.
+    /// The shared Markdown renderer, natively, with the default options and context: links do
+    /// nothing and project images show as blocked (docs/skills.md › Editor).
     private func preview(_ text: String) -> some View {
         ScrollView {
             MarkdownView(markdown: text)
@@ -395,8 +393,7 @@ private struct SkillFileView: View {
         case .binary(let size):
             notice("Binary file · \(Self.size(size))")
         case .failed(let message):
-            // DOC-GAP: docs/skills.md › Editor has no failure view for `skills.readFile`; it is the
-            // code editor's (docs/code-editor.md › Large and binary files, error row).
+            // The code editor's error row (docs/skills.md › Editor, Extra file view).
             VStack(spacing: 8) {
                 Text("The file could not be opened.")
                 Text(message)

@@ -224,10 +224,8 @@ final class SkillsSectionCommands: SectionCommandHandler {
     }
 }
 
-/// `skills.get` failed for another reason than a missing skill.
-// DOC-GAP: docs/skills.md › Empty and error states lists no failure of `skills.get`; the editor
-// column shows the engine's message and Try Again, as a chat view's failed load
-// (docs/ui.md › Empty states).
+/// `skills.get` failed for another reason than a missing skill: the engine's message and Try Again
+/// (docs/skills.md › Empty and error states).
 private struct SkillLoadFailedView: View {
     let message: String
     let tryAgain: () -> Void
@@ -286,8 +284,7 @@ private struct SkillLibraryList: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // DOC-GAP: docs/skills.md › Library list gives the filter field no placeholder; it is
-            // `Filter`, as the ticket list's (docs/tickets.md › Ticket list).
+            // docs/skills.md › Library list
             TextField("Filter", text: $filter)
                 .textFieldStyle(.roundedBorder)
                 .padding(8)

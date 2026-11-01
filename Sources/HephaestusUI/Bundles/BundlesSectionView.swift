@@ -223,9 +223,7 @@ struct BundlesSectionView: View {
                     .background(Color(nsColor: .textBackgroundColor))
             }
         } else {
-            // DOC-GAP: docs/tickets.md › Bundles section gives no text for a list without a
-            // selection; it shows `No Bundle Selected`, as the ticket detail shows
-            // `No Ticket Selected`.
+            // docs/tickets.md › Bundles section.
             Text("No Bundle Selected")
                 .font(.title3)
                 .foregroundStyle(.secondary)

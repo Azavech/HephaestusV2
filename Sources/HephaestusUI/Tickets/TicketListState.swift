@@ -47,10 +47,8 @@ struct TicketListState: Codable, Hashable {
     }
 
     /// A `ticket` navigation target clears the filters that hide its ticket
-    /// (docs/ui.md › Resolving a target). `ticket` is nil while the project is not loaded.
-    // DOC-GAP: docs/ui.md › Resolving a target clears the filters that hide the ticket, but the
-    // ticket is unknown while its project loads; both filters are then cleared so that the ticket
-    // shows once loaded.
+    /// (docs/ui.md › Resolving a target). `ticket` is nil while the project is not loaded; both
+    /// filters are then cleared, so that the ticket shows once loaded.
     mutating func clearFilters(hiding ticket: Ticket?) {
         guard let ticket else {
             statusFilter = .all

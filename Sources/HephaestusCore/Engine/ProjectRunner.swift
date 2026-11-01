@@ -3,9 +3,7 @@ import Foundation
 
 /// Project runs: `projects.run`, `projects.stopRun`, the `run.*` events and their output
 /// (docs/engine-api.md › projects.run, docs/projects.md › Run commands). Used only on the engine
-/// actor.
-// DOC-GAP: docs/architecture.md › HephaestusCore folders assigns no folder to project runs; the
-// runner is engine state, so it lives in `Engine/`.
+/// actor. Engine state, so in `Engine/` (docs/architecture.md › HephaestusCore folders).
 final class ProjectRunner {
     /// One running run.
     final class Run {
@@ -43,9 +41,8 @@ final class ProjectRunner {
 
     /// At most one run.output event per run every 100 ms.
     static let outputInterval: Duration = .milliseconds(100)
-    /// Time the output pipe may stay open after the shell exited, for a process it started.
-    // DOC-GAP: the docs do not say when a run whose shell exited, but whose pipe a background
-    // process keeps open, ends; it ends 500 ms after the shell exited.
+    /// Time the output pipe may stay open after the shell exited, for a process it started
+    /// (docs/projects.md › Run commands, End of a run).
     static let outputGraceAfterExit: Duration = .milliseconds(500)
     /// Default and limits of `timeoutSeconds`.
     static let defaultTimeout = 600

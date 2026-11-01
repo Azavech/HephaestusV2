@@ -198,8 +198,7 @@ struct ReconnectView: View {
                     workspace.reconnectNow()
                 }
             }
-            // DOC-GAP: docs/ui.md › Reconnect view opens the Add Device sheet "on the window", but
-            // a chat window has no sheet for it; Enter Pairing Code… shows in main windows only.
+            // Main windows only: a chat window has no Add Device sheet (docs/ui.md › Reconnect view).
             if pairing, let window {
                 Button("Enter Pairing Code…") {
                     window.sheet = .addDevice(deviceID: workspace.deviceID)

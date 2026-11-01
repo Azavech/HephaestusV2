@@ -186,8 +186,7 @@ enum TicketActions {
             return (false, "This bundle has no tickets.")
         }
         let tickets = workspace.tickets[projectID] ?? [:]
-        // DOC-GAP: docs/tickets.md › Implement All counts the tickets that are not done; an id
-        // without a ticket file is not counted, as the engine cannot implement it.
+        // An id without a ticket file does not count (docs/tickets.md › Implement All).
         let open = bundle.ticketIDs.contains { tickets[$0].map { $0.status != .done } ?? false }
         if !open {
             return (false, "All tickets of this bundle are done.")

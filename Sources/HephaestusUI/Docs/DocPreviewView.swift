@@ -297,8 +297,7 @@ final class DocPreviewController: NSObject, WKNavigationDelegate {
                     let tab = try await workspace.call(WebTabsOpen.self, WebTabsOpen.Params(projectID: projectID, url: address))
                     await window.navigate(to: .webTab(projectID: projectID, tabID: tab.id))
                 } catch {
-                    // DOC-GAP: docs/documentation-viewer.md › Link activation gives no failure
-                    // text for `webTabs.open`; the alert of docs/ui.md › Principles is shown.
+                    // docs/documentation-viewer.md › Link activation: `Open Link failed`.
                     window.alert = .failure("Open Link", error)
                 }
             }

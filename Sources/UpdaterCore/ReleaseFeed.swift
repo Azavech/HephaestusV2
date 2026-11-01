@@ -50,9 +50,8 @@ public struct UpdaterError: Error, Equatable, Sendable, CustomStringConvertible,
     public var errorDescription: String? { message }
 
     /// `<localized description>` of docs/updater.md, inserted before a final period of the
-    /// message templates.
-    // DOC-GAP: docs/updater.md writes `<localized description>.`; most localized descriptions end
-    // with a period already, so one final period of the description is dropped to avoid "..".
+    /// message templates: the error's `localizedDescription` without its final period, so that
+    /// the message ends with one period (docs/updater.md › Release feed).
     static func describe(_ error: Error) -> String {
         var text = (error as NSError).localizedDescription
         if text.hasSuffix(".") {
@@ -85,9 +84,7 @@ public enum ReleaseRepository {
 public struct ReleaseFeed: Sendable {
     public var repository: String
     public var session: URLSession
-    /// The running app's version, sent in `User-Agent`.
-    // DOC-GAP: docs/updater.md › Swift shape gives `init(repository:session:)`, but the
-    // `User-Agent` header needs the running version; it is a third parameter.
+    /// The running app's version, sent in `User-Agent` (docs/updater.md › Swift shape).
     public var runningVersion: String
 
     public static let manifestAssetName = "release.json"
@@ -133,8 +130,7 @@ public struct ReleaseFeed: Sendable {
     /// an `UpdaterError` whose message is the `error` state's message.
     public func latest() async throws -> FeedResult {
         guard let request = latestReleaseRequest() else {
-            // DOC-GAP: the app does not start the Updater without a valid repository (docs/updater.md ›
-            // Starting the Updater, row 4); an Updater started by hand reports the same reason.
+            // An Updater started by hand without a valid repository (docs/updater.md › Release feed).
             throw UpdaterError(UpdaterTexts.noRepository)
         }
         let data: Data
@@ -161,8 +157,7 @@ public struct ReleaseFeed: Sendable {
         do {
             release = try JSONDecoder().decode(GitHubRelease.self, from: data)
         } catch {
-            // DOC-GAP: docs/updater.md › Latest release request does not define a 200 answer that is
-            // not a release; it is reported like a failed request.
+            // A 200 answer that is not a release (docs/updater.md › Latest release request).
             throw Self.checkFailed(error)
         }
         let manifestURL = try Self.asset(named: Self.manifestAssetName, in: release)
@@ -178,9 +173,8 @@ public struct ReleaseFeed: Sendable {
         return .release(manifest, manifestData: manifestData, zipURL: zipURL)
     }
 
-    /// The URL of the only asset named `name`.
-    // DOC-GAP: docs/updater.md › Security allows HTTPS downloads only; an asset whose URL is not
-    // HTTPS counts as missing.
+    /// The URL of the only asset named `name`; an asset whose URL is not HTTPS counts as missing
+    /// (docs/updater.md › Latest release request, › Security).
     static func asset(named name: String, in release: GitHubRelease) throws -> URL {
         let matches = release.assets.filter { $0.name == name }
         guard matches.count == 1, let url = matches.first?.browserDownloadURL, url.scheme?.lowercased() == "https" else {
@@ -189,10 +183,8 @@ public struct ReleaseFeed: Sendable {
         return url
     }
 
-    /// Downloads `release.json`: redirects followed, timeout 30 seconds, at most 1 MiB.
-    // DOC-GAP: docs/updater.md › Release manifest does not define a failed manifest download; a
-    // network failure reads as a failed check, another status than 200 as `GitHub answered HTTP
-    // <status>.`, and a body above 1 MiB as an invalid release.json.
+    /// Downloads `release.json`: redirects followed, timeout 30 seconds, at most 1 MiB; the
+    /// failures and their messages are those of docs/updater.md › Release manifest.
     func downloadManifest(from url: URL) async throws -> Data {
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: Self.timeout)
         request.setValue("HephaestusV2-Updater/\(runningVersion)", forHTTPHeaderField: "User-Agent")

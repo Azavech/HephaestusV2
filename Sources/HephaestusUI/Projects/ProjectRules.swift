@@ -103,9 +103,8 @@ enum ProjectRules {
     // MARK: Project settings
 
     /// A relative path with `/` separators, no leading or trailing `/`, no empty, `.` or `..`
-    /// component, not inside `.hephaestus`.
-    // DOC-GAP: docs/projects.md › Project settings gives the docs folder the placeholder `docs` but
-    // no meaning for an empty field; an empty field is not a relative path and shows the message.
+    /// component, not inside `.hephaestus`; an empty field is not a relative path
+    /// (docs/projects.md › Project settings).
     static func docsPathMessage(_ docsPath: String) -> String? {
         let valid = ModelRules.isRelativePath(docsPath) && docsPath.split(separator: "/").first != ".hephaestus"
         return valid ? nil : "Enter a folder path inside the project, for example docs."

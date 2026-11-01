@@ -195,8 +195,7 @@ extension Engine {
         case .own:
             return
         case .deleted:
-            // DOC-GAP: docs/data-model.md › Reactions stops the running chats of an unloaded
-            // project but says nothing of its runs; they continue until they end or the app quits.
+            // Its runs continue until they end or the app quits (docs/data-model.md › Reactions).
             recordApplied(path, nil)
             let unloaded = unloadTree(id)
             emitProjectsRemoved(unloaded.projectIDs, origin: .system)

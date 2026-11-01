@@ -13,8 +13,7 @@ public enum UpdateDecision: Sendable, Equatable {
     ///   - systemVersion: the running macOS version.
     ///   - installFailedText: the text of the `install-failed` file of the manifest's build in
     ///     the cache folder, nil when there is none.
-    // DOC-GAP: docs/updater.md › Swift shape writes `static func decide(...)` without its
-    // parameters; these are the inputs the decision table names.
+    // docs/updater.md › Swift shape, › Decision
     public static func decide(manifest: ReleaseManifest, runningBuild: Int, systemVersion: OperatingSystemVersion,
                               installFailedText: String?) -> UpdateDecision {
         if manifest.build <= runningBuild {

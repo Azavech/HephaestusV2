@@ -152,8 +152,8 @@ private struct EditorTabsBar: View {
         let name = ProjectPaths.name(of: path)
         guard sharedName else { return name }
         let parent = ProjectPaths.parent(of: path)
-        // DOC-GAP: docs/code-editor.md › Editor tabs names the parent folder; for a file of the
-        // project root it is the project's folder name.
+        // For a file of the project root, the project's folder name (docs/code-editor.md › Editor
+        // tabs, Label).
         let parentName = parent.isEmpty
             ? ((workspace.project(projectID)?.rootPath ?? projectID) as NSString).lastPathComponent
             : ProjectPaths.name(of: parent)
