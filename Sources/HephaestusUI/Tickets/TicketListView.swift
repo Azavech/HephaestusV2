@@ -58,6 +58,7 @@ struct TicketListView: View {
             }
             VStack(alignment: .leading, spacing: 6) {
                 statusFilter
+                    .fillingWidth()
                 HStack(spacing: 8) {
                     filterField
                     bundleButton
@@ -67,7 +68,7 @@ struct TicketListView: View {
         }
     }
 
-    private var statusFilter: some View {
+    private var statusFilter: StatusFilterControl {
         StatusFilterControl(selection: Binding(
             get: { listState.statusFilter },
             set: { value in window.updateViewState(of: projectID) { $0.ticketList.statusFilter = value } }
@@ -242,11 +243,20 @@ struct TicketListView: View {
 /// The status filter: a small segmented control whose segments are as wide as their titles
 /// (211 pt), so that it fits the list at its 240 pt minimum width. SwiftUI's segmented picker
 /// gives every segment the width of the widest (318 pt), which made the list's content wider than
-/// its column.
+/// its column. With `fillsWidth` it takes the width it is offered, never less than its natural
+/// width, and its segments share the extra space.
 struct StatusFilterControl: NSViewRepresentable {
     @Binding var selection: TicketListState.StatusFilter
+    var fillsWidth = false
 
     private static let filters = TicketListState.StatusFilter.allCases
+
+    /// The same control, taking the full width it is offered.
+    func fillingWidth() -> StatusFilterControl {
+        var control = self
+        control.fillsWidth = true
+        return control
+    }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -257,13 +267,13 @@ struct StatusFilterControl: NSViewRepresentable {
                                          target: context.coordinator, action: #selector(Coordinator.changed(_:)))
         control.controlSize = .small
         control.font = .systemFont(ofSize: NSFont.systemFontSize(for: .small))
-        control.segmentDistribution = .fit
         control.setAccessibilityLabel("Status")
         return control
     }
 
     func updateNSView(_ control: NSSegmentedControl, context: Context) {
         context.coordinator.parent = self
+        control.segmentDistribution = fillsWidth ? .fill : .fit
         let index = Self.filters.firstIndex(of: selection) ?? 0
         if control.selectedSegment != index {
             control.selectedSegment = index
@@ -271,7 +281,9 @@ struct StatusFilterControl: NSViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSSegmentedControl, context: Context) -> CGSize? {
-        nsView.intrinsicContentSize
+        let natural = nsView.intrinsicContentSize
+        guard fillsWidth, let width = proposal.width, width.isFinite else { return natural }
+        return CGSize(width: max(width, natural.width), height: natural.height)
     }
 
     @MainActor

@@ -152,7 +152,7 @@ The Tickets section (sidebar, ⌘1) shows the tickets of the selected project on
 
 ### Ticket list
 
-Header bar, from left to right:
+Header bar, from left to right, on one row when the list is wide enough for all its controls. Otherwise the header takes two lines: the status filter alone on the first line, filling the header's width with its four segments sharing that width, and the text filter and the two buttons on the second line.
 
 | Control                      | Behaviour                                                                                                                                         |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
