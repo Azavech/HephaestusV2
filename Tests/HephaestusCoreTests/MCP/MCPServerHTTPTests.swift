@@ -470,6 +470,62 @@ struct MCPServerHTTPTests {
 
     // MARK: Lifecycle
 
+    /// A port chosen by the system on 127.0.0.1 and released at once.
+    static func freePort() async throws -> Int {
+        let parameters = NWParameters.tcp
+        parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
+        let listener = try NWListener(using: parameters)
+        listener.newConnectionHandler = { $0.cancel() }
+        listener.start(queue: DispatchQueue(label: "test.free-port"))
+        defer { listener.cancel() }
+        let deadline = ContinuousClock.now + .seconds(5)
+        while (listener.port?.rawValue ?? 0) == 0, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        return Int(try #require(listener.port).rawValue)
+    }
+
+    @Test("settings.update of mcpPort moves the server when no port override is set")
+    func movesWithSetting() async throws {
+        let first = try await Self.freePort()
+        let second = try await Self.freePort()
+        try await withTemporaryDirectory { folder in
+            let directory = DataDirectory(url: folder.appendingPathComponent("Data", isDirectory: true))
+            try FileManager.default.createDirectory(at: directory.url, withIntermediateDirectories: true)
+            _ = try DeviceFileStore.write(HostSettings(mcpPort: first, syncEnabled: false), to: directory)
+            var configuration = EngineConfiguration.test(dataDirectory: directory.url, claudeLauncher: NoClaudeLauncher())
+            configuration.mcpPort = nil
+            let engine = try await Engine(configuration: configuration)
+            await engine.start()
+            do {
+                #expect(await engine.mcpServer.state == .listening(port: first))
+                _ = try await engine.dispatch(method: "settings.update", params: Data(#"{"mcpPort":\#(second)}"#.utf8),
+                                              actor: .user(deviceID: engine.deviceID))
+                #expect(await engine.mcpServer.state == .listening(port: second))
+                let reply = try await MCPHTTP.post(port: second, token: await engine.tokens.externalToken,
+                                                   #"{"jsonrpc":"2.0","id":1,"method":"ping"}"#)
+                #expect(reply.status == 200)
+            } catch {
+                await engine.shutdown()
+                throw error
+            }
+            await engine.shutdown()
+            #expect(try String(contentsOf: directory.engineLogFile, encoding: .utf8).contains("INFO mcp: stopped\n"))
+        }
+    }
+
+    @Test("With a port override, a new mcpPort is stored and the server stays")
+    func overrideKeepsPort() async throws {
+        try await withTestEngine { engine, connection, _ in
+            let port = try await Self.port(engine)
+            let unused = port == 65_000 ? 65_001 : 65_000
+            _ = try await engine.dispatch(method: "settings.update", params: Data(#"{"mcpPort":\#(unused)}"#.utf8),
+                                          actor: .user(deviceID: engine.deviceID))
+            #expect(try await connection.call(SettingsGet.self).mcpPort == unused)
+            #expect(await engine.mcpServer.state == .listening(port: port))
+        }
+    }
+
     @Test("A busy port: 5 attempts one interval apart, then failed with the system's text")
     func bindFailure() async throws {
         try await withStandaloneServer { holder in
