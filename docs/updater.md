@@ -51,13 +51,27 @@ Updater --app <bundle path> --pid <app pid> --interval <minutes> --auto-update <
 | `--interval`    | no       | `updateCheckIntervalMinutes`; default `30`. A value below 5 is raised to 5 and a value above 1440 is lowered to 1440. |
 | `--auto-update` | no       | `autoUpdate`; `true` or `false`, default `true`.                                                                      |
 
-`--interval` and `--auto-update` are Default chosen at design time. A missing or invalid required argument, an unknown argument or an invalid value makes the Updater write `Updater: <reason>` to standard error and exit with status 64.
+`--interval` and `--auto-update` are Default chosen at design time. A missing or invalid required argument, an unknown argument or an invalid value makes the Updater write `Updater: <reason>` to standard error and exit with status 64. The arguments are read in order, then `--app` and `--pid` are checked; the first failure gives the reason:
+
+| Failure                                                              | Reason                                 |
+| -------------------------------------------------------------------- | -------------------------------------- |
+| An argument that is not one of the four names                        | `unknown argument <argument>`          |
+| A name given a second time                                           | `<name> is given twice`                |
+| A name without a value after it                                      | `<name> needs a value`                 |
+| No `--app`                                                           | `--app is required`                    |
+| `--app` does not start with `/`                                      | `--app needs an absolute path`         |
+| No `--pid`                                                           | `--pid is required`                    |
+| `--pid` is not a positive decimal integer                            | `--pid needs a process id`             |
+| `--interval` is not a decimal integer (digits after an optional `-`) | `--interval needs a number of minutes` |
+| `--auto-update` is neither `true` nor `false`                        | `--auto-update needs true or false`    |
+
+A negative `--interval` is raised to 5 and one too large for `Int` is lowered to 1440. The reasons are Default chosen at design time.
 
 ### Launch and supervision
 
 - The app starts the Updater with `Process`: executable `Contents/Helpers/Updater` of the running bundle, the arguments above, the app's own environment, and standard input, output and error set to `/dev/null`. Default chosen at design time.
 - The Updater logs with `os.Logger`, subsystem `ca.azavech.hephaestusv2.updater`, category `updater`; it writes nothing else to standard output or error. Default chosen at design time.
-- When the Updater exits while the app keeps running and the app has not posted [`app.quitting`](#ipc), the app starts it again 5 seconds later with the current settings. After the third such restart in one launch the app stops restarting it, and the reason shown becomes `The updater stopped unexpectedly.` Default chosen at design time.
+- When the Updater exits while the app keeps running and the app has not posted [`app.quitting`](#ipc), the app starts it again 5 seconds later with the current settings. After the third such restart in one launch the app stops restarting it, and the reason shown becomes `The updater stopped unexpectedly.` A start that fails (the executable cannot be launched) is handled as an exit. Default chosen at design time.
 - An app process that did not start an Updater ignores every updater notification, so it never reacts to the Updater of another HephaestusV2 process on the same Mac ([Environment overrides](architecture.md#environment-overrides)).
 
 ## Lifetime
@@ -69,7 +83,9 @@ Updater --app <bundle path> --pid <app pid> --interval <minutes> --auto-update <
 
 ## Release feed
 
-The repository is the value `<owner>/<name>` of the Info.plist key `HephaestusReleaseRepository` of `<app>/Contents/Info.plist`, read once at start; CI sets it from `github.repository` ([Info.plist keys](ci.md#infoplist-keys)).
+The repository is the value `<owner>/<name>` of the Info.plist key `HephaestusReleaseRepository` of `<app>/Contents/Info.plist`, read once at start; CI sets it from `github.repository` ([Info.plist keys](ci.md#infoplist-keys)). The app does not start the Updater without a valid repository (row 4 of [Starting the Updater](#starting-the-updater)); an Updater started by hand without one ends every check in state `error` with the message `Updates are unavailable: this build has no release repository.` Default chosen at design time.
+
+In the messages of this page, `<localized description>` is the `localizedDescription` of the underlying error without its final period, so that the message ends with one period. Default chosen at design time.
 
 ### Latest release request
 
@@ -86,16 +102,25 @@ The headers and the timeout are Default chosen at design time.
 | Response                                               | Outcome                                                                                                                    |
 | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
 | 200                                                    | The release JSON. Fields used: `tag_name`, `assets[].name`, `assets[].browser_download_url`; every other field is ignored. |
+| 200 with a body that does not decode as a release      | State `error`, message `The update check failed: <localized description>.` Default chosen at design time.                  |
 | 404                                                    | The repository has no release yet: state `upToDate`. Default chosen at design time.                                        |
 | 429, or 403 with the header `x-ratelimit-remaining: 0` | State `error`, message `GitHub's rate limit was reached; the next check tries again.`                                      |
 | Any other status                                       | State `error`, message `GitHub answered HTTP <status>.`                                                                    |
 | No response (network error, timeout)                   | State `error`, message `The update check failed: <localized description>.`                                                 |
 
-The release must have one asset named exactly `release.json` and one named exactly `HephaestusV2.zip`; otherwise the state is `error` with the message `The latest release has no <asset name> asset.`
+The release must have one asset named exactly `release.json` and one named exactly `HephaestusV2.zip`, each with an HTTPS `browser_download_url`; otherwise the state is `error` with the message `The latest release has no <asset name> asset.` An asset whose URL is not HTTPS counts as missing ([Security](#security)). Default chosen at design time.
 
 ### Release manifest
 
 The Updater downloads the `browser_download_url` of `release.json` (redirects followed, timeout 30 seconds, at most 1 MiB) and decodes it as `ReleaseManifest`, whose fields and rules are in [release.json](ci.md#releasejson). A body that does not decode, or a field that breaks its rule, gives state `error` with the message `The release.json of the latest release is invalid.` The size limit is Default chosen at design time.
+
+| Failed download                      | Message                                              |
+| ------------------------------------ | ---------------------------------------------------- |
+| No response (network error, timeout) | `The update check failed: <localized description>.`  |
+| A status other than 200              | `GitHub answered HTTP <status>.`                     |
+| A body larger than 1 MiB             | `The release.json of the latest release is invalid.` |
+
+The state is `error` with that message. Default chosen at design time.
 
 ### Decision
 
@@ -123,6 +148,8 @@ Rows 2 and 3 are Default chosen at design time. In row 4, when `autoUpdate` is t
 | `checking`                               | No second check; the current status is posted again.    |
 | `downloading`, `ready`, `installing`     | No network request; the current status is posted again. |
 
+- A due check skipped in state `downloading`, `ready` or `installing` counts as a check: the next one is due `--interval` minutes later. A check due during `checking` is not counted; the running check schedules the next one when it ends. Default chosen at design time.
+
 - A check in state `available` that finds the same build keeps it; one that finds a newer build replaces it.
 - When a `check` changes `autoUpdate` from false to true while the state is `available`, the download starts after the check. Turning `autoUpdate` off does not cancel a running download nor discard a `ready` update; the app then waits for the user to restart ([Restart rules](#restart-rules)). Default chosen at design time.
 
@@ -130,21 +157,21 @@ Rows 2 and 3 are Default chosen at design time. In row 4, when `autoUpdate` is t
 
 The state is `downloading` from the first step until the update is `ready` or a step fails; `version` and `build` are the manifest's. A download starts when `autoUpdate` is true and a check finds a newer build, or on an `install` request ([IPC](#ipc)).
 
-| #   | Step                                                                                                                                                                                                                                                                                                                                                                                       | Failure message                                              |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
-| 1   | Use the cache folder `~/Library/Caches/HephaestusV2/Updates/<build>/`, creating it, and delete every other entry of `~/Library/Caches/HephaestusV2/Updates/`.                                                                                                                                                                                                                              | `The update could not be saved: <localized description>.`    |
-| 2   | When `<build>/HephaestusV2.zip` exists and its size and SHA-256 match the manifest, reuse it. Otherwise download the `browser_download_url` of `HephaestusV2.zip` (redirects followed, request timeout 60 seconds, resource timeout 30 minutes) to a temporary file and move it to `<build>/HephaestusV2.zip`. Write the manifest's bytes to `<build>/release.json`.                       | `Downloading v0.5.0(61) failed: <localized description>.`    |
-| 3   | The size of `HephaestusV2.zip` equals `size`.                                                                                                                                                                                                                                                                                                                                              | `The downloaded update has the wrong size.`                  |
-| 4   | The SHA-256 of `HephaestusV2.zip`, in lowercase hexadecimal, equals `sha256`.                                                                                                                                                                                                                                                                                                              | `The downloaded update does not match its SHA-256 checksum.` |
-| 5   | Delete `<build>/expanded/` when it exists, then run `/usr/bin/ditto -x -k <build>/HephaestusV2.zip <build>/expanded`; the exit status is 0.                                                                                                                                                                                                                                                | `The downloaded update could not be unpacked.`               |
-| 6   | `<build>/expanded/HephaestusV2.app` exists and is a folder.                                                                                                                                                                                                                                                                                                                                | `The downloaded update does not contain HephaestusV2.app.`   |
-| 7   | In `<build>/expanded/HephaestusV2.app/Contents/Info.plist`: `CFBundleIdentifier` is `ca.azavech.hephaestusv2`, `CFBundleShortVersionString` equals `version` and `CFBundleVersion` equals `build` written in decimal.                                                                                                                                                                      | `The downloaded update is not HephaestusV2 v0.5.0(61).`      |
-| 8   | `/usr/bin/codesign --verify --deep --strict <build>/expanded/HephaestusV2.app` exits with status 0.                                                                                                                                                                                                                                                                                        | `The downloaded update has an invalid code signature.`       |
-| 9   | Team ID: when the running app (`--app`) is signed with a Team ID, the new app is signed with the same Team ID. Both are read with the Security framework: `SecStaticCodeCreateWithPath`, then `SecCodeCopySigningInformation` with `kSecCSSigningInformation`, key `kSecCodeInfoTeamIdentifier`. A running app without a Team ID (ad-hoc signed) accepts any signature that passed step 8. | `The downloaded update is signed by another team.`           |
+| #   | Step                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Failure message                                              |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| 1   | Use the cache folder `~/Library/Caches/HephaestusV2/Updates/<build>/`, creating it, and delete every other entry of `~/Library/Caches/HephaestusV2/Updates/`.                                                                                                                                                                                                                                                                                                          | `The update could not be saved: <localized description>.`    |
+| 2   | When `<build>/HephaestusV2.zip` exists and its size and SHA-256 match the manifest, reuse it. Otherwise download the `browser_download_url` of `HephaestusV2.zip` (redirects followed, request timeout 60 seconds, resource timeout 30 minutes) to a temporary file and move it to `<build>/HephaestusV2.zip`; an answer whose status is not 2xx fails with the description `The server answered HTTP <status>.` Write the manifest's bytes to `<build>/release.json`. | `Downloading v0.5.0(61) failed: <localized description>.`    |
+| 3   | The size of `HephaestusV2.zip` equals `size`.                                                                                                                                                                                                                                                                                                                                                                                                                          | `The downloaded update has the wrong size.`                  |
+| 4   | The SHA-256 of `HephaestusV2.zip`, in lowercase hexadecimal, equals `sha256`.                                                                                                                                                                                                                                                                                                                                                                                          | `The downloaded update does not match its SHA-256 checksum.` |
+| 5   | Delete `<build>/expanded/` when it exists, then run `/usr/bin/ditto -x -k <build>/HephaestusV2.zip <build>/expanded`; the exit status is 0.                                                                                                                                                                                                                                                                                                                            | `The downloaded update could not be unpacked.`               |
+| 6   | `<build>/expanded/HephaestusV2.app` exists and is a folder.                                                                                                                                                                                                                                                                                                                                                                                                            | `The downloaded update does not contain HephaestusV2.app.`   |
+| 7   | In `<build>/expanded/HephaestusV2.app/Contents/Info.plist`: `CFBundleIdentifier` is `ca.azavech.hephaestusv2`, `CFBundleShortVersionString` equals `version` and `CFBundleVersion` equals `build` written in decimal.                                                                                                                                                                                                                                                  | `The downloaded update is not HephaestusV2 v0.5.0(61).`      |
+| 8   | `/usr/bin/codesign --verify --deep --strict <build>/expanded/HephaestusV2.app` exits with status 0.                                                                                                                                                                                                                                                                                                                                                                    | `The downloaded update has an invalid code signature.`       |
+| 9   | Team ID: when the running app (`--app`) is signed with a Team ID, the new app is signed with the same Team ID. Both are read with the Security framework: `SecStaticCodeCreateWithPath`, then `SecCodeCopySigningInformation` with `kSecCSSigningInformation`, key `kSecCodeInfoTeamIdentifier`. A running app without a Team ID (ad-hoc signed) accepts any signature that passed step 8.                                                                             | `The downloaded update is signed by another team.`           |
 
 - After step 9 the state becomes `ready`; the Updater posts `status` and then `ready`.
 - When a step fails, the Updater deletes `<build>/` and the state becomes `error` with the step's message and the manifest's version and build. The next check, scheduled or requested, starts again from the feed.
-- `<localized description>` is the `localizedDescription` of the underlying error. The failure messages and the timeouts are Default chosen at design time.
+- `<localized description>` is the `localizedDescription` of the underlying error, without its final period ([Release feed](#release-feed)). The failure messages, the `The server answered HTTP <status>.` description and the timeouts are Default chosen at design time.
 - With `HEPHAESTUS_DATA_DIR` set, the cache folder stays `~/Library/Caches/HephaestusV2/Updates/` ([Files outside the data directory](architecture.md#files-outside-the-data-directory)).
 
 ## Installing
@@ -216,7 +243,7 @@ The app and the Updater exchange distributed notifications:
 | `ca.azavech.hephaestusv2.updater.ready`   | Updater → app | `pid` (Int), `version` (String), `build` (Int)                                       | The update is downloaded and verified. Posted once per update, right after the status `ready`.                                                                                                                                                    |
 | `ca.azavech.hephaestusv2.app.quitting`    | app → Updater | `pid` (Int), `restart` (Bool), `activate` (Bool)                                     | The app terminates now; `restart` is true when it quits to install the update and relaunch ([Installing](#installing)); `activate` is true when HephaestusV2 is the active app when it posts the notification.                                    |
 
-The `intervalMinutes`, `autoUpdate`, `restart` and `activate` keys are Default chosen at design time.
+The `intervalMinutes`, `autoUpdate`, `restart` and `activate` keys are Default chosen at design time. The Updater adopts each of `intervalMinutes` and `autoUpdate` only when it is present with its type; a value that is missing or of another type leaves that setting unchanged, and the check runs. Default chosen at design time.
 
 The app posts `check`:
 
@@ -284,11 +311,12 @@ Each time the window appears (opened while it was closed), the app posts `check`
 | 7   | State `available`, `downloading` or `ready`, and Not Now was clicked since the window appeared | `v0.5.0(61) available`                                     | none                                  |
 | 8   | State `available`, `downloading` or `ready`                                                    | `v0.5.0(61) available`                                     | `Install` (default button), `Not Now` |
 | 9   | State `error`                                                                                  | The message                                                | `Try Again`                           |
+| 10  | State `installing`                                                                             | `Installing…` with a small progress indicator              | none                                  |
 
 - **Install** marks the install as chosen by the user (row 2). In state `ready` the [restart checks](#restart-rules) run at once; otherwise the app posts `install` (when the state is `available`) and runs the restart checks when `ready` arrives. Cancelling a restart check clears the mark, so the window shows row 8 again. An `error` status after Install clears the mark and shows row 9. When the restart sequence fails at step 3 of [Restart for an update](#restart-for-an-update), the mark is cleared and the window shows `The updater did not respond; the update was not installed.` with Install and Not Now. Closing the window does not cancel a chosen install.
 - **Not Now** hides the two buttons until the window closes. It changes neither automatic updates nor a `ready` update.
 - **Try Again** posts `install` when the error carries a build, and `check` otherwise.
-- Rows 1, 3 and 9, the timeout and the Try Again button are Default chosen at design time.
+- Rows 1, 3, 9 and 10, the timeout and the Try Again button are Default chosen at design time.
 
 ## Update-ready banner
 
@@ -301,6 +329,7 @@ When the state is `ready` and the user did not choose Install, every main window
 
 - Restart Now runs the [restart checks](#restart-rules), then the restart sequence.
 - The banner has no close button. It disappears when the restart sequence starts or the state leaves `ready`.
+- The banner is not shown while the Updater is not running for one of the reasons of [Starting the Updater](#starting-the-updater) or after it stopped for good (row 1 of the [About window](#about-window)): no restart could install the update then. Default chosen at design time.
 - When the restart sequence fails at step 3 of [Installing](#installing), the banner shows `The updater did not respond; the update was not installed.` with Restart Now.
 - The position and height are Default chosen at design time.
 
@@ -308,7 +337,7 @@ When the state is `ready` and the user did not choose Install, every main window
 
 Settings > Updates ([Updates](ui.md#updates)) edits `autoUpdate` and `updateCheckIntervalMinutes`, shows `HephaestusReleaseRepository` read-only and has Check Now:
 
-- Check Now posts `check`. Its status line shows the text of the About window's update area (rows 1 and 3 to 9), without its controls.
+- Check Now posts `check`. Its status line shows the text of the About window's update area (rows 1 and 3 to 10), without its controls.
 - When the Updater is not running, Check Now is disabled and the status line shows the reason of [Starting the Updater](#starting-the-updater).
 - A change of either setting reaches the Updater through `check` ([IPC](#ipc)).
 
@@ -322,22 +351,26 @@ Settings > Updates ([Updates](ui.md#updates)) edits `autoUpdate` and `updateChec
 
 ## Swift shape
 
-| Type (UpdaterCore) | Kind   | Content                                                                                                                                                                                             |
-| ------------------ | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AppVersion`       | struct | `version: String`, `build: Int`; `display` (`v0.4.0(57)`), `aboutLine` (`Version 0.4.0 (57)`); `init?(infoPlist: [String: Any])` (nil when `CFBundleVersion` is not a decimal integer).             |
-| `ReleaseManifest`  | struct | `Codable`: `version`, `build`, `sha256`, `size`, `minimumSystemVersion`, `published` (`Date`, ISO-8601), `notes`; `validate() throws` checks the rules of [release.json](ci.md#releasejson).        |
-| `GitHubRelease`    | struct | `Decodable`: `tagName` (`tag_name`), `assets: [Asset]`, `Asset { name, browserDownloadURL (browser_download_url) }`.                                                                                |
-| `ReleaseFeed`      | struct | `init(repository: String, session: URLSession)`; `latest() async throws -> FeedResult`, `FeedResult` = `.noRelease` or `.release(ReleaseManifest, manifestData: Data, zipURL: URL)`.                |
-| `UpdateDecision`   | enum   | `.upToDate`, `.requiresNewerSystem(ReleaseManifest)`, `.previousInstallFailed(ReleaseManifest, String)`, `.available(ReleaseManifest)`; `static func decide(...)` implements [Decision](#decision). |
-| `UpdateDownloader` | struct | Steps 1 to 4 of [Download and verification](#download-and-verification).                                                                                                                            |
-| `UpdateVerifier`   | struct | Steps 5 to 9; the Team ID reader is injectable for tests.                                                                                                                                           |
-| `UpdateInstaller`  | struct | Steps 5 to 8 of [Restart for an update](#restart-for-an-update) and the `install-failed` file.                                                                                                      |
-| `UpdaterState`     | enum   | `String` raw values `idle`, `checking`, `upToDate`, `available`, `downloading`, `ready`, `installing`, `error`.                                                                                     |
-| `UpdaterStatus`    | struct | `state`, `version: String?`, `build: Int?`, `message: String?`; `init?(userInfo:)` and `userInfo(pid:)`.                                                                                            |
-| `UpdaterIPC`       | enum   | The object string, the five `Notification.Name`s and the `userInfo` keys of [IPC](#ipc).                                                                                                            |
-| `UpdaterMachine`   | actor  | The state machine of [Updater states](#updater-states) and the [check schedule](#check-schedule), with the clock, feed, downloader, verifier and installer injected.                                |
+| Type (UpdaterCore)       | Kind   | Content                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------ | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AppVersion`             | struct | `version: String`, `build: Int`; `display` (`v0.4.0(57)`), `aboutLine` (`Version 0.4.0 (57)`); `init?(infoPlist: [String: Any])` (nil when `CFBundleVersion` is missing or not a decimal integer; a missing `CFBundleShortVersionString` reads as `""`).                                                                                      |
+| `ReleaseManifest`        | struct | `Codable`: `version`, `build`, `sha256`, `size`, `minimumSystemVersion`, `published` (`Date`, ISO-8601), `notes`; `validate() throws` checks the rules of [release.json](ci.md#releasejson).                                                                                                                                                  |
+| `GitHubRelease`          | struct | `Decodable`: `tagName` (`tag_name`), `assets: [Asset]`, `Asset { name, browserDownloadURL (browser_download_url) }`.                                                                                                                                                                                                                          |
+| `ReleaseFeed`            | struct | `init(repository: String, session: URLSession, runningVersion: String)`, `runningVersion` being the `<running version>` of `User-Agent`; `latest() async throws -> FeedResult`, `FeedResult` = `.noRelease` or `.release(ReleaseManifest, manifestData: Data, zipURL: URL)`.                                                                  |
+| `UpdateDecision`         | enum   | `.upToDate`, `.requiresNewerSystem(ReleaseManifest)`, `.previousInstallFailed(ReleaseManifest, String)`, `.available(ReleaseManifest)`; `static func decide(manifest:runningBuild:systemVersion:installFailedText:)` implements [Decision](#decision); `installFailedText` is the text of the build's `install-failed` file, nil without one. |
+| `UpdateDownloader`       | struct | Steps 1 to 4 of [Download and verification](#download-and-verification).                                                                                                                                                                                                                                                                      |
+| `UpdateVerifier`         | struct | Steps 5 to 9; the Team ID reader is injectable for tests.                                                                                                                                                                                                                                                                                     |
+| `UpdateInstaller`        | struct | Steps 5 to 8 of [Restart for an update](#restart-for-an-update) and the `install-failed` file.                                                                                                                                                                                                                                                |
+| `UpdaterState`           | enum   | `String` raw values `idle`, `checking`, `upToDate`, `available`, `downloading`, `ready`, `installing`, `error`.                                                                                                                                                                                                                               |
+| `UpdaterStatus`          | struct | `state`, `version: String?`, `build: Int?`, `message: String?`; `init?(userInfo:)` and `userInfo(pid:)`.                                                                                                                                                                                                                                      |
+| `UpdaterIPC`             | enum   | The object string, the five `Notification.Name`s and the `userInfo` keys of [IPC](#ipc).                                                                                                                                                                                                                                                      |
+| `UpdaterMachine`         | actor  | The state machine of [Updater states](#updater-states) and the [check schedule](#check-schedule), with the clock, feed, downloader, verifier and installer injected.                                                                                                                                                                          |
+| `UpdaterArguments`       | struct | The [command line](#command-line): `appPath`, `pid`, `intervalMinutes`, `autoUpdate`; `static func parse(_ arguments: [String]) throws -> UpdaterArguments`, whose `UsageError` carries the reason.                                                                                                                                           |
+| `UpdaterStartConditions` | enum   | `static func reason(infoPlist:disabledByEnvironment:bundleURL:fileManager:) -> String?`: the reason of the first condition of [Starting the Updater](#starting-the-updater) that holds, nil when the Updater may start.                                                                                                                       |
+| `UpdateArea`             | struct | `row`, `text`, `showsProgress`, `controls`; `static func about(_:)` gives the row of the [About window](#about-window) that applies (row 10 is reported as row 2, whose text it shows), `static func settingsStatusLine(_:)` the [Settings](#settings) status line.                                                                           |
+| `UpdaterTexts`           | enum   | Every text of this page shown by the app or posted by the Updater.                                                                                                                                                                                                                                                                            |
 
-The `Updater` executable parses the [command line](#command-line), creates `UpdaterMachine` with the real dependencies, connects it to `UpdaterIPC` and runs the main run loop. The type names are Default chosen at design time.
+The `Updater` executable parses the [command line](#command-line), creates `UpdaterMachine` with the real dependencies, connects it to `UpdaterIPC` and runs the main run loop. The app side's start conditions and texts are pure functions of their inputs in UpdaterCore, so that UpdaterCoreTests cover them; HephaestusUI has no test target. The type names are Default chosen at design time.
 
 ## Tests
 
