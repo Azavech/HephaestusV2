@@ -410,6 +410,7 @@ public enum NavigationTarget: Codable, Sendable, Hashable {
 
 /// The sidebar sections (docs/engine-api.md › ProjectSection).
 public enum ProjectSection: String, Codable, Sendable, Hashable, CaseIterable {
+    case dashboard
     case tickets
     case bundles
     case chats

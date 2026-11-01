@@ -148,7 +148,7 @@ When step 3 or 4 fails, the engine removes the files it copied and returns the e
 
 ## Tickets section
 
-The Tickets section (sidebar, ⌘1) shows the tickets of the selected project only. When a sub project is selected it shows that sub project's tickets; tickets of sub projects never appear in the parent's list. The section shows the ticket list on the left and the selected ticket's detail on the right, separated by a draggable divider; the list is at least 240 pt wide and starts at 320 pt, and the detail is at least 300 pt. Default chosen at design time.
+The Tickets section (sidebar, ⌘2) shows the tickets of the selected project only. When a sub project is selected it shows that sub project's tickets; tickets of sub projects never appear in the parent's list. The section shows the ticket list on the left and the selected ticket's detail on the right, separated by a draggable divider; the list is at least 240 pt wide and starts at 320 pt, and the detail is at least 300 pt. Default chosen at design time.
 
 ### Ticket list
 
@@ -351,7 +351,7 @@ The fields are defined in [Data model](data-model.md#bundle-file). The order of 
 
 ### Bundles section
 
-The Bundles section (⌘2) shows the bundles of the selected project in a list on the left and the selected bundle on the right, with the same divider as the Tickets section. Default chosen at design time.
+The Bundles section (⌘3) shows the bundles of the selected project in a list on the left and the selected bundle on the right, with the same divider as the Tickets section. Default chosen at design time.
 
 - The list header has a New Bundle (+) button, which opens the ticket picker sheet with no ticket checked.
 - Columns: ID, Title, Progress (`<done>/<total> done`) and Created, with the widths of the ticket list's columns, Progress taking the rule of Status. The list starts sorted by ID, newest first. The columns sort as the ticket list's do, Progress by the share of done tickets; equal values keep the ID order, newest first. The sort order is kept per window and per project while the window is open (`ProjectViewState.bundleList`, [WindowState](ui.md#windowstate)). Default chosen at design time.
@@ -471,8 +471,8 @@ Shortcuts of this document. All global shortcuts are listed in [UI](ui.md).
 | Keys        | Where                                                                                       | Action                            |
 | ----------- | ------------------------------------------------------------------------------------------- | --------------------------------- |
 | ⇧⌘T         | Main window with a project selected                                                         | New Ticket                        |
-| ⌘1          | Main window                                                                                 | Tickets section                   |
-| ⌘2          | Main window                                                                                 | Bundles section                   |
+| ⌘2          | Main window                                                                                 | Tickets section                   |
+| ⌘3          | Main window                                                                                 | Bundles section                   |
 | ⌘Return     | New Ticket sheet, ticket picker sheet, description editor, comment composer, comment editor | Create, Add, Save or Comment      |
 | Esc         | The same places except the comment composer, where it does nothing                          | Cancel                            |
 | ⌘⌫          | Ticket list or bundle list                                                                  | Delete… (with confirmation)       |

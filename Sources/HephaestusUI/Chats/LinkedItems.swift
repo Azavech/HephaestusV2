@@ -68,7 +68,7 @@ extension ProjectViewState {
             return selectedWebTabID.map { [LinkedItemRef(kind: .webTab, id: $0)] } ?? []
         case .skills:
             return selectedSkillName.map { [LinkedItemRef(kind: .skill, id: $0)] } ?? []
-        case .costs, .settings:
+        case .dashboard, .costs, .settings:
             return []
         }
     }

@@ -1,4 +1,4 @@
-// OWNER: ui-shell — the sidebar: the nine sections and the project footer (docs/ui.md › Sidebar).
+// OWNER: ui-shell — the sidebar: the ten sections and the project footer (docs/ui.md › Sidebar).
 import AppKit
 import HephaestusCore
 import SwiftUI
@@ -11,6 +11,7 @@ extension ProjectSection {
     /// The sidebar title.
     var title: String {
         switch self {
+        case .dashboard: return "Dashboard"
         case .tickets: return "Tickets"
         case .bundles: return "Bundles"
         case .chats: return "Chats"
@@ -26,6 +27,7 @@ extension ProjectSection {
     /// The SF Symbol of the section.
     var symbol: String {
         switch self {
+        case .dashboard: return "square.grid.2x2"
         case .tickets: return "checklist"
         case .bundles: return "shippingbox"
         case .chats: return "bubble.left.and.bubble.right"
@@ -38,17 +40,18 @@ extension ProjectSection {
         }
     }
 
-    /// Its shortcut: ⌘1 to ⌘8 in the View menu, ⇧⌘, for Project ▸ Project Settings….
+    /// Its shortcut: ⌘1 to ⌘9 in the View menu, ⇧⌘, for Project ▸ Project Settings….
     var shortcut: KeyboardShortcut {
         switch self {
-        case .tickets: return KeyboardShortcut("1", modifiers: .command)
-        case .bundles: return KeyboardShortcut("2", modifiers: .command)
-        case .chats: return KeyboardShortcut("3", modifiers: .command)
-        case .code: return KeyboardShortcut("4", modifiers: .command)
-        case .docs: return KeyboardShortcut("5", modifiers: .command)
-        case .web: return KeyboardShortcut("6", modifiers: .command)
-        case .skills: return KeyboardShortcut("7", modifiers: .command)
-        case .costs: return KeyboardShortcut("8", modifiers: .command)
+        case .dashboard: return KeyboardShortcut("1", modifiers: .command)
+        case .tickets: return KeyboardShortcut("2", modifiers: .command)
+        case .bundles: return KeyboardShortcut("3", modifiers: .command)
+        case .chats: return KeyboardShortcut("4", modifiers: .command)
+        case .code: return KeyboardShortcut("5", modifiers: .command)
+        case .docs: return KeyboardShortcut("6", modifiers: .command)
+        case .web: return KeyboardShortcut("7", modifiers: .command)
+        case .skills: return KeyboardShortcut("8", modifiers: .command)
+        case .costs: return KeyboardShortcut("9", modifiers: .command)
         case .settings: return KeyboardShortcut(",", modifiers: [.command, .shift])
         }
     }

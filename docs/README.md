@@ -15,7 +15,7 @@ Every change starts in these docs; the code is generated or updated to match the
 
 1. [requirements.md](requirements.md): the original request and the sections that specify each of its requirements.
 2. [architecture.md](architecture.md): the engine, its clients, the modules and the processes.
-3. [ui.md](ui.md), [projects.md](projects.md) and [tickets.md](tickets.md): the windows, the projects and the tickets the user works with.
+3. [ui.md](ui.md), [projects.md](projects.md), [dashboard.md](dashboard.md) and [tickets.md](tickets.md): the windows, the projects and the tickets the user works with.
 4. [workflow.md](workflow.md), [chats.md](chats.md) and [mcp.md](mcp.md): how Claude works in the app.
 5. The other features: [web-tabs.md](web-tabs.md), [code-editor.md](code-editor.md), [documentation-viewer.md](documentation-viewer.md), [costs.md](costs.md), [search.md](search.md), [skills.md](skills.md), [feedback.md](feedback.md) and [remote.md](remote.md).
 6. The reference contracts, read when a feature needs them: [data-model.md](data-model.md) and [engine-api.md](engine-api.md).
@@ -30,6 +30,7 @@ Every change starts in these docs; the code is generated or updated to match the
 | [architecture.md](architecture.md)                 | Engine and client split, modules, repository layout, concurrency, device data directory, environment overrides, processes and security.              |
 | [ui.md](ui.md)                                     | Windows, toolbar, `Device ▸ Project ▸ Sub project` selector, sidebar, inspector, status bar, every menu and shortcut, Settings window and UI state.  |
 | [projects.md](projects.md)                         | Projects and sub projects: identifiers, creating, opening and removing, selector rules, project settings, run commands and console.                  |
+| [dashboard.md](dashboard.md)                       | The Dashboard section: the cards that summarise the active project, their sources and their live updates.                                            |
 | [tickets.md](tickets.md)                           | Tickets and bundles: fields, description template, status rules, naming, comments, attachments, image viewer, Implement and Implement All.           |
 | [workflow.md](workflow.md)                         | The rules Claude follows: never invent, labelled questions, writing tickets, status, docs first, commits, pushing, bundles and the self-update loop. |
 | [chats.md](chats.md)                               | Claude CLI processes and flags, output mapping, permissions, questions, chat settings, transcript view, Haiku naming and the text of every prompt.   |

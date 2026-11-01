@@ -9,15 +9,15 @@ import Testing
 @MainActor
 @Suite("Sidebar sections")
 struct SidebarSectionsTests {
-    @Test("The listed rows are Tickets to Costs; Project Settings is pinned apart")
+    @Test("The listed rows are Dashboard to Costs; Project Settings is pinned apart")
     func listedAndPinned() {
-        #expect(ProjectSection.listed == [.tickets, .bundles, .chats, .code, .docs, .web, .skills, .costs])
+        #expect(ProjectSection.listed == [.dashboard, .tickets, .bundles, .chats, .code, .docs, .web, .skills, .costs])
         #expect(ProjectSection.allCases.last == .settings)
         #expect(ProjectSection.settings.title == "Project Settings")
         #expect(ProjectSection.settings.symbol == "gearshape")
     }
 
-    @Test("⌘1 to ⌘8 select the listed sections and ⇧⌘, selects Project Settings")
+    @Test("⌘1 to ⌘9 select the listed sections and ⇧⌘, selects Project Settings")
     func shortcuts() {
         for (index, section) in ProjectSection.listed.enumerated() {
             #expect(section.shortcut.key == KeyEquivalent(Character(String(index + 1))))
@@ -32,6 +32,14 @@ struct SidebarSectionsTests {
         var state = ProjectViewState()
         state.selectedDocPath = "docs/ui.md"
         #expect(state.openItems(in: .settings).isEmpty)
+    }
+
+    @Test("A new window opens on the Dashboard, also when its stored state has no section")
+    func defaultSection() throws {
+        #expect(WindowState(id: UUID(), deviceID: "device").section == .dashboard)
+        let json = #"{"id":"3F2504E0-4F89-11D3-9A0C-0305E82C3301","deviceID":"device"}"#
+        #expect(WindowState.restored(fromJSON: json)?.section == .dashboard)
+        #expect(ProjectSection.dashboard.title == "Dashboard" && ProjectSection.dashboard.symbol == "square.grid.2x2")
     }
 
     @Test("WindowState keeps the settings section through its JSON form")

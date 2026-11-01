@@ -21,7 +21,7 @@ final class WindowState: Identifiable {
     /// device's default project.
     var projectID: String?
     /// The selected sidebar section.
-    var section: ProjectSection = .tickets
+    var section: ProjectSection = .dashboard
     var sidebarVisible = true
     var inspectorVisible = true
     /// Inspector width in points.
@@ -134,7 +134,7 @@ extension WindowState: @MainActor Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.init(id: try c.decode(UUID.self, forKey: .id), deviceID: try c.decode(String.self, forKey: .deviceID))
         projectID = try c.decodeIfPresent(String.self, forKey: .projectID)
-        section = try c.decodeIfPresent(ProjectSection.self, forKey: .section) ?? .tickets
+        section = try c.decodeIfPresent(ProjectSection.self, forKey: .section) ?? .dashboard
         sidebarVisible = try c.decodeIfPresent(Bool.self, forKey: .sidebarVisible) ?? true
         inspectorVisible = try c.decodeIfPresent(Bool.self, forKey: .inspectorVisible) ?? true
         inspectorWidth = try c.decodeIfPresent(Double.self, forKey: .inspectorWidth) ?? 380

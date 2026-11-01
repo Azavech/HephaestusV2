@@ -141,7 +141,7 @@ HephaestusV2/                   the repository root
   Resources/                    Info.plist, Updater-Info.plist, HephaestusV2.entitlements, AppIcon.icns
   Sources/HephaestusCore/       Models/ Storage/ Engine/ Engine/API/ Engine/Handlers/ Claude/ MCP/ Sync/ Search/ Skills/ Files/ Settings/ Util/ Resources/prompts/
   Sources/HephaestusText/       Highlighting/ Markdown/
-  Sources/HephaestusUI/         App/ Workspace/ Toolbar/ Sidebar/ StatusBar/ Projects/ Tickets/ Bundles/ Chats/ Code/ Docs/ Web/ Skills/ Costs/ Search/ Feedback/ Settings/ About/ Devices/ Console/ Common/ Resources/
+  Sources/HephaestusUI/         App/ Workspace/ Toolbar/ Sidebar/ StatusBar/ Projects/ Tickets/ Bundles/ Chats/ Code/ Docs/ Web/ Skills/ Costs/ Search/ Dashboard/ Feedback/ Settings/ About/ Devices/ Console/ Common/ Resources/
   Sources/HephaestusV2/         HephaestusV2App.swift
   Sources/UpdaterCore/
   Sources/Updater/
@@ -210,6 +210,7 @@ The type names of this table are Default chosen at design time.
 | `Docs/`      | Docs tree, Preview, Edit and Split modes ([Documentation viewer](documentation-viewer.md)).      |
 | `Web/`       | Tab strip, address bar, web views ([Web tabs](web-tabs.md)).                                     |
 | `Skills/`    | Skills list and editor ([Skills](skills.md)).                                                    |
+| `Dashboard/` | Dashboard section ([Dashboard](dashboard.md)).                                                   |
 | `Costs/`     | Costs section and the status bar's Costs item ([Costs](costs.md)).                               |
 | `Search/`    | Search panel ([Search](search.md)).                                                              |
 | `Feedback/`  | In-process window capture, feedback sheet ([Feedback](feedback.md)).                             |

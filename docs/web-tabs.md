@@ -1,6 +1,6 @@
 # Web tabs
 
-Every project has an integrated web browser: a strip of web tabs shown in the Web section (⌘6). Tabs, their order, titles, URLs and locks are project data stored in `.hephaestus/project.yml`, so every window and every remote device shows the same tabs and sees changes live; the pages themselves are loaded by the WKWebView of the Mac whose window shows them. A locked tab cannot be closed until it is unlocked, so tabs that matter are not closed inadvertently. This document specifies the tab strip, the address bar, navigation and how it updates the stored tab, locking, popups, downloads, page permissions, the website data store and the behaviour in windows that show a remote device.
+Every project has an integrated web browser: a strip of web tabs shown in the Web section (⌘7). Tabs, their order, titles, URLs and locks are project data stored in `.hephaestus/project.yml`, so every window and every remote device shows the same tabs and sees changes live; the pages themselves are loaded by the WKWebView of the Mac whose window shows them. A locked tab cannot be closed until it is unlocked, so tabs that matter are not closed inadvertently. This document specifies the tab strip, the address bar, navigation and how it updates the stored tab, locking, popups, downloads, page permissions, the website data store and the behaviour in windows that show a remote device.
 
 ## Tab data
 

@@ -111,6 +111,7 @@ The client fills the [FeedbackContext](engine-api.md#feedbackcontext) from the c
 
 | Section or window | `item`                                                                       |
 | ----------------- | ---------------------------------------------------------------------------- |
+| `dashboard`       | absent                                                                       |
 | `tickets`         | id of the selected ticket, the first in list order when several are selected |
 | `bundles`         | id of the selected bundle                                                    |
 | `chats`           | title of the selected chat                                                   |

@@ -818,7 +818,7 @@ Placeholders: Default chosen at design time.
 | Place                    | Content                                                                                                                                                                                                                                                                                           |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Inspector (⌥⌘0)          | The project chat panel: a picker of the project's chats of kind project, New Chat, and the selected chat's view ([UI](ui.md#inspector)).                                                                                                                                                          |
-| Chats section (⌘3)       | The project's chats grouped by kind in the order Project, Ticket, Bundle, Feedback, each group titled `Project`, `Ticket`, `Bundle` or `Feedback`, as the kind chip names the kind, and listed newest `updated` first; the selected chat's view beside the list, empty while no chat is selected. |
+| Chats section (⌘4)       | The project's chats grouped by kind in the order Project, Ticket, Bundle, Feedback, each group titled `Project`, `Ticket`, `Bundle` or `Feedback`, as the kind chip names the kind, and listed newest `updated` first; the selected chat's view beside the list, empty while no chat is selected. |
 | Ticket detail, Chats tab | The ticket's chats, Implement and New Chat ([Tickets](tickets.md#ticket-chats-and-implement)).                                                                                                                                                                                                    |
 | Bundle detail, Chats tab | The bundle's chats, Implement All and New Chat ([Tickets](tickets.md#implement-all)).                                                                                                                                                                                                             |
 | Chat window              | One chat in its own window, opened by Open in New Window or by Send in the Feedback sheet ([UI](ui.md#windows)).                                                                                                                                                                                  |
@@ -1009,7 +1009,7 @@ The Claude integration lives in `Sources/HephaestusCore/Claude/`. The type names
 | ⌘C           | transcript                                                                          | copy the selection as plain text           |
 | ⌥⌘N          | any main window ([UI](ui.md))                                                       | New Chat: a project chat draft             |
 | ⌥⌘0          | any main window ([UI](ui.md))                                                       | show or hide the inspector                 |
-| ⌘3           | any main window ([UI](ui.md))                                                       | Chats section                              |
+| ⌘4           | any main window ([UI](ui.md))                                                       | Chats section                              |
 
 ## System prompts
 

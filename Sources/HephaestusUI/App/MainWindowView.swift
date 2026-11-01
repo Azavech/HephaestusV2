@@ -235,6 +235,8 @@ private struct SectionContent: View {
                 }
         } else {
             switch state.section {
+            case .dashboard:
+                DashboardView(window: state, workspace: workspace, projectID: projectID)
             case .tickets:
                 TicketsSectionView(window: state, workspace: workspace, projectID: projectID)
             case .bundles:

@@ -205,7 +205,7 @@ Input schemas, results and errors are in [MCP](mcp.md). No MCP tool reads, write
 
 ## Skills section
 
-The Skills section of the active project (sidebar, ⌘7, [UI](ui.md)) has two columns: the library list and the editor of the selected skill (`selectedSkillName`).
+The Skills section of the active project (sidebar, ⌘8, [UI](ui.md)) has two columns: the library list and the editor of the selected skill (`selectedSkillName`).
 
 ### Library list
 
