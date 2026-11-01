@@ -68,8 +68,8 @@ struct ImageViewerWindow: View {
             if currentPath == nil, case .stored(_, _, let path) = value {
                 currentPath = path
             }
-            if case .stored(_, let projectID, _) = value {
-                workspace?.ensureProjectLoaded(projectID)
+            if case .stored(let deviceID, let projectID, _) = value {
+                app.workspace(for: deviceID)?.ensureProjectLoaded(projectID)
             }
         }
     }
@@ -78,7 +78,7 @@ struct ImageViewerWindow: View {
 
     private var workspace: DeviceWorkspace? {
         guard case .stored(let deviceID, _, _) = value else { return nil }
-        return app.workspaces[deviceID] ?? app.workspace(for: deviceID)
+        return app.workspaces[deviceID]
     }
 
     private var projectID: String? {
