@@ -3,14 +3,21 @@ import Network
 import Testing
 @testable import HephaestusCore
 
+/// A method that completes when its test lets it.
+private enum SlowMethod: EngineMethod {
+    static let name = "test.slow"
+    typealias Params = Empty
+    typealias Result = Empty
+}
+
 /// The server side of the protocol, driven by a raw WebSocket client (docs/remote.md › Server
 /// checks, › Request handling, › Event delivery, › Server connection states).
 @Suite("Sync server")
 struct SyncServerTests {
     private static let nonce = SyncCrypto.randomNonce().base64EncodedString()
 
-    private func hello(deviceID: String = RandomIDs.uuidString(), protocolVersion: String = "1") -> String {
-        #"{"appVersion":"0.0.0","deviceID":"\#(deviceID)","deviceName":"MacBook","nonce":"\#(Self.nonce)","protocol":\#(protocolVersion),"type":"hello"}"#
+    private func hello(deviceID: String = RandomIDs.uuidString(), deviceName: String = "MacBook", protocolVersion: String = "1") -> String {
+        #"{"appVersion":"0.0.0","deviceID":"\#(deviceID)","deviceName":"\#(deviceName)","nonce":"\#(Self.nonce)","protocol":\#(protocolVersion),"type":"hello"}"#
     }
 
     /// Runs `body` with a started test engine and the port of its sync server.
@@ -75,6 +82,39 @@ struct SyncServerTests {
                 peer.sendText(auth)
                 #expect(await peer.closeCode() == code)
             }
+        }
+    }
+
+    @Test("A remote device is named by the deviceName of its last valid hello, authenticated or not")
+    func deviceNameFromHello() async throws {
+        try await withServer { engine, port in
+            let deviceID = RandomIDs.uuidString()
+            #expect(engine.syncServer.remoteDeviceName(deviceID: deviceID) == nil)
+            #expect(await engine.userDeviceName(deviceID: deviceID) == deviceID)
+
+            let refused = RawPeer(port: port)
+            #expect(await refused.waitReady())
+            refused.sendText(hello(deviceID: deviceID, deviceName: "Laptop"))
+            guard case .text? = await refused.next() else {
+                Issue.record("no challenge")
+                return
+            }
+            #expect(engine.syncServer.remoteDeviceName(deviceID: deviceID) == "Laptop")
+            #expect(await engine.userDeviceName(deviceID: deviceID) == "Laptop")
+            refused.sendText(#"{"type":"auth","proof":"\#(Self.nonce)"}"#)
+            #expect(await refused.closeCode() == 4002)
+            #expect(engine.syncServer.remoteDeviceName(deviceID: deviceID) == "Laptop")
+
+            // A hello that fails a check names nothing.
+            let invalid = RawPeer(port: port)
+            #expect(await invalid.waitReady())
+            invalid.sendText(hello(deviceID: deviceID, deviceName: "Other", protocolVersion: "2"))
+            #expect(await invalid.closeCode() == 4001)
+            #expect(engine.syncServer.remoteDeviceName(deviceID: deviceID.lowercased()) == "Laptop")
+
+            let session = RawPeer(port: port)
+            _ = try await session.clientHandshake(code: await engine.syncServer.pairingCode, deviceID: deviceID.lowercased(), deviceName: "Desk")
+            #expect(engine.syncServer.remoteDeviceName(deviceID: deviceID) == "Desk")
         }
     }
 
@@ -160,6 +200,44 @@ struct SyncServerTests {
             _ = try await short.clientHandshake(code: code)
             short.sendBinary(Data(count: 20))
             #expect(await short.closeCode() == 4004)
+        }
+    }
+
+    /// Requests that complete at once are answered in the order they started; 16 sessions run
+    /// side by side so that requests started out of order would show.
+    @Test("Requests start in the order they are received, without waiting for the previous ones", arguments: 0..<16)
+    func requestOrder(session index: Int) async throws {
+        try await withServer { engine, port in
+            let release = Collected<Bool>()
+            await engine.register(SlowMethod.self, actors: [.user]) { _, _ in
+                while release.values.isEmpty {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                return Empty()
+            }
+            let peer = RawPeer(port: port)
+            var session = try await peer.clientHandshake(code: await engine.syncServer.pairingCode)
+            let count = 300
+            var frames = [try session.sealer.seal(Data(#"{"id":1,"method":"test.slow","type":"request"}"#.utf8))]
+            for id in 2...count {
+                frames.append(try session.sealer.seal(Data(#"{"id":\#(id),"method":"nope.nope","type":"request"}"#.utf8)))
+            }
+            peer.socket.queue.async {
+                for frame in frames {
+                    peer.socket.sendBinary(frame)
+                }
+            }
+            var ids: [Int] = []
+            while ids.count < count, case .binary(let frame)? = await peer.next() {
+                let object = try #require(SyncMessageCheck.jsonObject(try session.opener.open(frame)))
+                if case .int(let id)? = object["id"] {
+                    ids.append(id)
+                }
+                if ids.count == count - 1 {
+                    release.append(true)
+                }
+            }
+            #expect(ids == Array(2...count) + [1])
         }
     }
 

@@ -230,7 +230,7 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
     private var sealer: FrameSealer?
     private var opener: FrameOpener?
     private var nextRequestID = 1
-    private var pending: [Int: CheckedContinuation<JSONValue, Error>] = [:]
+    private var pending: [Int: CheckedContinuation<Reply, Error>] = [:]
     private var keptSnapshot: JSONValue?
     /// Events received since the welcome, until the first `snapshot.get` returns; nil when not
     /// holding.
@@ -378,7 +378,9 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
     }
 
     /// Sends a `request` and waits for its `response` (docs/remote.md › Session messages). The
-    /// first `snapshot.get` after a welcome returns the welcome's snapshot without a round trip.
+    /// first `snapshot.get` after a welcome returns the welcome's snapshot without a round trip;
+    /// the events held since that welcome are released once it returned
+    /// (docs/remote.md › Welcome snapshot).
     public func call<M: EngineMethod>(_ method: M.Type, _ params: M.Params) async throws -> M.Result {
         let paramsData: Data
         do {
@@ -386,11 +388,33 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
         } catch {
             throw EngineError.internalError(error)
         }
-        let result: JSONValue = try await withCheckedThrowingContinuation { continuation in
+        let reply: Reply = try await withCheckedThrowingContinuation { continuation in
             queue.async {
                 self.send(method: M.name, params: paramsData, continuation: continuation)
             }
         }
+        switch reply {
+        case .result(let result):
+            return try RemoteEngineConnection.decode(M.self, from: result)
+        case .welcomeSnapshot(let snapshot, let attempt):
+            defer {
+                queue.async {
+                    self.releaseHeldEvents(attempt: attempt)
+                }
+            }
+            return try RemoteEngineConnection.decode(M.self, from: snapshot)
+        }
+    }
+
+    /// What a call receives from the state machine.
+    private enum Reply: Sendable {
+        /// The `result` of the call's response.
+        case result(JSONValue)
+        /// The snapshot of the welcome of attempt `attempt`, kept for the first `snapshot.get`.
+        case welcomeSnapshot(JSONValue, attempt: Int)
+    }
+
+    private static func decode<M: EngineMethod>(_ method: M.Type, from result: JSONValue) throws -> M.Result {
         do {
             return try EngineJSON.decode(M.Result.self, from: result)
         } catch {
@@ -473,6 +497,7 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
         stage = .resolving
         lastReceived = Date()
         setPhase(.connecting)
+        log.info(.sync, "connecting to \(name) at \(target.endpoint.flatMap(SyncAddress.bonjourService(of:)) ?? address)")
         schedule(after: timings.connect) { connection in
             if connection.stage == .resolving || connection.stage == .connecting {
                 connection.fail(.noAnswer)
@@ -486,11 +511,8 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
     }
 
     /// A Bonjour endpoint is reached over IPv4: a TCP connection to the service gives the IPv4
-    /// address and port of the main device, the device address of this connection.
-    // DOC-GAP: docs/remote.md › WebSocket connects to "the Bonjour service endpoint", but
-    // Network.framework opens a client WebSocket only to a URL endpoint. The service is resolved
-    // with a TCP connection that requires IPv4, closed at once, then the WebSocket opens to
-    // ws://<IPv4 address>:<port>/ (also IPv4 only).
+    /// address and port of the main device, the device address of this connection; it is
+    /// cancelled at once and the WebSocket opens to that address (docs/remote.md › WebSocket).
     private func resolve(_ endpoint: NWEndpoint, attempt id: Int) {
         let parameters = NWParameters.tcp
         if let ip = parameters.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options {
@@ -536,7 +558,6 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
             return
         }
         stage = .connecting
-        log.info(.sync, "connecting to \(name) at \(address)")
         let connection = NWConnection(to: .url(url), using: SyncSocket.parameters(ipv4Only: isBonjour))
         let socket = SyncSocket(connection: connection, queue: queue, closeWait: timings.closeWait)
         self.socket = socket
@@ -695,8 +716,7 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
             do {
                 try pairedDevices.save(record, code: addCode)
             } catch {
-                // DOC-GAP: docs/remote.md › Adding a device gives no message for a record that
-                // cannot be saved; the sheet shows the storage error.
+                // docs/remote.md › Adding a device, Saving fails.
                 let message = (error as? StorageError)?.description ?? "\(error)"
                 endConnection(sending: .normal)
                 completeAdd(.failure(AddDeviceFailure(message: message)))
@@ -734,7 +754,7 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
                 log.warn(.sync, "ignored message type response from \(deviceInfo?.id ?? currentDevice.id.uuidString)")
                 return
             }
-            continuation.resume(with: outcome.mapError { $0 as Error })
+            continuation.resume(with: outcome.map(Reply.result).mapError { $0 as Error })
         case .success(.event(let envelope)):
             guard RemoteEngineConnection.knownEvents.contains(envelope.name) else { return }
             if heldEvents != nil {
@@ -762,15 +782,15 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
 
     // MARK: Calls
 
-    private func send(method: String, params: Data, continuation: CheckedContinuation<JSONValue, Error>) {
+    private func send(method: String, params: Data, continuation: CheckedContinuation<Reply, Error>) {
         guard phase == .connected, stage == .connected, let socket, var sealer else {
             continuation.resume(throwing: notConnected)
             return
         }
         if method == SnapshotGet.name, let snapshot = keptSnapshot {
+            // The held events stay held until the call returned the snapshot.
             keptSnapshot = nil
-            releaseHeldEvents()
-            continuation.resume(returning: snapshot)
+            continuation.resume(returning: .welcomeSnapshot(snapshot, attempt: attemptID))
             return
         }
         let id = nextRequestID
@@ -803,8 +823,10 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
         EngineError(.unavailable, "Not connected to \(name).")
     }
 
-    private func releaseHeldEvents() {
-        guard let held = heldEvents else { return }
+    /// Yields the events held since the welcome of attempt `attempt`, in their order of arrival,
+    /// and stops holding; nothing when another attempt started meanwhile.
+    private func releaseHeldEvents(attempt: Int) {
+        guard attempt == attemptID, let held = heldEvents else { return }
         heldEvents = nil
         for envelope in held {
             eventStreams.yield(envelope)
@@ -863,9 +885,7 @@ public final class RemoteEngineConnection: EngineConnection, @unchecked Sendable
             return
         }
         guard failure.retries else {
-            // DOC-GAP: docs/remote.md › Logging writes `; next attempt in <n> s` for every ended
-            // connection; a phase without a retry (needsPairing, sameDevice, replaced) has no
-            // next attempt, so the line ends after the code.
+            // No next attempt to log (docs/remote.md › Logging, Client connection ended).
             log.info(.sync, "connection to \(name) ended, code \(code)")
             setPhase(failure.phase(name: name, nextAttempt: nil))
             return

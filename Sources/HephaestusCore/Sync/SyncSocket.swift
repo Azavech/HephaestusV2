@@ -42,6 +42,8 @@ struct SyncTimings: Sendable {
 /// frames; close frames follow docs/remote.md › Closing a connection: the closing side sends its
 /// code, then cancels when the peer's close frame arrives or after the close wait; a side that
 /// receives a close frame cancels. No frame is reported after a close frame was sent or received.
+/// A connection that fails while a receive is pending keeps receiving the messages delivered with
+/// the error, so that the peer's close frame is reported before the end.
 final class SyncSocket: @unchecked Sendable {
     enum Input {
         /// The WebSocket is open.
@@ -75,6 +77,11 @@ final class SyncSocket: @unchecked Sendable {
     private(set) var hasEnded = false
     /// Bytes handed to the connection whose sending has not completed.
     private(set) var unsentBytes = 0
+    /// True while a receive is pending.
+    private var isReceiving = false
+    /// The error of a connection that failed while a receive was pending, reported once the
+    /// receives delivered no more messages.
+    private var failure: NWError?
 
     init(connection: NWConnection, queue: DispatchQueue, closeWait: TimeInterval) {
         self.connection = connection
@@ -193,7 +200,16 @@ final class SyncSocket: @unchecked Sendable {
             guard !isReady, !hasEnded else { return }
             handler?(.waiting(error))
         case .failed(let error):
-            end(error)
+            guard isReceiving, !hasEnded else {
+                end(error)
+                return
+            }
+            // The receives may still deliver messages, the peer's close frame among them: end
+            // when they deliver no more, or after the close wait.
+            failure = error
+            queue.asyncAfter(deadline: .now() + closeWait) { [weak self] in
+                self?.end(error)
+            }
         case .cancelled:
             end(nil)
         default:
@@ -202,17 +218,26 @@ final class SyncSocket: @unchecked Sendable {
     }
 
     private func receive() {
-        connection.receiveMessage { [weak self] content, context, _, error in
+        isReceiving = true
+        connection.receiveMessage { [weak self] content, context, isComplete, error in
             guard let self else { return }
-            if let error {
-                self.end(error)
-                return
-            }
+            self.isReceiving = false
             let metadata = context?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata
-            if let metadata {
+            if let metadata, error == nil || isComplete {
                 self.received(metadata, content: content ?? Data())
             }
             if self.hasEnded {
+                return
+            }
+            if let error {
+                // A complete message can arrive together with the error of the connection that
+                // failed after it; the messages that follow it, the peer's close frame among
+                // them, come with the next receives.
+                guard metadata != nil, isComplete, !self.isClosing else {
+                    self.end(self.failure ?? error)
+                    return
+                }
+                self.receive()
                 return
             }
             if context?.isFinal == true, metadata == nil {
@@ -282,6 +307,14 @@ enum SyncAddress {
         }
         let withoutZone = text.split(separator: "%", maxSplits: 1).first.map(String.init) ?? text
         return (withoutZone, Int(port.rawValue))
+    }
+
+    /// The Bonjour service of a discovered device, `<instance name>._hephaestus2._tcp.local.`, as
+    /// a client attempt logs it before the address is resolved (docs/remote.md › Logging); nil
+    /// for an endpoint that is not a service.
+    static func bonjourService(of endpoint: NWEndpoint) -> String? {
+        guard case .service(let name, _, _, _) = endpoint else { return nil }
+        return "\(name).\(DeviceBrowser.serviceType).local."
     }
 
     /// `host:port`, with an IPv6 address in brackets.

@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import Testing
 @testable import HephaestusCore
 
@@ -212,6 +213,9 @@ struct SyncMessageTests {
         let hostPort = SyncAddress.hostPort(of: .hostPort(host: "127.0.0.1", port: 5000))
         #expect(hostPort?.host == "127.0.0.1")
         #expect(hostPort?.port == 5000)
+        let service = NWEndpoint.service(name: "Studio (2)", type: DeviceBrowser.serviceType, domain: "local.", interface: nil)
+        #expect(SyncAddress.bonjourService(of: service) == "Studio (2)._hephaestus2._tcp.local.")
+        #expect(SyncAddress.bonjourService(of: .hostPort(host: "127.0.0.1", port: 5000)) == nil)
     }
 }
 

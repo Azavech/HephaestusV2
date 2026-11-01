@@ -28,10 +28,8 @@ public struct SyncSession: Sendable, Hashable {
 }
 
 /// The sync server's part of the server status service: the listener state and the open
-/// sessions. The status bar shows the number of distinct device ids of `sessions`.
-// DOC-GAP: docs/architecture.md › Local-only services names the server status service but no
-// Swift type; it is `MCPServer.state` with `stateUpdates()` and `SyncServer.status` with
-// `statusUpdates()`.
+/// sessions. The status bar shows the number of distinct device ids of `sessions`
+/// (docs/architecture.md › Local-only services).
 public struct SyncServerStatus: Sendable, Hashable {
     public var state: SyncServerState
     public var sessions: [SyncSession]
@@ -91,8 +89,7 @@ public actor SyncServer {
     /// Regenerate in Settings > Devices: saves a new code and closes every connection of the
     /// server, open sessions and handshakes in progress, with code 4003
     /// (docs/remote.md › Regenerate). Throws the StorageError when `secrets.json` cannot be
-    /// written; the old code stays then.
-    // DOC-GAP: docs/remote.md › Regenerate does not cover a failed write of secrets.json.
+    /// written; the old code stays then, and no connection is closed.
     @discardableResult
     public func regeneratePairingCode() throws -> PairingCode {
         let code = PairingCode.generate()
@@ -103,7 +100,8 @@ public actor SyncServer {
         return code
     }
 
-    /// The `deviceName` of the last `hello` of a remote device that authenticated since launch.
+    /// The `deviceName` of the last valid `hello` of a remote device since launch
+    /// (docs/remote.md › Request handling).
     public nonisolated func remoteDeviceName(deviceID: String) -> String? {
         registry.deviceName(of: deviceID)
     }
@@ -255,9 +253,8 @@ public actor SyncServer {
         }
     }
 
-    /// After the listener is ready, a failure sets the state `failed(message)`.
-    // DOC-GAP: docs/remote.md › Sync server covers bind failures only; a listener that fails
-    // after it was ready reports `failed` with the system's error text and is not retried.
+    /// After the listener is ready, a failure sets the state `failed(message)`, without a retry
+    /// (docs/remote.md › Sync server, Later failure).
     private func watchAfterReady(_ listener: NWListener, port: Int) {
         listener.stateUpdateHandler = { [weak self] state in
             guard case .failed(let error) = state else { return }
@@ -288,9 +285,8 @@ public actor SyncServer {
     }
 
     /// The TXT record of the advertisement: `id`, `name` and `proto`, no other key, as DNS-SD
-    /// TXT data (each `key=value` string after its length byte).
-    // DOC-GAP: NWTXTRecord refuses a `name=` entry of 255 bytes, the size of a 250-byte name
-    // (docs/remote.md › TXT record); the record is written as raw TXT data instead.
+    /// TXT data (each `key=value` string after its length byte), since `NWTXTRecord` refuses
+    /// the entry of a 250-byte name (docs/remote.md › TXT record).
     static func txtRecord(deviceID: String, name: String) -> Data {
         var data = Data()
         for (key, value) in [("id", deviceID.uppercased()), ("name", truncated(name, toUTF8Bytes: 250)),
@@ -406,9 +402,8 @@ extension Engine {
 
     /// The name of the device of a `user` actor, for the `sender` of the user messages it sends
     /// (docs/remote.md › Request handling): this device's name for this device, otherwise the
-    /// `deviceName` of the `hello` of that remote device; its id when it never connected.
-    // DOC-GAP: the docs do not say which name a user actor of a device that never connected
-    // shows (only tests and the system make such calls); its device id is used.
+    /// `deviceName` of the last valid `hello` of that remote device; its id when it sent none
+    /// since launch.
     func userDeviceName(deviceID: String) -> String {
         if deviceID.uppercased() == self.deviceID {
             return deviceInfo.name

@@ -125,7 +125,7 @@ The record is written as raw DNS-SD TXT data, each `key=value` string preceded b
 | Several results with the same `id` (one per network interface) | Merged into one device. Connections use the endpoint of the first result received. |
 | A result disappears                                            | The device leaves the Nearby list at once and its online status is recomputed.     |
 
-When the browser fails with `kDNSServiceErr_PolicyDenied` (-65570), the local network permission is denied ([Local network permission](#local-network-permission)). A browser that fails, for this or any other reason, is cancelled and logged, its results are dropped so that the Nearby list empties and online statuses are recomputed, and browsing starts again 5 s later. The interpretation rules and the restart are Default chosen at design time.
+When the browser reports `kDNSServiceErr_PolicyDenied` (-65570), in state `waiting` or `failed`, the local network permission is denied ([Local network permission](#local-network-permission)). A browser that fails, for this or any other reason, or that waits with `kDNSServiceErr_PolicyDenied`, is cancelled and logged, its results are dropped so that the Nearby list empties and online statuses are recomputed, and browsing starts again 5 s later. A browser that waits for another reason is left running. The interpretation rules and the restart are Default chosen at design time.
 
 TXT data is not authenticated. A device's identity is proven by the handshake and checked against the `welcome` ([Client checks](#client-checks)).
 
@@ -528,7 +528,7 @@ The server then derives `kC2S` and `kS2C`, closes the older open session with th
 
 | Message            | Check                                                                                                           | On failure                                                  |
 | ------------------ | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `challenge`        | Text frame of at most 4,096 bytes; JSON object with `type` `challenge`; `nonce` and `proof` decode to 32 bytes. | Close 1002.                                                 |
+| `challenge`        | Text frame of at most 4,096 bytes; JSON object with `type` `challenge`; `nonce` and `proof` decode to 32 bytes. | Close 1009 (size), otherwise 1002.                          |
 | `challenge`        | `proof` equals the server proof (constant time).                                                                | Close 4002 without sending `auth`; phase `needsPairing`.    |
 | First binary frame | [Receiving a frame](#receiving-a-frame) with expected counter 0.                                                | Close 4004 or 4005.                                         |
 | First binary frame | JSON object with `type` `welcome`; `device` and `snapshot` decode.                                              | Close 1002.                                                 |
@@ -611,7 +611,7 @@ The engine encodes each envelope once ([Engine API](engine-api.md#dispatcher)); 
 
 - The server closes with 1002 a request whose `id` is missing, not an integer or out of range, whose `method` is not a string, or whose `params` is present and is neither an object nor null; an absent or null `params` is dispatched as `{}` ([Engine API](engine-api.md#json-encoding)).
 - Otherwise it calls `Engine.dispatch(method:params:actor:)` with `params` as JSON data and the actor `user` carrying the session's device id. Remote users have exactly the rights of local users. An unknown method or invalid params produce the [dispatcher's error](engine-api.md#dispatcher-errors) as the response.
-- Requests start in the order they are received and run concurrently; each response is sent when its request completes, so responses can arrive in another order than their requests. A client that needs one request applied before another waits for the first response before sending the second.
+- Requests start in the order they are received: the server calls the dispatcher for each one in that order, without waiting for the previous one to complete, and the requests run concurrently. Responses are sent in the order their requests complete, so they can arrive in another order than their requests. A client that needs one request applied before another waits for the first response before sending the second.
 - Requests have no timeout of their own: they end with their response or with the connection.
 - The name the engine shows for a remote device (for example the `sender` of a chat `user` item) is the `deviceName` of its last `hello` since launch. A `user` actor of a device that has not connected since launch, which only tests and the system produce, is named by its device id. Default chosen at design time.
 - The client sends no request before the `welcome`.
@@ -708,6 +708,8 @@ Codes 1000–1011 are RFC 6455 codes; 4001–4009 are private codes of this prot
 ### Closing a connection
 
 The closing side sends a close frame with its code, then cancels the connection when the peer's close frame arrives or after 2 s. A side that receives a close frame cancels its connection. No frame is processed after a close frame was sent or received.
+
+Network.framework answers a received close frame by itself, before the app has read it, so the closing side can end the TCP connection first. The receiving side's connection then fails, and its receives still deliver the messages it had received, the close frame last, each together with that error. A connection that fails while a receive is pending keeps receiving until a receive returns no complete message or the close frame; a message delivered with an error is processed like any other, and a close frame delivered with an error counts as received: its code, not 1006, decides the phase.
 
 ## Client state machine
 
@@ -921,7 +923,7 @@ The sync server and `RemoteEngineConnection` write these lines to `Logs/engine.l
 | Session closed          | INFO  | `<deviceName> (<deviceID>) disconnected, code <code>`                                                                                                                                                            |
 | Event not sent          | WARN  | `event <name> of <bytes> bytes not sent to <deviceID>`                                                                                                                                                           |
 | Unknown message ignored | WARN  | `ignored message type <type> from <deviceID>`                                                                                                                                                                    |
-| Client attempt          | INFO  | `connecting to <name> at <address>`                                                                                                                                                                              |
+| Client attempt          | INFO  | `connecting to <name> at <address>` when the attempt starts; for a discovered device, `<address>` is its Bonjour service `<instance name>._hephaestus2._tcp.local.`                                              |
 | Client connected        | INFO  | `connected to <name>`                                                                                                                                                                                            |
 | Client connection ended | INFO  | `connection to <name> ended, code <code>; next attempt in <n> s`; without `; next attempt in <n> s` for a phase that schedules no retry (`needsPairing`, `sameDevice`, `replaced`) and for an Add Device attempt |
 | Browsing failed         | WARN  | `browsing failed: <error>`                                                                                                                                                                                       |

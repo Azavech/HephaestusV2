@@ -201,13 +201,15 @@ struct SyncLoopbackTests {
             let connection = try await pair(remote, with: main, log: log)
             defer { connection.close() }
             _ = try await connection.call(SnapshotGet.self)
+            // Watched from before the stop: the phase lasts 0.1 s, until the next attempt.
+            let phases = connection.phaseUpdates
             var off = SettingsUpdate.Params()
             off.syncEnabled = false
             _ = try await mainLocal.call(SettingsUpdate.self, off)
             #expect(await main.syncServer.status == SyncServerStatus())
-            let stopped = await phase(of: connection) { $0.message == "Studio stopped accepting remote devices." }
+            let stopped = await firstElement(of: phases) { $0.message == "Studio stopped accepting remote devices." }
             #expect(stopped?.nextAttempt != nil)
-            #expect(connection.state == .disconnected(reason: "Studio stopped accepting remote devices."))
+            #expect(stopped?.connectionState == .disconnected(reason: "Studio stopped accepting remote devices."))
             let refused = await phase(of: connection) { $0.message?.contains("is not accepting connections") == true }
             #expect(refused?.message == "Studio is not accepting connections. Check that remote devices are allowed in Settings > Devices on Studio.")
             // Calls fail at once while not connected.

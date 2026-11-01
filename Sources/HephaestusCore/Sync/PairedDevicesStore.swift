@@ -3,10 +3,8 @@ import Foundation
 /// The paired devices of this Mac: the records of `remotes.yml` and their pairing codes in
 /// `remoteSecrets` of `secrets.json` (docs/remote.md › Paired devices). A local-only service of
 /// the windows of this Mac (docs/architecture.md › Local-only services). Thread-safe; every
-/// change is written before it is published on `deviceUpdates`.
-// DOC-GAP: docs/data-model.md › Changes that touch several files has no row for paired devices.
-// By its rule (the referenced file first), pairing writes the code to secrets.json, then the
-// record to remotes.yml; removing writes remotes.yml, then secrets.json.
+/// change is written before it is published on `deviceUpdates`, in the order of
+/// docs/data-model.md › Changes that touch several files.
 public final class PairedDevicesStore: @unchecked Sendable {
     private let dataDirectory: DataDirectory
     private let secrets: SecretsStore

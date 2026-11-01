@@ -101,14 +101,30 @@ struct RemoteConnectionTests {
         let server = try await FakeSyncServer()
         defer { server.stop() }
         try await withPairedConnection(server: server, code: SyncCryptoTests.code) { connection, _, _ in
+            let phases = connection.phaseUpdates
             let peer = try #require(await server.nextPeer())
             var script = self.script
             script.proofText = "cQpkmCMXJWkVibDhSVYhOrADuuHpqr3ufQtH0J_qEiE="
             _ = try await peer.answerHello(script)
             #expect(await peer.closeCode() == 1002)
-            let phase = await phase(of: connection) { $0.isWaiting }
+            let phase = await firstElement(of: phases) { $0.isWaiting }
             #expect(phase?.message == "The connection to Studio failed (code 1002).")
             #expect(phase?.nextAttempt != nil)
+        }
+    }
+
+    @Test("A challenge larger than 4,096 bytes: close 1009, waiting with the protocol failure message")
+    func oversizedChallenge() async throws {
+        let server = try await FakeSyncServer()
+        defer { server.stop() }
+        try await withPairedConnection(server: server, code: SyncCryptoTests.code) { connection, _, _ in
+            let phases = connection.phaseUpdates
+            let peer = try #require(await server.nextPeer())
+            guard case .text? = await peer.next() else { throw SyncTestError("no hello") }
+            peer.sendText(String(repeating: " ", count: 4_097 - 2) + "{}")
+            #expect(await peer.closeCode() == 1009)
+            let phase = await firstElement(of: phases) { $0.isWaiting }
+            #expect(phase?.message == "The connection to Studio failed (code 1009).")
         }
     }
 
@@ -117,12 +133,13 @@ struct RemoteConnectionTests {
         let server = try await FakeSyncServer()
         defer { server.stop() }
         try await withPairedConnection(server: server, code: SyncCryptoTests.code) { connection, _, _ in
+            let phases = connection.phaseUpdates
             let peer = try #require(await server.nextPeer())
             var script = self.script
             script.device = DeviceInfo(id: "6B1D3F0A-5C2E-4E8B-9A7D-2F4C6E8A0B1C", name: "Other", appVersion: "0.4.0", build: 1)
             _ = try await peer.serverHandshake(script, snapshot: fakeSnapshot(device: script.device))
             #expect(await peer.closeCode() == 1000)
-            let phase = await phase(of: connection) { $0.isWaiting }
+            let phase = await firstElement(of: phases) { $0.isWaiting }
             #expect(phase?.message == "Another device answered at 127.0.0.1:\(server.port).")
             #expect(connection.deviceInfo == nil)
         }
@@ -135,10 +152,11 @@ struct RemoteConnectionTests {
         var timings = SyncTimings.fast
         timings.challengeDeadline = 0.3
         try await withPairedConnection(server: server, code: SyncCryptoTests.code, timings: timings) { connection, _, log in
+            let phases = connection.phaseUpdates
             let peer = try #require(await server.nextPeer())
             guard case .text? = await peer.next() else { throw SyncTestError("no hello") }
             #expect(await peer.closeCode() == 4006)
-            let phase = await phase(of: connection) { $0.isWaiting }
+            let phase = await firstElement(of: phases) { $0.isWaiting }
             #expect(phase?.message == "Studio did not answer.")
             #expect(log.entries.map(\.message).contains("connection to Studio ended, code 4006; next attempt in 0.1 s"))
         }
@@ -149,10 +167,11 @@ struct RemoteConnectionTests {
         let server = try await FakeSyncServer()
         defer { server.stop() }
         try await withPairedConnection(server: server, code: SyncCryptoTests.code) { connection, _, _ in
+            let phases = connection.phaseUpdates
             let peer = try #require(await server.nextPeer())
             guard case .text? = await peer.next() else { throw SyncTestError("no hello") }
             peer.close(.unsupportedProtocol)
-            let incompatible = await phase(of: connection) { $0.isWaiting }
+            let incompatible = await firstElement(of: phases) { $0.isWaiting }
             #expect(incompatible?.message == "Studio uses another version of the sync protocol. Update HephaestusV2 on both Macs.")
             let retry = try #require(await server.nextPeer())
             guard case .text? = await retry.next() else { throw SyncTestError("no hello") }
@@ -174,13 +193,14 @@ struct RemoteConnectionTests {
             let peer = try #require(await server.nextPeer())
             var keys = try await peer.serverHandshake(script, snapshot: fakeSnapshot(device: Self.mainInfo))
             #expect(await phase(of: connection) { $0 == .connected } == .connected)
+            let phases = connection.phaseUpdates
             async let call = engineError { try await connection.call(SettingsGet.self) }
             guard case .binary(let frame)? = await peer.next() else { throw SyncTestError("no request") }
             _ = try keys.opener.open(frame)
             peer.sendBinary(try keys.sealer.seal(Data(#"{"error":{"code":"internal","message":"x"},"id":1,"result":{},"type":"response"}"#.utf8)))
             #expect(await call == EngineError(.unavailable, "Not connected to Studio."))
             #expect(await peer.closeCode() == 1002)
-            #expect(await phase(of: connection) { $0.isWaiting }?.message == "The connection to Studio failed (code 1002).")
+            #expect(await firstElement(of: phases) { $0.isWaiting }?.message == "The connection to Studio failed (code 1002).")
         }
     }
 
@@ -218,8 +238,9 @@ struct RemoteConnectionTests {
             let lost = EngineEventEnvelope(name: SkillsChangedEvent.name, origin: .system, data: [])
             peer.sendBinary(try keys.sealer.seal(SyncMessageBytes.event(envelope: try EngineJSON.encode(lost))))
             try await Task.sleep(for: .milliseconds(100))
+            let phases = connection.phaseUpdates
             peer.cancel()
-            #expect(await phase(of: connection) { $0.isWaiting }?.message == "The connection to Studio was lost.")
+            #expect(await firstElement(of: phases) { $0.isWaiting }?.message == "The connection to Studio was lost.")
 
             let retry = try #require(await server.nextPeer(timeout: .seconds(3)))
             var retryKeys = try await retry.serverHandshake(script, snapshot: fakeSnapshot(device: Self.mainInfo))
@@ -229,6 +250,35 @@ struct RemoteConnectionTests {
             try await Task.sleep(for: .milliseconds(100))
             _ = try await connection.call(SnapshotGet.self)
             #expect(await firstElement(of: events) == kept)
+        }
+    }
+
+    @Test("Held events are yielded in their order once the first snapshot.get returned")
+    func heldEventsAfterSnapshot() async throws {
+        let server = try await FakeSyncServer()
+        defer { server.stop() }
+        try await withPairedConnection(server: server, code: SyncCryptoTests.code) { connection, _, _ in
+            let peer = try #require(await server.nextPeer())
+            var keys = try await peer.serverHandshake(script, snapshot: fakeSnapshot(device: Self.mainInfo))
+            #expect(await phase(of: connection) { $0 == .connected } == .connected)
+            let held = [EngineEventEnvelope(name: SkillsChangedEvent.name, origin: .system, data: []),
+                        EngineEventEnvelope(name: SettingsUpdatedEvent.name, origin: .system, data: try EngineJSON.jsonValue(HostSettings()))]
+            for envelope in held {
+                peer.sendBinary(try keys.sealer.seal(SyncMessageBytes.event(envelope: try EngineJSON.encode(envelope))))
+            }
+            try await Task.sleep(for: .milliseconds(100))
+            let order = Collected<String>()
+            let events = connection.events
+            let consumer = Task {
+                for await envelope in events {
+                    order.append(envelope.name)
+                }
+            }
+            #expect(try await connection.call(SnapshotGet.self).device == Self.mainInfo)
+            order.append("returned")
+            try await Task.sleep(for: .milliseconds(300))
+            consumer.cancel()
+            #expect(order.values == ["returned", SkillsChangedEvent.name, SettingsUpdatedEvent.name])
         }
     }
 
@@ -329,6 +379,20 @@ struct RemoteConnectionTests {
                                                              log: MemoryLog(), timings: .fast)
             }
             #expect(remote.pairedDevices.devices.count == 1)
+        }
+    }
+
+    @Test("An attempt that fails before any connection still logs its start")
+    func attemptLoggedAtStart() async throws {
+        try await withTestEngine { remote, _, _ in
+            let log = MemoryLog()
+            // No ws:// URL can be made for this host: the attempt fails before connecting.
+            await #expect(throws: AddDeviceFailure(message: "Can't find [.")) {
+                _ = try await RemoteEngineConnection.attempt(.address(host: "[", port: 1), code: SyncCryptoTests.code,
+                                                             local: await remote.localDeviceInfo(), pairedDevices: remote.pairedDevices,
+                                                             browser: remote.deviceBrowser, log: log, timings: .fast)
+            }
+            #expect(log.entries.map(\.message) == ["connecting to [:1 at [:1", "connection to [:1 ended, code 1006"])
         }
     }
 }
