@@ -85,13 +85,20 @@ struct SyncServerTests {
         }
     }
 
-    @Test("A remote device is named by the deviceName of its last valid hello, authenticated or not")
+    @Test("A remote device is named by the deviceName of its last authenticated hello")
     func deviceNameFromHello() async throws {
         try await withServer { engine, port in
             let deviceID = RandomIDs.uuidString()
             #expect(engine.syncServer.remoteDeviceName(deviceID: deviceID) == nil)
             #expect(await engine.userDeviceName(deviceID: deviceID) == deviceID)
 
+            let first = RawPeer(port: port)
+            _ = try await first.clientHandshake(code: await engine.syncServer.pairingCode, deviceID: deviceID, deviceName: "Desk")
+            #expect(engine.syncServer.remoteDeviceName(deviceID: deviceID) == "Desk")
+            #expect(await engine.userDeviceName(deviceID: deviceID.lowercased()) == "Desk")
+
+            // A peer that knows the device id but not the pairing code renames nothing: neither
+            // its hello nor its failed auth.
             let refused = RawPeer(port: port)
             #expect(await refused.waitReady())
             refused.sendText(hello(deviceID: deviceID, deviceName: "Laptop"))
@@ -99,22 +106,35 @@ struct SyncServerTests {
                 Issue.record("no challenge")
                 return
             }
-            #expect(engine.syncServer.remoteDeviceName(deviceID: deviceID) == "Laptop")
-            #expect(await engine.userDeviceName(deviceID: deviceID) == "Laptop")
+            #expect(engine.syncServer.remoteDeviceName(deviceID: deviceID) == "Desk")
+            #expect(await engine.userDeviceName(deviceID: deviceID) == "Desk")
             refused.sendText(#"{"type":"auth","proof":"\#(Self.nonce)"}"#)
             #expect(await refused.closeCode() == 4002)
-            #expect(engine.syncServer.remoteDeviceName(deviceID: deviceID) == "Laptop")
+            #expect(engine.syncServer.remoteDeviceName(deviceID: deviceID) == "Desk")
 
             // A hello that fails a check names nothing.
             let invalid = RawPeer(port: port)
             #expect(await invalid.waitReady())
             invalid.sendText(hello(deviceID: deviceID, deviceName: "Other", protocolVersion: "2"))
             #expect(await invalid.closeCode() == 4001)
-            #expect(engine.syncServer.remoteDeviceName(deviceID: deviceID.lowercased()) == "Laptop")
+            #expect(engine.syncServer.remoteDeviceName(deviceID: deviceID.lowercased()) == "Desk")
 
-            let session = RawPeer(port: port)
-            _ = try await session.clientHandshake(code: await engine.syncServer.pairingCode, deviceID: deviceID.lowercased(), deviceName: "Desk")
-            #expect(engine.syncServer.remoteDeviceName(deviceID: deviceID) == "Desk")
+            // A device never authenticated keeps being named by its id after a hello.
+            let stranger = RandomIDs.uuidString()
+            let unpaired = RawPeer(port: port)
+            #expect(await unpaired.waitReady())
+            unpaired.sendText(hello(deviceID: stranger, deviceName: "Stranger"))
+            guard case .text? = await unpaired.next() else {
+                Issue.record("no challenge")
+                return
+            }
+            #expect(engine.syncServer.remoteDeviceName(deviceID: stranger) == nil)
+            #expect(await engine.userDeviceName(deviceID: stranger) == stranger)
+
+            // The next authenticated hello renames the device.
+            let second = RawPeer(port: port)
+            _ = try await second.clientHandshake(code: await engine.syncServer.pairingCode, deviceID: deviceID.lowercased(), deviceName: "Studio")
+            #expect(engine.syncServer.remoteDeviceName(deviceID: deviceID) == "Studio")
         }
     }
 

@@ -100,7 +100,7 @@ public actor SyncServer {
         return code
     }
 
-    /// The `deviceName` of the last valid `hello` of a remote device since launch
+    /// The `deviceName` of the last authenticated `hello` of a remote device since launch
     /// (docs/remote.md › Request handling).
     public nonisolated func remoteDeviceName(deviceID: String) -> String? {
         registry.deviceName(of: deviceID)
@@ -402,8 +402,8 @@ extension Engine {
 
     /// The name of the device of a `user` actor, for the `sender` of the user messages it sends
     /// (docs/remote.md › Request handling): this device's name for this device, otherwise the
-    /// `deviceName` of the last valid `hello` of that remote device; its id when it sent none
-    /// since launch.
+    /// `deviceName` of the last authenticated `hello` of that remote device; its id when it has
+    /// not authenticated since launch.
     func userDeviceName(deviceID: String) -> String {
         if deviceID.uppercased() == self.deviceID {
             return deviceInfo.name
