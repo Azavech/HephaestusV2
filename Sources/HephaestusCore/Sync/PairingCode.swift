@@ -37,8 +37,11 @@ public struct PairingCode: Sendable, Hashable {
         return stride(from: 0, to: 16, by: 4).map { String(characters[$0..<$0 + 4]) }.joined(separator: "-")
     }
 
-    /// A new random code (docs/remote.md › Pairing code › Generation).
+    /// A new random code (docs/remote.md › Pairing code › Generation): each character drawn
+    /// independently and uniformly from the alphabet with `SystemRandomNumberGenerator`.
     public static func generate() -> PairingCode {
-        PairingCode(userInput: RandomIDs.pairingCode())!
+        var generator = SystemRandomNumberGenerator()
+        let characters = (0..<16).map { _ in RandomIDs.crockfordAlphabet.randomElement(using: &generator)! }
+        return PairingCode(userInput: String(characters))!
     }
 }
