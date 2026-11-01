@@ -2122,17 +2122,17 @@ Status labels are To Do, In Progress and Done. `<chat kind>` is the stored kind:
 
 A place in the app, with the discriminator `kind`. Clients switch the window's project or sub project and section as needed and select the item ([User interface](ui.md#resolving-a-target)).
 
-| kind    | Fields                 | The client shows                                                      |
-| ------- | ---------------------- | --------------------------------------------------------------------- |
-| project | projectID              | The project, in the window's current section.                         |
-| ticket  | ticketID               | Tickets section of the ticket's project, ticket selected.             |
-| bundle  | bundleID               | Bundles section, bundle selected.                                     |
-| chat    | chatID                 | Chats section of the chat's project, chat selected.                   |
-| doc     | projectID, path        | Docs section, doc opened; `path` is a project path.                   |
-| file    | projectID, path, line? | Code section, file opened, scrolled to `line` (1-based) when present. |
-| skill   | name                   | Skills section of the window's current project, skill selected.       |
-| webTab  | projectID, tabID       | Web section, tab selected.                                            |
-| section | projectID, section     | The section, a [ProjectSection](#projectsection).                     |
+| kind    | Fields                     | The client shows                                                                                                             |
+| ------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| project | projectID                  | The project, in the window's current section.                                                                                |
+| ticket  | ticketID                   | Tickets section of the ticket's project, ticket selected.                                                                    |
+| bundle  | bundleID                   | Bundles section, bundle selected.                                                                                            |
+| chat    | chatID                     | Chats section of the chat's project, chat selected.                                                                          |
+| doc     | projectID, path, fragment? | Docs section, doc opened; `path` is a project path; with `fragment`, the preview scrolled to the heading whose anchor it is. |
+| file    | projectID, path, line?     | Code section, file opened, scrolled to `line` (1-based) when present.                                                        |
+| skill   | name                       | Skills section of the window's current project, skill selected.                                                              |
+| webTab  | projectID, tabID           | Web section, tab selected.                                                                                                   |
+| section | projectID, section         | The section, a [ProjectSection](#projectsection).                                                                            |
 
 ```json
 [
@@ -2141,6 +2141,7 @@ A place in the app, with the discriminator `kind`. Clients switch the window's p
   {"bundleID": "HEPH-B2", "kind": "bundle"},
   {"chatID": "3F2504E0-4F89-11D3-9A0C-0305E82C3301", "kind": "chat"},
   {"kind": "doc", "path": "docs/engine-api.md", "projectID": "HEPH"},
+  {"fragment": "navigationtarget", "kind": "doc", "path": "docs/engine-api.md", "projectID": "HEPH"},
   {"kind": "file", "line": 42, "path": "Sources/HephaestusCore/Engine/Engine.swift", "projectID": "HEPH"},
   {"kind": "skill", "name": "swift-style"},
   {"kind": "webTab", "projectID": "HEPH", "tabID": "7C9E6679-7425-40DE-944B-E07FC1F90AE7"},
@@ -2154,13 +2155,15 @@ public enum NavigationTarget: Codable, Sendable, Hashable {
     case ticket(ticketID: TicketID)
     case bundle(bundleID: BundleID)
     case chat(chatID: ChatID)
-    case doc(projectID: ProjectID, path: String)
+    case doc(projectID: ProjectID, path: String, fragment: String? = nil)
     case file(projectID: ProjectID, path: String, line: Int?)
     case skill(name: String)
     case webTab(projectID: ProjectID, tabID: UUID)
     case section(projectID: ProjectID, section: ProjectSection)
 }
 ```
+
+`fragment` is a [heading anchor](documentation-viewer.md#heading-anchors) as the renderer writes it in the heading's `id`, without `#` and not percent-encoded; it is encoded only when present. The engine does not check it: a fragment that names no heading of the doc leaves the preview at its top. Default chosen at design time.
 
 ### ProjectSection
 

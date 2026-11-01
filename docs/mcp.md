@@ -1883,7 +1883,7 @@ Input schema:
 Description:
 
 ```text
-Show something to the user in HephaestusV2: a project, ticket, bundle, chat, doc, file (optionally at a line), skill, web tab or project section. The app shows it on the device the user is chatting from.
+Show something to the user in HephaestusV2: a project, ticket, bundle, chat, doc (optionally at a heading), file (optionally at a line), skill, web tab or project section. The app shows it on the device the user is chatting from.
 ```
 
 Input schema:
@@ -1894,7 +1894,7 @@ Input schema:
   "properties": {
     "target": {
       "type": "object",
-      "description": "What to show. kind decides the other properties: project: projectID; ticket: ticketID; bundle: bundleID; chat: chatID; doc: projectID and path; file: projectID, path and optionally line; skill: name; webTab: projectID and tabID; section: projectID and section.",
+      "description": "What to show. kind decides the other properties: project: projectID; ticket: ticketID; bundle: bundleID; chat: chatID; doc: projectID, path and optionally fragment; file: projectID, path and optionally line; skill: name; webTab: projectID and tabID; section: projectID and section.",
       "properties": {
         "kind": {
           "type": "string",
@@ -1920,6 +1920,10 @@ Input schema:
         "path": {
           "type": "string",
           "description": "Path relative to the project root, as list_docs returns for a doc."
+        },
+        "fragment": {
+          "type": "string",
+          "description": "Heading anchor of the doc to scroll to, without #, for example menus-and-keyboard-shortcuts."
         },
         "line": {
           "type": "integer",
@@ -1956,7 +1960,7 @@ Input schema:
 | ticket  | ticketID            | —                   |
 | bundle  | bundleID            | —                   |
 | chat    | chatID              | —                   |
-| doc     | projectID, path     | —                   |
+| doc     | projectID, path     | fragment            |
 | file    | projectID, path     | line                |
 | skill   | name                | —                   |
 | webTab  | projectID, tabID    | —                   |
@@ -2071,7 +2075,7 @@ Input schema:
   "properties": {
     "target": {
       "type": "object",
-      "description": "What to show. kind decides the other properties: project: projectID; ticket: ticketID; bundle: bundleID; chat: chatID; doc: projectID and path; file: projectID, path and optionally line; skill: name; webTab: projectID and tabID; section: projectID and section.",
+      "description": "What to show. kind decides the other properties: project: projectID; ticket: ticketID; bundle: bundleID; chat: chatID; doc: projectID, path and optionally fragment; file: projectID, path and optionally line; skill: name; webTab: projectID and tabID; section: projectID and section.",
       "properties": {
         "kind": {
           "type": "string",
@@ -2097,6 +2101,10 @@ Input schema:
         "path": {
           "type": "string",
           "description": "Path relative to the project root, as list_docs returns for a doc."
+        },
+        "fragment": {
+          "type": "string",
+          "description": "Heading anchor of the doc to scroll to, without #, for example menus-and-keyboard-shortcuts."
         },
         "line": {
           "type": "integer",
