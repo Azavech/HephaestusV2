@@ -8,8 +8,37 @@ extension Engine {
         }
     }
 
-    // STUB: core-domain — docs/engine-api.md › fs.browse.
+    /// docs/engine-api.md › fs.browse: the sub-directories of a folder of the main device whose
+    /// name does not start with `.`, in Finder order, each telling whether it holds a project.
     func fsBrowse(_ params: FSBrowse.Params, _ actor: Actor) async throws -> BrowseResult {
-        throw EngineError.notImplemented(FSBrowse.name)
+        let requested = params.path ?? FileManager.default.homeDirectoryForCurrentUser.path
+        guard let path = FileSystemItems.standardizedAbsolutePath(requested) else {
+            throw EngineError.invalid("path", "use an absolute path")
+        }
+        guard let item = FileItem.at(path), item.kind != .brokenLink else {
+            throw EngineError.notFound("Directory", path)
+        }
+        guard item.isDirectory else {
+            throw EngineError.invalid("path", "\(path) is not a directory")
+        }
+        let names: [String]
+        do {
+            names = try FileSystemItems.names(in: path)
+        } catch {
+            // DOC-GAP: docs/engine-api.md › fs.browse lists no error for a folder that exists
+            // but cannot be read (no permission); it fails with `internal`, the code of file
+            // system errors.
+            throw Engine.fileSystemError("\(path) cannot be read", error)
+        }
+        var entries: [BrowseResult.Entry] = []
+        for name in names where !name.hasPrefix(".") {
+            let child = path == "/" ? "/" + name : path + "/" + name
+            guard FileItem.at(child)?.isDirectory == true else { continue }
+            let hasProject = FileItem.at(child + "/" + ProjectPaths.projectFile)?.kind == .file
+            entries.append(BrowseResult.Entry(name: name, path: child, hasProject: hasProject))
+        }
+        entries.sort { FileSystemItems.finderOrder($0.name, $1.name) }
+        let parent = path == "/" ? nil : (path as NSString).deletingLastPathComponent
+        return BrowseResult(path: path, parent: parent, entries: entries)
     }
 }
