@@ -56,9 +56,10 @@ enum TypedAddress: Equatable {
         return name == "localhost" || isIPv4(name) || isBracketedIPv6(name) || (name.hasSuffix(".local") && name.count > 6)
     }
 
-    /// True when the text ends with `:` and 1 to 5 digits (and has something before the colon).
+    /// True when the text ends with `:` and 1 to 5 digits. A host part made of the port alone
+    /// (`:3000`) matches too; its URL has no host and is refused.
     private static func endsWithPort(_ text: String) -> Bool {
-        guard let colon = text.lastIndex(of: ":"), colon != text.startIndex else { return false }
+        guard let colon = text.lastIndex(of: ":") else { return false }
         let digits = text[text.index(after: colon)...]
         return (1...5).contains(digits.count) && digits.allSatisfy { $0.isASCII && $0.isNumber }
     }
