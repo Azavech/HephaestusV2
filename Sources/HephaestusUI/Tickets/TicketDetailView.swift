@@ -24,8 +24,8 @@ struct TicketDetailView: View {
         workspace.tickets[projectID]?[ticketID]
     }
 
-    private var store: TicketWindowStore {
-        TicketWindowStore.store(for: window)
+    private var tab: TicketDetailTab {
+        window.projectStates[ProjectKey(deviceID: window.deviceID, projectID: projectID)]?.ticketTab ?? .details
     }
 
     var body: some View {
@@ -39,7 +39,7 @@ struct TicketDetailView: View {
                     tabPicker(ticket)
                         .padding(.bottom, 8)
                     Divider()
-                    switch store.ticketTab {
+                    switch tab {
                     case .details:
                         TicketDetailsTab(window: window, workspace: workspace, projectID: projectID, ticket: ticket, editor: editor)
                     case .chats:
@@ -65,12 +65,13 @@ struct TicketDetailView: View {
     private func tabPicker(_ ticket: Ticket) -> some View {
         let chatCount = LinkedChatsView.listedChats(ticket.chatIDs, workspace: workspace).count
         return Picker("Tab", selection: Binding(
-            get: { store.ticketTab },
-            set: { tab in
-                if tab == .chats, store.ticketTab != .chats {
-                    LinkedChatsView.selectMostRecent(owner: .ticket(ticket.id), chatIDs: ticket.chatIDs, workspace: workspace, window: window)
+            get: { tab },
+            set: { newTab in
+                if newTab == .chats, tab != .chats {
+                    LinkedChatsView.selectMostRecent(owner: .ticket(ticket.id), chatIDs: ticket.chatIDs, workspace: workspace,
+                                                     window: window, projectID: projectID)
                 }
-                store.ticketTab = tab
+                window.updateViewState(of: projectID) { $0.ticketTab = newTab }
             }
         )) {
             Text("Details").tag(TicketDetailTab.details)

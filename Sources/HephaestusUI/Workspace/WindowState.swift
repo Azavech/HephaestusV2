@@ -233,9 +233,21 @@ struct ProjectViewState {
     var expandedDocFolders: Set<String> = []
     /// Filters and sort order of the ticket list, kept per window and project while the window is
     /// open (docs/tickets.md › Ticket list).
-    // DOC-GAP: docs/tickets.md › Ticket list keeps the filters and the sort order per window and
-    // per project but names no field; they are `ticketList`, encoded for debug_ui_state only.
     var ticketList = TicketListState()
+    /// The tab of the ticket detail (docs/tickets.md › Ticket detail).
+    var ticketTab = TicketDetailTab.details
+    /// The sort order of the bundle list (docs/tickets.md › Bundles section).
+    var bundleList = BundleListState()
+    /// The tab of the bundle detail (docs/tickets.md › Bundles section).
+    var bundleTab = BundleDetailTab.tickets
+    /// The chat shown in the Chats tab of a ticket or bundle, by ticket or bundle id
+    /// (docs/tickets.md › Ticket chats and Implement).
+    var chatsTabSelection: [String: String] = [:]
+    /// The tickets and bundles whose Chats tab shows a draft chat.
+    var chatsTabDrafts: Set<String> = []
+    /// Comment composer drafts by ticket id; an empty draft is removed (docs/tickets.md ›
+    /// Comments).
+    var commentDrafts: [String: CommentDraft] = [:]
     /// The skill form and the open extra file of the Skills section (docs/skills.md › Saving);
     /// never encoded.
     // DOC-GAP: docs/skills.md › Saving says the skill form belongs to the window but names no
@@ -257,7 +269,8 @@ extension ProjectViewState: @MainActor Codable {
     enum CodingKeys: String, CodingKey {
         case selectedTicketIDs, selectedBundleID, selectedChatID, inspectorChatID, inspectorShowsDraft, editorTabs,
              selectedEditorPath, selectedDocPath, docMode, selectedWebTabID, selectedSkillName, consoleRunID,
-             expandedCodeFolders, selectedTreePath, expandedDocFolders, ticketList
+             expandedCodeFolders, selectedTreePath, expandedDocFolders, ticketList, ticketTab, bundleList, bundleTab,
+             chatsTabSelection, chatsTabDrafts, commentDrafts
     }
 
     @MainActor
@@ -279,6 +292,12 @@ extension ProjectViewState: @MainActor Codable {
         selectedTreePath = try c.decodeIfPresent(String.self, forKey: .selectedTreePath)
         expandedDocFolders = Set(try c.decodeIfPresent([String].self, forKey: .expandedDocFolders) ?? [])
         ticketList = try c.decodeIfPresent(TicketListState.self, forKey: .ticketList) ?? TicketListState()
+        ticketTab = try c.decodeIfPresent(TicketDetailTab.self, forKey: .ticketTab) ?? .details
+        bundleList = try c.decodeIfPresent(BundleListState.self, forKey: .bundleList) ?? BundleListState()
+        bundleTab = try c.decodeIfPresent(BundleDetailTab.self, forKey: .bundleTab) ?? .tickets
+        chatsTabSelection = try c.decodeIfPresent([String: String].self, forKey: .chatsTabSelection) ?? [:]
+        chatsTabDrafts = Set(try c.decodeIfPresent([String].self, forKey: .chatsTabDrafts) ?? [])
+        commentDrafts = try c.decodeIfPresent([String: CommentDraft].self, forKey: .commentDrafts) ?? [:]
     }
 
     // Sets are encoded as sorted arrays so that the JSON is stable.
@@ -302,6 +321,12 @@ extension ProjectViewState: @MainActor Codable {
             try c.encodeIfPresent(selectedTreePath, forKey: .selectedTreePath)
             try c.encode(expandedDocFolders.sorted(), forKey: .expandedDocFolders)
             try c.encode(ticketList, forKey: .ticketList)
+            try c.encode(ticketTab, forKey: .ticketTab)
+            try c.encode(bundleList, forKey: .bundleList)
+            try c.encode(bundleTab, forKey: .bundleTab)
+            try c.encode(chatsTabSelection, forKey: .chatsTabSelection)
+            try c.encode(chatsTabDrafts.sorted(), forKey: .chatsTabDrafts)
+            try c.encode(commentDrafts, forKey: .commentDrafts)
         }
     }
 }

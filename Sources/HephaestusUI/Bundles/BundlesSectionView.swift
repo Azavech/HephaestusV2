@@ -65,7 +65,7 @@ struct BundlesSectionView: View {
     }
 
     private var sort: ItemTableSort {
-        store.bundleSorts[TicketWindowStore.key(workspace.deviceID, projectID)] ?? ItemTableSort(columnID: "id", ascending: false)
+        (window.projectStates[key]?.bundleList ?? BundleListState()).tableSort
     }
 
     /// ID by number, Title by localized standard comparison, Progress by the share of done
@@ -137,7 +137,11 @@ struct BundlesSectionView: View {
                     allowsMultipleSelection: false,
                     sort: sort,
                     onSortChange: { sort in
-                        store.bundleSorts[TicketWindowStore.key(workspace.deviceID, projectID)] = sort
+                        guard let column = BundleListState.SortColumn(rawValue: sort.columnID) else { return }
+                        window.updateViewState(of: projectID) {
+                            $0.bundleList.sortColumn = column
+                            $0.bundleList.sortAscending = sort.ascending
+                        }
                     },
                     menu: { ids in menu(for: ids) },
                     onCommandDelete: { ids in

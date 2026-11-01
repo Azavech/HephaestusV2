@@ -23,8 +23,8 @@ struct BundleDetailView: View {
         workspace.bundles[projectID]?[bundleID]
     }
 
-    private var store: TicketWindowStore {
-        TicketWindowStore.store(for: window)
+    private var tab: BundleDetailTab {
+        window.projectStates[ProjectKey(deviceID: window.deviceID, projectID: projectID)]?.bundleTab ?? .tickets
     }
 
     var body: some View {
@@ -38,7 +38,7 @@ struct BundleDetailView: View {
                     tabPicker(bundle)
                         .padding(.bottom, 8)
                     Divider()
-                    switch store.bundleTab {
+                    switch tab {
                     case .tickets:
                         ticketsTab(bundle)
                     case .chats:
@@ -93,12 +93,13 @@ struct BundleDetailView: View {
     private func tabPicker(_ bundle: TicketBundle) -> some View {
         let chatCount = LinkedChatsView.listedChats(bundle.chatIDs, workspace: workspace).count
         return Picker("Tab", selection: Binding(
-            get: { store.bundleTab },
-            set: { tab in
-                if tab == .chats, store.bundleTab != .chats {
-                    LinkedChatsView.selectMostRecent(owner: .bundle(bundle.id), chatIDs: bundle.chatIDs, workspace: workspace, window: window)
+            get: { tab },
+            set: { newTab in
+                if newTab == .chats, tab != .chats {
+                    LinkedChatsView.selectMostRecent(owner: .bundle(bundle.id), chatIDs: bundle.chatIDs, workspace: workspace,
+                                                     window: window, projectID: projectID)
                 }
-                store.bundleTab = tab
+                window.updateViewState(of: projectID) { $0.bundleTab = newTab }
             }
         )) {
             Text("Tickets (\(bundle.ticketIDs.count))").tag(BundleDetailTab.tickets)

@@ -147,7 +147,6 @@ enum TicketActions {
         guard let projectID = Identifiers.projectID(of: ticketID),
               let ticket = workspace.tickets[projectID]?[ticketID]
         else { return }
-        let store = TicketWindowStore.store(for: window)
         if hasActiveChat(ticket.chatIDs, workspace: workspace) {
             guard await confirm("A chat of \(ticketID) is still active. Start another implementation?",
                                 button: "Implement", destructive: false, in: window)
@@ -155,9 +154,7 @@ enum TicketActions {
         }
         do {
             let meta = try await workspace.call(ChatsImplementTicket.self, ChatsImplementTicket.Params(ticketID: ticketID))
-            let key = TicketWindowStore.key(workspace.deviceID, ticketID)
-            store.draftChats.remove(key)
-            store.chatSelection[key] = meta.id.uuidString
+            LinkedChatsView.select(meta.id.uuidString, draft: false, owner: .ticket(ticketID), window: window, projectID: projectID)
         } catch {
             window.alert = .failure("Implement", error)
         }
@@ -165,8 +162,10 @@ enum TicketActions {
 
     /// Implement from the list's context menu: selects the ticket and its Chats tab first.
     static func implementFromList(ticketID: String, workspace: DeviceWorkspace, window: WindowState, projectID: String) {
-        window.updateViewState(of: projectID) { $0.selectedTicketIDs = [ticketID] }
-        TicketWindowStore.store(for: window).ticketTab = .chats
+        window.updateViewState(of: projectID) {
+            $0.selectedTicketIDs = [ticketID]
+            $0.ticketTab = .chats
+        }
         Task {
             await implement(ticketID: ticketID, workspace: workspace, window: window)
         }
@@ -205,7 +204,6 @@ enum TicketActions {
         guard let projectID = Identifiers.projectID(of: bundleID),
               let bundle = workspace.bundles[projectID]?[bundleID]
         else { return }
-        let store = TicketWindowStore.store(for: window)
         if hasActiveChat(bundle.chatIDs, workspace: workspace) {
             guard await confirm("A chat of \(bundleID) is still active. Start another implementation?",
                                 button: "Implement", destructive: false, in: window)
@@ -213,9 +211,7 @@ enum TicketActions {
         }
         do {
             let meta = try await workspace.call(ChatsImplementBundle.self, ChatsImplementBundle.Params(bundleID: bundleID))
-            let key = TicketWindowStore.key(workspace.deviceID, bundleID)
-            store.draftChats.remove(key)
-            store.chatSelection[key] = meta.id.uuidString
+            LinkedChatsView.select(meta.id.uuidString, draft: false, owner: .bundle(bundleID), window: window, projectID: projectID)
         } catch {
             window.alert = .failure("Implement All", error)
         }
@@ -224,8 +220,10 @@ enum TicketActions {
     /// Implement All from the bundle list's context menu: selects the bundle and its Chats tab
     /// first.
     static func implementAllFromList(bundleID: String, workspace: DeviceWorkspace, window: WindowState, projectID: String) {
-        window.updateViewState(of: projectID) { $0.selectedBundleID = bundleID }
-        TicketWindowStore.store(for: window).bundleTab = .chats
+        window.updateViewState(of: projectID) {
+            $0.selectedBundleID = bundleID
+            $0.bundleTab = .chats
+        }
         Task {
             await implementAll(bundleID: bundleID, workspace: workspace, window: window)
         }

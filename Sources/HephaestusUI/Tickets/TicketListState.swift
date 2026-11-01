@@ -149,3 +149,21 @@ struct TicketListState: Codable, Hashable {
         }
     }
 }
+
+/// The bundle list's sort order (`ProjectViewState.bundleList`, docs/tickets.md › Bundles
+/// section); not persisted.
+struct BundleListState: Codable, Hashable {
+    /// The sorted column.
+    enum SortColumn: String, Codable, Hashable, CaseIterable {
+        case id, title, progress, created
+    }
+
+    /// The list starts sorted by ID, newest first.
+    var sortColumn = SortColumn.id
+    var sortAscending = false
+
+    /// The sort of the list's `ItemTable`.
+    var tableSort: ItemTableSort {
+        ItemTableSort(columnID: sortColumn.rawValue, ascending: sortAscending)
+    }
+}
