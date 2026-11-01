@@ -192,7 +192,7 @@ struct TicketsTests {
         }
     }
 
-    @Test("Status rules: the user and Claude set any status; Claude never changes a done ticket")
+    @Test("Status rules: the user and Claude set any status; Claude never changes a done ticket; review is stored in the ticket file")
     func status() async throws {
         try await withDomainEngine { h in
             try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
@@ -211,6 +211,12 @@ struct TicketsTests {
             #expect(try events.all[1].payload(ProjectsChangedEvent.self)[0].ticketCounts == TicketCounts(review: 1))
             #expect(try await h.call(TicketsSetStatus.self, .init(ticketID: "HEPH-1", status: "in_progress"), as: h.claude).status == .inProgress)
             #expect(try await h.call(TicketsSetStatus.self, .init(ticketID: "HEPH-1", status: "review"), as: h.claude).status == .review)
+            // The ticket file stores review, and reading the file gives it back.
+            let file = h.projects.appendingPathComponent("Heph/.hephaestus/ticket/HEPH-1.yml")
+            #expect(try String(contentsOf: file, encoding: .utf8).contains("\nstatus: review\n"))
+            #expect(try ProjectFileStore.readTicket(at: file, projectID: "HEPH").status == .review)
+            // Claude may also set todo.
+            #expect(try await h.call(TicketsSetStatus.self, .init(ticketID: "HEPH-1", status: "todo"), as: h.claude).status == .todo)
             #expect(try await h.call(TicketsSetStatus.self, .init(ticketID: "HEPH-1", status: "done"), as: h.claude).status == .done)
             for status in ["todo", "in_progress", "review", "done"] {
                 #expect(await engineError { try await h.call(TicketsSetStatus.self, .init(ticketID: "HEPH-1", status: status), as: h.claude) }
@@ -221,6 +227,12 @@ struct TicketsTests {
             #expect(try await h.connection.call(TicketsSetStatus.self, .init(ticketID: "HEPH-1", status: "todo")).status == .todo)
             #expect(await engineError { try await h.connection.call(TicketsSetStatus.self, .init(ticketID: "HEPH-1", status: "In Progress")) }
                 == EngineError(.invalid, "Unknown status \"In Progress\". Use todo, in_progress, review or done."))
+
+            // A ticket file written outside the engine with status review loads as review.
+            try writeFile(ticketYAML(id: "HEPH-2", title: "Waiting", status: "review"),
+                          to: h.projects.appendingPathComponent("Heph/.hephaestus/ticket/HEPH-2.yml"))
+            await h.engine.projectDataFilesChanged(projectID: "HEPH", paths: [".hephaestus/ticket/HEPH-2.yml"])
+            #expect(try await h.connection.call(TicketsGet.self, .init(ticketID: "HEPH-2")).status == .review)
         }
     }
 

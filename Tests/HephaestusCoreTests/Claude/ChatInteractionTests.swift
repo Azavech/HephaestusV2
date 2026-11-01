@@ -320,6 +320,10 @@ struct ChatInteractionTests {
                 return
             }
             #expect(first.sender == "Claude")
+
+            // A review ticket counts as not done.
+            try await bed.writeTicket(Ticket(id: "DEMO-3", title: "In review", status: .review, created: ISODate.now(), description: "Problem"))
+            #expect(try await bed.connection.call(ChatsImplementTicket.self, .init(ticketID: "DEMO-3")).ticketID == "DEMO-3")
         }
     }
 
@@ -339,6 +343,11 @@ struct ChatInteractionTests {
             let prompt = try #require(process.request.arguments.firstIndex(of: "--append-system-prompt").map { process.request.arguments[$0 + 1] })
             #expect(prompt.contains("<bundle>\nID: DEMO-B1\nTitle: Polish\nTickets: DEMO-1, DEMO-2\n\nTicket 1 of 2:\nID: DEMO-1\n"))
             #expect(await process.line { $0.contains("Implement bundle DEMO-B1: Polish") }?.contains("Its tickets, in this order: DEMO-1, DEMO-2.") == true)
+
+            // A review ticket counts as a ticket left to implement.
+            try await bed.writeTicket(Ticket(id: "DEMO-3", title: "Three", status: .review, created: ISODate.now(), description: "Problem"))
+            try await bed.writeBundle(TicketBundle(id: "DEMO-B3", title: "Reviewed", created: ISODate.now(), ticketIDs: ["DEMO-2", "DEMO-3"]))
+            #expect(try await bed.connection.call(ChatsImplementBundle.self, .init(bundleID: "DEMO-B3")).bundleID == "DEMO-B3")
         }
     }
 

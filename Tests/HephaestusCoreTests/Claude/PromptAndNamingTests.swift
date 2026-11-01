@@ -157,6 +157,41 @@ struct PromptAndNamingTests {
         #expect(Prompts.text(.implementTicket).contains(", push, post the completion comment"))
     }
 
+    @Test("Claude sets review after the completion comment, in a ticket chat and in each ticket chat of a bundle")
+    func reviewAfterCompletionComment() throws {
+        let common = Prompts.text(.common)
+        func section(_ start: String, _ end: String) throws -> String {
+            let lower = try #require(common.range(of: start)).lowerBound
+            let upper = try #require(common.range(of: end)).lowerBound
+            return String(common[lower..<upper])
+        }
+        let status = try section("# Ticket status", "# Implementing a ticket")
+        #expect(status.contains("review (finished, waiting for the user's review)"))
+        #expect(status.contains("When you have finished a ticket, after its completion comment, set it with set_ticket_status to done when every Claude test of its Testing section has passed and the user has said in the chat that every User test has passed; otherwise set it to review"))
+        #expect(status.contains("A ticket without a Testing section goes to review."))
+        #expect(status.contains("set it to in_progress before your first change and back to review after the completion comment of the correction"))
+        #expect(status.contains("Never change the status of a ticket that is done"))
+
+        // The status step follows the completion comment.
+        let steps = try section("# Implementing a ticket", "# Commits")
+        let comment = try #require(steps.range(of: "7. Post the completion comment"))
+        let setStatus = try #require(steps.range(of: "8. Set the ticket to done or review with set_ticket_status"))
+        #expect(comment.upperBound < setStatus.lowerBound)
+
+        // Each ticket chat of a bundle follows "Implementing a ticket" completely.
+        let bundle = try section("# Implementing a bundle", "# Project and feedback chats")
+        #expect(bundle.contains("Follow \"Implementing a ticket\" completely, except that you commit without pushing"))
+        let messages = [
+            Prompts.render(Prompts.text(.implementTicket), ["ticketID": "HEPH-12", "ticketTitle": "Fix tabs"]),
+            Prompts.render(Prompts.text(.implementBundleTicket), ["ticketID": "HEPH-12", "ticketTitle": "Fix tabs", "bundleID": "HEPH-B2"]),
+        ]
+        for message in messages {
+            let comment = try #require(message.range(of: "post the completion comment"))
+            let setStatus = try #require(message.range(of: "set the ticket to done or review as \"Ticket status\" describes"))
+            #expect(comment.upperBound < setStatus.lowerBound)
+        }
+    }
+
     @Test("Naming inputs: the label line, then the text cut at 4,000 characters")
     func namingInputs() {
         #expect(HaikuTitleNamer.input(for: .ticket(description: "Problem\nX")) == "Ticket description:\nProblem\nX")
