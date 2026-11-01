@@ -148,10 +148,11 @@ private struct FileCloseAndSaveCommands: View {
         .disabled(!(window?.sectionCommands?.canSave ?? false))
     }
 
-    /// A window is key and shows no sheet.
+    /// A window is key and shows no sheet; `MenuValidation` follows the key window, which SwiftUI
+    /// does not observe.
     private var canClose: Bool {
-        guard let key = NSApp.keyWindow else { return false }
-        return key.attachedSheet == nil && focused?.sheet == nil
+        let validation = MenuValidation.shared
+        return validation.keyWindowNumber != nil && !validation.keyWindowShowsSheet && focused?.sheet == nil
     }
 
     /// A main window closes after the unsaved changes check; any other window closes.
@@ -375,7 +376,7 @@ private struct SendFeedbackCommand: View {
     @FocusedValue(\.chatWindowValue) private var focusedChat
 
     var body: some View {
-        let key = NSApp.keyWindow
+        let validation = MenuValidation.shared
         Button("Send Feedback…") {
             guard let key = NSApp.keyWindow else { return }
             let source: FeedbackSource
@@ -391,6 +392,6 @@ private struct SendFeedbackCommand: View {
             app.feedbackController.start(capturing: key, source: source)
         }
         .keyboardShortcut("b", modifiers: [.command, .shift])
-        .disabled(key == nil || key?.attachedSheet != nil || focusedMain?.sheet != nil)
+        .disabled(validation.keyWindowNumber == nil || validation.keyWindowShowsSheet || focusedMain?.sheet != nil)
     }
 }
