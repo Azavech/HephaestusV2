@@ -126,9 +126,10 @@ extension Engine {
     /// (`chat.updated`), then links it to its ticket or bundle (docs/data-model.md › Changes that
     /// touch several files). A given `bundleStatus` is set on the bundle in the same write.
     private func createChat(kind: ChatKind, project: Project, ticketID: TicketID?, bundleID: BundleID?, settings chosen: ChatSettings?,
-                            bundleStatus: BundleStatus? = nil, origin: Actor) throws -> ChatMeta {
+                            orchestratorChatID: ChatID? = nil, bundleStatus: BundleStatus? = nil, origin: Actor) throws -> ChatMeta {
         let now = ISODate.now()
-        let meta = ChatMeta(id: UUID(), kind: kind, ticketID: ticketID, bundleID: bundleID, created: now, updated: now,
+        let meta = ChatMeta(id: UUID(), kind: kind, ticketID: ticketID, bundleID: bundleID, orchestratorChatID: orchestratorChatID,
+                            created: now, updated: now,
                             settings: chosen ?? project.chatDefaults ?? settings.defaultChatSettings, projectID: project.id)
         let saved = try saveChatMeta(meta, origin: origin)
         chats.scannedChats.insert(meta.id)
@@ -155,11 +156,28 @@ extension Engine {
         let sender = senderName(actor)
         let ticket = try checkTicket()
         guard let projectID = ticket.projectID, let project = domain.project(projectID) else { throw EngineError.notFound("Ticket", ticketID) }
-        let meta = try createChat(kind: .ticket, project: project, ticketID: ticketID, bundleID: nil, settings: params.settings, origin: actor)
+        let orchestrator = orchestratorChat(of: ticketID, actor)
+        let meta = try createChat(kind: .ticket, project: project, ticketID: ticketID, bundleID: nil, settings: params.settings,
+                                  orchestratorChatID: orchestrator?.chat.id, origin: actor)
         recordDrivingDevice(meta.id, actor)
-        let text = Prompts.render(Prompts.text(.implementTicket), ["ticketID": ticketID, "ticketTitle": ticket.title])
+        let text: String
+        if let orchestrator {
+            text = Prompts.render(Prompts.text(.implementBundleTicket),
+                                  ["ticketID": ticketID, "ticketTitle": ticket.title, "bundleID": orchestrator.bundleID])
+        } else {
+            text = Prompts.render(Prompts.text(.implementTicket), ["ticketID": ticketID, "ticketTitle": ticket.title])
+        }
         try sendChatMessage(meta.id, text: text, attachments: [], sender: sender, origin: actor)
         return try requireChat(meta.id)
+    }
+
+    /// The calling chat when it orchestrates the ticket: a claude actor whose chat is of kind
+    /// bundle and whose bundle lists the ticket (docs/chats.md › Orchestrated ticket chats).
+    private func orchestratorChat(of ticketID: TicketID, _ actor: Actor) -> (chat: ChatMeta, bundleID: BundleID)? {
+        guard let chatID = actor.chat, let chat = domain.chat(chatID), chat.kind == .bundle,
+              let bundleID = chat.bundleID, let bundle = domain.bundle(bundleID), bundle.ticketIDs.contains(ticketID)
+        else { return nil }
+        return (chat, bundleID)
     }
 
     /// `chats.implementBundle` (docs/engine-api.md › chats.implementBundle).

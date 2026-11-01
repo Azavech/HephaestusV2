@@ -65,10 +65,36 @@ struct LinkedChatsView: View {
         }
     }
 
-    /// The listed chats: ids with chat metadata, most recently updated first. A chat id without
-    /// metadata (another clone of the repository) is not listed.
+    /// A row of the list: a chat, indented when it is a ticket chat orchestrated by the chat of
+    /// the row above it.
+    struct Row: Identifiable, Hashable {
+        var meta: ChatMeta
+        var nested: Bool
+        var id: String { meta.id.uuidString }
+    }
+
+    /// The listed rows: the chats of `chatIDs` that have metadata, most recently updated first,
+    /// each followed by the ticket chats it orchestrates, oldest first (docs/tickets.md ›
+    /// Bundles section). A chat id without metadata (another clone of the repository) is not
+    /// listed.
+    static func listedRows(_ chatIDs: [ChatID], workspace: DeviceWorkspace) -> [Row] {
+        let chats = chatIDs.compactMap { workspace.chats[$0.uuidString] }.sorted { $0.updated > $1.updated }
+        let listed = Set(chats.map(\.id))
+        var children: [ChatID: [ChatMeta]] = [:]
+        for meta in workspace.chats.values {
+            if let orchestrator = meta.orchestratorChatID, listed.contains(orchestrator), !listed.contains(meta.id) {
+                children[orchestrator, default: []].append(meta)
+            }
+        }
+        return chats.flatMap { meta in
+            [Row(meta: meta, nested: false)]
+                + (children[meta.id] ?? []).sorted { $0.created < $1.created }.map { Row(meta: $0, nested: true) }
+        }
+    }
+
+    /// The listed chats, in the order of `listedRows`.
     static func listedChats(_ chatIDs: [ChatID], workspace: DeviceWorkspace) -> [ChatMeta] {
-        chatIDs.compactMap { workspace.chats[$0.uuidString] }.sorted { $0.updated > $1.updated }
+        listedRows(chatIDs, workspace: workspace).map(\.meta)
     }
 
     /// Opening the tab selects the most recently updated chat.
@@ -85,7 +111,7 @@ struct LinkedChatsView: View {
             if chats.contains(where: { $0.id.uuidString == stored }) {
                 return stored
             }
-            if let meta = workspace.chats[stored], linkedID(of: meta) == owner.id {
+            if let meta = workspace.chats[stored], linkedID(of: meta) == owner.id || isOrchestrated(meta) {
                 return stored
             }
         }
@@ -99,12 +125,18 @@ struct LinkedChatsView: View {
         }
     }
 
+    /// A ticket chat orchestrated by a chat of this tab, whose row has not arrived yet.
+    private func isOrchestrated(_ meta: ChatMeta) -> Bool {
+        guard let orchestrator = meta.orchestratorChatID else { return false }
+        return chatIDs.contains(orchestrator)
+    }
+
     private var showsDraft: Bool {
         viewState.chatsTabDrafts.contains(owner.id)
     }
 
     var body: some View {
-        let chats = Self.listedChats(chatIDs, workspace: workspace)
+        let chats = Self.listedRows(chatIDs, workspace: workspace)
         Group {
             if chats.isEmpty && !showsDraft {
                 emptyState
@@ -192,8 +224,8 @@ struct LinkedChatsView: View {
 
     // MARK: List
 
-    private func list(_ chats: [ChatMeta]) -> some View {
-        let selectedID = showsDraft ? nil : selectedChatID(chats)
+    private func list(_ rows: [Row]) -> some View {
+        let selectedID = showsDraft ? nil : selectedChatID(rows.map(\.meta))
         return List(selection: Binding<String?>(
             get: { selectedID },
             set: { id in
@@ -201,8 +233,10 @@ struct LinkedChatsView: View {
                 select(id, draft: false)
             }
         )) {
-            ForEach(chats) { meta in
+            ForEach(rows) { listed in
+                let meta = listed.meta
                 row(meta)
+                    .padding(.leading, listed.nested ? 22 : 0)
                     .tag(meta.id.uuidString)
                     .contextMenu {
                         Button("Open in New Window") {
@@ -266,7 +300,8 @@ struct LinkedChatsView: View {
     // MARK: Selected chat
 
     @ViewBuilder
-    private func selected(_ chats: [ChatMeta]) -> some View {
+    private func selected(_ rows: [Row]) -> some View {
+        let chats = rows.map(\.meta)
         if showsDraft {
             ChatDraftView(projectID: projectID, kind: owner.kind,
                           ticketID: owner.kind == .ticket ? owner.id : nil,

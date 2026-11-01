@@ -1075,6 +1075,8 @@ Swift type `ChatsImplementTicket` · actors: user, claude · result: [ChatMeta](
 
 Creates a chat of kind ticket in the ticket's project, linked to the ticket, then sends the message of the prompt `implement-ticket.md` as its first user message, with `sender` the name of the actor's device, or `Claude` for a claude actor ([Data model](data-model.md#user-item)) ([Chats](chats.md#implement-and-feedback-chats)). The engine does not change the ticket's status: Claude sets `in_progress` itself ([Workflow](workflow.md#implementation-workflow)).
 
+When the actor is claude with the chatID of a chat of kind bundle whose bundle lists the ticket, the new chat is an orchestrated ticket chat: its `orchestrator` is that calling chat, and its first user message is the message of the prompt `implement-bundle-ticket.md`, rendered with the calling chat's bundle ([Chats](chats.md#orchestrated-ticket-chats)). When one of the chat's turns ends, the engine sends that chat a message about it.
+
 | Error       | When                                                                                     |
 | ----------- | ---------------------------------------------------------------------------------------- |
 | invalid     | ticketID is malformed; settings invalid.                                                 |

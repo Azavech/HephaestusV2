@@ -9,19 +9,6 @@ import Testing
 struct BundleStatusTests {
     let created = Date(timeIntervalSince1970: 1_800_000_000)
 
-    /// A connection that never connects and refuses every call: the workspace's data is set by
-    /// the test.
-    private final class OfflineConnection: EngineConnection, @unchecked Sendable {
-        var deviceInfo: DeviceInfo? { nil }
-        var state: ConnectionState { .connecting }
-        var stateUpdates: AsyncStream<ConnectionState> { AsyncStream { $0.finish() } }
-        var events: AsyncStream<EngineEventEnvelope> { AsyncStream { $0.finish() } }
-        func call<M: EngineMethod>(_ method: M.Type, _ params: M.Params) async throws -> M.Result {
-            throw EngineError(.unavailable, "Offline.")
-        }
-        func close() {}
-    }
-
     private func workspace(_ bundle: TicketBundle, tickets statuses: [String: TicketStatus]) -> DeviceWorkspace {
         let workspace = DeviceWorkspace(deviceID: "device", connection: OfflineConnection(), isLocal: true)
         workspace.claudeStatus = ClaudeStatus(available: true, checking: false)

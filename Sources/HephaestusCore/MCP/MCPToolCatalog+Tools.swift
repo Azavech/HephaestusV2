@@ -514,7 +514,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "implement_ticket",
             description: #"""
-            Start a new ticket chat that implements the ticket, as the user's Implement button does: a separate Claude session works on it with the project's default chat settings. Returns the new chat.
+            Start a new ticket chat that implements the ticket, as the user's Implement button does: a separate Claude session works on it with the project's default chat settings. Called from a bundle chat for a ticket of its bundle, the new chat commits without pushing and reports each of its turns back to the bundle chat. Returns the new chat.
             """#,
             inputSchema: schema(#"""
             {
@@ -691,7 +691,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "implement_bundle",
             description: #"""
-            Start a new bundle chat that implements every ticket of the bundle in order, one commit per ticket, as the user's Implement All button does. Returns the new chat.
+            Start a new bundle chat that implements every ticket of the bundle in order, as the user's Implement All button does: it starts one ticket chat per ticket, one commit per ticket, and pushes once at the end. Returns the new chat.
             """#,
             inputSchema: schema(#"""
             {

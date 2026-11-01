@@ -46,7 +46,7 @@ extension Engine {
         meta.state = chats.state(of: meta.id)
         meta.costUSD = chats.costs[meta.id]?.costUSD
         domain.upsertChat(meta)
-        chats.reportedStates[meta.id] = meta.state
+        recordReportedState(meta)
         emit(ChatUpdatedEvent.self, meta, origin: origin)
         return meta
     }
@@ -64,14 +64,14 @@ extension Engine {
     func reportChatState(_ chatID: ChatID, origin: Actor = .system) {
         guard !chats.deleting.contains(chatID), let meta = chatMeta(chatID) else { return }
         guard chats.reportedStates[chatID] != meta.state else { return }
-        chats.reportedStates[chatID] = meta.state
+        recordReportedState(meta)
         emit(ChatUpdatedEvent.self, meta, origin: origin)
     }
 
     /// Emits `chat.updated` with the current metadata and state.
     func emitChatUpdated(_ chatID: ChatID, origin: Actor) {
         guard let meta = chatMeta(chatID) else { return }
-        chats.reportedStates[chatID] = meta.state
+        recordReportedState(meta)
         emit(ChatUpdatedEvent.self, meta, origin: origin)
     }
 
@@ -88,6 +88,7 @@ extension Engine {
             throw EngineError.storage(error)
         }
         chats.runtimes[chatID]?.deltas.drop(item.id)
+        chats.runtimes[chatID]?.turnReport.record(item)
         emit(ChatItemEvent.self, .init(chatID: chatID, item: item), origin: origin)
         // A chat that is not scanned yet gets its cost from the whole transcript when it is.
         if op == .add, case .result(let result) = item, let cost = result.costUSD, chats.scannedChats.contains(chatID) {

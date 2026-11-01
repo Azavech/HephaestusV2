@@ -567,6 +567,7 @@ extension Engine {
                 resolvePermission(pending, decision: .deny, decidedBy: deviceName, chatID: chatID, process: process, origin: origin)
             }
         }
+        runtime.turnReport.stopped = true
         addSystemItem("Stopped by \(deviceName).", level: .info, chatID: chatID, origin: origin)
         if let process = runtime.liveProcess, !process.handle.hasExited {
             sendControlRequest(.interrupt, chatID: chatID, process: process) { ControlLines.request(id: $0, subtype: "interrupt") }

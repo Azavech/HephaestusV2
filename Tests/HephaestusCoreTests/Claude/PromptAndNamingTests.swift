@@ -134,6 +134,29 @@ struct PromptAndNamingTests {
         #expect(prompt.contains("\n\n# This chat\n\nThis is the chat of ticket HEPH-12"))
     }
 
+    @Test("Bundle orchestration: the orchestrator starts one ticket chat at a time, asks retry, skip or stop, pushes once, never sets done; ticket chats commit without pushing")
+    func bundleOrchestrationPrompts() {
+        let common = Prompts.text(.common)
+        let section = String(common[common.range(of: "# Implementing a bundle")!.lowerBound..<common.range(of: "# Project and feedback chats")!.lowerBound])
+        #expect(section.contains("Take the tickets in bundle order and skip those whose status is done."))
+        #expect(section.contains("call implement_ticket with its id, then end your turn"))
+        #expect(section.contains("Start the next ticket's chat only after the previous one has reported back: one ticket chat runs at a time."))
+        #expect(section.contains("ask the user with ask_questions whether to retry the ticket, skip it or stop the bundle"))
+        #expect(section.contains("Never set a ticket to done."))
+        #expect(section.contains("After every ticket has been implemented or skipped, push once"))
+        #expect(section.contains("Your final reply lists each ticket with its commit hash, or with skipped and the reason."))
+        #expect(section.contains("except that you commit without pushing"))
+        #expect(section.contains("\" (not pushed: the bundle chat pushes at the end)\""))
+        #expect(!section.contains("with its own commit, push, completion comment"))
+        let ticket = Prompts.render(Prompts.text(.implementBundleTicket), ["ticketID": "HEPH-12", "ticketTitle": "Fix tabs", "bundleID": "HEPH-B2"])
+        #expect(ticket.hasPrefix("Implement ticket HEPH-12: Fix tabs\n\nThe chat of bundle HEPH-B2 started this chat"))
+        #expect(ticket.contains("Do not push: the bundle chat pushes once at the end."))
+        let bundle = Prompts.text(.implementBundle)
+        #expect(bundle.contains("start one ticket chat per ticket with implement_ticket, one at a time"))
+        #expect(bundle.contains("After the last ticket, push once."))
+        #expect(Prompts.text(.implementTicket).contains(", push, post the completion comment"))
+    }
+
     @Test("Naming inputs: the label line, then the text cut at 4,000 characters")
     func namingInputs() {
         #expect(HaikuTitleNamer.input(for: .ticket(description: "Problem\nX")) == "Ticket description:\nProblem\nX")

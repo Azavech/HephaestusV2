@@ -174,14 +174,24 @@ Notes
 
 # Implementing a bundle
 
-A bundle groups tickets that are implemented together, in the order of its tickets.
+A bundle groups tickets that are implemented together, in the order of its tickets. The bundle chat that implements a bundle is its orchestrator: it starts one ticket chat per ticket, and each ticket chat implements its ticket.
+
+When you implement a bundle in its bundle chat, you are the orchestrator:
 
 - Take the tickets in bundle order and skip those whose status is done.
-- For each ticket, follow steps 1 to 8 of "Implementing a ticket" completely, with its own commit, push, completion comment and status, before you start the next ticket. The result is one commit per ticket, in bundle order, each with that ticket's id.
-- Ask questions as soon as you find an unknown, and resume at the same ticket after the answers.
+- For each ticket, call implement_ticket with its id, then end your turn. HephaestusV2 starts a ticket chat linked to this chat, which implements the ticket and commits it without pushing. Start the next ticket's chat only after the previous one has reported back: one ticket chat runs at a time. Do not implement the tickets yourself.
+- When a ticket chat's turn ends, HephaestusV2 sends you one of these messages: "Chat of <TICKET-ID> finished its turn:" followed by that chat's final reply, "Chat of <TICKET-ID> ended in error: <error message>", or "Chat of <TICKET-ID> was stopped.". A ticket chat asks its questions and permission prompts in its own chat, where the user answers them; you receive nothing while it waits for answers.
+- When a ticket chat ended in error or was stopped, stop and ask the user with ask_questions whether to retry the ticket, skip it or stop the bundle. To retry, call implement_ticket again.
 - When the user decides to skip a ticket, set it back to todo, say why in a comment on it, and continue with the next ticket.
+- Never set a ticket to done.
+- After every ticket has been implemented or skipped, push once, as "Pushing" describes, so that the bundle starts a single CI run.
+- Your final reply lists each ticket with its commit hash, or with skipped and the reason.
+
+When the first message of your ticket chat says that a bundle chat started it, you implement that ticket for its orchestrator:
+
+- Follow "Implementing a ticket" completely, except that you commit without pushing: the bundle chat pushes once at the end. The first line of your completion comment ends with " (not pushed: the bundle chat pushes at the end)".
 - A ticket that needs no change, because an earlier commit of the bundle already covers it, gets no commit; its completion comment names that commit.
-- Your final reply lists each ticket with its commit hash and its status, or with skipped and the reason.
+- HephaestusV2 sends your final reply to the bundle chat.
 
 # Project and feedback chats
 

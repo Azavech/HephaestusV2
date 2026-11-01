@@ -11,6 +11,9 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     public var ticketID: TicketID?
     /// Key `bundle`.
     public var bundleID: BundleID?
+    /// Key `orchestrator`: for a ticket chat started by a bundle chat with `implement_ticket`,
+    /// that bundle chat (docs/chats.md › Orchestrated ticket chats).
+    public var orchestratorChatID: ChatID?
     public var created: Date
     public var updated: Date
     public var settings: ChatSettings
@@ -31,7 +34,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     public static let defaultTitle = "New Chat"
 
     public init(schema: Int = 1, id: ChatID, title: String = ChatMeta.defaultTitle, kind: ChatKind,
-                ticketID: TicketID? = nil, bundleID: BundleID? = nil, created: Date, updated: Date? = nil,
+                ticketID: TicketID? = nil, bundleID: BundleID? = nil, orchestratorChatID: ChatID? = nil, created: Date, updated: Date? = nil,
                 settings: ChatSettings = ChatSettings(), sessionStarted: Bool = false, projectID: ProjectID = "",
                 state: ChatState = .idle, costUSD: Double? = nil, unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
@@ -40,6 +43,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         self.kind = kind
         self.ticketID = ticketID
         self.bundleID = bundleID
+        self.orchestratorChatID = orchestratorChatID
         self.created = created
         self.updated = updated ?? created
         self.settings = settings
@@ -51,7 +55,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     }
 
     static let fileKeys: Set<String> = [
-        "schema", "id", "title", "kind", "ticket", "bundle", "created", "updated", "settings", "sessionStarted",
+        "schema", "id", "title", "kind", "ticket", "bundle", "orchestrator", "created", "updated", "settings", "sessionStarted",
     ]
     static let runtimeKeys: Set<String> = ["projectID", "state", "costUSD"]
 
@@ -65,6 +69,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         if let ticketID { try c.check("ticket", ticketID, Identifiers.isTicketID, "ticket id") }
         bundleID = try c.optional("bundle")
         if let bundleID { try c.check("bundle", bundleID, Identifiers.isBundleID, "bundle id") }
+        orchestratorChatID = try c.optional("orchestrator")
         created = try c.requiredDate("created")
         updated = try c.optionalDate("updated") ?? created
         settings = try c.value("settings", default: ChatSettings())
@@ -79,7 +84,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
             costUSD = try c.optional("costUSD")
         }
         unknownKeys = try c.unknownKeys(known: Self.fileKeys.union(Self.runtimeKeys))
-        if let problem = ChatMeta.kindProblem(kind: kind, ticketID: ticketID, bundleID: bundleID) {
+        if let problem = ChatMeta.kindProblem(kind: kind, ticketID: ticketID, bundleID: bundleID, orchestratorChatID: orchestratorChatID) {
             throw c.invalid("kind", problem)
         }
     }
@@ -92,6 +97,8 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         try c.encode(kind, "kind")
         try c.encodeOptional(ticketID, "ticket")
         try c.encodeOptional(bundleID, "bundle")
+        // Written only when set (docs/data-model.md › Chat metadata file).
+        if let orchestratorChatID { try c.encode(orchestratorChatID, "orchestrator") }
         try c.encodeDate(created, "created")
         try c.encodeDate(updated, "updated")
         try c.encode(settings, "settings")
@@ -104,8 +111,11 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         try c.encodeUnknownKeys(unknownKeys, known: Self.fileKeys.union(Self.runtimeKeys))
     }
 
-    /// Why `ticket` and `bundle` do not match `kind` (docs/data-model.md › Chat kinds), or nil.
-    public static func kindProblem(kind: ChatKind, ticketID: TicketID?, bundleID: BundleID?) -> String? {
+    /// Why `ticket`, `bundle` and `orchestrator` do not match `kind` (docs/data-model.md › Chat
+    /// kinds), or nil.
+    public static func kindProblem(kind: ChatKind, ticketID: TicketID?, bundleID: BundleID?,
+                                   orchestratorChatID: ChatID? = nil) -> String? {
+        if kind != .ticket, orchestratorChatID != nil { return "only a ticket chat has an orchestrator" }
         switch kind {
         case .project:
             if ticketID != nil || bundleID != nil { return "a project chat has neither ticket nor bundle" }
@@ -124,7 +134,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     /// The write rules of the field table.
     public func validate() throws {
         _ = try ModelRules.chatTitle(title)
-        if let problem = ChatMeta.kindProblem(kind: kind, ticketID: ticketID, bundleID: bundleID) {
+        if let problem = ChatMeta.kindProblem(kind: kind, ticketID: ticketID, bundleID: bundleID, orchestratorChatID: orchestratorChatID) {
             throw ValidationError.invalid("kind", problem)
         }
         try settings.validate()

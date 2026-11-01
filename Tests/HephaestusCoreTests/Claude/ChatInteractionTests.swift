@@ -368,6 +368,78 @@ struct ChatInteractionTests {
         }
     }
 
+    @Test("Orchestration: a bundle chat's implement_ticket starts a linked ticket chat whose turns report back, except on ask_questions")
+    func orchestratedTicketChat() async throws {
+        let launcher = FakeClaudeLauncher()
+        launcher.chatScript = FakeClaudeLauncher.silentChat()
+        try await withChatEngine(launcher: launcher) { bed in
+            try await bed.writeTicket(Ticket(id: "DEMO-1", title: "One", created: ISODate.now(), description: "Problem"))
+            try await bed.writeTicket(Ticket(id: "DEMO-2", title: "Two", created: ISODate.now(), description: "Problem"))
+            try await bed.writeBundle(TicketBundle(id: "DEMO-B1", title: "Polish", created: ISODate.now(), ticketIDs: ["DEMO-1"]))
+            let orchestrator = try await bed.engine.call(ChatsImplementBundle.self, .init(bundleID: "DEMO-B1"), actor: .claude(chatID: Actor.externalChatID))
+            #expect(orchestrator.kind == .bundle && orchestrator.orchestratorChatID == nil)
+            let claude = Actor.claude(chatID: orchestrator.id.uuidString)
+            let chat = try await bed.engine.call(ChatsImplementTicket.self, .init(ticketID: "DEMO-1"), actor: claude)
+            #expect(chat.kind == .ticket && chat.ticketID == "DEMO-1" && chat.orchestratorChatID == orchestrator.id)
+            let stored = try ProjectFileStore.readChatMeta(at: bed.folder.chatMetaFile(chat.id), projectID: "DEMO")
+            #expect(stored.orchestratorChatID == orchestrator.id)
+            #expect(try String(contentsOf: bed.folder.chatMetaFile(chat.id), encoding: .utf8).contains("\norchestrator: \(orchestrator.id.uuidString)\n"))
+            #expect(try ProjectFileStore.readTicket(at: bed.folder.ticketFile("DEMO-1"), projectID: "DEMO").chatIDs == [chat.id])
+            #expect(try ProjectFileStore.readBundle(at: bed.folder.bundleFile("DEMO-B1"), projectID: "DEMO").chatIDs == [orchestrator.id])
+            let first = try await bed.transcript(chat.id).compactMap { item -> UserItem? in
+                if case .user(let user) = item { return user }
+                return nil
+            }.first
+            #expect(first?.text.hasPrefix("Implement ticket DEMO-1: One\n\nThe chat of bundle DEMO-B1 started this chat") == true)
+            #expect(first?.sender == "Claude")
+            // A ticket the bundle does not list, or a call from another chat, is not orchestrated.
+            #expect(try await bed.engine.call(ChatsImplementTicket.self, .init(ticketID: "DEMO-2"), actor: claude).orchestratorChatID == nil)
+            #expect(try await bed.connection.call(ChatsImplementTicket.self, .init(ticketID: "DEMO-1")).orchestratorChatID == nil)
+
+            @Sendable func reports() async throws -> [UserItem] {
+                try await bed.transcript(orchestrator.id).compactMap { item -> UserItem? in
+                    if case .user(let user) = item, user.text.hasPrefix("Chat of ") { return user }
+                    return nil
+                }
+            }
+            let process = try #require(await launcher.chatProcess(1))
+            // A turn that ends: the final reply.
+            process.emit(FakeClaudeLauncher.initLine())
+            for line in FakeClaudeLauncher.textReply(messageID: "msg_1", text: "Working on it.") { process.emit(line) }
+            for line in FakeClaudeLauncher.textReply(messageID: "msg_2", text: "Implemented in abc1234.") { process.emit(line) }
+            process.emit(FakeClaudeLauncher.resultLine())
+            #expect(await eventually(timeout: waitLimit) { (try? await reports().count) == 1 })
+            let report = try await reports()[0]
+            #expect(report.text == "Chat of DEMO-1 finished its turn:\n\nImplemented in abc1234.")
+            #expect(report.sender == (await bed.engine.deviceInfo.name))
+            // A turn that ends on ask_questions sends nothing.
+            try await bed.send(chat.id, "Go on")
+            process.emit(FakeClaudeLauncher.initLine())
+            let question = Question(label: "A", question: "Which?", options: [QuestionOption(label: "Yes"), QuestionOption(label: "No")],
+                                    recommended: "Yes")
+            let set = try await bed.engine.call(ChatsPostQuestions.self, .init(chatID: chat.id, questions: [question]),
+                                                actor: .claude(chatID: chat.id.uuidString))
+            process.emit(FakeClaudeLauncher.resultLine())
+            #expect(await bed.waitForState(chat.id, .waitingAnswers))
+            try await Task.sleep(for: .milliseconds(200))
+            #expect(try await reports().count == 1)
+            // The turn after the answers ends in error.
+            _ = try await bed.connection.call(ChatsAnswerQuestion.self, .init(chatID: chat.id, questionSetID: set.questionSetID, label: "A", answer: "Yes"))
+            process.emit(FakeClaudeLauncher.initLine())
+            process.emit(FakeClaudeLauncher.resultLine(isError: true, subtype: "error_max_turns", errors: ["Too many turns."]))
+            #expect(await eventually(timeout: waitLimit) { (try? await reports().count) == 2 })
+            #expect(try await reports()[1].text == "Chat of DEMO-1 ended in error: Too many turns.")
+            // A stopped turn.
+            try await bed.send(chat.id, "Again")
+            process.emit(FakeClaudeLauncher.initLine())
+            #expect(await bed.waitForState(chat.id, .running))
+            _ = try await bed.connection.call(ChatsInterrupt.self, .init(chatID: chat.id))
+            process.emit(FakeClaudeLauncher.resultLine(isError: true, subtype: "error_during_execution"))
+            #expect(await eventually(timeout: waitLimit) { (try? await reports().count) == 3 })
+            #expect(try await reports()[2].text == "Chat of DEMO-1 was stopped.")
+        }
+    }
+
     @Test("Feedback: the message of docs/chats.md › Feedback message with the screenshot as its image")
     func feedback() async throws {
         try await withChatEngine { bed in

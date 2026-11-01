@@ -105,6 +105,9 @@ final class ChatRuntime {
     var deltaTask: Task<Void, Never>?
     var lastDeltaFlush: ContinuousClock.Instant?
     var idleTask: Task<Void, Never>?
+    /// What the current turn's report to an orchestrator chat says (docs/chats.md › Orchestrated
+    /// ticket chats).
+    var turnReport = TurnReport()
 
     /// The process can take a message now: it runs and the engine is not ending it.
     var liveProcess: ChatProcess? {

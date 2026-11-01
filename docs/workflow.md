@@ -1,16 +1,16 @@
 # Claude workflow
 
-This is the operating manual Claude follows in every HephaestusV2 chat. Claude never invents: it asks labelled questions, each with a recommended answer. It writes tickets with the description template and respects the status rules. It implements a ticket by changing the docs first and then the code to match them; it then builds and tests, commits with a conventional commit message, pushes and comments on the ticket, and it never marks the ticket done. A bundle runs the same workflow ticket by ticket. On the HephaestusV2 project itself, the push starts the self-update loop, which ends with the app restarting on the new version. The rules reach Claude through the system prompts of [Chats](chats.md), and the engine enforces the ones it can check. The user-facing behaviour of tickets and bundles is in [Tickets and bundles](tickets.md); both documents state the same rules.
+This is the operating manual Claude follows in every HephaestusV2 chat. Claude never invents: it asks labelled questions, each with a recommended answer. It writes tickets with the description template and respects the status rules. It implements a ticket by changing the docs first and then the code to match them; it then builds and tests, commits with a conventional commit message, pushes and comments on the ticket, and it never marks the ticket done. A bundle chat orchestrates a bundle: it starts one ticket chat per ticket, each running that workflow without pushing, and pushes once at the end. On the HephaestusV2 project itself, the push starts the self-update loop, which ends with the app restarting on the new version. The rules reach Claude through the system prompts of [Chats](chats.md), and the engine enforces the ones it can check. The user-facing behaviour of tickets and bundles is in [Tickets and bundles](tickets.md); both documents state the same rules.
 
 ## Where the rules apply
 
-| Chat kind        | Started by                                                             | Prompt resources           | What this workflow adds                                                      |
-| ---------------- | ---------------------------------------------------------------------- | -------------------------- | ---------------------------------------------------------------------------- |
-| `project`        | New Chat (⌥⌘N), the project chat panel or the Chats section            | `common.md`, `project.md`  | Free-form work; tickets are written with the template                        |
-| `ticket`         | Implement, New Chat in a ticket's Chats tab, `implement_ticket`        | `common.md`, `ticket.md`   | Implement runs the [implementation workflow](#implementation-workflow)       |
-| `bundle`         | Implement All, New Chat in a bundle's Chats tab, `implement_bundle`    | `common.md`, `bundle.md`   | Implement All runs the [bundle workflow](#bundles)                           |
-| `feedback`       | The ladybug ([Feedback](feedback.md))                                  | `common.md`, `feedback.md` | Clarify the feedback, then create its ticket                                 |
-| External session | A terminal Claude session using the external MCP token ([MCP](mcp.md)) | none                       | Only the [engine-enforced rules](#engine-enforced-rules); no `ask_questions` |
+| Chat kind        | Started by                                                             | Prompt resources           | What this workflow adds                                                                                                                                      |
+| ---------------- | ---------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `project`        | New Chat (⌥⌘N), the project chat panel or the Chats section            | `common.md`, `project.md`  | Free-form work; tickets are written with the template                                                                                                        |
+| `ticket`         | Implement, New Chat in a ticket's Chats tab, `implement_ticket`        | `common.md`, `ticket.md`   | Implement runs the [implementation workflow](#implementation-workflow); a ticket chat started by a bundle chat commits without pushing ([Bundles](#bundles)) |
+| `bundle`         | Implement All, New Chat in a bundle's Chats tab, `implement_bundle`    | `common.md`, `bundle.md`   | Implement All runs the [bundle workflow](#bundles): the chat orchestrates one ticket chat per ticket                                                         |
+| `feedback`       | The ladybug ([Feedback](feedback.md))                                  | `common.md`, `feedback.md` | Clarify the feedback, then create its ticket                                                                                                                 |
+| External session | A terminal Claude session using the external MCP token ([MCP](mcp.md)) | none                       | Only the [engine-enforced rules](#engine-enforced-rules); no `ask_questions`                                                                                 |
 
 - The prompt resources are in `Sources/HephaestusCore/Resources/prompts/`, and their full text is in [Chats](chats.md). `common.md` states every rule of this document in imperative form.
 - Claude CLI also reads the project's own `CLAUDE.md` from the project root. The `CLAUDE.md` of the HephaestusV2 repository links to this document. Default chosen at design time.
@@ -175,7 +175,7 @@ The steps, in order:
 6. `add_comment` on the ticket with a summary of what changed, commit hash included.
 7. `set_ticket_status` with `done` when every Claude test of the ticket has passed and the user has said in the chat that every User test has passed; otherwise with `review`.
 
-The workflow starts with Implement, whose first message is `implement-ticket.md`, with `implement_ticket` called from another chat, or when the user asks for the implementation in a ticket chat.
+The workflow starts with Implement, whose first message is `implement-ticket.md`, with `implement_ticket` called from another chat (from a bundle chat, the first message is `implement-bundle-ticket.md`, [Bundles](#bundles)), or when the user asks for the implementation in a ticket chat.
 
 ### Read
 
@@ -266,6 +266,7 @@ BREAKING CHANGE: requests without the X-API-Key header now answer 401.
 - When the push is rejected because the remote has new commits, Claude runs `git pull --rebase --autostash` and then `git push` once more. If the rebase hits a conflict, Claude runs `git rebase --abort` and asks how to proceed; a second rejection also leads to a question. Default chosen at design time.
 - When the project is not a git repository, there is no commit and no push, and the completion comment says so. Default chosen at design time.
 - An authentication or network failure is reported to the user. Claude does not change remotes or credentials. Default chosen at design time.
+- A ticket chat started by a bundle chat does not push; the bundle chat pushes once after the last ticket ([Bundles](#bundles)).
 - Pushing `main` of HephaestusV2 starts the [self-update loop](#self-update-loop).
 
 ## Completion comment
@@ -293,7 +294,7 @@ Notes
 ```
 
 - `<short hash>` is the output of `git rev-parse --short HEAD` after the commit.
-- Without a commit, the first line is `Not committed: <reason>.`, for example `Not committed: the project is not a git repository.`. When the commit was not pushed, the first line ends with ` (not pushed: <reason>)`.
+- Without a commit, the first line is `Not committed: <reason>.`, for example `Not committed: the project is not a git repository.`. When the commit was not pushed, the first line ends with ` (not pushed: <reason>)`; a ticket chat started by a bundle chat ends it with ` (not pushed: the bundle chat pushes at the end)` ([Bundles](#bundles)).
 - When the docs already described the behaviour, the Docs part reads `- No change: <link> already describes the expected behaviour.`.
 - When no build or test command exists, the Checks part reads `- None: no build or test command found.`.
 - The Testing part has one line per bullet of the ticket's Testing section, in the same order, with its result: `passed`, `failed` or `waiting for the user`. When the ticket has no Testing section, it reads `- None: the ticket has no Testing section.`.
@@ -304,13 +305,14 @@ The format of this comment is a default. Default chosen at design time.
 ## Bundles
 
 - A bundle chat starts with Implement All, whose first message is `implement-bundle.md`, or with `implement_bundle`. The bundle prompt contains every ticket of the bundle; `get_bundle` and `get_ticket` give the current state.
-- Claude takes the tickets in bundle order (the order of `tickets`) and skips the `done` ones. Default chosen at design time.
-- For each ticket, Claude runs steps 1 to 7 of the [implementation workflow](#implementation-workflow) completely, including its own commit, push, completion comment and status, before starting the next ticket. The result is one commit per ticket, in bundle order, each with that ticket's id.
-- Claude asks questions as soon as it finds an unknown, and resumes at the same ticket after the answers.
-- When the user decides to skip a ticket, Claude sets it back to `todo`, comments why, and continues with the next ticket. Default chosen at design time.
-- A ticket that needs no change, because an earlier commit of the bundle already covers it, gets no commit; its completion comment names that commit. Default chosen at design time.
-- The final reply lists each ticket with its commit hash, or with `skipped` and the reason. Default chosen at design time.
-- The bundle has its own status ([Bundle status rules](tickets.md#bundle-status-rules)): Implement All and `implement_bundle` set it to `in_progress`, and only the user sets it to `done`, even when every ticket is done. Claude may set it to `todo` or `in_progress` with `set_bundle_status`, never to `done`, and never changes a `done` bundle. Claude sets each of the bundle's tickets to `done` or `review` as [Ticket status](#ticket-status) says.
+- The bundle chat is the orchestrator: it does not implement the tickets itself. It takes the tickets in bundle order (the order of `tickets`) and skips the `done` ones. Default chosen at design time.
+- For each ticket, the orchestrator calls `implement_ticket` and ends its turn. The engine starts an orchestrated ticket chat linked to it ([Orchestrated ticket chats](chats.md#orchestrated-ticket-chats)), whose first message is `implement-bundle-ticket.md`. The orchestrator starts the next ticket's chat only after the previous one has reported back, so one ticket chat runs at a time.
+- The ticket chat runs steps 1 to 8 of the [implementation workflow](#implementation-workflow) for its ticket, with its own commit, completion comment and status, but does not push: the first line of its completion comment ends with ` (not pushed: the bundle chat pushes at the end)`. It asks its questions and permission prompts in its own chat, where the user answers them. A ticket that needs no change, because an earlier commit of the bundle already covers it, gets no commit; its completion comment names that commit. Default chosen at design time.
+- When a ticket chat's turn ends and it does not wait for answers, the engine sends the orchestrator the chat's final reply, or tells it that the chat ended in error or was stopped. After an error or a stop, the orchestrator asks the user with `ask_questions` whether to retry the ticket, skip it or stop; a retry starts a new ticket chat.
+- When the user decides to skip a ticket, the orchestrator sets it back to `todo`, comments why, and continues with the next ticket. Default chosen at design time.
+- After every ticket has been implemented or skipped, the orchestrator pushes once, so the bundle starts a single CI run. The result is one commit per ticket, in bundle order, each with that ticket's id.
+- The orchestrator's final reply lists each ticket with its commit hash, or with `skipped` and the reason. It never sets a ticket to `done`. Default chosen at design time.
+- The bundle has its own status ([Bundle status rules](tickets.md#bundle-status-rules)): Implement All and `implement_bundle` set it to `in_progress`, and only the user sets it to `done`, even when every ticket is done. Claude may set it to `todo` or `in_progress` with `set_bundle_status`, never to `done`, and never changes a `done` bundle. Each ticket chat sets its ticket to `done` or `review` as [Ticket status](#ticket-status) says.
 
 ## Project and feedback chats
 
@@ -323,16 +325,16 @@ The format of this comment is a default. Default chosen at design time.
 
 When the project is HephaestusV2 itself (the registered project whose git remote is the app's release repository, Info.plist key `HephaestusReleaseRepository`), a pushed change reaches the running app without manual steps:
 
-| Step | Who                           | What                                                                                                                                                                                                | Specification                                                       |
-| ---- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| 1    | User                          | Sends feedback with the ladybug, or creates or opens a ticket of the HephaestusV2 project.                                                                                                          | [Feedback](feedback.md), [Tickets and bundles](tickets.md)          |
-| 2    | Claude, feedback chat         | Clarifies with questions and creates the ticket: `todo`, named by Haiku, screenshot attached.                                                                                                       | [Feedback](feedback.md)                                             |
-| 3    | User                          | Clicks Implement, or Implement All on a bundle.                                                                                                                                                     | [Ticket chats and Implement](tickets.md#ticket-chats-and-implement) |
-| 4    | Claude, ticket chat           | Sets `in_progress`, updates the docs, updates the code to match, builds and tests, commits, pushes to `main`, comments and sets `done` or `review`.                                                 | [Implementation workflow](#implementation-workflow)                 |
-| 5    | GitHub Actions, `release.yml` | Checks for personal data and checks the docs, runs `swift test`, computes the version, builds and signs the app, and publishes the release `v<version>` with `HephaestusV2.zip` and `release.json`. | [CI](ci.md)                                                         |
-| 6    | Updater                       | Finds the release (10 s after launch, every `updateCheckIntervalMinutes`, or on Check Now), downloads and verifies it, and reports it ready.                                                        | [Updater](updater.md)                                               |
-| 7    | App                           | Restarts on the new version as soon as no chat is running and no editor is unsaved, or at once with Restart Now.                                                                                    | [Updater](updater.md)                                               |
-| 8    | User                          | Checks the change and sets a `review` ticket to Done.                                                                                                                                               | [Status rules](tickets.md#status-rules)                             |
+| Step | Who                           | What                                                                                                                                                                                                                                                            | Specification                                                       |
+| ---- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| 1    | User                          | Sends feedback with the ladybug, or creates or opens a ticket of the HephaestusV2 project.                                                                                                                                                                      | [Feedback](feedback.md), [Tickets and bundles](tickets.md)          |
+| 2    | Claude, feedback chat         | Clarifies with questions and creates the ticket: `todo`, named by Haiku, screenshot attached.                                                                                                                                                                   | [Feedback](feedback.md)                                             |
+| 3    | User                          | Clicks Implement, or Implement All on a bundle.                                                                                                                                                                                                                 | [Ticket chats and Implement](tickets.md#ticket-chats-and-implement) |
+| 4    | Claude, ticket chat           | Sets `in_progress`, updates the docs, updates the code to match, builds and tests, commits, pushes to `main`, comments and sets `done` or `review`. In a bundle, the ticket chats commit without pushing and the bundle chat pushes once after the last ticket. | [Implementation workflow](#implementation-workflow)                 |
+| 5    | GitHub Actions, `release.yml` | Checks for personal data and checks the docs, runs `swift test`, computes the version, builds and signs the app, and publishes the release `v<version>` with `HephaestusV2.zip` and `release.json`.                                                             | [CI](ci.md)                                                         |
+| 6    | Updater                       | Finds the release (10 s after launch, every `updateCheckIntervalMinutes`, or on Check Now), downloads and verifies it, and reports it ready.                                                                                                                    | [Updater](updater.md)                                               |
+| 7    | App                           | Restarts on the new version as soon as no chat is running and no editor is unsaved, or at once with Restart Now.                                                                                                                                                | [Updater](updater.md)                                               |
+| 8    | User                          | Checks the change and sets a `review` ticket to Done.                                                                                                                                                                                                           | [Status rules](tickets.md#status-rules)                             |
 
 - The loop needs a release build (build number above 0) with `autoUpdate` on, `HEPHAESTUS_DISABLE_UPDATER` not set and a writable app folder. With `autoUpdate` off, step 7 happens from the About window's Install button.
 - The commit must be pushed to `main` of the release repository.
@@ -474,3 +476,4 @@ Notes
 - R108: The user moves between the questions of a set, answers them in any order and can change an answer until every question has one.
 - R109: The user can skip a question; Claude then leaves that point out and mentions it in its reply.
 - R110: A bundle has a status: todo, in progress or done; Implement All sets it to in progress and is disabled until the user sets it back to To Do.
+- R111: Implement All runs one ticket chat per ticket, one at a time, coordinated by the bundle chat that started them, and pushes once at the end.

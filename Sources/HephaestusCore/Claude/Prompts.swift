@@ -6,6 +6,7 @@ enum Prompts {
     enum Name: String, CaseIterable, Sendable {
         case common, project, ticket, bundle, feedback
         case implementTicket = "implement-ticket"
+        case implementBundleTicket = "implement-bundle-ticket"
         case implementBundle = "implement-bundle"
         case namingTicket = "naming-ticket"
         case namingBundle = "naming-bundle"
