@@ -303,13 +303,14 @@ Events: none.
 
 Swift type `ProjectsCreate` · actors: user, claude · result: [ProjectDetail](#projectdetail) of the new project
 
-| Param           | Type      | Required | Description                                                                                                                                                                |
-| --------------- | --------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| rootPath        | String    | yes      | Absolute path of the project folder on the main device.                                                                                                                    |
-| name            | String    | yes      | Display name, validated as in [Data model](data-model.md#project-file).                                                                                                    |
-| identifier      | String    | yes      | 2–8 letters A–Z in any case; stored uppercase; immutable afterwards.                                                                                                       |
-| parentID        | ProjectID | no       | Identifier of the parent when the new project is a sub project.                                                                                                            |
-| createDirectory | Bool      | yes      | true: the folder and its missing parent folders are created when the folder does not exist. false: the folder must exist. The MCP tool `create_project` always sends true. |
+| Param           | Type        | Required | Description                                                                                                                                                                |
+| --------------- | ----------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| rootPath        | String      | yes      | Absolute path of the project folder on the main device.                                                                                                                    |
+| name            | String      | yes      | Display name, validated as in [Data model](data-model.md#project-file).                                                                                                    |
+| identifier      | String      | yes      | 2–8 letters A–Z in any case; stored uppercase; immutable afterwards.                                                                                                       |
+| parentID        | ProjectID   | no       | Identifier of the parent when the new project is a sub project.                                                                                                            |
+| type            | ProjectType | no       | [Project type](data-model.md#project-type); `none` when absent.                                                                                                            |
+| createDirectory | Bool        | yes      | true: the folder and its missing parent folders are created when the folder does not exist. false: the folder must exist. The MCP tool `create_project` always sends true. |
 
 Steps:
 
@@ -319,7 +320,7 @@ Steps:
 4. Use the folder when it exists as a directory; create it when it does not exist and `createDirectory` is true. When `createDirectory` is true and the folder exists, the existing folder is used. Default chosen at design time.
 5. Check that the folder has no `.hephaestus/project.yml`.
 6. Choose the parent: with `parentID`, that project (checked at step 2); without `parentID`, the innermost loaded project whose root contains `rootPath`, when there is one; otherwise the project is top-level. Projects already registered inside `rootPath` are left as they are. Default chosen at design time.
-7. Write `.hephaestus/project.yml` with the defaults of [Data model](data-model.md#project-file) and `.hephaestus/.gitignore` containing the line `chats/`.
+7. Write `.hephaestus/project.yml` with `type` and the defaults of [Data model](data-model.md#project-file) and `.hephaestus/.gitignore` containing the line `chats/`.
 8. Register it: a top-level project's root is appended to registry.yml; a sub project's path relative to the parent root is appended to the parent's `subprojects`.
 
 | Error    | When                                                                                                                                                                                                                                                           |
@@ -368,19 +369,20 @@ Swift type `ProjectsUpdate` · actors: user, claude · result: [ProjectDetail](#
 | ------------ | --------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | projectID    | ProjectID       | yes           | Project identifier.                                                                                                                             |
 | name         | String          | no            | New display name.                                                                                                                               |
+| type         | ProjectType     | no            | New [project type](data-model.md#project-type).                                                                                                 |
 | docsPath     | String          | no            | Docs folder as a project path; the folder does not need to exist; it must not be inside `.hephaestus`.                                          |
 | commands     | ProjectCommands | no            | Replaces all run commands. A command that is absent, empty or only whitespace is not configured ([Data model](data-model.md#project-commands)). |
 | chatDefaults | ChatSettings    | no, clearable | Chat defaults of the project; null removes them so the host `defaultChatSettings` apply. Must be absent for claude.                             |
 
 An absent param leaves its value unchanged. The identifier, `created`, the counters, `subprojects`, `webTabs` and `skills` change only through their own methods.
 
-| Error     | When                                                                                                                                                                                    |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| notFound  | No loaded project has this identifier.                                                                                                                                                  |
-| invalid   | projectID is malformed; name, docsPath, commands or chatDefaults fail validation ([Data model](data-model.md#project-file)); docsPath breaks the path rules or is inside `.hephaestus`. |
-| forbidden | The actor is claude and chatDefaults is present (`Claude cannot change chat defaults.`).                                                                                                |
+| Error     | When                                                                                                                                                                                          |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| notFound  | No loaded project has this identifier.                                                                                                                                                        |
+| invalid   | projectID is malformed; name, type, docsPath, commands or chatDefaults fail validation ([Data model](data-model.md#project-file)); docsPath breaks the path rules or is inside `.hephaestus`. |
+| forbidden | The actor is claude and chatDefaults is present (`Claude cannot change chat defaults.`).                                                                                                      |
 
-Events: project.updated; projects.changed when the name changed.
+Events: project.updated; projects.changed when the name or the type changed.
 
 ### projects.remove
 
@@ -1896,7 +1898,8 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
       "name": "Hephaestus V2",
       "rootPath": "/Users/example/Developer/HephaestusV2",
       "subprojectIDs": ["SITE"],
-      "ticketCounts": {"done": 7, "inProgress": 1, "todo": 4}
+      "ticketCounts": {"done": 7, "inProgress": 1, "todo": 4},
+      "type": "swiftApplication"
     },
     {
       "id": "SITE",
@@ -1904,7 +1907,8 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
       "parentID": "HEPH",
       "rootPath": "/Users/example/Developer/HephaestusV2/site",
       "subprojectIDs": [],
-      "ticketCounts": {"done": 0, "inProgress": 0, "todo": 2}
+      "ticketCounts": {"done": 0, "inProgress": 0, "todo": 2},
+      "type": "none"
     }
   ],
   "runs": [
@@ -1942,6 +1946,7 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
 | ------------- | ------------ | -------- | ----------------------------------------------------------------------------- |
 | id            | ProjectID    | yes      | Project identifier.                                                           |
 | name          | String       | yes      | Display name.                                                                 |
+| type          | ProjectType  | yes      | [Project type](data-model.md#project-type).                                   |
 | rootPath      | String       | yes      | Standardized absolute path of the project folder on the main device.          |
 | parentID      | ProjectID    | no       | Identifier of the parent; absent for a top-level project.                     |
 | subprojectIDs | [ProjectID]  | yes      | Identifiers of the loaded direct sub projects, in the order of `subprojects`. |
@@ -2597,3 +2602,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R40: In a project chat, Claude does anything else the user wants.
 - R43: Any remote sees in real time the changes made anywhere.
 - R88 (partly): Only the user can mark a ticket done.
+- R104: A project has a type: None, Go service or Swift application.

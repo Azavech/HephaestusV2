@@ -6,6 +6,7 @@ public struct Project: Codable, Sendable, Hashable {
     public var id: ProjectID
     public var name: String
     public var created: Date
+    public var type: ProjectType
     public var nextTicketNumber: Int
     public var nextBundleNumber: Int
     public var docsPath: String
@@ -16,7 +17,7 @@ public struct Project: Codable, Sendable, Hashable {
     public var chatDefaults: ChatSettings?
     public var unknownKeys: [String: JSONValue]
 
-    public init(schema: Int = 1, id: ProjectID, name: String, created: Date, nextTicketNumber: Int = 1,
+    public init(schema: Int = 1, id: ProjectID, name: String, created: Date, type: ProjectType = .none, nextTicketNumber: Int = 1,
                 nextBundleNumber: Int = 1, docsPath: String = "docs", subprojects: [String] = [],
                 commands: ProjectCommands = ProjectCommands(), webTabs: [WebTab] = [], skills: [String] = [],
                 chatDefaults: ChatSettings? = nil, unknownKeys: [String: JSONValue] = [:]) {
@@ -24,6 +25,7 @@ public struct Project: Codable, Sendable, Hashable {
         self.id = id
         self.name = name
         self.created = created
+        self.type = type
         self.nextTicketNumber = nextTicketNumber
         self.nextBundleNumber = nextBundleNumber
         self.docsPath = docsPath
@@ -36,7 +38,7 @@ public struct Project: Codable, Sendable, Hashable {
     }
 
     static let knownKeys: Set<String> = [
-        "schema", "id", "name", "created", "nextTicketNumber", "nextBundleNumber", "docsPath",
+        "schema", "id", "name", "created", "type", "nextTicketNumber", "nextBundleNumber", "docsPath",
         "subprojects", "commands", "webTabs", "skills", "chatDefaults",
     ]
 
@@ -47,6 +49,7 @@ public struct Project: Codable, Sendable, Hashable {
         try c.check("id", id, Identifiers.isProjectID, "project identifier")
         name = try c.required("name")
         created = try c.requiredDate("created")
+        type = try c.value("type", default: ProjectType.none)
         nextTicketNumber = try c.value("nextTicketNumber", default: 1)
         nextBundleNumber = try c.value("nextBundleNumber", default: 1)
         docsPath = try c.value("docsPath", default: "docs")
@@ -65,6 +68,7 @@ public struct Project: Codable, Sendable, Hashable {
         try c.encode(id, "id")
         try c.encode(name, "name")
         try c.encodeDate(created, "created")
+        try c.encode(type, "type")
         try c.encode(nextTicketNumber, "nextTicketNumber")
         try c.encode(nextBundleNumber, "nextBundleNumber")
         try c.encode(docsPath, "docsPath")
@@ -98,6 +102,27 @@ public struct Project: Codable, Sendable, Hashable {
         }
         try ModelRules.noDuplicates(skills, field: "skills")
         try chatDefaults?.validate()
+    }
+}
+
+/// The key `type` of the project file (docs/data-model.md › Project type,
+/// docs/projects.md › Project types).
+public enum ProjectType: String, Codable, Sendable, Hashable, CaseIterable {
+    case none
+    case goService
+    case swiftApplication
+
+    public init(from decoder: Decoder) throws {
+        self = try APIEnumCoding.decode(decoder)
+    }
+
+    /// The name shown in the app.
+    public var label: String {
+        switch self {
+        case .none: return "None"
+        case .goService: return "Go service"
+        case .swiftApplication: return "Swift application"
+        }
     }
 }
 

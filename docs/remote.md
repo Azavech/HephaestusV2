@@ -471,7 +471,8 @@ Server to client, the first binary frame (s2c counter 0).
         "name": "Hephaestus V2",
         "rootPath": "/Users/example/Developer/HephaestusV2",
         "subprojectIDs": [],
-        "ticketCounts": {"done": 8, "inProgress": 1, "todo": 3}
+        "ticketCounts": {"done": 8, "inProgress": 1, "todo": 3},
+        "type": "swiftApplication"
       }
     ],
     "runs": [],

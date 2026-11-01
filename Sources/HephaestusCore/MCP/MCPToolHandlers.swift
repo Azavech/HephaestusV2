@@ -79,7 +79,7 @@ struct MCPToolHandlers: Sendable {
                 throw MCPToolError(.invalid, "path: use an absolute path or a path starting with ~/.")
             }
             var params: [String: JSONValue] = ["rootPath": .string(path), "createDirectory": true]
-            for key in ["name", "identifier", "parentID"] {
+            for key in ["name", "identifier", "type", "parentID"] {
                 params[key] = args[key]
             }
             return try await engineText(tool, params: .object(params), actor: actor)

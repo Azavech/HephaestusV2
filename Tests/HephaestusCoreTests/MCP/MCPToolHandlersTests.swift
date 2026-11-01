@@ -58,11 +58,24 @@ struct MCPToolHandlersTests {
         _ = try await Self.call(handlers, "create_project", #"{"path":"/tmp/x","name":"X","identifier":"XX","parentID":"HEPH"}"#)
         #expect(engine.calls.last?.params
             == (try jsonValue(#"{"rootPath":"/tmp/x","name":"X","identifier":"XX","parentID":"HEPH","createDirectory":true}"#)))
+        _ = try await Self.call(handlers, "create_project", #"{"path":"/tmp/y","name":"Y","identifier":"YY","type":"goService"}"#)
+        #expect(engine.calls.last?.params
+            == (try jsonValue(#"{"rootPath":"/tmp/y","name":"Y","identifier":"YY","type":"goService","createDirectory":true}"#)))
+        let badType = try await Self.call(handlers, "create_project", #"{"path":"/tmp/z","name":"Z","identifier":"ZZ","type":"go"}"#)
+        #expect(badType == .failure(MCPToolError(code: .invalid, message: "type: must be one of none, goService, swiftApplication.")))
         for path in ["Developer/Demo", "~user/x", ""] {
             let result = try await Self.call(handlers, "create_project", #"{"path":"\#(path)","name":"Demo","identifier":"DEMO"}"#)
             #expect(result == .failure(MCPToolError(code: .invalid, message: "path: use an absolute path or a path starting with ~/.")))
         }
-        #expect(engine.calls.count == 2)
+        #expect(engine.calls.count == 3)
+    }
+
+    @Test("update_project forwards the project type")
+    func updateProjectType() async throws {
+        let engine = RecordedEngine()
+        _ = try await Self.call(Self.handlers(engine), "update_project", #"{"projectID":"HEPH","type":"swiftApplication"}"#)
+        #expect(engine.calls.last?.method == "projects.update")
+        #expect(engine.calls.last?.params == (try jsonValue(#"{"projectID":"HEPH","type":"swiftApplication"}"#)))
     }
 
     @Test("run_project: wait defaults to true for build and test, false for run")

@@ -34,6 +34,20 @@ struct ProjectsTests {
         }
     }
 
+    @Test("projects.create stores the given project type, none when absent")
+    func createWithType() async throws {
+        try await withDomainEngine { h in
+            let plain = try await h.connection.call(ProjectsCreate.self, .init(
+                rootPath: h.path("Website"), name: "Website", identifier: "WEB", createDirectory: true))
+            #expect(plain.project.type == .none)
+            let service = try await h.connection.call(ProjectsCreate.self, .init(
+                rootPath: h.path("Api"), name: "Api", identifier: "API", type: .goService, createDirectory: true))
+            #expect(service.project.type == .goService)
+            #expect(try ProjectFileStore.readProject(ProjectFolder(root: URL(fileURLWithPath: h.path("Api")))).type == .goService)
+            #expect(try await h.connection.call(ProjectsList.self).map(\.type) == [.none, .goService])
+        }
+    }
+
     @Test("projects.create refuses invalid params, used identifiers, files and existing projects")
     func createErrors() async throws {
         try await withDomainEngine { h in
@@ -197,6 +211,13 @@ struct ProjectsTests {
             #expect(same.project.name == "Forge")
             #expect(await events.settle().isEmpty)
 
+            events.clear()
+            let typed = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "HEPH", type: .swiftApplication))
+            #expect(typed.project.type == .swiftApplication)
+            #expect(await events.wait(for: ProjectsChangedEvent.name) == ["project.updated", "projects.changed"])
+            let summaries = try events.all.last!.payload(ProjectsChangedEvent.self)
+            #expect(summaries.first?.type == .swiftApplication)
+
             let cleared = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "HEPH", chatDefaults: .clear))
             #expect(cleared.project.chatDefaults == nil)
             let stored = try ProjectFileStore.readProject(ProjectFolder(root: URL(fileURLWithPath: h.path("Heph"))))
@@ -225,6 +246,8 @@ struct ProjectsTests {
             #expect(claude == EngineError(.forbidden, "Claude cannot change chat defaults."))
             let renamed = try await h.call(ProjectsUpdate.self, .init(projectID: "HEPH", name: "By Claude"), as: h.claude)
             #expect(renamed.project.name == "By Claude")
+            let typed = try await h.call(ProjectsUpdate.self, .init(projectID: "HEPH", type: .goService), as: h.claude)
+            #expect(typed.project.type == .goService)
         }
     }
 

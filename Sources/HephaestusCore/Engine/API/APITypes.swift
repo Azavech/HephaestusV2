@@ -70,6 +70,7 @@ public struct Snapshot: Codable, Sendable, Hashable {
 public struct ProjectSummary: Codable, Sendable, Hashable, Identifiable {
     public var id: ProjectID
     public var name: String
+    public var type: ProjectType
     /// Standardized absolute path of the project folder on the main device.
     public var rootPath: String
     /// Identifier of the parent; absent for a top-level project.
@@ -78,10 +79,11 @@ public struct ProjectSummary: Codable, Sendable, Hashable, Identifiable {
     public var subprojectIDs: [ProjectID]
     public var ticketCounts: TicketCounts
 
-    public init(id: ProjectID, name: String, rootPath: String, parentID: ProjectID? = nil, subprojectIDs: [ProjectID] = [],
-                ticketCounts: TicketCounts = TicketCounts()) {
+    public init(id: ProjectID, name: String, type: ProjectType = .none, rootPath: String, parentID: ProjectID? = nil,
+                subprojectIDs: [ProjectID] = [], ticketCounts: TicketCounts = TicketCounts()) {
         self.id = id
         self.name = name
+        self.type = type
         self.rootPath = rootPath
         self.parentID = parentID
         self.subprojectIDs = subprojectIDs

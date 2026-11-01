@@ -89,7 +89,7 @@ extension Engine {
             parentID = domain.innermostProject(containing: rootPath)
         }
         // 7. The project's own files.
-        let project = Project(id: identifier, name: name, created: ISODate.now())
+        let project = Project(id: identifier, name: name, created: ISODate.now(), type: params.type ?? ProjectType.none)
         try writeProjectFile(project, in: folder)
         try ensureGitignore(in: folder)
         // 8. Registration.
@@ -181,6 +181,9 @@ extension Engine {
         if let name = params.name {
             new.name = try validated { try ModelRules.projectName(name) }
         }
+        if let type = params.type {
+            new.type = type
+        }
         if let docsPath = params.docsPath {
             guard let path = DomainPaths.projectPath(docsPath), !path.isEmpty else {
                 throw EngineError.invalid("docsPath", "use a relative path with / separators and no empty, . or .. component")
@@ -210,7 +213,7 @@ extension Engine {
         guard new != old else { return projectDetail(id)! }
         try saveProject(new)
         emitProjectUpdated(id, origin: actor)
-        if new.name != old.name {
+        if new.name != old.name || new.type != old.type {
             emitProjectsChanged(origin: actor)
         }
         return projectDetail(id)!

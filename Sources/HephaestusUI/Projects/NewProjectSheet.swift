@@ -26,6 +26,7 @@ struct NewProjectSheet: View {
     @State private var nameEdited = false
     @State private var identifier = ""
     @State private var identifierEdited = false
+    @State private var type = ProjectType.none
     @State private var mode = FolderMode.newFolder
     @State private var parentFolder = ""
     @State private var folderName = ""
@@ -72,6 +73,10 @@ struct NewProjectSheet: View {
                             .frame(width: 140)
                         FieldMessage(text: showsIdentifierMessage ? identifierMessage : nil)
                     }
+                }
+                GridRow {
+                    label("Project type")
+                    ProjectTypeMenu(selection: $type)
                 }
                 GridRow {
                     label("Folder")
@@ -336,7 +341,7 @@ struct NewProjectSheet: View {
     private func create() {
         guard canCreate, !working else { return }
         let params = ProjectsCreate.Params(rootPath: projectFolder, name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-                                           identifier: identifier, parentID: selectedParentID,
+                                           identifier: identifier, parentID: selectedParentID, type: type,
                                            createDirectory: mode == .newFolder)
         run {
             try await workspace.call(ProjectsCreate.self, params)
@@ -383,5 +388,20 @@ struct PathText: View {
             .truncationMode(.middle)
             .textSelection(.enabled)
             .help(path)
+    }
+}
+
+/// The menu of the project types, in the order of docs/projects.md › Project types.
+struct ProjectTypeMenu: View {
+    @Binding var selection: ProjectType
+
+    var body: some View {
+        Picker("Project type", selection: $selection) {
+            ForEach(ProjectType.allCases, id: \.self) { type in
+                Text(type.label).tag(type)
+            }
+        }
+        .labelsHidden()
+        .fixedSize()
     }
 }

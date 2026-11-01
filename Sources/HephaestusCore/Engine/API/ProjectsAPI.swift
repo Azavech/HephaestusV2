@@ -33,14 +33,18 @@ public enum ProjectsCreate: EngineMethod {
         public var identifier: String
         /// Identifier of the parent when the new project is a sub project.
         public var parentID: ProjectID?
+        /// `none` when absent.
+        public var type: ProjectType?
         /// true: the folder and its missing parents are created when the folder does not exist.
         public var createDirectory: Bool
 
-        public init(rootPath: String, name: String, identifier: String, parentID: ProjectID? = nil, createDirectory: Bool) {
+        public init(rootPath: String, name: String, identifier: String, parentID: ProjectID? = nil, type: ProjectType? = nil,
+                    createDirectory: Bool) {
             self.rootPath = rootPath
             self.name = name
             self.identifier = identifier
             self.parentID = parentID
+            self.type = type
             self.createDirectory = createDirectory
         }
     }
@@ -67,6 +71,7 @@ public enum ProjectsUpdate: EngineMethod {
     public struct Params: Codable, Sendable, Hashable {
         public var projectID: ProjectID
         public var name: String?
+        public var type: ProjectType?
         /// Docs folder as a project path.
         public var docsPath: String?
         /// Replaces all run commands.
@@ -74,10 +79,11 @@ public enum ProjectsUpdate: EngineMethod {
         /// Clearable: null removes the project's chat defaults. Must be absent for claude.
         public var chatDefaults: Patch<ChatSettings> = .keep
 
-        public init(projectID: ProjectID, name: String? = nil, docsPath: String? = nil, commands: ProjectCommands? = nil,
-                    chatDefaults: Patch<ChatSettings> = .keep) {
+        public init(projectID: ProjectID, name: String? = nil, type: ProjectType? = nil, docsPath: String? = nil,
+                    commands: ProjectCommands? = nil, chatDefaults: Patch<ChatSettings> = .keep) {
             self.projectID = projectID
             self.name = name
+            self.type = type
             self.docsPath = docsPath
             self.commands = commands
             self.chatDefaults = chatDefaults

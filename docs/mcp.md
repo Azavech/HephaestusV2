@@ -434,7 +434,7 @@ Each section gives the engine call, the result and the errors of the tool, then 
 Description:
 
 ```text
-List the projects registered in HephaestusV2 on this Mac, sub projects included: identifier, name, root folder, parent, sub projects and ticket counts by status.
+List the projects registered in HephaestusV2 on this Mac, sub projects included: identifier, name, type, root folder, parent, sub projects and ticket counts by status.
 ```
 
 Input schema:
@@ -456,7 +456,7 @@ Input schema:
 Description:
 
 ```text
-Get a project: its .hephaestus/project.yml settings (name, docs folder, build/run/test commands, sub projects, web tabs, enabled skills, chat defaults), root folder, parent, sub projects and git remote URL.
+Get a project: its .hephaestus/project.yml settings (name, type, docs folder, build/run/test commands, sub projects, web tabs, enabled skills, chat defaults), root folder, parent, sub projects and git remote URL.
 ```
 
 Input schema:
@@ -477,7 +477,7 @@ Input schema:
 
 ### create_project
 
-- **Engine call:** projects.create with `rootPath` = `path` after [path expansion](#path-expansion), `name`, `identifier`, `parentID` when given, and `createDirectory: true`.
+- **Engine call:** projects.create with `rootPath` = `path` after [path expansion](#path-expansion), `name`, `identifier`, `type` and `parentID` when given, and `createDirectory: true`.
 - A `path` that is not absolute after [path expansion](#path-expansion) fails before the engine call with `path: use an absolute path or a path starting with ~/.` Default chosen at design time.
 - **Result:** the `ProjectDetail` of the new project.
 - **Errors:**
@@ -487,7 +487,7 @@ Input schema:
 Description:
 
 ```text
-Create a project in a folder on this Mac (the folder is created when missing) and register it in HephaestusV2. The identifier is 2 to 8 letters, unique and permanent: ask the user for the name and the identifier unless they gave them. With parentID the folder must be inside the parent project's folder and the new project becomes its sub project.
+Create a project in a folder on this Mac (the folder is created when missing) and register it in HephaestusV2. The identifier is 2 to 8 letters, unique and permanent: ask the user for the name and the identifier unless they gave them. With parentID the folder must be inside the parent project's folder and the new project becomes its sub project. type is none when omitted.
 ```
 
 Input schema:
@@ -508,6 +508,11 @@ Input schema:
       "type": "string",
       "description": "2 to 8 letters A to Z, stored uppercase, unique on this Mac, never changed."
     },
+    "type": {
+      "type": "string",
+      "description": "Project type: none, goService (Go service) or swiftApplication (Swift application).",
+      "enum": ["none", "goService", "swiftApplication"]
+    },
     "parentID": {
       "type": "string",
       "description": "Identifier of the parent project, to create a sub project."
@@ -520,15 +525,15 @@ Input schema:
 
 ### update_project
 
-- **Engine call:** projects.update with `projectID` and the given `name`, `docsPath` and `commands`. `commands` replaces all run commands. `chatDefaults` is never sent: Claude cannot change chat defaults.
+- **Engine call:** projects.update with `projectID` and the given `name`, `type`, `docsPath` and `commands`. `commands` replaces all run commands. `chatDefaults` is never sent: Claude cannot change chat defaults.
 - A call that changes nothing writes nothing and returns the project.
 - **Result:** the updated `ProjectDetail`.
-- **Errors:** Those of projects.update ([Engine API](engine-api.md#projectsupdate)): unknown project (`notFound`), invalid name, docs folder or command (`invalid`).
+- **Errors:** Those of projects.update ([Engine API](engine-api.md#projectsupdate)): unknown project (`notFound`), invalid name, type, docs folder or command (`invalid`).
 
 Description:
 
 ```text
-Change a project's name, docs folder or commands. Omitted arguments are left unchanged. commands replaces all three commands: a command that is missing or empty is removed.
+Change a project's name, type, docs folder or commands. Omitted arguments are left unchanged. commands replaces all three commands: a command that is missing or empty is removed.
 ```
 
 Input schema:
@@ -544,6 +549,11 @@ Input schema:
     "name": {
       "type": "string",
       "description": "New project name."
+    },
+    "type": {
+      "type": "string",
+      "description": "Project type: none, goService (Go service) or swiftApplication (Swift application).",
+      "enum": ["none", "goService", "swiftApplication"]
     },
     "docsPath": {
       "type": "string",
@@ -2407,3 +2417,4 @@ Unauthorized: missing or invalid bearer token.
 - R94: Claude asks about unknown things with labelled questions: A, B and so on.
 - R96: Claude always gives several ways to answer each question.
 - R97: One of the ways to answer is a recommended answer.
+- R104: A project has a type: None, Go service or Swift application.

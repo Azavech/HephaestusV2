@@ -183,8 +183,25 @@ struct ModelCodingTests {
         #expect(project.docsPath == "docs")
         #expect(project.commands == ProjectCommands())
         #expect(project.chatDefaults == nil)
+        #expect(project.type == .none)
         let defaults = try YAMLCoding.decode(Project.self, from: "id: WEB\nname: W\ncreated: 2026-10-31T09:30:00Z\nchatDefaults:\n  model: opus\n")
         #expect(defaults.chatDefaults == ChatSettings(model: "opus"))
+    }
+
+    @Test("The project type round-trips each value, is written after created and refuses other values")
+    func projectType() throws {
+        for type in ProjectType.allCases {
+            let project = Project(id: "WEB", name: "Website", created: Self.created, type: type)
+            let yaml = try YAMLCoding.encode(project)
+            #expect(yaml.contains("created: 2026-10-31T12:00:00Z\ntype: \(type.rawValue)\nnextTicketNumber"))
+            #expect(try YAMLCoding.decode(Project.self, from: yaml) == project)
+            let json = try EngineJSON.encode(project)
+            #expect(try EngineJSON.decode(Project.self, from: json).type == type)
+        }
+        #expect(ProjectType.allCases.map(\.label) == ["None", "Go service", "Swift application"])
+        #expect(throws: (any Error).self) {
+            try YAMLCoding.decode(Project.self, from: "id: WEB\nname: W\ncreated: 2026-10-31T09:30:00Z\ntype: rustCrate\n")
+        }
     }
 
     @Test("Booleans accept the YAML 1.1 spellings")

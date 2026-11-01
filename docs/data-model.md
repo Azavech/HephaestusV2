@@ -127,7 +127,7 @@ The engine API sends these types as JSON objects with the same keys and value ru
 
 ## Project file
 
-`.hephaestus/project.yml` holds the project's identity, counters, documentation folder, sub projects, commands, web tabs, enabled skills and chat defaults. Swift type `Project`.
+`.hephaestus/project.yml` holds the project's identity, type, counters, documentation folder, sub projects, commands, web tabs, enabled skills and chat defaults. Swift type `Project`.
 
 | Swift name       | Key                | Type                  | Required | Default  | Rules                                                                                                                                        |
 | ---------------- | ------------------ | --------------------- | -------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -135,6 +135,7 @@ The engine API sends these types as JSON objects with the same keys and value ru
 | id               | `id`               | `ProjectID`           | yes      | —        | Project identifier ([Ids](#ids)). Set at creation, never changed. Unique among all projects registered on the device, sub projects included. |
 | name             | `name`             | `String`              | yes      | —        | Display name. Single line, 1–100 characters. Default chosen at design time. Names need not be unique.                                        |
 | created          | `created`          | `Date`                | yes      | —        | Creation time. Never changed.                                                                                                                |
+| type             | `type`             | `ProjectType`         | no       | `none`   | [Project type](#project-type): `none`, `goService` or `swiftApplication`. An absent key is `none`. Default chosen at design time.            |
 | nextTicketNumber | `nextTicketNumber` | `Int`                 | no       | `1`      | At least 1. First number tried for the next ticket ([Id allocation](#id-allocation)).                                                        |
 | nextBundleNumber | `nextBundleNumber` | `Int`                 | no       | `1`      | At least 1. First number tried for the next bundle.                                                                                          |
 | docsPath         | `docsPath`         | `String`              | no       | `docs`   | Relative path ([Paths](#paths)) of the documentation folder. The folder may be missing ([Documentation viewer](documentation-viewer.md)).    |
@@ -159,6 +160,10 @@ The engine API sends these types as JSON objects with the same keys and value ru
 - Enabling a skill appends its name; the list has no duplicates ([Skills](skills.md)).
 - A name without a folder in the skills library is kept and ignored when the engine generates the project's skills plugin ([Skills](skills.md)).
 - When a skill is renamed in the library, the engine replaces the old name with the new one, at the same position, in every loaded project that lists it; a list that already holds the new name (a skill missing from the library) keeps it at the old name's position only. When a skill is deleted, the engine removes its name from every loaded project. Default chosen at design time.
+
+### Project type
+
+Swift type `ProjectType`, key `type` of the project file: a string enumeration with the values `none`, `goService` and `swiftApplication`, shown as `None`, `Go service` and `Swift application` ([Project types](projects.md#project-types)). Any other value makes the file invalid. Default chosen at design time.
 
 ### Project commands
 
@@ -195,6 +200,7 @@ schema: 1
 id: HEPH
 name: Hephaestus V2
 created: 2026-10-31T12:00:00Z
+type: swiftApplication
 nextTicketNumber: 15
 nextBundleNumber: 3
 docsPath: docs
@@ -223,7 +229,7 @@ chatDefaults:
   ultracode: false
 ```
 
-A minimal project file; every other key takes its default:
+A minimal project file; every other key takes its default, so its type is `none`:
 
 ```yaml
 # .hephaestus/project.yml
@@ -1219,3 +1225,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R20: A ticket has a unique id made of the project identifier and a number, for example `HEPH-12`.
 - R41: A project's data is stored in `.hephaestus/project.yml`.
 - R42: A project's tickets are stored in `.hephaestus/ticket/<ticket id>.yml`.
+- R104: A project has a type: None, Go service or Swift application.

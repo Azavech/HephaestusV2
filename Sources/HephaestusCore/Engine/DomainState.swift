@@ -208,7 +208,7 @@ struct DomainState {
     /// The ProjectSummary of a loaded project.
     func summary(_ id: ProjectID) -> ProjectSummary? {
         guard let loaded = projects[id] else { return nil }
-        return ProjectSummary(id: id, name: loaded.project.name, rootPath: loaded.rootPath, parentID: loaded.parentID,
+        return ProjectSummary(id: id, name: loaded.project.name, type: loaded.project.type, rootPath: loaded.rootPath, parentID: loaded.parentID,
                               subprojectIDs: childIDs(of: id), ticketCounts: ticketCounts(of: id))
     }
 

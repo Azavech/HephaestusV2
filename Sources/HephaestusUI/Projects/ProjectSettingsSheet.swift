@@ -12,6 +12,7 @@ struct ProjectSettingsSheet: View {
     /// The stored values the fields started from, replaced by each `project.updated`.
     private struct Stored: Equatable {
         var name: String
+        var type: ProjectType
         var docsPath: String
         var build: String
         var run: String
@@ -20,6 +21,7 @@ struct ProjectSettingsSheet: View {
 
         init(_ project: Project) {
             name = project.name
+            type = project.type
             docsPath = project.docsPath
             build = project.commands.build ?? ""
             run = project.commands.run ?? ""
@@ -30,6 +32,7 @@ struct ProjectSettingsSheet: View {
 
     @State private var stored: Stored?
     @State private var name = ""
+    @State private var type = ProjectType.none
     @State private var docsPath = ""
     @State private var build = ""
     @State private var run = ""
@@ -104,6 +107,10 @@ struct ProjectSettingsSheet: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+            GridRow {
+                label("Project type")
+                ProjectTypeMenu(selection: $type)
             }
             GridRow {
                 label("Folder")
@@ -216,13 +223,14 @@ struct ProjectSettingsSheet: View {
     }
 
     private var nameChanged: Bool { stored.map { name != $0.name } ?? false }
+    private var typeChanged: Bool { stored.map { type != $0.type } ?? false }
     private var docsPathChanged: Bool { stored.map { docsPath != $0.docsPath } ?? false }
     private var commandsChanged: Bool { stored.map { build != $0.build || run != $0.run || test != $0.test } ?? false }
     private var chatDefaultsChanged: Bool { stored.map { chosenChatDefaults != $0.chatDefaults } ?? false }
 
     /// Save is enabled when a field changed and every field is valid.
     private var canSave: Bool {
-        guard stored != nil, nameChanged || docsPathChanged || commandsChanged || chatDefaultsChanged else { return false }
+        guard stored != nil, nameChanged || typeChanged || docsPathChanged || commandsChanged || chatDefaultsChanged else { return false }
         return ProjectRules.nameMessage(name) == nil && ProjectRules.docsPathMessage(docsPath) == nil
     }
 
@@ -234,6 +242,7 @@ struct ProjectSettingsSheet: View {
         guard new != stored else { return }
         let old = stored
         if old == nil || name == old?.name { name = new.name }
+        if old == nil || type == old?.type { type = new.type }
         if old == nil || docsPath == old?.docsPath { docsPath = new.docsPath }
         if old == nil || (build == old?.build && run == old?.run && test == old?.test) {
             build = new.build
@@ -259,6 +268,9 @@ struct ProjectSettingsSheet: View {
         var params = ProjectsUpdate.Params(projectID: projectID)
         if nameChanged {
             params.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if typeChanged {
+            params.type = type
         }
         if docsPathChanged {
             params.docsPath = docsPath

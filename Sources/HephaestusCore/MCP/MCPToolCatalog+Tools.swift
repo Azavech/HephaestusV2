@@ -10,7 +10,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "list_projects",
             description: #"""
-            List the projects registered in HephaestusV2 on this Mac, sub projects included: identifier, name, root folder, parent, sub projects and ticket counts by status.
+            List the projects registered in HephaestusV2 on this Mac, sub projects included: identifier, name, type, root folder, parent, sub projects and ticket counts by status.
             """#,
             inputSchema: schema(#"""
             {
@@ -26,7 +26,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "get_project",
             description: #"""
-            Get a project: its .hephaestus/project.yml settings (name, docs folder, build/run/test commands, sub projects, web tabs, enabled skills, chat defaults), root folder, parent, sub projects and git remote URL.
+            Get a project: its .hephaestus/project.yml settings (name, type, docs folder, build/run/test commands, sub projects, web tabs, enabled skills, chat defaults), root folder, parent, sub projects and git remote URL.
             """#,
             inputSchema: schema(#"""
             {
@@ -48,7 +48,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "create_project",
             description: #"""
-            Create a project in a folder on this Mac (the folder is created when missing) and register it in HephaestusV2. The identifier is 2 to 8 letters, unique and permanent: ask the user for the name and the identifier unless they gave them. With parentID the folder must be inside the parent project's folder and the new project becomes its sub project.
+            Create a project in a folder on this Mac (the folder is created when missing) and register it in HephaestusV2. The identifier is 2 to 8 letters, unique and permanent: ask the user for the name and the identifier unless they gave them. With parentID the folder must be inside the parent project's folder and the new project becomes its sub project. type is none when omitted.
             """#,
             inputSchema: schema(#"""
             {
@@ -66,6 +66,11 @@ extension MCPToolCatalog {
                   "type": "string",
                   "description": "2 to 8 letters A to Z, stored uppercase, unique on this Mac, never changed."
                 },
+                "type": {
+                  "type": "string",
+                  "description": "Project type: none, goService (Go service) or swiftApplication (Swift application).",
+                  "enum": ["none", "goService", "swiftApplication"]
+                },
                 "parentID": {
                   "type": "string",
                   "description": "Identifier of the parent project, to create a sub project."
@@ -82,7 +87,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "update_project",
             description: #"""
-            Change a project's name, docs folder or commands. Omitted arguments are left unchanged. commands replaces all three commands: a command that is missing or empty is removed.
+            Change a project's name, type, docs folder or commands. Omitted arguments are left unchanged. commands replaces all three commands: a command that is missing or empty is removed.
             """#,
             inputSchema: schema(#"""
             {
@@ -95,6 +100,11 @@ extension MCPToolCatalog {
                 "name": {
                   "type": "string",
                   "description": "New project name."
+                },
+                "type": {
+                  "type": "string",
+                  "description": "Project type: none, goService (Go service) or swiftApplication (Swift application).",
+                  "enum": ["none", "goService", "swiftApplication"]
                 },
                 "docsPath": {
                   "type": "string",
