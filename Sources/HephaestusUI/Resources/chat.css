@@ -1,3 +1,523 @@
 /* OWNER: ui-chats — the transcript's styles, following the light and dark appearance
-   (docs/chats.md › Item rendering).
-   STUB: ui-chats */
+   (docs/chats.md › Item rendering). Rendered Markdown uses markdown.css; code colors are its
+   token rules (docs/code-editor.md). */
+
+:root {
+  color-scheme: light dark;
+  --chat-page: #FFFFFF;
+  --chat-bubble: #EFEFF2;
+  --chat-card: #F8F8FA;
+  --chat-orange: #C45800;
+  --chat-red: #D70015;
+  --chat-accent: -apple-system-control-accent;
+  --chat-mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --chat-page: #1E1E1E;
+    --chat-bubble: #2C2C30;
+    --chat-card: #242428;
+    --chat-orange: #FF9F0A;
+    --chat-red: #FF453A;
+  }
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html {
+  background: var(--chat-page);
+}
+
+body {
+  margin: 0;
+  padding: 10px 14px 44px;
+  background: var(--chat-page);
+  color: var(--md-text);
+  font: 13px/1.45 -apple-system, system-ui;
+  -webkit-text-size-adjust: none;
+  cursor: default;
+}
+
+button,
+.chrome {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+button {
+  font: inherit;
+}
+
+.frag {
+  margin: 8px 0;
+}
+
+.tool-steps > .frag {
+  margin: 4px 0;
+}
+
+/* MARK: Bubbles */
+
+.msg {
+  display: flex;
+  flex-direction: column;
+}
+
+.msg.user {
+  align-items: flex-end;
+}
+
+.msg.assistant {
+  align-items: flex-start;
+}
+
+.caption {
+  font-size: 11px;
+  color: var(--md-secondary);
+  margin: 0 4px 2px;
+}
+
+.bubble {
+  position: relative;
+  max-width: 85%;
+  padding: 6px 12px;
+  border-radius: 12px;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.bubble > .md > :first-child {
+  margin-top: 0;
+}
+
+.bubble > .md > :last-child {
+  margin-bottom: 0;
+}
+
+.user-bubble {
+  background: var(--chat-accent);
+  color: #FFFFFF;
+}
+
+.user-bubble .md,
+.user-bubble .md a,
+.user-bubble .md blockquote,
+.user-bubble .md h6,
+.user-bubble .md [class^="tok-"],
+.user-bubble .md .md-codeblock-bar {
+  color: #FFFFFF;
+}
+
+.user-bubble .md a {
+  text-decoration: underline;
+}
+
+.user-bubble .md code,
+.user-bubble .md .md-codeblock,
+.user-bubble .md th {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.user-bubble .md blockquote,
+.user-bubble .md hr,
+.user-bubble .md td,
+.user-bubble .md th {
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.assistant-bubble {
+  background: var(--chat-bubble);
+}
+
+.bubble-copy {
+  position: absolute;
+  top: -9px;
+  right: 6px;
+  visibility: hidden;
+  padding: 1px 8px;
+  border: 1px solid var(--md-rule);
+  border-radius: 9px;
+  background: var(--chat-page);
+  color: var(--md-text);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.bubble:hover > .bubble-copy {
+  visibility: visible;
+}
+
+.md .md-copy {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* MARK: Attachments */
+
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+  max-width: 85%;
+}
+
+.msg.user .attachments {
+  justify-content: flex-end;
+}
+
+img.thumb {
+  display: block;
+  max-width: 240px;
+  max-height: 240px;
+  border-radius: 6px;
+  border: 1px solid var(--md-rule);
+  cursor: pointer;
+  object-fit: contain;
+}
+
+.attachments .md-image-broken {
+  display: inline-block;
+  padding: 2px 6px;
+  border: 1px dashed var(--md-rule);
+  font-size: 12px;
+  color: var(--md-secondary);
+}
+
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border: 1px solid var(--md-rule);
+  border-radius: 7px;
+  background: var(--chat-card);
+  color: var(--md-text);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.file-size {
+  color: var(--md-secondary);
+}
+
+[data-icon] {
+  display: inline-flex;
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+[data-icon] svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* MARK: Thinking */
+
+details.thinking > summary {
+  display: inline-block;
+  list-style: none;
+  color: var(--md-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+details.thinking > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.thinking > summary::before {
+  content: "▸";
+  display: inline-block;
+  width: 1em;
+}
+
+details.thinking[open] > summary::before {
+  content: "▾";
+}
+
+.thinking-body {
+  margin: 4px 0 0 1em;
+  padding-left: 10px;
+  border-left: 2px solid var(--md-rule);
+}
+
+.thinking-body .md {
+  color: var(--md-secondary);
+}
+
+/* MARK: Tool cards */
+
+.tool-card {
+  border: 1px solid var(--md-rule);
+  border-radius: 8px;
+  background: var(--chat-card);
+  min-width: 0;
+}
+
+.tool-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  font-size: 12px;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.tool-card.preparing .tool-header {
+  cursor: default;
+}
+
+.tool-name {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--md-code-bg);
+  color: var(--md-secondary);
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.tool-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--md-secondary);
+}
+
+.tool-steps-count {
+  flex: none;
+  color: var(--md-secondary);
+  font-size: 11px;
+}
+
+.tool-card.expanded > .tool-header > .tool-steps-count {
+  display: none;
+}
+
+.tool-trailing {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.tag-error {
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--chat-red);
+  color: #FFFFFF;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--md-rule);
+  border-top-color: var(--md-secondary);
+  border-radius: 50%;
+  animation: chat-spin 0.8s linear infinite;
+}
+
+@keyframes chat-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.tool-body {
+  display: none;
+  padding: 0 9px 8px;
+}
+
+.tool-card.expanded > .tool-body {
+  display: block;
+}
+
+.tool-section-title {
+  margin: 6px 0 2px;
+  color: var(--md-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.tool-input .md .md-codeblock {
+  margin: 2px 0 6px;
+}
+
+.result-text {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--md-code-bg);
+  font: 12px/1.45 var(--chat-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.tool-result.is-error .result-text {
+  color: var(--chat-red);
+}
+
+.show-all {
+  margin-top: 4px;
+  border: 1px solid var(--md-rule);
+  border-radius: 5px;
+  background: var(--chat-page);
+  color: var(--md-text);
+  font-size: 11px;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+
+.result-images {
+  max-width: 100%;
+}
+
+.tool-steps {
+  padding-left: 9px;
+  border-left: 2px solid var(--md-rule);
+}
+
+.tool-steps-section:has(> .tool-steps:empty) {
+  display: none;
+}
+
+.tool-result-slot:empty {
+  display: none;
+}
+
+.partial-json {
+  margin: 0;
+  padding: 0 9px 8px;
+  color: var(--md-secondary);
+  font: 11px/1.4 var(--chat-mono);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* MARK: Lines and cards */
+
+.perm-line {
+  font-size: 12px;
+  color: var(--md-secondary);
+}
+
+.perm-tool {
+  font-weight: 600;
+}
+
+.perm-reason {
+  font-size: 11px;
+}
+
+.questions-card {
+  padding: 8px 12px;
+  border: 1px solid var(--md-rule);
+  border-radius: 8px;
+  background: var(--chat-card);
+}
+
+.questions-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.question + .question {
+  margin-top: 8px;
+}
+
+.question-text .md p {
+  margin: 0.2em 0;
+}
+
+.options {
+  margin: 2px 0;
+  padding-left: 1.4em;
+}
+
+.answer {
+  font-weight: 600;
+}
+
+.answer.pending {
+  font-weight: normal;
+  color: var(--md-secondary);
+}
+
+.system-line,
+.result-line {
+  text-align: center;
+  font-size: 11px;
+  color: var(--md-secondary);
+}
+
+.system-line.level-warning {
+  color: var(--chat-orange);
+}
+
+.system-line.level-error,
+.result-line.is-error {
+  color: var(--chat-red);
+}
+
+/* MARK: Chrome */
+
+#placeholder {
+  position: fixed;
+  top: 45%;
+  left: 24px;
+  right: 24px;
+  text-align: center;
+  color: var(--md-secondary);
+}
+
+#earlier {
+  text-align: center;
+  margin: 4px 0 10px;
+}
+
+#earlier button,
+#jump {
+  border: 1px solid var(--md-rule);
+  border-radius: 12px;
+  padding: 3px 12px;
+  background: var(--chat-page);
+  color: var(--md-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+#jump {
+  position: fixed;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
