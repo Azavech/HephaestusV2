@@ -1,0 +1,63 @@
+/* Rendered Markdown (docs/documentation-viewer.md › Styling).
+   STUB: ui — the variables and the token rules of docs/code-editor.md › Token kinds and colors;
+   the .md selectors of the Styling table come with the documentation viewer. */
+
+:root {
+  --md-text: #1F1F24;
+  --md-secondary: #6E6E73;
+  --md-rule: #D2D2D7;
+  --md-code-bg: #F5F5F7;
+  --md-link: #0068DA;
+  --md-page: #FFFFFF;
+}
+
+.tok-keyword { color: #9B2393; font-weight: 600; }
+.tok-type { color: #3900A0; }
+.tok-builtin { color: #6C36A9; }
+.tok-function { color: #326D74; }
+.tok-property { color: #0B4F79; }
+.tok-variable { color: #0F68A0; }
+.tok-string { color: #C41A16; }
+.tok-escape { color: #A3410B; }
+.tok-interpolation { color: #9B2393; }
+.tok-number { color: #1C00CF; }
+.tok-comment { color: #5D6C79; }
+.tok-doc-comment { color: #5D6C79; font-style: italic; }
+.tok-attribute { color: #815F03; }
+.tok-directive { color: #643820; }
+.tok-heading { color: #0B4F79; font-weight: 700; }
+.tok-emphasis { color: #1F1F24; font-style: italic; }
+.tok-strong { color: #1F1F24; font-weight: 700; }
+.tok-link { color: #0E0EFF; }
+.tok-code { color: #1C00CF; }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --md-text: #DFDFE0;
+    --md-secondary: #98989D;
+    --md-rule: #3A3A3F;
+    --md-code-bg: #2A2A30;
+    --md-link: #4BA3FF;
+    --md-page: #1F1F24;
+  }
+
+  .tok-keyword { color: #FF7AB2; }
+  .tok-type { color: #DABAFF; }
+  .tok-builtin { color: #B281EB; }
+  .tok-function { color: #67B7A4; }
+  .tok-property { color: #6BDFFF; }
+  .tok-variable { color: #4EB0CC; }
+  .tok-string { color: #FF8170; }
+  .tok-escape { color: #FFB38A; }
+  .tok-interpolation { color: #FF7AB2; }
+  .tok-number { color: #D9C97C; }
+  .tok-comment { color: #7F8C98; }
+  .tok-doc-comment { color: #7F8C98; }
+  .tok-attribute { color: #CC9768; }
+  .tok-directive { color: #FFA14F; }
+  .tok-heading { color: #6BDFFF; }
+  .tok-emphasis { color: #DFDFE0; }
+  .tok-strong { color: #DFDFE0; }
+  .tok-link { color: #5482FF; }
+  .tok-code { color: #D9C97C; }
+}
