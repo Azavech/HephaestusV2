@@ -1,6 +1,6 @@
 /* OWNER: ui-code-docs — rendered Markdown in doc.html and chat.html (docs/documentation-viewer.md ›
-   Styling): the variables and the token rules of docs/code-editor.md › Token kinds and colors.
-   STUB: ui-code-docs — the .md selectors of the Styling table. */
+   Styling): the variables, the .md selectors of the Styling table and the token rules of
+   docs/code-editor.md › Token kinds and colors. */
 
 :root {
   --md-text: #1F1F24;
@@ -10,6 +10,44 @@
   --md-link: #0068DA;
   --md-page: #FFFFFF;
 }
+
+/* The doc page of doc.html: background --md-page. */
+body:has(> article#doc) { margin: 0; background: var(--md-page); }
+article#doc { padding: 12px 28px 40px; }
+
+.md { font: 14px/1.55 -apple-system, system-ui; color: var(--md-text); overflow-wrap: anywhere; }
+.md h1, .md h2 { font-weight: 600; margin: 1.2em 0 0.6em; padding-bottom: 0.3em; border-bottom: 1px solid var(--md-rule); }
+.md h1 { font-size: 1.8em; }
+.md h2 { font-size: 1.45em; }
+.md h3, .md h4, .md h5, .md h6 { font-weight: 600; margin: 1em 0 0.5em; }
+.md h3 { font-size: 1.2em; }
+.md h4 { font-size: 1em; }
+.md h5 { font-size: 0.9em; }
+.md h6 { font-size: 0.85em; color: var(--md-secondary); }
+.md p, .md ul, .md ol, .md blockquote { margin: 0.6em 0; }
+.md ul, .md ol { padding-left: 1.6em; }
+.md li.md-task { list-style: none; }
+.md li.md-task > input[type="checkbox"] { margin: 0 0.4em 0 -1.4em; }
+.md code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9em; background: var(--md-code-bg); padding: 0.1em 0.3em; border-radius: 4px; }
+.md .md-codeblock { background: var(--md-code-bg); border-radius: 6px; margin: 0.8em 0; }
+.md .md-codeblock-bar { display: flex; flex-direction: row; justify-content: space-between; font-size: 11px; color: var(--md-secondary); padding: 4px 8px 0; }
+.md .md-copy { margin-left: auto; font: inherit; color: inherit; background: none; border: none; padding: 0; cursor: pointer; }
+.md pre { margin: 0; padding: 6px 12px 10px; overflow-x: auto; white-space: pre; }
+.md pre code { font-size: 12px; background: none; padding: 0; }
+.md blockquote { padding: 0 1em; border-left: 3px solid var(--md-rule); color: var(--md-secondary); }
+.md .md-table-wrap { overflow-x: auto; margin: 0.8em 0; }
+.md table, .md th, .md td { border-collapse: collapse; }
+.md th, .md td { border: 1px solid var(--md-rule); padding: 4px 10px; }
+.md th { font-weight: 600; background: var(--md-code-bg); }
+.md .md-align-left { text-align: left; }
+.md .md-align-center { text-align: center; }
+.md .md-align-right { text-align: right; }
+.md img { max-width: 100%; height: auto; }
+.md a { color: var(--md-link); text-decoration: none; }
+.md a:hover { text-decoration: underline; }
+.md hr { border: none; border-top: 1px solid var(--md-rule); margin: 1.5em 0; }
+.md .md-raw-html { white-space: pre-wrap; }
+.md .md-image-blocked, .md .md-image-broken { display: inline-block; border: 1px dashed var(--md-rule); padding: 2px 6px; font-size: 12px; color: var(--md-secondary); }
 
 .tok-keyword { color: #9B2393; font-weight: 600; }
 .tok-type { color: #3900A0; }
