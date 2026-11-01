@@ -613,7 +613,7 @@ The engine encodes each envelope once ([Engine API](engine-api.md#dispatcher)); 
 - Otherwise it calls `Engine.dispatch(method:params:actor:)` with `params` as JSON data and the actor `user` carrying the session's device id. Remote users have exactly the rights of local users. An unknown method or invalid params produce the [dispatcher's error](engine-api.md#dispatcher-errors) as the response.
 - Requests start in the order they are received: the server calls the dispatcher for each one in that order, without waiting for the previous one to complete, and the requests run concurrently. Responses are sent in the order their requests complete, so they can arrive in another order than their requests. A client that needs one request applied before another waits for the first response before sending the second.
 - Requests have no timeout of their own: they end with their response or with the connection.
-- The name the engine shows for a remote device (for example the `sender` of a chat `user` item) is the `deviceName` of its last `hello` since launch. A `user` actor of a device that has not connected since launch, which only tests and the system produce, is named by its device id. Default chosen at design time.
+- The name the engine shows for a remote device (for example the `sender` of a chat `user` item) is the `deviceName` of its last authenticated `hello` since launch: the server records it when the connection's `auth` succeeds, so a `hello` without a valid `auth` changes no name. A `user` actor of a device that has not authenticated since launch, which only tests and the system produce, is named by its device id. Default chosen at design time.
 - The client sends no request before the `welcome`.
 
 ### Event delivery
