@@ -158,6 +158,7 @@ struct MCPToolHandlersTests {
         (#"{"kind":"section","projectID":"HEPH"}"#, "target.section: required for kind section."),
         (#"{"kind":"ticket","ticketID":"HEPH-1","projectID":"HEPH","line":3}"#, "target.projectID: not used by kind ticket."),
         (#"{"kind":"doc","projectID":"HEPH","path":"docs/a.md","line":3}"#, "target.line: not used by kind doc."),
+        (#"{"kind":"file","projectID":"HEPH","path":"Sources/App.swift","fragment":"top"}"#, "target.fragment: not used by kind file."),
         (#"{"kind":"skill","name":"s","tabID":"t","chatID":"c"}"#, "target.chatID: not used by kind skill."),
         (#"{"kind":"project"}"#, "target.projectID: required for kind project."),
     ])
@@ -178,6 +179,10 @@ struct MCPToolHandlersTests {
         #expect(engine.calls.last?.method == "ui.open")
         #expect(engine.calls.last?.params == .object(["target": try jsonValue(target)]))
         #expect(engine.calls.last?.actor == Self.external)
+
+        let doc = #"{"kind":"doc","projectID":"HEPH","path":"docs/ui.md","fragment":"menus-and-keyboard-shortcuts"}"#
+        #expect(try await Self.call(Self.handlers(engine), "open_in_app", #"{"target":\#(doc)}"#, actor: Self.external) == .success("{}"))
+        #expect(engine.calls.last?.params == .object(["target": try jsonValue(doc)]))
     }
 
     @Test("Debug tools without a UI hook fail with unavailable")
@@ -211,6 +216,8 @@ struct MCPToolHandlersTests {
         #expect(try await Self.call(handlers, "debug_navigate", #"{"target":{"kind":"webTab","projectID":"HEPH","tabID":"\#(tabID)"}}"#)
             == .success(info))
         #expect(ui.navigations == [.webTab(projectID: "HEPH", tabID: UUID(uuidString: tabID)!)])
+        _ = try await Self.call(handlers, "debug_navigate", #"{"target":{"kind":"doc","projectID":"HEPH","path":"docs/ui.md","fragment":"menus"}}"#)
+        #expect(ui.navigations.last == .doc(projectID: "HEPH", path: "docs/ui.md", fragment: "menus"))
 
         #expect(try await Self.call(handlers, "debug_navigate", #"{"target":{"kind":"chat","chatID":"nope"}}"#)
             == .failure(MCPToolError(code: .invalid, message: "target.chatID: must be a UUID.")))

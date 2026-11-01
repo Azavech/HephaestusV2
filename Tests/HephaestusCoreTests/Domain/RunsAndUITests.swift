@@ -156,6 +156,12 @@ struct RunsAndUITests {
             _ = try await h.call(UIOpen.self, .init(target: .doc(projectID: "HEPH", path: "docs/index.md/"), deviceID: "D1"), as: h.claude)
             await events.wait(for: UIOpenEvent.name)
             #expect(try events.all[0].payload(UIOpenEvent.self) == .init(target: .doc(projectID: "HEPH", path: "docs/index.md")))
+            events.clear()
+            // The fragment is passed on unchecked.
+            _ = try await h.call(UIOpen.self, .init(target: .doc(projectID: "heph", path: "docs/index.md", fragment: "über-uns")), as: h.claude)
+            await events.wait(for: UIOpenEvent.name)
+            #expect(try events.all[0].payload(UIOpenEvent.self)
+                == .init(target: .doc(projectID: "HEPH", path: "docs/index.md", fragment: "über-uns")))
 
             let valid: [NavigationTarget] = [
                 .project(projectID: "heph"), .file(projectID: "HEPH", path: "docs/index.md", line: 3),

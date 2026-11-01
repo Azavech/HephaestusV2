@@ -209,7 +209,7 @@ struct MCPToolHandlers: Sendable {
         "ticket": (["ticketID"], []),
         "bundle": (["bundleID"], []),
         "chat": (["chatID"], []),
-        "doc": (["projectID", "path"], []),
+        "doc": (["projectID", "path"], ["fragment"]),
         "file": (["projectID", "path"], ["line"]),
         "skill": (["name"], []),
         "webTab": (["projectID", "tabID"], []),

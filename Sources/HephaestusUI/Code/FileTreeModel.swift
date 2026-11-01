@@ -236,6 +236,8 @@ final class CodeDocsStore {
         let layout = SectionLayout()
         /// The fragment the preview scrolls to once the doc at `path` is rendered.
         var pendingFragment: (path: String, fragment: String)?
+        /// The Docs section's preview while it is shown.
+        weak var preview: DocPreviewController?
 
         init(window: WindowState) {
             self.window = window
@@ -244,6 +246,23 @@ final class CodeDocsStore {
         func stop() {
             fileTree?.stop()
             docsTree?.stop()
+        }
+
+        /// The fragment of a `doc` target once its doc is selected (docs/documentation-viewer.md ›
+        /// Opening a doc, step 3): a preview that shows the doc rendered scrolls at once;
+        /// otherwise the next rendering of the doc scrolls. Without a fragment, or with an empty
+        /// one, an earlier fragment that did not scroll yet is dropped.
+        func applyDocTarget(path: String, fragment: String?) {
+            guard let fragment, !fragment.isEmpty else {
+                pendingFragment = nil
+                return
+            }
+            if let preview, preview.showsRendered(path) {
+                pendingFragment = nil
+                preview.scroll(to: fragment)
+            } else {
+                pendingFragment = (path, fragment)
+            }
         }
     }
 
