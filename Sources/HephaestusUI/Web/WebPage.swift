@@ -21,6 +21,47 @@ final class TabWebView: WKWebView {
     var onFindAction: ((NSTextFinder.Action) -> Void)?
     /// True while the find bar has a search string, for Find Next and Find Previous.
     var hasFindString: () -> Bool = { false }
+    /// When the primary mouse button last went down or up in the web view.
+    private(set) var lastClickTime: Date?
+    private var clickMonitor: Any?
+
+    /// True when a navigation of the page comes after a user click (docs/web-tabs.md › Schemes):
+    /// a link activation, or a script navigation or form submission within 1 second of a click.
+    func isAfterUserClick(_ action: WKNavigationAction, now: Date = Date()) -> Bool {
+        switch action.navigationType {
+        case .linkActivated:
+            return true
+        case .formSubmitted, .other:
+            guard let lastClickTime else { return false }
+            return now.timeIntervalSince(lastClickTime) <= 1
+        default:
+            return false
+        }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil {
+            if let clickMonitor {
+                NSEvent.removeMonitor(clickMonitor)
+                self.clickMonitor = nil
+            }
+        } else if clickMonitor == nil {
+            // A monitor, so that the clicks are seen whichever view of WebKit handles them.
+            clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp]) { [weak self] event in
+                MainActor.assumeIsolated {
+                    self?.noteClick(event)
+                }
+                return event
+            }
+        }
+    }
+
+    private func noteClick(_ event: NSEvent) {
+        guard let window, event.window === window, !isHiddenOrHasHiddenAncestor,
+              visibleRect.contains(convert(event.locationInWindow, from: nil)) else { return }
+        lastClickTime = Date()
+    }
 
     override func performTextFinderAction(_ sender: Any?) {
         guard let action = Self.action(of: sender) else { return }
@@ -298,7 +339,7 @@ extension WebPage: WKNavigationDelegate {
         default:
             decisionHandler(.cancel)
             // Other schemes in the main frame after a user click go to macOS on this Mac.
-            if isMainFrame, navigationAction.navigationType == .linkActivated {
+            if isMainFrame, self.webView.isAfterUserClick(navigationAction) {
                 NSWorkspace.shared.open(url)
             }
         }
