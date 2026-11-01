@@ -149,13 +149,15 @@ func testChatTimings() -> ChatTimings {
     return timings
 }
 
+/// The fake CLI answers at once; the timeouts only bound a run that the load of the whole test
+/// suite slows down.
 func testCLITimings() -> ClaudeCLITimings {
     var timings = ClaudeCLITimings()
-    timings.versionTimeout = .seconds(2)
-    timings.loginShellTimeout = .seconds(1)
-    timings.probeTimeout = .seconds(2)
+    timings.versionTimeout = .seconds(10)
+    timings.loginShellTimeout = .seconds(10)
+    timings.probeTimeout = .seconds(10)
     timings.killGrace = .milliseconds(200)
-    timings.statusWait = .seconds(2)
+    timings.statusWait = .seconds(10)
     timings.shutdownGrace = .milliseconds(500)
     return timings
 }
@@ -172,7 +174,7 @@ extension Engine {
     }
 
     /// Waits until the CLI status is no longer `checking`.
-    func waitUntilClaudeChecked(timeout: Duration = .seconds(5)) async {
+    func waitUntilClaudeChecked(timeout: Duration = .seconds(20)) async {
         let deadline = ContinuousClock.now + timeout
         while claudeCLI.status.checking, ContinuousClock.now < deadline {
             try? await Task.sleep(for: .milliseconds(10))

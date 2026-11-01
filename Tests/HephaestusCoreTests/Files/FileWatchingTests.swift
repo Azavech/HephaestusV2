@@ -15,6 +15,19 @@ struct FileWatchingTests {
         return await filesChanged(on: stream) { $0.contains(marker) }
     }
 
+    /// Collects the paths of the files.changed events of `stream` until one names `marker`.
+    private func collectPaths(_ stream: AsyncStream<EngineEventEnvelope>, until marker: String) -> Task<[[String]], Never> {
+        Task {
+            var collected: [[String]] = []
+            for await envelope in stream {
+                guard let payload = filesChangedPayload(envelope) else { continue }
+                collected.append(payload.paths)
+                if payload.paths.contains(marker) { break }
+            }
+            return collected
+        }
+    }
+
     @Test("A change under the project root emits files.changed with origin system")
     func change() async throws {
         try await withFileTestEngine(files: ["src/.keep": ""]) { _, connection, project in
@@ -49,22 +62,19 @@ struct FileWatchingTests {
         try await withFileTestEngine(files: [".git/HEAD": "ref", ".hephaestus/chats/.keep": ""]) { _, connection, project in
             let events = connection.events
             try await sync(project, events)
-            let collected = Recorder<[String]>()
-            let all = connection.events
-            let collector = Task {
-                for await envelope in all {
-                    if let payload = filesChangedPayload(envelope) { collected.append(payload.paths) }
-                }
-            }
+            let collector = collectPaths(connection.events, until: "marker2.txt")
             try project.write(".git/index", "x")
             try project.write(".git/objects/ab/cdef", "x")
             try project.write(".hephaestus/chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301.jsonl", "{}\n")
             try project.write("visible.txt", "v")
             let visible = await filesChanged(on: events) { $0.contains("visible.txt") }
             #expect(visible != nil)
-            try await sync(project, events, marker: "marker2.txt")
-            collector.cancel()
-            let paths = collected.values.flatMap { $0 }
+            guard try await sync(project, events, marker: "marker2.txt") != nil else {
+                collector.cancel()
+                Issue.record("the marker change was not reported")
+                return
+            }
+            let paths = await collector.value.flatMap { $0 }
             #expect(!paths.isEmpty)
             #expect(paths.allSatisfy { !$0.hasPrefix(".git") && !$0.hasPrefix(".hephaestus/chats") })
         }
@@ -158,15 +168,16 @@ struct FileWatchingTests {
             #expect(await filesChanged(on: events) { $0.contains("single.txt") } != nil)
             #expect(ContinuousClock.now - start >= .milliseconds(290))
 
-            // Changes every 100 ms for 6 s never leave 300 ms of quiet: the first event comes
-            // 2 s after the first change, long before the changes stop.
+            // Changes every 50 ms for 6 s never leave 300 ms of quiet, even when the load of the
+            // test run delays the writer: the first event comes 2 s after the first change, long
+            // before the changes stop.
+            start = ContinuousClock.now
             let writer = Task {
-                for index in 0..<60 {
+                for index in 0..<120 {
                     try project.write("busy/\(index).txt", "x")
-                    try await Task.sleep(for: .milliseconds(100))
+                    try await Task.sleep(for: .milliseconds(50))
                 }
             }
-            start = ContinuousClock.now
             let first = await filesChanged(on: events) { $0.contains { $0.hasPrefix("busy") } }
             let elapsed = ContinuousClock.now - start
             writer.cancel()
@@ -247,22 +258,19 @@ struct FileWatchingTests {
         try await withFileTestEngine { _, connection, project in
             let events = connection.events
             try await sync(project, events)
-            let collected = Recorder<[String]>()
-            let all = connection.events
-            let collector = Task {
-                for await envelope in all {
-                    if let payload = filesChangedPayload(envelope) { collected.append(payload.paths) }
-                }
-            }
+            let collector = collectPaths(connection.events, until: "marker2.txt")
             try project.makeDirectory("generated/a")
             for index in 0..<700 {
                 FileManager.default.createFile(atPath: project.url("generated/a/f\(index)").path, contents: nil)
             }
-            try await sync(project, events, marker: "marker2.txt")
-            collector.cancel()
-            #expect(!collected.values.isEmpty)
-            #expect(collected.values.allSatisfy { $0.count <= 500 })
-            let reported = collected.values.flatMap { $0 }
+            guard try await sync(project, events, marker: "marker2.txt") != nil else {
+                collector.cancel()
+                Issue.record("the marker change was not reported")
+                return
+            }
+            let collected = await collector.value
+            #expect(collected.allSatisfy { $0.count <= 500 })
+            let reported = collected.flatMap { $0 }
             #expect(reported.contains { $0 == "generated" || $0.hasPrefix("generated/") })
         }
     }
