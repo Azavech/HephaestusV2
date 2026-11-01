@@ -81,7 +81,9 @@ public final class AppModel {
     @ObservationIgnored var quitChecksPending = false
     /// True once `app.quitting` was posted for this termination.
     @ObservationIgnored var appQuittingPosted = false
-    @ObservationIgnored private var openWindowAction: OpenWindowAction?
+    /// Opens a window of a scene: the `openWindow` action of the SwiftUI environment, kept by
+    /// `captureWindowActions` or `captureCommandsOpenWindow`.
+    @ObservationIgnored var windowOpener: (@MainActor (SceneWindow) -> Void)?
     @ObservationIgnored private var openSettingsAction: OpenSettingsAction?
     @ObservationIgnored private var pendingMainWindows: [UUID: WindowState] = [:]
     @ObservationIgnored var restartMainWindowStates: [String] = []
@@ -245,9 +247,26 @@ public final class AppModel {
 
     // MARK: Main windows
 
+    /// Called when a main window's root appears for the first time: the launch has its first
+    /// window. The window takes its state and registers it, or gets nil and closes at once: the
+    /// main window SwiftUI opens at launch when the windows of a restart hold no main window. The
+    /// remaining windows of a restart open only after that, so the launch window takes the first
+    /// saved main window (docs/ui.md › Windows: the app opens exactly those windows).
+    func mainWindowRootAppeared(requestID: UUID?, restoredJSON: String?) -> WindowState? {
+        launchWindowsSettled = true
+        var state: WindowState?
+        if requestID != nil || !takeSuppressedLaunchWindow() {
+            let newState = makeMainWindowState(requestID: requestID, restoredJSON: restoredJSON)
+            registerMainWindow(newState)
+            state = newState
+        }
+        openRestartWindows()
+        return state
+    }
+
     /// The state of a main window being created: a requested window, a window of a restart, a
     /// window restored by macOS, or a new window on This Mac with its default project.
-    func makeMainWindowState(requestID: UUID?, restoredJSON: String?) -> WindowState {
+    private func makeMainWindowState(requestID: UUID?, restoredJSON: String?) -> WindowState {
         if let requestID, let state = pendingMainWindows.removeValue(forKey: requestID) {
             return state
         }
@@ -260,11 +279,6 @@ public final class AppModel {
         let state = WindowState(deviceID: localDeviceID)
         state.needsDefaultProject = true
         return state
-    }
-
-    /// Called when a main window's root appears: the launch has its first window.
-    func mainWindowRootAppeared() {
-        launchWindowsSettled = true
     }
 
     /// The launch check of docs/ui.md › Windows, once the app has finished launching: when no
@@ -283,7 +297,7 @@ public final class AppModel {
 
     /// True once, for the main window SwiftUI opens at launch, when the windows of a restart hold
     /// no main window (docs/ui.md › Windows: the app opens exactly those windows).
-    func takeSuppressedLaunchWindow() -> Bool {
+    private func takeSuppressedLaunchWindow() -> Bool {
         guard suppressesLaunchWindow else { return false }
         suppressesLaunchWindow = false
         return true
@@ -355,7 +369,7 @@ public final class AppModel {
     func openMainWindow(_ state: WindowState) {
         let requestID = UUID()
         pendingMainWindows[requestID] = state
-        openWindowAction?(id: "main", value: requestID)
+        windowOpener?(.main(requestID: requestID))
     }
 
     /// Closes a main window after the unsaved changes check of its editors (File ▸ Close Window).
@@ -378,7 +392,7 @@ public final class AppModel {
 
     /// Opens a chat in its own window, or brings its window to front (docs/ui.md › Windows).
     func openChatWindow(_ value: ChatWindowValue) {
-        openWindowAction?(id: "chat", value: value)
+        windowOpener?(.chat(value))
     }
 
     /// Closes the chat windows of a device that show one of `chatIDs` (nil: every chat window of
@@ -390,11 +404,11 @@ public final class AppModel {
     }
 
     func openImageViewer(_ value: ImageViewerValue) {
-        openWindowAction?(id: "image", value: value)
+        windowOpener?(.image(value))
     }
 
     func openAbout() {
-        openWindowAction?(id: "about")
+        windowOpener?(.about)
     }
 
     /// Opens the Settings window, or brings it to front, on a tab.
@@ -406,28 +420,36 @@ public final class AppModel {
     }
 
     /// Keeps the window actions of the SwiftUI environment, so the model can open windows itself
-    /// (`ui.open`, restart windows, debug navigation); the first window root to appear also opens
-    /// the remaining windows of a restart.
+    /// (`ui.open`, restart windows, debug navigation).
     func captureWindowActions(openWindow: OpenWindowAction, openSettings: OpenSettingsAction) {
-        openWindowAction = openWindow
+        windowOpener = Self.windowOpener(openWindow)
         openSettingsAction = openSettings
-        if !restartWindowsOpened {
-            restartWindowsOpened = true
-            openRestartWindows()
-        }
     }
 
     /// The `openWindow` action of the menu commands, which exist from launch on, before any
     /// window: the app can open a main window even when SwiftUI opened none.
     func captureCommandsOpenWindow(_ openWindow: OpenWindowAction) {
-        if openWindowAction == nil {
-            openWindowAction = openWindow
+        if windowOpener == nil {
+            windowOpener = Self.windowOpener(openWindow)
         }
     }
 
-    /// Opens the remaining windows of a restart for an update, front to back
+    private static func windowOpener(_ openWindow: OpenWindowAction) -> @MainActor (SceneWindow) -> Void {
+        { window in
+            switch window {
+            case .main(let requestID): openWindow(id: "main", value: requestID)
+            case .chat(let value): openWindow(id: "chat", value: value)
+            case .image(let value): openWindow(id: "image", value: value)
+            case .about: openWindow(id: "about")
+            }
+        }
+    }
+
+    /// Opens the remaining windows of a restart for an update, front to back, once
     /// (docs/ui.md › Windows).
     private func openRestartWindows() {
+        guard !restartWindowsOpened else { return }
+        restartWindowsOpened = true
         while !restartMainWindowStates.isEmpty {
             guard let state = WindowState.restored(fromJSON: restartMainWindowStates.removeFirst()) else { continue }
             openMainWindow(validated(state))
@@ -657,4 +679,13 @@ extension WindowSheet {
 struct RestartWindowRecord: Codable {
     var main: String?
     var chat: ChatWindowValue?
+}
+
+/// A window the model opens in one of the scenes of docs/ui.md › Windows.
+enum SceneWindow: Hashable {
+    /// A main window, whose root takes the state prepared for `requestID`.
+    case main(requestID: UUID)
+    case chat(ChatWindowValue)
+    case image(ImageViewerValue)
+    case about
 }

@@ -31,17 +31,14 @@ struct MainWindowRoot: View {
         }
         .onAppear {
             app.captureWindowActions(openWindow: openWindow, openSettings: openSettings)
-            app.mainWindowRootAppeared()
             guard state == nil else { return }
-            // A restart whose saved windows hold no main window: SwiftUI still opens one at
-            // launch, which closes at once (docs/ui.md › Windows, windowsAtRestart).
-            if requestID == nil, app.takeSuppressedLaunchWindow() {
+            if let newState = app.mainWindowRootAppeared(requestID: requestID, restoredJSON: storedState) {
+                state = newState
+            } else {
+                // A restart whose saved windows hold no main window: SwiftUI still opens one at
+                // launch, which closes at once (docs/ui.md › Windows, windowsAtRestart).
                 dismiss()
-                return
             }
-            let newState = app.makeMainWindowState(requestID: requestID, restoredJSON: storedState)
-            app.registerMainWindow(newState)
-            state = newState
         }
         .onDisappear {
             if let state {

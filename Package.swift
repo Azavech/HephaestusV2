@@ -57,7 +57,7 @@ let package = Package(
         ),
         .testTarget(
             name: "HephaestusUITests",
-            dependencies: ["HephaestusUI", "HephaestusCore"],
+            dependencies: ["HephaestusUI", "HephaestusCore", "UpdaterCore"],
             swiftSettings: swiftSettings
         ),
         .testTarget(
