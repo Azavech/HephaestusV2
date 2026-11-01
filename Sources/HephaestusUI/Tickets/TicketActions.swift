@@ -13,8 +13,10 @@ enum TicketFormat {
         date.formatted(date: .abbreviated, time: .shortened)
     }
 
-    /// A relative time such as `5 minutes ago`.
+    /// The relative update time of the ticket and bundle details: `just now` less than a minute
+    /// after the change (a date in the future included), then for example `5 minutes ago`.
     static func relative(_ date: Date, now: Date = Date()) -> String {
+        guard now.timeIntervalSince(date) >= 60 else { return "just now" }
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
         return formatter.localizedString(for: min(date, now), relativeTo: now)
