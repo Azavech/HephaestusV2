@@ -231,6 +231,7 @@ Input schemas, errors and examples: [Debug tools](mcp.md#debug-tools).
 
 - `make test`, or `swift test`, runs every test target. CI runs `swift test` for every pull request and before every release ([CI and release](ci.md)).
 - `swift test --filter HephaestusTextTests` runs one target; `--filter` also accepts a suite or test name.
+- `SWT_EXPERIMENTAL_MAXIMUM_PARALLELIZATION_WIDTH=4 swift test` runs at most 4 tests at a time, as CI does ([Test parallelism](ci.md#test-parallelism)).
 
 ### Test targets
 

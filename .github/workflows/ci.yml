@@ -32,4 +32,6 @@ jobs:
         run: swift build
 
       - name: Test
+        env:
+          SWT_EXPERIMENTAL_MAXIMUM_PARALLELIZATION_WIDTH: "4"
         run: swift test

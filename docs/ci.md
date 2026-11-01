@@ -43,25 +43,29 @@ pull request ──► ci.yml: checks ─► swift build ─► swift test
 
 These conventions are Default chosen at design time.
 
+### Test parallelism
+
+The runner is a small virtual machine with 3 cores. Swift Testing starts every test of a run at once, and the tests of one target share the threads of their process: the Swift concurrency pool, which has one thread per core, and the Dispatch queues of Network.framework and FSEvents. So the step Test of both workflows sets the environment variable `SWT_EXPERIMENTAL_MAXIMUM_PARALLELIZATION_WIDTH` to `4`, and Swift Testing runs at most 4 tests at a time. `swift test --no-parallel` would run one test at a time and take several times as long, and `--num-workers` only applies to XCTest. The width 4 is Default chosen at design time. `make test` and a plain `swift test` keep the default of Swift Testing, every test at once; `SWT_EXPERIMENTAL_MAXIMUM_PARALLELIZATION_WIDTH=4 swift test` runs the tests as CI does ([Running tests](development.md#running-tests)).
+
 ## Release workflow
 
 `.github/workflows/release.yml` runs on every push to `main` and on manual dispatch (`workflow_dispatch`). Runs share the concurrency group `release` with `cancel-in-progress: false`: a running release is never cancelled and two releases are never built at once. While one runs, GitHub keeps only the newest waiting run and cancels the older waiting ones; that run builds every commit pushed meanwhile. The job needs `contents: write` to push the tag and create the release.
 
-| #   | Step                         | What it does                                                                                                                                         | Runs when           |
-| --- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
-| 1   | Check out                    | `actions/checkout@v5` with the whole history (`fetch-depth: 0`) and the tags.                                                                        | always              |
-| 2   | Show toolchain               | Prints `xcodebuild -version` and `swift --version`.                                                                                                  | always              |
-| 3   | Check public data            | `scripts/check-public.sh` ([check-public.sh](#check-publicsh)).                                                                                      | always              |
-| 4   | Check docs                   | `scripts/check-docs.sh` ([check-docs.sh](#check-docssh)).                                                                                            | always              |
-| 5   | Test                         | `swift test`, docs conformance tests included ([Docs conformance tests](#docs-conformance-tests)).                                                   | always              |
-| 6   | Compute version              | `scripts/next-version.sh`; its three output lines become the step outputs `version`, `build` and `previous_tag` ([Versioning](#versioning)).         | always              |
-| 7   | Look for an existing release | Sets `exists` to `true` when the release `v<version>` already exists, `false` otherwise.                                                             | always              |
-| 8   | Build app                    | `scripts/build-app.sh` with the version, the build, `github.repository` and the signing secrets ([App bundle](#app-bundle)).                         | `exists` is `false` |
-| 9   | Zip                          | `ditto -c -k --sequesterRsrc --keepParent build/HephaestusV2.app build/HephaestusV2.zip`.                                                            | `exists` is `false` |
-| 10  | Write changelog              | `build/CHANGELOG.md` ([Changelog](#changelog)).                                                                                                      | `exists` is `false` |
-| 11  | Write release.json           | `build/release.json` ([release.json](#releasejson)).                                                                                                 | `exists` is `false` |
-| 12  | Tag                          | Creates the lightweight tag `v<version>` on `HEAD` unless it exists, then pushes it.                                                                 | `exists` is `false` |
-| 13  | Publish release              | `gh release create v<version>` marked latest, titled `v<version>(<build>)`, body `build/CHANGELOG.md`, assets `HephaestusV2.zip` and `release.json`. | `exists` is `false` |
+| #   | Step                         | What it does                                                                                                                                                              | Runs when           |
+| --- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| 1   | Check out                    | `actions/checkout@v5` with the whole history (`fetch-depth: 0`) and the tags.                                                                                             | always              |
+| 2   | Show toolchain               | Prints `xcodebuild -version` and `swift --version`.                                                                                                                       | always              |
+| 3   | Check public data            | `scripts/check-public.sh` ([check-public.sh](#check-publicsh)).                                                                                                           | always              |
+| 4   | Check docs                   | `scripts/check-docs.sh` ([check-docs.sh](#check-docssh)).                                                                                                                 | always              |
+| 5   | Test                         | `swift test` with at most 4 tests at a time ([Test parallelism](#test-parallelism)), docs conformance tests included ([Docs conformance tests](#docs-conformance-tests)). | always              |
+| 6   | Compute version              | `scripts/next-version.sh`; its three output lines become the step outputs `version`, `build` and `previous_tag` ([Versioning](#versioning)).                              | always              |
+| 7   | Look for an existing release | Sets `exists` to `true` when the release `v<version>` already exists, `false` otherwise.                                                                                  | always              |
+| 8   | Build app                    | `scripts/build-app.sh` with the version, the build, `github.repository` and the signing secrets ([App bundle](#app-bundle)).                                              | `exists` is `false` |
+| 9   | Zip                          | `ditto -c -k --sequesterRsrc --keepParent build/HephaestusV2.app build/HephaestusV2.zip`.                                                                                 | `exists` is `false` |
+| 10  | Write changelog              | `build/CHANGELOG.md` ([Changelog](#changelog)).                                                                                                                           | `exists` is `false` |
+| 11  | Write release.json           | `build/release.json` ([release.json](#releasejson)).                                                                                                                      | `exists` is `false` |
+| 12  | Tag                          | Creates the lightweight tag `v<version>` on `HEAD` unless it exists, then pushes it.                                                                                      | `exists` is `false` |
+| 13  | Publish release              | `gh release create v<version>` marked latest, titled `v<version>(<build>)`, body `build/CHANGELOG.md`, assets `HephaestusV2.zip` and `release.json`.                      | `exists` is `false` |
 
 - Steps 2, 7 and 10, the lightweight tag and the release title are Default chosen at design time.
 - A failing step fails the job and skips the later steps, so nothing is tagged or published unless the checks, the tests, the build, the zip and `release.json` succeeded.
@@ -112,6 +116,8 @@ jobs:
         run: scripts/check-docs.sh
 
       - name: Test
+        env:
+          SWT_EXPERIMENTAL_MAXIMUM_PARALLELIZATION_WIDTH: "4"
         run: swift test
 
       - name: Compute version
@@ -208,7 +214,7 @@ jobs:
 
 ## CI workflow
 
-`.github/workflows/ci.yml` runs on every pull request: the two checks, a debug build of every target and the tests. It needs no secret and only reads the repository. The debug build (`swift build`) is Default chosen at design time.
+`.github/workflows/ci.yml` runs on every pull request: the two checks, a debug build of every target and the tests, with the parallelism of the release workflow ([Test parallelism](#test-parallelism)). It needs no secret and only reads the repository. The debug build (`swift build`) is Default chosen at design time.
 
 Contents of `.github/workflows/ci.yml`:
 
@@ -247,6 +253,8 @@ jobs:
         run: swift build
 
       - name: Test
+        env:
+          SWT_EXPERIMENTAL_MAXIMUM_PARALLELIZATION_WIDTH: "4"
         run: swift test
 ```
 
