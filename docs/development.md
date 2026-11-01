@@ -249,6 +249,7 @@ Input schemas, errors and examples: [Debug tools](mcp.md#debug-tools).
 5. Tests never start the real Claude CLI. Chat behaviour is tested with the in-memory `ClaudeProcessLauncher` fed with fixture lines, and the CLI arguments are compared as argument lists with [Chats](chats.md).
 6. Tests use no network beyond 127.0.0.1 and no user interaction; the GitHub answers of the release feed are stubbed.
 7. Test data contains no personal data ([Public repository](#public-repository)).
+8. At most 32 test engines run at the same time, and the tests that wait for FSEvents run one at a time, across suites (the `.fsEvents` trait). Swift Testing starts every test of a run at once, and a process gets at most 512 FSEvents streams: past that `FSEventStreamStart` fails and an engine watches nothing. Default chosen at design time.
 
 ### Docs conformance tests
 
