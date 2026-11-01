@@ -4,9 +4,8 @@ import Testing
 
 /// Docs conformance test 1 (docs/ci.md › Docs conformance tests, docs/mcp.md › Conformance): the
 /// rows of the tables of docs/mcp.md whose first two header cells are `Tool` and `Required inputs`
-/// against `tools/list`, with debug tools disabled, then enabled.
-// The `tools/list` result is taken from `MCPToolCatalog.toolsListResult(debugTools:)`, the
-// result the MCP server returns; reading it over HTTP waits for the server (core-mcp).
+/// against `tools/list`, with debug tools disabled, then enabled. `tools/list` is read over HTTP
+/// from the MCP server of a test engine listening on 127.0.0.1 port 0.
 @Suite("MCP tools")
 struct MCPToolsConformanceTests {
     struct Row {
@@ -27,11 +26,21 @@ struct MCPToolsConformanceTests {
             }
     }
 
+    /// The `tools/list` result of the MCP server of a test engine, over HTTP, as names and
+    /// required inputs.
+    static func listed(debugTools: Bool) async throws -> [(name: String, required: [String])] {
+        try await withTestEngine(debugTools: debugTools) { engine, _, _ in
+            let port = try #require(await engine.mcpServer.port)
+            let reply = try await MCPHTTP.post(port: port, token: await engine.tokens.externalToken,
+                                               #"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#)
+            #expect(reply.status == 200)
+            return listed(try MCPHTTP.result(reply))
+        }
+    }
+
     /// The `{"tools": [...]}` result as names and required inputs.
-    static func listed(debugTools: Bool) -> [(name: String, required: [String])] {
-        guard case .object(let result) = MCPToolCatalog.toolsListResult(debugTools: debugTools),
-              case .array(let tools)? = result["tools"]
-        else { return [] }
+    static func listed(_ result: [String: JSONValue]) -> [(name: String, required: [String])] {
+        guard case .array(let tools)? = result["tools"] else { return [] }
         return tools.map { tool in
             let object = tool.objectValue ?? [:]
             let schema = object["inputSchema"]?.objectValue ?? [:]
@@ -41,25 +50,27 @@ struct MCPToolsConformanceTests {
     }
 
     @Test("With debug tools disabled, tools/list returns the catalogue in table order")
-    func withoutDebugTools() throws {
+    func withoutDebugTools() async throws {
         let rows = try Self.documentedRows()
         #expect(rows.count == 45)
         let expected = rows.filter { !$0.name.hasPrefix("debug_") }.map(\.name)
-        #expect(Self.listed(debugTools: false).map(\.name) == expected)
+        #expect(try await Self.listed(debugTools: false).map(\.name) == expected)
     }
 
     @Test("With debug tools enabled, tools/list appends the debug tools in table order")
-    func withDebugTools() throws {
+    func withDebugTools() async throws {
         let rows = try Self.documentedRows()
         let expected = rows.filter { !$0.name.hasPrefix("debug_") }.map(\.name) + rows.filter { $0.name.hasPrefix("debug_") }.map(\.name)
-        #expect(Self.listed(debugTools: true).map(\.name) == expected)
+        #expect(try await Self.listed(debugTools: true).map(\.name) == expected)
     }
 
     @Test("Each tool's inputSchema.required equals the row's required inputs")
-    func requiredInputs() throws {
-        let listed = Dictionary(uniqueKeysWithValues: Self.listed(debugTools: true).map { ($0.name, $0.required) })
-        for row in try Self.documentedRows() {
-            #expect(Set(listed[row.name] ?? ["<missing>"]) == Set(row.required), "required inputs of \(row.name)")
+    func requiredInputs() async throws {
+        for debugTools in [false, true] {
+            let listed = Dictionary(uniqueKeysWithValues: try await Self.listed(debugTools: debugTools).map { ($0.name, $0.required) })
+            for row in try Self.documentedRows() where debugTools || !row.name.hasPrefix("debug_") {
+                #expect(Set(listed[row.name] ?? ["<missing>"]) == Set(row.required), "required inputs of \(row.name)")
+            }
         }
     }
 

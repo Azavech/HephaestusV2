@@ -77,10 +77,13 @@ public enum MCPToolCatalog {
         .object(["tools": .array(listedTools(debugTools: debugTools).map(\.listElement))])
     }
 
-    /// Parses an input schema written in this catalogue.
+    /// Parses an input schema written in this catalogue and records the order of its
+    /// `properties` for the validator (docs/mcp.md › Validation order).
     static func schema(_ text: String) -> JSONValue {
         do {
-            return try JSONDecoder().decode(JSONValue.self, from: Data(text.utf8))
+            let schema = try JSONDecoder().decode(JSONValue.self, from: Data(text.utf8))
+            MCPSchemaValidator.recordPropertyOrders(ofSchemaText: text)
+            return schema
         } catch {
             preconditionFailure("Invalid input schema in MCPToolCatalog: \(error)")
         }
