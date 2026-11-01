@@ -709,7 +709,7 @@ Codes 1000–1011 are RFC 6455 codes; 4001–4009 are private codes of this prot
 
 The closing side sends a close frame with its code, then cancels the connection when the peer's close frame arrives or after 2 s. A side that receives a close frame cancels its connection. No frame is processed after a close frame was sent or received.
 
-Network.framework answers a received close frame by itself, before the app has read it, so the closing side can end the TCP connection first. The receiving side's connection then fails, and its pending receive delivers the close frame together with that error. A connection that fails while a receive is pending ends when that receive completes, and a close frame delivered with an error counts as received: its code, not 1006, decides the phase.
+Network.framework answers a received close frame by itself, before the app has read it, so the closing side can end the TCP connection first. The receiving side's connection then fails, and its receives still deliver the messages it had received, the close frame last, each together with that error. A connection that fails while a receive is pending keeps receiving until a receive returns no complete message or the close frame; a message delivered with an error is processed like any other, and a close frame delivered with an error counts as received: its code, not 1006, decides the phase.
 
 ## Client state machine
 
