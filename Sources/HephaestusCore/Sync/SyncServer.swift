@@ -103,7 +103,8 @@ public actor SyncServer {
         return code
     }
 
-    /// The `deviceName` of the last `hello` of a remote device that authenticated since launch.
+    /// The `deviceName` of the last valid `hello` of a remote device since launch
+    /// (docs/remote.md › Request handling).
     public nonisolated func remoteDeviceName(deviceID: String) -> String? {
         registry.deviceName(of: deviceID)
     }

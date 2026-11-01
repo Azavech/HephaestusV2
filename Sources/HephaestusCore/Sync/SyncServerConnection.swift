@@ -22,7 +22,7 @@ final class SyncConnectionRegistry: @unchecked Sendable {
     /// The device id of every authenticated connection (welcome being prepared, or open).
     private var authenticated: [UUID: String] = [:]
     private var sessions: [UUID: SyncSession] = [:]
-    /// The `hello` name of every device id seen since launch.
+    /// The `deviceName` of the last valid `hello` of every device id since launch.
     private var names: [String: String] = [:]
 
     func add(_ connection: SyncServerConnection) {
@@ -48,12 +48,19 @@ final class SyncConnectionRegistry: @unchecked Sendable {
         return Array(connections.values)
     }
 
-    /// A connection authenticated as `deviceID`: returns the older authenticated connections of
-    /// the same device, which close with 4008.
-    func authenticate(_ id: UUID, deviceID: String, deviceName: String) -> [SyncServerConnection] {
+    /// A valid `hello`: its `deviceName` becomes the name of its device id
+    /// (docs/remote.md › Request handling).
+    func helloReceived(deviceID: String, deviceName: String) {
         lock.lock()
         defer { lock.unlock() }
         names[deviceID] = deviceName
+    }
+
+    /// A connection authenticated as `deviceID`: returns the older authenticated connections of
+    /// the same device, which close with 4008.
+    func authenticate(_ id: UUID, deviceID: String) -> [SyncServerConnection] {
+        lock.lock()
+        defer { lock.unlock() }
         let older = authenticated.filter { $0.key != id && $0.value == deviceID }.compactMap { connections[$0.key] }
         authenticated[id] = deviceID
         return older
@@ -74,7 +81,7 @@ final class SyncConnectionRegistry: @unchecked Sendable {
         return sessions.values.sorted { ($0.connectedSince, $0.deviceID) < ($1.connectedSince, $1.deviceID) }
     }
 
-    /// The `deviceName` of the last `hello` of a device that authenticated since launch.
+    /// The `deviceName` of the last valid `hello` of a device id since launch.
     func deviceName(of deviceID: String) -> String? {
         lock.lock()
         defer { lock.unlock() }
@@ -324,6 +331,7 @@ final class SyncServerConnection: @unchecked Sendable {
         case .failure(let code):
             close(code)
         case .success(let values):
+            environment.registry.helloReceived(deviceID: values.deviceID, deviceName: values.deviceName)
             guard let code = PairingCode(userInput: environment.secrets.current.pairingCode) else {
                 close(.internalError)
                 return
@@ -368,7 +376,7 @@ final class SyncServerConnection: @unchecked Sendable {
             pairingKey = nil
             deadline?.cancel()
             state = .opening
-            for older in environment.registry.authenticate(id, deviceID: hello.deviceID, deviceName: hello.deviceName) {
+            for older in environment.registry.authenticate(id, deviceID: hello.deviceID) {
                 older.close(from: .replaced)
             }
             guard let engine else {
