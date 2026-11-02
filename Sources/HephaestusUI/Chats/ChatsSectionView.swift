@@ -17,9 +17,16 @@ struct ChatsSectionView: View {
     @FocusState private var renameFocused: Bool
     @Environment(AppModel.self) private var app
 
-    /// The groups in the order Project, Ticket, Bundle, Feedback, each newest `updated` first.
+    /// The groups in the order Project, Ticket, Bundle, Feedback, each newest `updated` first,
+    /// without the closed chats while the filter hides them; a group with no chat left is not
+    /// shown (docs/chats.md › Where chats appear).
     private var groups: [(kind: ChatKind, chats: [ChatMeta])] {
-        let chats = workspace.chats(of: projectID)
+        Self.groups(workspace.chats(of: projectID), hidesClosed: ChatListFilter.hidesClosedChats(in: window, projectID: projectID),
+                    workspace: workspace)
+    }
+
+    static func groups(_ all: [ChatMeta], hidesClosed: Bool, workspace: DeviceWorkspace) -> [(kind: ChatKind, chats: [ChatMeta])] {
+        let chats = hidesClosed ? all.filter { !workspace.isClosed($0) } : all
         return ChatKind.allCases.compactMap { kind in
             let members = chats.filter { $0.kind == kind }.sorted { $0.updated > $1.updated }
             return members.isEmpty ? nil : (kind, members)
@@ -32,7 +39,7 @@ struct ChatsSectionView: View {
 
     var body: some View {
         Group {
-            if groups.isEmpty, draft == nil, selectedChatID == nil {
+            if workspace.chats(of: projectID).isEmpty, draft == nil, selectedChatID == nil {
                 VStack(spacing: 12) {
                     Text("No chats yet")
                         .font(.title3)
@@ -66,45 +73,63 @@ struct ChatsSectionView: View {
         VStack(spacing: 0) {
             HStack {
                 Spacer()
+                ClosedChatsFilterButton(window: window, projectID: projectID)
                 newChatButton
                     .buttonStyle(.borderless)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             Divider()
-            List(selection: Binding(get: { draft == nil ? selectedChatID : nil }, set: select)) {
-                ForEach(groups, id: \.kind) { group in
-                    // Titled with the kind's name, as the kind chip (docs/chats.md › Where chats appear).
-                    Section(ChatFormat.kindTitle(group.kind)) {
-                        ForEach(group.chats) { meta in
-                            row(meta)
-                                .tag(meta.id.uuidString)
-                                .contextMenu {
-                                    Button("Open in New Window") {
-                                        app.openChatWindow(ChatWindowValue(deviceID: workspace.deviceID, chatID: meta.id.uuidString))
-                                    }
-                                    Button("Rename…") {
-                                        startRename(meta)
-                                    }
-                                    Button("Delete…") {
-                                        ChatActions.confirmDelete(meta, workspace: workspace, window: windowReference.window, app: app)
-                                    }
-                                }
-                        }
-                    }
+            if groups.isEmpty {
+                // Every chat is closed and hidden by the filter (docs/chats.md › Where chats appear).
+                VStack(spacing: 12) {
+                    Text(ChatListFilter.noOpenChats)
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                    newChatButton
                 }
-            }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
-            .onKeyPress(keys: [.delete], phases: .down) { press in
-                guard press.modifiers.subtracting(.command).isEmpty, renamingChatID == nil,
-                      let chatID = selectedChatID, let meta = workspace.chats[chatID] else { return .ignored }
-                ChatActions.confirmDelete(meta, workspace: workspace, window: windowReference.window, app: app)
-                return .handled
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                chatList
             }
         }
         // The background of the Ticket list and the Bundles section (docs/chats.md › Where chats appear).
         .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private var chatList: some View {
+        List(selection: Binding(get: { draft == nil ? selectedChatID : nil }, set: select)) {
+            ForEach(groups, id: \.kind) { group in
+                // Titled with the kind's name, as the kind chip (docs/chats.md › Where chats appear).
+                Section(ChatFormat.kindTitle(group.kind)) {
+                    ForEach(group.chats) { meta in
+                        row(meta)
+                            .tag(meta.id.uuidString)
+                            .contextMenu {
+                                Button("Open in New Window") {
+                                    app.openChatWindow(ChatWindowValue(deviceID: workspace.deviceID, chatID: meta.id.uuidString))
+                                }
+                                Button("Rename…") {
+                                    startRename(meta)
+                                }
+                                Button("Delete…") {
+                                    ChatActions.confirmDelete(meta, workspace: workspace, window: windowReference.window, app: app)
+                                }
+                            }
+                    }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .onKeyPress(keys: [.delete], phases: .down) { press in
+            // A selected chat whose row the filter hides is not deleted from the list.
+            guard press.modifiers.subtracting(.command).isEmpty, renamingChatID == nil,
+                  let chatID = selectedChatID, let meta = workspace.chats[chatID],
+                  groups.contains(where: { $0.chats.contains { $0.id == meta.id } }) else { return .ignored }
+            ChatActions.confirmDelete(meta, workspace: workspace, window: windowReference.window, app: app)
+            return .handled
+        }
     }
 
     /// A row: the title, the linked ticket or bundle id, a state mark and the relative `updated`

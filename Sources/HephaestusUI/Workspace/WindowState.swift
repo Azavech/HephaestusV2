@@ -9,8 +9,8 @@ import HephaestusCore
 ///
 /// Coding: `Codable` encodes every property of the docs' table (`debug_ui_state` uses
 /// `EngineJSON.encoder()`); with `WindowState.persistedOnlyKey` set in the encoder's `userInfo`
-/// it encodes only the persisted properties and the active project's entry (`@SceneStorage`).
-/// Editor buffers are never encoded.
+/// it encodes only the persisted properties, the active project's entry and the
+/// `hidesClosedChats` of the other entries (`@SceneStorage`). Editor buffers are never encoded.
 @MainActor @Observable
 final class WindowState: Identifiable {
     /// The window's identity inside `AppModel`.
@@ -171,14 +171,20 @@ extension WindowState: @MainActor Codable {
         try c.encode(consoleVisible, forKey: .consoleVisible)
         try c.encode(consoleHeight, forKey: .consoleHeight)
         var entries = c.nestedUnkeyedContainer(forKey: .projectStates)
-        let keys = projectStates.keys
-            .filter { !persistedOnly || $0 == activeProjectKey }
-            .sorted { ($0.deviceID, $0.projectID) < ($1.deviceID, $1.projectID) }
+        let keys = projectStates.keys.sorted { ($0.deviceID, $0.projectID) < ($1.deviceID, $1.projectID) }
         for key in keys {
+            guard let state = projectStates[key] else { continue }
             var entry = entries.nestedContainer(keyedBy: EntryKeys.self)
             try entry.encode(key.deviceID, forKey: .deviceID)
             try entry.encode(key.projectID, forKey: .projectID)
-            try entry.encode(projectStates[key], forKey: .state)
+            if persistedOnly, key != activeProjectKey {
+                // The other projects keep only the filter of the chat lists (docs/ui.md ›
+                // WindowState).
+                var persisted = entry.nestedContainer(keyedBy: ProjectViewState.CodingKeys.self, forKey: .state)
+                try persisted.encode(state.hidesClosedChats, forKey: .hidesClosedChats)
+            } else {
+                try entry.encode(state, forKey: .state)
+            }
         }
         try c.encode(lastProjectByDevice, forKey: .lastProjectByDevice)
         guard !persistedOnly else { return }
@@ -245,6 +251,9 @@ struct ProjectViewState {
     var chatsTabSelection: [String: String] = [:]
     /// The tickets and bundles whose Chats tab shows a draft chat.
     var chatsTabDrafts: Set<String> = []
+    /// Whether the Chats section and the Chats tabs of tickets and bundles hide closed chats;
+    /// persisted for every project the window showed (docs/chats.md › Where chats appear).
+    var hidesClosedChats = true
     /// Comment composer drafts by ticket id; an empty draft is removed (docs/tickets.md ›
     /// Comments).
     var commentDrafts: [String: CommentDraft] = [:]
@@ -268,7 +277,7 @@ extension ProjectViewState: @MainActor Codable {
         case selectedTicketIDs, selectedBundleID, selectedChatID, inspectorChatID, inspectorShowsDraft, unlinkedItems, editorTabs,
              selectedEditorPath, selectedDocPath, docMode, selectedWebTabID, selectedSkillName, consoleRunID,
              expandedCodeFolders, selectedTreePath, expandedDocFolders, ticketList, ticketTab, bundleList, bundleTab,
-             chatsTabSelection, chatsTabDrafts, commentDrafts
+             chatsTabSelection, chatsTabDrafts, hidesClosedChats, commentDrafts
     }
 
     @MainActor
@@ -296,6 +305,7 @@ extension ProjectViewState: @MainActor Codable {
         bundleTab = try c.decodeIfPresent(BundleDetailTab.self, forKey: .bundleTab) ?? .tickets
         chatsTabSelection = try c.decodeIfPresent([String: String].self, forKey: .chatsTabSelection) ?? [:]
         chatsTabDrafts = Set(try c.decodeIfPresent([String].self, forKey: .chatsTabDrafts) ?? [])
+        hidesClosedChats = try c.decodeIfPresent(Bool.self, forKey: .hidesClosedChats) ?? true
         commentDrafts = try c.decodeIfPresent([String: CommentDraft].self, forKey: .commentDrafts) ?? [:]
     }
 
@@ -315,6 +325,7 @@ extension ProjectViewState: @MainActor Codable {
         try c.encodeIfPresent(selectedWebTabID, forKey: .selectedWebTabID)
         try c.encodeIfPresent(selectedSkillName, forKey: .selectedSkillName)
         try c.encodeIfPresent(consoleRunID, forKey: .consoleRunID)
+        try c.encode(hidesClosedChats, forKey: .hidesClosedChats)
         if encoder.userInfo[WindowState.persistedOnlyKey] as? Bool != true {
             try c.encode(expandedCodeFolders.sorted(), forKey: .expandedCodeFolders)
             try c.encodeIfPresent(selectedTreePath, forKey: .selectedTreePath)

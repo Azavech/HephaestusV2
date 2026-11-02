@@ -76,8 +76,9 @@ struct LinkedChatsView: View {
     /// The listed rows: the chats of `chatIDs` that have metadata, most recently updated first,
     /// each followed by the ticket chats it orchestrates, oldest first (docs/tickets.md ›
     /// Bundles section). A chat id without metadata (another clone of the repository) is not
-    /// listed.
-    static func listedRows(_ chatIDs: [ChatID], workspace: DeviceWorkspace) -> [Row] {
+    /// listed. With `hidesClosed`, closed chats are left out, except a chat that orchestrates an
+    /// open ticket chat (docs/tickets.md › Implement All).
+    static func listedRows(_ chatIDs: [ChatID], workspace: DeviceWorkspace, hidesClosed: Bool = false) -> [Row] {
         let chats = chatIDs.compactMap { workspace.chats[$0.uuidString] }.sorted { $0.updated > $1.updated }
         let listed = Set(chats.map(\.id))
         var children: [ChatID: [ChatMeta]] = [:]
@@ -86,22 +87,26 @@ struct LinkedChatsView: View {
                 children[orchestrator, default: []].append(meta)
             }
         }
-        return chats.flatMap { meta in
-            [Row(meta: meta, nested: false)]
-                + (children[meta.id] ?? []).sorted { $0.created < $1.created }.map { Row(meta: $0, nested: true) }
+        return chats.flatMap { meta -> [Row] in
+            let nested = (children[meta.id] ?? [])
+                .filter { !hidesClosed || !workspace.isClosed($0) }
+                .sorted { $0.created < $1.created }
+            guard !hidesClosed || !workspace.isClosed(meta) || !nested.isEmpty else { return [] }
+            return [Row(meta: meta, nested: false)] + nested.map { Row(meta: $0, nested: true) }
         }
     }
 
     /// The listed chats, in the order of `listedRows`.
-    static func listedChats(_ chatIDs: [ChatID], workspace: DeviceWorkspace) -> [ChatMeta] {
-        listedRows(chatIDs, workspace: workspace).map(\.meta)
+    static func listedChats(_ chatIDs: [ChatID], workspace: DeviceWorkspace, hidesClosed: Bool = false) -> [ChatMeta] {
+        listedRows(chatIDs, workspace: workspace, hidesClosed: hidesClosed).map(\.meta)
     }
 
-    /// Opening the tab selects the most recently updated chat.
+    /// Opening the tab selects the most recently updated chat of the list.
     static func selectMostRecent(owner: LinkedChatsOwner, chatIDs: [ChatID], workspace: DeviceWorkspace, window: WindowState,
                                  projectID: String) {
-        select(listedChats(chatIDs, workspace: workspace).first?.id.uuidString, draft: false, owner: owner, window: window,
-               projectID: projectID)
+        let hidesClosed = ChatListFilter.hidesClosedChats(in: window, projectID: projectID)
+        select(listedChats(chatIDs, workspace: workspace, hidesClosed: hidesClosed).first?.id.uuidString, draft: false, owner: owner,
+               window: window, projectID: projectID)
     }
 
     /// The chat shown under the list: the stored selection while it is listed or is a chat of this
@@ -136,9 +141,10 @@ struct LinkedChatsView: View {
     }
 
     var body: some View {
-        let chats = Self.listedRows(chatIDs, workspace: workspace)
+        let chats = Self.listedRows(chatIDs, workspace: workspace,
+                                    hidesClosed: ChatListFilter.hidesClosedChats(in: window, projectID: projectID))
         Group {
-            if chats.isEmpty && !showsDraft {
+            if Self.listedRows(chatIDs, workspace: workspace).isEmpty && !showsDraft {
                 emptyState
             } else {
                 VStack(spacing: 0) {
@@ -147,8 +153,15 @@ struct LinkedChatsView: View {
                         .padding(.vertical, 8)
                     Divider()
                     VSplitView {
-                        list(chats)
-                            .frame(minHeight: 60, idealHeight: 120, maxHeight: 320)
+                        // One pane whatever its content, so that the chat view under it is kept.
+                        ZStack {
+                            if chats.isEmpty {
+                                noOpenChats
+                            } else {
+                                list(chats)
+                            }
+                        }
+                        .frame(minHeight: 60, idealHeight: 120, maxHeight: 320)
                         selected(chats)
                             .frame(minHeight: 220, maxHeight: .infinity)
                     }
@@ -164,6 +177,7 @@ struct LinkedChatsView: View {
             implementButton
             newChatButton
             Spacer()
+            ClosedChatsFilterButton(window: window, projectID: projectID)
         }
     }
 
@@ -219,6 +233,18 @@ struct LinkedChatsView: View {
             .padding(.top, 4)
         }
         .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// The list area while the filter hides every chat of the ticket or bundle (docs/tickets.md ›
+    /// Ticket chats and Implement).
+    private var noOpenChats: some View {
+        VStack(spacing: 10) {
+            Text(ChatListFilter.noOpenChats)
+                .font(.title3)
+                .foregroundStyle(.secondary)
+            newChatButton
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -314,6 +340,14 @@ struct LinkedChatsView: View {
         } else if let chatID = selectedChatID(chats) {
             ChatView(chatID: chatID, workspace: workspace)
                 .id(chatID)
+                .task(id: chatID) {
+                    // A chat shown without a stored selection becomes the selection, so that its
+                    // view stays when the filter hides it (docs/tickets.md › Ticket chats and
+                    // Implement).
+                    if viewState.chatsTabSelection[owner.id] == nil {
+                        select(chatID, draft: false)
+                    }
+                }
         } else {
             Color.clear
         }
