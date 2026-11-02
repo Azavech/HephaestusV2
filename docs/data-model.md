@@ -1383,7 +1383,7 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R109: The user can skip a question; Claude then leaves that point out and mentions it in its reply.
 - R110: A bundle has a status: todo, in progress or done; Implement All sets it to in progress and is disabled until the user sets it back to To Do.
 - R111: Implement All runs one ticket chat per ticket, one at a time, coordinated by the bundle chat that started them, and pushes once at the end.
-- R112: Main windows show the Claude plan's weekly usage in the status bar as a small round progress indicator; a click shows the percentage used, when the week resets and the overage status.
+- R112: Main windows and chat windows show the Claude plan's weekly usage in the status bar as a small round progress indicator; a click shows the percentage used, when the week resets and the overage status.
 - R113: Claude can close the chat it runs in when the user asks or its work is finished; a closed chat shows `This conversation is over` in place of its composer until the user reopens it.
 - R117: Claude asks the user to choose an SF Symbol with `ask_symbol`: suggestions show as icons, any SF Symbol of the Mac can be searched, the user picks one, answers another way or skips.
 - R121: The items open in the app reach the inspector chat's Claude as context outside the message text, and the user's message shows them as chips.

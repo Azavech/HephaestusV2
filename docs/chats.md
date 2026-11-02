@@ -1819,7 +1819,7 @@ Follow "Implementing a bundle" as its orchestrator: take the tickets in this ord
 - R108: The user moves between the questions of a set, answers them in any order and can change an answer until every question has one.
 - R109: The user can skip a question; Claude then leaves that point out and mentions it in its reply.
 - R111: Implement All runs one ticket chat per ticket, one at a time, coordinated by the bundle chat that started them, and pushes once at the end.
-- R112: Main windows show the Claude plan's weekly usage in the status bar as a small round progress indicator; a click shows the percentage used, when the week resets and the overage status.
+- R112: Main windows and chat windows show the Claude plan's weekly usage in the status bar as a small round progress indicator; a click shows the percentage used, when the week resets and the overage status.
 - R113: Claude can close the chat it runs in when the user asks or its work is finished; a closed chat shows `This conversation is over` in place of its composer until the user reopens it.
 - R114: Claude marks each SF Symbol it names, and the chat transcript and the pinned questions card show the marker as the symbol's icon followed by its name.
 - R115: Claude creates and edits tickets, comments and bundles without a permission prompt in every permission mode; deletions follow the chat's permission mode.

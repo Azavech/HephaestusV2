@@ -55,7 +55,8 @@ struct DeviceStateLabel: View {
 }
 
 /// The status bar: 26 points high, at the bottom of every main window and chat window, separated
-/// from the content by a hairline. Chat windows show only the device state and the ladybug.
+/// from the content by a hairline. Chat windows show only the device state, the weekly usage and the
+/// ladybug.
 struct StatusBarView: View {
     enum Context {
         case main(WindowState)
@@ -78,7 +79,9 @@ struct StatusBarView: View {
                 if case .main(let window) = context {
                     middleGroup(window)
                     Spacer(minLength: 16)
-                    WeeklyUsageItem(usage: workspace?.planUsage, now: usageClock)
+                }
+                WeeklyUsageItem(usage: workspace?.planUsage, now: usageClock)
+                if case .main(let window) = context {
                     costsItem(window)
                 }
                 ladybug

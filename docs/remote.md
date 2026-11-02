@@ -1078,4 +1078,4 @@ func frame(_ json: String, key: SymmetricKey, counter: UInt64) throws -> Data {
 - R6: Its first level chooses the Main Device: this Mac or another Mac, whose projects the window then shows.
 - R43: Any remote sees in real time the changes made anywhere.
 - R44: Working from a remote is as if the remote were the one working.
-- R112: Main windows show the Claude plan's weekly usage in the status bar as a small round progress indicator; a click shows the percentage used, when the week resets and the overage status.
+- R112: Main windows and chat windows show the Claude plan's weekly usage in the status bar as a small round progress indicator; a click shows the percentage used, when the week resets and the overage status.
