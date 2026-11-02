@@ -5,7 +5,7 @@ import Foundation
 /// (Yams) and JSON (`JSONEncoder` and `JSONDecoder`).
 public enum ModelCoding {
     /// Set to `true` in `userInfo` by the YAML coder of Storage. Dates are then encoded as YAML
-    /// timestamps, and the runtime-only keys of `ChatMeta` are left out and ignored.
+    /// timestamps, and the runtime-only keys of `ChatMeta` and `Ticket` are left out and ignored.
     public static let yamlKey = CodingUserInfoKey(rawValue: "HephaestusCore.ModelCoding.yaml")!
 
     /// Set in `userInfo` to the skill's folder name when decoding a SKILL.md frontmatter: a

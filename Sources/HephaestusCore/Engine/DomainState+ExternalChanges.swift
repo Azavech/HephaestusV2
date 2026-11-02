@@ -312,10 +312,11 @@ extension Engine {
         case .deleted:
             recordApplied(path, nil)
             domain.setInvalidTicket(ticketID, reason: nil)
-            guard loaded != nil else { return }
+            guard let loaded else { return }
             domain.removeTicket(ticketID)
             emit(TicketDeletedEvent.self, TicketDeletedEvent.Payload(projectID: projectID, ticketID: ticketID), origin: .system)
             emitProjectsChanged(origin: .system)
+            emitInverseLinkChanges(of: ticketID, old: loaded.links, new: [], origin: .system)
         case .data(let data):
             let ticket: Ticket
             do {
@@ -334,7 +335,8 @@ extension Engine {
             guard ticket != loaded else { return }
             let countsBefore = domain.ticketCounts(of: projectID)
             domain.setTicket(ticket)
-            emit(TicketUpdatedEvent.self, ticket, origin: .system)
+            emitTicketUpdated(ticket, origin: .system)
+            emitInverseLinkChanges(of: ticketID, old: loaded?.links ?? [], new: ticket.links, origin: .system)
             if domain.ticketCounts(of: projectID) != countsBefore {
                 emitProjectsChanged(origin: .system)
             }

@@ -670,7 +670,7 @@ extension WindowSheet {
              .ticketPicker(let projectID, _, _), .newSkill(let projectID), .newDoc(let projectID, _),
              .renameDoc(let projectID, _), .newFile(let projectID, _, _), .renameFile(let projectID, _):
             return projectID
-        case .implementTicket(let id), .implementBundle(let id):
+        case .implementTicket(let id), .implementBundle(let id), .addLink(let id):
             return Identifiers.projectID(of: id)
         case .newProject, .newProjectInFolder, .openProjectFolder, .addDevice, .feedback, .newSkillFile, .webPageDialog:
             return nil

@@ -410,8 +410,8 @@ The table lists every tool in the order of `tools/list`. "Required inputs" holds
 | `stop_run`          | `runID`                                  | —                                | projects.stopRun         | `{}`             |
 | `list_tickets`      | `projectID`                              | `status`                         | tickets.list             | [Ticket]         |
 | `get_ticket`        | `ticketID`                               | —                                | tickets.get              | Ticket           |
-| `create_ticket`     | `projectID`, `description`               | `attachments`                    | tickets.create           | Ticket           |
-| `update_ticket`     | `ticketID`                               | `title`, `description`           | tickets.update           | Ticket           |
+| `create_ticket`     | `projectID`, `description`               | `attachments`, `links`           | tickets.create           | Ticket           |
+| `update_ticket`     | `ticketID`                               | `title`, `description`, `links`  | tickets.update           | Ticket           |
 | `delete_ticket`     | `ticketID`                               | —                                | tickets.delete           | `{}`             |
 | `set_ticket_status` | `ticketID`, `status`                     | —                                | tickets.setStatus        | Ticket           |
 | `add_comment`       | `ticketID`, `text`                       | `attachments`                    | tickets.addComment       | Ticket           |
@@ -718,7 +718,7 @@ Input schema:
 ### list_tickets
 
 - **Engine call:** tickets.list with `projectID`. With `status`, the MCP layer keeps the tickets with that status, in the order tickets.list returned them, and encodes them with `EngineJSON.encoder()`.
-- **Result:** the `[Ticket]` array ([Data model](data-model.md)).
+- **Result:** the `[Ticket]` array ([Data model](data-model.md)), each ticket with the links it declares, `links`, and those other tickets declare to it, `inverseLinks` ([Ticket links](tickets.md#ticket-links)).
 - **Errors:** Those of tickets.list: unknown project (`notFound`).
 
 Description:
@@ -752,13 +752,13 @@ Input schema:
 
 - **Engine call:** tickets.get with `ticketID`, then projects.get with the project identifier of the ticket's id, for the project's `rootPath`.
 - The MCP layer replaces the `path` of every attachment of the ticket and of its comments, relative to `.hephaestus/` in the ticket file ([Data model](data-model.md)), with the absolute path of the file on the main device, `<project root>/.hephaestus/<path>`: the form of `{{ticket}}` ([Rendered blocks](chats.md#rendered-blocks)). Claude reads the file at that path with its own file tools and never searches the disk for it ([Workflow](workflow.md#app-data-through-mcp)).
-- **Result:** the `Ticket` with these absolute attachment paths, encoded with `EngineJSON.encoder()`.
+- **Result:** the `Ticket` with these absolute attachment paths, the links it declares, `links`, and those other tickets declare to it, `inverseLinks` ([Ticket links](tickets.md#ticket-links)), encoded with `EngineJSON.encoder()`.
 - **Errors:** Those of tickets.get: malformed id (`invalid`), no such ticket (`notFound`). Those of projects.get when the project is removed between the two calls: no project with this identifier (`notFound`).
 
 Description:
 
 ```text
-Get a ticket: title, status, dates, creator, description, attachments, comments and chat ids. Attachment paths are absolute paths on this Mac.
+Get a ticket: title, status, dates, creator, description, attachments, comments, chat ids and links. links are the links the ticket declares (dependsOn, related); inverseLinks are the links other tickets declare to it (blocks, related). Attachment paths are absolute paths on this Mac.
 ```
 
 Input schema:
@@ -779,11 +779,12 @@ Input schema:
 
 ### create_ticket
 
-- **Engine call:** tickets.create with `projectID`, `description` and `attachments` built from the paths ([Attachments from paths](#attachments-from-paths)). `title` is never sent, so Haiku names the ticket.
+- **Engine call:** tickets.create with `projectID`, `description`, `attachments` built from the paths ([Attachments from paths](#attachments-from-paths)) and `links` as given. `title` is never sent, so Haiku names the ticket.
+- Each element of `links` is a [TicketLink](data-model.md#ticket-link) `{kind, ticket}`; the engine checks it with the [link rules](tickets.md#link-rules).
 - The engine checks the description against the template, stores the ticket with status `todo`, `createdBy: claude` and a provisional title, then waits for Haiku naming to end; Haiku's title replaces the provisional one, which emits `ticket.updated` ([Tickets](tickets.md#tickets-created-by-claude)).
 - From a feedback chat, the engine also links the chat and the ticket ([Feedback](feedback.md#resulting-ticket), [Engine API](engine-api.md#ticketscreate)).
 - **Result:** the new `Ticket` as stored once the naming has ended: with Haiku's title, or with its provisional title when the naming fails, times out, gives an empty title or the Claude CLI is unavailable ([Tickets](tickets.md#titles-and-naming)).
-- **Errors:** Those of tickets.create ([Engine API](engine-api.md#ticketscreate)): unknown project (`notFound`), a description that does not follow the template or an invalid attachment (`invalid`).
+- **Errors:** Those of tickets.create ([Engine API](engine-api.md#ticketscreate)): unknown project or linked ticket (`notFound`), a description that does not follow the template, an invalid attachment or a link that breaks a link rule (`invalid`).
 
 Description:
 
@@ -808,7 +809,7 @@ Testing
 Docs
 (List all docs files and paragraphs relevant to the issue)
 
-attachments are paths of files on this Mac (absolute, starting with ~/, or relative to the project root) that are copied into the ticket.
+attachments are paths of files on this Mac (absolute, starting with ~/, or relative to the project root) that are copied into the ticket. links are links to other tickets of the same project: dependsOn when this ticket needs the other ticket to be done first, related when they are only related.
 ```
 
 Input schema:
@@ -829,6 +830,26 @@ Input schema:
       "type": "array",
       "description": "Files on this Mac to attach: absolute paths, paths starting with ~/, or paths relative to the project root.",
       "items": {"type": "string"}
+    },
+    "links": {
+      "type": "array",
+      "description": "Links to other tickets of the same project.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "dependsOn when this ticket needs the other ticket to be done first, related otherwise.",
+            "enum": ["dependsOn", "related"]
+          },
+          "ticket": {
+            "type": "string",
+            "description": "Id of a ticket of the same project, for example HEPH-15."
+          }
+        },
+        "required": ["kind", "ticket"],
+        "additionalProperties": false
+      }
     }
   },
   "required": ["projectID", "description"],
@@ -838,16 +859,17 @@ Input schema:
 
 ### update_ticket
 
-- **Engine call:** tickets.update with `ticketID` and the given `title` and `description`.
+- **Engine call:** tickets.update with `ticketID` and the given `title`, `description` and `links`.
+- `links` replaces the links the ticket declares; the engine checks each link the ticket does not already declare with the [link rules](tickets.md#link-rules).
 - The engine checks a description written by Claude against the template on update too ([Engine API](engine-api.md#rules-for-claude)).
 - A call that changes nothing writes nothing and returns the ticket.
 - **Result:** the updated `Ticket`.
-- **Errors:** Those of tickets.update ([Engine API](engine-api.md#ticketsupdate)): no such ticket (`notFound`), malformed id, invalid title or a description that does not follow the template (`invalid`).
+- **Errors:** Those of tickets.update ([Engine API](engine-api.md#ticketsupdate)): no such ticket (`notFound`), malformed id, invalid title, a description that does not follow the template or a link that breaks a link rule (`invalid`), a newly linked ticket that does not exist (`notFound`).
 
 Description:
 
 ```text
-Change a ticket's title or description. Omitted arguments are left unchanged; a new description must follow the same template as create_ticket. Use set_ticket_status for the status and add_comment to report work.
+Change a ticket's title, description or links. Omitted arguments are left unchanged; a new description must follow the same template as create_ticket; links replaces the links the ticket declares, so list every link to keep, and [] removes them all. Use set_ticket_status for the status and add_comment to report work.
 ```
 
 Input schema:
@@ -867,6 +889,26 @@ Input schema:
     "description": {
       "type": "string",
       "description": "New description, following the ticket template."
+    },
+    "links": {
+      "type": "array",
+      "description": "The links this ticket declares, replacing the current ones: every link to keep and the new ones; [] removes them all.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "dependsOn when this ticket needs the other ticket to be done first, related otherwise.",
+            "enum": ["dependsOn", "related"]
+          },
+          "ticket": {
+            "type": "string",
+            "description": "Id of a ticket of the same project, for example HEPH-15."
+          }
+        },
+        "required": ["kind", "ticket"],
+        "additionalProperties": false
+      }
     }
   },
   "required": ["ticketID"],
@@ -2628,3 +2670,4 @@ Unauthorized: missing or invalid bearer token.
 - R117: Claude asks the user to choose an SF Symbol with `ask_symbol`: suggestions show as icons, any SF Symbol of the Mac can be searched, the user picks one, answers another way or skips.
 - R121: The items open in the app reach the inspector chat's Claude as context outside the message text, and the user's message shows them as chips.
 - R123: Implement, Implement All and the feedback sheet let the user choose the model, the effort and the permission mode of the chat they start; the ticket chats that a bundle chat starts take its settings.
+- R124: A ticket can depend on other tickets of its project or be related to them; the other ticket shows the inverse link, Blocks or Related; the user and Claude add and remove links; the ticket list marks a ticket that depends on a ticket that is not done, and Implement asks for confirmation while one is not done.

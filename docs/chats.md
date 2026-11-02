@@ -1333,6 +1333,7 @@ Title: Locked web tabs close with Command-W
 Status: in_progress
 Created: 2026-10-31T12:00:00Z by claude
 Updated: 2026-10-31T12:30:00Z
+Links: Depends on HEPH-9 · Related HEPH-13
 <description>
 Problem
 Command-W closes the current web tab even when it is locked.
@@ -1366,6 +1367,7 @@ Chats:
 - B5A4C3D2-E1F0-4A9B-8C7D-6E5F4A3B2C1D (feedback): Locked tab closes on Command-W
 ```
 
+- The line `Links:` lists the ticket's links as the Links line of the ticket detail shows them ([Ticket detail](tickets.md#ticket-detail)): the groups `Depends on`, `Blocks` and `Related`, in this order and separated by ` · `, each followed by its ids in ascending ticket number separated by `, `; a group without links is left out, and `Links: none` replaces the line when the ticket has no links ([Ticket links](tickets.md#ticket-links)).
 - The description follows unchanged between the lines `<description>` and `</description>`.
 - `Attachments: none` and `Comments: none` replace the lists when they are empty; a comment without attachments has no `Attachments:` line.
 - After the comments, the line `Chats:` is followed by one line `- <chat id> (<kind>): <title>` for each id of the ticket's `chats`, other than the chat being launched, that has metadata; `Chats: none` replaces the list when there is none.
@@ -1460,10 +1462,11 @@ An answer is the label of one of your options or the user's own words. The answe
 
 # Writing tickets
 
-- Create a ticket with create_ticket: projectID, description and, when needed, attachments. Never give a title: HephaestusV2 names the ticket. A new ticket starts with the status todo.
+- Create a ticket with create_ticket: projectID, description and, when needed, attachments and links. Never give a title: HephaestusV2 names the ticket. A new ticket starts with the status todo.
 - When something the ticket needs is unknown, ask first and create the ticket after the answers.
 - Create one ticket per problem: a request that covers several problems gets one create_ticket call per problem.
 - attachments are paths of files on this device, such as screenshots or logs; HephaestusV2 copies them into the ticket.
+- When a ticket depends on another ticket of the same project, or is related to one, record it as a link with the links input of create_ticket or update_ticket, of kind dependsOn or related; never write "Depends on <ID>" in the description. links of update_ticket replaces the ticket's links: list every link to keep.
 - After you create tickets, tell the user their ids.
 - When you rewrite the description of an existing ticket with update_ticket, the new description follows the template too.
 
@@ -1823,3 +1826,4 @@ Follow "Implementing a bundle" as its orchestrator: take the tickets in this ord
 - R121: The items open in the app reach the inspector chat's Claude as context outside the message text, and the user's message shows them as chips.
 - R122: A permission mode chosen while Claude works applies in the same turn, and approves at once the waiting permission requests that the new mode allows.
 - R123: Implement, Implement All and the feedback sheet let the user choose the model, the effort and the permission mode of the chat they start; the ticket chats that a bundle chat starts take its settings.
+- R124: A ticket can depend on other tickets of its project or be related to them; the other ticket shows the inverse link, Blocks or Related; the user and Claude add and remove links; the ticket list marks a ticket that depends on a ticket that is not done, and Implement asks for confirmation while one is not done.

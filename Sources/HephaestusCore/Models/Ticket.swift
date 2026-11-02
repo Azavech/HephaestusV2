@@ -15,12 +15,18 @@ public struct Ticket: Codable, Sendable, Hashable, Identifiable {
     public var comments: [Comment]
     /// Key `chats`.
     public var chatIDs: [ChatID]
+    /// The links this ticket declares (docs/tickets.md › Ticket links).
+    public var links: [TicketLink]
+    /// Runtime only: the links that the other tickets of the project declare to this one, as the
+    /// engine computes them. Never written to the file and ignored when read from it; always
+    /// present in the engine API.
+    public var inverseLinks: [TicketInverseLink]
     public var unknownKeys: [String: JSONValue]
 
     public init(schema: Int = 1, id: TicketID, title: String, status: TicketStatus = .todo, created: Date,
                 updated: Date? = nil, createdBy: Author = .user, description: String = "",
                 attachments: [Attachment] = [], comments: [Comment] = [], chatIDs: [ChatID] = [],
-                unknownKeys: [String: JSONValue] = [:]) {
+                links: [TicketLink] = [], inverseLinks: [TicketInverseLink] = [], unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
         self.id = id
         self.title = title
@@ -32,13 +38,17 @@ public struct Ticket: Codable, Sendable, Hashable, Identifiable {
         self.attachments = attachments
         self.comments = comments
         self.chatIDs = chatIDs
+        self.links = links
+        self.inverseLinks = inverseLinks
         self.unknownKeys = unknownKeys
     }
 
-    static let knownKeys: Set<String> = [
+    static let fileKeys: Set<String> = [
         "schema", "id", "title", "status", "created", "updated", "createdBy", "description",
-        "attachments", "comments", "chats",
+        "attachments", "comments", "chats", "links",
     ]
+    static let runtimeKeys: Set<String> = ["inverseLinks"]
+    static let knownKeys = fileKeys.union(runtimeKeys)
 
     public init(from decoder: Decoder) throws {
         let c = try ModelDecodingContainer(decoder)
@@ -54,6 +64,8 @@ public struct Ticket: Codable, Sendable, Hashable, Identifiable {
         attachments = try c.value("attachments", default: [])
         comments = try c.value("comments", default: [])
         chatIDs = try c.value("chats", default: [])
+        links = try c.value("links", default: [])
+        inverseLinks = c.isYAML ? [] : try c.value("inverseLinks", default: [])
         unknownKeys = try c.unknownKeys(known: Self.knownKeys)
     }
 
@@ -70,6 +82,10 @@ public struct Ticket: Codable, Sendable, Hashable, Identifiable {
         try c.encode(attachments, "attachments")
         try c.encode(comments, "comments")
         try c.encode(chatIDs, "chats")
+        try c.encode(links, "links")
+        if !c.isYAML {
+            try c.encode(inverseLinks, "inverseLinks")
+        }
         try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
     }
 

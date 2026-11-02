@@ -174,7 +174,7 @@ struct LinkedChatsView: View {
             let ticket = workspace.tickets[projectID]?[ticketID]
             let availability = ticket.map { TicketActions.implementAvailability(of: $0, workspace: workspace) } ?? (enabled: false, help: nil)
             Button("Implement") {
-                TicketActions.implement(ticketID: ticketID, window: window)
+                Task { await TicketActions.implement(ticketID: ticketID, workspace: workspace, window: window) }
             }
             .buttonStyle(.borderedProminent)
             .disabled(!availability.enabled || !window.isConnected)

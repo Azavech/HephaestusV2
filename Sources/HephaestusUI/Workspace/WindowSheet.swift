@@ -27,6 +27,8 @@ public enum WindowSheet: Codable, Hashable, Sendable, Identifiable {
     case implementTicket(ticketID: String)
     /// Implement sheet of Implement All (docs/tickets.md › Implement sheet).
     case implementBundle(bundleID: String)
+    /// Add Link sheet of a ticket (docs/tickets.md › Add Link sheet).
+    case addLink(ticketID: String)
     /// Add Device sheet, with a device preselected by Enter Pairing Code… (docs/remote.md ›
     /// Adding a device, › Entering a new code).
     case addDevice(deviceID: String?)
@@ -77,6 +79,8 @@ struct WindowSheetView: View {
             ImplementSheet(window: window, workspace: workspace, owner: .ticket(ticketID))
         case .implementBundle(let bundleID):
             ImplementSheet(window: window, workspace: workspace, owner: .bundle(bundleID))
+        case .addLink(let ticketID):
+            AddLinkSheet(window: window, workspace: workspace, ticketID: ticketID)
         case .addDevice(let deviceID):
             AddDeviceSheet(preselectedDeviceID: deviceID, window: window)
         case .feedback(let previewID):

@@ -85,7 +85,8 @@ struct TicketDetailView: View {
 
 // MARK: - Header
 
-/// ID with its copy button, the title field, the status pop-up menu, the dates and the bundles.
+/// ID with its copy button, the title field, the status pop-up menu, the dates, the bundles and the
+/// links.
 private struct TicketHeaderView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -141,6 +142,7 @@ private struct TicketHeaderView: View {
                     .foregroundStyle(.secondary)
             }
             bundlesLine
+            TicketLinksLine(window: window, workspace: workspace, projectID: projectID, ticket: ticket)
         }
     }
 
@@ -176,6 +178,82 @@ private struct TicketHeaderView: View {
             text.append(link)
         }
         return text
+    }
+}
+
+// MARK: - Links line
+
+/// The Links line: the ticket's links grouped as `Depends on HEPH-15, HEPH-16 · Blocks HEPH-30 ·
+/// Related HEPH-20`, each id opening its ticket and each declared link followed by its remove
+/// button, then Add Link… (docs/tickets.md › Ticket detail).
+private struct TicketLinksLine: View {
+    let window: WindowState
+    let workspace: DeviceWorkspace
+    let projectID: String
+    let ticket: Ticket
+
+    var body: some View {
+        let groups = TicketLinkGroups(ticket).groups
+        TicketFlowLayout(spacing: 4) {
+            ForEach(Array(groups.enumerated()), id: \.element.label) { index, group in
+                Text(index > 0 ? "· \(group.label)" : group.label)
+                ForEach(Array(group.entries.enumerated()), id: \.element.ticketID) { position, entry in
+                    entryView(entry, last: position == group.entries.count - 1)
+                }
+            }
+            Button("Add Link…") {
+                window.sheet = .addLink(ticketID: ticket.id)
+            }
+            .controlSize(.small)
+            .disabled(!window.isConnected)
+        }
+        .font(.callout)
+        .foregroundStyle(.secondary)
+    }
+
+    /// One id: a link to its ticket, the warning of a declared link whose ticket does not exist,
+    /// the remove button of a declared link, and the comma before the next id.
+    private func entryView(_ entry: TicketLinkGroups.Entry, last: Bool) -> some View {
+        HStack(spacing: 2) {
+            Button(entry.ticketID) {
+                Task { await window.navigate(to: .ticket(ticketID: entry.ticketID)) }
+            }
+            .buttonStyle(.link)
+            .foregroundStyle(Color(nsColor: .linkColor))
+            if let declared = entry.declared {
+                if workspace.tickets[projectID]?[entry.ticketID] == nil {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .help("Ticket \(entry.ticketID) was not found.")
+                        .accessibilityLabel("Ticket \(entry.ticketID) was not found.")
+                }
+                Button {
+                    remove(declared)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                }
+                .buttonStyle(.borderless)
+                .help("Remove Link")
+                .accessibilityLabel("Remove Link")
+                .disabled(!window.isConnected)
+            }
+            if !last {
+                Text(",")
+            }
+        }
+    }
+
+    /// `tickets.update` with the declared links without this one, without confirmation; a
+    /// failure shows `Remove Link failed`.
+    private func remove(_ link: TicketLink) {
+        let links = ticket.links.filter { $0 != link }
+        Task {
+            do {
+                _ = try await workspace.call(TicketsUpdate.self, TicketsUpdate.Params(ticketID: ticket.id, links: links))
+            } catch {
+                window.alert = .failure("Remove Link", error)
+            }
+        }
     }
 }
 

@@ -39,12 +39,16 @@ public enum TicketsCreate: EngineMethod {
         public var description: String
         /// Ticket-level attachments.
         public var attachments: [AttachmentUpload]?
+        /// Links the new ticket declares (docs/tickets.md › Link rules).
+        public var links: [TicketLink]?
 
-        public init(projectID: ProjectID, title: String? = nil, description: String, attachments: [AttachmentUpload]? = nil) {
+        public init(projectID: ProjectID, title: String? = nil, description: String, attachments: [AttachmentUpload]? = nil,
+                    links: [TicketLink]? = nil) {
             self.projectID = projectID
             self.title = title
             self.description = description
             self.attachments = attachments
+            self.links = links
         }
     }
     public typealias Result = Ticket
@@ -57,11 +61,14 @@ public enum TicketsUpdate: EngineMethod {
         public var ticketID: TicketID
         public var title: String?
         public var description: String?
+        /// The declared links, replacing the current ones; nil leaves them unchanged.
+        public var links: [TicketLink]?
 
-        public init(ticketID: TicketID, title: String? = nil, description: String? = nil) {
+        public init(ticketID: TicketID, title: String? = nil, description: String? = nil, links: [TicketLink]? = nil) {
             self.ticketID = ticketID
             self.title = title
             self.description = description
+            self.links = links
         }
     }
     public typealias Result = Ticket

@@ -131,7 +131,7 @@ Symbol: <answer>
 
 ## Writing tickets
 
-- Claude creates a ticket with `create_ticket` (`projectID`, `description`, `attachments?`). It never gives a title: Haiku names the ticket ([Titles and naming](tickets.md#titles-and-naming)). The ticket starts as `todo`.
+- Claude creates a ticket with `create_ticket` (`projectID`, `description`, `attachments?`, `links?`). It never gives a title: Haiku names the ticket ([Titles and naming](tickets.md#titles-and-naming)). The ticket starts as `todo`.
 - The description uses this template, and the engine rejects any description that does not ([Template validation](tickets.md#template-validation)):
 
 ```text
@@ -170,6 +170,7 @@ The content rules of this table are defaults. Default chosen at design time.
 - When something the ticket needs is unknown, Claude asks first and creates the ticket after the answers.
 - Each problem gets its own ticket: a request covering several problems leads to one `create_ticket` call per problem. Default chosen at design time.
 - Attachments are file paths on the main device, such as screenshots or logs. They are copied into the ticket ([Attachments](tickets.md#attachments)).
+- When a ticket depends on another ticket of the same project, or is related to one, Claude records it as a link with the `links` input of `create_ticket` or `update_ticket`, of kind `dependsOn` or `related`, and never writes `Depends on <ID>` in the description ([Ticket links](tickets.md#ticket-links)).
 - After creating tickets, Claude tells the user their ids.
 - When Claude rewrites the description of an existing ticket with `update_ticket`, the new description also follows the template.
 
@@ -386,22 +387,23 @@ When the project is HephaestusV2 itself (the registered project whose git remote
 
 ## Engine-enforced rules
 
-| Rule                                                                              | Checked by                             | Failure           |
-| --------------------------------------------------------------------------------- | -------------------------------------- | ----------------- |
-| Descriptions written by Claude follow the template                                | `tickets.create`, `tickets.update`     | `invalid`         |
-| New tickets start as `todo`                                                       | `tickets.create` (no status parameter) | none              |
-| Tickets created without a title are named by Haiku                                | `tickets.create`                       | none              |
-| Claude never changes the status of a `done` ticket                                | `tickets.setStatus`                    | `forbidden`       |
-| Questions are labelled in order, with 2 to 10 options and exactly one recommended | `chats.postQuestions`                  | `invalid`         |
-| A chat has at most one waiting question set or symbol request                     | `chats.postQuestions`                  | `conflict`        |
-| Symbol requests have 2 to 10 distinct SF Symbol names, one recommended            | `chats.postSymbol`                     | `invalid`         |
-| A symbol request is refused while a question set or symbol request waits          | `chats.postSymbol`                     | `conflict`        |
-| `ask_questions` and `ask_symbol` need a chat token                                | MCP server                             | see [MCP](mcp.md) |
-| `close_chat` needs a chat token and closes only the calling chat                  | MCP server, `chats.close`              | see [MCP](mcp.md) |
-| A `done` ticket is not implemented                                                | `chats.implementTicket`                | `conflict`        |
-| A bundle is implemented only when one of its tickets is not `done`                | `chats.implementBundle`                | `conflict`        |
-| A bundle is implemented only when its status is `todo`                            | `chats.implementBundle`                | `conflict`        |
-| Claude never sets a bundle to `done` and never changes a `done` bundle            | `bundles.setStatus`                    | `forbidden`       |
+| Rule                                                                                  | Checked by                             | Failure               |
+| ------------------------------------------------------------------------------------- | -------------------------------------- | --------------------- |
+| Descriptions written by Claude follow the template                                    | `tickets.create`, `tickets.update`     | `invalid`             |
+| New tickets start as `todo`                                                           | `tickets.create` (no status parameter) | none                  |
+| Tickets created without a title are named by Haiku                                    | `tickets.create`                       | none                  |
+| Claude never changes the status of a `done` ticket                                    | `tickets.setStatus`                    | `forbidden`           |
+| Questions are labelled in order, with 2 to 10 options and exactly one recommended     | `chats.postQuestions`                  | `invalid`             |
+| A chat has at most one waiting question set or symbol request                         | `chats.postQuestions`                  | `conflict`            |
+| Symbol requests have 2 to 10 distinct SF Symbol names, one recommended                | `chats.postSymbol`                     | `invalid`             |
+| A symbol request is refused while a question set or symbol request waits              | `chats.postSymbol`                     | `conflict`            |
+| `ask_questions` and `ask_symbol` need a chat token                                    | MCP server                             | see [MCP](mcp.md)     |
+| `close_chat` needs a chat token and closes only the calling chat                      | MCP server, `chats.close`              | see [MCP](mcp.md)     |
+| Links join two tickets of the same project, once per pair, without a Depends on cycle | `tickets.create`, `tickets.update`     | `invalid`, `notFound` |
+| A `done` ticket is not implemented                                                    | `chats.implementTicket`                | `conflict`            |
+| A bundle is implemented only when one of its tickets is not `done`                    | `chats.implementBundle`                | `conflict`            |
+| A bundle is implemented only when its status is `todo`                                | `chats.implementBundle`                | `conflict`            |
+| Claude never sets a bundle to `done` and never changes a `done` bundle                | `bundles.setStatus`                    | `forbidden`           |
 
 The engine does not check the other rules (never invent, docs first, build and test, the tests that allow `done`, commits, pushing and the completion comment); only the prompts carry them. A ticket file that Claude edits with its own file tools reaches the engine as an external change with the actor `system` ([Data model](data-model.md#external-changes)); the template and status rules are not applied to it. Only the prompt rule `Never create, edit or delete files inside a .hephaestus folder yourself` prevents it. The error messages of the ticket rules are in [Errors](tickets.md#errors).
 
@@ -523,3 +525,4 @@ Notes
 - R114: Claude marks each SF Symbol it names, and the chat transcript and the pinned questions card show the marker as the symbol's icon followed by its name.
 - R117: Claude asks the user to choose an SF Symbol with `ask_symbol`: suggestions show as icons, any SF Symbol of the Mac can be searched, the user picks one, answers another way or skips.
 - R119: The Testing section of a ticket Claude writes lists only checks of the behaviour in the running app, never code tests; the code tests to add can be named under Change.
+- R124: A ticket can depend on other tickets of its project or be related to them; the other ticket shows the inverse link, Blocks or Related; the user and Claude add and remove links; the ticket list marks a ticket that depends on a ticket that is not done, and Implement asks for confirmation while one is not done.

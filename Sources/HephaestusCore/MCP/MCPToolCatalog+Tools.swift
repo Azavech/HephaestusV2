@@ -249,7 +249,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "get_ticket",
             description: #"""
-            Get a ticket: title, status, dates, creator, description, attachments, comments and chat ids. Attachment paths are absolute paths on this Mac.
+            Get a ticket: title, status, dates, creator, description, attachments, comments, chat ids and links. links are the links the ticket declares (dependsOn, related); inverseLinks are the links other tickets declare to it (blocks, related). Attachment paths are absolute paths on this Mac.
             """#,
             inputSchema: schema(#"""
             {
@@ -291,7 +291,7 @@ extension MCPToolCatalog {
             Docs
             (List all docs files and paragraphs relevant to the issue)
 
-            attachments are paths of files on this Mac (absolute, starting with ~/, or relative to the project root) that are copied into the ticket.
+            attachments are paths of files on this Mac (absolute, starting with ~/, or relative to the project root) that are copied into the ticket. links are links to other tickets of the same project: dependsOn when this ticket needs the other ticket to be done first, related when they are only related.
             """#,
             inputSchema: schema(#"""
             {
@@ -309,6 +309,26 @@ extension MCPToolCatalog {
                   "type": "array",
                   "description": "Files on this Mac to attach: absolute paths, paths starting with ~/, or paths relative to the project root.",
                   "items": {"type": "string"}
+                },
+                "links": {
+                  "type": "array",
+                  "description": "Links to other tickets of the same project.",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "description": "dependsOn when this ticket needs the other ticket to be done first, related otherwise.",
+                        "enum": ["dependsOn", "related"]
+                      },
+                      "ticket": {
+                        "type": "string",
+                        "description": "Id of a ticket of the same project, for example HEPH-15."
+                      }
+                    },
+                    "required": ["kind", "ticket"],
+                    "additionalProperties": false
+                  }
                 }
               },
               "required": ["projectID", "description"],
@@ -322,7 +342,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "update_ticket",
             description: #"""
-            Change a ticket's title or description. Omitted arguments are left unchanged; a new description must follow the same template as create_ticket. Use set_ticket_status for the status and add_comment to report work.
+            Change a ticket's title, description or links. Omitted arguments are left unchanged; a new description must follow the same template as create_ticket; links replaces the links the ticket declares, so list every link to keep, and [] removes them all. Use set_ticket_status for the status and add_comment to report work.
             """#,
             inputSchema: schema(#"""
             {
@@ -339,6 +359,26 @@ extension MCPToolCatalog {
                 "description": {
                   "type": "string",
                   "description": "New description, following the ticket template."
+                },
+                "links": {
+                  "type": "array",
+                  "description": "The links this ticket declares, replacing the current ones: every link to keep and the new ones; [] removes them all.",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "description": "dependsOn when this ticket needs the other ticket to be done first, related otherwise.",
+                        "enum": ["dependsOn", "related"]
+                      },
+                      "ticket": {
+                        "type": "string",
+                        "description": "Id of a ticket of the same project, for example HEPH-15."
+                      }
+                    },
+                    "required": ["kind", "ticket"],
+                    "additionalProperties": false
+                  }
                 }
               },
               "required": ["ticketID"],

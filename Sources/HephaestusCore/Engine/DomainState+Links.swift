@@ -14,7 +14,7 @@ extension Engine {
         ticket.chatIDs.append(chatID)
         ticket.updated = ISODate.now()
         try saveTicket(ticket)
-        emit(TicketUpdatedEvent.self, ticket, origin: origin)
+        emitTicketUpdated(ticket, origin: origin)
     }
 
     /// Appends a chat to the `chats` of a bundle, without duplicates, writes the bundle file and
@@ -43,7 +43,7 @@ extension Engine {
                 ticket.chatIDs.removeAll { $0 == chatID }
                 ticket.updated = ISODate.now()
                 try saveTicket(ticket)
-                emit(TicketUpdatedEvent.self, ticket, origin: origin)
+                emitTicketUpdated(ticket, origin: origin)
             }
             for var bundle in domain.bundles(of: projectID) where bundle.chatIDs.contains(chatID) {
                 bundle.chatIDs.removeAll { $0 == chatID }

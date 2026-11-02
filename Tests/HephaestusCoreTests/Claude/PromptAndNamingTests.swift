@@ -44,7 +44,9 @@ struct PromptAndNamingTests {
                                text: "Happens only when the tab is not focused.",
                                attachments: [Attachment(id: consoleID, name: "console.txt",
                                                         path: Attachment.ticketPath(ticketID: "HEPH-12", id: consoleID, name: "console.txt"),
-                                                        contentType: "text/plain", size: 2048)])])
+                                                        contentType: "text/plain", size: 2048)])],
+            links: [TicketLink(kind: .dependsOn, ticketID: "HEPH-9")],
+            inverseLinks: [TicketInverseLink(kind: .related, ticketID: "HEPH-13")])
     }
 
     @Test("{{ticket}} renders the example of docs/chats.md › Rendered blocks")
@@ -56,6 +58,19 @@ struct PromptAndNamingTests {
         #expect(rendered == documented.text)
     }
 
+    @Test("{{ticket}} Links: the groups Depends on, Blocks and Related, ids in ascending ticket number")
+    func ticketLinks() {
+        let ticket = Ticket(id: "HEPH-12", title: "T", created: Self.date("2026-10-31T12:00:00Z"),
+                            links: [TicketLink(kind: .related, ticketID: "HEPH-20"), TicketLink(kind: .dependsOn, ticketID: "HEPH-16"),
+                                    TicketLink(kind: .dependsOn, ticketID: "HEPH-15")],
+                            inverseLinks: [TicketInverseLink(kind: .blocks, ticketID: "HEPH-30"),
+                                           TicketInverseLink(kind: .related, ticketID: "HEPH-9")])
+        #expect(Prompts.linksText(ticket) == "Depends on HEPH-15, HEPH-16 · Blocks HEPH-30 · Related HEPH-9, HEPH-20")
+        let blocksOnly = Ticket(id: "HEPH-1", title: "T", created: Self.date("2026-10-31T12:00:00Z"),
+                                inverseLinks: [TicketInverseLink(kind: .blocks, ticketID: "HEPH-3")])
+        #expect(Prompts.linksText(blocksOnly) == "Blocks HEPH-3")
+    }
+
     @Test("{{ticket}} with empty lists, and the cut beyond 30,000 characters")
     func ticketEdges() {
         let ticket = Ticket(id: "DEMO-1", title: "T", created: Self.date("2026-10-31T12:00:00Z"), description: "")
@@ -65,6 +80,7 @@ struct PromptAndNamingTests {
         Status: todo
         Created: 2026-10-31T12:00:00Z by user
         Updated: 2026-10-31T12:00:00Z
+        Links: none
         <description>
         </description>
         Attachments: none

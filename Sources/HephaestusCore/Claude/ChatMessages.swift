@@ -201,6 +201,6 @@ extension Engine {
             guard let meta = domain.chat(id) else { return nil }
             return "- \(id.uuidString) (\(meta.kind.rawValue)): \(meta.title)"
         }
-        return Prompts.ticket(ticket, projectRoot: root.path, chatLines: chatLines)
+        return Prompts.ticket(apiTicket(ticket), projectRoot: root.path, chatLines: chatLines)
     }
 }

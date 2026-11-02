@@ -1,6 +1,6 @@
 # Engine API
 
-The engine API is the single interface to everything a device's engine owns: projects, sub projects, tickets, bundles, chats, files, docs, web tabs, skills, runs, host settings and the Claude plan usage. Local windows, remote devices and Claude (through the MCP server) call the same named methods with JSON params and JSON results, and all of them receive the same stream of named events, so every client sees every change live wherever it was made, and a remote window works as if it were the main device itself. This document is the contract for every method (params, result, errors, allowed actors, events emitted), every event, every API-only type, the JSON conventions and the Swift shape of the API. Persisted types (Project, ProjectCommands, WebTab, ChatSettings, Ticket, Comment, Attachment, TicketBundle, ChatMeta, ChatItem, Question, HostSettings, PlanUsage) are defined in [Data model](data-model.md); the transports are described in [Remote devices](remote.md) and [MCP server](mcp.md).
+The engine API is the single interface to everything a device's engine owns: projects, sub projects, tickets, bundles, chats, files, docs, web tabs, skills, runs, host settings and the Claude plan usage. Local windows, remote devices and Claude (through the MCP server) call the same named methods with JSON params and JSON results, and all of them receive the same stream of named events, so every client sees every change live wherever it was made, and a remote window works as if it were the main device itself. This document is the contract for every method (params, result, errors, allowed actors, events emitted), every event, every API-only type, the JSON conventions and the Swift shape of the API. Persisted types (Project, ProjectCommands, WebTab, ChatSettings, Ticket, Comment, TicketLink, Attachment, TicketBundle, ChatMeta, ChatItem, Question, HostSettings, PlanUsage) are defined in [Data model](data-model.md); the transports are described in [Remote devices](remote.md) and [MCP server](mcp.md).
 
 ## Overview
 
@@ -465,6 +465,8 @@ Events: run.finished when the process has ended.
 
 Ticket fields, identifiers, the description template, the status rules, titles and naming, attachments and every error message are in [Tickets and bundles](tickets.md); the ticket file format is in [Data model](data-model.md#ticket-file); the rules Claude follows while working on tickets are in [Workflow](workflow.md).
 
+Every Ticket that a method returns or that `ticket.updated` carries has the runtime key `inverseLinks`, which the engine computes from the `links` of the other tickets of the project ([Ticket links](tickets.md#ticket-links), [Data model](data-model.md#ticket-file)). When the `links` of a ticket change, through a method or in its file, the engine emits `ticket.updated` for that ticket, then `ticket.updated` for each other ticket whose `inverseLinks` changed, in ascending ticket number; their files are not written.
+
 A `ticketID` param, or a `ui.open` target, that names a ticket whose file exists but never loaded fails with `internal` (`Ticket file HEPH-12.yml cannot be read: <reason>.`) in every method, not only `tickets.get` ([Tickets and bundles](tickets.md#errors)). Default chosen at design time.
 
 ### tickets.list
@@ -504,52 +506,54 @@ Events: none.
 
 Swift type `TicketsCreate` · actors: user, claude · result: [Ticket](data-model.md#ticket-file)
 
-| Param       | Type               | Required | Description                                                                                                              |
-| ----------- | ------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------ |
-| projectID   | ProjectID          | yes      | Project identifier.                                                                                                      |
-| title       | String             | no       | Ticket title. When absent or empty after trimming, Haiku names the ticket. Must be absent for claude.                    |
-| description | String             | yes      | Markdown description, not empty after trimming; claude must follow the template ([Rules for Claude](#rules-for-claude)). |
-| attachments | [AttachmentUpload] | no       | Ticket-level attachments ([AttachmentUpload](#attachmentupload)).                                                        |
+| Param       | Type               | Required | Description                                                                                                                                                  |
+| ----------- | ------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| projectID   | ProjectID          | yes      | Project identifier.                                                                                                                                          |
+| title       | String             | no       | Ticket title. When absent or empty after trimming, Haiku names the ticket. Must be absent for claude.                                                        |
+| description | String             | yes      | Markdown description, not empty after trimming; claude must follow the template ([Rules for Claude](#rules-for-claude)).                                     |
+| attachments | [AttachmentUpload] | no       | Ticket-level attachments ([AttachmentUpload](#attachmentupload)).                                                                                            |
+| links       | [TicketLink]       | no       | Links the new ticket declares to other tickets of the project, checked by the [link rules](tickets.md#link-rules) ([TicketLink](data-model.md#ticket-link)). |
 
 Steps, as in [Tickets and bundles](tickets.md#creation-steps):
 
-1. Validate the params; a failure uses no number.
+1. Validate the params, `links` included; a failure uses no number.
 2. Allocate the number n ([Data model](data-model.md#id-allocation)): project.yml is written with the next number. The id is `<projectID>-<n>`.
 3. Copy the attachments into `.hephaestus/attachments/<ticketID>/`.
-4. Write `ticket/<ticketID>.yml`: `status` todo; `created` and `updated` now; `createdBy` claude for a claude actor and user otherwise; `title` the given title, or else the provisional title ([Tickets and bundles](tickets.md#titles-and-naming)); `comments` empty; `chats` empty, or `[chatID]` for a feedback link (step 5).
+4. Write `ticket/<ticketID>.yml`: `status` todo; `created` and `updated` now; `createdBy` claude for a claude actor and user otherwise; `title` the given title, or else the provisional title ([Tickets and bundles](tickets.md#titles-and-naming)); `comments` empty; `chats` empty, or `[chatID]` for a feedback link (step 5); `links` as given.
 5. Feedback link: when the actor is claude with the chatID of a chat of kind feedback whose `ticket` is null, the ticket is written with that chat in its `chats`, then the chat's `ticket` is set to the new id. Only the first ticket a feedback chat creates is linked ([Feedback](feedback.md#resulting-ticket)).
 6. Without a given title, ask Haiku; its answer replaces the title only while the ticket still has its provisional title ([Tickets and bundles](tickets.md#titles-and-naming)).
 7. Return the ticket: for a user, at once, while the naming goes on in the background; for claude, once the naming has ended, as stored, with Haiku's title or the provisional title.
 
 When step 3 or 4 fails, the copied files are removed and the allocated number stays used. The status is always todo; a user picks another status afterwards with `tickets.setStatus`.
 
-| Error     | When                                                                                                                                                                                                                                                                                |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| notFound  | No loaded project has this identifier.                                                                                                                                                                                                                                              |
-| invalid   | projectID is malformed; description is empty (`The description must not be empty.`); a claude description does not follow the template ([Tickets and bundles](tickets.md#template-validation)); title is invalid; an attachment is invalid ([AttachmentUpload](#attachmentupload)). |
-| forbidden | The actor is claude and title is present (`Claude cannot set a ticket title; Haiku names the ticket.`); a user sent an attachment with sourcePath.                                                                                                                                  |
-| internal  | A file cannot be written.                                                                                                                                                                                                                                                           |
+| Error     | When                                                                                                                                                                                                                                                                                                                                    |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| notFound  | No loaded project has this identifier; a linked ticket does not exist (`Ticket HEPH-99 not found.`).                                                                                                                                                                                                                                    |
+| invalid   | projectID is malformed; description is empty (`The description must not be empty.`); a claude description does not follow the template ([Tickets and bundles](tickets.md#template-validation)); title is invalid; an attachment is invalid ([AttachmentUpload](#attachmentupload)); a link breaks a [link rule](tickets.md#link-rules). |
+| forbidden | The actor is claude and title is present (`Claude cannot set a ticket title; Haiku names the ticket.`); a user sent an attachment with sourcePath.                                                                                                                                                                                      |
+| internal  | A file cannot be written.                                                                                                                                                                                                                                                                                                               |
 
-Events: project.updated, ticket.updated, projects.changed, chat.updated (feedback link only); then ticket.updated with origin system when Haiku has named the ticket, before the result for claude and later for a user.
+Events: project.updated, ticket.updated, projects.changed, chat.updated (feedback link only), ticket.updated for each ticket the new ticket links to; then ticket.updated with origin system when Haiku has named the ticket, before the result for claude and later for a user.
 
 ### tickets.update
 
 Swift type `TicketsUpdate` · actors: user, claude · result: [Ticket](data-model.md#ticket-file)
 
-| Param       | Type     | Required | Description                                                                 |
-| ----------- | -------- | -------- | --------------------------------------------------------------------------- |
-| ticketID    | TicketID | yes      | Ticket id.                                                                  |
-| title       | String   | no       | New title, trimmed, 1 to 200 characters on one line.                        |
-| description | String   | no       | New description, not empty after trimming; claude must follow the template. |
+| Param       | Type         | Required | Description                                                                                                                                                                                                        |
+| ----------- | ------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ticketID    | TicketID     | yes      | Ticket id.                                                                                                                                                                                                         |
+| title       | String       | no       | New title, trimmed, 1 to 200 characters on one line.                                                                                                                                                               |
+| description | String       | no       | New description, not empty after trimming; claude must follow the template.                                                                                                                                        |
+| links       | [TicketLink] | no       | The ticket's declared links, replacing the current ones: absent leaves them unchanged, `[]` removes them all. Each link the ticket does not already declare is checked by the [link rules](tickets.md#link-rules). |
 
 Status, comments, attachments and chats change only through their own methods. A title set here is never replaced by a pending Haiku answer.
 
-| Error    | When                                                                                                              |
-| -------- | ----------------------------------------------------------------------------------------------------------------- |
-| invalid  | ticketID is malformed; title is invalid; description is empty; a claude description does not follow the template. |
-| notFound | No such ticket.                                                                                                   |
+| Error    | When                                                                                                                                                                  |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid  | ticketID is malformed; title is invalid; description is empty; a claude description does not follow the template; a link breaks a [link rule](tickets.md#link-rules). |
+| notFound | No such ticket; a newly linked ticket does not exist (`Ticket HEPH-99 not found.`).                                                                                   |
 
-Events: ticket.updated.
+Events: ticket.updated, then ticket.updated for each other ticket whose `inverseLinks` changed.
 
 ### tickets.setStatus
 
@@ -583,7 +587,8 @@ Swift type `TicketsDelete` · actors: user, claude · result: [Empty](#empty)
 Steps:
 
 1. Remove the ticket id from `tickets` of every bundle of the project that contains it.
-2. Move `ticket/<ticketID>.yml` and the folder `.hephaestus/attachments/<ticketID>/` to the Trash.
+2. Remove every link to the ticket from the `links` of every other ticket of the project.
+3. Move `ticket/<ticketID>.yml` and the folder `.hephaestus/attachments/<ticketID>/` to the Trash.
 
 The chats linked to the ticket are kept with their `ticket` unchanged; a running one continues. The ticket number is never reused ([Tickets and bundles](tickets.md#deleting)).
 
@@ -593,7 +598,7 @@ The chats linked to the ticket are kept with their `ticket` unchanged; a running
 | notFound    | No such ticket.                      |
 | unavailable | A file cannot be moved to the Trash. |
 
-Events: bundle.updated (each changed bundle), ticket.deleted, projects.changed.
+Events: bundle.updated (each changed bundle), ticket.updated (each ticket whose `links` changed), ticket.deleted, projects.changed, then ticket.updated for each ticket it declared a link to, whose `inverseLinks` lost it.
 
 ### tickets.addComment
 
@@ -1841,7 +1846,7 @@ Every event travels as an [EngineEventEnvelope](#engineeventenvelope) `{name, or
 | projects.changed  | ProjectsChangedEvent  | [ProjectSummary]: the complete `projects.list` result | The result of `projects.list` changed: a project was created, opened, removed, renamed, loaded or unloaded, its sub projects changed, or a ticket count changed. |
 | project.updated   | ProjectUpdatedEvent   | ProjectDetail                                         | A project's project.yml was written or reloaded, or its `gitRemoteURL` changed ([ProjectDetail](#projectdetail)).                                                |
 | project.removed   | ProjectRemovedEvent   | {projectID}                                           | A project was unregistered or its project.yml disappeared.                                                                                                       |
-| ticket.updated    | TicketUpdatedEvent    | Ticket                                                | A ticket was created, changed or reloaded.                                                                                                                       |
+| ticket.updated    | TicketUpdatedEvent    | Ticket                                                | A ticket was created, changed or reloaded, or its `inverseLinks` changed.                                                                                        |
 | ticket.deleted    | TicketDeletedEvent    | {projectID, ticketID}                                 | A ticket was deleted or its file disappeared.                                                                                                                    |
 | bundle.updated    | BundleUpdatedEvent    | TicketBundle                                          | A bundle was created, changed or reloaded.                                                                                                                       |
 | bundle.deleted    | BundleDeletedEvent    | {projectID, bundleID}                                 | A bundle was deleted or its file disappeared.                                                                                                                    |
@@ -2841,3 +2846,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R113: Claude can close the chat it runs in when the user asks or its work is finished; a closed chat shows `This conversation is over` in place of its composer until the user reopens it.
 - R117: Claude asks the user to choose an SF Symbol with `ask_symbol`: suggestions show as icons, any SF Symbol of the Mac can be searched, the user picks one, answers another way or skips.
 - R123: Implement, Implement All and the feedback sheet let the user choose the model, the effort and the permission mode of the chat they start; the ticket chats that a bundle chat starts take its settings.
+- R124: A ticket can depend on other tickets of its project or be related to them; the other ticket shows the inverse link, Blocks or Related; the user and Claude add and remove links; the ticket list marks a ticket that depends on a ticket that is not done, and Implement asks for confirmation while one is not done.

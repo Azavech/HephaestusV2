@@ -145,7 +145,7 @@ struct TicketListView: View {
         let state = listState
         return ItemTable(
             rows: tickets,
-            columns: Self.columns,
+            columns: Self.columns(tickets: workspace.tickets[projectID] ?? [:]),
             selection: selection,
             onSelectionChange: { ids in
                 window.updateViewState(of: projectID) { $0.selectedTicketIDs = ids }
@@ -166,7 +166,8 @@ struct TicketListView: View {
         )
     }
 
-    static let columns: [ItemTableColumn<Ticket>] = [
+    /// The columns; `tickets`, the tickets of the project, give the blocked marks.
+    static func columns(tickets: [String: Ticket]) -> [ItemTableColumn<Ticket>] { [
         ItemTableColumn(id: TicketListState.SortColumn.id.rawValue, title: "ID", minWidth: 24, sizing: .content,
                         contentWidth: { ItemTableText.width($0.id, font: ItemTableText.monospaced) }) { ticket in
             AnyView(Text(ticket.id)
@@ -182,9 +183,15 @@ struct TicketListView: View {
                 .help(ticket.title))
         },
         ItemTableColumn(id: TicketListState.SortColumn.status.rawValue, title: "Status", minWidth: 24, sizing: .content,
-                        contentWidth: { _ in StatusCapsule.maxWidth }) { ticket in
-            AnyView(StatusCapsule(status: ticket.status)
-                .frame(maxWidth: .infinity, alignment: .leading))
+                        contentWidth: { ticket in
+                            StatusCapsule.maxWidth
+                                + (TicketActions.unfinishedDependencies(of: ticket, among: tickets).isEmpty ? 0 : BlockedMark.width + 4)
+                        }) { ticket in
+            AnyView(HStack(spacing: 4) {
+                StatusCapsule(status: ticket.status)
+                BlockedMark(blockers: TicketActions.unfinishedDependencies(of: ticket, among: tickets))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading))
         },
         ItemTableColumn(id: TicketListState.SortColumn.created.rawValue, title: "Created", minWidth: 40, sizing: .shrinkableContent,
                         contentWidth: { ItemTableText.width(TicketFormat.created($0.created), font: ItemTableText.body) }) { ticket in
@@ -194,7 +201,7 @@ struct TicketListView: View {
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading))
         },
-    ]
+    ] }
 
     // MARK: Menu
 
@@ -206,7 +213,7 @@ struct TicketListView: View {
         return [
             .action("Implement", enabled: canImplement) {
                 guard let single else { return }
-                TicketActions.implementFromList(ticketID: single.id, window: window, projectID: projectID)
+                Task { await TicketActions.implementFromList(ticketID: single.id, workspace: workspace, window: window, projectID: projectID) }
             },
             .submenu("Set Status", enabled: !ids.isEmpty, TicketStatus.allCases.map { status in
                 .action(status.label) {

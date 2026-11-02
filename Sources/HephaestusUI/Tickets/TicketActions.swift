@@ -76,6 +76,26 @@ struct StatusCapsule: View {
     }
 }
 
+/// The blocked mark of the ticket list: a red `hand.raised.fill` with the tooltip `Blocked by
+/// HEPH-15, HEPH-16`, shown while a Depends on ticket is not done (docs/tickets.md › Ticket list).
+struct BlockedMark: View {
+    /// The Depends on tickets that are not done; the mark is hidden without them.
+    let blockers: [String]
+
+    /// The width the mark adds to the Status column.
+    static let width: CGFloat = 16
+
+    var body: some View {
+        if !blockers.isEmpty {
+            let help = "Blocked by \(blockers.joined(separator: ", "))"
+            Image(systemName: "hand.raised.fill")
+                .foregroundStyle(.red)
+                .help(help)
+                .accessibilityLabel(help)
+        }
+    }
+}
+
 /// The actions of the Tickets and Bundles sections.
 @MainActor
 enum TicketActions {
@@ -150,18 +170,35 @@ enum TicketActions {
         return (true, nil)
     }
 
-    /// Implement: opens the Implement sheet, whatever chats of the ticket are active.
-    static func implement(ticketID: String, window: WindowState) {
+    /// The Depends on tickets of a ticket that exist among `tickets` and are not done, in
+    /// ascending ticket number (docs/tickets.md › Ticket links).
+    static func unfinishedDependencies(of ticket: Ticket, among tickets: [String: Ticket]) -> [String] {
+        let ids = Set(ticket.links.filter { $0.kind == .dependsOn }.map(\.ticketID))
+        return TicketFormat.ascending(ids.filter { id in tickets[id].map { $0.status != .done } ?? false })
+    }
+
+    /// Implement: while one of the ticket's Depends on tickets is not done, the alert `<ID> depends
+    /// on HEPH-15, HEPH-16, which are not done. Implement it anyway?` comes first, and Cancel
+    /// starts nothing; then the Implement sheet opens, whatever chats of the ticket are active.
+    static func implement(ticketID: String, workspace: DeviceWorkspace, window: WindowState) async {
+        if let projectID = Identifiers.projectID(of: ticketID), let ticket = workspace.tickets[projectID]?[ticketID] {
+            let blockers = unfinishedDependencies(of: ticket, among: workspace.tickets[projectID] ?? [:])
+            if !blockers.isEmpty {
+                let which = blockers.count == 1 ? "which is not done" : "which are not done"
+                let title = "\(ticketID) depends on \(blockers.joined(separator: ", ")), \(which). Implement it anyway?"
+                guard await confirm(title, button: "Implement", destructive: false, in: window) else { return }
+            }
+        }
         window.sheet = .implementTicket(ticketID: ticketID)
     }
 
     /// Implement from the list's context menu: selects the ticket and its Chats tab first.
-    static func implementFromList(ticketID: String, window: WindowState, projectID: String) {
+    static func implementFromList(ticketID: String, workspace: DeviceWorkspace, window: WindowState, projectID: String) async {
         window.updateViewState(of: projectID) {
             $0.selectedTicketIDs = [ticketID]
             $0.ticketTab = .chats
         }
-        implement(ticketID: ticketID, window: window)
+        await implement(ticketID: ticketID, workspace: workspace, window: window)
     }
 
     /// Start in the Implement sheet: `chats.implementTicket` or `chats.implementBundle` with the

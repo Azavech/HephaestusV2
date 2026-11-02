@@ -4,37 +4,37 @@ extension Engine {
     /// docs/engine-api.md › Tickets.
     func registerTicketHandlers() {
         register(TicketsList.self, actors: [.user, .claude]) { [unowned self] params, actor in
-            try await self.ticketsList(params, actor)
+            try await self.apiTickets(self.ticketsList(params, actor))
         }
         register(TicketsGet.self, actors: [.user, .claude]) { [unowned self] params, actor in
-            try await self.ticketsGet(params, actor)
+            try await self.apiTicket(self.ticketsGet(params, actor))
         }
         register(TicketsCreate.self, actors: [.user, .claude]) { [unowned self] params, actor in
-            try await self.ticketsCreate(params, actor)
+            try await self.apiTicket(self.ticketsCreate(params, actor))
         }
         register(TicketsUpdate.self, actors: [.user, .claude]) { [unowned self] params, actor in
-            try await self.ticketsUpdate(params, actor)
+            try await self.apiTicket(self.ticketsUpdate(params, actor))
         }
         register(TicketsSetStatus.self, actors: [.user, .claude]) { [unowned self] params, actor in
-            try await self.ticketsSetStatus(params, actor)
+            try await self.apiTicket(self.ticketsSetStatus(params, actor))
         }
         register(TicketsDelete.self, actors: [.user, .claude]) { [unowned self] params, actor in
             try await self.ticketsDelete(params, actor)
         }
         register(TicketsAddComment.self, actors: [.user, .claude]) { [unowned self] params, actor in
-            try await self.ticketsAddComment(params, actor)
+            try await self.apiTicket(self.ticketsAddComment(params, actor))
         }
         register(TicketsUpdateComment.self, actors: [.user, .claude]) { [unowned self] params, actor in
-            try await self.ticketsUpdateComment(params, actor)
+            try await self.apiTicket(self.ticketsUpdateComment(params, actor))
         }
         register(TicketsDeleteComment.self, actors: [.user, .claude]) { [unowned self] params, actor in
-            try await self.ticketsDeleteComment(params, actor)
+            try await self.apiTicket(self.ticketsDeleteComment(params, actor))
         }
         register(TicketsAddAttachments.self, actors: [.user]) { [unowned self] params, actor in
-            try await self.ticketsAddAttachments(params, actor)
+            try await self.apiTicket(self.ticketsAddAttachments(params, actor))
         }
         register(TicketsRemoveAttachment.self, actors: [.user, .claude]) { [unowned self] params, actor in
-            try await self.ticketsRemoveAttachment(params, actor)
+            try await self.apiTicket(self.ticketsRemoveAttachment(params, actor))
         }
     }
 
@@ -65,6 +65,7 @@ extension Engine {
         }
         let folder = loaded(projectID).folder
         let uploads = try AttachmentUploads.prepare(params.attachments ?? [], projectRoot: folder.root)
+        let links = try checkedLinks(params.links ?? [], ticketID: nil, projectID: projectID, declared: [])
 
         // 2. Allocate the number: project.yml is written with the next number.
         var project = loaded(projectID).project
@@ -89,7 +90,7 @@ extension Engine {
         let provisional = TicketTemplate.provisionalTitle(for: description)
         let ticket = Ticket(id: ticketID, title: title ?? provisional, status: .todo, created: now, updated: now,
                             createdBy: actor.kind == .claude ? .claude : .user, description: description,
-                            attachments: attachments, comments: [], chatIDs: feedbackChat.map { [$0.id] } ?? [])
+                            attachments: attachments, comments: [], chatIDs: feedbackChat.map { [$0.id] } ?? [], links: links)
         do {
             try saveTicket(ticket)
         } catch {
@@ -112,11 +113,12 @@ extension Engine {
             }
         }
         emitProjectUpdated(projectID, origin: actor)
-        emit(TicketUpdatedEvent.self, ticket, origin: actor)
+        emitTicketUpdated(ticket, origin: actor)
         emitProjectsChanged(origin: actor)
         if let linkedChat {
             emit(ChatUpdatedEvent.self, apiChatMeta(linkedChat), origin: actor)
         }
+        emitInverseLinkChanges(of: ticketID, old: [], new: links, origin: actor)
         // 6. Haiku names a ticket created without a title.
         let naming = title == nil ? startTicketNaming(ticketID, provisional: provisional, description: description) : nil
         if let linkFailure {
@@ -141,6 +143,9 @@ extension Engine {
                 try validated { try TicketTemplate.validate(new.description) }
             }
         }
+        if let links = params.links {
+            new.links = try checkedLinks(links, ticketID: old.id, projectID: old.projectID!, declared: old.links)
+        }
         if params.title != nil {
             // A title set here is never replaced by a pending Haiku answer.
             domain.pendingTicketNames[old.id] = nil
@@ -148,7 +153,8 @@ extension Engine {
         guard new != old else { return old }
         new.updated = ISODate.now()
         try saveTicket(new)
-        emit(TicketUpdatedEvent.self, new, origin: actor)
+        emitTicketUpdated(new, origin: actor)
+        emitInverseLinkChanges(of: new.id, old: old.links, new: new.links, origin: actor)
         return new
     }
 
@@ -165,13 +171,13 @@ extension Engine {
         new.status = status
         new.updated = ISODate.now()
         try saveTicket(new)
-        emit(TicketUpdatedEvent.self, new, origin: actor)
+        emitTicketUpdated(new, origin: actor)
         emitProjectsChanged(origin: actor)
         return new
     }
 
-    /// docs/engine-api.md › tickets.delete: the id leaves every bundle, then the ticket file and
-    /// its attachments folder move to the Trash.
+    /// docs/engine-api.md › tickets.delete: the id leaves every bundle and every link to it leaves
+    /// the other tickets, then the ticket file and its attachments folder move to the Trash.
     func ticketsDelete(_ params: TicketsDelete.Params, _ actor: Actor) async throws -> Empty {
         let ticket = try existingTicket(params.ticketID)
         let projectID = ticket.projectID!
@@ -183,7 +189,9 @@ extension Engine {
             try saveBundle(bundle)
             emit(BundleUpdatedEvent.self, bundle, origin: actor)
         }
-        // 2. The ticket file and the folder attachments/<ticketID>/.
+        // 2. Every ticket file declaring a link to it.
+        try removeLinks(to: ticket.id, projectID: projectID, origin: actor)
+        // 3. The ticket file and the folder attachments/<ticketID>/.
         try moveToTrash(folder.ticketFile(ticket.id))
         domain.removeTicket(ticket.id)
         let folderFailure: Error?
@@ -195,6 +203,7 @@ extension Engine {
         }
         emit(TicketDeletedEvent.self, TicketDeletedEvent.Payload(projectID: projectID, ticketID: ticket.id), origin: actor)
         emitProjectsChanged(origin: actor)
+        emitInverseLinkChanges(of: ticket.id, old: ticket.links, new: [], origin: actor)
         if let folderFailure {
             throw folderFailure
         }
@@ -222,7 +231,7 @@ extension Engine {
                                        text: ModelRules.normalizedLineBreaks(params.text), attachments: attachments))
         ticket.updated = now
         try saveTicket(ticket)
-        emit(TicketUpdatedEvent.self, ticket, origin: actor)
+        emitTicketUpdated(ticket, origin: actor)
         return ticket
     }
 
@@ -240,7 +249,7 @@ extension Engine {
         ticket.comments[index].updated = now
         ticket.updated = now
         try saveTicket(ticket)
-        emit(TicketUpdatedEvent.self, ticket, origin: actor)
+        emitTicketUpdated(ticket, origin: actor)
         return ticket
     }
 
@@ -254,7 +263,7 @@ extension Engine {
         let removed = ticket.comments.remove(at: index)
         ticket.updated = ISODate.now()
         try saveTicket(ticket)
-        emit(TicketUpdatedEvent.self, ticket, origin: actor)
+        emitTicketUpdated(ticket, origin: actor)
         try trashAttachmentFiles(removed.attachments, projectID: ticket.projectID!)
         return ticket
     }
@@ -278,7 +287,7 @@ extension Engine {
         ticket.attachments += attachments
         ticket.updated = ISODate.now()
         try saveTicket(ticket)
-        emit(TicketUpdatedEvent.self, ticket, origin: actor)
+        emitTicketUpdated(ticket, origin: actor)
         return ticket
     }
 
@@ -291,7 +300,7 @@ extension Engine {
         let removed = ticket.attachments.remove(at: index)
         ticket.updated = ISODate.now()
         try saveTicket(ticket)
-        emit(TicketUpdatedEvent.self, ticket, origin: actor)
+        emitTicketUpdated(ticket, origin: actor)
         try trashAttachmentFiles([removed], projectID: ticket.projectID!)
         return ticket
     }
@@ -359,6 +368,6 @@ extension Engine {
             log.error(.storage, "the Haiku title of \(ticketID) cannot be written: \(error)")
             return
         }
-        emit(TicketUpdatedEvent.self, ticket, origin: .system)
+        emitTicketUpdated(ticket, origin: .system)
     }
 }

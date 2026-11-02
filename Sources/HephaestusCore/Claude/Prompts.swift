@@ -75,8 +75,19 @@ enum Prompts {
     /// many UTF-8 bytes.
     static let systemPromptLimit = 400_000
 
-    /// `{{ticket}}`: the ticket's current data, attachment paths made absolute, its other chats
-    /// (`chatLines`, one `- <chat id> (<kind>): <title>` each), cut beyond 30,000 characters.
+    /// The `Links:` value of `{{ticket}}`: the groups Depends on, Blocks and Related of the ticket
+    /// detail's Links line, ids in ascending ticket number; `none` without links
+    /// (docs/chats.md › Rendered blocks).
+    static func linksText(_ ticket: Ticket) -> String {
+        let groups = TicketLinkGroups(ticket).groups.map { group in
+            "\(group.label) \(group.ids.joined(separator: ", "))"
+        }
+        return groups.isEmpty ? "none" : groups.joined(separator: " · ")
+    }
+
+    /// `{{ticket}}`: the ticket's current data, its links, attachment paths made absolute, its
+    /// other chats (`chatLines`, one `- <chat id> (<kind>): <title>` each), cut beyond 30,000
+    /// characters.
     static func ticket(_ ticket: Ticket, projectRoot: String, chatLines: [String]) -> String {
         func attachmentLine(_ attachment: Attachment) -> String {
             "- \(attachment.name) (\(attachment.contentType), \(attachment.size) bytes): \(attachment.absolutePath(projectRoot: projectRoot))"
@@ -87,6 +98,7 @@ enum Prompts {
             "Status: \(ticket.status.rawValue)",
             "Created: \(ISODate.string(from: ticket.created)) by \(ticket.createdBy.rawValue)",
             "Updated: \(ISODate.string(from: ticket.updated))",
+            "Links: \(linksText(ticket))",
             "<description>",
         ]
         var description = ticket.description

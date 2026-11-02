@@ -1,6 +1,6 @@
 # Tickets and bundles
 
-Tickets are the work items of a project. Bundles group tickets of one project so that Claude implements them together: a bundle chat starts one ticket chat per ticket. This document specifies their behaviour as the user sees it: identifiers, fields, the description template, the status rules, naming, the Tickets and Bundles sections of the main window, comments, attachments, the image viewer, ticket chats with Implement, and bundle chats with Implement All. File formats are in [Data model](data-model.md), engine methods and events in [Engine API](engine-api.md), MCP tools in [MCP](mcp.md), and the rules Claude follows when it writes or implements tickets in [Claude workflow](workflow.md). Ticket and bundle data lives in the project's `.hephaestus/` folder on the main device. Every change reaches every window and remote device as soon as it is made, whether it comes from a window, a remote device, Claude or another program.
+Tickets are the work items of a project. Bundles group tickets of one project so that Claude implements them together: a bundle chat starts one ticket chat per ticket. This document specifies their behaviour as the user sees it: identifiers, fields, the description template, the status rules, naming, ticket links, the Tickets and Bundles sections of the main window, comments, attachments, the image viewer, ticket chats with Implement, and bundle chats with Implement All. File formats are in [Data model](data-model.md), engine methods and events in [Engine API](engine-api.md), MCP tools in [MCP](mcp.md), and the rules Claude follows when it writes or implements tickets in [Claude workflow](workflow.md). Ticket and bundle data lives in the project's `.hephaestus/` folder on the main device. Every change reaches every window and remote device as soon as it is made, whether it comes from a window, a remote device, Claude or another program.
 
 ## Identifiers
 
@@ -168,25 +168,60 @@ The placeholder, font and keys in this table are defaults. Default chosen at des
 
 ### Tickets created by Claude
 
-- `create_ticket` (`projectID`, `description`, `attachments?`) calls `tickets.create` as actor `claude` ([MCP](mcp.md)).
+- `create_ticket` (`projectID`, `description`, `attachments?`, `links?`) calls `tickets.create` as actor `claude` ([MCP](mcp.md)).
 - The description must pass [Template validation](#template-validation).
 - There is no title: Haiku names the ticket, and `create_ticket` returns the ticket once the naming has ended, with Haiku's title or, when the naming fails, the provisional title ([Titles and naming](#titles-and-naming)).
 - The ticket gets `status: todo` and `createdBy: claude`.
 - `attachments` are file paths on the main device ([Adding attachments](#adding-attachments)).
+- `links` declares the ticket's links to other tickets of the project ([Ticket links](#ticket-links)).
 - A feedback chat creates its ticket this way, with the screenshot attached, and is linked to that ticket ([Feedback](feedback.md)).
 - A ticket created from a project chat is not linked to that chat. Default chosen at design time.
 
 ### Creation steps
 
-1. Find the project. Validate the title when given, the description (with the template when the actor is Claude) and the attachments. A failure stops here and uses no number.
+1. Find the project. Validate the title when given, the description (with the template when the actor is Claude), the attachments and the links ([Link rules](#link-rules)). A failure stops here and uses no number.
 2. Allocate the number ([Identifiers](#identifiers)).
 3. Copy the attachments into `.hephaestus/attachments/<ID>/`.
-4. Write `.hephaestus/ticket/<ID>.yml` atomically with `status: todo`, `created` and `updated` set to now, `createdBy` from the actor, `comments: []`, `chats: []` (`[<chat id>]` for the first ticket a feedback chat creates, [Feedback](feedback.md#resulting-ticket)), and the provisional title when no title was given.
-5. Emit `project.updated` (the counter), `ticket.updated`, `projects.changed` because the ticket counts changed, and `chat.updated` when a feedback chat was linked ([Engine API](engine-api.md#ticketscreate)).
+4. Write `.hephaestus/ticket/<ID>.yml` atomically with `status: todo`, `created` and `updated` set to now, `createdBy` from the actor, `comments: []`, `chats: []` (`[<chat id>]` for the first ticket a feedback chat creates, [Feedback](feedback.md#resulting-ticket)), `links` as given, and the provisional title when no title was given.
+5. Emit `project.updated` (the counter), `ticket.updated`, `projects.changed` because the ticket counts changed, `chat.updated` when a feedback chat was linked, and `ticket.updated` for each ticket the new ticket links to, whose `inverseLinks` gained it ([Engine API](engine-api.md#ticketscreate)).
 6. Start Haiku naming when no title was given.
 7. Return the ticket: at once for actor `user`; for actor `claude`, once the naming has ended, as stored.
 
 When step 3 or 4 fails, the engine removes the files it copied and returns the error; the allocated number stays used. Default chosen at design time.
+
+## Ticket links
+
+A ticket can be linked to other tickets of its project: it depends on them, or it is related to them.
+
+| Kind       | Value in `links` | Shown on the declaring ticket | Shown on the other ticket, in `inverseLinks` |
+| ---------- | ---------------- | ----------------------------- | -------------------------------------------- |
+| Depends on | `dependsOn`      | Depends on                    | Blocks (`blocks`)                            |
+| Related    | `related`        | Related                       | Related (`related`)                          |
+
+- Depends on is directed: the declaring ticket needs the other ticket to be done first. Related is undirected.
+- A link is stored only in the file of the ticket that declares it, in its `links` ([Data model](data-model.md#ticket-file)). The other ticket shows the inverse link, which the engine computes and sends with every ticket as `inverseLinks` ([JSON form in the engine API](data-model.md#json-form-in-the-engine-api)).
+- The user, from any device, adds and removes links in the ticket detail ([Ticket detail](#ticket-detail)). Claude declares them with the `links` input of `create_ticket` and `update_ticket` ([MCP](mcp.md#update_ticket)). Both reach the engine as the `links` param of `tickets.create` and `tickets.update`; the `links` of `tickets.update` replaces the ticket's declared links ([Engine API](engine-api.md#ticketsupdate)).
+- Links change no status rule ([Status rules](#status-rules)). The ticket list marks a blocked ticket ([Ticket list](#ticket-list)), and Implement asks for confirmation while a ticket it depends on is not done ([Ticket chats and Implement](#ticket-chats-and-implement)).
+- A Depends on ticket that is not done is a linked ticket that exists and whose status is not `done`. A declared link whose ticket does not exist, for example after git removed its file, stays in `links`: it neither blocks the ticket nor asks for confirmation, and the Links line warns about it ([Ticket detail](#ticket-detail)).
+- Deleting a ticket removes every link to it from the other tickets of the project ([Deleting](#deleting)).
+- Every change of a ticket's `links` emits `ticket.updated` for that ticket, then for each other ticket whose `inverseLinks` changed, so that every window and remote device shows it at once ([Live updates](#live-updates)).
+
+### Link rules
+
+`tickets.create` and `tickets.update` check each link of the given `links` that the ticket does not already declare with the same kind, in the order of `links`, with the rules below in this order, and fail at the first broken rule. `<ID>` is the ticket that declares the link and `<other ID>` the linked ticket. A link that the ticket already declares is kept as it is, even when its ticket file is missing.
+
+1. The linked id has the ticket format; otherwise `invalid` and `"<value>" is not a valid ticket id.`.
+2. The linked ticket belongs to the same project; otherwise `invalid` and `<other ID> does not belong to project <IDENT>.`.
+3. It is not the ticket itself; otherwise `invalid` and `<ID> cannot be linked to itself.`.
+4. The given `links` name the linked ticket only once; otherwise `invalid` and `<other ID> is listed more than once.`.
+5. The linked ticket exists; otherwise `notFound` and `Ticket <other ID> not found.`.
+6. One link per pair of tickets: the linked ticket declares no link to this one; otherwise `invalid` and `<ID> is already linked to <other ID>.`.
+7. A Depends on link makes no cycle: the linked ticket does not depend on this one, directly or through other tickets; otherwise `invalid` and `<ID> cannot depend on <other ID>, which depends on <ID>.`.
+
+- Ids in `links` are accepted in any letter case and stored in uppercase ([Identifiers](#identifiers)). `links` keeps the order given.
+- A new ticket has no id while its links are checked, and no ticket links to it yet, so rules 3, 6 and 7 never fail in `tickets.create`.
+
+The order of the checks and the message of rule 4 are defaults. Default chosen at design time.
 
 ## Tickets section
 
@@ -205,17 +240,18 @@ Header bar, from left to right, on one row when the list is wide enough for all 
 
 The text filter's matching fields and the placeholder are defaults. Default chosen at design time.
 
-| Column  | Content                                                                        | Sort order                              |
-| ------- | ------------------------------------------------------------------------------ | --------------------------------------- |
-| ID      | Ticket id, monospaced                                                          | By number                               |
-| Title   | One line, truncated with an ellipsis                                           | Localized standard comparison           |
-| Status  | Capsule: To Do gray, In Progress blue, In Review orange, Done green            | `todo`, `in_progress`, `review`, `done` |
-| Created | Date with abbreviated month and short time, in the user's locale and time zone | By date                                 |
+| Column  | Content                                                                                                               | Sort order                              |
+| ------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| ID      | Ticket id, monospaced                                                                                                 | By number                               |
+| Title   | One line, truncated with an ellipsis                                                                                  | Localized standard comparison           |
+| Status  | Capsule: To Do gray, In Progress blue, In Review orange, Done green, followed by the blocked mark of a blocked ticket | `todo`, `in_progress`, `review`, `done` |
+| Created | Date with abbreviated month and short time, in the user's locale and time zone                                        | By date                                 |
 
 The capsule colors and the date format are defaults; the [segmented progress bar](#segmented-progress-bar) of bundles uses the same colors. Default chosen at design time.
 
 - Column widths: ID, Status and Created are as wide as their widest cell and their header. Title takes the width they leave, at least 40 pt, and is the first to truncate when the list narrows; once Title is at 40 pt, Created truncates with an ellipsis, down to 40 pt; a list narrower than that scrolls horizontally. The widths follow the list's width and cannot be dragged. Default chosen at design time.
 
+- Blocked mark: a ticket with at least one Depends on ticket that is not done ([Ticket links](#ticket-links)) shows a red `hand.raised.fill` symbol after its status capsule, with the tooltip `Blocked by HEPH-15, HEPH-16`: the ids of those tickets in ascending ticket number, separated by `, `. The mark follows status changes, link changes and deletions as they happen.
 - The list starts sorted by ID, newest first. Clicking a column header sorts by that column; clicking it again reverses the order. Default chosen at design time.
 - Filters and sort order are kept per window and per project in `ProjectViewState.ticketList` while the window is open; `debug_ui_state` encodes them, and they are never persisted. Default chosen at design time.
 - Selection: click, ⌘-click and ⇧-click; ⌘A selects every visible ticket. With one ticket selected the detail shows it; with several it shows `<n> Tickets Selected` and a Create Bundle from Selection button; with none it shows `No Ticket Selected`. Default chosen at design time.
@@ -241,14 +277,15 @@ The empty-state texts are defaults. Default chosen at design time.
 
 ### Ticket detail
 
-| Element | Behaviour                                                                                                                                                                                                                                                                                  |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| ID      | Monospaced and selectable, with a copy button.                                                                                                                                                                                                                                             |
-| Title   | Inline text field. Return, or moving the focus away, saves with `tickets.update`. Esc restores the stored title. An empty title is not saved and the stored title comes back.                                                                                                              |
-| Status  | Pop-up menu To Do, In Progress, In Review, Done. A choice calls `tickets.setStatus` at once.                                                                                                                                                                                               |
-| Dates   | `Created <date> by You` or `Created <date> by Claude`, with the date in the format of the list's Created column, then `· Updated <relative time>`: `Updated just now` less than a minute after the change, then for example `Updated 5 minutes ago`; the text is updated every 30 seconds. |
-| Bundles | `In bundles: HEPH-B2, HEPH-B5`, each id opening that bundle. Hidden when the ticket is in no bundle.                                                                                                                                                                                       |
-| Tabs    | Details, and `Chats (<n>)` where n is the number of chats listed in the Chats tab.                                                                                                                                                                                                         |
+| Element | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |     |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------                                                                                                                                                                                                                                                        |     |
+| ID      | Monospaced and selectable, with a copy button.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |     |
+| Title   | Inline text field. Return, or moving the focus away, saves with `tickets.update`. Esc restores the stored title. An empty title is not saved and the stored title comes back.                                                                                                                                                                                                                                                                                                                                                                     |     |
+| Status  | Pop-up menu To Do, In Progress, In Review, Done. A choice calls `tickets.setStatus` at once.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |     |
+| Dates   | `Created <date> by You` or `Created <date> by Claude`, with the date in the format of the list's Created column, then `· Updated <relative time>`: `Updated just now` less than a minute after the change, then for example `Updated 5 minutes ago`; the text is updated every 30 seconds.                                                                                                                                                                                                                                                        |     |
+| Bundles | `In bundles: HEPH-B2, HEPH-B5`, each id opening that bundle. Hidden when the ticket is in no bundle.                                                                                                                                                                                                                                                                                                                                                                                                                                              |     |
+| Links   | The ticket's links grouped by kind in the order Depends on, Blocks, Related, for example `Depends on HEPH-15, HEPH-16 · Blocks HEPH-30 · Related HEPH-20`, then an `Add Link…` button that opens the [Add Link sheet](#add-link-sheet). A group without links is left out; with no links the line shows only `Add Link…`. Each id opens that ticket. The id of a declared link is followed by an `xmark.circle.fill` button with the tooltip `Remove Link`, which removes the link at once, without confirmation ([Ticket links](#ticket-links)). |     |
+| Tabs    | Details, and `Chats (<n>)` where n is the number of chats listed in the Chats tab.                                                                                                                                                                                                                                                                                                                                                                                                                                                                |     |
 
 The copy button, the labels You and Claude, the relative update time and the Bundles line are defaults. Default chosen at design time.
 
@@ -258,10 +295,32 @@ The Details tab shows, from top to bottom:
 2. Attachments of the ticket ([Attachments](#attachments)).
 3. Comments ([Comments](#comments)).
 
+- In each group of the Links line the ids are in ascending ticket number. Related shows the Related links the ticket declares and those other tickets declare to it, and only the declared ones have a remove button. Default chosen at design time.
+- The id of a declared link whose ticket does not exist is followed by an orange `exclamationmark.triangle.fill` symbol with the tooltip `Ticket HEPH-15 was not found.`, naming that id. A click on the id shows `Ticket <id> was not found.`, as for every id of a ticket that does not exist.
+- The remove button calls `tickets.update` with the ticket's declared links without that link; a failure shows the alert `Remove Link failed` ([UI](ui.md#principles)). `Add Link…` and the remove buttons are disabled while the window's device is not connected. Default chosen at design time.
 - Leaving the ticket while the description editor has unsaved changes saves them. Leaving means selecting another item, changing section, project or device, or closing the window. Default chosen at design time.
 - While the editor is open, incoming changes to the description do not replace the text being edited, and Save stores the edited text: the last save wins. Default chosen at design time.
 - Links in descriptions and comments: a relative link resolves against the project root. A target inside the project's docs folder whose name ends in `.md` or `.markdown` (any case) opens in the Docs section, scrolled to the heading of the `#anchor` when there is one (the `doc` target with the percent-decoded anchor as its `fragment`, [UI](ui.md#resolving-a-target)). Any other file of the project opens in the Code section, at the line of a GitHub line fragment (`#L<n>`) when there is one. `http` and `https` links open in a new web tab of the project; when `webTabs.open` fails, the alert `Open Link failed` shows the engine's message. A link made of a `#fragment` only does nothing, as there is no document to scroll; other links do nothing too. Default chosen at design time.
 - Ticket and bundle ids in descriptions and comments: they are rendered with `projectIdentifiers` set to the identifiers of every project of the window's device, sub projects included, so the ids of these projects are links, with the rules of [Ticket and bundle ids](documentation-viewer.md#ticket-and-bundle-ids): ids in text and code spans that are exactly an id, not ids in code blocks or inside another link. They look like the other links of the description and the comments. A click on one, with or without ⌘, navigates the window that shows the ticket to the `ticket` target, or to the `bundle` target for an id of the bundle form ([UI](ui.md#resolving-a-target)); a ticket or bundle that does not exist shows `Ticket <id> was not found.` or `Bundle <id> was not found.`.
+
+### Add Link sheet
+
+`Add Link…` of the ticket detail opens this sheet on the main window.
+
+| Control | Content                                                                                                                                                                                                                                |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Title   | `Add Link`                                                                                                                                                                                                                             |
+| Kind    | Pop-up menu labelled `Kind` with `Depends on` and `Related`; it starts at `Depends on`.                                                                                                                                                |
+| Filter  | Search field, placeholder `Filter`, with the matching rules of the ticket list's text filter.                                                                                                                                          |
+| Tickets | The tickets of the project in ascending ticket number (`HEPH-9` before `HEPH-10`), each with its ID, title and status, without the ticket itself and the tickets already linked to it in either direction. One ticket can be selected. |
+| Cancel  | Closes the sheet and adds nothing (Esc).                                                                                                                                                                                               |
+| Add     | Default button (⌘Return), enabled when a ticket is selected and the window's device is connected.                                                                                                                                      |
+
+- Add calls `tickets.update` with the ticket's declared links followed by the new link `{kind, ticket}`. On success the sheet closes; on failure the error message shows in red under the list and the sheet stays open ([UI](ui.md#principles)).
+- The list follows the project's ticket changes as they happen; a selected ticket that leaves the list is no longer selected.
+- Return in the Filter field does nothing, as in the [ticket picker sheet](#ticket-picker-sheet); ⌘Return presses Add.
+
+The starting kind, the layout and the keys are defaults. Default chosen at design time.
 
 ## Comments
 
@@ -360,17 +419,17 @@ The Chats tab of a ticket:
 Implement:
 
 1. The button is enabled when the ticket is not `done`. While disabled, its tooltip reads `Set the status to To Do or In Progress to implement this ticket.`. `chats.implementTicket` on a `done` ticket fails with `conflict` and `<ID> is done; set it to To Do or In Progress to implement it.`. It is also disabled while the CLI of the window's device is unavailable, with the tooltip `Claude CLI is not available on <device name>.` Default chosen at design time.
-2. A click opens the [Implement sheet](#implement-sheet), where the user chooses the model, the effort and the permission mode of the chat. A chat of the ticket that is still active does not prevent it: several chats of a ticket can run at once.
+2. A click opens the [Implement sheet](#implement-sheet), where the user chooses the model, the effort and the permission mode of the chat. When at least one of the ticket's Depends on tickets is not done ([Ticket links](#ticket-links)), the alert `<ID> depends on HEPH-15, HEPH-16, which are not done. Implement it anyway?` comes first, with the ids of those tickets in ascending ticket number separated by `, `, and `which is not done` when there is one; its buttons are `Implement` and `Cancel` (Escape). Implement opens the sheet; Cancel closes the alert and starts nothing. A chat of the ticket that is still active does not prevent it: several chats of a ticket can run at once.
 3. Start in the sheet calls `chats.implementTicket` with the ticket id and the settings chosen in the sheet (`settings`). The composer changes them afterwards.
 4. The engine creates a chat of kind `ticket` with `ticket: <ID>`, appends its id to the ticket's `chats` (emitting `ticket.updated`), starts Claude with the ticket prompt, and sends the `implement-ticket.md` message as the first user message ([Chats](chats.md)).
-5. The Chats tab selects the new chat. Implement from the list's context menu first selects the ticket and its Chats tab, then opens the sheet.
+5. The Chats tab selects the new chat. Implement from the list's context menu first selects the ticket and its Chats tab, then acts as the button: the alert of step 2 when it applies, then the sheet.
 6. Claude follows the [implementation workflow](workflow.md#implementation-workflow): it sets the status to `in_progress`, reads the ticket, asks questions, changes the docs and then the code, builds and tests, commits and pushes, comments, and sets the status to `done` when every test of the ticket has passed, otherwise to `review`. A `review` ticket stays there until the user sets `done`.
 
-`implement_ticket`, called by Claude from another chat, goes through the same engine check (the `conflict` of step 1) and steps 4 and 6, and changes no window's selection. Its chat takes the project's `chatDefaults`, or else the host's `defaultChatSettings`. Default chosen at design time.
+`implement_ticket`, called by Claude from another chat, goes through the same engine check (the `conflict` of step 1) and steps 4 and 6, asks no confirmation whatever the ticket's Depends on tickets, and changes no window's selection. Its chat takes the project's `chatDefaults`, or else the host's `defaultChatSettings`. Default chosen at design time.
 
 Called from a chat of kind `bundle` for a ticket of that chat's bundle, `implement_ticket` starts an orchestrated ticket chat: the new chat's `orchestrator` is the calling bundle chat, it takes the calling chat's settings, its first message is the `implement-bundle-ticket.md` message, and it commits its ticket without pushing ([Implement All](#implement-all), [Orchestrated ticket chats](chats.md#orchestrated-ticket-chats)). It is listed in the ticket's Chats tab like any ticket chat, and in the bundle's Chats tab under its orchestrator.
 
-New Chat shows a draft chat of kind `ticket` under the list, its composer focused ([Draft chats](chats.md#draft-chats)); its first Send calls `chats.create` (`projectID`, kind `ticket`, `ticketID`, `message`), which appends the chat id to `chats`. Claude starts with the ticket prompt, which contains the ticket's id, title, status, description, absolute attachment paths and comments ([Chats](chats.md)); `get_ticket` gives it the current state at any time. In this chat the user can debug, ask questions or ask for the implementation, which then follows the same workflow.
+New Chat shows a draft chat of kind `ticket` under the list, its composer focused ([Draft chats](chats.md#draft-chats)); its first Send calls `chats.create` (`projectID`, kind `ticket`, `ticketID`, `message`), which appends the chat id to `chats`. Claude starts with the ticket prompt, which contains the ticket's id, title, status, links, description, absolute attachment paths and comments ([Chats](chats.md)); `get_ticket` gives it the current state at any time. In this chat the user can debug, ask questions or ask for the implementation, which then follows the same workflow.
 
 Chats and tickets:
 
@@ -481,12 +540,12 @@ Create Bundle from Selection, New Bundle and Add Tickets… use this sheet.
 
 ## Deleting
 
-| What                                           | Confirmation                                                                                                                          | Effect                                                                                                                                                                                                                                                                               |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Ticket (`tickets.delete`)                      | `Delete <ID>?`, or `Delete <n> tickets?` for several, with the text `Ticket files and attachments move to the Trash. Chats are kept.` | The ticket file and its attachments folder move to the Trash of the main device. Its id leaves every bundle. Its chats stay, and their `ticket` still names it. Emits `ticket.deleted`, `projects.changed` and `bundle.updated` for each bundle changed. The number is never reused. |
-| Bundle (`bundles.delete`)                      | `Delete <ID>?`, with the text `Its tickets and chats are kept.`                                                                       | The bundle file moves to the Trash. Its tickets and chats stay. Emits `bundle.deleted`.                                                                                                                                                                                              |
-| Ticket attachment (`tickets.removeAttachment`) | `Remove <name>?`                                                                                                                      | The file moves to the Trash. Emits `ticket.updated`.                                                                                                                                                                                                                                 |
-| Comment (`tickets.deleteComment`)              | `Delete this comment?`                                                                                                                | The comment is removed and its attachment files move to the Trash. Emits `ticket.updated`.                                                                                                                                                                                           |
+| What                                           | Confirmation                                                                                                                          | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ticket (`tickets.delete`)                      | `Delete <ID>?`, or `Delete <n> tickets?` for several, with the text `Ticket files and attachments move to the Trash. Chats are kept.` | The ticket file and its attachments folder move to the Trash of the main device. Its id leaves every bundle, and every link to it leaves the `links` of the other tickets of the project. Its chats stay, and their `ticket` still names it. Emits `ticket.deleted`, `projects.changed`, `bundle.updated` for each bundle changed, and `ticket.updated` for each ticket changed: each ticket whose `links` lost it, and each ticket it declared a link to, whose `inverseLinks` lost it. The number is never reused. |
+| Bundle (`bundles.delete`)                      | `Delete <ID>?`, with the text `Its tickets and chats are kept.`                                                                       | The bundle file moves to the Trash. Its tickets and chats stay. Emits `bundle.deleted`.                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Ticket attachment (`tickets.removeAttachment`) | `Remove <name>?`                                                                                                                      | The file moves to the Trash. Emits `ticket.updated`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Comment (`tickets.deleteComment`)              | `Delete this comment?`                                                                                                                | The comment is removed and its attachment files move to the Trash. Emits `ticket.updated`.                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 The confirmation texts, and keeping the chats of a deleted ticket or bundle, are defaults. Default chosen at design time.
 
@@ -495,9 +554,9 @@ The confirmation texts, and keeping the chats of a deleted ticket or bundle, are
 
 ## Live updates
 
-- Every change emits events to every client ([Engine API](engine-api.md)): `ticket.updated`, `ticket.deleted`, `bundle.updated`, `bundle.deleted`, and `projects.changed` when ticket counts change. Lists, details, badges, picker sheets and image viewers update without reloading, in every window and on every remote device.
+- Every change emits events to every client ([Engine API](engine-api.md)): `ticket.updated`, `ticket.deleted`, `bundle.updated`, `bundle.deleted`, and `projects.changed` when ticket counts change. A change of a ticket's links also emits `ticket.updated` for each other ticket whose `inverseLinks` changed ([Ticket links](#ticket-links)). Lists, details, badges, picker sheets and image viewers update without reloading, in every window and on every remote device.
 - Text being edited is never replaced by an incoming change; the rest of the view updates. This covers the title fields, the description editor, the comment composer and the comment editor.
-- The engine watches `.hephaestus/ticket/` and `.hephaestus/bundle/` of every registered project. A file added or changed by another program (git or an editor) is read again and emitted as `ticket.updated` or `bundle.updated`. A removed file emits `ticket.deleted` or `bundle.deleted`. A file that cannot be decoded is reported in `engine.log`: a ticket or bundle already loaded keeps its last valid version and no event is sent ([Data model](data-model.md#processing-a-change)); one that never loaded is left out of the lists, and every method that names it (`tickets.get` included) fails with `internal` and `Ticket file <ID>.yml cannot be read: <reason>.`. A write made by the engine itself emits exactly one event. Default chosen at design time.
+- The engine watches `.hephaestus/ticket/` and `.hephaestus/bundle/` of every registered project. A file added or changed by another program (git or an editor) is read again and emitted as `ticket.updated` or `bundle.updated`; a ticket file whose `links` changed is followed by `ticket.updated` for each other ticket whose `inverseLinks` changed. A removed file emits `ticket.deleted` or `bundle.deleted`; a removed ticket file is followed by `ticket.updated` for each ticket it declared a link to. A file that cannot be decoded is reported in `engine.log`: a ticket or bundle already loaded keeps its last valid version and no event is sent ([Data model](data-model.md#processing-a-change)); one that never loaded is left out of the lists, and every method that names it (`tickets.get` included) fails with `internal` and `Ticket file <ID>.yml cannot be read: <reason>.`. A write made by the engine itself emits exactly one event. Default chosen at design time.
 - Unsaved description edits and comment drafts that are not empty count as unsaved editors for the automatic restart after an update ([Updater](updater.md)). Default chosen at design time.
 
 ## Actor rules
@@ -507,6 +566,7 @@ The confirmation texts, and keeping the chats of a deleted ticket or bundle, are
 | Create a ticket                   | Yes; any description; optional title | Yes (`create_ticket`); template validated; never a title                                                             |
 | Edit a title                      | Yes                                  | Yes (`update_ticket`)                                                                                                |
 | Edit a description                | Yes                                  | Yes (`update_ticket`); template validated                                                                            |
+| Add or remove links               | Yes (ticket detail)                  | Yes (`links` of `create_ticket` and `update_ticket`)                                                                 |
 | Change the status                 | Any status at any time               | Any status, `done` only when every test of the ticket has passed (prompt rule); never on a `done` ticket             |
 | Delete a ticket                   | Yes                                  | Yes (`delete_ticket`)                                                                                                |
 | Add a comment                     | Yes                                  | Yes (`add_comment`)                                                                                                  |
@@ -542,8 +602,11 @@ Every error is `{code, message}` ([Engine API](engine-api.md)). The message text
 | Path given by Claude is not a readable regular file                                                                             | `invalid`     | `<path> is not a readable file.`                                   |
 | `attachments.read` path not of the form `attachments/<TICKET-ID>/<file>` or `chats/<CHAT-ID>/<file>`, or outside `.hephaestus/` | `forbidden`   | `The path is outside the attachments folder.`                      |
 | `attachments.read` file missing                                                                                                 | `notFound`    | `Attachment file <path> not found.`                                |
-| Bundle ticket of another project                                                                                                | `invalid`     | `<ID> does not belong to project <IDENT>.`                         |
-| Ticket listed twice in a bundle                                                                                                 | `invalid`     | `<ID> is listed more than once.`                                   |
+| Bundle ticket or linked ticket of another project                                                                               | `invalid`     | `<ID> does not belong to project <IDENT>.`                         |
+| Ticket listed twice in a bundle or in the `links` of a ticket                                                                   | `invalid`     | `<ID> is listed more than once.`                                   |
+| Link to the ticket itself                                                                                                       | `invalid`     | `<ID> cannot be linked to itself.`                                 |
+| Link to a ticket that already has a link with this ticket                                                                       | `invalid`     | `<ID> is already linked to <other ID>.`                            |
+| Depends on link that makes a dependency cycle                                                                                   | `invalid`     | `<ID> cannot depend on <other ID>, which depends on <ID>.`         |
 | `bundles.create` without tickets                                                                                                | `invalid`     | `A bundle needs at least one ticket.`                              |
 | `chats.implementTicket` on a `done` ticket                                                                                      | `conflict`    | `<ID> is done; set it to To Do or In Progress to implement it.`    |
 | Unknown bundle status value                                                                                                     | `invalid`     | `Unknown status "<value>". Use todo, in_progress or done.`         |
@@ -558,19 +621,19 @@ Every error is `{code, message}` ([Engine API](engine-api.md)). The message text
 
 Shortcuts of this document. All global shortcuts are listed in [UI](ui.md).
 
-| Keys        | Where                                                                                       | Action                            |
-| ----------- | ------------------------------------------------------------------------------------------- | --------------------------------- |
-| ⇧⌘T         | Main window with a project selected                                                         | New Ticket                        |
-| ⌘2          | Main window                                                                                 | Tickets section                   |
-| ⌘3          | Main window                                                                                 | Bundles section                   |
-| ⌘Return     | New Ticket sheet, ticket picker sheet, description editor, comment composer, comment editor | Create, Add, Save or Comment      |
-| Esc         | The same places except the comment composer, where it does nothing                          | Cancel                            |
-| ⌘⌫          | Ticket list or bundle list                                                                  | Delete… (with confirmation)       |
-| ⌫           | Tickets tab of a bundle                                                                     | Remove from Bundle                |
-| ⌘C          | Ticket list                                                                                 | Copy ID                           |
-| ⌘A          | Ticket list                                                                                 | Select every visible ticket       |
-| Space       | Selected attachment                                                                         | Open (image viewer or Quick Look) |
-| Viewer keys | Image viewer                                                                                | See [Image viewer](#image-viewer) |
+| Keys        | Where                                                                                                       | Action                            |
+| ----------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| ⇧⌘T         | Main window with a project selected                                                                         | New Ticket                        |
+| ⌘2          | Main window                                                                                                 | Tickets section                   |
+| ⌘3          | Main window                                                                                                 | Bundles section                   |
+| ⌘Return     | New Ticket sheet, ticket picker sheet, Add Link sheet, description editor, comment composer, comment editor | Create, Add, Save or Comment      |
+| Esc         | The same places except the comment composer, where it does nothing                                          | Cancel                            |
+| ⌘⌫          | Ticket list or bundle list                                                                                  | Delete… (with confirmation)       |
+| ⌫           | Tickets tab of a bundle                                                                                     | Remove from Bundle                |
+| ⌘C          | Ticket list                                                                                                 | Copy ID                           |
+| ⌘A          | Ticket list                                                                                                 | Select every visible ticket       |
+| Space       | Selected attachment                                                                                         | Open (image viewer or Quick Look) |
+| Viewer keys | Image viewer                                                                                                | See [Image viewer](#image-viewer) |
 
 ⌘Return, Esc, ⌘⌫, ⌫, ⌘C, ⌘A and Space in this table are defaults. Default chosen at design time.
 
@@ -598,3 +661,4 @@ Shortcuts of this document. All global shortcuts are listed in [UI](ui.md).
 - R118: Ticket and bundle ids named in chats, ticket descriptions and comments are links that open the ticket or the bundle.
 - R119: The Testing section of a ticket Claude writes lists only checks of the behaviour in the running app, never code tests; the code tests to add can be named under Change.
 - R123: Implement, Implement All and the feedback sheet let the user choose the model, the effort and the permission mode of the chat they start; the ticket chats that a bundle chat starts take its settings.
+- R124: A ticket can depend on other tickets of its project or be related to them; the other ticket shows the inverse link, Blocks or Related; the user and Claude add and remove links; the ticket list marks a ticket that depends on a ticket that is not done, and Implement asks for confirmation while one is not done.
