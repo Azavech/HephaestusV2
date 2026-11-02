@@ -80,13 +80,16 @@ final class Gate: @unchecked Sendable {
     }
 }
 
-/// A UI hook that answers from fixed values and records the navigations.
+/// A UI hook that answers from fixed values and records the navigations and the clicks.
 final class FakeDebugUI: MCPDebugUI, @unchecked Sendable {
     private let lock = NSLock()
     private var navigated: [NavigationTarget] = []
     var windowList: [WindowInfo]
     var screenshotResult: Result<DebugScreenshot, EngineError>
     private(set) var screenshotIDs: [Int?] = []
+    /// The error `click` throws; nil clicks and returns the window list.
+    var clickError: EngineError?
+    private(set) var clicks: [[Int]] = []
 
     init(windows: [WindowInfo], screenshot: Result<DebugScreenshot, EngineError>) {
         windowList = windows
@@ -109,6 +112,12 @@ final class FakeDebugUI: MCPDebugUI, @unchecked Sendable {
     func navigate(to target: NavigationTarget) async throws -> WindowInfo {
         lock.withLock { navigated.append(target) }
         return windowList[0]
+    }
+
+    func click(windowID: Int, x: Int, y: Int) async throws -> [WindowInfo] {
+        lock.withLock { clicks.append([windowID, x, y]) }
+        if let clickError { throw clickError }
+        return windowList
     }
 }
 

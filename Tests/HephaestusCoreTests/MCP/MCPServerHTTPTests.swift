@@ -247,6 +247,8 @@ struct MCPServerHTTPTests {
                  #"{"jsonrpc":"2.0","id":10,"error":{"code":-32602,"message":"Unknown tool: close_ticket"}}"#),
                 (#"{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"debug_ui_state","arguments":{}}}"#,
                  #"{"jsonrpc":"2.0","id":12,"error":{"code":-32602,"message":"Unknown tool: debug_ui_state"}}"#),
+                (#"{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"debug_click","arguments":{"window":1,"x":1,"y":1}}}"#,
+                 #"{"jsonrpc":"2.0","id":14,"error":{"code":-32602,"message":"Unknown tool: debug_click"}}"#),
                 (#"{"jsonrpc":"2.0","id":13,"method":"ping","params":{"cursor":"x"}}"#,
                  #"{"jsonrpc":"2.0","id":13,"result":{}}"#),
             ]

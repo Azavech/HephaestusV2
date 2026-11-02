@@ -25,6 +25,7 @@ struct MCPSchemaValidatorTests {
         #expect(try Self.message("create_ticket", #"{"projectID":"HEPH","description":"d","attachments":["a","b"]}"#) == nil)
         #expect(try Self.message("move_web_tab", #"{"projectID":"HEPH","tabID":"x","toIndex":0}"#) == nil)
         #expect(try Self.message("debug_screenshot", #"{"window":4211}"#) == nil)
+        #expect(try Self.message("debug_click", #"{"window":4211,"x":0,"y":12}"#) == nil)
     }
 
     @Test("Messages of each violation", arguments: [

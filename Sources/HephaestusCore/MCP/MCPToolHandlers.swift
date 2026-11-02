@@ -231,6 +231,11 @@ struct MCPToolHandlers: Sendable {
             return try Self.json(await debugUI.navigate(to: target))
         case "debug_ui_state":
             return try Self.json(["windows": await debugUI.windows()])
+        case "debug_click":
+            guard case .int(let windowID) = args["window"], case .int(let x) = args["x"], case .int(let y) = args["y"] else {
+                throw MCPToolError(.internal, "Internal error: debug_click arguments were not validated.")
+            }
+            return try Self.json(["windows": await debugUI.click(windowID: windowID, x: x, y: y)])
         default:
             throw MCPToolError(.internal, "Internal error: no handler for \(tool.name).")
         }

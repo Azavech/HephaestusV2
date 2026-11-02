@@ -7,8 +7,9 @@ import Foundation
 /// `No UI is attached to this engine.` (`unavailable`).
 ///
 /// The throwing functions throw `EngineError`, whose message becomes the tool result's text:
-/// `No window with id <id>.` (`notFound`), `No window is open.` (`unavailable`), or `internal`
-/// naming the system error (docs/mcp.md › debug_screenshot, › Swift shape).
+/// `No window with id <id>.` (`notFound`), `No window is open.` (`unavailable`), a point outside
+/// the window (`invalid`), or `internal` naming the system error (docs/mcp.md › debug_screenshot,
+/// › debug_click, › Swift shape).
 public protocol MCPDebugUI: AnyObject, Sendable {
     /// The `WindowInfo` of every visible window, sheets included, front to back.
     func windows() async -> [WindowInfo]
@@ -19,9 +20,14 @@ public protocol MCPDebugUI: AnyObject, Sendable {
     /// Navigates the window that docs/ui.md › Choosing the window chooses for `debug_navigate`
     /// and returns its `WindowInfo` once its state is updated.
     func navigate(to target: NavigationTarget) async throws -> WindowInfo
+    /// Clicks once with the left mouse button at (`x`, `y`), in points from the top-left corner of
+    /// the window's screenshot image, delivering the click inside the app to the frontmost of the
+    /// window and its sheets at that point; returns the `WindowInfo` of every visible window
+    /// 500 ms after the mouse up (docs/mcp.md › debug_click).
+    func click(windowID: Int, x: Int, y: Int) async throws -> [WindowInfo]
 }
 
-/// A window of the app, as `debug_navigate` and `debug_ui_state` return it
+/// A window of the app, as `debug_navigate`, `debug_ui_state` and `debug_click` return it
 /// (docs/mcp.md › Window information).
 public struct WindowInfo: Codable, Sendable, Hashable {
     /// `main`, `chat`, `settings`, `about`, `sheet` or `other`.

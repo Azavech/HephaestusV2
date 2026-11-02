@@ -70,7 +70,7 @@ enum WindowCapture {
     /// Step 4: the windows drawn over the window, back to front: each attached sheet, through
     /// every level, preceded by its visible child windows, the background macOS puts behind an
     /// alert sheet.
-    private static func overlayWindows(of window: NSWindow) -> [NSWindow] {
+    static func overlayWindows(of window: NSWindow) -> [NSWindow] {
         var result: [NSWindow] = []
         var current = window.attachedSheet
         while let sheet = current {

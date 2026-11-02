@@ -14,7 +14,7 @@ HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server th
 | JSON-RPC methods  | `initialize`, `ping`, `tools/list`, `tools/call`; every notification is accepted and ignored                                                             |
 | Server name       | `hephaestus`, in `serverInfo` and as the server's key in Claude's MCP configuration, so Claude names the tools `mcp__hephaestus__<tool>`                 |
 | Authentication    | `Authorization: Bearer <token>` with a chat token or the external token                                                                                  |
-| Tools             | The 45 tools of the [tool catalogue](#tool-catalogue), plus 3 [debug tools](#debug-tools) when `HEPHAESTUS_DEBUG_TOOLS=1`                                |
+| Tools             | The 45 tools of the [tool catalogue](#tool-catalogue), plus 4 [debug tools](#debug-tools) when `HEPHAESTUS_DEBUG_TOOLS=1`                                |
 
 Every tool call runs an engine method ([Engine API](engine-api.md)) with the actor `claude`. The engine validates it exactly as it validates a call from the UI or from a remote device and emits the same events, so every client, local or remote, shows the change live.
 
@@ -2151,21 +2151,22 @@ claude mcp add --transport http hephaestus http://127.0.0.1:47820/mcp --header "
 - The debug tools are listed and callable only when the engine is configured with debug tools: in the app, when it was launched with `HEPHAESTUS_DEBUG_TOOLS=1`; in tests, through `EngineConfiguration.debugTools` ([Architecture](architecture.md#engine-configuration)). Otherwise `tools/call` answers -32602 `Unknown tool: <name>`.
 - Every valid token can call them. They act on the windows of the app instance whose engine serves the request, never on another device.
 - They reach the UI through the `MCPDebugUI` hook ([Architecture](architecture.md#debug-ui-hook)), which HephaestusUI installs at launch when debug tools are enabled. Without the hook, in an engine without UI as in tests, every debug tool fails with `No UI is attached to this engine.` (`unavailable`).
-- They let automated checks drive and see the UI without screen-recording permission, together with `HEPHAESTUS_WINDOW_SCREEN` ([Development](development.md)).
+- They let automated checks see, navigate and click the UI without Screen Recording or Accessibility permission, together with `HEPHAESTUS_WINDOW_SCREEN` ([Development](development.md)).
 
 ### Debug tool catalogue
 
 The debug tools, in the order `tools/list` appends them; the table has the format of the [tool catalogue](#tool-catalogue).
 
-| Tool               | Required inputs | Optional inputs | Engine method | Result                    |
-| ------------------ | --------------- | --------------- | ------------- | ------------------------- |
-| `debug_screenshot` | —               | `window`        | — (UI hook)   | `{path, width, height}`   |
-| `debug_navigate`   | `target`        | —               | — (UI hook)   | WindowInfo                |
-| `debug_ui_state`   | —               | —               | — (UI hook)   | `{windows: [WindowInfo]}` |
+| Tool               | Required inputs    | Optional inputs | Engine method | Result                    |
+| ------------------ | ------------------ | --------------- | ------------- | ------------------------- |
+| `debug_screenshot` | —                  | `window`        | — (UI hook)   | `{path, width, height}`   |
+| `debug_navigate`   | `target`           | —               | — (UI hook)   | WindowInfo                |
+| `debug_ui_state`   | —                  | —               | — (UI hook)   | `{windows: [WindowInfo]}` |
+| `debug_click`      | `window`, `x`, `y` | —               | — (UI hook)   | `{windows: [WindowInfo]}` |
 
 ### Window information
 
-WindowInfo, returned by `debug_navigate` and `debug_ui_state`. Default chosen at design time.
+WindowInfo, returned by `debug_navigate`, `debug_ui_state` and `debug_click`. Default chosen at design time.
 
 | Field | Type           | Value                                                                                                                                                                        |
 | ----- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -2318,6 +2319,51 @@ Input schema:
 }
 ```
 
+### debug_click
+
+- **Action:** `MCPDebugUI.click(windowID:x:y:)` ([Architecture](architecture.md#debug-ui-hook)) clicks once with the left mouse button at the point (`x`, `y`) of the window `window`, as a user's click does:
+  1. The point is in points from the top-left corner of the window's [debug_screenshot](#debug_screenshot) image, title bar and toolbar included; a pixel of that image divided by the image's scale, its width divided by the window's `frame.width`, gives the point. As in `debug_screenshot`, a sheet, or the background window macOS puts behind an alert sheet, stands for the window it is attached to.
+  2. The click goes to the frontmost window, among that window and its sheets, whose frame contains the point: to a sheet when the sheet covers the point, otherwise to the window.
+  3. A left mouse down and mouse up at the point are built as AppKit events inside the app. When the window is the app's key window, or when the view under the point accepts a first click (`acceptsFirstMouse`), they are posted to the app's own event queue, which dispatches them to the window as it dispatches a user's click. Otherwise the window would take the click as the one that only makes it key, as for a web view in a check instance, which never activates and so has no key window: the events are then sent to the view under the point as the key window sends them. The view becomes first responder when it accepts it, and the mouse up waits in the app's event queue for a control that tracks the mouse.
+  4. No event goes through the system: no Accessibility or Screen Recording permission is needed, offscreen windows work, the app is not activated, and the user's pointer and keyboard focus are untouched. Links of web views, such as ticket ids in a chat transcript, links of native texts and buttons react as they react to a user's click.
+  5. The tool waits 500 ms after the mouse up, so that effects that complete later, such as a link of a web view handled by its page, are in the result.
+- **Result:** `{"windows": [WindowInfo]}` read after the 500 ms, as [debug_ui_state](#debug_ui_state) returns it, so that the windows and sheets the click opened or closed show.
+- **Errors:**
+  - `No window with id <id>.` (`notFound`).
+  - `The point (<x>, <y>) is outside the window <id>, which is <width> × <height> points.` (`invalid`), `<width>` and `<height>` being the size of the window's screenshot image in points, its `frame` size or, for a sheet, the `frame` size of the window it is attached to, without decimals when they are whole numbers.
+
+Description:
+
+```text
+Debug: click once with the left mouse button at a point of a HephaestusV2 window of this Mac, inside the app, without Accessibility permission, and return the windows as debug_ui_state does, 500 ms after the click. window is an id from debug_ui_state; x and y are points from the top-left corner of that window's debug_screenshot image (image pixels divided by the image width over the window's frame width).
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "window": {
+      "type": "integer",
+      "description": "Window id from debug_ui_state."
+    },
+    "x": {
+      "type": "integer",
+      "description": "Points from the left edge of the window's debug_screenshot image.",
+      "minimum": 0
+    },
+    "y": {
+      "type": "integer",
+      "description": "Points from the top edge of the window's debug_screenshot image.",
+      "minimum": 0
+    }
+  },
+  "required": ["window", "x", "y"],
+  "additionalProperties": false
+}
+```
+
 ## Logging
 
 The server writes these messages to `Logs/engine.log` with the component `mcp`, each line being `<UTC time with milliseconds> <LEVEL> mcp: <message>` ([Architecture](architecture.md#enginelog)). It never logs tokens, arguments or results. Default chosen at design time.
@@ -2338,7 +2384,7 @@ The server writes these messages to `Logs/engine.log` with the component `mcp`, 
 - Every request needs a 256-bit bearer token, compared in constant time. Chat tokens live as long as their Claude process; the files holding tokens have mode 0600; tokens are never logged.
 - Requests carrying an `Origin` header are refused with 403 and no CORS header is ever sent, so web pages, those of the app's own web tabs included, cannot call the server.
 - The [actor rules](#actor-rules) hold whatever the token: Claude never changes the status of a `done` ticket.
-- The debug tools exist only when debug tools are enabled; then every holder of a token of that process can capture its windows.
+- The debug tools exist only when debug tools are enabled; then every holder of a token of that process can capture its windows and click in them.
 - Attachment paths may name any file the app can read; the Claude CLI asks the user before the call according to the chat's permission mode ([Chats](chats.md)).
 - The security model of the whole app is in [Architecture](architecture.md#security-overview).
 
@@ -2360,7 +2406,7 @@ The files are in `Sources/HephaestusCore/MCP/`. The type and file names below ar
 | MCPSchemaValidator (struct) | MCPSchemaValidator.swift | `validate(_ arguments: JSONValue, against schema: JSONValue) -> MCPToolError?` for the keywords of [Argument validation](#argument-validation). A `JSONValue` object has no member order, so the order of `properties` that [Validation order](#validation-order) and [Target kinds](#target-kinds) use is recorded when `MCPToolCatalog` parses its schema texts and looked up by the `properties` object; a schema the catalogue did not parse uses the ascending order of the names. |
 | MCPToolHandlers (struct)    | MCPToolHandlers.swift    | One handler per tool: rules, path expansion, the method's params, `Engine.call`, result text.                                                                                                                                                                                                                                                                                                                                                                                           |
 | MCPToolError (struct)       | MCPToolHandlers.swift    | `code` (`EngineError.Code`) and `message`; the message is the tool result's text.                                                                                                                                                                                                                                                                                                                                                                                                       |
-| MCPDebugUI (protocol)       | MCPDebugUI.swift         | `windows() async -> [WindowInfo]`, `screenshot(windowID: Int?) async throws -> DebugScreenshot`, `navigate(to: NavigationTarget) async throws -> WindowInfo`; the throwing functions throw `EngineError`, whose code and message become the tool error; implemented by `AppModel` in HephaestusUI ([Architecture](architecture.md#debug-ui-hook)).                                                                                                                                      |
+| MCPDebugUI (protocol)       | MCPDebugUI.swift         | `windows() async -> [WindowInfo]`, `screenshot(windowID: Int?) async throws -> DebugScreenshot`, `navigate(to: NavigationTarget) async throws -> WindowInfo`, `click(windowID: Int, x: Int, y: Int) async throws -> [WindowInfo]`; the throwing functions throw `EngineError`, whose code and message become the tool error; implemented by `AppModel` in HephaestusUI ([Architecture](architecture.md#debug-ui-hook)).                                                                 |
 | WindowInfo (struct)         | MCPDebugUI.swift         | The fields of [Window information](#window-information); `state` is a `JSONValue`.                                                                                                                                                                                                                                                                                                                                                                                                      |
 | DebugScreenshot (struct)    | MCPDebugUI.swift         | `path`, `width` and `height` of a [debug_screenshot](#debug_screenshot) result.                                                                                                                                                                                                                                                                                                                                                                                                         |
 

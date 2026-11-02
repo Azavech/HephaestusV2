@@ -1324,7 +1324,7 @@ extension MCPToolCatalog {
         ),
     ]
 
-    /// The 3 debug tools of docs/mcp.md › Debug tool catalogue, in the order `tools/list`
+    /// The 4 debug tools of docs/mcp.md › Debug tool catalogue, in the order `tools/list`
     /// appends them when debug tools are enabled.
     public static let debugTools: [MCPToolDefinition] = [
         MCPToolDefinition(
@@ -1429,6 +1429,38 @@ extension MCPToolCatalog {
             {
               "type": "object",
               "properties": {},
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: true,
+            engineMethod: nil,
+            handling: .debugUI
+        ),
+        MCPToolDefinition(
+            name: "debug_click",
+            description: #"""
+            Debug: click once with the left mouse button at a point of a HephaestusV2 window of this Mac, inside the app, without Accessibility permission, and return the windows as debug_ui_state does, 500 ms after the click. window is an id from debug_ui_state; x and y are points from the top-left corner of that window's debug_screenshot image (image pixels divided by the image width over the window's frame width).
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "window": {
+                  "type": "integer",
+                  "description": "Window id from debug_ui_state."
+                },
+                "x": {
+                  "type": "integer",
+                  "description": "Points from the left edge of the window's debug_screenshot image.",
+                  "minimum": 0
+                },
+                "y": {
+                  "type": "integer",
+                  "description": "Points from the top edge of the window's debug_screenshot image.",
+                  "minimum": 0
+                }
+              },
+              "required": ["window", "x", "y"],
               "additionalProperties": false
             }
             """#),

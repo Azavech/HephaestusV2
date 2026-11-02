@@ -1,6 +1,6 @@
 # Development
 
-This document is for the people and the Claude sessions that change HephaestusV2. It explains how to build, run and test the app on one Mac, how to run a second isolated instance to test remote sync locally, how automated UI checks drive an offscreen instance through the debug MCP tools without using the user's displays, how Claude CLI fixtures are recorded, and the contribution rules: docs first, public repository. The exact rules of the environment variables, the data directory and the processes are in [Architecture](architecture.md); the pipelines, the scripts and the make targets are in [CI and release](ci.md).
+This document is for the people and the Claude sessions that change HephaestusV2. It explains how to build, run and test the app on one Mac, how to run a second isolated instance to test remote sync locally, how automated UI checks drive an offscreen instance through the debug MCP tools without using the user's displays, keyboard or pointer, how Claude CLI fixtures are recorded, and the contribution rules: docs first, public repository. The exact rules of the environment variables, the data directory and the processes are in [Architecture](architecture.md); the pipelines, the scripts and the make targets are in [CI and release](ci.md).
 
 ## Prerequisites
 
@@ -142,8 +142,8 @@ Automated checks, run by a script or by a Claude session, start instance C and s
 ### Rules
 
 1. Start check instances with `HEPHAESTUS_WINDOW_SCREEN=offscreen` and `open -g`. Every window of the instance opens outside all displays, the instance shows no Dock icon and no menu bar, and it never takes the keyboard focus ([Window placement](architecture.md#window-placement)).
-2. Observe and drive the UI only with `debug_ui_state`, `debug_navigate` and `debug_screenshot`, and create data with the regular MCP tools (`create_project`, `create_ticket` and the others of [MCP server](mcp.md#tools)).
-3. Never use `screencapture`, the Screen Recording or Accessibility permissions, AppleScript UI scripting, or synthetic mouse and keyboard events.
+2. Observe and drive the UI only with `debug_ui_state`, `debug_navigate`, `debug_screenshot` and `debug_click`, click only with `debug_click`, and create data with the regular MCP tools (`create_project`, `create_ticket` and the others of [MCP server](mcp.md#tools)).
+3. Never use `screencapture`, the Screen Recording or Accessibility permissions, AppleScript UI scripting, or mouse and keyboard events posted to the system, such as `CGEvent` posts or `cliclick`. `debug_click` is the only way to click: it builds the click inside the app ([debug_click](mcp.md#debug_click)).
 4. Use a new temporary data directory with scratch projects inside it; never the default data directory, never the user's projects.
 5. Give each check instance its own ports and `HEPHAESTUS_DISABLE_UPDATER=1`.
 6. `builtin` is for a person who wants to watch an instance on the built-in display; checks use `offscreen`.
@@ -189,10 +189,12 @@ mcp '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"create_proj
 mcp '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"debug_navigate","arguments":{"target":{"kind":"section","projectID":"DEMO","section":"tickets"}}}}'
 mcp '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"debug_ui_state","arguments":{}}}'
 mcp '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"debug_screenshot","arguments":{}}}'
+mcp '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"debug_click","arguments":{"window":4211,"x":120,"y":64}}}'
 ```
 
 - The server is stateless, so `initialize` is not needed before `tools/call` ([MCP server](mcp.md#statelessness)).
 - Each answer is a JSON-RPC response whose `result.content[0].text` holds the tool's JSON result. `debug_screenshot` returns `path`, `width` and `height` of a PNG in `$C_ROOT/data/Runtime/screenshots/`; open that file to see the window.
+- To click something, take the window's `id` from `debug_ui_state` and a point of its `debug_screenshot` image: `x` and `y` are that point's pixel coordinates from the top-left corner divided by the image's scale, its `width` divided by the window's `frame.width` (2 on a Retina capture). `debug_click` returns the windows as `debug_ui_state` does, 500 ms after the click.
 
 ### Use the tools from Claude Code
 
@@ -212,16 +214,18 @@ rm -rf "$C_ROOT"
 
 ## Debug MCP tools
 
-| Tool               | Input                                                  | Result                                                                                                  |
-| ------------------ | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `debug_ui_state`   | None                                                   | `{"windows": [WindowInfo]}`, front to back: id (AppKit window number), kind, title, isKey, frame, state |
-| `debug_navigate`   | `target`, a navigation target as for `open_in_app`     | The `WindowInfo` of the window that navigated, once its state is updated                                |
-| `debug_screenshot` | `window`, a window id from `debug_ui_state` (optional) | `path`, `width` and `height` of a PNG in `<data dir>/Runtime/screenshots/`                              |
+| Tool               | Input                                                                                                       | Result                                                                                                  |
+| ------------------ | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `debug_ui_state`   | None                                                                                                        | `{"windows": [WindowInfo]}`, front to back: id (AppKit window number), kind, title, isKey, frame, state |
+| `debug_navigate`   | `target`, a navigation target as for `open_in_app`                                                          | The `WindowInfo` of the window that navigated, once its state is updated                                |
+| `debug_screenshot` | `window`, a window id from `debug_ui_state` (optional)                                                      | `path`, `width` and `height` of a PNG in `<data dir>/Runtime/screenshots/`                              |
+| `debug_click`      | `window`, a window id from `debug_ui_state`; `x` and `y`, points from the top-left corner of its screenshot | `{"windows": [WindowInfo]}`, 500 ms after a left click at that point                                    |
 
 - They are listed and callable only when the instance runs with `HEPHAESTUS_DEBUG_TOOLS=1`; otherwise `tools/call` answers `Unknown tool`.
 - They act only on the windows of the instance that serves the request.
 - Every token of that instance can call them, chat tokens included, so enable them only on check instances and fixture recording instances.
 - The screenshot is rendered inside the app, as the feedback screenshot ([Feedback](feedback.md#screenshot-capture)); it needs no permission and works for offscreen windows.
+- The click is built inside the app as AppKit mouse events and delivered as the key window delivers a click, although the check instance never activates; it needs no permission, works for offscreen windows and leaves the user's pointer and keyboard focus alone.
 
 Input schemas, errors and examples: [Debug tools](mcp.md#debug-tools).
 

@@ -250,6 +250,7 @@ struct MCPToolHandlersTests {
         #expect(try await Self.call(handlers, "debug_ui_state", "{}") == .failure(unavailable))
         #expect(try await Self.call(handlers, "debug_screenshot", "{}") == .failure(unavailable))
         #expect(try await Self.call(handlers, "debug_navigate", #"{"target":{"kind":"project","projectID":"HEPH"}}"#) == .failure(unavailable))
+        #expect(try await Self.call(handlers, "debug_click", #"{"window":4211,"x":10,"y":20}"#) == .failure(unavailable))
         // Argument validation and the target rules come first.
         #expect(try await Self.call(handlers, "debug_screenshot", #"{"window":"key"}"#)
             == .failure(MCPToolError(code: .invalid, message: "window: must be an integer.")))
@@ -282,6 +283,32 @@ struct MCPToolHandlersTests {
 
         ui.screenshotResult = .failure(EngineError(.notFound, "No window with id 7."))
         #expect(try await Self.call(handlers, "debug_screenshot", #"{"window":7}"#)
+            == .failure(MCPToolError(code: .notFound, message: "No window with id 7.")))
+    }
+
+    @Test("debug_click passes the window and the point to the hook and returns the windows")
+    func debugClick() async throws {
+        let ui = FakeDebugUI(windows: [Self.window], screenshot: .failure(EngineError(.unavailable, "No window is open.")))
+        let handlers = Self.handlers(RecordedEngine(), debugUI: ui)
+        let info = #"{"frame":{"height":800,"width":1200,"x":10,"y":20.5},"id":4211,"isKey":true,"kind":"main","state":{"deviceID":"D","section":"tickets"},"title":"HephaestusV2"}"#
+        #expect(try await Self.call(handlers, "debug_click", #"{"window":4211,"x":120,"y":64}"#)
+            == .success(#"{"windows":[\#(info)]}"#))
+        #expect(try await Self.call(handlers, "debug_click", #"{"window":4211,"x":0.0,"y":3}"#)
+            == .success(#"{"windows":[\#(info)]}"#))
+        #expect(ui.clicks == [[4211, 120, 64], [4211, 0, 3]])
+
+        // Argument validation comes before the hook.
+        #expect(try await Self.call(handlers, "debug_click", #"{"window":4211,"x":-1,"y":3}"#)
+            == .failure(MCPToolError(code: .invalid, message: "x: must be at least 0.")))
+        #expect(try await Self.call(handlers, "debug_click", #"{"x":1,"y":3}"#)
+            == .failure(MCPToolError(code: .invalid, message: "window: required.")))
+        #expect(ui.clicks.count == 2)
+
+        ui.clickError = EngineError(.invalid, "The point (1300, 64) is outside the window 4211, which is 1200 × 800 points.")
+        #expect(try await Self.call(handlers, "debug_click", #"{"window":4211,"x":1300,"y":64}"#)
+            == .failure(MCPToolError(code: .invalid, message: "The point (1300, 64) is outside the window 4211, which is 1200 × 800 points.")))
+        ui.clickError = EngineError(.notFound, "No window with id 7.")
+        #expect(try await Self.call(handlers, "debug_click", #"{"window":7,"x":1,"y":1}"#)
             == .failure(MCPToolError(code: .notFound, message: "No window with id 7.")))
     }
 

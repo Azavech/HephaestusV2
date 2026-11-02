@@ -4,8 +4,9 @@ import AppKit
 import Foundation
 import HephaestusCore
 
-/// The windows of the app for `debug_ui_state`, `debug_screenshot` and `debug_navigate`. Every
-/// function works on the main actor; the engine calls them from its MCP server.
+/// The windows of the app for `debug_ui_state`, `debug_screenshot`, `debug_navigate` and
+/// `debug_click`. Every function works on the main actor; the engine calls them from its MCP
+/// server.
 final class AppDebugUI: MCPDebugUI, @unchecked Sendable {
     /// Read only on the main actor.
     private weak var app: AppModel?
@@ -25,6 +26,10 @@ final class AppDebugUI: MCPDebugUI, @unchecked Sendable {
 
     func navigate(to target: NavigationTarget) async throws -> WindowInfo {
         try await navigateOnMain(target)
+    }
+
+    func click(windowID: Int, x: Int, y: Int) async throws -> [WindowInfo] {
+        try await clickOnMain(windowID: windowID, x: x, y: y)
     }
 
     @MainActor
@@ -125,6 +130,107 @@ final class AppDebugUI: MCPDebugUI, @unchecked Sendable {
     @MainActor
     private final class NavigationProgress {
         var finished = false
+    }
+
+    /// docs/mcp.md › debug_click: the point, in points from the top-left corner of the window's
+    /// screenshot image (a sheet stands for the window it is attached to), is clicked on the
+    /// frontmost of that window and its sheets whose frame contains it, with a left mouse down
+    /// and mouse up built inside the app; nothing goes through the system. The windows are read
+    /// 500 ms after the mouse up.
+    @MainActor
+    private func clickOnMain(windowID: Int, x: Int, y: Int) async throws -> [WindowInfo] {
+        guard let app, let requested = app.debugWindows.first(where: { $0.windowNumber == windowID }) else {
+            throw EngineError(.notFound, "No window with id \(windowID).")
+        }
+        let host = WindowCapture.hostWindow(of: requested)
+        let frame = host.frame
+        guard CGFloat(x) < frame.width, CGFloat(y) < frame.height else {
+            throw EngineError(.invalid, "The point (\(x), \(y)) is outside the window \(windowID), which is "
+                + "\(Self.points(frame.width)) × \(Self.points(frame.height)) points.")
+        }
+        let point = NSPoint(x: frame.minX + CGFloat(x), y: frame.maxY - CGFloat(y))
+        let frontToBack = WindowCapture.overlayWindows(of: host).reversed() + [host]
+        let window = frontToBack.first { $0.frame.contains(point) } ?? host
+        let location = window.convertPoint(fromScreen: point)
+        let time = ProcessInfo.processInfo.systemUptime
+        let marker = ClickMarker()
+        guard let down = Self.mouseEvent(.leftMouseDown, at: location, in: window, time: time, number: marker.number),
+              let up = Self.mouseEvent(.leftMouseUp, at: location, in: window, time: time, number: marker.number),
+              let end = NSEvent.otherEvent(with: .applicationDefined, location: .zero, modifierFlags: [], timestamp: time,
+                                           windowNumber: 0, context: nil, subtype: Self.markerSubtype,
+                                           data1: marker.number, data2: 0)
+        else {
+            throw EngineError(.internal, "The click could not be created.")
+        }
+        // The marker follows the mouse up in the queue, so it is dispatched once the mouse up
+        // has been handled.
+        let monitor = NSEvent.addLocalMonitorForEvents(matching: .applicationDefined) { event in
+            guard event.subtype.rawValue == Self.markerSubtype, event.data1 == marker.number else { return event }
+            MainActor.assumeIsolated { marker.handled = true }
+            return nil
+        }
+        defer {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+        }
+        if let view = (window.contentView?.superview ?? window.contentView)?.hitTest(location),
+           !window.isKeyWindow, !view.acceptsFirstMouse(for: down) {
+            // A window that is not key, as every window of a check instance, which never
+            // activates, takes the click as the one that only makes it key when the view refuses
+            // first clicks, as a web view does. The events go to the view as the key window sends
+            // them; the mouse up waits in the queue for a control's tracking loop.
+            if view.acceptsFirstResponder {
+                window.makeFirstResponder(view)
+            }
+            NSApp.postEvent(up, atStart: true)
+            view.mouseDown(with: down)
+            if let pending = NSApp.nextEvent(matching: .leftMouseUp, until: .distantPast, inMode: .eventTracking, dequeue: true) {
+                if pending.eventNumber == up.eventNumber, pending.windowNumber == up.windowNumber {
+                    view.mouseUp(with: pending)
+                } else {
+                    NSApp.postEvent(pending, atStart: true)
+                }
+            }
+        } else {
+            NSApp.postEvent(down, atStart: false)
+            NSApp.postEvent(up, atStart: false)
+        }
+        NSApp.postEvent(end, atStart: false)
+        let deadline = Date().addingTimeInterval(10)
+        while !marker.handled, Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        try? await Task.sleep(for: .milliseconds(500))
+        return app.debugWindows.map(app.windowInfo)
+    }
+
+    /// The subtype of the application-defined event that follows a click in the queue.
+    private static let markerSubtype: Int16 = 0x4843
+
+    /// The marker of one click: its number, also the event number of its mouse events, and
+    /// whether the app has dispatched it.
+    @MainActor
+    private final class ClickMarker {
+        private static var count = 0
+        let number: Int
+        var handled = false
+
+        init() {
+            Self.count += 1
+            number = Self.count
+        }
+    }
+
+    @MainActor
+    private static func mouseEvent(_ type: NSEvent.EventType, at location: NSPoint, in window: NSWindow,
+                                   time: TimeInterval, number: Int) -> NSEvent? {
+        NSEvent.mouseEvent(with: type, location: location, modifierFlags: [], timestamp: time,
+                           windowNumber: window.windowNumber, context: nil, eventNumber: number, clickCount: 1,
+                           pressure: type == .leftMouseDown ? 1 : 0)
+    }
+
+    /// A size in points, without decimals when it is a whole number.
+    private static func points(_ value: CGFloat) -> String {
+        value == value.rounded() ? String(Int(value)) : String(Double(value))
     }
 }
 
