@@ -1,12 +1,12 @@
 # Feedback
 
-The ladybug at the right end of the status bar, the menu command Help ▸ Send Feedback… and ⇧⌘B start feedback from any window. The app captures the window into a PNG inside its own process, then shows a sheet with the screenshot, a comment field and the project that will receive the feedback. Send asks the engine to create a feedback chat, which opens in its own window with the comment, the screenshot and the context already sent. Claude clarifies with labelled questions when something is unclear, then creates a ticket that follows the description template, starts as `todo`, gets its title from Haiku and carries the screenshot. The chat is linked to that ticket.
+The ladybug at the right end of the status bar, the menu command Help ▸ Send Feedback… and ⇧⌘B start feedback from any window. The app captures the window into a PNG inside its own process, then shows a sheet with the screenshot, a comment field, the project that will receive the feedback and the model, effort and permission mode of the feedback chat. Send asks the engine to create a feedback chat, which opens in its own window with the comment, the screenshot and the context already sent. Claude clarifies with labelled questions when something is unclear, then creates a ticket that follows the description template, starts as `todo`, gets its title from Haiku and carries the screenshot. The chat is linked to that ticket.
 
 ## Flow
 
 1. Start: the ladybug, Help ▸ Send Feedback… or ⇧⌘B ([Starting feedback](#starting-feedback)).
 2. Capture: the window is rendered into a PNG in-process ([Screenshot capture](#screenshot-capture)).
-3. Sheet: screenshot preview, comment, project, Send ([Feedback sheet](#feedback-sheet)).
+3. Sheet: screenshot preview, comment, project, chat settings, Send ([Feedback sheet](#feedback-sheet)).
 4. Send: the client calls `chats.createFeedback` on the receiving device ([Creating the feedback chat](#creating-the-feedback-chat)).
 5. Pop up: the client opens the returned chat in a new chat window.
 6. Claude asks labelled questions when needed, creates the ticket with `create_ticket` and summarizes ([Feedback chat](#feedback-chat)).
@@ -52,30 +52,40 @@ The capture runs on the main actor inside the app process. It never uses screen-
 
 The sheet is attached to the captured window.
 
-| Element    | Content                                                                                                                                                                                                        |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Title      | `Send Feedback`                                                                                                                                                                                                |
-| Screenshot | the PNG scaled to fit 480 × 300 pt; a click opens it in the image viewer ([Tickets](tickets.md#image-viewer))                                                                                                  |
-| Comment    | multi-line text field with the focus and the placeholder `What happened, and what did you expect?`; it may stay empty                                                                                          |
-| Project    | pop-up button listing the receiving device's projects depth-first, sub projects indented under their parent, each item shown as `<name> (<identifier>)`; preselected per [Feedback project](#feedback-project) |
-| Context    | one read-only line: the App, Device, Project, Section and Item lines of the [feedback message](chats.md#feedback-message), without their leading `- `, joined with ` · `; the Screenshot line is left out      |
-| Buttons    | `Cancel` (Escape) and `Send` (⌘Return, default button)                                                                                                                                                         |
+| Element       | Content                                                                                                                                                                                                                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Title         | `Send Feedback`                                                                                                                                                                                                                                                                       |
+| Screenshot    | the PNG scaled to fit 480 × 300 pt; a click opens it in the image viewer ([Tickets](tickets.md#image-viewer))                                                                                                                                                                         |
+| Comment       | multi-line text field with the focus and the placeholder `What happened, and what did you expect?`; it may stay empty                                                                                                                                                                 |
+| Project       | pop-up button listing the receiving device's projects depth-first, sub projects indented under their parent, each item shown as `<name> (<identifier>)`; preselected per [Feedback project](#feedback-project)                                                                        |
+| Chat settings | the composer's Model menu with its `Ultracode` toggle, Effort menu and Permissions menu, `Allow All` with its red badge, in one row in the composer's order: the settings of the feedback chat ([Chat settings](chats.md#chat-settings), [Chat settings menus](#chat-settings-menus)) |
+| Context       | one read-only line: the App, Device, Project, Section and Item lines of the [feedback message](chats.md#feedback-message), without their leading `- `, joined with ` · `; the Screenshot line is left out                                                                             |
+| Buttons       | `Cancel` (Escape) and `Send` (⌘Return, default button)                                                                                                                                                                                                                                |
 
 Send is enabled when every condition holds; otherwise one line under the comment field gives the first failing reason:
 
-| Condition                                                              | Message when it fails                                                                                                                                                                                                        |
-| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| a screenshot exists                                                    | `The window could not be captured.`                                                                                                                                                                                          |
-| the receiving device has at least one project                          | `No project can receive feedback. Create or open a project first.`                                                                                                                                                           |
-| the connection to the receiving device is connected                    | `Not connected to <device name>. Send is available when the connection is back.`                                                                                                                                             |
-| Claude is available on the receiving device (`ClaudeStatus.available`) | `Checking the Claude CLI on <device name>…` while `ClaudeStatus.checking` is true or the status is not known yet (no snapshot of the device), otherwise `Claude CLI is not available on <device name>: <ClaudeStatus.error>` |
-| the default project lookup is finished                                 | no message; the pop-up button shows a progress indicator                                                                                                                                                                     |
+| Condition                                                                  | Message when it fails                                                                                                                                                                                                        |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| a screenshot exists                                                        | `The window could not be captured.`                                                                                                                                                                                          |
+| the receiving device has at least one project                              | `No project can receive feedback. Create or open a project first.`                                                                                                                                                           |
+| the connection to the receiving device is connected                        | `Not connected to <device name>. Send is available when the connection is back.`                                                                                                                                             |
+| Claude is available on the receiving device (`ClaudeStatus.available`)     | `Checking the Claude CLI on <device name>…` while `ClaudeStatus.checking` is true or the status is not known yet (no snapshot of the device), otherwise `Claude CLI is not available on <device name>: <ClaudeStatus.error>` |
+| the default project lookup is finished                                     | no message; the pop-up button shows a progress indicator                                                                                                                                                                     |
+| the chat defaults of the selected project are known, or a menu was changed | no message; the pop-up button shows a progress indicator                                                                                                                                                                     |
 
 The sheet re-evaluates the conditions when the connection state or the snapshot of the receiving device changes. Default chosen at design time.
 
 - Sending: `Send` shows a progress indicator and every control of the sheet, `Cancel` included, is disabled until the answer arrives. Default chosen at design time.
 - Success: the sheet closes and the client opens the returned chat in a new chat window, in front and key ([UI](ui.md)). This window is the pop up of the feedback flow.
-- Error: the sheet stays open with the error message under the comment field; the comment and the project are kept.
+- Error: the sheet stays open with the error message under the comment field; the comment, the project and the chat settings are kept.
+
+### Chat settings menus
+
+- The menus show the `chatDefaults` of the project selected in the pop-up button, or else the receiving device's `defaultChatSettings` ([Fields and defaults](chats.md#fields-and-defaults)), each time the sheet opens.
+- They follow the pop-up button until the user changes one of them: the preselection of [Feedback project](#feedback-project) and every project the user picks show that project's defaults. Once a menu has been changed, the chosen settings stay when the project changes.
+- The choice sets only the feedback chat that Send creates; nothing is saved.
+- When the client has not loaded the selected project, it reads the project's `chatDefaults` with `projects.get`; until the answer arrives, the pop-up button shows a progress indicator and Send stays disabled, unless a menu was changed. When the call fails, the menus show the receiving device's `defaultChatSettings`. Default chosen at design time.
+- The layout of the row: Default chosen at design time.
 
 ## Feedback project
 
@@ -143,13 +153,13 @@ Example, captured in a remote window of the MacBook showing the device Studio, w
 
 Send calls [chats.createFeedback](engine-api.md#chatscreatefeedback) on the receiving device with:
 
-| Param        | Value                                                                                      |
-| ------------ | ------------------------------------------------------------------------------------------ |
-| `projectID`  | the project of the pop-up button                                                           |
-| `comment`    | the comment as typed, possibly empty                                                       |
-| `screenshot` | `{name: "screenshot.png", contentType: "image/png", dataBase64: <the PNG>}`                |
-| `context`    | the [Feedback context](#feedback-context)                                                  |
-| `settings`   | not sent: the chat takes the project's `chatDefaults`, else the host `defaultChatSettings` |
+| Param        | Value                                                                       |
+| ------------ | --------------------------------------------------------------------------- |
+| `projectID`  | the project of the pop-up button                                            |
+| `comment`    | the comment as typed, possibly empty                                        |
+| `screenshot` | `{name: "screenshot.png", contentType: "image/png", dataBase64: <the PNG>}` |
+| `context`    | the [Feedback context](#feedback-context)                                   |
+| `settings`   | the settings of the sheet's [chat settings menus](#chat-settings-menus)     |
 
 The engine then:
 
@@ -290,3 +300,4 @@ When the feedback project is the HephaestusV2 repository, the ticket enters the 
 - R60: Then a Claude discussion pops up.
 - R61: The discussion creates a ticket.
 - R102: The main window's sidebar and inspector are translucent and frosted, like the sidebars of native macOS apps such as Music.
+- R123: Implement, Implement All and the feedback sheet let the user choose the model, the effort and the permission mode of the chat they start; the ticket chats that a bundle chat starts take its settings.

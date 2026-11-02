@@ -156,7 +156,7 @@ final class ChatViewModel {
     /// The project's `chatDefaults`, else the host's `defaultChatSettings`
     /// (docs/chats.md › Fields and defaults).
     var defaultSettings: ChatSettings {
-        workspace.details[chatProjectID]?.project.chatDefaults ?? workspace.settings?.defaultChatSettings ?? ChatSettings()
+        workspace.defaultChatSettings(of: chatProjectID)
     }
 
     var composer: ComposerDraft {

@@ -236,7 +236,7 @@ struct BundlesSectionView: View {
         let availability = TicketActions.implementAllAvailability(of: bundle, workspace: workspace, projectID: projectID)
         return [
             .action("Implement All", enabled: availability.enabled && window.isConnected) {
-                TicketActions.implementAllFromList(bundleID: bundleID, workspace: workspace, window: window, projectID: projectID)
+                TicketActions.implementAllFromList(bundleID: bundleID, window: window, projectID: projectID)
             },
             .submenu("Set Status", enabled: window.isConnected, BundleStatus.allCases.map { status in
                 .action(status.label) {

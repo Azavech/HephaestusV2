@@ -170,7 +170,10 @@ extension Engine {
         let ticket = try checkTicket()
         guard let projectID = ticket.projectID, let project = domain.project(projectID) else { throw EngineError.notFound("Ticket", ticketID) }
         let orchestrator = orchestratorChat(of: ticketID, actor)
-        let meta = try createChat(kind: .ticket, project: project, ticketID: ticketID, bundleID: nil, settings: params.settings,
+        // An orchestrated ticket chat takes its orchestrator's settings (docs/chats.md ›
+        // Orchestrated ticket chats).
+        let meta = try createChat(kind: .ticket, project: project, ticketID: ticketID, bundleID: nil,
+                                  settings: params.settings ?? orchestrator?.chat.settings,
                                   orchestratorChatID: orchestrator?.chat.id, origin: actor)
         recordDrivingDevice(meta.id, actor)
         let text: String

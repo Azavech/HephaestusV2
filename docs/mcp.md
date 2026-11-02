@@ -1078,16 +1078,16 @@ Input schema:
 
 ### implement_ticket
 
-- **Engine call:** chats.implementTicket with `ticketID`. `settings` is never sent, so the chat uses the project's `chatDefaults`, else the host's `defaultChatSettings`.
+- **Engine call:** chats.implementTicket with `ticketID`. `settings` is never sent, so the chat uses the project's `chatDefaults`, else the host's `defaultChatSettings`; an orchestrated ticket chat takes the calling bundle chat's settings instead.
 - The new chat runs in its own Claude process with its own chat token; the calling chat goes on. No window changes its selection ([Tickets](tickets.md#ticket-chats-and-implement)); `open_in_app` with kind `chat` shows the new chat.
-- Called from a bundle chat for a ticket of that chat's bundle, the new chat is an orchestrated ticket chat linked to the calling chat: it commits without pushing, and the engine sends the calling chat a message each time one of its turns ends without waiting for answers ([Chats](chats.md#orchestrated-ticket-chats)).
+- Called from a bundle chat for a ticket of that chat's bundle, the new chat is an orchestrated ticket chat linked to the calling chat: it takes the calling chat's settings, commits without pushing, and the engine sends the calling chat a message each time one of its turns ends without waiting for answers ([Chats](chats.md#orchestrated-ticket-chats)).
 - **Result:** the `ChatMeta` of the new chat.
 - **Errors:** Those of chats.implementTicket ([Engine API](engine-api.md#chatsimplementticket)): no such ticket (`notFound`), a `done` ticket (`conflict`, `<ID> is done; set it to To Do or In Progress to implement it.`), Claude CLI not available (`unavailable`).
 
 Description:
 
 ```text
-Start a new ticket chat that implements the ticket, as the user's Implement button does: a separate Claude session works on it with the project's default chat settings. Called from a bundle chat for a ticket of its bundle, the new chat commits without pushing and reports each of its turns back to the bundle chat. Returns the new chat.
+Start a new ticket chat that implements the ticket, as the user's Implement button does: a separate Claude session works on it with the project's default chat settings. Called from a bundle chat for a ticket of its bundle, the new chat takes the bundle chat's settings, commits without pushing and reports each of its turns back to the bundle chat. Returns the new chat.
 ```
 
 Input schema:
@@ -2627,3 +2627,4 @@ Unauthorized: missing or invalid bearer token.
 - R113: Claude can close the chat it runs in when the user asks or its work is finished; a closed chat shows `This conversation is over` in place of its composer until the user reopens it.
 - R117: Claude asks the user to choose an SF Symbol with `ask_symbol`: suggestions show as icons, any SF Symbol of the Mac can be searched, the user picks one, answers another way or skips.
 - R121: The items open in the app reach the inspector chat's Claude as context outside the message text, and the user's message shows them as chips.
+- R123: Implement, Implement All and the feedback sheet let the user choose the model, the effort and the permission mode of the chat they start; the ticket chats that a bundle chat starts take its settings.

@@ -1,7 +1,7 @@
 // OWNER: ui-tickets — the actions shared by the ticket list, the ticket detail, the bundle list and
 // the bundle detail: status changes, deleting, Implement, Implement All, copying ids, the
 // confirmations and the shared formats (docs/tickets.md › Ticket list, › Ticket chats and
-// Implement, › Implement All, › Deleting).
+// Implement, › Implement sheet, › Implement All, › Deleting).
 import AppKit
 import HephaestusCore
 import SwiftUI
@@ -79,9 +79,6 @@ struct StatusCapsule: View {
 /// The actions of the Tickets and Bundles sections.
 @MainActor
 enum TicketActions {
-    /// The chat states that make a chat active for the Implement alert.
-    static let activeStates: Set<ChatState> = [.starting, .running, .waitingPermission, .waitingAnswers]
-
     /// The AppKit window of a main window, for alerts and panels.
     static func nsWindow(_ window: WindowState) -> NSWindow? {
         window.app?.windowRegistry.window(forMain: window.id)
@@ -153,40 +150,33 @@ enum TicketActions {
         return (true, nil)
     }
 
-    /// Implement: the active-chat alert when a chat of the ticket is active, then
-    /// `chats.implementTicket` with no settings; the Chats tab selects the new chat.
-    static func implement(ticketID: String, workspace: DeviceWorkspace, window: WindowState) async {
-        guard let projectID = Identifiers.projectID(of: ticketID),
-              let ticket = workspace.tickets[projectID]?[ticketID]
-        else { return }
-        if hasActiveChat(ticket.chatIDs, workspace: workspace) {
-            guard await confirm("A chat of \(ticketID) is still active. Start another implementation?",
-                                button: "Implement", destructive: false, in: window)
-            else { return }
-        }
-        do {
-            let meta = try await workspace.call(ChatsImplementTicket.self, ChatsImplementTicket.Params(ticketID: ticketID))
-            LinkedChatsView.select(meta.id.uuidString, draft: false, owner: .ticket(ticketID), window: window, projectID: projectID)
-        } catch {
-            window.alert = .failure("Implement", error)
-        }
+    /// Implement: opens the Implement sheet, whatever chats of the ticket are active.
+    static func implement(ticketID: String, window: WindowState) {
+        window.sheet = .implementTicket(ticketID: ticketID)
     }
 
     /// Implement from the list's context menu: selects the ticket and its Chats tab first.
-    static func implementFromList(ticketID: String, workspace: DeviceWorkspace, window: WindowState, projectID: String) {
+    static func implementFromList(ticketID: String, window: WindowState, projectID: String) {
         window.updateViewState(of: projectID) {
             $0.selectedTicketIDs = [ticketID]
             $0.ticketTab = .chats
         }
-        Task {
-            await implement(ticketID: ticketID, workspace: workspace, window: window)
-        }
+        implement(ticketID: ticketID, window: window)
     }
 
-    static func hasActiveChat(_ chatIDs: [ChatID], workspace: DeviceWorkspace) -> Bool {
-        chatIDs.contains { chatID in
-            workspace.chats[chatID.uuidString].map { activeStates.contains($0.state) } ?? false
+    /// Start in the Implement sheet: `chats.implementTicket` or `chats.implementBundle` with the
+    /// chosen settings; the Chats tab of the ticket or the bundle selects the new chat.
+    static func start(_ owner: LinkedChatsOwner, settings: ChatSettings, workspace: DeviceWorkspace,
+                      window: WindowState) async throws {
+        let meta: ChatMeta
+        switch owner {
+        case .ticket(let ticketID):
+            meta = try await workspace.call(ChatsImplementTicket.self, ChatsImplementTicket.Params(ticketID: ticketID, settings: settings))
+        case .bundle(let bundleID):
+            meta = try await workspace.call(ChatsImplementBundle.self, ChatsImplementBundle.Params(bundleID: bundleID, settings: settings))
         }
+        guard let projectID = Identifiers.projectID(of: owner.id) else { return }
+        LinkedChatsView.select(meta.id.uuidString, draft: false, owner: owner, window: window, projectID: projectID)
     }
 
     // MARK: Bundles
@@ -225,35 +215,19 @@ enum TicketActions {
         return (true, nil)
     }
 
-    /// Implement All: the active-chat alert, then `chats.implementBundle`; the bundle's Chats tab
-    /// selects the new chat.
-    static func implementAll(bundleID: String, workspace: DeviceWorkspace, window: WindowState) async {
-        guard let projectID = Identifiers.projectID(of: bundleID),
-              let bundle = workspace.bundles[projectID]?[bundleID]
-        else { return }
-        if hasActiveChat(bundle.chatIDs, workspace: workspace) {
-            guard await confirm("A chat of \(bundleID) is still active. Start another implementation?",
-                                button: "Implement", destructive: false, in: window)
-            else { return }
-        }
-        do {
-            let meta = try await workspace.call(ChatsImplementBundle.self, ChatsImplementBundle.Params(bundleID: bundleID))
-            LinkedChatsView.select(meta.id.uuidString, draft: false, owner: .bundle(bundleID), window: window, projectID: projectID)
-        } catch {
-            window.alert = .failure("Implement All", error)
-        }
+    /// Implement All: opens the Implement sheet, whatever chats of the bundle are active.
+    static func implementAll(bundleID: String, window: WindowState) {
+        window.sheet = .implementBundle(bundleID: bundleID)
     }
 
     /// Implement All from the bundle list's context menu: selects the bundle and its Chats tab
     /// first.
-    static func implementAllFromList(bundleID: String, workspace: DeviceWorkspace, window: WindowState, projectID: String) {
+    static func implementAllFromList(bundleID: String, window: WindowState, projectID: String) {
         window.updateViewState(of: projectID) {
             $0.selectedBundleID = bundleID
             $0.bundleTab = .chats
         }
-        Task {
-            await implementAll(bundleID: bundleID, workspace: workspace, window: window)
-        }
+        implementAll(bundleID: bundleID, window: window)
     }
 
     /// Delete… of a bundle: `Delete <ID>?` with `Its tickets and chats are kept.`, then

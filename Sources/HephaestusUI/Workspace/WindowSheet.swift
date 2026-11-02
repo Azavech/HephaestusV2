@@ -23,6 +23,10 @@ public enum WindowSheet: Codable, Hashable, Sendable, Identifiable {
     /// Ticket picker sheet: Create Bundle from Selection, or Add Tickets of a bundle
     /// (docs/tickets.md › Ticket picker sheet).
     case ticketPicker(projectID: String, bundleID: String?, checkedTicketIDs: [String])
+    /// Implement sheet of a ticket (docs/tickets.md › Implement sheet).
+    case implementTicket(ticketID: String)
+    /// Implement sheet of Implement All (docs/tickets.md › Implement sheet).
+    case implementBundle(bundleID: String)
     /// Add Device sheet, with a device preselected by Enter Pairing Code… (docs/remote.md ›
     /// Adding a device, › Entering a new code).
     case addDevice(deviceID: String?)
@@ -69,6 +73,10 @@ struct WindowSheetView: View {
         case .ticketPicker(let projectID, let bundleID, let checked):
             TicketPickerSheet(window: window, workspace: workspace, projectID: projectID, bundleID: bundleID,
                               checkedTicketIDs: checked)
+        case .implementTicket(let ticketID):
+            ImplementSheet(window: window, workspace: workspace, owner: .ticket(ticketID))
+        case .implementBundle(let bundleID):
+            ImplementSheet(window: window, workspace: workspace, owner: .bundle(bundleID))
         case .addDevice(let deviceID):
             AddDeviceSheet(preselectedDeviceID: deviceID, window: window)
         case .feedback(let previewID):

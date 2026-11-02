@@ -127,7 +127,7 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | bundles.setStatus                            | Setting `done` is refused, and so is changing the status of a bundle whose status is `done`.                                                                                           | forbidden |
 | tickets.setStatus                            | Changing the status of a ticket whose status is `done` is refused.                                                                                                                     | forbidden |
 | projects.update                              | `chatDefaults` must be absent.                                                                                                                                                         | forbidden |
-| chats.implementTicket, chats.implementBundle | `settings` must be absent; the new chat uses the project's defaults.                                                                                                                   | forbidden |
+| chats.implementTicket, chats.implementBundle | `settings` must be absent; the new chat uses the project's defaults, or the calling bundle chat's settings for an orchestrated ticket chat.                                            | forbidden |
 | chats.postQuestions, chats.postSymbol        | Only the chat's own Claude may call it: the actor's chatID must equal the `chatID` param; the external token is refused.                                                               | forbidden |
 | chats.close                                  | Only the chat's own Claude may call it: the actor's chatID must equal the `chatID` param; the external token is refused (`Only the chat's own Claude can close its chat.`).            | forbidden |
 | ui.open                                      | `deviceID` is ignored; the event targets the chat's driving device ([ui.open](#uiopen)).                                                                                               | none      |
@@ -1163,14 +1163,14 @@ Events: chat.item (the `symbol` item), chat.item (the user message) and chat.upd
 
 Swift type `ChatsImplementTicket` · actors: user, claude · result: [ChatMeta](data-model.md#chat-metadata-file)
 
-| Param    | Type         | Required | Description                                                                                            |
-| -------- | ------------ | -------- | ------------------------------------------------------------------------------------------------------ |
-| ticketID | TicketID     | yes      | Ticket to implement.                                                                                   |
-| settings | ChatSettings | no       | Default: the project's `chatDefaults`, else the host `defaultChatSettings`. Must be absent for claude. |
+| Param    | Type         | Required | Description                                                                                                                                                                       |
+| -------- | ------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ticketID | TicketID     | yes      | Ticket to implement.                                                                                                                                                              |
+| settings | ChatSettings | no       | Default: the calling bundle chat's `settings` for an orchestrated ticket chat, else the project's `chatDefaults`, else the host `defaultChatSettings`. Must be absent for claude. |
 
-Creates a chat of kind ticket in the ticket's project, linked to the ticket, then sends the message of the prompt `implement-ticket.md` as its first user message, with `sender` the name of the actor's device, or `Claude` for a claude actor ([Data model](data-model.md#user-item)) ([Chats](chats.md#implement-and-feedback-chats)). The engine does not change the ticket's status: Claude sets `in_progress` itself ([Workflow](workflow.md#implementation-workflow)).
+Creates a chat of kind ticket in the ticket's project, linked to the ticket, then sends the message of the prompt `implement-ticket.md` as its first user message, with `sender` the name of the actor's device, or `Claude` for a claude actor ([Data model](data-model.md#user-item)) ([Chats](chats.md#implement-and-feedback-chats)). The engine does not change the ticket's status: Claude sets `in_progress` itself ([Workflow](workflow.md#implementation-workflow)). Implement sends the settings chosen in the [Implement sheet](tickets.md#implement-sheet).
 
-When the actor is claude with the chatID of a chat of kind bundle whose bundle lists the ticket, the new chat is an orchestrated ticket chat: its `orchestrator` is that calling chat, and its first user message is the message of the prompt `implement-bundle-ticket.md`, rendered with the calling chat's bundle ([Chats](chats.md#orchestrated-ticket-chats)). When one of the chat's turns ends, the engine sends that chat a message about it.
+When the actor is claude with the chatID of a chat of kind bundle whose bundle lists the ticket, the new chat is an orchestrated ticket chat: its `orchestrator` is that calling chat, its `settings` are that chat's `settings` at the time of the call, and its first user message is the message of the prompt `implement-bundle-ticket.md`, rendered with the calling chat's bundle ([Chats](chats.md#orchestrated-ticket-chats)). When one of the chat's turns ends, the engine sends that chat a message about it.
 
 | Error       | When                                                                                     |
 | ----------- | ---------------------------------------------------------------------------------------- |
@@ -1191,7 +1191,7 @@ Swift type `ChatsImplementBundle` · actors: user, claude · result: [ChatMeta](
 | bundleID | BundleID     | yes      | Bundle to implement.                                                                                   |
 | settings | ChatSettings | no       | Default: the project's `chatDefaults`, else the host `defaultChatSettings`. Must be absent for claude. |
 
-Creates a chat of kind bundle in the bundle's project, linked to the bundle, and sets the bundle's status to `in_progress` in the same write of the bundle file ([Tickets and bundles](tickets.md#bundle-status-rules)), then sends the message of the prompt `implement-bundle.md` as its first user message, with `sender` the name of the actor's device, or `Claude` for a claude actor ([Data model](data-model.md#user-item)) ([Chats](chats.md#implement-and-feedback-chats)).
+Creates a chat of kind bundle in the bundle's project, linked to the bundle, and sets the bundle's status to `in_progress` in the same write of the bundle file ([Tickets and bundles](tickets.md#bundle-status-rules)), then sends the message of the prompt `implement-bundle.md` as its first user message, with `sender` the name of the actor's device, or `Claude` for a claude actor ([Data model](data-model.md#user-item)) ([Chats](chats.md#implement-and-feedback-chats)). Implement All sends the settings chosen in the [Implement sheet](tickets.md#implement-sheet).
 
 | Error       | When                                                                                                                                                                                                                                                                                                                                              |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1207,7 +1207,7 @@ Events: chat.updated, bundle.updated, then the events of `chats.send`.
 
 Swift type `ChatsCreateFeedback` · actors: user · result: [ChatMeta](data-model.md#chat-metadata-file)
 
-Called by the feedback sheet; the client opens the returned chat in a new window ([Feedback](feedback.md#creating-the-feedback-chat)).
+Called by the feedback sheet, with the settings of its [chat settings menus](feedback.md#chat-settings-menus); the client opens the returned chat in a new window ([Feedback](feedback.md#creating-the-feedback-chat)).
 
 | Param      | Type                                  | Required | Description                                                                    |
 | ---------- | ------------------------------------- | -------- | ------------------------------------------------------------------------------ |
@@ -2840,3 +2840,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R112: Main windows show the Claude plan's weekly usage in the status bar as a small round progress indicator; a click shows the percentage used, when the week resets and the overage status.
 - R113: Claude can close the chat it runs in when the user asks or its work is finished; a closed chat shows `This conversation is over` in place of its composer until the user reopens it.
 - R117: Claude asks the user to choose an SF Symbol with `ask_symbol`: suggestions show as icons, any SF Symbol of the Mac can be searched, the user picks one, answers another way or skips.
+- R123: Implement, Implement All and the feedback sheet let the user choose the model, the effort and the permission mode of the chat they start; the ticket chats that a bundle chat starts take its settings.

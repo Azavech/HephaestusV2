@@ -360,15 +360,15 @@ The Chats tab of a ticket:
 Implement:
 
 1. The button is enabled when the ticket is not `done`. While disabled, its tooltip reads `Set the status to To Do or In Progress to implement this ticket.`. `chats.implementTicket` on a `done` ticket fails with `conflict` and `<ID> is done; set it to To Do or In Progress to implement it.`. It is also disabled while the CLI of the window's device is unavailable, with the tooltip `Claude CLI is not available on <device name>.` Default chosen at design time.
-2. When a chat of the ticket is `starting`, `running`, `waitingPermission` or `waitingAnswers`, an alert asks `A chat of <ID> is still active. Start another implementation?` with the buttons Implement and Cancel. Default chosen at design time.
-3. The UI calls `chats.implementTicket` with the ticket id and no settings, so the chat uses the project's `chatDefaults`, or else the host's `defaultChatSettings`. The composer changes them afterwards. Default chosen at design time.
+2. A click opens the [Implement sheet](#implement-sheet), where the user chooses the model, the effort and the permission mode of the chat. A chat of the ticket that is still active does not prevent it: several chats of a ticket can run at once.
+3. Start in the sheet calls `chats.implementTicket` with the ticket id and the settings chosen in the sheet (`settings`). The composer changes them afterwards.
 4. The engine creates a chat of kind `ticket` with `ticket: <ID>`, appends its id to the ticket's `chats` (emitting `ticket.updated`), starts Claude with the ticket prompt, and sends the `implement-ticket.md` message as the first user message ([Chats](chats.md)).
-5. The Chats tab selects the new chat. Implement from the list's context menu first selects the ticket and its Chats tab.
+5. The Chats tab selects the new chat. Implement from the list's context menu first selects the ticket and its Chats tab, then opens the sheet.
 6. Claude follows the [implementation workflow](workflow.md#implementation-workflow): it sets the status to `in_progress`, reads the ticket, asks questions, changes the docs and then the code, builds and tests, commits and pushes, comments, and sets the status to `done` when every test of the ticket has passed, otherwise to `review`. A `review` ticket stays there until the user sets `done`.
 
-`implement_ticket`, called by Claude from another chat, goes through the same engine check (the `conflict` of step 1) and steps 4 and 6, and changes no window's selection. Default chosen at design time.
+`implement_ticket`, called by Claude from another chat, goes through the same engine check (the `conflict` of step 1) and steps 4 and 6, and changes no window's selection. Its chat takes the project's `chatDefaults`, or else the host's `defaultChatSettings`. Default chosen at design time.
 
-Called from a chat of kind `bundle` for a ticket of that chat's bundle, `implement_ticket` starts an orchestrated ticket chat: the new chat's `orchestrator` is the calling bundle chat, its first message is the `implement-bundle-ticket.md` message, and it commits its ticket without pushing ([Implement All](#implement-all), [Orchestrated ticket chats](chats.md#orchestrated-ticket-chats)). It is listed in the ticket's Chats tab like any ticket chat, and in the bundle's Chats tab under its orchestrator.
+Called from a chat of kind `bundle` for a ticket of that chat's bundle, `implement_ticket` starts an orchestrated ticket chat: the new chat's `orchestrator` is the calling bundle chat, it takes the calling chat's settings, its first message is the `implement-bundle-ticket.md` message, and it commits its ticket without pushing ([Implement All](#implement-all), [Orchestrated ticket chats](chats.md#orchestrated-ticket-chats)). It is listed in the ticket's Chats tab like any ticket chat, and in the bundle's Chats tab under its orchestrator.
 
 New Chat shows a draft chat of kind `ticket` under the list, its composer focused ([Draft chats](chats.md#draft-chats)); its first Send calls `chats.create` (`projectID`, kind `ticket`, `ticketID`, `message`), which appends the chat id to `chats`. Claude starts with the ticket prompt, which contains the ticket's id, title, status, description, absolute attachment paths and comments ([Chats](chats.md)); `get_ticket` gives it the current state at any time. In this chat the user can debug, ask questions or ask for the implementation, which then follows the same workflow.
 
@@ -379,6 +379,31 @@ Chats and tickets:
 - A feedback chat is added to the `chats` of the ticket it creates ([Feedback](feedback.md)).
 - Bundle chats belong to their bundle and are not listed in the bundle's tickets.
 - An orchestrated ticket chat belongs to its ticket and is in its ticket's `chats`; the bundle's `chats` list only its bundle chats.
+
+### Implement sheet
+
+Implement and Implement All open this sheet on the main window, from the Chats tab of a ticket or a bundle and from the context menus of the ticket list and the bundle list. It chooses the settings of the chat they start ([Chat settings](chats.md#chat-settings)).
+
+| Element     | Content                                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------------------------- |
+| Title       | `Implement <ID>` for a ticket, `Implement All <ID>` for a bundle                                              |
+| Subtitle    | the title of the ticket or the bundle, on one line, truncated at its end                                      |
+| Model       | the composer's Model menu with its `Ultracode` toggle ([Model](chats.md#model))                               |
+| Effort      | the composer's Effort menu ([Effort](chats.md#effort))                                                        |
+| Permissions | the composer's Permissions menu, `Allow All` with its red badge ([Permission mode](chats.md#permission-mode)) |
+| Note        | for a bundle only: `The ticket chats that the bundle chat starts take its settings.`                          |
+| Error       | the error message of the last Start, when it failed                                                           |
+| Buttons     | `Cancel` (Escape) and `Start` (Return, default button)                                                        |
+
+- The three menu buttons stand in one row, in the composer's order.
+- The menus open on the project's `chatDefaults`, or else the host's `defaultChatSettings` ([Fields and defaults](chats.md#fields-and-defaults)), each time the sheet opens. A choice in the sheet sets only the chat that this Start creates; nothing is saved.
+- Start is enabled while the window's device is connected and its Claude CLI is available (`ClaudeStatus.available`).
+- Start calls `chats.implementTicket` with the ticket id, or `chats.implementBundle` with the bundle id, and the chosen settings in `settings` ([Engine API](engine-api.md#chatsimplementticket)). While the call runs, Start shows a progress indicator and every control of the sheet, Cancel included, is disabled.
+- Success: the sheet closes and the Chats tab of the ticket or the bundle selects the new chat.
+- Error: the sheet stays open with the error message above its buttons, and the chosen settings are kept.
+- Cancel closes the sheet and starts nothing.
+
+The title, the subtitle, the note, the layout and the keys are defaults. Default chosen at design time.
 
 ## Bundles
 
@@ -447,9 +472,9 @@ Create Bundle from Selection, New Bundle and Add Tickets… use this sheet.
 ### Implement All
 
 1. Implement All is in the bar of the bundle's Chats tab and in the bundle list's context menu. It is disabled while the bundle's status is `in_progress` or `done` ([Bundle status rules](#bundle-status-rules)), with the tooltip `Set the status to To Do to implement this bundle.`; `chats.implementBundle` fails in that case with `conflict` and `<ID> is in progress; set it to To Do to implement it.` or `<ID> is done; set it to To Do to implement it.`. Otherwise it is enabled when the bundle has at least one ticket that is not `done`; a listed id without a ticket file does not count, as it cannot be implemented. While disabled, its tooltip reads `All tickets of this bundle are done.` or `This bundle has no tickets.`. `chats.implementBundle` fails in that case with `conflict` and `<ID> has no ticket left to implement.`. It is also disabled while the CLI of the window's device is unavailable, with the tooltip `Claude CLI is not available on <device name>.` Default chosen at design time.
-2. The same active-chat alert as for Implement is shown when a chat of the bundle is active.
-3. The UI calls `chats.implementBundle` with the bundle id. The engine creates a chat of kind `bundle` with `bundle: <ID>`, appends its id to the bundle's `chats` and sets the bundle's status to `in_progress` (one write, emitting `bundle.updated`), starts Claude with the bundle prompt, which contains every ticket of the bundle, and sends the `implement-bundle.md` message as the first user message ([Chats](chats.md)). Implement All from the bundle list's context menu first selects the bundle and its Chats tab, which then selects the new chat.
-4. The bundle chat is the orchestrator. It takes the bundle's tickets in bundle order, skips the `done` ones, and starts one orchestrated ticket chat per ticket with `implement_ticket` ([Ticket chats and Implement](#ticket-chats-and-implement)). It starts the next ticket's chat only after the previous one has reported back, so one ticket chat runs at a time ([Claude workflow](workflow.md#bundles)).
+2. A click opens the [Implement sheet](#implement-sheet), where the user chooses the model, the effort and the permission mode of the bundle chat. A chat of the bundle that is still active does not prevent it.
+3. Start in the sheet calls `chats.implementBundle` with the bundle id and the settings chosen in the sheet (`settings`). The engine creates a chat of kind `bundle` with `bundle: <ID>`, appends its id to the bundle's `chats` and sets the bundle's status to `in_progress` (one write, emitting `bundle.updated`), starts Claude with the bundle prompt, which contains every ticket of the bundle, and sends the `implement-bundle.md` message as the first user message ([Chats](chats.md)). Implement All from the bundle list's context menu first selects the bundle and its Chats tab, then opens the sheet; the Chats tab then selects the new chat.
+4. The bundle chat is the orchestrator. It takes the bundle's tickets in bundle order, skips the `done` ones, and starts one orchestrated ticket chat per ticket with `implement_ticket` ([Ticket chats and Implement](#ticket-chats-and-implement)). Each ticket chat takes the bundle chat's settings as they are when it starts, so a change made in the bundle chat's composer applies to the ticket chats started after it ([Orchestrated ticket chats](chats.md#orchestrated-ticket-chats)). It starts the next ticket's chat only after the previous one has reported back, so one ticket chat runs at a time ([Claude workflow](workflow.md#bundles)).
 5. Each ticket chat implements its ticket with the [implementation workflow](workflow.md#implementation-workflow): it sets the ticket to `in_progress`, asks its questions and permission prompts in its own chat, where the user answers them, commits without pushing, comments and sets the ticket to `done` or `review`. The Tickets tab shows the status changes as they happen.
 6. When a ticket chat's turn ends and the chat does not wait for answers, the engine sends the orchestrator a message with the chat's final reply, or tells it that the chat ended in error or was stopped ([Orchestrated ticket chats](chats.md#orchestrated-ticket-chats)). After an error or a stop, the orchestrator asks the user whether to retry the ticket, skip it or stop.
 7. After every ticket has been implemented or skipped, the orchestrator pushes once, so the bundle starts a single CI run. Its final reply lists each ticket with its commit hash, or with `skipped` and the reason. It never sets a ticket to `done`. The bundle stays `in_progress` until the user changes its status.
@@ -572,3 +597,4 @@ Shortcuts of this document. All global shortcuts are listed in [UI](ui.md).
 - R111: Implement All runs one ticket chat per ticket, one at a time, coordinated by the bundle chat that started them, and pushes once at the end.
 - R118: Ticket and bundle ids named in chats, ticket descriptions and comments are links that open the ticket or the bundle.
 - R119: The Testing section of a ticket Claude writes lists only checks of the behaviour in the running app, never code tests; the code tests to add can be named under Change.
+- R123: Implement, Implement All and the feedback sheet let the user choose the model, the effort and the permission mode of the chat they start; the ticket chats that a bundle chat starts take its settings.

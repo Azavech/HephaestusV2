@@ -206,7 +206,7 @@ struct TicketListView: View {
         return [
             .action("Implement", enabled: canImplement) {
                 guard let single else { return }
-                TicketActions.implementFromList(ticketID: single.id, workspace: workspace, window: window, projectID: projectID)
+                TicketActions.implementFromList(ticketID: single.id, window: window, projectID: projectID)
             },
             .submenu("Set Status", enabled: !ids.isEmpty, TicketStatus.allCases.map { status in
                 .action(status.label) {

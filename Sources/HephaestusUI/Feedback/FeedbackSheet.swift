@@ -4,9 +4,9 @@ import HephaestusCore
 import SwiftUI
 
 /// Send Feedback: the screenshot (`AppModel.feedbackPreviews[previewID]`), the comment, the
-/// project and the context; Send calls `chats.createFeedback` on the receiving device and opens
-/// the returned chat in a new chat window (docs/feedback.md › Feedback sheet, › Creating the
-/// feedback chat).
+/// project, the chat settings menus and the context; Send calls `chats.createFeedback` on the
+/// receiving device and opens the returned chat in a new chat window (docs/feedback.md › Feedback
+/// sheet, › Chat settings menus, › Creating the feedback chat).
 struct FeedbackSheet: View {
     let previewID: UUID
     let source: FeedbackSource
@@ -25,6 +25,12 @@ struct FeedbackSheet: View {
     @State private var isSending = false
     /// The error of the last Send.
     @State private var sendError: String?
+    /// The settings chosen in the menus; nil until a menu changes them, while the menus follow the
+    /// selected project.
+    @State private var chosenSettings: ChatSettings?
+    /// The `chatDefaults` read with `projects.get` for selected projects whose detail the
+    /// workspace has not loaded, by project id; `.some(nil)` for a project without them.
+    @State private var readChatDefaults: [String: ChatSettings?] = [:]
     @FocusState private var commentFocused: Bool
     /// The screenshot, decoded once.
     @State private var image: NSImage?
@@ -67,6 +73,7 @@ struct FeedbackSheet: View {
                 ValidationMessage(text: sendError)
             }
             projectRow
+            settingsRow
             if let capture {
                 let line = FeedbackController.contextLine(capture.context, projectName: contextProjectName(capture))
                 Text(line)
@@ -84,6 +91,9 @@ struct FeedbackSheet: View {
         .disabled(isSending)
         .task(id: lookupKey) {
             await lookUpDefaultProject()
+        }
+        .task(id: DefaultsKey(projectID: selectedProjectID, connected: workspace?.isConnected ?? false)) {
+            await readSelectedChatDefaults()
         }
         .onAppear {
             image = png.flatMap { NSImage(data: $0) }
@@ -147,10 +157,24 @@ struct FeedbackSheet: View {
             Text("Project")
             ProjectPopUpButton(items: ProjectPopUpButton.items(for: workspace?.projects ?? []), selection: projectSelection)
                 .frame(maxWidth: .infinity)
-            if !lookupFinished {
+            if !lookupFinished || !chatDefaultsKnown {
                 ProgressView()
                     .controlSize(.small)
             }
+        }
+    }
+
+    /// The composer's Model, Effort and Permissions menus, in one row.
+    private var settingsRow: some View {
+        let menus = ChatSettingsMenus(settings: chatSettings, models: workspace?.models ?? []) { chosenSettings = $0 }
+        return HStack(spacing: 8) {
+            ChatModelMenuButton(menus: menus)
+                .fixedSize()
+            ChatEffortMenuButton(menus: menus)
+                .fixedSize()
+            ChatPermissionsMenuButton(menus: menus)
+                .fixedSize()
+            Spacer(minLength: 0)
         }
     }
 
@@ -227,9 +251,50 @@ struct FeedbackSheet: View {
     }
 
     private var canSend: Bool {
-        guard !isSending, blockingMessage == nil, lookupFinished, let selectedProjectID,
+        guard !isSending, blockingMessage == nil, lookupFinished, chatDefaultsKnown, let selectedProjectID,
               let workspace, workspace.project(selectedProjectID) != nil else { return false }
         return true
+    }
+
+    // MARK: Chat settings (docs/feedback.md › Chat settings menus)
+
+    /// The selected project's `chatDefaults`: from the loaded detail, else as read with
+    /// `projects.get`; `.some(nil)` for a project without them, nil while they are not known.
+    private var selectedChatDefaults: ChatSettings?? {
+        guard let selectedProjectID, let workspace else { return nil }
+        if let detail = workspace.details[selectedProjectID] {
+            return .some(detail.project.chatDefaults)
+        }
+        return readChatDefaults[selectedProjectID]
+    }
+
+    /// The menus need no defaults once one of them was changed.
+    private var chatDefaultsKnown: Bool {
+        chosenSettings != nil || selectedChatDefaults != nil
+    }
+
+    /// The settings of the menus: the choice, else the selected project's `chatDefaults`, else the
+    /// receiving device's `defaultChatSettings`.
+    private var chatSettings: ChatSettings {
+        if let chosenSettings { return chosenSettings }
+        if let defaults = selectedChatDefaults ?? nil { return defaults }
+        return workspace?.settings?.defaultChatSettings ?? ChatSettings()
+    }
+
+    private struct DefaultsKey: Hashable {
+        var projectID: String?
+        var connected: Bool
+    }
+
+    /// Reads the selected project's `chatDefaults` when the workspace has not loaded its detail; a
+    /// failed read leaves the receiving device's defaults.
+    private func readSelectedChatDefaults() async {
+        guard let workspace, workspace.isConnected, let projectID = selectedProjectID,
+              workspace.details[projectID] == nil, readChatDefaults[projectID] == nil
+        else { return }
+        let detail = try? await workspace.call(ProjectsGet.self, ProjectsGet.Params(projectID: projectID))
+        guard !Task.isCancelled else { return }
+        readChatDefaults[projectID] = .some(detail?.project.chatDefaults)
     }
 
     // MARK: Default project (docs/feedback.md › Feedback project)
@@ -278,7 +343,8 @@ struct FeedbackSheet: View {
             projectID: projectID,
             comment: comment,
             screenshot: AttachmentUpload(name: "screenshot.png", contentType: "image/png", dataBase64: png.base64EncodedString()),
-            context: capture.context
+            context: capture.context,
+            settings: chatSettings
         )
         Task {
             do {
@@ -286,7 +352,7 @@ struct FeedbackSheet: View {
                 closeSheet()
                 app.openChatWindow(ChatWindowValue(deviceID: workspace.deviceID, chatID: meta.id.uuidString))
             } catch {
-                // The sheet stays open; the comment and the project are kept.
+                // The sheet stays open; the comment, the project and the chat settings are kept.
                 sendError = errorMessage(error)
                 isSending = false
             }

@@ -816,7 +816,7 @@ The texts `Symbol`, `Search symbols`, `Answer another way`, `Recommended`, Skip 
 
 ### Fields and defaults
 
-`ChatSettings` {model, effort, permissionMode, ultracode} ([Data model](data-model.md#chat-settings)) is stored in each chat's `settings`. A new chat takes the `settings` parameter of the method that creates it; when absent, the project's `chatDefaults`; when absent, the host setting `defaultChatSettings` (model `default`, effort `high`, permissionMode `manual`, ultracode false). Implement, Implement All, `implement_ticket`, `implement_bundle` and the Feedback sheet create chats without the parameter.
+`ChatSettings` {model, effort, permissionMode, ultracode} ([Data model](data-model.md#chat-settings)) is stored in each chat's `settings`. A new chat takes the `settings` parameter of the method that creates it; when absent, the `settings` of its orchestrator for an [orchestrated ticket chat](#orchestrated-ticket-chats); otherwise the project's `chatDefaults`; when absent, the host setting `defaultChatSettings` (model `default`, effort `high`, permissionMode `manual`, ultracode false). Implement and Implement All pass the settings chosen in the [Implement sheet](tickets.md#implement-sheet), and the Feedback sheet those of its [chat settings menus](feedback.md#chat-settings-menus); `implement_ticket` and `implement_bundle` create chats without the parameter.
 
 ### Model
 
@@ -1099,6 +1099,7 @@ Header (in the Chats section, the ticket and bundle Chats tabs and chat windows;
 | `chats.createFeedback`  | kind feedback, `ticket` null                                                                                                                                                            | the [feedback message](#feedback-message), with the screenshot as its only attachment (the name of the device that sent the feedback)                                        |
 
 - A done ticket, and a bundle without a ticket left to implement, are refused with `conflict` ([Tickets](tickets.md#errors)).
+- The new chat's settings are the `settings` param: the settings chosen in the [Implement sheet](tickets.md#implement-sheet) for Implement and Implement All, those of the feedback sheet's [chat settings menus](feedback.md#chat-settings-menus) for feedback. `implement_ticket` and `implement_bundle` send none, so the chat takes the project's `chatDefaults`, else the host's `defaultChatSettings`, except an orchestrated ticket chat, which takes its orchestrator's settings ([Fields and defaults](#fields-and-defaults)).
 - The client that called the method selects the new chat (ticket Chats tab, bundle Chats tab, or a new chat window for feedback). Chats started by `implement_ticket` and `implement_bundle` appear in the lists and are not opened.
 - The screenshot of a feedback chat is the attachment of its first user message, sent to Claude as an `image` block. The link between the feedback chat and the ticket Claude creates is in [Feedback](feedback.md#resulting-ticket).
 
@@ -1107,6 +1108,7 @@ Header (in the Chats section, the ticket and bundle Chats tabs and chat windows;
 The bundle chat started by Implement All or `implement_bundle` is the orchestrator of its bundle: it starts one ticket chat per ticket and waits for each one's report ([Implement All](tickets.md#implement-all), [Claude workflow](workflow.md#bundles)).
 
 - `chats.implementTicket` called by a `claude` actor whose chat is of kind `bundle`, for a ticket that this chat's bundle lists, creates an orchestrated ticket chat: its `orchestrator` is the calling chat ([Data model](data-model.md#chat-metadata-file)), and its first message is the rendered implement-bundle-ticket prompt. Every other call creates a ticket chat without `orchestrator`, whose first message is the rendered implement-ticket prompt.
+- The orchestrated ticket chat takes the orchestrator's `settings`, its model, effort, permission mode and ultracode, as they are when `chats.implementTicket` is called. A change of the orchestrator's settings applies to the ticket chats it starts afterwards; the ticket chats already started keep theirs, and the composer of each changes them.
 - The orchestrated ticket chat is in its ticket's `chats`. It is listed in the ticket's Chats tab, and in the bundle's Chats tab under its orchestrator ([Bundles section](tickets.md#bundles-section)). It asks its questions and permission prompts in its own chat, where the user answers them.
 - When the state of a chat with an `orchestrator` goes from `starting`, `running` or `waitingPermission` to `idle` or `error`, the engine sends the orchestrator chat one message, as the `system` actor, so its `sender` is the main device's name ([Engine API](engine-api.md#chatssend)):
 
@@ -1121,7 +1123,7 @@ The bundle chat started by Implement All or `implement_bundle` is the orchestrat
 - Nothing is sent while the engine stops, or when the orchestrator chat no longer exists or is being deleted; `engine.log` records the skipped message.
 - The orchestrator receives the message in any state ([Chat states](#chat-states)): during one of its turns, the CLI runs it after that turn. A closed orchestrator chat is reopened by the message ([Closing a chat](#closing-a-chat)).
 
-These rules are Default chosen at design time, except the message texts, which the user chose.
+These rules are Default chosen at design time, except the message texts and the settings taken from the orchestrator, which the user chose.
 
 ### Feedback message
 
@@ -1820,3 +1822,4 @@ Follow "Implementing a bundle" as its orchestrator: take the tickets in this ord
 - R120: In a chat, the caption above each message shows who sent it, the user's device or Claude, followed by its date and time.
 - R121: The items open in the app reach the inspector chat's Claude as context outside the message text, and the user's message shows them as chips.
 - R122: A permission mode chosen while Claude works applies in the same turn, and approves at once the waiting permission requests that the new mode allows.
+- R123: Implement, Implement All and the feedback sheet let the user choose the model, the effort and the permission mode of the chat they start; the ticket chats that a bundle chat starts take its settings.

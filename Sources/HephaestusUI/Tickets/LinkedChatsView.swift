@@ -174,7 +174,7 @@ struct LinkedChatsView: View {
             let ticket = workspace.tickets[projectID]?[ticketID]
             let availability = ticket.map { TicketActions.implementAvailability(of: $0, workspace: workspace) } ?? (enabled: false, help: nil)
             Button("Implement") {
-                Task { await TicketActions.implement(ticketID: ticketID, workspace: workspace, window: window) }
+                TicketActions.implement(ticketID: ticketID, window: window)
             }
             .buttonStyle(.borderedProminent)
             .disabled(!availability.enabled || !window.isConnected)
@@ -183,7 +183,7 @@ struct LinkedChatsView: View {
             let bundle = workspace.bundles[projectID]?[bundleID]
             let availability = bundle.map { TicketActions.implementAllAvailability(of: $0, workspace: workspace, projectID: projectID) } ?? (enabled: false, help: nil)
             Button("Implement All") {
-                Task { await TicketActions.implementAll(bundleID: bundleID, workspace: workspace, window: window) }
+                TicketActions.implementAll(bundleID: bundleID, window: window)
             }
             .buttonStyle(.borderedProminent)
             .disabled(!availability.enabled || !window.isConnected)

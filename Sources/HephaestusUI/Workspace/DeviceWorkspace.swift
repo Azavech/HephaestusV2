@@ -178,6 +178,13 @@ final class DeviceWorkspace {
         projects.first { $0.id == projectID }
     }
 
+    /// The settings a new chat of a project takes without a `settings` parameter: the project's
+    /// `chatDefaults` when its detail is loaded, else this device's `defaultChatSettings`
+    /// (docs/chats.md › Fields and defaults).
+    func defaultChatSettings(of projectID: String) -> ChatSettings {
+        details[projectID]?.project.chatDefaults ?? settings?.defaultChatSettings ?? ChatSettings()
+    }
+
     /// The identifiers of every project of this device, sub projects included: their ticket and
     /// bundle ids are links in chats and tickets (docs/documentation-viewer.md › Ticket and bundle
     /// ids).

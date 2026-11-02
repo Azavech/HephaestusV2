@@ -564,6 +564,36 @@ struct ChatInteractionTests {
         }
     }
 
+    @Test("Orchestration: an orchestrated ticket chat takes the bundle chat's settings at the time of the call; other ticket chats take the defaults or the given settings")
+    func orchestratedTicketChatSettings() async throws {
+        let launcher = FakeClaudeLauncher()
+        launcher.chatScript = FakeClaudeLauncher.silentChat()
+        try await withChatEngine(launcher: launcher) { bed in
+            try await bed.writeTicket(Ticket(id: "DEMO-1", title: "One", created: ISODate.now(), description: "Problem"))
+            try await bed.writeTicket(Ticket(id: "DEMO-2", title: "Two", created: ISODate.now(), description: "Problem"))
+            try await bed.writeBundle(TicketBundle(id: "DEMO-B1", title: "Polish", created: ISODate.now(), ticketIDs: ["DEMO-1"]))
+            let allowAll = ChatSettings(model: "sonnet", effort: .low, permissionMode: .bypassPermissions, ultracode: true)
+            // Implement All with the settings chosen in the Implement sheet.
+            let orchestrator = try await bed.connection.call(ChatsImplementBundle.self, .init(bundleID: "DEMO-B1", settings: allowAll))
+            #expect(orchestrator.settings == allowAll)
+            let claude = Actor.claude(chatID: orchestrator.id.uuidString)
+            let first = try await bed.engine.call(ChatsImplementTicket.self, .init(ticketID: "DEMO-1"), actor: claude)
+            #expect(first.orchestratorChatID == orchestrator.id && first.settings == allowAll)
+            #expect(try ProjectFileStore.readChatMeta(at: bed.folder.chatMetaFile(first.id), projectID: "DEMO").settings == allowAll)
+            // A change of the bundle chat's settings applies to the ticket chats started afterwards.
+            let acceptEdits = ChatSettings(model: "opus", effort: .max, permissionMode: .acceptEdits)
+            _ = try await bed.connection.call(ChatsUpdateSettings.self, .init(chatID: orchestrator.id, settings: acceptEdits))
+            let second = try await bed.engine.call(ChatsImplementTicket.self, .init(ticketID: "DEMO-1"), actor: claude)
+            #expect(second.settings == acceptEdits)
+            #expect(try await bed.connection.call(ChatsGet.self, .init(chatID: first.id)).meta.settings == allowAll)
+            // A ticket the bundle does not list takes the defaults; the user's Implement takes its settings.
+            #expect(try await bed.engine.call(ChatsImplementTicket.self, .init(ticketID: "DEMO-2"), actor: claude).settings == ChatSettings())
+            let plan = ChatSettings(permissionMode: .plan)
+            #expect(try await bed.connection.call(ChatsImplementTicket.self, .init(ticketID: "DEMO-1", settings: plan)).settings == plan)
+            #expect(try await bed.connection.call(ChatsImplementTicket.self, .init(ticketID: "DEMO-2")).settings == ChatSettings())
+        }
+    }
+
     @Test("Orchestration: a bundle chat's implement_ticket starts a linked ticket chat whose turns report back, except on ask_questions")
     func orchestratedTicketChat() async throws {
         let launcher = FakeClaudeLauncher()
