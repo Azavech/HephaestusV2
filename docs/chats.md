@@ -638,6 +638,7 @@ A `permissionRequest` item is pending while its `decision` is null.
 - `<message>` is the trimmed `message` parameter, or `Permission denied by the user.` when it is empty or absent. Default chosen at design time. The CLI returns it to Claude as the tool's error result.
 - When the last pending request of the chat is answered, the state returns to running.
 - Several clients can show the same request: the first answer wins and the others get `conflict`. A client that gets this conflict shows no alert: the card follows the `chat.item` event.
+- A change of the chat's permission mode answers the pending requests that the new mode allows, with the `allow` line ([Changing settings](#changing-settings)).
 
 ### Cancellation
 
@@ -667,6 +668,7 @@ Paths and URLs are in SF Mono, as in [Principles](ui.md#principles). When a fiel
 - A single-line field `Message for Claude (optional)`, sent as `message` with Deny.
 - Buttons: Allow Once (⌘Return) → `allow`; Always Allow (⌥⌘Return) → `allowAlways`; Deny (⇧⌘Return) → `deny`. The three keys act while the keyboard focus is in the chat view outside its composer, and only once the request shown has been on screen for 1 second; from the composer, and earlier, they do nothing. Default chosen at design time.
 - With several pending requests, the card shows the oldest one and `1 of <n>`.
+- A change of the Permissions menu answers the card when the new mode allows the request shown: Allow All approves every pending request, Accept Edits the file edits ([Changing settings](#changing-settings)). The card then shows the next pending request, or goes away when none is left.
 
 ### Mode changes made by the CLI
 
@@ -856,6 +858,18 @@ The Effort menu button shows `Effort: <UI label>`, in every composer and at ever
 ### Changing settings
 
 `chats.updateSettings` stores the four fields ([Engine API](engine-api.md#chatsupdatesettings)) and emits `chat.updated`. Settings are `invalid` when `model` is empty or contains white space, or when `effort` or `permissionMode` is not one of the values of [Effort](#effort) and [Permission mode](#permission-mode); `chats.create`, `chats.implementTicket`, `chats.implementBundle` and `chats.createFeedback` check their `settings` parameter the same way. When the chat has a live process, the engine sends one control request per changed field (model → `set_model`, permission mode → `set_permission_mode`, effort and ultracode → `apply_flag_settings`), during a turn as well. Without a live process the new values apply at the next launch. Every menu change in the composer of an existing chat calls `chats.updateSettings` at once; in a draft chat it changes the settings the chat is created with. A failed call shows the alert `Chat Settings failed` ([Principles](ui.md#principles)). Default chosen at design time.
+
+A new permission mode chosen during a turn applies within that turn: the CLI decides every permission request Claude makes after it received `set_permission_mode` with the new mode, so after a switch to Allow All no permission card appears for the rest of the turn. Every launch passes `--allow-dangerously-skip-permissions` ([Command line](#command-line)), with which the CLI accepts a switch to `bypassPermissions` in a chat launched in another mode. The requests already pending stay with the engine, which answers them itself: when the CLI answers `set_permission_mode` with success and the mode it asked for is still the chat's `settings.permissionMode`, the engine approves at once each pending request that the new mode allows, as if the mode had been set before the request:
+
+| New mode       | Pending requests approved                                                                                                                                                                                       |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Allow All      | every pending request                                                                                                                                                                                           |
+| Accept Edits   | each request of `Edit`, `Write` or `NotebookEdit` whose file (`file_path`, `notebook_path` for `NotebookEdit`; a relative path taken from the project root) is inside the project root, symbolic links resolved |
+| any other mode | none: the card stays                                                                                                                                                                                            |
+
+- Each approval writes the `allow` line of [Answer](#answer) and replaces the item with `decision` `allow` and `decidedBy` the name of the device that changed the mode, so the transcript shows `Allowed once by <device>`. When the last pending request is approved, the state returns to running.
+- A request answered before the CLI's answer arrives keeps its answer. An error answer, or no answer within 30 s, approves nothing and adds the warning item of [Control protocol](#control-protocol).
+- Approving only after the success answer, the tools counted as file edits and `decidedBy`: Default chosen at design time.
 
 ## Composer
 
@@ -1805,3 +1819,4 @@ Follow "Implementing a bundle" as its orchestrator: take the tickets in this ord
 - R119: The Testing section of a ticket Claude writes lists only checks of the behaviour in the running app, never code tests; the code tests to add can be named under Change.
 - R120: In a chat, the caption above each message shows who sent it, the user's device or Claude, followed by its date and time.
 - R121: The items open in the app reach the inspector chat's Claude as context outside the message text, and the user's message shows them as chips.
+- R122: A permission mode chosen while Claude works applies in the same turn, and approves at once the waiting permission requests that the new mode allows.

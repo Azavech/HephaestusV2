@@ -532,6 +532,9 @@ extension Engine {
                 receivedInitializeModels(models)
                 process.mapper.models = claudeCLI.cachedModels
             }
+            if case .permissionMode(let mode, let origin) = entry.purpose {
+                approvePendingPermissions(allowedBy: mode, chatID: chatID, process: process, origin: origin)
+            }
             return
         }
         let description = error ?? "unknown error"
@@ -545,14 +548,14 @@ extension Engine {
 
     /// docs/chats.md › Changing settings: one control request per changed field while the chat
     /// has a live process, during a turn as well.
-    func applyChatSettingsLive(_ chatID: ChatID, old: ChatSettings, new: ChatSettings) {
+    func applyChatSettingsLive(_ chatID: ChatID, old: ChatSettings, new: ChatSettings, origin: Actor) {
         guard let process = chats.runtimes[chatID]?.liveProcess else { return }
         process.mapper.settings = new
         if old.model != new.model {
             sendControlRequest(.model, chatID: chatID, process: process) { ControlLines.setModel(id: $0, model: new.model) }
         }
         if old.permissionMode != new.permissionMode {
-            sendControlRequest(.permissionMode, chatID: chatID, process: process) {
+            sendControlRequest(.permissionMode(new.permissionMode, origin: origin), chatID: chatID, process: process) {
                 ControlLines.setPermissionMode(id: $0, mode: ControlLines.cliMode(new.permissionMode))
             }
         }
@@ -589,6 +592,64 @@ extension Engine {
         process.permissions[item.requestID] = nil
         process.permissionOrder.removeAll { $0 == item.requestID }
         appendChatItemLogging(.permissionRequest(item), chatID: chatID, op: .update, origin: origin)
+    }
+
+    /// docs/chats.md › Changing settings: once the CLI accepted a new mode that is still the
+    /// chat's, each pending request that the mode allows gets the `allow` line, decided by the
+    /// device that changed the mode.
+    private func approvePendingPermissions(allowedBy mode: PermissionMode, chatID: ChatID, process: ChatProcess, origin: Actor) {
+        guard !process.exited, let meta = domain.chat(chatID), meta.settings.permissionMode == mode else { return }
+        let root = domain.projectRoot(meta.projectID)
+        let name = senderName(origin)
+        var approved = false
+        for requestID in process.permissionOrder {
+            guard let pending = process.permissions[requestID],
+                  Engine.permissionMode(mode, allows: pending.item, projectRoot: root) else { continue }
+            process.handle.write(ControlLines.permissionAnswer(requestID: requestID, decision: .allow, input: pending.item.input,
+                                                               suggestions: nil, message: ""))
+            resolvePermission(pending, decision: .allow, decidedBy: name, chatID: chatID, process: process, origin: origin)
+            approved = true
+        }
+        if approved { reportChatState(chatID, origin: origin) }
+    }
+
+    /// The tools whose requests Accept Edits approves, with the input field that holds the file.
+    static let fileEditTools = ["Edit": "file_path", "Write": "file_path", "NotebookEdit": "notebook_path"]
+
+    /// Whether a pending request would not have been asked under `mode` (docs/chats.md › Changing
+    /// settings): every request for Allow All; for Accept Edits, a file edit inside the project
+    /// root, symbolic links resolved; none for the other modes.
+    static func permissionMode(_ mode: PermissionMode, allows item: PermissionRequestItem, projectRoot: URL?) -> Bool {
+        switch mode {
+        case .bypassPermissions:
+            return true
+        case .acceptEdits:
+            guard let field = fileEditTools[item.toolName], let path = item.input.objectValue?[field]?.stringValue, !path.isEmpty,
+                  let projectRoot else { return false }
+            let file = path.hasPrefix("/") ? URL(fileURLWithPath: path) : projectRoot.appendingPathComponent(path)
+            let root = resolvedPath(projectRoot)
+            let resolved = resolvedPath(file)
+            return resolved == root || resolved.hasPrefix(root.hasSuffix("/") ? root : root + "/")
+        case .manual, .plan, .auto, .dontAsk:
+            return false
+        }
+    }
+
+    /// The standardized path with its symbolic links resolved: the deepest existing ancestor goes
+    /// through realpath(3), and the components that do not exist yet follow unchanged.
+    static func resolvedPath(_ url: URL) -> String {
+        var existing = url.standardizedFileURL
+        var missing: [String] = []
+        while true {
+            if let real = realpath(existing.path, nil) {
+                defer { free(real) }
+                return missing.reversed().reduce(String(cString: real)) { ($0 as NSString).appendingPathComponent($1) }
+            }
+            let parent = existing.deletingLastPathComponent()
+            guard parent.path != existing.path else { return url.standardizedFileURL.path }
+            missing.append(existing.lastPathComponent)
+            existing = parent
+        }
     }
 
     /// docs/chats.md › Answer: writes the answer line and replaces the item; a request that is not

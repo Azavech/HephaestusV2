@@ -304,7 +304,7 @@ extension Engine {
         guard new != old else { return meta }
         meta.settings = new
         let saved = try saveChatMeta(meta, origin: actor)
-        applyChatSettingsLive(params.chatID, old: old, new: new)
+        applyChatSettingsLive(params.chatID, old: old, new: new, origin: actor)
         return saved
     }
 

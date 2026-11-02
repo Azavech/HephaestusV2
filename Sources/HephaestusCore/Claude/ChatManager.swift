@@ -134,9 +134,12 @@ final class ChatRuntime {
     }
 }
 
-/// What a control request of the engine is for.
+/// What a control request of the engine is for. `permissionMode` keeps the mode it asks for and
+/// the actor that changed it, for the approvals of its success answer (docs/chats.md › Changing
+/// settings).
 enum ControlPurpose: Sendable, Equatable {
-    case initialize, interrupt, model, permissionMode, effort, ultracode
+    case initialize, interrupt, model, effort, ultracode
+    case permissionMode(PermissionMode, origin: Actor)
 
     /// The setting named in the warning of a refused setting (docs/chats.md › Control protocol).
     var settingName: String? {

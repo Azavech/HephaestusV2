@@ -959,7 +959,7 @@ Swift type `ChatsUpdateSettings` · actors: user · result: [ChatMeta](data-mode
 | chatID   | ChatID       | yes      | Chat id.                                                                          |
 | settings | ChatSettings | yes      | Complete settings replacing the chat's: model, effort, permissionMode, ultracode. |
 
-Stored in the chat's metadata. When the chat has a live process, each changed field is applied at once, during a turn as well; otherwise at its next launch ([Chats](chats.md#changing-settings)).
+Stored in the chat's metadata. When the chat has a live process, each changed field is applied at once, during a turn as well; otherwise at its next launch ([Chats](chats.md#changing-settings)). A new permission mode accepted by the CLI also approves the pending permission requests that it allows, with `decidedBy` the name of the actor's device ([Chats](chats.md#changing-settings)).
 
 | Error    | When                                                                                                          |
 | -------- | ------------------------------------------------------------------------------------------------------------- |

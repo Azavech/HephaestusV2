@@ -111,6 +111,193 @@ struct ChatInteractionTests {
         }
     }
 
+    /// A chat process that sends the given `can_use_tool` requests after the user message and
+    /// answers `set_permission_mode` with success, or with `error` when it is set.
+    static func pendingPermissionsChat(_ requests: [String], error: String? = nil) -> @Sendable (FakeClaudeProcess) -> Void {
+        { process in
+            process.onLine = { process, line in
+                if line.contains(#""subtype":"initialize""#) {
+                    process.emit(FakeClaudeLauncher.initializeAnswer(for: line))
+                } else if line.hasPrefix(#"{"type":"user""#) {
+                    process.emit(FakeClaudeLauncher.initLine())
+                    for request in requests { process.emit(request) }
+                } else if line.contains("set_permission_mode"), let id = FakeClaudeLauncher.requestID(of: line) {
+                    if let error {
+                        process.emit(#"{"type":"control_response","response":{"subtype":"error","request_id":"\#(id)","error":"\#(error)"}}"#)
+                    } else {
+                        process.emit(FakeClaudeLauncher.controlSuccess(id))
+                    }
+                }
+            }
+        }
+    }
+
+    static func canUseTool(_ requestID: String, _ tool: String, _ input: String) -> String {
+        #"{"type":"control_request","request_id":"\#(requestID)","request":{"subtype":"can_use_tool","tool_name":"\#(tool)","input":\#(input)}}"#
+    }
+
+    static func permissionItems(_ items: [ChatItem]) -> [String: PermissionRequestItem] {
+        var result: [String: PermissionRequestItem] = [:]
+        for item in items {
+            if case .permissionRequest(let request) = item { result[request.requestID] = request }
+        }
+        return result
+    }
+
+    @Test("A switch to Allow All during a turn approves every pending request once the CLI accepts it")
+    func allowAllApprovesPending() async throws {
+        let launcher = FakeClaudeLauncher()
+        launcher.chatScript = Self.pendingPermissionsChat([
+            Self.canUseTool("p1", "Bash", #"{"command":"touch a.txt"}"#),
+            Self.canUseTool("p2", "mcp__hephaestus__delete_ticket", #"{"ticketID":"DEMO-1"}"#),
+        ])
+        try await withChatEngine(launcher: launcher) { bed in
+            let chat = try await bed.createChat(message: "Work")
+            #expect(await bed.waitForItem(chat.id) { $0.id == "perm-p2" } != nil)
+            #expect(await bed.state(chat.id) == .waitingPermission)
+            var settings = chat.settings
+            settings.permissionMode = .bypassPermissions
+            _ = try await bed.connection.call(ChatsUpdateSettings.self, .init(chatID: chat.id, settings: settings))
+            let process = try #require(await launcher.chatProcess())
+            #expect(await process.line { $0.contains(#""request_id":"p1""#) }
+                == #"{"type":"control_response","response":{"subtype":"success","request_id":"p1","response":{"behavior":"allow","updatedInput":{"command":"touch a.txt"}}}}"#)
+            #expect(await process.line { $0.contains(#""request_id":"p2""#) }?.contains(#""behavior":"allow""#) == true)
+            // The mode request comes first, the approvals after its success answer.
+            let lines = process.writtenLines
+            let modeIndex = try #require(lines.firstIndex { $0.contains(#""set_permission_mode","mode":"bypassPermissions""#) })
+            let approvalIndex = try #require(lines.firstIndex { $0.contains(#""request_id":"p1""#) })
+            #expect(modeIndex < approvalIndex)
+            #expect(await bed.waitForState(chat.id, .running))
+            let requests = Self.permissionItems(try await bed.transcript(chat.id))
+            let name = bed.connection.deviceInfo?.name
+            #expect(requests["p1"]?.decision == .allow && requests["p1"]?.decidedBy == name)
+            #expect(requests["p2"]?.decision == .allow && requests["p2"]?.decidedBy == name)
+            // An approved request can no longer be answered.
+            #expect(await engineError {
+                try await bed.connection.call(ChatsAnswerPermission.self, .init(chatID: chat.id, requestID: "p1", decision: .deny))
+            }?.code == .conflict)
+        }
+    }
+
+    @Test("A switch to Accept Edits approves only the pending file edits inside the project root")
+    func acceptEditsApprovesFileEdits() async throws {
+        try await withChatEngine { bed in
+            // The requests name the project root with its symbolic links resolved, as the CLI does.
+            let root = Engine.resolvedPath(bed.folder.root)
+            bed.launcher.chatScript = Self.pendingPermissionsChat([
+                Self.canUseTool("edit", "Edit", #"{"file_path":"\#(root)/Sources/a.swift","old_string":"a","new_string":"b"}"#),
+                Self.canUseTool("write", "Write", #"{"file_path":"notes/new.md","content":"x"}"#),
+                Self.canUseTool("notebook", "NotebookEdit", #"{"notebook_path":"\#(root)/n.ipynb","new_source":"x"}"#),
+                Self.canUseTool("outside", "Write", #"{"file_path":"\#(root)/../elsewhere.txt","content":"x"}"#),
+                Self.canUseTool("bash", "Bash", #"{"command":"git init"}"#),
+            ])
+            let chat = try await bed.createChat(message: "Edit")
+            #expect(await bed.waitForItem(chat.id) { $0.id == "perm-bash" } != nil)
+            var settings = chat.settings
+            settings.permissionMode = .acceptEdits
+            _ = try await bed.connection.call(ChatsUpdateSettings.self, .init(chatID: chat.id, settings: settings))
+            let process = try #require(await bed.launcher.chatProcess())
+            #expect(await process.line { $0.contains(#""request_id":"notebook""#) }?.contains(#""behavior":"allow""#) == true)
+            #expect(await process.line { $0.contains(#""request_id":"edit""#) } != nil)
+            #expect(await process.line { $0.contains(#""request_id":"write""#) } != nil)
+            #expect(!process.writtenLines.contains { $0.contains(#""request_id":"outside""#) || $0.contains(#""request_id":"bash""#) })
+            let requests = Self.permissionItems(try await bed.transcript(chat.id))
+            #expect(requests["edit"]?.decision == .allow)
+            #expect(requests["write"]?.decision == .allow)
+            #expect(requests["notebook"]?.decision == .allow)
+            #expect(requests["outside"]?.decision == nil)
+            #expect(requests["bash"]?.decision == nil)
+            #expect(await bed.state(chat.id) == .waitingPermission)
+            // Another mode approves nothing.
+            settings.permissionMode = .auto
+            _ = try await bed.connection.call(ChatsUpdateSettings.self, .init(chatID: chat.id, settings: settings))
+            #expect(await process.line { $0.contains(#""set_permission_mode","mode":"auto""#) } != nil)
+            try await Task.sleep(for: .milliseconds(100))
+            #expect(!process.writtenLines.contains { $0.contains(#""request_id":"outside""#) || $0.contains(#""request_id":"bash""#) })
+            #expect(await bed.state(chat.id) == .waitingPermission)
+        }
+    }
+
+    @Test("A refused mode, or a mode changed again before the CLI's answer, approves nothing")
+    func refusedModeApprovesNothing() async throws {
+        let launcher = FakeClaudeLauncher()
+        launcher.chatScript = Self.pendingPermissionsChat([Self.canUseTool("p1", "Bash", #"{"command":"touch a.txt"}"#)],
+                                                          error: "Mode unavailable.")
+        try await withChatEngine(launcher: launcher) { bed in
+            let chat = try await bed.createChat(message: "Work")
+            #expect(await bed.waitForItem(chat.id) { $0.id == "perm-p1" } != nil)
+            var settings = chat.settings
+            settings.permissionMode = .bypassPermissions
+            _ = try await bed.connection.call(ChatsUpdateSettings.self, .init(chatID: chat.id, settings: settings))
+            #expect(await bed.waitForItem(chat.id) {
+                if case .system(let item) = $0 { return item.text.hasPrefix("Claude did not accept the new permission mode") } else { return false }
+            } != nil)
+            let process = try #require(await launcher.chatProcess())
+            #expect(!process.writtenLines.contains { $0.contains(#""request_id":"p1""#) })
+            #expect(await bed.state(chat.id) == .waitingPermission)
+            // The chat goes to Ask Every Time (refused too), to Allow All, then back to Ask Every
+            // Time before the CLI answers: the success for Allow All arrives when it is no longer
+            // the chat's mode, and approves nothing.
+            settings.permissionMode = .manual
+            _ = try await bed.connection.call(ChatsUpdateSettings.self, .init(chatID: chat.id, settings: settings))
+            #expect(await process.line { $0.contains(#""set_permission_mode","mode":"default""#) } != nil)
+            process.onLine = { process, line in
+                guard line.contains(#""set_permission_mode","mode":"default""#), let id = FakeClaudeLauncher.requestID(of: line),
+                      let number = Int(id.dropFirst("hephaestus-".count)) else { return }
+                process.emit(FakeClaudeLauncher.controlSuccess(ControlLines.requestID(number - 1)))
+                process.emit(FakeClaudeLauncher.controlSuccess(id))
+            }
+            settings.permissionMode = .bypassPermissions
+            _ = try await bed.connection.call(ChatsUpdateSettings.self, .init(chatID: chat.id, settings: settings))
+            settings.permissionMode = .manual
+            _ = try await bed.connection.call(ChatsUpdateSettings.self, .init(chatID: chat.id, settings: settings))
+            // Allow All again, answered at once: the request is approved after this last mode
+            // request only, so the late success above approved nothing.
+            process.onLine = { process, line in
+                guard line.contains("set_permission_mode"), let id = FakeClaudeLauncher.requestID(of: line) else { return }
+                process.emit(FakeClaudeLauncher.controlSuccess(id))
+            }
+            settings.permissionMode = .bypassPermissions
+            _ = try await bed.connection.call(ChatsUpdateSettings.self, .init(chatID: chat.id, settings: settings))
+            #expect(await process.line { $0.contains(#""request_id":"p1""#) }?.contains(#""behavior":"allow""#) == true)
+            let lines = process.writtenLines
+            let lastMode = try #require(lines.lastIndex { $0.contains(#""set_permission_mode","mode":"bypassPermissions""#) })
+            #expect(lines.filter { $0.contains("set_permission_mode") }.count == 5)
+            #expect(lines.firstIndex { $0.contains(#""request_id":"p1""#) }.map { $0 > lastMode } == true)
+            #expect(await bed.waitForState(chat.id, .running))
+        }
+    }
+
+    @Test("Accept Edits counts a file inside the project root through symbolic links, and nothing outside")
+    func acceptEditsPaths() throws {
+        try withTemporaryDirectory { temporary in
+            let root = temporary.appendingPathComponent("Project", isDirectory: true)
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            let link = temporary.appendingPathComponent("Link")
+            try FileManager.default.createSymbolicLink(at: link, withDestinationURL: root)
+            func edit(_ tool: String, _ field: String, _ path: String) -> PermissionRequestItem {
+                PermissionRequestItem(id: "perm-x", created: Date(), requestID: "x", toolName: tool, input: .object([field: .string(path)]))
+            }
+            func allows(_ item: PermissionRequestItem) -> Bool {
+                Engine.permissionMode(.acceptEdits, allows: item, projectRoot: root)
+            }
+            #expect(allows(edit("Edit", "file_path", root.path + "/a/b.swift")))
+            #expect(allows(edit("Write", "file_path", link.path + "/new/c.txt")))
+            #expect(allows(edit("Write", "file_path", Engine.resolvedPath(root) + "/d.txt")))
+            #expect(allows(edit("Write", "file_path", "relative.txt")))
+            #expect(allows(edit("NotebookEdit", "notebook_path", root.path + "/n.ipynb")))
+            #expect(!allows(edit("NotebookEdit", "file_path", root.path + "/n.ipynb")))
+            #expect(!allows(edit("Write", "file_path", root.path + "/../outside.txt")))
+            #expect(!allows(edit("Write", "file_path", root.path + "Sibling/x.txt")))
+            #expect(!allows(edit("Bash", "file_path", root.path + "/a.txt")))
+            #expect(!Engine.permissionMode(.acceptEdits, allows: edit("Edit", "file_path", root.path + "/a"), projectRoot: nil))
+            #expect(Engine.permissionMode(.bypassPermissions, allows: edit("Bash", "command", "rm -rf build"), projectRoot: nil))
+            for mode in [PermissionMode.manual, .plan, .auto, .dontAsk] {
+                #expect(!Engine.permissionMode(mode, allows: edit("Edit", "file_path", root.path + "/a"), projectRoot: root))
+            }
+        }
+    }
+
     @Test("Stop: pending requests denied, the Stopped by item, interrupt, then SIGINT while the turn goes on")
     func stop() async throws {
         let launcher = FakeClaudeLauncher()
