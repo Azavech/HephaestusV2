@@ -1291,7 +1291,7 @@ Input schema:
 Description:
 
 ```text
-Set a bundle's status to todo or in_progress. Implement All and implement_bundle set in_progress themselves. Only the user sets done, and you cannot change the status of a done bundle.
+Set a bundle's status to todo or in_progress. Implement All and implement_bundle set in_progress themselves. The engine sets done when every ticket is done; only the user sets done otherwise, and you cannot change the status of a done bundle.
 ```
 
 Input schema:

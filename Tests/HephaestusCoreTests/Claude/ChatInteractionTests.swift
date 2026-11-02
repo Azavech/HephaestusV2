@@ -521,6 +521,8 @@ struct ChatInteractionTests {
             try await bed.writeTicket(Ticket(id: "DEMO-2", title: "Two", status: .done, created: ISODate.now(), description: "Problem"))
             try await bed.writeBundle(TicketBundle(id: "DEMO-B1", title: "Polish", created: ISODate.now(), ticketIDs: ["DEMO-1", "DEMO-2"]))
             try await bed.writeBundle(TicketBundle(id: "DEMO-B2", title: "Finished", created: ISODate.now(), ticketIDs: ["DEMO-2"]))
+            // A bundle file added with every ticket done is done (docs/tickets.md › Bundle status rules); set back to To Do, it is refused.
+            _ = try await bed.connection.call(BundlesSetStatus.self, .init(bundleID: "DEMO-B2", status: "todo"))
             #expect(await engineError { try await bed.connection.call(ChatsImplementBundle.self, .init(bundleID: "DEMO-B2")) }
                 == EngineError(.conflict, "DEMO-B2 has no ticket left to implement."))
             let chat = try await bed.connection.call(ChatsImplementBundle.self, .init(bundleID: "DEMO-B1"))
@@ -538,7 +540,7 @@ struct ChatInteractionTests {
         }
     }
 
-    @Test("Implement All and implement_bundle set the bundle to in_progress; an in_progress or done bundle is refused; done is never set")
+    @Test("Implement All and implement_bundle set the bundle to in_progress; an in_progress or done bundle is refused; the last ticket done sets it to done")
     func implementBundleStatus() async throws {
         try await withChatEngine { bed in
             try await bed.writeTicket(Ticket(id: "DEMO-1", title: "One", created: ISODate.now(), description: "Problem"))
@@ -553,9 +555,9 @@ struct ChatInteractionTests {
             // implement_bundle: the same method with a claude actor.
             _ = try await bed.engine.call(ChatsImplementBundle.self, .init(bundleID: "DEMO-B2"), actor: .claude(chatID: chat.id.uuidString))
             #expect(try ProjectFileStore.readBundle(at: bed.folder.bundleFile("DEMO-B2"), projectID: "DEMO").status == .inProgress)
-            // Every ticket done: the bundle stays in_progress.
+            // Every ticket done: the bundle is done (docs/tickets.md › Bundle status rules).
             _ = try await bed.connection.call(TicketsSetStatus.self, .init(ticketID: "DEMO-2", status: "done"))
-            #expect(try await bed.connection.call(BundlesGet.self, .init(bundleID: "DEMO-B2")).status == .inProgress)
+            #expect(try await bed.connection.call(BundlesGet.self, .init(bundleID: "DEMO-B2")).status == .done)
             _ = try await bed.connection.call(BundlesSetStatus.self, .init(bundleID: "DEMO-B1", status: "done"))
             #expect(await engineError { try await bed.connection.call(ChatsImplementBundle.self, .init(bundleID: "DEMO-B1")) }
                 == EngineError(.conflict, "DEMO-B1 is done; set it to To Do to implement it."))

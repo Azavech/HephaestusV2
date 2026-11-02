@@ -33,7 +33,8 @@ extension Engine {
     /// loaded at that root under another parent is left as it is, except that with
     /// `adoptingTopLevel` a loaded top-level project becomes the child of `parentID`
     /// (projects.open, step 7). A project whose file is missing or invalid, or whose
-    /// identifier is used by a loaded project, is skipped and logged.
+    /// identifier is used by a loaded project, is skipped and logged. Each project it loads gets
+    /// the load rule of its bundles (docs/data-model.md › Loading, step 4).
     /// - Returns: the identifiers of the projects it loaded.
     @discardableResult
     func loadTree(rootPath: String, parentID: ProjectID?, adoptingTopLevel: Bool = false) -> [ProjectID] {
@@ -59,6 +60,7 @@ extension Engine {
             id = project.id
             newlyLoaded.append(id)
             log.info(.storage, "loaded project \(id) at \(rootPath)")
+            completeBundlesAtLoad(id)
             if domain.startupLoadDone {
                 // The transcripts of the projects loaded at startup are scanned by core-claude.
                 Task.detached { [weak self] in await self?.scanChatTranscripts(of: id) }

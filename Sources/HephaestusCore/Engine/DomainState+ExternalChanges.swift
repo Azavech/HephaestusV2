@@ -81,11 +81,36 @@ extension Engine {
             projectFileChanged(root: root)
         }
         var seen = Set<String>()
+        var statusTickets = Set<TicketID>()
+        var listBundles = Set<BundleID>()
         for change in itemChanges.sorted(by: { $0.path < $1.path }) where seen.insert(change.path).inserted {
             switch change.kind {
-            case .ticket(let id): ticketFileChanged(root: change.root, ticketID: id, path: change.path)
-            case .bundle(let id): bundleFileChanged(root: change.root, bundleID: id, path: change.path)
+            case .ticket(let id):
+                if ticketFileChanged(root: change.root, ticketID: id, path: change.path) { statusTickets.insert(id) }
+            case .bundle(let id):
+                if bundleFileChanged(root: change.root, bundleID: id, path: change.path) { listBundles.insert(id) }
             default: break
+            }
+        }
+        applyAutomaticBundleStatus(statusTickets: statusTickets, listBundles: listBundles)
+    }
+
+    /// Step 7 of docs/data-model.md › Processing a change: the automatic bundle status rules,
+    /// after the batch, for the bundles that list a ticket whose status changed and the bundles
+    /// whose set of tickets changed, by project and bundle number, with the actor `system`.
+    private func applyAutomaticBundleStatus(statusTickets: Set<TicketID>, listBundles: Set<BundleID>) {
+        var bundleIDs = listBundles
+        for projectID in Set(statusTickets.compactMap { Identifiers.projectID(of: $0) }) {
+            bundleIDs.formUnion(self.bundleIDs(listing: statusTickets, in: projectID))
+        }
+        let ordered = bundleIDs.sorted {
+            (Identifiers.projectID(of: $0) ?? "", DomainState.number(of: $0)) < (Identifiers.projectID(of: $1) ?? "", DomainState.number(of: $1))
+        }
+        for bundleID in ordered {
+            do {
+                try applyAutomaticBundleStatus(bundleID, origin: .system)
+            } catch {
+                log.error(.storage, "the status of \(bundleID) cannot be written: \(error)")
             }
         }
     }
@@ -298,25 +323,28 @@ extension Engine {
     // MARK: Ticket and bundle files
 
     /// docs/data-model.md › Reactions, ticket file.
-    private func ticketFileChanged(root: String, ticketID: TicketID, path: String) {
+    /// - Returns: whether the ticket's status may have changed for its bundles: the file was
+    ///   added, removed, or changed with another status (step 7 of Processing a change).
+    private func ticketFileChanged(root: String, ticketID: TicketID, path: String) -> Bool {
         guard let projectID = domain.projectID(atRoot: root), Identifiers.projectID(of: ticketID) == projectID else {
             if domain.projectID(atRoot: root) != nil {
                 log.warn(.storage, "\(path) is ignored: \(ticketID) does not belong to this project")
             }
-            return
+            return false
         }
         let loaded = domain.ticket(ticketID)
         switch readChangedFile(path) {
         case .own:
-            return
+            return false
         case .deleted:
             recordApplied(path, nil)
             domain.setInvalidTicket(ticketID, reason: nil)
-            guard let loaded else { return }
+            guard let loaded else { return false }
             domain.removeTicket(ticketID)
             emit(TicketDeletedEvent.self, TicketDeletedEvent.Payload(projectID: projectID, ticketID: ticketID), origin: .system)
             emitProjectsChanged(origin: .system)
             emitInverseLinkChanges(of: ticketID, old: loaded.links, new: [], origin: .system)
+            return true
         case .data(let data):
             let ticket: Ticket
             do {
@@ -329,10 +357,10 @@ extension Engine {
                 if loaded == nil {
                     domain.setInvalidTicket(ticketID, reason: (error as? StorageError)?.reason ?? FormatError.describe(error))
                 }
-                return
+                return false
             }
             recordApplied(path, data)
-            guard ticket != loaded else { return }
+            guard ticket != loaded else { return false }
             let countsBefore = domain.ticketCounts(of: projectID)
             domain.setTicket(ticket)
             emitTicketUpdated(ticket, origin: .system)
@@ -340,26 +368,30 @@ extension Engine {
             if domain.ticketCounts(of: projectID) != countsBefore {
                 emitProjectsChanged(origin: .system)
             }
+            return ticket.status != loaded?.status
         }
     }
 
     /// docs/data-model.md › Reactions, bundle file.
-    private func bundleFileChanged(root: String, bundleID: BundleID, path: String) {
+    /// - Returns: whether the bundle file was added or changed with another set of tickets
+    ///   (step 7 of Processing a change).
+    private func bundleFileChanged(root: String, bundleID: BundleID, path: String) -> Bool {
         guard let projectID = domain.projectID(atRoot: root), Identifiers.projectID(of: bundleID) == projectID else {
             if domain.projectID(atRoot: root) != nil {
                 log.warn(.storage, "\(path) is ignored: \(bundleID) does not belong to this project")
             }
-            return
+            return false
         }
         let loaded = domain.bundle(bundleID)
         switch readChangedFile(path) {
         case .own:
-            return
+            return false
         case .deleted:
             recordApplied(path, nil)
-            guard loaded != nil else { return }
+            guard loaded != nil else { return false }
             domain.removeBundle(bundleID)
             emit(BundleDeletedEvent.self, BundleDeletedEvent.Payload(projectID: projectID, bundleID: bundleID), origin: .system)
+            return false
         case .data(let data):
             let bundle: TicketBundle
             do {
@@ -369,12 +401,13 @@ extension Engine {
                 }
             } catch {
                 warnInvalid(path, error)
-                return
+                return false
             }
             recordApplied(path, data)
-            guard bundle != loaded else { return }
+            guard bundle != loaded else { return false }
             domain.setBundle(bundle)
             emit(BundleUpdatedEvent.self, bundle, origin: .system)
+            return loaded.map { Set($0.ticketIDs) != Set(bundle.ticketIDs) } ?? true
         }
     }
 

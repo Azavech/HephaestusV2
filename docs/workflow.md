@@ -347,7 +347,7 @@ The format of this comment is a default. Default chosen at design time.
 - When the user decides to skip a ticket, the orchestrator sets it back to `todo`, comments why, and continues with the next ticket. Default chosen at design time.
 - After every ticket has been implemented or skipped, the orchestrator pushes once, so the bundle starts a single CI run. The result is one commit per ticket, in bundle order, each with that ticket's id.
 - The orchestrator's final reply lists each ticket with its commit hash, or with `skipped` and the reason. It never sets a ticket to `done`. Default chosen at design time.
-- The bundle has its own status ([Bundle status rules](tickets.md#bundle-status-rules)): Implement All and `implement_bundle` set it to `in_progress`, and only the user sets it to `done`, even when every ticket is done. Claude may set it to `todo` or `in_progress` with `set_bundle_status`, never to `done`, and never changes a `done` bundle. Each ticket chat sets its ticket to `done` or `review` as [Ticket status](#ticket-status) says.
+- The bundle has its own status ([Bundle status rules](tickets.md#bundle-status-rules)): Implement All and `implement_bundle` set it to `in_progress`. The engine sets it to `done` when every ticket of the bundle is `done`, whoever set the last ticket, and back to `in_progress` when a ticket of a `done` bundle is not `done`; otherwise only the user sets it to `done`. Claude may set it to `todo` or `in_progress` with `set_bundle_status`, never to `done`, and never changes a `done` bundle. Each ticket chat sets its ticket to `done` or `review` as [Ticket status](#ticket-status) says.
 
 ## Project and feedback chats
 
@@ -526,3 +526,4 @@ Notes
 - R117: Claude asks the user to choose an SF Symbol with `ask_symbol`: suggestions show as icons, any SF Symbol of the Mac can be searched, the user picks one, answers another way or skips.
 - R119: The Testing section of a ticket Claude writes lists only checks of the behaviour in the running app, never code tests; the code tests to add can be named under Change.
 - R124: A ticket can depend on other tickets of its project or be related to them; the other ticket shows the inverse link, Blocks or Related; the user and Claude add and remove links; the ticket list marks a ticket that depends on a ticket that is not done, and Implement asks for confirmation while one is not done.
+- R126: The engine sets a bundle to done when every ticket of the bundle is done, whoever changed the last ticket, and sets a done bundle back to in progress when one of its tickets is not done.

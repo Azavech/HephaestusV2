@@ -567,14 +567,16 @@ Swift type `TicketsSetStatus` · actors: user, claude · result: [Ticket](data-m
 - A user may set any status at any time.
 - Claude may set any status, and never changes the status of a ticket whose status is `done` ([Tickets and bundles](tickets.md#status-rules)). It sets `done` only when every test of the ticket has passed; the engine does not check this.
 - Setting the current status changes nothing.
+- After writing the ticket file, the engine applies the [automatic bundle status rules](tickets.md#bundle-status-rules) to each bundle of the project that lists the ticket, in bundle number order, and writes each bundle whose status changes, whoever the actor is: the bundle becomes `done` when every ticket it lists is `done`, and a `done` bundle becomes `in_progress` when one of them is not.
 
 | Error     | When                                                                                      |
 | --------- | ----------------------------------------------------------------------------------------- |
 | invalid   | ticketID is malformed; status is not one of the four values.                              |
 | notFound  | No such ticket.                                                                           |
 | forbidden | Claude changes a `done` ticket (`HEPH-12 is done; only the user can change its status.`). |
+| internal  | A file cannot be written.                                                                 |
 
-Events: ticket.updated, projects.changed.
+Events: ticket.updated, projects.changed, then bundle.updated for each bundle whose status changed.
 
 ### tickets.delete
 
@@ -586,7 +588,7 @@ Swift type `TicketsDelete` · actors: user, claude · result: [Empty](#empty)
 
 Steps:
 
-1. Remove the ticket id from `tickets` of every bundle of the project that contains it.
+1. Remove the ticket id from `tickets` of every bundle of the project that contains it, and apply the [automatic bundle status rules](tickets.md#bundle-status-rules) to that bundle in the same write.
 2. Remove every link to the ticket from the `links` of every other ticket of the project.
 3. Move `ticket/<ticketID>.yml` and the folder `.hephaestus/attachments/<ticketID>/` to the Trash.
 
@@ -768,7 +770,7 @@ Steps:
 
 1. Validate the params.
 2. Allocate the number n with `nextBundleNumber` ([Data model](data-model.md#id-allocation)). The id is `<projectID>-B<n>`.
-3. Write `bundle/<bundleID>.yml` with `created` and `updated` now, the title (given, or the provisional title of [Tickets and bundles](tickets.md#bundle-rules)), the tickets and no chats.
+3. Write `bundle/<bundleID>.yml` with `created` and `updated` now, the title (given, or the provisional title of [Tickets and bundles](tickets.md#bundle-rules)), the tickets, no chats, and the status `done` when every ticket is `done`, `todo` otherwise ([Bundle status rules](tickets.md#bundle-status-rules)).
 4. Without a given title, ask Haiku in the background; the answer replaces the title only while the bundle still has its provisional title.
 
 A ticket may belong to several bundles.
@@ -792,6 +794,8 @@ Swift type `BundlesUpdate` · actors: user, claude · result: [TicketBundle](dat
 | ticketIDs | [TicketID] | no       | Replaces the list; may be empty; otherwise the rules of `bundles.create` apply. |
 
 An id that the bundle already lists is accepted even when its ticket file is missing, so that the user can reorder and remove the other ids ([Tickets and bundles](tickets.md#bundles)); an id the bundle does not list must name an existing ticket. Default chosen at design time.
+
+When `ticketIDs` adds or removes an id, the engine applies the [automatic bundle status rules](tickets.md#bundle-status-rules) in the same write, whoever the actor is: the bundle becomes `done` when every ticket it lists is `done`, and a `done` bundle becomes `in_progress` when one of them is not. A reorder alone or a title change keeps the status.
 
 | Error    | When                                                                                                                        |
 | -------- | --------------------------------------------------------------------------------------------------------------------------- |
@@ -2847,3 +2851,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R117: Claude asks the user to choose an SF Symbol with `ask_symbol`: suggestions show as icons, any SF Symbol of the Mac can be searched, the user picks one, answers another way or skips.
 - R123: Implement, Implement All and the feedback sheet let the user choose the model, the effort and the permission mode of the chat they start; the ticket chats that a bundle chat starts take its settings.
 - R124: A ticket can depend on other tickets of its project or be related to them; the other ticket shows the inverse link, Blocks or Related; the user and Claude add and remove links; the ticket list marks a ticket that depends on a ticket that is not done, and Implement asks for confirmation while one is not done.
+- R126: The engine sets a bundle to done when every ticket of the bundle is done, whoever changed the last ticket, and sets a done bundle back to in progress when one of its tickets is not done.

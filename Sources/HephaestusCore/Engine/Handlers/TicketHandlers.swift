@@ -173,6 +173,10 @@ extension Engine {
         try saveTicket(new)
         emitTicketUpdated(new, origin: actor)
         emitProjectsChanged(origin: actor)
+        // The bundles that list it, after the ticket file (docs/tickets.md › Bundle status rules).
+        for bundleID in bundleIDs(listing: [new.id], in: new.projectID!) {
+            try applyAutomaticBundleStatus(bundleID, origin: actor)
+        }
         return new
     }
 
@@ -182,9 +186,12 @@ extension Engine {
         let ticket = try existingTicket(params.ticketID)
         let projectID = ticket.projectID!
         let folder = loaded(projectID).folder
-        // 1. Every bundle file listing it.
+        // 1. Every bundle file listing it, with the automatic status rules in the same write.
         for var bundle in domain.bundles(of: projectID) where bundle.ticketIDs.contains(ticket.id) {
             bundle.ticketIDs.removeAll { $0 == ticket.id }
+            if let status = automaticBundleStatus(bundle) {
+                bundle.status = status
+            }
             bundle.updated = ISODate.now()
             try saveBundle(bundle)
             emit(BundleUpdatedEvent.self, bundle, origin: actor)

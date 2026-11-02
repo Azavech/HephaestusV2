@@ -59,8 +59,11 @@ extension Engine {
         let provisional = TicketTemplate.provisionalBundleTitle(ticketTitles: tickets.map(\.title))
             .trimmingCharacters(in: .whitespaces)
         let now = ISODate.now()
-        let bundle = TicketBundle(id: bundleID, title: title ?? provisional, created: now, updated: now,
+        var bundle = TicketBundle(id: bundleID, title: title ?? provisional, created: now, updated: now,
                                   ticketIDs: ticketIDs, chatIDs: [])
+        if let status = automaticBundleStatus(bundle) {
+            bundle.status = status
+        }
         do {
             try saveBundle(bundle)
         } catch {
@@ -88,6 +91,11 @@ extension Engine {
         if let title = params.title {
             new.title = try validated { try ModelRules.bundleTitle(title) }
             domain.pendingBundleNames[old.id] = nil
+        }
+        // Tickets added or removed apply the automatic status rules in the same write; a reorder
+        // alone does not (docs/tickets.md › Bundle status rules).
+        if Set(new.ticketIDs) != Set(old.ticketIDs), let status = automaticBundleStatus(new) {
+            new.status = status
         }
         guard new != old else { return old }
         new.updated = ISODate.now()
@@ -122,6 +130,48 @@ extension Engine {
         domain.removeBundle(bundle.id)
         emit(BundleDeletedEvent.self, BundleDeletedEvent.Payload(projectID: projectID, bundleID: bundle.id), origin: actor)
         return Empty()
+    }
+
+    // MARK: Automatic status (docs/tickets.md › Bundle status rules)
+
+    /// The status the automatic rules give a bundle, or nil when they keep its status. Complete:
+    /// a bundle that lists tickets, all `done`, becomes `done`. Reopened: a `done` bundle that
+    /// lists a ticket that is not `done` becomes `in_progress`; `reopen` false leaves it out, as
+    /// at load. A listed id without a loaded ticket counts as not done.
+    func automaticBundleStatus(_ bundle: TicketBundle, reopen: Bool = true) -> BundleStatus? {
+        guard !bundle.ticketIDs.isEmpty else { return nil }
+        if bundle.ticketIDs.allSatisfy({ domain.ticket($0)?.status == .done }) {
+            return bundle.status == .done ? nil : .done
+        }
+        return reopen && bundle.status == .done ? .inProgress : nil
+    }
+
+    /// Applies the automatic rules to a loaded bundle: a status change writes the bundle file and
+    /// emits `bundle.updated` with `origin`.
+    func applyAutomaticBundleStatus(_ bundleID: BundleID, reopen: Bool = true, origin: Actor) throws {
+        guard var bundle = domain.bundle(bundleID), let status = automaticBundleStatus(bundle, reopen: reopen) else { return }
+        bundle.status = status
+        bundle.updated = ISODate.now()
+        try saveBundle(bundle)
+        emit(BundleUpdatedEvent.self, bundle, origin: origin)
+    }
+
+    /// The bundles of a project that list one of `ticketIDs`, in bundle number order.
+    func bundleIDs(listing ticketIDs: Set<TicketID>, in projectID: ProjectID) -> [BundleID] {
+        domain.bundles(of: projectID).filter { $0.ticketIDs.contains(where: ticketIDs.contains) }.map(\.id)
+    }
+
+    /// The load rule of docs/data-model.md › Loading: the Complete rule alone on every bundle of a
+    /// project that was just loaded, with the actor `system`. A bundle that cannot be written
+    /// keeps its status and is logged.
+    func completeBundlesAtLoad(_ projectID: ProjectID) {
+        for bundle in domain.bundles(of: projectID) {
+            do {
+                try applyAutomaticBundleStatus(bundle.id, reopen: false, origin: .system)
+            } catch {
+                log.error(.storage, "\(bundle.id) cannot be set to done: \(error)")
+            }
+        }
     }
 
     // MARK: Helpers

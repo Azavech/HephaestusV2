@@ -105,22 +105,40 @@ Status changes requested by Claude:
 - The engine does not check the tests before Claude sets `done`; only the prompt carries that rule ([Claude workflow](workflow.md#ticket-status)).
 - Any change by Claude to a `done` ticket, setting `done` again included, fails with `forbidden` and `<ID> is done; only the user can change its status.`. Default chosen at design time.
 - No ticket status is set automatically: Implement and Implement All start a chat, and Claude sets `in_progress` itself as the first step of its workflow ([Claude workflow](workflow.md#implementation-workflow)). Implement All sets only the bundle's status ([Bundle status rules](#bundle-status-rules)).
+- A ticket's status change can change the status of the bundles that list it: the engine sets a bundle to `done` when all its tickets are `done`, and a `done` bundle back to `in_progress` when one of its tickets is not `done` ([Bundle status rules](#bundle-status-rules)). `tickets.setStatus` writes the ticket file first, then each bundle file whose status changes.
 
 ### Bundle status rules
 
 A bundle has its own status ([BundleStatus](data-model.md#bundle-file)):
 
-- `todo`: not started. Every bundle starts here, and a bundle file without a status reads as `todo`.
+- `todo`: not started. Every bundle starts here, except a bundle created from tickets that are all `done`, which starts as `done`. A bundle file without a status reads as `todo`.
 - `in_progress`: its implementation has started.
-- `done`: finished and accepted by the user.
+- `done`: finished: every ticket of the bundle is done, or the user set it.
 
 The bundle statuses are listed in this order everywhere: To Do, In Progress, Done. Their capsules have the colours of the ticket capsules: To Do gray, In Progress blue, Done green.
 
 - Implement All and `implement_bundle` (`chats.implementBundle`) set the bundle to `in_progress` when they start its implementation ([Implement All](#implement-all)).
-- Implement All is disabled while the bundle is `in_progress` or `done`. Nothing resets the status automatically: Implement All becomes available again only when the user sets the bundle back to To Do.
-- Only the user sets `done`. The engine never sets `done`, even when every ticket of the bundle is done.
+- Implement All is disabled while the bundle is `in_progress` or `done`. The engine never sets `todo`: Implement All becomes available again only when the user sets the bundle back to To Do.
+- The engine sets `done` and `in_progress` itself with the automatic rules below.
 - The user, from any device, may set any status at any time, with the Status pop-up of the bundle detail header or Set Status ▸ of the bundle list ([Bundles section](#bundles-section)).
 - Claude may set `todo` and `in_progress` with `set_bundle_status`, never `done`, and never changes the status of a `done` bundle.
+
+The engine keeps a bundle's status in step with its tickets with two automatic rules:
+
+- Complete: a bundle that lists at least one ticket, every one of them `done`, is set to `done`, whatever its status. A listed id without a ticket file, or whose ticket file never loaded ([Live updates](#live-updates)), counts as a ticket that is not `done`.
+- Reopened: a `done` bundle that lists a ticket that is not `done` is set to `in_progress`.
+- A bundle without tickets keeps its status.
+
+The engine applies both rules to a bundle at each of these changes, whoever makes it: the user from any device, Claude, or a program that changes the files (git, an editor, another instance):
+
+- A ticket the bundle lists changes status: `tickets.setStatus`, or its ticket file added, changed with another status or removed outside the engine ([Data model](data-model.md#processing-a-change)).
+- Tickets are added to or removed from the bundle: `bundles.create`, `bundles.update` with a `ticketIDs` that adds or removes an id (a reorder alone is not such a change), `tickets.delete` of a ticket it lists, or its bundle file added, or changed with another set of tickets, outside the engine.
+
+When the engine loads a project, at launch and at each later load ([Data model](data-model.md#loading)), it applies the Complete rule alone to every bundle of the project, so that a bundle completed while the app was not running, or before these rules existed, becomes `done`.
+
+- A status the user sets with the Status pop-up or Set Status ▸ stays until the next of these changes. A status other than `done` set on a complete bundle also ends at the next load of its project.
+- The automatic rules apply whoever makes the change: a ticket change by Claude can set a bundle to `done`, or a `done` bundle to `in_progress`, although `set_bundle_status` refuses both to Claude.
+- An automatic change is written to the bundle file with the change that triggers it: in the same write of the bundle file for `bundles.create`, `bundles.update` and `tickets.delete`, after the ticket file for `tickets.setStatus`, and after the files of the batch for a change made outside the engine. It emits `bundle.updated` with the actor of the call, or `system` at load and for a change made outside the engine ([Engine API](engine-api.md#event-envelope)).
 
 Status changes requested by Claude:
 
@@ -130,7 +148,7 @@ Status changes requested by Claude:
 | `in_progress`  | allowed     | no change         | `forbidden` |
 | `done`         | `forbidden` | `forbidden`       | `forbidden` |
 
-- The status changes only through `bundles.setStatus` (MCP tool `set_bundle_status`) and `chats.implementBundle`; `bundles.update` has no status parameter. The engine applies the rules for every caller.
+- The user and Claude change the status only through `bundles.setStatus` (MCP tool `set_bundle_status`) and `chats.implementBundle`; `bundles.update` has no status parameter. The engine applies the rules of this table for every caller. The automatic rules change the status only as a consequence of the changes listed above.
 - Setting the current status again succeeds, returns the bundle, writes nothing and emits no event. Default chosen at design time.
 - Claude setting `done` fails with `forbidden` and `Only the user can set <ID> to done.`. Any other change by Claude to a `done` bundle fails with `forbidden` and `<ID> is done; only the user can change its status.`. Default chosen at design time.
 - Every status change emits `bundle.updated` and reaches every window and remote device ([Live updates](#live-updates)).
@@ -475,7 +493,7 @@ The fields are defined in [Data model](data-model.md#bundle-file). The order of 
 - An unknown ticket id fails with `notFound`, except in `bundles.update` for an id that the bundle already lists: its ticket file may be missing ([Bundles section](#bundles-section)), and the user can still reorder and remove the other ids. A ticket id listed twice fails with `invalid` and `<ID> is listed more than once.`. Default chosen at design time.
 - `bundles.create` needs at least one ticket and otherwise fails with `invalid` and `A bundle needs at least one ticket.`. `bundles.update` accepts any list, including an empty one. Default chosen at design time.
 - A ticket may belong to several bundles. Default chosen at design time.
-- Deleting a ticket removes its id from every bundle, each of which emits `bundle.updated`.
+- Deleting a ticket removes its id from every bundle, each of which emits `bundle.updated`; the [automatic status rules](#bundle-status-rules) apply to each of them.
 - A bundle created without a title gets a provisional title made of its ticket titles joined with `, ` in bundle order, cut to its first 60 characters and trimmed, since a title may not end with white space ([Text](data-model.md#text)). Default chosen at design time.
 - Haiku then names the bundle in the background from the ticket titles with the `naming-bundle.md` prompt ([Chats](chats.md)), with at most 60 characters. As for tickets, a title changed in the meantime is never overwritten and a failed call is not retried.
 - A bundle has a status, To Do, In Progress or Done, separate from the statuses of its tickets ([Bundle status rules](#bundle-status-rules)). Its progress is the number of its tickets that are `done` out of all its tickets. The [segmented progress bar](#segmented-progress-bar) also shows how its other tickets are split between the statuses.
@@ -537,7 +555,7 @@ Create Bundle from Selection, New Bundle and Add Tickets… use this sheet.
 4. The bundle chat is the orchestrator. It takes the bundle's tickets in bundle order, skips the `done` ones, and starts one orchestrated ticket chat per ticket with `implement_ticket` ([Ticket chats and Implement](#ticket-chats-and-implement)). Each ticket chat takes the bundle chat's settings as they are when it starts, so a change made in the bundle chat's composer applies to the ticket chats started after it ([Orchestrated ticket chats](chats.md#orchestrated-ticket-chats)). It starts the next ticket's chat only after the previous one has reported back, so one ticket chat runs at a time ([Claude workflow](workflow.md#bundles)).
 5. Each ticket chat implements its ticket with the [implementation workflow](workflow.md#implementation-workflow): it sets the ticket to `in_progress`, asks its questions and permission prompts in its own chat, where the user answers them, commits without pushing, comments and sets the ticket to `done` or `review`. The Tickets tab shows the status changes as they happen.
 6. When a ticket chat's turn ends and the chat does not wait for answers, the engine sends the orchestrator a message with the chat's final reply, or tells it that the chat ended in error or was stopped ([Orchestrated ticket chats](chats.md#orchestrated-ticket-chats)). After an error or a stop, the orchestrator asks the user whether to retry the ticket, skip it or stop.
-7. After every ticket has been implemented or skipped, the orchestrator pushes once, so the bundle starts a single CI run. Its final reply lists each ticket with its commit hash, or with `skipped` and the reason. It never sets a ticket to `done`. The bundle stays `in_progress` until the user changes its status.
+7. After every ticket has been implemented or skipped, the orchestrator pushes once, so the bundle starts a single CI run. Its final reply lists each ticket with its commit hash, or with `skipped` and the reason. It never sets a ticket to `done`. The bundle becomes `done` when its last ticket is set to `done`, by its ticket chat or later by the user ([Bundle status rules](#bundle-status-rules)).
 
 The bundle's Chats tab has the filter button of the ticket's Chats tab ([Ticket chats and Implement](#ticket-chats-and-implement)). While it hides closed chats, the orchestrator stays listed as long as it or one of its ticket chats is open, and its closed ticket chats are hidden ([Bundles section](#bundles-section)).
 
@@ -666,3 +684,4 @@ Shortcuts of this document. All global shortcuts are listed in [UI](ui.md).
 - R123: Implement, Implement All and the feedback sheet let the user choose the model, the effort and the permission mode of the chat they start; the ticket chats that a bundle chat starts take its settings.
 - R124: A ticket can depend on other tickets of its project or be related to them; the other ticket shows the inverse link, Blocks or Related; the user and Claude add and remove links; the ticket list marks a ticket that depends on a ticket that is not done, and Implement asks for confirmation while one is not done.
 - R125: The chat lists have a filter button that hides closed chats: the chats closed by Claude and the chats whose ticket is done.
+- R126: The engine sets a bundle to done when every ticket of the bundle is done, whoever changed the last ticket, and sets a done bundle back to in progress when one of its tickets is not done.
