@@ -117,6 +117,42 @@ final class FeedbackController {
         finish(previewID)
     }
 
+    // MARK: Showing the feedback chat (docs/feedback.md › Feedback sheet; docs/ui.md › Choosing the window)
+
+    /// The main window that shows a new feedback chat: the captured main window; otherwise the most
+    /// recently key main window showing the receiving device; nil when a new main window opens on
+    /// that device.
+    static func mainWindow(for source: FeedbackSource, receivingDeviceID: String,
+                           mainWindowsByKeyOrder: [WindowState]) -> WindowState? {
+        if case .main(let captured) = source, captured.deviceID == receivingDeviceID,
+           mainWindowsByKeyOrder.contains(where: { $0.id == captured.id }) {
+            return captured
+        }
+        return mainWindowsByKeyOrder.first { $0.deviceID == receivingDeviceID }
+    }
+
+    /// Send succeeded: the chosen main window, ordered front and made key, navigates to the chat
+    /// (`chat{chatID}` target); no chat window opens and the window the feedback came from stays
+    /// open. Returns once the window's state is updated or the target is pending.
+    func showChat(_ meta: ChatMeta, in workspace: DeviceWorkspace, source: FeedbackSource) async {
+        guard let app else { return }
+        // The returned metadata resolves the chat's project when `chat.updated` has not arrived yet.
+        if workspace.chats[meta.id.uuidString] == nil {
+            workspace.chats[meta.id.uuidString] = meta
+        }
+        let target = NavigationTarget.chat(chatID: meta.id)
+        guard let state = Self.mainWindow(for: source, receivingDeviceID: workspace.deviceID,
+                                          mainWindowsByKeyOrder: app.mainWindowsByKeyOrder) else {
+            let state = WindowState(deviceID: workspace.deviceID)
+            state.needsDefaultProject = true
+            state.pendingTarget = target
+            app.openMainWindow(state)
+            return
+        }
+        app.windowRegistry.window(forMain: state.id)?.makeKeyAndOrderFront(nil)
+        await state.navigate(to: target)
+    }
+
     // MARK: Context (docs/feedback.md › Feedback context)
 
     private func makeCapture(for source: FeedbackSource, app: AppModel) -> FeedbackCapture {

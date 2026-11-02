@@ -1,6 +1,6 @@
 # Feedback
 
-The ladybug at the right end of the status bar, the menu command Help ▸ Send Feedback… and ⇧⌘B start feedback from any window. The app captures the window into a PNG inside its own process, then shows a sheet with the screenshot, a comment field, the project that will receive the feedback and the model, effort and permission mode of the feedback chat. Send asks the engine to create a feedback chat, which opens in its own window with the comment, the screenshot and the context already sent. Claude clarifies with labelled questions when something is unclear, then creates a ticket that follows the description template, starts as `todo`, gets its title from Haiku and carries the screenshot. The chat is linked to that ticket.
+The ladybug at the right end of the status bar, the menu command Help ▸ Send Feedback… and ⇧⌘B start feedback from any window. The app captures the window into a PNG inside its own process, then shows a sheet with the screenshot, a comment field, the project that will receive the feedback and the model, effort and permission mode of the feedback chat. Send asks the engine to create a feedback chat, with the comment, the screenshot and the context already sent, and a main window comes to the front showing it in the Chats section of its project. Claude clarifies with labelled questions when something is unclear, then creates a ticket that follows the description template, starts as `todo`, gets its title from Haiku and carries the screenshot. The chat is linked to that ticket.
 
 ## Flow
 
@@ -8,7 +8,7 @@ The ladybug at the right end of the status bar, the menu command Help ▸ Send F
 2. Capture: the window is rendered into a PNG in-process ([Screenshot capture](#screenshot-capture)).
 3. Sheet: screenshot preview, comment, project, chat settings, Send ([Feedback sheet](#feedback-sheet)).
 4. Send: the client calls `chats.createFeedback` on the receiving device ([Creating the feedback chat](#creating-the-feedback-chat)).
-5. Pop up: the client opens the returned chat in a new chat window.
+5. Pop up: a main window comes to the front and shows the returned chat, selected in the Chats section of its project ([Feedback sheet](#feedback-sheet)).
 6. Claude asks labelled questions when needed, creates the ticket with `create_ticket` and summarizes ([Feedback chat](#feedback-chat)).
 7. The engine links the chat and the ticket ([Resulting ticket](#resulting-ticket)).
 
@@ -76,7 +76,9 @@ Send is enabled when every condition holds; otherwise one line under the comment
 The sheet re-evaluates the conditions when the connection state or the snapshot of the receiving device changes. Default chosen at design time.
 
 - Sending: `Send` shows a progress indicator and every control of the sheet, `Cancel` included, is disabled until the answer arrives. Default chosen at design time.
-- Success: the sheet closes and the client opens the returned chat in a new chat window, in front and key ([UI](ui.md)). This window is the pop up of the feedback flow.
+- Success: the sheet closes, no chat window opens, and a main window navigates to the returned chat as for a `chat{chatID}` target: it activates the chat's project, selects the Chats section and selects the chat ([Resolving a target](ui.md#resolving-a-target)). That main window, ordered front and made key, is the pop up of the feedback flow ([Choosing the window](ui.md#choosing-the-window)):
+  - feedback captured from a main window: that main window;
+  - feedback captured from a chat window, Settings, About or any other window: the most recently key main window showing the receiving device, otherwise a new main window opened on that device; the window the feedback came from stays open.
 - Error: the sheet stays open with the error message under the comment field; the comment, the project and the chat settings are kept.
 
 ### Chat settings menus
@@ -167,9 +169,9 @@ The engine then:
 2. creates a chat of kind `feedback` with `ticket` null in the target project and emits `chat.updated`;
 3. stores the screenshot as an attachment of the chat, in `.hephaestus/chats/<chat-id>/<attachment-uuid>-screenshot.png` of the target project ([Data model](data-model.md));
 4. sends the feedback message, the comment and the rendered context with the screenshot as an image, in the format of [Chats](chats.md#implement-and-feedback-chats), and launches the Claude process with the feedback prompt;
-5. returns the `ChatMeta`, and the client opens it in a new chat window.
+5. returns the `ChatMeta`, and a main window of the client shows the chat in the Chats section of its project ([Feedback sheet](#feedback-sheet)).
 
-Haiku names the chat from this first message, as for every chat, and the chat window title follows the chat title ([Chats](chats.md)).
+Haiku names the chat from this first message, as for every chat, and the chat's row and header follow the chat title ([Chats](chats.md)).
 
 Example params, with a 1 × 1 pixel PNG standing in for a real screenshot:
 
@@ -200,12 +202,12 @@ Example params, with a 1 × 1 pixel PNG standing in for a real screenshot:
 - Its system prompt is the common prompt plus the feedback prompt ([Chats](chats.md#prompt-feedback)). The feedback prompt gives Claude the rendered context and the absolute path of the stored screenshot on the receiving device.
 - Claude's steps, as the feedback prompt orders them ([Workflow](workflow.md)):
   1. read the comment, the context and the screenshot;
-  2. when something needed for the ticket is unclear, ask labelled questions (A, B, C…) with the MCP tool `ask_questions`, each with options and one recommended option, then end the turn; the user answers them one by one in the chat window ([Chats](chats.md));
+  2. when something needed for the ticket is unclear, ask labelled questions (A, B, C…) with the MCP tool `ask_questions`, each with options and one recommended option, then end the turn; the user answers them one by one in the chat view ([Chats](chats.md));
   3. call `create_ticket` in the target project with a description that follows the template and the screenshot path in `attachments`;
   4. reply with the ticket id and a short summary of the ticket.
 - Permission prompts for these tool calls follow the chat's permission mode ([Chats](chats.md)).
 - Claude implements the ticket in the feedback chat only when the user asks ([Workflow](workflow.md)).
-- Closing the chat window does not stop the chat. The chat is listed in the Chats section of the target project, in the Feedback group.
+- The chat is listed in the Chats section of the target project, in the Feedback group, where Send shows it. Selecting another chat, or closing the main window or a chat window opened with Open in New Window, does not stop the chat.
 
 Example `.hephaestus/chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301.yml` after the ticket was created:
 
@@ -283,7 +285,8 @@ chats: [3F2504E0-4F89-11D3-9A0C-0305E82C3301]
 
 ## Remote windows
 
-- The capture, the sheet and the chat window run in the app of the device the user works on; the projects, the settings, the chat, its Claude process and the ticket live on the receiving device ([Remote devices](remote.md)).
+- The capture, the sheet and the main window that shows the chat run in the app of the device the user works on; the projects, the settings, the chat, its Claude process and the ticket live on the receiving device ([Remote devices](remote.md)).
+- After Send from a remote window, the main window chosen as [Feedback sheet](#feedback-sheet) specifies shows the receiving device's chat, as after Send from a window of This Mac.
 - The screenshot travels base64-encoded inside the request, within the message size limit of [Remote devices](remote.md).
 - In the context, `deviceName` names the device the user works on and `mainDeviceName` the receiving device.
 

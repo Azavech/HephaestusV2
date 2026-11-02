@@ -5,8 +5,8 @@ import SwiftUI
 
 /// Send Feedback: the screenshot (`AppModel.feedbackPreviews[previewID]`), the comment, the
 /// project, the chat settings menus and the context; Send calls `chats.createFeedback` on the
-/// receiving device and opens the returned chat in a new chat window (docs/feedback.md › Feedback
-/// sheet, › Chat settings menus, › Creating the feedback chat).
+/// receiving device and a main window shows the returned chat in its Chats section
+/// (docs/feedback.md › Feedback sheet, › Chat settings menus, › Creating the feedback chat).
 struct FeedbackSheet: View {
     let previewID: UUID
     let source: FeedbackSource
@@ -350,7 +350,7 @@ struct FeedbackSheet: View {
             do {
                 let meta = try await workspace.call(ChatsCreateFeedback.self, params)
                 closeSheet()
-                app.openChatWindow(ChatWindowValue(deviceID: workspace.deviceID, chatID: meta.id.uuidString))
+                await app.feedbackController.showChat(meta, in: workspace, source: source)
             } catch {
                 // The sheet stays open; the comment, the project and the chat settings are kept.
                 sendError = errorMessage(error)
