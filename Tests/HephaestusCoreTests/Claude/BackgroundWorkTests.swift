@@ -3,7 +3,8 @@ import Testing
 @testable import HephaestusCore
 
 /// docs/chats.md › Background work and › Fixture replays: the background tasks the CLI reports,
-/// the notification turn it starts when a background task ends, and the chat's `backgroundWork`.
+/// the notification turn it starts when a background task ends, the chat's `backgroundWork`, and
+/// the idle timer while it runs (docs/chats.md › Idle termination and quitting).
 @Suite("Background work")
 struct BackgroundWorkTests {
     static let captureSettings = ChatSettings(model: "haiku", effort: .low, permissionMode: .bypassPermissions, ultracode: false)
@@ -238,6 +239,67 @@ struct BackgroundWorkTests {
             #expect(await bed.waitForState(chat.id, .idle))
             let expected = [Pair(.running, false), Pair(.running, true), Pair(.running, false), Pair(.idle, false)]
             #expect(await eventually { await Self.reported(bed, chat.id) == expected })
+        }
+    }
+
+    // MARK: Idle termination
+
+    /// A 400 ms idle timer; the tests check that the process is still alive after `idleWait`.
+    static func idleTimings() -> ChatTimings {
+        var timings = testChatTimings()
+        timings.idleTimeout = .milliseconds(400)
+        return timings
+    }
+
+    static let idleWait: Duration = .seconds(1)
+
+    @Test("Idle termination waits for the background work and the notification turn that reports it")
+    func idleTimerWaitsForNotificationTurn() async throws {
+        let launcher = FakeClaudeLauncher()
+        launcher.chatScript = FakeClaudeLauncher.silentChat()
+        try await withChatEngine(launcher: launcher, chatTimings: Self.idleTimings()) { bed in
+            let chat = try await bed.createChat(message: ChatTurnTests.messageA)
+            let process = try #require(await launcher.chatProcess())
+            _ = try #require(await ChatTurnTests.userLine(process, ChatTurnTests.messageA))
+            process.emit(FakeClaudeLauncher.initLine())
+            process.emit(#"{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"t1"}]}"#)
+            ChatTurnTests.emitReply(process, messageID: "msg_A", text: "A")
+            #expect(await eventually { await Self.reported(bed, chat.id).last == Pair(.idle, true) })
+            try await Task.sleep(for: Self.idleWait)
+            #expect(!process.isInputClosed)
+            // The task ends: the notification turn is pending until its system/init.
+            process.emit(#"{"type":"system","subtype":"task_notification","task_id":"t1","status":"completed"}"#)
+            process.emit(#"{"type":"system","subtype":"background_tasks_changed","tasks":[]}"#)
+            try await Task.sleep(for: Self.idleWait)
+            #expect(!process.isInputClosed)
+            #expect(await bed.engine.chatMeta(chat.id)?.backgroundWork == true)
+            process.emit(FakeClaudeLauncher.initLine())
+            ChatTurnTests.emitReply(process, messageID: "msg_N", text: "done")
+            #expect(await eventually { await Self.reported(bed, chat.id).last == Pair(.idle, false) })
+            #expect(await eventually { process.isInputClosed })
+        }
+    }
+
+    @Test("Background work that starts after the turn cancels the idle timer; its end without a notification turn starts it")
+    func idleTimerFollowsBackgroundWork() async throws {
+        let launcher = FakeClaudeLauncher()
+        launcher.chatScript = FakeClaudeLauncher.silentChat()
+        try await withChatEngine(launcher: launcher, chatTimings: Self.idleTimings()) { bed in
+            let chat = try await bed.createChat(message: ChatTurnTests.messageA)
+            let process = try #require(await launcher.chatProcess())
+            _ = try #require(await ChatTurnTests.userLine(process, ChatTurnTests.messageA))
+            process.emit(FakeClaudeLauncher.initLine())
+            // The result starts the idle timer; the next line cancels it.
+            ChatTurnTests.emitReply(process, messageID: "msg_A", text: "A")
+            process.emit(#"{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"t1"}]}"#)
+            #expect(await eventually { await Self.reported(bed, chat.id).last == Pair(.idle, true) })
+            try await Task.sleep(for: Self.idleWait)
+            #expect(!process.isInputClosed)
+            // The task ends without a task_notification: no turn follows.
+            process.emit(#"{"type":"system","subtype":"background_tasks_changed","tasks":[]}"#)
+            #expect(await eventually { await Self.reported(bed, chat.id).last == Pair(.idle, false) })
+            #expect(await eventually { process.isInputClosed })
+            #expect(await bed.state(chat.id) == .idle)
         }
     }
 

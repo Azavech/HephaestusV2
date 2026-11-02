@@ -288,9 +288,11 @@ extension Engine {
         case .backgroundTasks(let taskIDs):
             // docs/chats.md › Background work, rules 1 and 2.
             process.background.tasksChanged(taskIDs)
+            updateIdleTimer(chatID, runtime: runtime, process: process)
             reportChatState(chatID)
         case .taskNotification(let taskID):
             process.background.taskEnded(taskID, cliTurnOpen: process.turns.cliTurnOpen)
+            updateIdleTimer(chatID, runtime: runtime, process: process)
             reportChatState(chatID)
         case .delta(let itemID, let kind, let text):
             runtime.deltas.append(itemID: itemID, kind: kind, text: text)
@@ -369,7 +371,7 @@ extension Engine {
     /// The turn ends when no message is outstanding and no CLI turn is open (docs/chats.md › Turn
     /// tracking, step 5): the metadata is written, then the process ends when the chat closes
     /// (docs/chats.md › Closing a chat) or an `mcpPort` change waits for the turn; otherwise the
-    /// idle timer starts.
+    /// idle timer starts when the process has no background work running.
     private func chatTurnEnded(_ chatID: ChatID, runtime: ChatRuntime, process: ChatProcess) {
         runtime.turnInProgress = false
         runtime.starting = false
@@ -389,7 +391,7 @@ extension Engine {
         } else if process.terminateAfterTurn {
             terminateChatProcess(process)
         } else {
-            startIdleTimer(chatID, process: process)
+            updateIdleTimer(chatID, runtime: runtime, process: process)
         }
     }
 
@@ -412,7 +414,19 @@ extension Engine {
         }
     }
 
-    /// docs/chats.md › Idle termination: 20 minutes after a turn ends, the process ends as
+    /// docs/chats.md › Idle termination and quitting: the idle timer runs only while the chat has
+    /// no turn in progress and its process has no background work running. It starts when the
+    /// later of the two ends and is cancelled when either starts.
+    private func updateIdleTimer(_ chatID: ChatID, runtime: ChatRuntime, process: ChatProcess) {
+        if runtime.starting || runtime.turnInProgress || process.background.isRunning {
+            runtime.idleTask?.cancel()
+            runtime.idleTask = nil
+        } else if runtime.idleTask == nil {
+            startIdleTimer(chatID, process: process)
+        }
+    }
+
+    /// docs/chats.md › Idle termination and quitting: 20 minutes later, the process ends as
     /// `closeChatProcess` ends it.
     private func startIdleTimer(_ chatID: ChatID, process: ChatProcess) {
         guard let runtime = chats.runtimes[chatID] else { return }
@@ -422,7 +436,7 @@ extension Engine {
         runtime.idleTask = Task {
             try? await Task.sleep(for: timeout)
             guard !Task.isCancelled, let current = self.chats.runtimes[chatID]?.process, current.generation == generation,
-                  !current.exited, self.chats.runtimes[chatID]?.turnInProgress == false
+                  !current.exited, self.chats.runtimes[chatID]?.turnInProgress == false, !current.background.isRunning
             else { return }
             self.log.info(.claude, "chat \(chatID.uuidString): idle termination")
             self.closeChatProcess(current)
