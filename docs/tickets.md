@@ -42,7 +42,7 @@ Docs
 (List all docs files and paragraphs relevant to the issue)
 ```
 
-- Tickets created by Claude must follow this template. Under Testing, Claude lists the tests that decide whether the ticket is done ([Claude workflow](workflow.md#writing-tickets)). The engine validates it as described in [Template validation](#template-validation). What Claude writes in each section is in [Claude workflow](workflow.md#writing-tickets).
+- Tickets created by Claude must follow this template. Under Testing, Claude lists the checks of the behaviour in the running app that decide whether the ticket is done, never code tests; the code tests to add can be named under Change ([Claude workflow](workflow.md#writing-tickets)). The engine validates it as described in [Template validation](#template-validation). What Claude writes in each section is in [Claude workflow](workflow.md#writing-tickets).
 - A description that Claude writes later with `update_ticket` is validated the same way. Default chosen at design time.
 - The description field of the New Ticket sheet starts with exactly this text. Descriptions written by the user are not validated: the user may keep, change or replace the template.
 
@@ -85,6 +85,7 @@ The rules (the same list is in [Claude workflow](workflow.md#ticket-status)):
 - Every ticket is created with status `todo`; the user may change it afterwards with the status picker.
 - Claude sets `in_progress` when it starts working on a ticket.
 - When Claude has finished a ticket, after the completion comment, it sets `done` when every Claude test of the ticket's Testing section has passed and the user has said in the chat that every User test has passed; otherwise it sets `review`. A ticket without a Testing section goes to `review`. Claude may switch a ticket between `in_progress` and `review`, for example to make a correction the user asked for.
+- A code-test bullet of a Testing section (a bullet for a build or test command, a unit test, a test file or the docs conformance tests), for example in an older ticket or a ticket the user wrote, counts as passed once a release built by CI contains the ticket's commit.
 - Claude may never change the status of a `done` ticket.
 - The user may set any status at any time.
 - A `review` ticket is not done: Implement and Implement All stay enabled for it.
@@ -570,3 +571,4 @@ Shortcuts of this document. All global shortcuts are listed in [UI](ui.md).
 - R110: A bundle has a status: todo, in progress or done; Implement All sets it to in progress and is disabled until the user sets it back to To Do.
 - R111: Implement All runs one ticket chat per ticket, one at a time, coordinated by the bundle chat that started them, and pushes once at the end.
 - R118: Ticket and bundle ids named in chats, ticket descriptions and comments are links that open the ticket or the bundle.
+- R119: The Testing section of a ticket Claude writes lists only checks of the behaviour in the running app, never code tests; the code tests to add can be named under Change.

@@ -386,10 +386,10 @@ description: |
   Command-W on a locked tab beeps and shows the tooltip "This tab is locked"; the tab stays open.
 
   Change
-  Make Command-W use the tab strip's close action, which checks the lock.
+  Make Command-W use the tab strip's close action, which checks the lock, with a test that Command-W leaves a locked tab open.
 
   Testing
-  - Claude: a test presses Command-W on a locked tab and checks that the tab stays open.
+  - Claude: on an isolated instance, press Command-W on a locked tab and check that the tab stays open.
   - User: press Command-W on a locked tab and see the beep and the tooltip.
 
   Docs

@@ -85,8 +85,8 @@ Under each heading, write:
 - Problem: what is wrong or missing, from the user's point of view, in one to three sentences.
 - Current Behavior: what happens today, with numbered steps to reproduce a defect. For a feature that does not exist yet, write: None: the feature does not exist yet.
 - Expected: the behaviour after the change, precise enough to be tested.
-- Change: what changes in the docs and in the code, naming the docs files and the code areas, limited to what has been decided.
-- Testing: one bullet per test that decides whether the ticket is done, prefixed with who performs it: - Claude: <test> for a test you run, or - User: <test> for a test the user performs.
+- Change: what changes in the docs and in the code, naming the docs files and the code areas, limited to what has been decided. It can name the code tests to add.
+- Testing: one bullet per check of the behaviour in the running app that decides whether the ticket is done, prefixed with who performs it: - Claude: <test> for a check you run, for example on an isolated instance, or - User: <test> for a check the user performs. Never write a code test there: no bullet for a build or test command such as swift test, a unit test, a test file or the docs conformance tests. Code tests stay part of the work: name the tests to add under Change, and add them and run the build and test step before you commit.
 - Docs: one bullet per relevant docs file and section, as a Markdown link relative to the project root, for example: - [tickets.md › Status rules](docs/tickets.md#status-rules). Write (new) after a section that does not exist yet.
 
 # Ticket status
@@ -96,6 +96,7 @@ A ticket's status is todo (not started), in_progress (being worked on), review (
 - Every ticket is created with the status todo.
 - Set in_progress with set_ticket_status when you start working on a ticket: as the first step of implementing it, and in a ticket chat before your first change to the docs or the code for that ticket. Reading the ticket and asking questions do not change the status.
 - When you have finished a ticket, after its completion comment, set it with set_ticket_status to done when every Claude test of its Testing section has passed and the user has said in the chat that every User test has passed; otherwise set it to review, and your completion comment and your final reply ask the user to review it and set it to Done. A ticket without a Testing section goes to review.
+- A code-test bullet of a Testing section (a bullet for a build or test command, a unit test, a test file or the docs conformance tests), for example in an older ticket or a ticket the user wrote, counts as passed once a release built by CI contains the ticket's commit.
 - When the user later says in the chat that every User test of a ticket in review has passed, and every Claude test has passed, set it to done.
 - To change a ticket that is in review, for example for a correction the user asked for, set it to in_progress before your first change and back to review after the completion comment of the correction.
 - Never change the status of a ticket that is done, and never implement it: tell the user to set its status to To Do or In Progress first.
@@ -169,7 +170,7 @@ Notes
 - Without a commit, the first line is "Not committed: <reason>.", for example "Not committed: the project is not a git repository.". When the commit was not pushed, the first line ends with " (not pushed: <reason>)".
 - When the docs already described the behaviour, the Docs part is "- No change: <link> already describes the expected behaviour.".
 - When no build or test command exists, the Checks part is "- None: no build or test command found.".
-- The Testing part has one line per bullet of the ticket's Testing section, in the same order, with its result: passed, failed or waiting for the user. When the ticket has no Testing section, the Testing part is "- None: the ticket has no Testing section.".
+- The Testing part has one line per bullet of the ticket's Testing section, in the same order, with its result: passed, failed, waiting for the user, or waiting for the release for a code-test bullet while no release built by CI contains the commit. When the ticket has no Testing section, the Testing part is "- None: the ticket has no Testing section.".
 - Post the comment before you end your turn.
 
 # Implementing a bundle

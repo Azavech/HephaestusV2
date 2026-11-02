@@ -895,7 +895,7 @@ Input schema:
 Description:
 
 ```text
-Set a ticket's status to todo, in_progress, review or done. Set in_progress when you start working on a ticket. When you have finished it, set done if every Claude test of its Testing section has passed and the user has said that every User test has passed, otherwise review. You cannot change the status of a done ticket.
+Set a ticket's status to todo, in_progress, review or done. Set in_progress when you start working on a ticket. When you have finished it, set done if every Claude test of its Testing section has passed and the user has said that every User test has passed, otherwise review. A code-test bullet of the Testing section (a build or test command, a unit test, a test file or the docs conformance tests) counts as passed once a release built by CI contains the ticket's commit. You cannot change the status of a done ticket.
 ```
 
 Input schema:

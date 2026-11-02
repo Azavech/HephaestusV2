@@ -153,18 +153,19 @@ Docs
 (List all docs files and paragraphs relevant to the issue)
 ```
 
-| Heading          | What Claude writes                                                                                                                                                                                                                   |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Problem          | What is wrong or missing, from the user's point of view, in one to three sentences.                                                                                                                                                  |
-| Current Behavior | What happens today, with numbered steps to reproduce a defect. For a feature that does not exist yet: `None: the feature does not exist yet.`                                                                                        |
-| Expected         | The behaviour after the change, precise enough to be tested.                                                                                                                                                                         |
-| Change           | What changes in the docs and in the code, naming the docs files and code areas, limited to what has been decided.                                                                                                                    |
-| Testing          | One bullet per test that decides whether the ticket is done, prefixed with who performs it: `- Claude: <test>` for a test Claude runs, `- User: <test>` for a test the user performs.                                                |
-| Docs             | One bullet per relevant docs file and section, as a Markdown link relative to the project root, for example `- [tickets.md › Status rules](docs/tickets.md#status-rules)`. A section that does not exist yet is followed by `(new)`. |
+| Heading          | What Claude writes                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Problem          | What is wrong or missing, from the user's point of view, in one to three sentences.                                                                                                                                                                                                                                                                                                                      |
+| Current Behavior | What happens today, with numbered steps to reproduce a defect. For a feature that does not exist yet: `None: the feature does not exist yet.`                                                                                                                                                                                                                                                            |
+| Expected         | The behaviour after the change, precise enough to be tested.                                                                                                                                                                                                                                                                                                                                             |
+| Change           | What changes in the docs and in the code, naming the docs files and code areas, limited to what has been decided. It can name the code tests to add.                                                                                                                                                                                                                                                     |
+| Testing          | One bullet per check of the behaviour in the running app that decides whether the ticket is done, prefixed with who performs it: `- Claude: <test>` for a check Claude runs, for example on an isolated instance, `- User: <test>` for a check the user performs. Never a code test: no bullet for a build or test command such as `swift test`, a unit test, a test file or the docs conformance tests. |
+| Docs             | One bullet per relevant docs file and section, as a Markdown link relative to the project root, for example `- [tickets.md › Status rules](docs/tickets.md#status-rules)`. A section that does not exist yet is followed by `(new)`.                                                                                                                                                                     |
 
 The content rules of this table are defaults. Default chosen at design time.
 
 - Claude replaces the hint lines of the template, such as `(Explain the problem)`; it never keeps them.
+- Code tests stay part of the work without being acceptance tests: the Change section can name the tests to add, and Claude still adds tests and runs the [build and test](#build-and-test) step before it commits. For HephaestusV2, the release workflow runs `swift test` again before it builds a release, so a commit whose code tests fail never ships ([CI](ci.md#release-workflow)).
 - When something the ticket needs is unknown, Claude asks first and creates the ticket after the answers.
 - Each problem gets its own ticket: a request covering several problems leads to one `create_ticket` call per problem. Default chosen at design time.
 - Attachments are file paths on the main device, such as screenshots or logs. They are copied into the ticket ([Attachments](tickets.md#attachments)).
@@ -178,6 +179,7 @@ The status rules (the same list is in [Status rules](tickets.md#status-rules)):
 - Every ticket is created with status `todo`; the user may change it afterwards with the status picker.
 - Claude sets `in_progress` when it starts working on a ticket.
 - When Claude has finished a ticket, after the completion comment, it sets `done` when every Claude test of the ticket's Testing section has passed and the user has said in the chat that every User test has passed; otherwise it sets `review`. A ticket without a Testing section goes to `review`. Claude may switch a ticket between `in_progress` and `review`, for example to make a correction the user asked for.
+- A code-test bullet of a Testing section (a bullet for a build or test command, a unit test, a test file or the docs conformance tests), for example in an older ticket or a ticket the user wrote, counts as passed once a release built by CI contains the ticket's commit.
 - Claude may never change the status of a `done` ticket.
 - The user may set any status at any time.
 - A `review` ticket is not done: Implement and Implement All stay enabled for it.
@@ -328,7 +330,7 @@ Notes
 - Without a commit, the first line is `Not committed: <reason>.`, for example `Not committed: the project is not a git repository.`. When the commit was not pushed, the first line ends with ` (not pushed: <reason>)`; a ticket chat started by a bundle chat ends it with ` (not pushed: the bundle chat pushes at the end)` ([Bundles](#bundles)).
 - When the docs already described the behaviour, the Docs part reads `- No change: <link> already describes the expected behaviour.`.
 - When no build or test command exists, the Checks part reads `- None: no build or test command found.`.
-- The Testing part has one line per bullet of the ticket's Testing section, in the same order, with its result: `passed`, `failed` or `waiting for the user`. When the ticket has no Testing section, it reads `- None: the ticket has no Testing section.`.
+- The Testing part has one line per bullet of the ticket's Testing section, in the same order, with its result: `passed`, `failed`, `waiting for the user`, or `waiting for the release` for a code-test bullet while no release built by CI contains the commit ([Ticket status](#ticket-status)). When the ticket has no Testing section, it reads `- None: the ticket has no Testing section.`.
 - Claude posts the comment before it ends its turn, so the comment exists before an update can restart the app.
 
 The format of this comment is a default. Default chosen at design time.
@@ -457,10 +459,9 @@ Expected
 When the database is unreachable, GET /health answers 503 Service Unavailable with the plain-text body down and writes the database error to the service log. When the database is reachable, it keeps answering 200 OK with the body ok.
 
 Change
-Document both answers of GET /health in a new Health section of docs/http.md, then make the health handler check the database connection and answer from the result.
+Document both answers of GET /health in a new Health section of docs/http.md, then make the health handler check the database connection and answer from the result, with a test of each answer.
 
 Testing
-- Claude: make test passes, with a test of each answer of GET /health.
 - User: stop the database and check that GET /health answers 503 with the body down.
 
 Docs
@@ -485,7 +486,6 @@ Checks
 - make test: passed
 
 Testing
-- Claude: make test passes, with a test of each answer of GET /health: passed
 - User: stop the database and check that GET /health answers 503 with the body down: waiting for the user
 
 Notes
@@ -521,3 +521,4 @@ Notes
 - R113: Claude can close the chat it runs in when the user asks or its work is finished; a closed chat shows `This conversation is over` in place of its composer until the user reopens it.
 - R114: Claude marks each SF Symbol it names, and the chat transcript and the pinned questions card show the marker as the symbol's icon followed by its name.
 - R117: Claude asks the user to choose an SF Symbol with `ask_symbol`: suggestions show as icons, any SF Symbol of the Mac can be searched, the user picks one, answers another way or skips.
+- R119: The Testing section of a ticket Claude writes lists only checks of the behaviour in the running app, never code tests; the code tests to add can be named under Change.

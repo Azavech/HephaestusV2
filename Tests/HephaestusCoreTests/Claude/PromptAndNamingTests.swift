@@ -23,10 +23,10 @@ struct PromptAndNamingTests {
         A locked tab stays open; the app beeps and shows the tooltip "This tab is locked".
 
         Change
-        Make Command-W skip locked tabs in the docs and in the web tab strip.
+        Make Command-W skip locked tabs in the docs and in the web tab strip, with a test that Command-W leaves a locked tab open.
 
         Testing
-        - Claude: a test presses Command-W on a locked tab and checks that the tab stays open.
+        - Claude: on an isolated instance, press Command-W on a locked tab and check that the tab stays open.
         - User: press Command-W on a locked tab and see the beep and the tooltip.
 
         Docs
@@ -190,6 +190,31 @@ struct PromptAndNamingTests {
             let setStatus = try #require(message.range(of: "set the ticket to done or review as \"Ticket status\" describes"))
             #expect(comment.upperBound < setStatus.lowerBound)
         }
+    }
+
+    @Test("Testing lists no code tests, and a code-test bullet passes once a CI release contains the commit")
+    func codeTestsOutOfTesting() throws {
+        let common = Prompts.text(.common)
+        func section(_ start: String, _ end: String) throws -> String {
+            let lower = try #require(common.range(of: start)).lowerBound
+            let upper = try #require(common.range(of: end)).lowerBound
+            return String(common[lower..<upper])
+        }
+        let writing = try section("# Writing tickets", "# Ticket status")
+        #expect(writing.contains("- Change: what changes in the docs and in the code, naming the docs files and the code areas, limited to what has been decided. It can name the code tests to add."))
+        #expect(writing.contains("- Testing: one bullet per check of the behaviour in the running app that decides whether the ticket is done"))
+        #expect(writing.contains("Never write a code test there: no bullet for a build or test command such as swift test, a unit test, a test file or the docs conformance tests."))
+        #expect(writing.contains("name the tests to add under Change, and add them and run the build and test step before you commit"))
+
+        let status = try section("# Ticket status", "# Implementing a ticket")
+        #expect(status.contains("counts as passed once a release built by CI contains the ticket's commit."))
+
+        let comment = try section("# Completion comment", "# Implementing a bundle")
+        #expect(comment.contains("passed, failed, waiting for the user, or waiting for the release for a code-test bullet while no release built by CI contains the commit"))
+
+        let tool = try #require(MCPToolCatalog.tool(named: "set_ticket_status", debugTools: false))
+        #expect(tool.description.contains("A code-test bullet of the Testing section"))
+        #expect(tool.description.contains("counts as passed once a release built by CI contains the ticket's commit."))
     }
 
     @Test("The common prompt lists close_chat and says when to call it")

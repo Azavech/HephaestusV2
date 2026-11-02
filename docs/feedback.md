@@ -252,10 +252,10 @@ description: |
   A locked tab keeps its lock icon wherever it is moved in the tab strip.
 
   Change
-  Keep the lock icon of a locked tab when the tab strip reorders tabs.
+  Keep the lock icon of a locked tab when the tab strip reorders tabs, with a test that a moved locked tab stays locked.
 
   Testing
-  - Claude: a test moves a locked tab in the tab strip and checks that it is still locked.
+  - Claude: on an isolated instance, move a locked tab in the tab strip and check that it is still locked.
   - User: drag a locked tab to another position and see its lock icon.
 
   Docs
