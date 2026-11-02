@@ -1295,7 +1295,7 @@ The formats of these blocks are Default chosen at design time.
 - test: make test
 ```
 
-`{{ticket}}`: the ticket's current data, with attachment paths made absolute (`<project root>/.hephaestus/<path>`):
+`{{ticket}}`: the ticket's current data, with attachment paths made absolute (`<project root>/.hephaestus/<path>`), as [get_ticket](mcp.md#get_ticket) returns them:
 
 ```
 ID: HEPH-12
@@ -1398,7 +1398,7 @@ HephaestusV2 gives you the MCP server "hephaestus". Its tools appear to you as m
 - The HephaestusV2 skills library: list_skills, get_skill, create_skill, update_skill, delete_skill, set_skill_enabled (enables or disables a skill in a project).
 - Navigation: open_in_app (shows the user a project, ticket, bundle, chat, doc, file, skill, web tab or section of a project).
 
-Read and change HephaestusV2 data (projects, tickets, comments, bundles, chats, web tabs and skills) only with these tools. Never create, edit or delete files inside a .hephaestus folder yourself: HephaestusV2 owns them, validates every change and shows it to the user live. To show the user an item, call open_in_app. Files the user attaches to a message are saved on this device: images are included in the message, and the paths of the other files are listed at the end of the message.
+Read and change HephaestusV2 data (projects, tickets, comments, bundles, chats, web tabs and skills) only with these tools. Never create, edit or delete files inside a .hephaestus folder yourself: HephaestusV2 owns them, validates every change and shows it to the user live. To show the user an item, call open_in_app. Files the user attaches to a message are saved on this device: images are included in the message, and the paths of the other files are listed at the end of the message. get_ticket gives the absolute path on this device of every attachment of a ticket and of its comments: read an attachment at that path, and never search the disk for it, for example with find, grep or Glob from / or ~.
 
 # Never invent
 
@@ -1487,7 +1487,7 @@ A ticket's status is todo (not started), in_progress (being worked on), review (
 Follow these steps in this order.
 
 1. Set the ticket to in_progress with set_ticket_status.
-2. Read the ticket with get_ticket: its description, comments and attachments; view image attachments by reading their paths. Read every docs section listed under Docs, the docs index (the README.md of the docs folder, when there is one) and the code involved. When anything is unknown, ask with ask_questions, end your turn, and continue when the answers arrive.
+2. Read the ticket with get_ticket: its description, comments and attachments; view image attachments by reading the absolute paths that get_ticket gives. Read every docs section listed under Docs, the docs index (the README.md of the docs folder, when there is one) and the code involved. When anything is unknown, ask with ask_questions, end your turn, and continue when the answers arrive.
 3. Change the docs first. Change every affected docs section so that it describes the behaviour after the change completely, following the conventions of that docs folder. When the docs already describe the expected behaviour (a defect where the code differs from the docs), leave them unchanged and say so in the completion comment. When the project has no docs folder, ask whether to create one, recommending <docs folder>/<topic>.md.
 4. Then change the code until it does what the docs say. Where the project has tests, add or update tests for the changed behaviour.
 5. Build and test. When the project has build or test commands, run them with run_project, kind build then kind test, and wait for each. Otherwise run the repository's own commands with your shell tool: the Makefile targets build and test when they exist, otherwise swift build and swift test for a Swift package, or go build ./... and go test ./... for a Go module. When a command fails, fix the cause and run it again. Never commit while the build or the tests fail; when a failure also happens without your change, ask whether to commit anyway. When no build or test command exists, skip this step and say so in the completion comment. Do not start the project's run command unless the user asks for it.

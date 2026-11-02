@@ -43,6 +43,9 @@ public enum MCPToolHandling: String, Sendable, Hashable, CaseIterable {
     case runProject
     /// `list_tickets`: tickets.list, then the tickets with `status` when given.
     case listTickets
+    /// `get_ticket`: tickets.get, then projects.get for the root; attachment paths made
+    /// absolute (docs/mcp.md › get_ticket).
+    case getTicket
     /// `create_ticket`, `add_comment`: `attachments` are paths turned into AttachmentUpload with
     /// `sourcePath` (docs/mcp.md › Attachments from paths).
     case attachmentsFromPaths

@@ -21,6 +21,7 @@ This is the operating manual Claude follows in every HephaestusV2 chat. Claude n
 - Claude reads and changes HephaestusV2 data (projects, tickets, comments, bundles, chats, web tabs and skills) with the tools of the `hephaestus` MCP server, which Claude sees as `mcp__hephaestus__<tool>` ([MCP](mcp.md)). It never edits the files under `.hephaestus/` directly. Default chosen at design time.
 - Every tool call goes through the engine, which validates it and sends the change to every window and remote device.
 - To show the user an item, Claude calls `open_in_app` with a navigation target.
+- `get_ticket` gives the absolute path on the main device of every attachment of a ticket and of its comments ([MCP](mcp.md#get_ticket)). Claude reads an attachment at that path and never searches the disk for it, for example with `find`, `grep` or `Glob` from `/` or `~`.
 
 ## Never invent
 
@@ -212,7 +213,7 @@ The workflow starts with Implement, whose first message is `implement-ticket.md`
 
 ### Read
 
-- `get_ticket` returns the description, comments and attachments. Claude views image attachments by reading their paths.
+- `get_ticket` returns the description, comments and attachments, each attachment with its absolute path `<project root>/.hephaestus/<path>` ([MCP](mcp.md#get_ticket)). Claude views image attachments by reading those paths.
 - Claude reads every docs section listed under Docs, the docs index (the `README.md` of the docs folder, when there is one) and the code involved.
 - Unknowns are asked as described in [Questions protocol](#questions-protocol). After asking, Claude ends its turn and continues when the Answers message arrives.
 

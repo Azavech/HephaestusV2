@@ -249,7 +249,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "get_ticket",
             description: #"""
-            Get a ticket: title, status, dates, creator, description, attachments, comments and chat ids. Attachment paths are relative to the project's .hephaestus folder.
+            Get a ticket: title, status, dates, creator, description, attachments, comments and chat ids. Attachment paths are absolute paths on this Mac.
             """#,
             inputSchema: schema(#"""
             {
@@ -266,7 +266,7 @@ extension MCPToolCatalog {
             """#),
             isDebug: false,
             engineMethod: "tickets.get",
-            handling: .forward
+            handling: .getTicket
         ),
         MCPToolDefinition(
             name: "create_ticket",

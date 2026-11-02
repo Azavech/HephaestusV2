@@ -113,6 +113,25 @@ struct MCPToolHandlers: Sendable {
                 throw EngineError.internalError(error)
             }
 
+        case .getTicket:
+            let text = try await engineText(tool, params: .object(args), actor: actor)
+            let method = tool.engineMethod ?? ""
+            let ticket: Ticket
+            do {
+                ticket = try EngineJSON.decode(Ticket.self, from: Data(text.utf8))
+            } catch {
+                throw EngineError.unexpectedResult(method)
+            }
+            guard let projectID = ticket.projectID else { throw EngineError.unexpectedResult(method) }
+            let projectData = try await engineCall("projects.get", try Self.encoded(.object(["projectID": .string(projectID)])), actor)
+            let project: ProjectDetail
+            do {
+                project = try EngineJSON.decode(ProjectDetail.self, from: projectData)
+            } catch {
+                throw EngineError.unexpectedResult("projects.get")
+            }
+            return try Self.json(Self.absoluteAttachmentPaths(ticket, projectRoot: project.rootPath))
+
         case .attachmentsFromPaths:
             var params = args
             if case .array(let paths)? = args["attachments"] {
@@ -154,13 +173,35 @@ struct MCPToolHandlers: Sendable {
     /// Step 6 and 7: `Engine.dispatch` with the token's actor; the result text is its JSON.
     private func engineText(_ tool: MCPToolDefinition, params: JSONValue, actor: Actor) async throws -> String {
         let method = tool.engineMethod ?? ""
-        let data: Data
+        return String(decoding: try await engineCall(method, try Self.encoded(params), actor), as: UTF8.self)
+    }
+
+    private static func encoded(_ params: JSONValue) throws -> Data {
         do {
-            data = try EngineJSON.encode(params)
+            return try EngineJSON.encode(params)
         } catch {
             throw EngineError.internalError(error)
         }
-        return String(decoding: try await engineCall(method, data, actor), as: UTF8.self)
+    }
+
+    /// `ticket` with the `path` of every attachment, of the ticket and of its comments, made
+    /// absolute: `<project root>/.hephaestus/<path>` (docs/mcp.md › get_ticket).
+    static func absoluteAttachmentPaths(_ ticket: Ticket, projectRoot: String) -> Ticket {
+        func absolute(_ attachments: [Attachment]) -> [Attachment] {
+            attachments.map { attachment in
+                var attachment = attachment
+                attachment.path = attachment.absolutePath(projectRoot: projectRoot)
+                return attachment
+            }
+        }
+        var ticket = ticket
+        ticket.attachments = absolute(ticket.attachments)
+        ticket.comments = ticket.comments.map { comment in
+            var comment = comment
+            comment.attachments = absolute(comment.attachments)
+            return comment
+        }
+        return ticket
     }
 
     // MARK: Debug tools

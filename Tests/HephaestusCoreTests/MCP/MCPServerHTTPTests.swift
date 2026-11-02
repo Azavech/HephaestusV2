@@ -523,10 +523,10 @@ struct MCPServerHTTPTests {
         try await withStandaloneServer { server in
             let chatID = UUID()
             let chatToken = await server.tokens.issueChatToken(chatID: chatID)
-            _ = try await MCPHTTP.post(port: server.port, token: chatToken, MCPHTTP.toolCall("get_ticket", #"{"ticketID":"HEPH-1"}"#))
-            _ = try await MCPHTTP.post(port: server.port, token: server.externalToken, MCPHTTP.toolCall("get_ticket", #"{"ticketID":"HEPH-1"}"#))
+            _ = try await MCPHTTP.post(port: server.port, token: chatToken, MCPHTTP.toolCall("get_bundle", #"{"bundleID":"HEPH-B1"}"#))
+            _ = try await MCPHTTP.post(port: server.port, token: server.externalToken, MCPHTTP.toolCall("get_bundle", #"{"bundleID":"HEPH-B1"}"#))
             #expect(server.engine.calls.map(\.actor) == [.claude(chatID: chatID.uuidString), .claude(chatID: "external")])
-            #expect(server.log.entries.contains { $0.message.hasPrefix("tools/call get_ticket by \(chatID.uuidString): ok in ") })
+            #expect(server.log.entries.contains { $0.message.hasPrefix("tools/call get_bundle by \(chatID.uuidString): ok in ") })
 
             let questions = #"{"questions":[{"label":"A","question":"q","options":[{"label":"x"},{"label":"y"}],"recommended":"x"}]}"#
             let asked = try await MCPHTTP.post(port: server.port, token: chatToken, MCPHTTP.toolCall("ask_questions", questions))

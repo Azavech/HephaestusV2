@@ -299,7 +299,7 @@ The drop areas and ⌘V are defaults. Default chosen at design time.
 
 ### Storage and limits
 
-- Each file is stored at `.hephaestus/attachments/<TICKET-ID>/<attachment id>-<name>`. Its `path` in the ticket file is relative to `.hephaestus/`.
+- Each file is stored at `.hephaestus/attachments/<TICKET-ID>/<attachment id>-<name>`. Its `path` in the ticket file is relative to `.hephaestus/`; `get_ticket` gives Claude the absolute path `<project root>/.hephaestus/<path>` ([MCP](mcp.md#get_ticket)).
 - `name` is the original file name with `/`, `:` and control characters (U+0000 to U+001F and U+007F) replaced by `_`; an empty result becomes `file`. When the stored file name `<attachment id>-<name>` would exceed 213 UTF-8 bytes, the part of the name before the extension is shortened by whole characters: the temporary file `.<stored file name>.<UUID>.tmp` of its atomic write is 42 bytes longer and must stay within the 255-byte limit of a file name ([Atomic writes](data-model.md#atomic-writes)). Default chosen at design time.
 - `contentType` is the type given with the upload when there is one, otherwise the MIME type of the file extension's UTType, otherwise `application/octet-stream`. Default chosen at design time.
 - Each file is at most 20 MiB (20,971,520 bytes), and the files of one request are at most 20 MiB together. Base64 makes this at most 26.7 MiB inside the request, below the 32 MB message limit of [Remote devices](remote.md). A larger file fails with `invalid` and `<name> is larger than 20 MB.`; larger requests fail with `invalid` and `The attachments of one request exceed 20 MB.`. Default chosen at design time.

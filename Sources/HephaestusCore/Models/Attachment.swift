@@ -47,6 +47,11 @@ public struct Attachment: Codable, Sendable, Hashable, Identifiable {
         try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
     }
 
+    /// The absolute path of the file on the main device: `<project root>/.hephaestus/<path>`.
+    public func absolutePath(projectRoot: String) -> String {
+        (projectRoot as NSString).appendingPathComponent(".hephaestus/" + path)
+    }
+
     /// The stored file name, `<id>-<name>`.
     public var storedFileName: String { "\(id.uuidString)-\(name)" }
 

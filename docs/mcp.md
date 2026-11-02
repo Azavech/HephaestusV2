@@ -274,7 +274,7 @@ From step 2 on, every failure is a tool result with `isError: true`, never a JSO
 ```
 
 - `content` holds exactly one text item; there is no `structuredContent`.
-- For a tool backed by an engine method, the text is the method's result encoded with `EngineJSON.encoder()`, byte for byte the JSON that `Engine.dispatch` returns: sorted keys, dates as in [JSON encoding](engine-api.md#json-encoding) (whole seconds without a fraction, milliseconds when a fraction exists), `{}` for an empty result ([Engine API](engine-api.md#json-encoding)). `list_tickets` with `status` encodes the filtered array with the same encoder.
+- For a tool backed by an engine method, the text is the method's result encoded with `EngineJSON.encoder()`, byte for byte the JSON that `Engine.dispatch` returns: sorted keys, dates as in [JSON encoding](engine-api.md#json-encoding) (whole seconds without a fraction, milliseconds when a fraction exists), `{}` for an empty result ([Engine API](engine-api.md#json-encoding)). `list_tickets` with `status` encodes the filtered array with the same encoder, and `get_ticket` the ticket with absolute attachment paths ([get_ticket](#get_ticket)).
 - `ask_questions` and `ask_symbol` return plain text ([Text returned to Claude](#text-returned-to-claude), [ask_symbol](#ask_symbol)) and the debug tools return the JSON given in their sections.
 
 ### Tool errors
@@ -730,15 +730,15 @@ Input schema:
 
 ### get_ticket
 
-- **Engine call:** tickets.get with `ticketID`.
-- An attachment's file is at `<project root>/.hephaestus/<path>`; Claude reads it with its own file tools ([Data model](data-model.md)).
-- **Result:** the `Ticket`.
-- **Errors:** Those of tickets.get: malformed id (`invalid`), no such ticket (`notFound`).
+- **Engine call:** tickets.get with `ticketID`, then projects.get with the project identifier of the ticket's id, for the project's `rootPath`.
+- The MCP layer replaces the `path` of every attachment of the ticket and of its comments, relative to `.hephaestus/` in the ticket file ([Data model](data-model.md)), with the absolute path of the file on the main device, `<project root>/.hephaestus/<path>`: the form of `{{ticket}}` ([Rendered blocks](chats.md#rendered-blocks)). Claude reads the file at that path with its own file tools and never searches the disk for it ([Workflow](workflow.md#app-data-through-mcp)).
+- **Result:** the `Ticket` with these absolute attachment paths, encoded with `EngineJSON.encoder()`.
+- **Errors:** Those of tickets.get: malformed id (`invalid`), no such ticket (`notFound`). Those of projects.get when the project is removed between the two calls: no project with this identifier (`notFound`).
 
 Description:
 
 ```text
-Get a ticket: title, status, dates, creator, description, attachments, comments and chat ids. Attachment paths are relative to the project's .hephaestus folder.
+Get a ticket: title, status, dates, creator, description, attachments, comments and chat ids. Attachment paths are absolute paths on this Mac.
 ```
 
 Input schema:

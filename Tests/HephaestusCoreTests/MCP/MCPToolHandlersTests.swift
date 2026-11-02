@@ -374,4 +374,47 @@ struct MCPToolHandlersTests {
             #expect(ticket == stored)
         }
     }
+
+    // MARK: get_ticket (docs/mcp.md › get_ticket)
+
+    @Test("get_ticket returns the ticket with the attachment paths of the ticket and its comments made absolute")
+    func getTicketAbsolutePaths() async throws {
+        try await Self.withEngine(namer: FixedTitleNamer(title: nil)) { handlers, h in
+            func tool(_ name: String, _ arguments: JSONValue) async throws -> String {
+                let definition = try #require(MCPToolCatalog.tool(named: name, debugTools: false))
+                return try await handlers.call(definition, arguments: arguments, actor: Self.chat).get()
+            }
+            let screenshot = h.folder.appendingPathComponent("screenshot.png")
+            try Data("png".utf8).write(to: screenshot)
+            let console = h.folder.appendingPathComponent("console.txt")
+            try Data("log".utf8).write(to: console)
+            let created = try EngineJSON.decode(Ticket.self, from: Data(try await tool("create_ticket", .object([
+                "projectID": "HEPH", "description": .string(templateDescription), "attachments": [.string(screenshot.path)],
+            ])).utf8))
+            _ = try await tool("add_comment", .object([
+                "ticketID": .string(created.id), "text": "Log", "attachments": [.string(console.path)],
+            ]))
+
+            let text = try await tool("get_ticket", .object(["ticketID": .string(created.id)]))
+            let stored = try await h.connection.call(TicketsGet.self, .init(ticketID: created.id))
+            let root = try await h.connection.call(ProjectsGet.self, .init(projectID: "HEPH")).rootPath
+            var expected = stored
+            expected.attachments[0].path = root + "/.hephaestus/" + stored.attachments[0].path
+            expected.comments[0].attachments[0].path = root + "/.hephaestus/" + stored.comments[0].attachments[0].path
+            #expect(text == String(decoding: try EngineJSON.encode(expected), as: UTF8.self))
+
+            let ticket = try EngineJSON.decode(Ticket.self, from: Data(text.utf8))
+            #expect(FileManager.default.contents(atPath: ticket.attachments[0].path) == Data("png".utf8))
+            #expect(FileManager.default.contents(atPath: ticket.comments[0].attachments[0].path) == Data("log".utf8))
+        }
+    }
+
+    @Test("get_ticket: an unknown ticket fails with the error of tickets.get, before projects.get")
+    func getTicketUnknown() async throws {
+        let engine = RecordedEngine()
+        engine.answer("tickets.get", .failure(EngineError(.notFound, "No ticket HEPH-99.")))
+        let result = try await Self.call(Self.handlers(engine), "get_ticket", #"{"ticketID":"HEPH-99"}"#)
+        #expect(result == .failure(MCPToolError(code: .notFound, message: "No ticket HEPH-99.")))
+        #expect(engine.calls.map(\.method) == ["tickets.get"])
+    }
 }

@@ -79,8 +79,7 @@ enum Prompts {
     /// (`chatLines`, one `- <chat id> (<kind>): <title>` each), cut beyond 30,000 characters.
     static func ticket(_ ticket: Ticket, projectRoot: String, chatLines: [String]) -> String {
         func attachmentLine(_ attachment: Attachment) -> String {
-            let path = (projectRoot as NSString).appendingPathComponent(".hephaestus/" + attachment.path)
-            return "- \(attachment.name) (\(attachment.contentType), \(attachment.size) bytes): \(path)"
+            "- \(attachment.name) (\(attachment.contentType), \(attachment.size) bytes): \(attachment.absolutePath(projectRoot: projectRoot))"
         }
         var lines = [
             "ID: \(ticket.id)",
