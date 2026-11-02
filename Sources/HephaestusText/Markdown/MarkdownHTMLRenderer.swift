@@ -14,12 +14,30 @@ public enum MarkdownHTMLRenderer {
 
     /// The HTML of one code block (docs/documentation-viewer.md › Code blocks), for callers that
     /// show code outside Markdown text, such as tool cards of the chat transcript. `label` is
-    /// written as given after the label filter of that section; nil leaves it out.
-    public static func renderCodeBlock(_ code: String, language: CodeLanguage, label: String?) -> String {
+    /// written as given after the label filter of that section; nil leaves it out. The ids of
+    /// `projectIdentifiers` in the code become links (docs/documentation-viewer.md › Ticket and
+    /// bundle ids).
+    public static func renderCodeBlock(_ code: String, language: CodeLanguage, label: String?,
+                                       projectIdentifiers: Set<String> = []) -> String {
         var writer = HTMLWriter()
+        writer.codeIdentifiers = projectIdentifiers
         let filtered = label.flatMap(CodeBlockLanguage.label(forWord:))
         writer.block(.codeBlock(language: language, label: filtered, code: code,
                                 tokens: CodeBlockLanguage.tokens(code, language: language)))
+        return writer.output
+    }
+
+    /// The HTML of a fenced code block whose info string is `languageWord` and whose content is
+    /// `code`, a final newline added when it has none, as the Markdown renderer writes it; the ids
+    /// of `projectIdentifiers` in the code become links.
+    public static func renderCodeBlock(_ code: String, languageWord: String, projectIdentifiers: Set<String> = []) -> String {
+        let word = CodeBlockLanguage.word(ofInfoString: languageWord)
+        let content = code.hasSuffix("\n") ? code : code + "\n"
+        var writer = HTMLWriter()
+        writer.codeIdentifiers = projectIdentifiers
+        let language = CodeBlockLanguage.language(forWord: word)
+        writer.block(.codeBlock(language: language, label: CodeBlockLanguage.label(forWord: word), code: content,
+                                tokens: CodeBlockLanguage.tokens(content, language: language)))
         return writer.output
     }
 }
@@ -27,6 +45,9 @@ public enum MarkdownHTMLRenderer {
 /// Writes the block model as HTML.
 struct HTMLWriter {
     private(set) var output = ""
+    /// The identifiers whose ids become links inside code blocks; only `renderCodeBlock` sets
+    /// them, the code blocks of Markdown text never link ids.
+    var codeIdentifiers: Set<String> = []
 
     mutating func blocks(_ blocks: [MarkdownBlock]) {
         for block in blocks {
@@ -122,29 +143,60 @@ struct HTMLWriter {
         output += "</code></pre>\n</div>\n"
     }
 
-    /// The code as escaped text in which each token is a `span` with the class of its kind.
+    /// The code as escaped text in which each token is a `span` with the class of its kind, and
+    /// each id of `codeIdentifiers` a link written without token spans; a token span that crosses
+    /// an end of an id is closed before the link and opened again after it
+    /// (docs/documentation-viewer.md › Ticket and bundle ids).
     private mutating func highlighted(_ code: String, tokens: [HighlightToken]) {
-        guard !tokens.isEmpty else {
+        let links = MarkdownItemIDs.matches(in: code, projectIdentifiers: codeIdentifiers).map { range in
+            code.utf16.distance(from: code.startIndex, to: range.lowerBound)..<code.utf16.distance(from: code.startIndex, to: range.upperBound)
+        }
+        guard !tokens.isEmpty || !links.isEmpty else {
             output += Self.escaped(code)
             return
         }
-        // Token boundaries are scalar boundaries, so no slice splits a surrogate pair.
+        // Token and id boundaries are scalar boundaries, so no slice splits a surrogate pair.
         let utf16 = Array(code.utf16)
+        var tokenIndex = 0
+        var position = 0
+        for link in links {
+            highlighted(utf16, tokens: tokens, range: position..<link.lowerBound, tokenIndex: &tokenIndex)
+            let id = String(decoding: utf16[link], as: UTF16.self)
+            output += "<a class=\"md-id\" href=\"\(Self.escaped(MarkdownItemIDs.href(for: id)))\">\(Self.escaped(id))</a>"
+            position = link.upperBound
+        }
+        highlighted(utf16, tokens: tokens, range: position..<utf16.count, tokenIndex: &tokenIndex)
+    }
+
+    /// The code of `range` with the parts of the tokens inside it; `tokenIndex` is the first token
+    /// that may still reach `range`.
+    private mutating func highlighted(_ utf16: [UInt16], tokens: [HighlightToken], range: Range<Int>, tokenIndex: inout Int) {
         func slice(_ range: Range<Int>) -> String {
             String(decoding: utf16[range], as: UTF16.self)
         }
-        var position = 0
-        for token in tokens {
-            if token.range.lowerBound > position {
-                output += Self.escaped(slice(position..<token.range.lowerBound))
-            }
-            output += "<span class=\"\(token.kind.cssClass)\">"
-            output += Self.escaped(slice(token.range))
-            output += "</span>"
-            position = token.range.upperBound
+        var position = range.lowerBound
+        while tokenIndex < tokens.count, tokens[tokenIndex].range.upperBound <= position {
+            tokenIndex += 1
         }
-        if position < utf16.count {
-            output += Self.escaped(slice(position..<utf16.count))
+        while tokenIndex < tokens.count, tokens[tokenIndex].range.lowerBound < range.upperBound {
+            let token = tokens[tokenIndex]
+            let start = max(token.range.lowerBound, position)
+            let end = min(token.range.upperBound, range.upperBound)
+            if start > position {
+                output += Self.escaped(slice(position..<start))
+            }
+            if end > start {
+                output += "<span class=\"\(token.kind.cssClass)\">"
+                output += Self.escaped(slice(start..<end))
+                output += "</span>"
+            }
+            position = max(position, end)
+            // A token that goes on after the range is continued by the next range.
+            if token.range.upperBound > range.upperBound { break }
+            tokenIndex += 1
+        }
+        if position < range.upperBound {
+            output += Self.escaped(slice(position..<range.upperBound))
         }
     }
 
@@ -230,6 +282,11 @@ struct HTMLWriter {
             let escapedName = Self.escaped(name)
             output += "<span class=\"md-symbol\"><span class=\"md-symbol-icon\" data-symbol=\"\(escapedName)\"></span>"
             output += "\(escapedName)</span>"
+        case .itemID(let id, let code):
+            // A ticket or bundle id (docs/documentation-viewer.md › Ticket and bundle ids).
+            output += "<a class=\"md-id\" href=\"\(Self.escaped(MarkdownItemIDs.href(for: id)))\">"
+            output += code ? "<code>\(Self.escaped(id))</code>" : Self.escaped(id)
+            output += "</a>"
         case .softBreak:
             output += "\n"
         case .lineBreak:

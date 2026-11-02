@@ -165,10 +165,12 @@ struct MarkdownConverter {
             if inLink {
                 result.append(.text(pendingText))
             } else {
+                // Ids are found in the text outside autolinks (docs/documentation-viewer.md › Ticket
+                // and bundle ids).
                 for piece in ExtendedAutolinks.pieces(in: pendingText) {
                     switch piece {
                     case .text(let text):
-                        result.append(.text(text))
+                        result.append(contentsOf: MarkdownItemIDs.inlines(in: text, projectIdentifiers: options.projectIdentifiers))
                     case .link(let destination, let text):
                         result.append(contentsOf: link(destination: destination, title: nil, content: [.text(text)]))
                     }
@@ -191,7 +193,12 @@ struct MarkdownConverter {
                     result.append(.text(html.rawHTML))
                 }
             case let code as InlineCode:
-                result.append(.code(code.code))
+                // A code span that is exactly an id becomes a link around the code span.
+                if !inLink, MarkdownItemIDs.isID(code.code, projectIdentifiers: options.projectIdentifiers) {
+                    result.append(.itemID(code.code, code: true))
+                } else {
+                    result.append(.code(code.code))
+                }
             case let emphasis as Emphasis:
                 result.append(.emphasis(inlines(emphasis.children, inLink: inLink)))
             case let strong as Strong:

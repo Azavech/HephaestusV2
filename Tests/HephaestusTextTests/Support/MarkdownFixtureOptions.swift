@@ -4,12 +4,13 @@ import Foundation
 /// The renderer options of a Markdown fixture pair: `<name>.options.json` when it exists,
 /// otherwise the options of the path resolution examples of docs/documentation-viewer.md
 /// (`baseDirectory` `docs`, `projectRootPath` `/Users/example/Developer/App`) with
-/// `stripFrontMatter` true, as for the doc preview.
+/// `stripFrontMatter` true, as for the doc preview; the file can also give `projectIdentifiers`.
 enum MarkdownFixtureOptions {
     struct File: Decodable {
         var baseDirectory: String?
         var projectRootPath: String?
         var stripFrontMatter: Bool?
+        var projectIdentifiers: [String]?
     }
 
     static let standard = MarkdownRenderOptions(baseDirectory: "docs", projectRootPath: "/Users/example/Developer/App",
@@ -21,6 +22,7 @@ enum MarkdownFixtureOptions {
         let file = try JSONDecoder().decode(File.self, from: Data(contentsOf: url))
         return MarkdownRenderOptions(baseDirectory: file.baseDirectory ?? standard.baseDirectory,
                                      projectRootPath: file.projectRootPath ?? standard.projectRootPath,
-                                     stripFrontMatter: file.stripFrontMatter ?? standard.stripFrontMatter)
+                                     stripFrontMatter: file.stripFrontMatter ?? standard.stripFrontMatter,
+                                     projectIdentifiers: Set(file.projectIdentifiers ?? []))
     }
 }

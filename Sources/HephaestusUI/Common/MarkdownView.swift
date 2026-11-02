@@ -11,8 +11,43 @@ struct MarkdownContext {
     var options = MarkdownRenderOptions()
     /// Called with an accepted link destination as written.
     var openLink: (@MainActor (String) -> Void)?
+    /// Called with the ticket or bundle id of a clicked id link (docs/documentation-viewer.md ›
+    /// Ticket and bundle ids).
+    var openID: (@MainActor (String) -> Void)?
     /// Reads a project file for an image (`files.read`).
     var loadProjectImage: (@MainActor (String) async -> NSImage?)?
+
+    /// A clicked link: an id link goes to `openID`, any other link to `openLink`.
+    @MainActor
+    func open(_ destination: String) {
+        if let id = MarkdownItemIDs.id(fromHref: destination) {
+            openID?(id)
+        } else {
+            openLink?(destination)
+        }
+    }
+}
+
+extension NavigationTarget {
+    /// The target of a ticket or bundle id: `bundle` for the bundle form, else `ticket`
+    /// (docs/documentation-viewer.md › Link activation).
+    static func item(id: String) -> NavigationTarget {
+        MarkdownItemIDs.isBundleID(id) ? .bundle(bundleID: id) : .ticket(ticketID: id)
+    }
+}
+
+/// Sends the link clicks of `MarkdownAttributed` texts to the Markdown context of the view.
+struct MarkdownLinkActions: ViewModifier {
+    @Environment(\.markdownContext) private var context
+
+    func body(content: Content) -> some View {
+        content.environment(\.openURL, OpenURLAction { url in
+            if let destination = MarkdownLinkURL.destination(of: url) {
+                context.open(destination)
+            }
+            return .handled
+        })
+    }
 }
 
 extension EnvironmentValues {
@@ -33,12 +68,7 @@ struct MarkdownView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .textSelection(.enabled)
-        .environment(\.openURL, OpenURLAction { url in
-            if let destination = MarkdownLinkURL.destination(of: url) {
-                context.openLink?(destination)
-            }
-            return .handled
-        })
+        .modifier(MarkdownLinkActions())
     }
 }
 
@@ -230,6 +260,10 @@ enum MarkdownAttributed {
                     flush()
                     parts.append(Text(Image(systemName: name)))
                     current.append(MarkdownAttributed.run(" " + name, intent: intent, link: link))
+                case .itemID(let id, let code):
+                    // A ticket or bundle id: a link like the others of the text.
+                    current.append(MarkdownAttributed.run(id, intent: code ? intent.union(.code) : intent,
+                                                          link: MarkdownLinkURL.url(for: MarkdownItemIDs.href(for: id))))
                 case .softBreak:
                     current.append(MarkdownAttributed.run(" ", intent: intent, link: link))
                 case .lineBreak:
@@ -495,13 +529,15 @@ enum MarkdownBlockCache {
         var stripFrontMatter: Bool
         /// SF Symbol markers are read; every caller that reads them asks the same Mac.
         var readsSymbols: Bool
+        var projectIdentifiers: Set<String>
     }
 
     private static var entries: [Key: [MarkdownBlock]] = [:]
 
     static func blocks(_ markdown: String, options: MarkdownRenderOptions) -> [MarkdownBlock] {
         let key = Key(markdown: markdown, baseDirectory: options.baseDirectory, projectRootPath: options.projectRootPath,
-                      stripFrontMatter: options.stripFrontMatter, readsSymbols: options.isSymbolAvailable != nil)
+                      stripFrontMatter: options.stripFrontMatter, readsSymbols: options.isSymbolAvailable != nil,
+                      projectIdentifiers: options.projectIdentifiers)
         if let blocks = entries[key] {
             return blocks
         }

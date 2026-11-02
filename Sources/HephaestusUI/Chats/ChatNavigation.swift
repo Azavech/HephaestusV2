@@ -3,6 +3,7 @@
 // Choosing the window).
 import AppKit
 import HephaestusCore
+import HephaestusText
 import QuickLookUI
 import SwiftUI
 
@@ -95,12 +96,17 @@ enum ChatNavigator {
 
     // MARK: Links (docs/chats.md › Links, images and files)
 
-    /// The click on a transcript link: an `http` or `https` link opens in a new web tab of the
-    /// chat's project (⌘-click: the default browser of this Mac); a relative link or a `file` URL
-    /// inside the project root opens the file in the Docs section when it is a `.md` file under
-    /// `docsPath`, else in the Code section. Other links do nothing.
+    /// The click on a transcript link: a ticket or bundle id opens the ticket or the bundle; an
+    /// `http` or `https` link opens in a new web tab of the chat's project (⌘-click: the default
+    /// browser of this Mac); a relative link or a `file` URL inside the project root opens the file
+    /// in the Docs section when it is a `.md` file under `docsPath`, else in the Code section. Other
+    /// links do nothing.
     static func openLink(_ href: String, commandKey: Bool, projectID: String, workspace: DeviceWorkspace, app: AppModel,
                          window: NSWindow?) {
+        if let id = MarkdownItemIDs.id(fromHref: href) {
+            navigate(to: .item(id: id), from: window, workspace: workspace, app: app)
+            return
+        }
         let scheme = ChatLinkPath.scheme(of: href)?.lowercased()
         if scheme == "http" || scheme == "https" {
             if commandKey {

@@ -11,13 +11,17 @@ public struct MarkdownRenderOptions: Sendable {
     /// Draws the SF Symbol markers whose name it accepts; nil leaves `sf:` images refused
     /// (docs/documentation-viewer.md › SF Symbol markers).
     public var isSymbolAvailable: (@Sendable (String) -> Bool)?
+    /// Identifiers of the projects of the device; their ticket and bundle ids become links
+    /// (docs/documentation-viewer.md › Ticket and bundle ids).
+    public var projectIdentifiers: Set<String>
 
     public init(baseDirectory: String = "", projectRootPath: String? = nil, stripFrontMatter: Bool = false,
-                isSymbolAvailable: (@Sendable (String) -> Bool)? = nil) {
+                isSymbolAvailable: (@Sendable (String) -> Bool)? = nil, projectIdentifiers: Set<String> = []) {
         self.baseDirectory = baseDirectory
         self.projectRootPath = projectRootPath
         self.stripFrontMatter = stripFrontMatter
         self.isSymbolAvailable = isSymbolAvailable
+        self.projectIdentifiers = projectIdentifiers
     }
 }
 

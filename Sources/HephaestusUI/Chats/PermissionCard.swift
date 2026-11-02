@@ -1,5 +1,6 @@
 // OWNER: ui-chats — the pinned permission card (docs/chats.md › Pinned permission card).
 import HephaestusCore
+import HephaestusText
 import SwiftUI
 
 /// The oldest pending permission request of a chat, with `1 of <n>` when several wait.
@@ -8,6 +9,7 @@ struct PermissionCard: View {
     let request: PermissionRequestItem
     /// The number of pending requests.
     let count: Int
+    @Environment(\.markdownContext) private var markdownContext
 
     /// The input preview shows at most 20 lines until Show All.
     static let previewLineLimit = 20
@@ -16,7 +18,7 @@ struct PermissionCard: View {
         let (server, name) = ToolUseItem.splitToolName(request.toolName)
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("Claude wants to use \(name)")
+                linked("Claude wants to use \(name)")
                     .font(.headline)
                 if let server {
                     ChatMCPBadge(server: server)
@@ -28,7 +30,7 @@ struct PermissionCard: View {
                 }
             }
             if let reason = request.reason, !reason.isEmpty {
-                Text(reason)
+                linked(reason)
                     .foregroundStyle(.secondary)
             }
             preview
@@ -49,6 +51,7 @@ struct PermissionCard: View {
             }
         }
         .textSelection(.enabled)
+        .modifier(MarkdownLinkActions())
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .controlBackgroundColor)))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.orange.opacity(0.6)))
@@ -82,20 +85,20 @@ struct PermissionCard: View {
     private func segmentView(_ segment: PermissionPreview.Segment) -> some View {
         switch segment {
         case .text(let text):
-            Text(text)
+            linked(text)
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .code(let text):
-            Text(text)
+            linked(text)
                 .font(.system(.body, design: .monospaced))
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .removed(let text):
-            Text(text)
+            linked(text)
                 .font(.system(.body, design: .monospaced))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(4)
                 .background(Color.red.opacity(0.15))
         case .added(let text):
-            Text(text)
+            linked(text)
                 .font(.system(.body, design: .monospaced))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(4)
@@ -104,6 +107,11 @@ struct PermissionCard: View {
             MarkdownView(markdown: text)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// Plain text whose ticket and bundle ids are links (docs/chats.md › Pinned permission card).
+    private func linked(_ text: String) -> Text {
+        MarkdownAttributed.text(MarkdownItemIDs.inlines(in: text, projectIdentifiers: markdownContext.options.projectIdentifiers))
     }
 }
 

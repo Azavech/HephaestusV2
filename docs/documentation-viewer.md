@@ -160,14 +160,19 @@ public struct MarkdownRenderOptions: Sendable {
     public var stripFrontMatter: Bool
     /// Draws the SF Symbol markers whose name it accepts; nil leaves `sf:` images refused.
     public var isSymbolAvailable: (@Sendable (String) -> Bool)?
+    /// Identifiers of the projects of the device; their ticket and bundle ids become links.
+    public var projectIdentifiers: Set<String>
 
     public init(baseDirectory: String = "", projectRootPath: String? = nil, stripFrontMatter: Bool = false,
-                isSymbolAvailable: (@Sendable (String) -> Bool)? = nil)
+                isSymbolAvailable: (@Sendable (String) -> Bool)? = nil, projectIdentifiers: Set<String> = [])
 }
 
 public enum MarkdownHTMLRenderer {
     /// An HTML fragment: no <html>, <head> or <body>.
     public static func render(_ markdown: String, options: MarkdownRenderOptions) -> String
+    /// One code block shown outside Markdown text, such as a tool card's input, as a fenced block
+    /// whose info string is `languageWord`; ids of `projectIdentifiers` in the code become links.
+    public static func renderCodeBlock(_ code: String, languageWord: String, projectIdentifiers: Set<String> = []) -> String
 }
 
 public enum MarkdownBlockRenderer {
@@ -175,13 +180,13 @@ public enum MarkdownBlockRenderer {
 }
 ```
 
-| Caller                                                                 | `baseDirectory`  | `projectRootPath`        | `stripFrontMatter` | `isSymbolAvailable`                                                                     |
-| ---------------------------------------------------------------------- | ---------------- | ------------------------ | ------------------ | --------------------------------------------------------------------------------------- |
-| Doc preview                                                            | the doc's folder | the project's `rootPath` | true               | nil                                                                                     |
-| Chat transcript ([Chats](chats.md#web-view-and-bridge))                | `""`             | the project's `rootPath` | false              | the symbols of the Mac that shows the window ([Chats](chats.md#links-images-and-files)) |
-| Ticket descriptions and comments ([Tickets](tickets.md#ticket-detail)) | `""`             | the project's `rootPath` | false              | nil                                                                                     |
+| Caller                                                                 | `baseDirectory`  | `projectRootPath`        | `stripFrontMatter` | `isSymbolAvailable`                                                                     | `projectIdentifiers`                                                                                                     |
+| ---------------------------------------------------------------------- | ---------------- | ------------------------ | ------------------ | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Doc preview                                                            | the doc's folder | the project's `rootPath` | true               | nil                                                                                     | empty                                                                                                                    |
+| Chat transcript ([Chats](chats.md#web-view-and-bridge))                | `""`             | the project's `rootPath` | false              | the symbols of the Mac that shows the window ([Chats](chats.md#links-images-and-files)) | the identifiers of the projects of the window's device, sub projects included ([Chats](chats.md#links-images-and-files)) |
+| Ticket descriptions and comments ([Tickets](tickets.md#ticket-detail)) | `""`             | the project's `rootPath` | false              | nil                                                                                     | the identifiers of the projects of the window's device, sub projects included ([Tickets](tickets.md#ticket-detail))      |
 
-Other callers state their options in their own document. The output depends only on the text and the options: the same input always gives the same bytes, as long as `isSymbolAvailable` gives the same answers.
+Other callers state their options in their own document. The output depends only on the text and the options: the same input always gives the same bytes, as long as `isSymbolAvailable` gives the same answers. The doc preview links no ticket or bundle id ([Ticket and bundle ids](#ticket-and-bundle-ids)).
 
 ### Front matter
 
@@ -196,6 +201,7 @@ With `stripFrontMatter`, when the first line of the text is exactly `---` and a 
 | GFM strikethrough, `~~text~~` and `~text~`                                                                                                                                                                                                                                                                             | Rendered.                                                                                                                                           |
 | GFM task list items, `[ ]`, `[x]`, `[X]`                                                                                                                                                                                                                                                                               | Rendered as disabled checkboxes; clicking them changes nothing.                                                                                     |
 | GFM extended autolinks: `http://…`, `https://…`, `www.…`, e-mail addresses                                                                                                                                                                                                                                             | URLs become links; e-mail addresses stay text.                                                                                                      |
+| Ticket and bundle ids, such as `HEPH-12` and `HEPH-B2`                                                                                                                                                                                                                                                                 | Links when `projectIdentifiers` holds their identifier ([Ticket and bundle ids](#ticket-and-bundle-ids)); text otherwise.                           |
 | Raw HTML: HTML blocks and inline HTML                                                                                                                                                                                                                                                                                  | Escaped and shown as text ([Sanitization](#sanitization)).                                                                                          |
 | HTML comments                                                                                                                                                                                                                                                                                                          | Omitted.                                                                                                                                            |
 | YAML front matter                                                                                                                                                                                                                                                                                                      | Omitted with `stripFrontMatter`, otherwise parsed as Markdown.                                                                                      |
@@ -233,6 +239,7 @@ The unsupported list, the omitted comments and the inline attributes rendering a
 | Strong emphasis                           | `<strong>…</strong>`                                                                                                                                                                                                                                    |
 | Strikethrough                             | `<del>…</del>`                                                                                                                                                                                                                                          |
 | Code span                                 | `<code>…</code>`, content escaped, never highlighted                                                                                                                                                                                                    |
+| Code span that is exactly an id           | `<a class="md-id" href="hephaestus-id:…"><code>`, the id, `</code></a>` ([Ticket and bundle ids](#ticket-and-bundle-ids))                                                                                                                               |
 | Link with an accepted destination         | `<a href="…">…</a>`, with ` title="…"` after `href` when the link has a title ([Links](#links))                                                                                                                                                         |
 | Link with a refused destination           | its content only, without `<a>`                                                                                                                                                                                                                         |
 | Image with a loadable source              | `<img src="…" alt="…" loading="lazy">`, with ` title="…"` after `alt` when the image has a title ([Images](#images))                                                                                                                                    |
@@ -241,6 +248,7 @@ The unsupported list, the omitted comments and the inline attributes rendering a
 | SF Symbol marker of another name          | its source text as written, escaped ([SF Symbol markers](#sf-symbol-markers))                                                                                                                                                                           |
 | URL autolink, extended URL autolink       | `<a href="…">…</a>`; a `www.` autolink gets the destination `http://www.…`                                                                                                                                                                              |
 | E-mail autolink, extended e-mail autolink | the escaped address as text                                                                                                                                                                                                                             |
+| Ticket or bundle id in text               | `<a class="md-id" href="hephaestus-id:…">`, the id, `</a>`; the `href` value is `hephaestus-id:` followed by the id ([Ticket and bundle ids](#ticket-and-bundle-ids))                                                                                   |
 | Inline HTML                               | its escaped source as text; inline HTML that starts with `<!--` is omitted                                                                                                                                                                              |
 | Entity or numeric character reference     | the decoded character, escaped                                                                                                                                                                                                                          |
 
@@ -364,6 +372,8 @@ A link destination is the destination after the parser resolved reference links 
 
 The renderer only filters; what a click does is decided when the link is activated ([Link activation](#link-activation)). Refusing `mailto` keeps the rule "other links do nothing" of every Markdown view. Default chosen at design time.
 
+The links of ticket and bundle ids are not written by the text: the renderer makes them from the ids it finds ([Ticket and bundle ids](#ticket-and-bundle-ids)). A Markdown link whose destination has the scheme `hephaestus-id` is refused like every other scheme, so text cannot make an id link of its own.
+
 ### Images
 
 | Source                                                                                       | `src`                                                                               |
@@ -395,6 +405,43 @@ public enum MarkdownSymbolMarkers {
 
 The marker syntax is the user's choice; the plain-text form and the HTML are Default chosen at design time.
 
+### Ticket and bundle ids
+
+When the options have `projectIdentifiers`, the renderers turn the ticket and bundle ids of these projects into links. The callers that set it give the identifiers of every project of the device the window shows, sub projects included ([Chats](chats.md#links-images-and-files), [Tickets](tickets.md#ticket-detail)); with an empty set, which the doc preview uses, no id is linked.
+
+- An id has the ticket form `<IDENT>-<n>` or the bundle form `<IDENT>-B<n>` of [Tickets › Identifiers](tickets.md#identifiers): 2 to 8 letters `A`–`Z`, `-`, `B` for a bundle, and a number that starts with a digit other than `0`, all in uppercase. Its `<IDENT>` is in `projectIdentifiers`.
+- It is a whole word: the character before it and the character after it, when there are any, are not letters, digits, `_` or `-`. `HEPH-21.`, `(HEPH-21)` and `HEPH-21,` link `HEPH-21`; `HEPH-21a`, `XHEPH-21`, `HEPH-21-3`, `HEPH-021` and `heph-21` link nothing. `UTF-8`, `SHA-256` and `ABC-3` link only when a project of the device has the identifier `UTF`, `SHA` or `ABC`. Default chosen at design time.
+- Text: ids are found in text outside links, after the [extended URL autolinks](#renderer), so an id inside a link or an autolink keeps that link. Text split by the parser, for example around a backslash escape, is joined first.
+- Code spans: a code span whose content is exactly an id becomes a link around the code span. A code span that holds an id among other text stays code.
+- Ids are left as text in fenced and indented code blocks, HTML blocks, inline HTML, image alt texts and SF Symbol markers. Heading anchors are computed from the text as written, so they do not change.
+
+HTML output: `<a class="md-id" href="hephaestus-id:HEPH-21">HEPH-21</a>` for an id in text, `<a class="md-id" href="hephaestus-id:HEPH-21"><code>HEPH-21</code></a>` for a code span. Block model: `.itemID("HEPH-21", code: false)` and `.itemID("HEPH-21", code: true)` ([Block model](#block-model)).
+
+`MarkdownItemIDs` finds ids in plain text with the same rules, for the texts that callers show outside Markdown: tool card summaries and results, permission lines and the option lines and answers of the chat transcript, and the pinned permission card ([Chats](chats.md#item-rendering)). `MarkdownSymbolMarkers` takes the same identifiers, so that one plain text gets both its SF Symbol markers and its ids; the text of a marker is never searched for ids. `renderCodeBlock` links the ids of its code with the same rules; the code blocks of Markdown text never do. In highlighted code, the id is written without token spans, so that it has the style of a link, and a token span that crosses an end of the id is closed before the link and opened again after it, for example `<span class="tok-string">&quot;</span><a class="md-id" href="hephaestus-id:HEPH-21">HEPH-21</a><span class="tok-string">&quot;</span>` for the JSON string `"HEPH-21"`.
+
+```swift
+public enum MarkdownItemIDs {
+    /// The plain text as `.text` and `.itemID` inlines.
+    public static func inlines(in text: String, projectIdentifiers: Set<String>) -> [MarkdownInline]
+    /// The plain text as HTML: escaped text and the id links of HTML output.
+    public static func html(_ text: String, projectIdentifiers: Set<String>) -> String
+    /// The `href` of an id link: `hephaestus-id:` followed by the id.
+    public static func href(for id: String) -> String
+    /// The id of an id link's `href`; nil for any other `href`.
+    public static func id(fromHref href: String) -> String?
+    /// Whether an id has the bundle form `<IDENT>-B<n>`.
+    public static func isBundleID(_ id: String) -> Bool
+}
+
+extension MarkdownSymbolMarkers {
+    public static func inlines(in text: String, isSymbolAvailable: (String) -> Bool,
+                               projectIdentifiers: Set<String>) -> [MarkdownInline]
+    public static func html(_ text: String, isSymbolAvailable: (String) -> Bool, projectIdentifiers: Set<String>) -> String
+}
+```
+
+The class `md-id`, the scheme `hephaestus-id` and the word rule are Default chosen at design time. A click on an id link is handled by the view that shows it ([Link activation](#link-activation)).
+
 ### Path resolution
 
 Images and links to project files resolve a reference R (without scheme, or a `file` URL) to a project path. Default chosen at design time.
@@ -425,15 +472,15 @@ Raw HTML is always escaped ([Architecture](architecture.md#security-overview)):
 1. Every text and attribute value is escaped as in [HTML output](#html-output).
 2. HTML blocks and inline HTML never become markup: they are written as escaped text; HTML comments are left out.
 3. The renderer writes only the elements `p`, `h1`–`h6`, `hr`, `blockquote`, `ul`, `ol`, `li`, `input`, `div`, `pre`, `code`, `span`, `button`, `table`, `thead`, `tbody`, `tr`, `th`, `td`, `a`, `img`, `em`, `strong`, `del` and `br`, and only the attributes `id` (headings), `class` (the fixed `md-…` and `tok-…` names of this document), `start` (`ol`), `type`, `disabled` and `checked` (`input`), `type` (`button`), `href` and `title` (`a`), `src`, `alt`, `title` and `loading` (`img`), `data-lang` (`code`), `data-symbol` (`span`). It never writes `style` or event handler attributes.
-4. Link destinations and image sources pass the tables of [Links](#links) and [Images](#images); a refused one never reaches an attribute.
+4. Link destinations and image sources pass the tables of [Links](#links) and [Images](#images); a refused one never reaches an attribute. The `href` of an id link is `hephaestus-id:` followed by an id that matched the rules of [Ticket and bundle ids](#ticket-and-bundle-ids), which holds only letters, digits and `-`.
 5. Heading ids contain only letters, marks, numbers, connector punctuation and `-`; language labels only the characters of [Code blocks](#code-blocks); a `data-symbol` value only a name that `isSymbolAvailable` accepted, escaped.
 6. The pages that show rendered HTML run only their bundled script, set a Content Security Policy, never navigate and accept only the messages they define ([Preview web view](#preview-web-view), [Chats](chats.md#web-view-and-bridge)).
 
-HephaestusTextTests render the fixture pairs `Tests/HephaestusTextTests/Fixtures/markdown/<name>.md` and `<name>.html` and compare the output byte for byte. A pair is rendered with `baseDirectory` `docs`, `projectRootPath` `/Users/example/Developer/App` (the options of the path resolution examples) and `stripFrontMatter` true, as the doc preview renders; a file `<name>.options.json` next to the pair replaces any of these three values. The fixtures cover every row of the HTML output table, the example above, the heading anchor examples, the path resolution examples, and hostile input: `<script>` blocks, `javascript:` and `data:` links and images, `onerror=` inside raw HTML, and quotes in titles and alt texts. Default chosen at design time.
+HephaestusTextTests render the fixture pairs `Tests/HephaestusTextTests/Fixtures/markdown/<name>.md` and `<name>.html` and compare the output byte for byte. A pair is rendered with `baseDirectory` `docs`, `projectRootPath` `/Users/example/Developer/App` (the options of the path resolution examples) and `stripFrontMatter` true, as the doc preview renders; a file `<name>.options.json` next to the pair replaces any of these three values and can give `projectIdentifiers`, empty otherwise. The fixtures cover every row of the HTML output table, the example above, the heading anchor examples, the path resolution examples, and hostile input: `<script>` blocks, `javascript:` and `data:` links and images, `onerror=` inside raw HTML, and quotes in titles and alt texts. The pair `ids` renders with `projectIdentifiers` `HEPH` and covers the examples of [Ticket and bundle ids](#ticket-and-bundle-ids). Default chosen at design time.
 
 ### Block model
 
-Native SwiftUI views that show Markdown outside a web view render `MarkdownBlockRenderer`'s output. It follows the same parsing, front matter, anchor, link, image and sanitization rules as the HTML renderer; only the output form differs. `CodeLanguage` and `HighlightToken` are the highlighter's types ([Code editor](code-editor.md#highlighter-api)).
+Native SwiftUI views that show Markdown outside a web view render `MarkdownBlockRenderer`'s output. It follows the same parsing, front matter, anchor, link, image, id and sanitization rules as the HTML renderer; only the output form differs. `CodeLanguage` and `HighlightToken` are the highlighter's types ([Code editor](code-editor.md#highlighter-api)).
 
 ```swift
 public indirect enum MarkdownBlock: Sendable, Equatable {
@@ -475,6 +522,7 @@ public indirect enum MarkdownInline: Sendable, Equatable {
     case link(destination: String, title: String?, content: [MarkdownInline]) // accepted destinations only
     case image(source: MarkdownImageSource, alt: String, title: String?)
     case symbol(String)                  // an SF Symbol marker of an available symbol: its name
+    case itemID(String, code: Bool)      // a ticket or bundle id of a project of the device; code: written as a code span
     case softBreak
     case lineBreak
 }
@@ -486,7 +534,7 @@ public enum MarkdownImageSource: Sendable, Equatable {
 }
 ```
 
-A refused link becomes its content; inline HTML becomes `.text` with its source; HTML comments are left out; e-mail autolinks are `.text`. Code block tokens are empty for plain code and for blocks longer than 200,000 characters.
+A refused link becomes its content; inline HTML becomes `.text` with its source; HTML comments are left out; e-mail autolinks are `.text`; a linked ticket or bundle id is `.itemID` ([Ticket and bundle ids](#ticket-and-bundle-ids)). Code block tokens are empty for plain code and for blocks longer than 200,000 characters.
 
 ### Styling
 
@@ -604,6 +652,8 @@ What a click on a link of the doc preview does, given the `url` of `openLink` an
 
 Navigation follows [UI](ui.md#navigation); a missing doc or file shows the not-found text of the target section. Chats and tickets use the same path resolution with `baseDirectory` `""` and describe their clicks in their own documents: tickets open `.md` and `.markdown` docs as this table does, chats open only `.md` files in the Docs section ([Chats](chats.md#links-images-and-files), [Tickets](tickets.md#ticket-detail)).
 
+The doc preview has no id links, since it renders without `projectIdentifiers`. Where id links are shown, in chats and tickets, a click on one navigates to `ticket{id}`, or to `bundle{id}` for the bundle form, with or without ⌘; `MarkdownItemIDs.id(fromHref:)` reads the id from the `href`, and a ticket or bundle that does not exist shows `Ticket <id> was not found.` or `Bundle <id> was not found.` ([UI](ui.md#resolving-a-target)). In native views the id reaches the view's handler through the same private link URL as the other links ([Chats](chats.md#links-images-and-files), [Tickets](tickets.md#ticket-detail)).
+
 ## Remote windows
 
 The Docs section works the same in a window that shows a remote device ([Remote devices](remote.md#remote-windows)): `docs.list`, `files.read`, `files.write`, `files.create`, `files.rename` and `files.trash` run on the main device, images arrive through the [resource URL schemes](#resource-url-schemes) over the sync connection, and every client receives the `files.changed` events, so a doc edited on one device updates in every window that shows it. Show in Finder is hidden. While the device is not connected the window shows the reconnect view.
@@ -614,3 +664,4 @@ The Docs section works the same in a window that shows a remote device ([Remote 
 - R16: The documentation can be viewed and edited.
 - R67: Each bubble renders Markdown.
 - R114: Claude marks each SF Symbol it names, and the chat transcript and the pinned questions card show the marker as the symbol's icon followed by its name.
+- R118: Ticket and bundle ids named in chats, ticket descriptions and comments are links that open the ticket or the bundle.

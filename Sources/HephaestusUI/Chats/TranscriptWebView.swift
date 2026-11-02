@@ -76,6 +76,8 @@ final class TranscriptController {
     private struct RenderKey: Equatable {
         var revision: Int
         var projectRootPath: String?
+        /// Ticket and bundle ids of these projects are links.
+        var projectIdentifiers: Set<String>
         /// For tool cards: whether the spinner shows, the result's error flag and the steps.
         var spinner = false
         var hasResult = false
@@ -205,7 +207,8 @@ final class TranscriptController {
 
     /// The fragment of an item when its HTML differs from what the page shows.
     private func renderedIfChanged(_ item: ChatItem, state: TranscriptState, context: TranscriptRenderContext) -> TranscriptFragment? {
-        var key = RenderKey(revision: state.itemRevisions[item.id] ?? 0, projectRootPath: context.projectRootPath)
+        var key = RenderKey(revision: state.itemRevisions[item.id] ?? 0, projectRootPath: context.projectRootPath,
+                            projectIdentifiers: context.projectIdentifiers)
         if case .toolUse(let use) = item {
             let result = state.result(forToolUseID: use.toolUseID)
             key.hasResult = result != nil

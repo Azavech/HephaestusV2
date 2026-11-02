@@ -178,6 +178,13 @@ final class DeviceWorkspace {
         projects.first { $0.id == projectID }
     }
 
+    /// The identifiers of every project of this device, sub projects included: their ticket and
+    /// bundle ids are links in chats and tickets (docs/documentation-viewer.md › Ticket and bundle
+    /// ids).
+    var projectIdentifiers: Set<String> {
+        Set(projects.map(\.id))
+    }
+
     /// The top-level ancestor of a project, the project itself for a top-level one.
     func topLevelProject(of projectID: String) -> ProjectSummary? {
         var current = project(projectID)

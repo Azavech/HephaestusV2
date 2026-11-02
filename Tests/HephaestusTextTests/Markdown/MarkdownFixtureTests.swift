@@ -34,7 +34,7 @@ struct MarkdownFixtureTests {
 
     @Test("The fixtures cover the cases the docs list")
     func coverage() {
-        let required = ["example", "blocks", "inlines", "anchors", "paths", "hostile", "code-blocks", "front-matter", "lists"]
+        let required = ["example", "blocks", "inlines", "anchors", "paths", "hostile", "code-blocks", "front-matter", "lists", "ids"]
         #expect(Set(required).isSubset(of: Set(Self.fixtureNames)))
     }
 
@@ -62,7 +62,7 @@ struct MarkdownSanitizationTests {
     static let allowedAttributes: [String: Set<String>] = [
         "h1": ["id"], "h2": ["id"], "h3": ["id"], "h4": ["id"], "h5": ["id"], "h6": ["id"],
         "ol": ["start"], "input": ["type", "disabled", "checked"], "button": ["type", "class"],
-        "a": ["href", "title"], "img": ["src", "alt", "title", "loading"], "code": ["data-lang"],
+        "a": ["href", "title", "class"], "img": ["src", "alt", "title", "loading"], "code": ["data-lang"],
         "li": ["class"], "div": ["class"], "span": ["class", "title"], "p": ["class"], "th": ["class"], "td": ["class"],
     ]
 
@@ -118,7 +118,7 @@ struct MarkdownSanitizationTests {
                 }
                 if attribute.name == "href" || attribute.name == "src", let value = attribute.value {
                     let scheme = MarkdownLinks.scheme(of: value)
-                    if ![nil, "http", "https", "file", "hephaestus-file"].contains(scheme) {
+                    if ![nil, "http", "https", "file", "hephaestus-file", "hephaestus-id"].contains(scheme) {
                         problems.append("\(attribute.name) \(value)")
                     }
                 }

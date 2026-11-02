@@ -312,6 +312,17 @@ details.thinking[open] > summary::before {
   white-space: nowrap;
 }
 
+/* Ticket and bundle ids outside Markdown text look like the transcript's other links
+   (docs/chats.md › Links, images and files). */
+a.md-id {
+  color: var(--md-link);
+  text-decoration: none;
+}
+
+a.md-id:hover {
+  text-decoration: underline;
+}
+
 .tool-summary {
   flex: 1;
   min-width: 0;

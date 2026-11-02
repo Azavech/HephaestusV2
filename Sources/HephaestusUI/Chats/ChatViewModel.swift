@@ -183,7 +183,7 @@ final class ChatViewModel {
         let set = transcriptState?.incompleteQuestionSet
         let displayed = set.flatMap { set in displayedQuestion(set).map { QuestionKey(setID: set.questionSetID, label: $0.label) } }
         return TranscriptRenderContext(projectRootPath: workspace.project(chatProjectID)?.rootPath, chatIsRunning: state.isChatRunning,
-                                       displayedQuestion: displayed)
+                                       displayedQuestion: displayed, projectIdentifiers: workspace.projectIdentifiers)
     }
 
     /// Send is enabled when the text is not blank or there is an attachment, the window's device is
@@ -699,6 +699,12 @@ final class ChatViewModel {
             return
         }
         ChatNavigator.navigate(to: target, from: window, workspace: workspace, app: app)
+    }
+
+    /// A ticket or bundle id clicked in a pinned card (docs/chats.md › Links, images and files).
+    func openID(_ id: String) {
+        guard let app else { return }
+        ChatNavigator.navigate(to: .item(id: id), from: window, workspace: workspace, app: app)
     }
 
     // MARK: Page messages

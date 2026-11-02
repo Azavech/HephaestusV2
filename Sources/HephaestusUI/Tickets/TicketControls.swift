@@ -158,17 +158,24 @@ struct TicketPendingFileChip: View {
 }
 
 /// The Markdown context of a project's ticket descriptions and comments: the renderer options of
-/// docs/documentation-viewer.md › Renderer (`baseDirectory` "", the project's root path), the
-/// link clicks of docs/tickets.md › Ticket detail and project images read with `files.read`.
+/// docs/documentation-viewer.md › Renderer (`baseDirectory` "", the project's root path, the
+/// identifiers of every project of the device), the link and id clicks of docs/tickets.md › Ticket
+/// detail and project images read with `files.read`.
 @MainActor
 enum TicketMarkdown {
     static func context(projectID: String, workspace: DeviceWorkspace, window: WindowState) -> MarkdownContext {
         let rootPath = workspace.project(projectID)?.rootPath
         return MarkdownContext(
-            options: MarkdownRenderOptions(baseDirectory: "", projectRootPath: rootPath, stripFrontMatter: false),
+            options: MarkdownRenderOptions(baseDirectory: "", projectRootPath: rootPath, stripFrontMatter: false,
+                                           projectIdentifiers: workspace.projectIdentifiers),
             openLink: { [weak workspace, weak window] destination in
                 guard let workspace, let window else { return }
                 open(destination, projectID: projectID, workspace: workspace, window: window)
+            },
+            // A ticket or bundle id navigates the window that shows the ticket.
+            openID: { [weak window] id in
+                guard let window else { return }
+                Task { await window.navigate(to: .item(id: id)) }
             },
             loadProjectImage: { [weak workspace] path in
                 guard let workspace,

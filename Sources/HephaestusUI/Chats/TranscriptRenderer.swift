@@ -40,6 +40,9 @@ struct TranscriptRenderContext: Hashable {
     /// The question the pinned questions card of this chat view displays: the transcript marks it
     /// with ➡️ while its set is not completed.
     var displayedQuestion: QuestionKey?
+    /// The identifiers of the projects of the window's device: their ticket and bundle ids are
+    /// links (docs/chats.md › Links, images and files).
+    var projectIdentifiers: Set<String> = []
 
     /// The label marked in a question set: the displayed question of this set, when it is not
     /// completed.
@@ -69,9 +72,10 @@ enum TranscriptRenderer {
             return TranscriptFragment(id: use.id, type: "toolUse", html: toolUseHTML(use, in: state, context: context),
                                       parentToolUseID: use.parentToolUseID, toolUseID: use.toolUseID)
         case .toolResult(let result):
-            return TranscriptFragment(id: result.id, type: "toolResult", html: toolResultHTML(result), toolUseID: result.toolUseID)
+            return TranscriptFragment(id: result.id, type: "toolResult", html: toolResultHTML(result, context: context),
+                                      toolUseID: result.toolUseID)
         case .permissionRequest(let request):
-            return TranscriptFragment(id: request.id, type: "permissionRequest", html: permissionHTML(request))
+            return TranscriptFragment(id: request.id, type: "permissionRequest", html: permissionHTML(request, context: context))
         case .questions(let set):
             return TranscriptFragment(id: set.id, type: "questions", html: questionsHTML(set, context: context))
         case .symbol(let request):
@@ -155,7 +159,7 @@ enum TranscriptRenderer {
         if let server = use.server {
             html += "<span class=\"badge\">MCP · \(escape(server))</span>"
         }
-        html += "<span class=\"tool-summary\">\(escape(summary))</span>"
+        html += "<span class=\"tool-summary\">\(linked(summary, context: context))</span>"
         if steps > 0 {
             // `<n> steps`, `1 step` for one (docs/chats.md › Tool cards).
             html += "<span class=\"tool-steps-count\">\(steps) \(steps == 1 ? "step" : "steps")</span>"
@@ -175,42 +179,52 @@ enum TranscriptRenderer {
 
     /// `Input`: the input as JSON with 2-space indentation; for `Bash` the command as a shell code
     /// block, for `Edit` `old_string` and `new_string` as two code blocks, for `Write` `content` as
-    /// a code block highlighted by the file extension.
+    /// a code block highlighted by the file extension. Ticket and bundle ids of the code blocks are
+    /// links (docs/chats.md › Tool cards).
     private static func inputHTML(_ use: ToolUseItem, context: TranscriptRenderContext) -> String {
         if use.server == nil {
             switch use.name {
             case "Bash":
                 if let command = use.input.chatString("command") {
-                    return markdown(fence(command, language: "sh"), context: context)
+                    return codeBlocks([(command, "sh")], context: context)
                 }
             case "Edit":
                 if let old = use.input.chatString("old_string"), let new = use.input.chatString("new_string") {
-                    return markdown(fence(old, language: "") + "\n\n" + fence(new, language: ""), context: context)
+                    return codeBlocks([(old, ""), (new, "")], context: context)
                 }
             case "Write":
                 if let content = use.input.chatString("content") {
                     let path = use.input.chatString("file_path") ?? ""
-                    return markdown(fence(content, language: languageWord(forPath: path)), context: context)
+                    return codeBlocks([(content, languageWord(forPath: path))], context: context)
                 }
             default:
                 break
             }
         }
-        return markdown(fence(use.input.chatPrettyJSON, language: "json"), context: context)
+        return codeBlocks([(use.input.chatPrettyJSON, "json")], context: context)
     }
 
-    private static func toolResultHTML(_ result: ToolResultItem) -> String {
+    /// Code blocks with their language words inside an element of the class `md`, as the Markdown
+    /// of fenced blocks renders them, with the ids of the transcript's projects as links.
+    private static func codeBlocks(_ blocks: [(code: String, languageWord: String)], context: TranscriptRenderContext) -> String {
+        "<div class=\"md\">" + blocks.map { block in
+            MarkdownHTMLRenderer.renderCodeBlock(block.code, languageWord: block.languageWord,
+                                                 projectIdentifiers: context.projectIdentifiers)
+        }.joined() + "</div>"
+    }
+
+    private static func toolResultHTML(_ result: ToolResultItem, context: TranscriptRenderContext) -> String {
         var html = "<div class=\"tool-result\(result.isError ? " is-error" : "")\"><div class=\"tool-section-title\">Result</div>"
         if !result.text.isEmpty {
             let lines = result.text.split(separator: "\n", omittingEmptySubsequences: false)
             if lines.count > resultLineLimit {
                 let head = lines.prefix(resultLineLimit).joined(separator: "\n")
                 let rest = lines.dropFirst(resultLineLimit).joined(separator: "\n")
-                html += "<pre class=\"result-text\"><span class=\"result-head\">\(escape(head))</span>"
-                    + "<span class=\"result-rest\" hidden>\n\(escape(rest))</span></pre>"
+                html += "<pre class=\"result-text\"><span class=\"result-head\">\(linked(head, context: context))</span>"
+                    + "<span class=\"result-rest\" hidden>\n\(linked(rest, context: context))</span></pre>"
                     + "<button type=\"button\" class=\"show-all\">Show All</button>"
             } else {
-                html += "<pre class=\"result-text\">\(escape(result.text))</pre>"
+                html += "<pre class=\"result-text\">\(linked(result.text, context: context))</pre>"
             }
         }
         if !result.images.isEmpty {
@@ -224,16 +238,17 @@ enum TranscriptRenderer {
     }
 
     /// The line of a `permissionRequest` item; an MCP tool shows its short name and the badge
-    /// `MCP · <server>` (docs/chats.md › Item rendering).
-    private static func permissionHTML(_ request: PermissionRequestItem) -> String {
+    /// `MCP · <server>` (docs/chats.md › Item rendering). Ticket and bundle ids of the tool line and
+    /// the reason are links.
+    private static func permissionHTML(_ request: PermissionRequestItem, context: TranscriptRenderContext) -> String {
         let (server, name) = ToolUseItem.splitToolName(request.toolName)
-        var html = "<div class=\"perm-line\"><div class=\"perm-main\"><span class=\"perm-tool\">\(escape(name))</span>"
+        var html = "<div class=\"perm-line\"><div class=\"perm-main\"><span class=\"perm-tool\">\(linked(name, context: context))</span>"
         if let server {
             html += " <span class=\"badge\">MCP · \(escape(server))</span>"
         }
-        html += " · \(escape(ChatFormat.permissionStatus(request)))</div>"
+        html += " · \(linked(ChatFormat.permissionStatus(request), context: context))</div>"
         if let reason = request.reason, !reason.isEmpty {
-            html += "<div class=\"perm-reason\">\(escape(reason))</div>"
+            html += "<div class=\"perm-reason\">\(linked(reason, context: context))</div>"
         }
         return html + "</div>"
     }
@@ -253,11 +268,11 @@ enum TranscriptRenderer {
                 if option.label == question.recommended {
                     line += " (recommended)"
                 }
-                html += "<li>\(symbolText(line))</li>"
+                html += "<li>\(symbolText(line, context: context))</li>"
             }
             html += "</ul>"
             if let answer = set.answers[question.label] {
-                html += "<div class=\"answer\">\(symbolText("Answer: " + answer))</div>"
+                html += "<div class=\"answer\">\(symbolText("Answer: " + answer, context: context))</div>"
             } else {
                 html += "<div class=\"answer pending\">Not answered yet</div>"
             }
@@ -273,11 +288,12 @@ enum TranscriptRenderer {
             + "<div class=\"question-text\">" + markdown(request.question, context: context) + "</div><ul class=\"options\">"
         for name in request.suggestions {
             let line = "![](sf:\(name))" + (name == request.recommended ? " (recommended)" : "")
-            html += "<li>\(symbolText(line))</li>"
+            // Suggestion lines show ids as text (docs/chats.md › Item rendering).
+            html += "<li>\(MarkdownSymbolMarkers.html(line, isSymbolAvailable: SFSymbols.isAvailable))</li>"
         }
         html += "</ul>"
         if let answer = request.answer {
-            html += "<div class=\"answer\">\(symbolText("Answer: " + answer))</div>"
+            html += "<div class=\"answer\">\(symbolText("Answer: " + answer, context: context))</div>"
         } else {
             html += "<div class=\"answer pending\">Not answered yet</div>"
         }
@@ -293,33 +309,25 @@ enum TranscriptRenderer {
     // MARK: Helpers
 
     /// Markdown inside an element of the class `md` (docs/documentation-viewer.md › Styling), with
-    /// the SF Symbols of this Mac (docs/chats.md › Links, images and files).
+    /// the SF Symbols of this Mac and the ids of the device's projects as links (docs/chats.md ›
+    /// Links, images and files).
     static func markdown(_ text: String, context: TranscriptRenderContext) -> String {
         let options = MarkdownRenderOptions(baseDirectory: "", projectRootPath: context.projectRootPath, stripFrontMatter: false,
-                                            isSymbolAvailable: SFSymbols.isAvailable)
+                                            isSymbolAvailable: SFSymbols.isAvailable, projectIdentifiers: context.projectIdentifiers)
         return "<div class=\"md\">" + MarkdownHTMLRenderer.render(text, options: options) + "</div>"
     }
 
     /// Plain text, escaped, in which each SF Symbol marker of this Mac is drawn
-    /// (docs/documentation-viewer.md › SF Symbol markers).
-    static func symbolText(_ text: String) -> String {
-        MarkdownSymbolMarkers.html(text, isSymbolAvailable: SFSymbols.isAvailable)
+    /// (docs/documentation-viewer.md › SF Symbol markers) and each id of the device's projects is a
+    /// link.
+    static func symbolText(_ text: String, context: TranscriptRenderContext) -> String {
+        MarkdownSymbolMarkers.html(text, isSymbolAvailable: SFSymbols.isAvailable, projectIdentifiers: context.projectIdentifiers)
     }
 
-    /// A fenced code block whose fence is longer than any backtick run of the code.
-    static func fence(_ code: String, language: String) -> String {
-        var longest = 0
-        var run = 0
-        for character in code {
-            if character == "`" {
-                run += 1
-                longest = max(longest, run)
-            } else {
-                run = 0
-            }
-        }
-        let marks = String(repeating: "`", count: max(3, longest + 1))
-        return marks + language + "\n" + code + (code.hasSuffix("\n") ? "" : "\n") + marks
+    /// Plain text, escaped, in which each id of the device's projects is a link
+    /// (docs/documentation-viewer.md › Ticket and bundle ids).
+    static func linked(_ text: String, context: TranscriptRenderContext) -> String {
+        MarkdownItemIDs.html(text, projectIdentifiers: context.projectIdentifiers)
     }
 
     /// The language word of a file for the code block of a `Write` input: its extension, lowercased

@@ -8,19 +8,36 @@ public enum MarkdownSymbolMarkers {
     /// The plain text as `.text` and `.symbol` inlines: a marker of an available name becomes
     /// `.symbol`, any other marker stays text.
     public static func inlines(in text: String, isSymbolAvailable: (String) -> Bool) -> [MarkdownInline] {
+        inlines(in: text, isSymbolAvailable: isSymbolAvailable, projectIdentifiers: [])
+    }
+
+    /// The plain text as `.text`, `.symbol` and `.itemID` inlines: the text outside markers also
+    /// gets the ids of `projectIdentifiers` (docs/documentation-viewer.md › Ticket and bundle ids);
+    /// the text of a marker is never searched for ids.
+    public static func inlines(in text: String, isSymbolAvailable: (String) -> Bool,
+                               projectIdentifiers: Set<String>) -> [MarkdownInline] {
         var result: [MarkdownInline] = []
         var pending = ""
+        func append(_ inline: MarkdownInline) {
+            if case .text(let added) = inline, case .text(let previous)? = result.last {
+                result[result.count - 1] = .text(previous + added)
+            } else {
+                result.append(inline)
+            }
+        }
+        func flush() {
+            guard !pending.isEmpty else { return }
+            MarkdownItemIDs.inlines(in: pending, projectIdentifiers: projectIdentifiers).forEach(append)
+            pending = ""
+        }
         var index = text.startIndex
         while index < text.endIndex {
             if text[index] == "!", let marker = marker(in: text, at: index) {
+                flush()
                 if isSymbolAvailable(marker.name) {
-                    if !pending.isEmpty {
-                        result.append(.text(pending))
-                        pending = ""
-                    }
-                    result.append(.symbol(marker.name))
+                    append(.symbol(marker.name))
                 } else {
-                    pending += text[index..<marker.end]
+                    append(.text(String(text[index..<marker.end])))
                 }
                 index = marker.end
             } else {
@@ -28,17 +45,20 @@ public enum MarkdownSymbolMarkers {
                 index = text.index(after: index)
             }
         }
-        if !pending.isEmpty {
-            result.append(.text(pending))
-        }
+        flush()
         return result
     }
 
     /// The plain text as HTML: escaped text, and the symbol HTML of docs/documentation-viewer.md ›
     /// HTML output for each marker of an available name.
     public static func html(_ text: String, isSymbolAvailable: (String) -> Bool) -> String {
+        html(text, isSymbolAvailable: isSymbolAvailable, projectIdentifiers: [])
+    }
+
+    /// The plain text as HTML, with the symbol HTML of its markers and the id links of its ids.
+    public static func html(_ text: String, isSymbolAvailable: (String) -> Bool, projectIdentifiers: Set<String>) -> String {
         var writer = HTMLWriter()
-        writer.inlines(inlines(in: text, isSymbolAvailable: isSymbolAvailable))
+        writer.inlines(inlines(in: text, isSymbolAvailable: isSymbolAvailable, projectIdentifiers: projectIdentifiers))
         return writer.output
     }
 

@@ -265,6 +265,12 @@ private struct ChatViewContent: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.top, 8)
+                // Ticket and bundle ids of the cards open with the chat's window choice, also in a
+                // ticket's or a bundle's Chats tab (docs/chats.md › Links, images and files).
+                .transformEnvironment(\.markdownContext) { [weak model, projectIdentifiers = workspace.projectIdentifiers] context in
+                    context.options.projectIdentifiers = projectIdentifiers
+                    context.openID = { id in model?.openID(id) }
+                }
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
                     cardsHeight = height
                 }
