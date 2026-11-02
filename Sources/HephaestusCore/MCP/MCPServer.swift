@@ -27,6 +27,7 @@ public actor MCPServer {
     private let log: LogSink
     private weak var engine: Engine?
     private var engineCall: MCPEngineCall?
+    private var hookCall: MCPHookCall?
     private var debugUI: (any MCPDebugUI)?
     private let stateStreams = StreamFanOut<MCPServerState>()
 
@@ -90,18 +91,22 @@ public actor MCPServer {
     /// server listens or has failed for good.
     func start(port: Int, engine: Engine) async {
         self.engine = engine
-        await start(port: port) { [weak engine] method, params, actor in
+        await start(port: port, engineCall: { [weak engine] method, params, actor in
             // The server is closed before the engine is released, so this is a last guard
             // (docs/mcp.md › Server lifecycle).
             guard let engine else { throw EngineError(.unavailable, "The engine is stopped.") }
             return try await engine.dispatch(method: method, params: params, actor: actor)
-        }
+        }, hookCall: { [weak engine] chatID, body in
+            await engine?.linkedItemsHookAnswer(chatID: chatID, body: body) ?? LinkedItemsHook.answer(lines: [])
+        })
     }
 
-    /// Starts with another engine call than `Engine.dispatch`, for tests of the transport.
-    func start(port: Int, engineCall: @escaping MCPEngineCall) async {
+    /// Starts with another engine call than `Engine.dispatch`, and another hook answer than the
+    /// engine's, for tests of the transport.
+    func start(port: Int, engineCall: @escaping MCPEngineCall, hookCall: MCPHookCall? = nil) async {
         guard !isStopped else { return }
         self.engineCall = engineCall
+        self.hookCall = hookCall
         await listen(on: port)
     }
 
@@ -257,9 +262,10 @@ public actor MCPServer {
         let engineCall = self.engineCall ?? { method, _, _ in
             throw EngineError(.unavailable, "\(method) is not available: the engine is not started.")
         }
+        let hookCall = self.hookCall ?? { _, _ in LinkedItemsHook.answer(lines: []) }
         return MCPRequestHandler(
             tokens: tokens, debugTools: debugTools, appVersion: appVersion, log: log,
-            tools: MCPToolHandlers(engineCall: engineCall, debugUI: debugUI, homeDirectory: homeDirectory)
+            tools: MCPToolHandlers(engineCall: engineCall, debugUI: debugUI, homeDirectory: homeDirectory), hookCall: hookCall
         )
     }
 }
@@ -280,6 +286,17 @@ private final class OnceFlag: @unchecked Sendable {
 
 // MARK: - Requests
 
+/// The answer of the linked items hook to a hook request body of a chat (docs/mcp.md › User prompt
+/// hook).
+typealias MCPHookCall = @Sendable (_ chatID: ChatID, _ body: Data) async -> Data
+
+/// Who a request admitted by steps 2 to 6 is for: the MCP endpoint with the actor of a chat token
+/// or the external token, or the linked items hook with the chat of a hook token.
+enum MCPRoute: Sendable, Equatable {
+    case mcp(Actor)
+    case hook(ChatID)
+}
+
 /// The steps of docs/mcp.md › Request handling that follow the head, and the JSON-RPC methods.
 struct MCPRequestHandler: Sendable {
     var tokens: MCPTokenStore
@@ -287,23 +304,33 @@ struct MCPRequestHandler: Sendable {
     var appVersion: String
     var log: LogSink
     var tools: MCPToolHandlers
+    var hookCall: MCPHookCall
 
-    /// Steps 2 to 6: Origin, path, method, authorization, declared size. The actor of the bearer
-    /// token, or the rejection. The protocol version is checked with the JSON-RPC method
-    /// (docs/mcp.md › Protocol version).
-    func admit(_ head: HTTPRequestHead) async -> Result<Actor, HTTPRejection> {
+    /// Steps 2 to 6: Origin, path, method, authorization, declared size. The route of the bearer
+    /// token, or the rejection: `/mcp` takes a chat token or the external token,
+    /// `/hooks/user-prompt-submit` a hook token. The protocol version is checked with the JSON-RPC
+    /// method (docs/mcp.md › Protocol version).
+    func admit(_ head: HTTPRequestHead) async -> Result<MCPRoute, HTTPRejection> {
         if !head.values("Origin").isEmpty { return .failure(.origin) }
-        if head.path != "/mcp" { return .failure(.notFound) }
+        let isHook = head.path == LinkedItemsHook.path
+        if head.path != "/mcp", !isHook { return .failure(.notFound) }
         if head.method != "POST" { return .failure(.methodNotAllowed) }
-        guard let actor = await authorize(head) else { return .failure(.unauthorized) }
+        let route: MCPRoute
+        if isHook {
+            guard let token = bearerToken(head), let chatID = await tokens.chatID(forHookToken: token) else { return .failure(.unauthorized) }
+            route = .hook(chatID)
+        } else {
+            guard let token = bearerToken(head), let actor = await tokens.actor(forToken: token) else { return .failure(.unauthorized) }
+            route = .mcp(actor)
+        }
         if let length = head.contentLength, length > HTTPRequestParser.bodyLimit { return .failure(.bodyTooLarge) }
-        return .success(actor)
+        return .success(route)
     }
 
     /// docs/mcp.md › Authentication: one `Authorization` field `Bearer <token>`, the scheme
-    /// matched case-insensitively and followed by one or more spaces, the token compared in
-    /// constant time with the live chat tokens and the external token.
-    private func authorize(_ head: HTTPRequestHead) async -> Actor? {
+    /// matched case-insensitively and followed by one or more spaces; nil otherwise. The caller
+    /// compares the token in constant time with the tokens of the path.
+    private func bearerToken(_ head: HTTPRequestHead) -> String? {
         let values = head.values("Authorization")
         // Several Authorization fields get 401 (docs/mcp.md › Authentication).
         guard values.count == 1, let space = values[0].firstIndex(of: " ") else { return nil }
@@ -311,13 +338,21 @@ struct MCPRequestHandler: Sendable {
         guard value[..<space].caseInsensitiveCompare("Bearer") == .orderedSame else { return nil }
         let token = value[space...].drop { $0 == " " }
         guard !token.isEmpty else { return nil }
-        return await tokens.actor(forToken: String(token))
+        return String(token)
     }
 
-    /// Step 9: the answer to a body: a JSON-RPC response object, 202 for a notification or a
-    /// response from the client (docs/mcp.md › Message classification), or the 400 of an
-    /// unsupported protocol version (docs/mcp.md › Protocol version).
-    func respond(to body: Data, head: HTTPRequestHead, actor: Actor) async -> MCPAnswer {
+    /// Step 9: the answer to a body: on the hook path, the hook answer (docs/mcp.md › User prompt
+    /// hook); on `/mcp`, a JSON-RPC response object, 202 for a notification or a response from the
+    /// client (docs/mcp.md › Message classification), or the 400 of an unsupported protocol
+    /// version (docs/mcp.md › Protocol version).
+    func respond(to body: Data, head: HTTPRequestHead, route: MCPRoute) async -> MCPAnswer {
+        let actor: Actor
+        switch route {
+        case .hook(let chatID):
+            return .hook(await hookCall(chatID, body))
+        case .mcp(let routeActor):
+            actor = routeActor
+        }
         switch JSONRPCMessage.classify(body) {
         case .invalid(let code, let message):
             return .json(JSONRPCResponse.error(id: nil, code: code, message: message))
@@ -414,6 +449,8 @@ struct MCPRequestHandler: Sendable {
 enum MCPAnswer: Sendable {
     /// 200 with a JSON-RPC response.
     case json(JSONValue)
+    /// 200 with the answer of the linked items hook (docs/mcp.md › User prompt hook).
+    case hook(Data)
     /// 202 for a notification or a response from the client.
     case accepted
     /// A rejection: the 400 of an unsupported protocol version.
@@ -501,13 +538,13 @@ final class MCPConnection: @unchecked Sendable {
             let handler = await server.requestHandler()
 
             // Steps 2 to 6.
-            let actor: Actor
+            let route: MCPRoute
             switch await handler.admit(head) {
             case .failure(let rejection):
                 await reject(rejection, head: head)
                 return
-            case .success(let tokenActor):
-                actor = tokenActor
+            case .success(let admitted):
+                route = admitted
             }
 
             // Step 7: interim 100 Continue.
@@ -532,13 +569,15 @@ final class MCPConnection: @unchecked Sendable {
                 return
             }
 
-            // Step 9: JSON-RPC. The call runs to its end even when the client goes away; its
-            // result is then dropped (docs/mcp.md › Connections).
+            // Step 9: JSON-RPC, or the hook answer. The call runs to its end even when the client
+            // goes away; its result is then dropped (docs/mcp.md › Connections).
             let closes = !head.keepsAlive
             let response: HTTPResponse
-            switch await handler.respond(to: body ?? Data(), head: head, actor: actor) {
+            switch await handler.respond(to: body ?? Data(), head: head, route: route) {
             case .json(let json):
                 response = .json(JSONRPCResponse.encode(json), closes: closes)
+            case .hook(let answer):
+                response = .json(answer, closes: closes)
             case .accepted:
                 response = .accepted(closes: closes)
             case .rejected(let rejection):

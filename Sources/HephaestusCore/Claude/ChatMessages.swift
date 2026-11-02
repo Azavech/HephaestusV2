@@ -51,12 +51,13 @@ extension Engine {
         }
     }
 
-    /// Appends the `user` item with the stored attachments and `sender`, delivers the message to
-    /// the chat's Claude process, writes the metadata (`chat.updated`) with `closed` false, and
-    /// starts the naming when this is the chat's first user message with text (docs/chats.md ›
-    /// User messages, › Closing a chat).
-    func sendChatMessage(_ chatID: ChatID, text: String, attachments stored: [(Attachment, Data)], sender: String,
-                         origin: Actor) throws {
+    /// Appends the `user` item with the stored attachments, the linked items and `sender`,
+    /// delivers the message to the chat's Claude process with the context of its linked items for
+    /// the linked items hook, writes the metadata (`chat.updated`) with `closed` false, and starts
+    /// the naming when this is the chat's first user message with text (docs/chats.md › User
+    /// messages, › Linked items hook, › Closing a chat).
+    func sendChatMessage(_ chatID: ChatID, text: String, attachments stored: [(Attachment, Data)],
+                         linkedItems: [ChatLinkedItem] = [], sender: String, origin: Actor) throws {
         let meta = try requireChat(chatID)
         let folder = try chatFolder(meta)
         let text = ModelRules.normalizedLineBreaks(text)
@@ -78,10 +79,12 @@ extension Engine {
         try? ensureChatScanned(chatID)
         let startsNaming = !text.isEmpty && chats.hasTextMessage[chatID] != true
         let itemID = RandomIDs.uuidString()
-        try appendChatItem(.user(UserItem(id: itemID, created: ISODate.now(), text: text, attachments: attachments, sender: sender)),
+        try appendChatItem(.user(UserItem(id: itemID, created: ISODate.now(), text: text, attachments: attachments, sender: sender,
+                                          linkedItems: linkedItems)),
                            chatID: chatID, origin: origin)
         if !text.isEmpty { chats.hasTextMessage[chatID] = true }
-        deliverChatMessage(chatID, ChatMessageLine(data: ControlLines.userMessage(text: sent, images: images, uuid: itemID), uuid: itemID))
+        deliverChatMessage(chatID, ChatMessageLine(data: ControlLines.userMessage(text: sent, images: images, uuid: itemID), uuid: itemID,
+                                                   prompt: sent, context: linkedItems.map(\.line)))
         var current = domain.chat(chatID) ?? meta
         // A message reopens a closed chat (docs/chats.md › Closing a chat).
         current.closed = false

@@ -63,7 +63,7 @@ struct ClaudeProtocolTests {
     func chatCommandLine() {
         let argv = ClaudeCommandLine.chat(
             cliPath: "claude", chatID: Self.chatID, sessionStarted: true,
-            settings: ChatSettings(model: "opus", effort: .high, permissionMode: .manual, ultracode: true),
+            settings: ChatSettings(model: "opus", effort: .high, permissionMode: .manual, ultracode: true), mcpPort: 47820,
             mcpConfigPath: "/Users/example/Library/Application Support/HephaestusV2/Runtime/mcp/3F2504E0-4F89-11D3-9A0C-0305E82C3301.json",
             systemPrompt: "You are Claude, working inside HephaestusV2, …",
             pluginDirectory: "/Users/example/Library/Application Support/HephaestusV2/Runtime/plugins/HEPH")
@@ -78,20 +78,35 @@ struct ClaudeProtocolTests {
             "--disallowedTools", "AskUserQuestion",
             "--append-system-prompt", "You are Claude, working inside HephaestusV2, …",
             "--plugin-dir", "/Users/example/Library/Application Support/HephaestusV2/Runtime/plugins/HEPH",
-            "--settings", #"{"ultracode":true}"#,
+            "--settings",
+            #"{"ultracode":true,"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"http","url":"http://127.0.0.1:47820/hooks/user-prompt-submit","headers":{"Authorization":"Bearer $HEPHAESTUS_HOOK_TOKEN"},"allowedEnvVars":["HEPHAESTUS_HOOK_TOKEN"],"timeout":10}]}]}}"#,
         ])
     }
 
-    @Test("A new session uses --session-id; no plugin folder and no ultracode leave rows 17 and 18 out")
+    @Test("A new session uses --session-id; no plugin folder leaves row 17 out; without ultracode row 18 holds the hook alone")
     func newSessionCommandLine() {
         let argv = ClaudeCommandLine.chat(cliPath: "/fake/claude", chatID: Self.chatID, sessionStarted: false,
-                                          settings: ChatSettings(permissionMode: .bypassPermissions), mcpConfigPath: "/m.json",
+                                          settings: ChatSettings(permissionMode: .bypassPermissions), mcpPort: 50123, mcpConfigPath: "/m.json",
                                           systemPrompt: "P", pluginDirectory: nil)
         #expect(Array(argv[8...9]) == ["--session-id", "3F2504E0-4F89-11D3-9A0C-0305E82C3301"])
         #expect(Array(argv[10...15]) == ["--model", "default", "--effort", "high", "--permission-mode", "bypassPermissions"])
         #expect(!argv.contains("--plugin-dir"))
-        #expect(!argv.contains("--settings"))
-        #expect(argv.last == "P")
+        #expect(Array(argv.suffix(4)) == [
+            "--append-system-prompt", "P", "--settings",
+            #"{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"http","url":"http://127.0.0.1:50123/hooks/user-prompt-submit","headers":{"Authorization":"Bearer $HEPHAESTUS_HOOK_TOKEN"},"allowedEnvVars":["HEPHAESTUS_HOOK_TOKEN"],"timeout":10}]}]}}"#,
+        ])
+    }
+
+    @Test("The settings JSON of row 18 is valid JSON holding the hook, with ultracode first when on")
+    func chatSettingsJSON() throws {
+        for ultracode in [false, true] {
+            let text = ClaudeCommandLine.chatSettings(ultracode: ultracode, mcpPort: 47820)
+            let value = try JSONDecoder().decode(JSONValue.self, from: Data(text.utf8))
+            let object = try #require(value.objectValue)
+            #expect(object["ultracode"] == (ultracode ? .bool(true) : nil))
+            #expect(text.hasPrefix(ultracode ? #"{"ultracode":true,"hooks":"# : #"{"hooks":"#))
+            #expect(object["hooks"]?.objectValue?["UserPromptSubmit"] != nil)
+        }
     }
 
     @Test("The naming command of docs/chats.md › Haiku naming › Command")

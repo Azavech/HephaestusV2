@@ -28,9 +28,11 @@ extension Engine {
         }
     }
 
-    /// docs/chats.md › Turn tracking, step 1: the message is outstanding once written.
+    /// docs/chats.md › Turn tracking, step 1: the message is outstanding once written; the linked
+    /// items hook records it (docs/chats.md › Linked items hook).
     private func writeChatMessage(_ message: ChatMessageLine, to process: ChatProcess) {
         process.turns.written(message.uuid)
+        process.hookRecords.written(prompt: message.prompt, lines: message.context)
         process.handle.write(message.data)
     }
 
@@ -56,6 +58,7 @@ extension Engine {
         }
         let mcpState = await mcpServer.state
         let token = context == nil ? nil : await tokens.issueChatToken(chatID: chatID)
+        let hookToken = context == nil ? nil : await tokens.issueHookToken(chatID: chatID)
 
         func abandon() async {
             if token != nil { await tokens.revokeChatToken(chatID: chatID) }
@@ -71,7 +74,7 @@ extension Engine {
             reportChatState(chatID)
             return
         }
-        guard let context, let token else {
+        guard let context, let token, let hookToken else {
             await abandon()
             launchFailed(chatID, "Claude failed to start: \(unavailable ?? "the Claude CLI is not available")")
             return
@@ -108,10 +111,14 @@ extension Engine {
         }
         let systemPrompt = chatSystemPrompt(meta: meta, project: project, root: root, items: items)
         let argv = ClaudeCommandLine.chat(cliPath: context.path, chatID: chatID, sessionStarted: meta.sessionStarted, settings: meta.settings,
-                                          mcpConfigPath: configURL.path, systemPrompt: systemPrompt, pluginDirectory: pluginDirectory)
+                                          mcpPort: port, mcpConfigPath: configURL.path, systemPrompt: systemPrompt,
+                                          pluginDirectory: pluginDirectory)
         let logFile = AppendFile(url: dataDirectory.claudeLogFile(chatID: chatID), emptyAbove: AppendFile.rotationSize)
         logFile.appendLine(ClaudeCommandLine.launchLogLine(argv: argv, date: Date()))
-        let request = ChildProcessRequest(executable: argv[0], arguments: Array(argv.dropFirst()), environment: context.environment,
+        // The hook token of the linked items hook (docs/chats.md › Environment).
+        var environment = context.environment
+        environment[LinkedItemsHook.tokenVariable] = hookToken
+        let request = ChildProcessRequest(executable: argv[0], arguments: Array(argv.dropFirst()), environment: environment,
                                           currentDirectory: root.path)
         let handle: any ClaudeProcess
         do {

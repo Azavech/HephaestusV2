@@ -712,11 +712,22 @@ How the engine creates items from the Claude CLI output, and how the chat view r
 
 ### User item
 
-| Swift name  | Key           | Type           | Required | Default | Rules                                                                                                                                                                                                                                        |
-| ----------- | ------------- | -------------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| text        | `text`        | `String`       | yes      | —       | Text of the message as shown in its bubble: the user's text, or the text the engine composed (Implement buttons, answers to questions, feedback). The `Attached files:` lines the engine adds for Claude are not stored ([Chats](chats.md)). |
-| attachments | `attachments` | `[Attachment]` | no       | `[]`    | Files sent with the message, stored in `chats/<CHAT-ID>/`.                                                                                                                                                                                   |
-| sender      | `sender`      | `String`       | yes      | —       | Name of the device whose user sent the message, or `Claude` for the first message of a chat that Claude started with `implement_ticket` or `implement_bundle` ([Chats](chats.md)).                                                           |
+| Swift name  | Key           | Type               | Required | Default | Rules                                                                                                                                                                                                                                                          |
+| ----------- | ------------- | ------------------ | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| text        | `text`        | `String`           | yes      | —       | Text of the message as shown in its bubble: the user's text, or the text the engine composed (Implement buttons, answers to questions, feedback). The `Attached files:` lines the engine adds for Claude are not stored ([Chats](chats.md)).                   |
+| attachments | `attachments` | `[Attachment]`     | no       | `[]`    | Files sent with the message, stored in `chats/<CHAT-ID>/`.                                                                                                                                                                                                     |
+| sender      | `sender`      | `String`           | yes      | —       | Name of the device whose user sent the message, or `Claude` for the first message of a chat that Claude started with `implement_ticket` or `implement_bundle` ([Chats](chats.md)).                                                                             |
+| linkedItems | `linkedItems` | `[ChatLinkedItem]` | no       | `[]`    | The items linked in the inspector's composer when the message was sent, in chip order ([Chats](chats.md#linked-items)). They are not part of `text`: the bubble shows them as chips and Claude receives them as context ([Chats](chats.md#linked-items-hook)). |
+
+### Linked item
+
+Swift type `ChatLinkedItem`: an item linked to a message, as it was when the message was sent ([Chats](chats.md#linked-items)).
+
+| Swift name | Key    | Type                 | Required | Default | Rules                                                                                                |
+| ---------- | ------ | -------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------- |
+| kind       | `kind` | `ChatLinkedItemKind` | yes      | —       | `ticket`, `bundle`, `chat`, `codeFile`, `docsFile`, `webTab` or `skill`; gives the chip's SF Symbol. |
+| name       | `name` | `String`             | yes      | —       | The chip's short name.                                                                               |
+| text       | `text` | `String`             | yes      | —       | `<item>` of the line `Open in the app: <item>` Claude receives, and the chip's tooltip.              |
 
 ### Assistant item
 
@@ -836,10 +847,10 @@ The chat's cost is derived from the `costUSD` values of its result items ([Chat 
 
 ### Transcript example
 
-The transcript of the project chat above: a message with an image sent from the device MacBook, an MCP call, a permission request answered on the device Studio, a sub-agent with a nested call, a question set answered one question at a time, and the answers message.
+The transcript of the project chat above: a message with an image and a linked ticket sent from the device MacBook, an MCP call, a permission request answered on the device Studio, a sub-agent with a nested call, a question set answered one question at a time, and the answers message.
 
 ```jsonl .hephaestus/chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301.jsonl
-{"op":"add","item":{"type":"user","id":"E1D2C3B4-A596-4877-8695-A4B3C2D1E0F9","created":"2026-10-31T13:00:00Z","text":"Plan this sprint's status bar work. The screenshot shows the current status bar.","attachments":[{"id":"2B4D6F80-1A3C-4E5F-9071-8293A4B5C6D7","name":"status-bar.png","path":"chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301/2B4D6F80-1A3C-4E5F-9071-8293A4B5C6D7-status-bar.png","contentType":"image/png","size":48213}],"sender":"MacBook"}}
+{"op":"add","item":{"type":"user","id":"E1D2C3B4-A596-4877-8695-A4B3C2D1E0F9","created":"2026-10-31T13:00:00Z","text":"Plan this sprint's status bar work. The screenshot shows the current status bar.","attachments":[{"id":"2B4D6F80-1A3C-4E5F-9071-8293A4B5C6D7","name":"status-bar.png","path":"chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301/2B4D6F80-1A3C-4E5F-9071-8293A4B5C6D7-status-bar.png","contentType":"image/png","size":48213}],"sender":"MacBook","linkedItems":[{"kind":"ticket","name":"HEPH-13","text":"ticket HEPH-13 “Show the build number in the status bar”"}]}}
 {"op":"add","item":{"type":"system","id":"8C1D2E3F-4A5B-4C6D-8E7F-9A0B1C2D3E4F","created":"2026-10-31T13:00:02Z","text":"Session started · Opus 5.5 · effort high · Ask every time","level":"info"}}
 {"op":"add","item":{"type":"thinking","id":"msg_01Hq7ZkP3vX9mB2nC4dR5tW8#0","created":"2026-10-31T13:00:05Z","text":"Start with the open tickets of the project.","parentToolUseID":null}}
 {"op":"add","item":{"type":"toolUse","id":"msg_01Hq7ZkP3vX9mB2nC4dR5tW8#1","created":"2026-10-31T13:00:06Z","toolUseID":"toolu_01Ab3Cd5Ef7Gh9Ij1Kl3Mn5P","name":"list_tickets","server":"hephaestus","input":{"projectID":"HEPH","status":"todo"},"parentToolUseID":null}}
@@ -859,7 +870,7 @@ The transcript of the project chat above: a message with an image sent from the 
 {"op":"add","item":{"type":"result","id":"9E8D7C6B-5A49-4382-B1A0-F9E8D7C6B5A4","created":"2026-10-31T13:00:34Z","durationMs":34120,"costUSD":0.2875,"isError":false,"summary":null}}
 {"op":"update","item":{"type":"questions","id":"4D3C2B1A-0F9E-4D8C-B7A6-958473625140","created":"2026-10-31T13:00:32Z","questionSetID":"4D3C2B1A-0F9E-4D8C-B7A6-958473625140","questions":[{"label":"A","question":"Should the build number also appear in the About window?","options":[{"label":"Status bar only","description":"Keep the About window as it is."},{"label":"Both","description":null}],"recommended":"Status bar only"},{"label":"B","question":"Which format should the status bar use?","options":[{"label":"v0.4.0(57)","description":"Same format as the About window."},{"label":"57","description":"Build number only."}],"recommended":"v0.4.0(57)"}],"answers":{"A":"Status bar only"},"completed":false}}
 {"op":"update","item":{"type":"questions","id":"4D3C2B1A-0F9E-4D8C-B7A6-958473625140","created":"2026-10-31T13:00:32Z","questionSetID":"4D3C2B1A-0F9E-4D8C-B7A6-958473625140","questions":[{"label":"A","question":"Should the build number also appear in the About window?","options":[{"label":"Status bar only","description":"Keep the About window as it is."},{"label":"Both","description":null}],"recommended":"Status bar only"},{"label":"B","question":"Which format should the status bar use?","options":[{"label":"v0.4.0(57)","description":"Same format as the About window."},{"label":"57","description":"Build number only."}],"recommended":"v0.4.0(57)"}],"answers":{"A":"Status bar only","B":"v0.4.0(57), with the release date in its tooltip"},"completed":true}}
-{"op":"add","item":{"type":"user","id":"A7B6C5D4-E3F2-4011-9F8E-7D6C5B4A3928","created":"2026-10-31T13:02:10Z","text":"Answers:\nA: Status bar only\nB: v0.4.0(57), with the release date in its tooltip","attachments":[],"sender":"MacBook"}}
+{"op":"add","item":{"type":"user","id":"A7B6C5D4-E3F2-4011-9F8E-7D6C5B4A3928","created":"2026-10-31T13:02:10Z","text":"Answers:\nA: Status bar only\nB: v0.4.0(57), with the release date in its tooltip","attachments":[],"sender":"MacBook","linkedItems":[]}}
 ```
 
 ## Skill file
@@ -1337,3 +1348,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R112: Main windows show the Claude plan's weekly usage in the status bar as a small round progress indicator; a click shows the percentage used, when the week resets and the overage status.
 - R113: Claude can close the chat it runs in when the user asks or its work is finished; a closed chat shows `This conversation is over` in place of its composer until the user reopens it.
 - R117: Claude asks the user to choose an SF Symbol with `ask_symbol`: suggestions show as icons, any SF Symbol of the Mac can be searched, the user picks one, answers another way or skips.
+- R121: The items open in the app reach the inspector chat's Claude as context outside the message text, and the user's message shows them as chips.

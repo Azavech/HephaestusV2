@@ -8,20 +8,21 @@ HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server th
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Component         | `MCPServer` in `Sources/HephaestusCore/MCP/`, owned by the engine ([Architecture](architecture.md))                                                      |
 | Address           | `127.0.0.1` only, TCP port `mcpPort` (default 47820); `HEPHAESTUS_MCP_PORT` replaces it when set ([Architecture](architecture.md#environment-overrides)) |
-| Endpoint          | `/mcp`                                                                                                                                                   |
+| Endpoint          | `/mcp`; `/hooks/user-prompt-submit` for the linked items hook of the chat processes ([User prompt hook](#user-prompt-hook))                              |
 | Transport         | MCP Streamable HTTP, limited to POST requests answered with `application/json`: no SSE stream, no sessions                                               |
 | Protocol versions | `2025-06-18` and `2025-03-26`, negotiated in `initialize` ([Protocol version](#protocol-version))                                                        |
 | JSON-RPC methods  | `initialize`, `ping`, `tools/list`, `tools/call`; every notification is accepted and ignored                                                             |
 | Server name       | `hephaestus`, in `serverInfo` and as the server's key in Claude's MCP configuration, so Claude names the tools `mcp__hephaestus__<tool>`                 |
-| Authentication    | `Authorization: Bearer <token>` with a chat token or the external token                                                                                  |
+| Authentication    | `Authorization: Bearer <token>` with a chat token or the external token on `/mcp`, with a hook token on `/hooks/user-prompt-submit`                      |
 | Tools             | The 45 tools of the [tool catalogue](#tool-catalogue), plus 4 [debug tools](#debug-tools) when `HEPHAESTUS_DEBUG_TOOLS=1`                                |
 
 Every tool call runs an engine method ([Engine API](engine-api.md)) with the actor `claude`. The engine validates it exactly as it validates a call from the UI or from a remote device and emits the same events, so every client, local or remote, shows the change live.
 
-| Client                                     | Configuration                                                                       | Token                         | Actor                           |
-| ------------------------------------------ | ----------------------------------------------------------------------------------- | ----------------------------- | ------------------------------- |
-| Claude process of a chat                   | `--mcp-config` file written by the engine at each launch ([Chats](chats.md))        | The chat token of that launch | `claude` with the chat's id     |
-| Terminal Claude session on the main device | `claude mcp add` command copied from Settings > MCP ([External use](#external-use)) | The external token            | `claude` with chatID `external` |
+| Client                                       | Configuration                                                                                    | Token                         | Actor                           |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------- | ------------------------------- |
+| Claude process of a chat                     | `--mcp-config` file written by the engine at each launch ([Chats](chats.md))                     | The chat token of that launch | `claude` with the chat's id     |
+| Terminal Claude session on the main device   | `claude mcp add` command copied from Settings > MCP ([External use](#external-use))              | The external token            | `claude` with chatID `external` |
+| Linked items hook of a chat's Claude process | `UserPromptSubmit` hook of the `--settings` of each launch ([Chats](chats.md#linked-items-hook)) | The hook token of that launch | none                            |
 
 Remote devices never call the MCP server: Claude processes run on the main device only and the server listens on the loopback interface ([Remote devices](remote.md)).
 
@@ -45,13 +46,13 @@ The server reads each request and applies these steps in order; the first step t
 
 1. **Head.** Empty lines before the request line are skipped, as RFC 9112 › 2.2 recommends, for clients that end a body with an extra CRLF. The request line and the header fields, up to the first empty line, must parse as HTTP/1.1 or HTTP/1.0: a request line `<method> <target> HTTP/1.1` or `HTTP/1.0`, header fields `<name>: <value>`, at most one `Content-Length` made of digits, and no `Transfer-Encoding` other than `chunked`. Otherwise the answer is 400. A head longer than 65 536 bytes gets 413. Default chosen at design time.
 2. **Origin.** A request carrying an `Origin` header, whatever its value, gets 403. Default chosen at design time.
-3. **Path.** The path of the request target, without its query string, must be `/mcp`; any other path gets 404.
+3. **Path.** The path of the request target, without its query string, must be `/mcp` or `/hooks/user-prompt-submit`; any other path gets 404.
 4. **Method.** Only POST is handled; every other method, GET and DELETE included, gets 405 with `Allow: POST`.
-5. **Authorization.** A missing, malformed or unknown bearer token gets 401 ([Authentication](#authentication)).
+5. **Authorization.** A missing, malformed or unknown bearer token gets 401, and so does a token of the wrong kind for the path: a hook token on `/mcp`, a chat token or the external token on `/hooks/user-prompt-submit` ([Authentication](#authentication)).
 6. **Declared size.** A `Content-Length` above 4 194 304 bytes gets 413 without the body being read. Default chosen at design time.
 7. **Continue.** When the request carries `Expect: 100-continue`, the server sends the interim response `HTTP/1.1 100 Continue`. Default chosen at design time.
 8. **Body.** The body is the `Content-Length` bytes, or the decoded chunks when `Transfer-Encoding: chunked` is present, which takes precedence over `Content-Length`; chunk extensions and trailer fields are ignored. A request with neither header has an empty body. A chunked body growing beyond 4 194 304 bytes gets 413 and a malformed chunk gets 400; a chunk-size line or a trailer section longer than 65 536 bytes, the head limit, is malformed. Default chosen at design time.
-9. **JSON-RPC.** The body is handled as described in [JSON-RPC](#json-rpc) and answered with 200 or 202, or with 400 when the request's `MCP-Protocol-Version` header names a version it may not use ([Protocol version](#protocol-version)).
+9. **JSON-RPC.** On `/hooks/user-prompt-submit`, the body is answered with 200 as [User prompt hook](#user-prompt-hook) states. On `/mcp`, the body is handled as described in [JSON-RPC](#json-rpc) and answered with 200 or 202, or with 400 when the request's `MCP-Protocol-Version` header names a version it may not use ([Protocol version](#protocol-version)).
 
 Every rejection (400, 401, 403, 404, 405, 413) carries `Connection: close` and the server closes the connection after sending it. Default chosen at design time.
 
@@ -61,13 +62,13 @@ The Claude CLI sends `GET /mcp` after `initialize` to open an SSE stream, which 
 
 | Status                 | Sent when                                                                                                                                            | Body                                                                                        |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| 200 OK                 | A JSON-RPC request was handled, or the body is not a valid JSON-RPC message; JSON-RPC errors included                                                | JSON-RPC response (`application/json`)                                                      |
+| 200 OK                 | A JSON-RPC request was handled, or the body is not a valid JSON-RPC message; JSON-RPC errors included. A request to `/hooks/user-prompt-submit`      | JSON-RPC response (`application/json`); the hook answer on `/hooks/user-prompt-submit`      |
 | 202 Accepted           | The body is a JSON-RPC notification or a JSON-RPC response                                                                                           | None                                                                                        |
 | 400 Bad Request        | Malformed request head or chunked body                                                                                                               | `Bad Request: malformed HTTP request.`                                                      |
 | 400 Bad Request        | A request for `ping`, `tools/list` or `tools/call` whose `MCP-Protocol-Version` names an unsupported version ([Protocol version](#protocol-version)) | `Bad Request: unsupported MCP-Protocol-Version <value>; supported: 2025-06-18, 2025-03-26.` |
 | 401 Unauthorized       | Missing, malformed or unknown bearer token                                                                                                           | `Unauthorized: missing or invalid bearer token.`                                            |
 | 403 Forbidden          | The request carries an `Origin` header                                                                                                               | `Forbidden: requests with an Origin header are refused.`                                    |
-| 404 Not Found          | The path is not `/mcp`                                                                                                                               | `Not Found: the MCP endpoint is /mcp.`                                                      |
+| 404 Not Found          | The path is neither `/mcp` nor `/hooks/user-prompt-submit`                                                                                           | `Not Found: the MCP endpoint is /mcp.`                                                      |
 | 405 Method Not Allowed | The method is not POST                                                                                                                               | `Method Not Allowed: use POST.`                                                             |
 | 413 Content Too Large  | The request head exceeds 65 536 bytes                                                                                                                | `Content Too Large: the request head exceeds 65536 bytes.`                                  |
 | 413 Content Too Large  | The body exceeds 4 194 304 bytes                                                                                                                     | `Content Too Large: the request body exceeds 4194304 bytes.`                                |
@@ -115,20 +116,39 @@ The server never sends `Mcp-Session-Id` or any `Access-Control-*` header.
 ## Authentication
 
 - Every POST to `/mcp` carries `Authorization: Bearer <token>`. The scheme name matches case-insensitively, one or more spaces separate it from the token, and the token is compared in constant time with the live chat tokens and the external token.
+- Every POST to `/hooks/user-prompt-submit` carries a hook token in the same form, compared in constant time with the live hook tokens. A hook token is not accepted on `/mcp`, and a chat token or the external token is not accepted on `/hooks/user-prompt-submit`. Default chosen at design time.
 - A missing header, several `Authorization` fields, another scheme, an empty token or an unknown token gets 401 with `WWW-Authenticate: Bearer realm="hephaestus"`. Default chosen at design time. The server offers no OAuth: discovery requests to other paths get 404.
 - A token is 64 lowercase hexadecimal characters encoding 32 bytes from `SecRandomCopyBytes` ([Data model](data-model.md#secrets-file)).
 
-| Token          | Created                                                                             | Kept in                                                                                                                                                             | Valid until                                                                                               | Actor                           |
-| -------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| Chat token     | Each time the engine launches the chat's Claude process                             | Engine memory and the chat's MCP config file `Runtime/mcp/<chatID>.json`, file mode 0600, deleted when the process exits ([Chats](chats.md#mcp-configuration-file)) | That process exits, whatever the reason: idle termination, interruption, crash, chat deletion or app quit | `claude` with the chat's id     |
-| External token | At launch when `secrets.json` holds none ([Data model](data-model.md#secrets-file)) | `mcpExternalToken` in `secrets.json`, file mode 0600                                                                                                                | Regenerate in Settings > MCP                                                                              | `claude` with chatID `external` |
+| Token          | Created                                                                             | Kept in                                                                                                                                                             | Valid until                                                                                               | Actor                                                                                               |
+| -------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Chat token     | Each time the engine launches the chat's Claude process                             | Engine memory and the chat's MCP config file `Runtime/mcp/<chatID>.json`, file mode 0600, deleted when the process exits ([Chats](chats.md#mcp-configuration-file)) | That process exits, whatever the reason: idle termination, interruption, crash, chat deletion or app quit | `claude` with the chat's id                                                                         |
+| External token | At launch when `secrets.json` holds none ([Data model](data-model.md#secrets-file)) | `mcpExternalToken` in `secrets.json`, file mode 0600                                                                                                                | Regenerate in Settings > MCP                                                                              | `claude` with chatID `external`                                                                     |
+| Hook token     | Each time the engine launches the chat's Claude process, with its chat token        | Engine memory and the environment variable `HEPHAESTUS_HOOK_TOKEN` of that process ([Chats](chats.md#linked-items-hook))                                            | That process exits, whatever the reason                                                                   | none: it only gives the linked items of its chat's messages ([User prompt hook](#user-prompt-hook)) |
 
-The chat tokens are created, kept and revoked as this table states. Default chosen at design time.
+The chat tokens and the hook tokens are created, kept and revoked as this table states. Default chosen at design time.
 
 - A relaunch of a chat's process issues a new token. Sub-agents of the chat run in the same process and use the same token.
 - The external token is read and regenerated only through the external MCP token service of the windows of this Mac; no engine method or MCP tool exposes it ([Architecture](architecture.md#local-only-services)). Regenerate (Settings > MCP, [UI](ui.md)) replaces it at once: requests with the old token get 401, and terminal sessions must add the server again ([External use](#external-use)). When `secrets.json` cannot be written, the old token stays valid and Settings shows the alert `Regenerate failed` with the storage error's message. Default chosen at design time.
 - A chat token identifies the calling chat: `ask_questions` posts its questions to that chat, `ask_symbol` its symbol request, `close_chat` closes that chat, and `open_in_app` reaches that chat's driving device.
 - Tokens are never logged.
+
+## User prompt hook
+
+The Claude process of a chat sends `POST /hooks/user-prompt-submit` before Claude reads each user message, through the `UserPromptSubmit` hook of its `--settings` ([Chats](chats.md#linked-items-hook)). The request goes through steps 1 to 8 of [Request handling](#request-handling) with a hook token. Its body is the hook input of the Claude CLI, a JSON object whose `prompt` is the message's text, for example:
+
+```json
+{"session_id":"3f2504e0-4f89-11d3-9a0c-0305e82c3301","transcript_path":"/Users/example/.claude/projects/-Users-example-Developer-HephaestusV2/3f2504e0-4f89-11d3-9a0c-0305e82c3301.jsonl","cwd":"/Users/example/Developer/HephaestusV2","prompt_id":"6c15058d-0e32-4e4a-b8e2-6961d759eb72","permission_mode":"default","hook_event_name":"UserPromptSubmit","prompt":"Which item do I have open?"}
+```
+
+- The engine matches `prompt` with the messages written to the token's chat process ([Chats](chats.md#linked-items-hook)). When the matched message has linked items, the answer is 200 with `application/json` and `additionalContext` holding one line `Open in the app: <item>` per item, in chip order, joined with LF:
+
+```json
+{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"Open in the app: ticket HEPH-3 “Pinned questions card: minimize, navigate, skip answers”"}}
+```
+
+- Otherwise the answer is 200 with the body `{}`, which adds no context: the message has no linked item, no message matches, or the body is not a JSON object with a string `prompt`. Default chosen at design time.
+- The request runs no engine method, emits no event and is not logged, unless it is rejected ([Logging](#logging)).
 
 ## JSON-RPC
 
@@ -2381,7 +2401,7 @@ The server writes these messages to `Logs/engine.log` with the component `mcp`, 
 ## Security
 
 - The server listens on `127.0.0.1` only: other machines, remote devices included, cannot reach it.
-- Every request needs a 256-bit bearer token, compared in constant time. Chat tokens live as long as their Claude process; the files holding tokens have mode 0600; tokens are never logged.
+- Every request needs a 256-bit bearer token, compared in constant time. Chat tokens and hook tokens live as long as their Claude process; the files holding tokens have mode 0600; tokens are never logged. A hook token is also in the environment of its Claude process, where the commands Claude runs can read it; it only gives the linked items of its chat's messages.
 - Requests carrying an `Origin` header are refused with 403 and no CORS header is ever sent, so web pages, those of the app's own web tabs included, cannot call the server.
 - The [actor rules](#actor-rules) hold whatever the token: Claude never changes the status of a `done` ticket.
 - The debug tools exist only when debug tools are enabled; then every holder of a token of that process can capture its windows and click in them.
@@ -2400,7 +2420,7 @@ The files are in `Sources/HephaestusCore/MCP/`. The type and file names below ar
 | HTTPResponse (struct)       | HTTP.swift               | Status line, headers and body, and their serialization.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | JSONRPCID (enum)            | JSONRPC.swift            | `string(String)`, `integer(Int64)`.                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | JSONRPCMessage (enum)       | JSONRPC.swift            | Outcome of the classification: `request(id, method, params)`, `notification(method)`, `response`, `invalid(code, message)`.                                                                                                                                                                                                                                                                                                                                                             |
-| MCPTokenStore (actor)       | MCPTokens.swift          | `issueChatToken(chatID:) -> String`, `revokeChatToken(chatID:)`, `externalToken`, `regenerateExternalToken() throws -> String` (throws the storage error when `secrets.json` cannot be written; the old token then stays valid), `actor(forToken:) -> Actor?` with constant-time comparison.                                                                                                                                                                                            |
+| MCPTokenStore (actor)       | MCPTokens.swift          | `issueChatToken(chatID:) -> String`, `issueHookToken(chatID:) -> String`, `revokeChatToken(chatID:)` (revokes the chat's hook token too), `chatID(forHookToken:) -> ChatID?`, `externalToken`, `regenerateExternalToken() throws -> String` (throws the storage error when `secrets.json` cannot be written; the old token then stays valid), `actor(forToken:) -> Actor?` with constant-time comparison.                                                                               |
 | MCPToolDefinition (struct)  | MCPToolCatalog.swift     | `name`, `description`, `inputSchema` (a `JSONValue`, [Engine API](engine-api.md#jsonvalue)), `isDebug`, `engineMethod` (the Engine method column of the [tool catalogue](#tool-catalogue), nil for the debug tools) and `handling` (how the tool's own rules turn the arguments into params and the result into text), so that the catalogue is data.                                                                                                                                   |
 | MCPToolCatalog (enum)       | MCPToolCatalog.swift     | `static let tools` in catalogue order and `static let debugTools`, holding the exact texts and schemas of this document.                                                                                                                                                                                                                                                                                                                                                                |
 | MCPSchemaValidator (struct) | MCPSchemaValidator.swift | `validate(_ arguments: JSONValue, against schema: JSONValue) -> MCPToolError?` for the keywords of [Argument validation](#argument-validation). A `JSONValue` object has no member order, so the order of `properties` that [Validation order](#validation-order) and [Target kinds](#target-kinds) use is recorded when `MCPToolCatalog` parses its schema texts and looked up by the `properties` object; a schema the catalogue did not parse uses the ascending order of the names. |
@@ -2410,7 +2430,7 @@ The files are in `Sources/HephaestusCore/MCP/`. The type and file names below ar
 | WindowInfo (struct)         | MCPDebugUI.swift         | The fields of [Window information](#window-information); `state` is a `JSONValue`.                                                                                                                                                                                                                                                                                                                                                                                                      |
 | DebugScreenshot (struct)    | MCPDebugUI.swift         | `path`, `width` and `height` of a [debug_screenshot](#debug_screenshot) result.                                                                                                                                                                                                                                                                                                                                                                                                         |
 
-The code that launches a chat's Claude process ([Chats](chats.md)) asks `MCPTokenStore` for a chat token at each launch, writes it into the chat's MCP config file and revokes it when the process exits.
+The code that launches a chat's Claude process ([Chats](chats.md)) asks `MCPTokenStore` for a chat token and a hook token at each launch, writes the chat token into the chat's MCP config file, passes the hook token in the process's environment and revokes both when the process exits.
 
 ## Conformance
 
@@ -2606,3 +2626,4 @@ Unauthorized: missing or invalid bearer token.
 - R110: A bundle has a status: todo, in progress or done; Implement All sets it to in progress and is disabled until the user sets it back to To Do.
 - R113: Claude can close the chat it runs in when the user asks or its work is finished; a closed chat shows `This conversation is over` in place of its composer until the user reopens it.
 - R117: Claude asks the user to choose an SF Symbol with `ask_symbol`: suggestions show as icons, any SF Symbol of the Mac can be searched, the user picks one, answers another way or skips.
+- R121: The items open in the app reach the inspector chat's Claude as context outside the message text, and the user's message shows them as chips.

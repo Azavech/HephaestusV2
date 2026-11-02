@@ -918,7 +918,8 @@ Swift type `ChatsSend` · actors: user · result: [Empty](#empty)
 | message | [ChatMessageInput](#chatmessageinput) | yes      | Text and attachments. |
 
 - Accepted in every state ([Chats](chats.md#chat-states)). With a live Claude process the message is written to it at once; during a turn (states `starting`, `running`, `waitingPermission`) the CLI runs it after its CLI turn in progress, and the chat stays running until Claude has finished it ([Chats](chats.md#turn-tracking)). In the state `waitingAnswers` the message is delivered as in `idle` and leaves the question set unchanged. Without a live process, in any state, `error` included, a process is launched first. Default chosen at design time.
-- Appends a `user` item with the text, the stored attachments and `sender` the name of the actor's device, then delivers the message to the chat's Claude process, launching it first when it is not running ([Chats](chats.md#user-messages)).
+- Appends a `user` item with the text, the stored attachments, the linked items of `message.linkedItems` and `sender` the name of the actor's device, then delivers the message to the chat's Claude process, launching it first when it is not running ([Chats](chats.md#user-messages)).
+- The linked items are their own field of `message`, never added to the text: Claude receives them as context outside the message, through the linked items hook ([Chats](chats.md#linked-items-hook)). They do not count as content: a message with linked items only is empty.
 - The first user message of a chat that has text starts its naming with Haiku ([Chats](chats.md#haiku-naming)).
 - In a closed chat the message reopens the chat: `closed` becomes false in the metadata write that follows the `user` item ([Chats](chats.md#closing-a-chat)).
 - Returns once the message is accepted; Claude's answer arrives as events.
@@ -2400,13 +2401,14 @@ Rules:
 
 ### ChatMessageInput
 
-| Field       | Type               | Required | Description                                                  |
-| ----------- | ------------------ | -------- | ------------------------------------------------------------ |
-| text        | String             | yes      | Message text; may be empty only when there is an attachment. |
-| attachments | [AttachmentUpload] | no       | Files and images; default empty.                             |
+| Field       | Type               | Required | Description                                                                                                                                                                                                |
+| ----------- | ------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| text        | String             | yes      | Message text; may be empty only when there is an attachment.                                                                                                                                               |
+| attachments | [AttachmentUpload] | no       | Files and images; default empty.                                                                                                                                                                           |
+| linkedItems | [ChatLinkedItem]   | no       | The items linked in the inspector's composer at Send, in chip order ([Chats](chats.md#linked-items)); default empty. Each one is a [ChatLinkedItem](data-model.md#linked-item), stored in the `user` item. |
 
 ```json
-{"attachments": [{"contentType": "image/png", "dataBase64": "iVBORw0KGgo=", "name": "screenshot.png"}], "text": "The tab strip overlaps the toolbar."}
+{"attachments": [{"contentType": "image/png", "dataBase64": "iVBORw0KGgo=", "name": "screenshot.png"}], "linkedItems": [{"kind": "ticket", "name": "DEMO-12", "text": "ticket DEMO-12 “Fix the login form”"}], "text": "The tab strip overlaps the toolbar."}
 ```
 
 ### ChatTranscript

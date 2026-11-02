@@ -174,6 +174,8 @@ final class ChatProcess {
     /// User message lines written before `system/init`, delivered again when the session was
     /// not found.
     var messagesBeforeInit: [ChatMessageLine] = []
+    /// The messages written whose `UserPromptSubmit` hook has not run yet.
+    var hookRecords = LinkedItemsHookRecords()
     /// The messages written to the process that the CLI has not finished, and its open CLI turn.
     var turns = TurnTracker()
     /// The background work the CLI reports for the process.
@@ -218,11 +220,14 @@ final class ChatProcess {
     }
 }
 
-/// A user message line for the Claude process, and the `uuid` it carries (docs/chats.md › User
-/// messages).
+/// A user message line for the Claude process, the `uuid` it carries (docs/chats.md › User
+/// messages), and what the linked items hook needs: the text of its `text` block and the
+/// `Open in the app:` lines of its linked items (docs/chats.md › Linked items hook).
 struct ChatMessageLine: Sendable, Hashable {
     var data: Data
     var uuid: String
+    var prompt: String = ""
+    var context: [String] = []
 }
 
 /// docs/chats.md › Turn tracking: the user messages written to one process that the CLI has not

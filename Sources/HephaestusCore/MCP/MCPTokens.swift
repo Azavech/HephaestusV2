@@ -1,12 +1,14 @@
 import Foundation
 
-/// The bearer tokens of the MCP server (docs/mcp.md › Authentication): one chat token per launch
-/// of a chat's Claude process, kept in memory only, and the external token of `secrets.json`.
+/// The bearer tokens of the MCP server (docs/mcp.md › Authentication): one chat token and one hook
+/// token per launch of a chat's Claude process, kept in memory only, and the external token of
+/// `secrets.json`.
 /// Tokens are 64 lowercase hexadecimal characters encoding 32 bytes from `SecRandomCopyBytes`,
 /// compared in constant time (docs/architecture.md › Security overview) and never logged.
 public actor MCPTokenStore {
     private let secrets: SecretsStore
     private var chatTokens: [ChatID: String] = [:]
+    private var hookTokens: [ChatID: String] = [:]
 
     public init(secrets: SecretsStore) {
         self.secrets = secrets
@@ -20,9 +22,19 @@ public actor MCPTokenStore {
         return token
     }
 
-    /// Revokes the chat's token when its process exits, whatever the reason.
+    /// A new hook token for a launch of the chat's Claude process, accepted only on the path of
+    /// the linked items hook; it replaces the chat's previous hook token, which stops working at
+    /// once (docs/chats.md › Linked items hook).
+    public func issueHookToken(chatID: ChatID) -> String {
+        let token = RandomIDs.externalToken()
+        hookTokens[chatID] = token
+        return token
+    }
+
+    /// Revokes the chat's token and hook token when its process exits, whatever the reason.
     public func revokeChatToken(chatID: ChatID) {
         chatTokens[chatID] = nil
+        hookTokens[chatID] = nil
     }
 
     /// The external token, read through the external MCP token service of the windows of this
@@ -52,6 +64,17 @@ public actor MCPTokenStore {
         }
         if MCPTokenStore.constantTimeEqual(presented, Array(externalToken.utf8)) {
             match = .claude(chatID: Actor.externalChatID)
+        }
+        return match
+    }
+
+    /// The chat of a live hook token, nil for any other token. Every hook token is compared, each
+    /// in constant time, whatever matches.
+    public func chatID(forHookToken token: String) -> ChatID? {
+        let presented = Array(token.utf8)
+        var match: ChatID?
+        for (chatID, hookToken) in hookTokens where MCPTokenStore.constantTimeEqual(presented, Array(hookToken.utf8)) {
+            match = chatID
         }
         return match
     }

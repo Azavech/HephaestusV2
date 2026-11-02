@@ -128,7 +128,8 @@ extension Engine {
         if let message = params.message {
             recordDrivingDevice(meta.id, actor)
             let stored = try storeChatAttachments(prepared ?? [], chatID: meta.id)
-            try sendChatMessage(meta.id, text: message.text, attachments: stored, sender: sender, origin: actor)
+            try sendChatMessage(meta.id, text: message.text, attachments: stored, linkedItems: message.linkedItems ?? [],
+                                sender: sender, origin: actor)
         }
         return try requireChat(meta.id)
     }
@@ -276,7 +277,8 @@ extension Engine {
         _ = try requireChat(params.chatID)
         recordDrivingDevice(params.chatID, actor)
         let stored = try storeChatAttachments(prepared, chatID: params.chatID)
-        try sendChatMessage(params.chatID, text: params.message.text, attachments: stored, sender: sender, origin: actor)
+        try sendChatMessage(params.chatID, text: params.message.text, attachments: stored,
+                            linkedItems: params.message.linkedItems ?? [], sender: sender, origin: actor)
         return Empty()
     }
 

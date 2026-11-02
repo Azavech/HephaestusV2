@@ -20,12 +20,32 @@ struct LinkedItemRef: Hashable {
 
     /// The sidebar section of the item, whose SF Symbol the chip shows.
     var section: ProjectSection {
+        linkedKind.section
+    }
+
+    /// The `kind` Send passes for the item (docs/chats.md › Linked items).
+    var linkedKind: ChatLinkedItemKind {
         switch kind {
+        case .ticket: return .ticket
+        case .bundle: return .bundle
+        case .chat: return .chat
+        case .code: return .codeFile
+        case .doc: return .docsFile
+        case .webTab: return .webTab
+        case .skill: return .skill
+        }
+    }
+}
+
+extension ChatLinkedItemKind {
+    /// The sidebar section of a linked item of this kind, whose SF Symbol its chips show.
+    var section: ProjectSection {
+        switch self {
         case .ticket: return .tickets
         case .bundle: return .bundles
         case .chat: return .chats
-        case .code: return .code
-        case .doc: return .docs
+        case .codeFile: return .code
+        case .docsFile: return .docs
         case .webTab: return .web
         case .skill: return .skills
         }
@@ -42,8 +62,14 @@ struct LinkedItem: Hashable, Identifiable {
 
     var id: String { ref.key }
 
+    /// The item as Send passes it and the `user` item stores it.
+    var chatLinkedItem: ChatLinkedItem {
+        ChatLinkedItem(kind: ref.linkedKind, name: name, text: text)
+    }
+
+    /// The line Claude receives for the item through the linked items hook.
     var line: String {
-        "Open in the app: \(text)"
+        chatLinkedItem.line
     }
 }
 
@@ -120,14 +146,6 @@ enum LinkedItems {
         case .skill:
             return LinkedItem(ref: ref, name: ref.id, text: "skill \(ref.id)")
         }
-    }
-
-    /// The message text Send gives: one `Open in the app:` line per linked item, a blank line,
-    /// then the typed text; the blank line is left out when the typed text is empty.
-    static func messageText(_ text: String, linked: [LinkedItem]) -> String {
-        guard !linked.isEmpty else { return text }
-        let lines = linked.map(\.line).joined(separator: "\n")
-        return text.isEmpty ? lines : lines + "\n\n" + text
     }
 
     private static func fileName(_ path: String) -> String {

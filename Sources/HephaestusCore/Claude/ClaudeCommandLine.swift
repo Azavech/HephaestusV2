@@ -11,7 +11,7 @@ enum ClaudeCommandLine {
     ].map { "mcp__hephaestus__\($0)" }.joined(separator: ",")
 
     /// The argv of a chat process, the CLI path first; no shell is involved.
-    static func chat(cliPath: String, chatID: ChatID, sessionStarted: Bool, settings: ChatSettings, mcpConfigPath: String,
+    static func chat(cliPath: String, chatID: ChatID, sessionStarted: Bool, settings: ChatSettings, mcpPort: Int, mcpConfigPath: String,
                      systemPrompt: String, pluginDirectory: String?) -> [String] {
         var argv = [cliPath, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
                     "--include-partial-messages"]
@@ -28,10 +28,20 @@ enum ClaudeCommandLine {
         if let pluginDirectory {
             argv += ["--plugin-dir", pluginDirectory]
         }
-        if settings.ultracode {
-            argv += ["--settings", #"{"ultracode":true}"#]
-        }
+        argv += ["--settings", chatSettings(ultracode: settings.ultracode, mcpPort: mcpPort)]
         return argv
+    }
+
+    /// Row 18: the `UserPromptSubmit` hook of the linked items hook, after `"ultracode":true` when
+    /// ultracode is on (docs/chats.md › Command line, › Linked items hook). The CLI reads the token
+    /// from the process's environment, so it is not part of the arguments.
+    static func chatSettings(ultracode: Bool, mcpPort: Int) -> String {
+        let url = "http://127.0.0.1:\(mcpPort)\(LinkedItemsHook.path)"
+        let variable = LinkedItemsHook.tokenVariable
+        let hook = #"{"type":"http","url":\#(ControlLines.string(url)),"headers":{"Authorization":\#(ControlLines.string("Bearer $" + variable))},"#
+            + #""allowedEnvVars":[\#(ControlLines.string(variable))],"timeout":\#(LinkedItemsHook.timeoutSeconds)}"#
+        let hooks = #""hooks":{"UserPromptSubmit":[{"hooks":[\#(hook)]}]}"#
+        return ultracode ? #"{"ultracode":true,\#(hooks)}"# : "{\(hooks)}"
     }
 
     /// The argv of a naming call (docs/chats.md › Haiku naming › Command).

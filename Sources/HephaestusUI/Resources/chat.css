@@ -180,6 +180,39 @@ button {
   padding: 0;
 }
 
+/* MARK: Linked items: the chips of a user message (docs/chats.md › Item rendering) */
+
+.linked-items {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-bottom: 4px;
+  max-width: 85%;
+}
+
+.linked-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 9px;
+  border: 1px solid var(--md-rule);
+  border-radius: 7px;
+  background: var(--chat-card);
+  color: var(--md-text);
+  font-size: 12px;
+}
+
+.linked-chip .md-symbol-icon {
+  color: var(--md-secondary);
+}
+
+.linked-name {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* MARK: Attachments */
 
 .attachments {

@@ -4,7 +4,8 @@ import Testing
 @testable import HephaestusUI
 
 /// docs/chats.md › Linked items and docs/ui.md › Inspector: the items of the shown section, their
-/// chips and lines, the unlinked items and the message text Send gives.
+/// chips and lines, the unlinked items, the linked items Send passes and their chips in the user
+/// bubbles.
 @MainActor
 @Suite("Inspector linked items")
 struct LinkedItemsTests {
@@ -111,19 +112,36 @@ struct LinkedItemsTests {
         #expect(linked(state, .tickets).map(\.name) == ["DEMO-2"])
     }
 
-    @Test func messageTextStartsWithTheLines() {
-        let items = linked(everySelection, .tickets)
-        #expect(LinkedItems.messageText("Can these two be done in one bundle?", linked: items) == """
-            Open in the app: ticket DEMO-2 “Fix the login form”
-            Open in the app: ticket DEMO-10 “Remember the last account”
+    @Test func sendPassesTheItemsWithTheirKindNameAndText() {
+        #expect(linked(everySelection, .tickets).map(\.chatLinkedItem) == [
+            ChatLinkedItem(kind: .ticket, name: "DEMO-2", text: "ticket DEMO-2 “Fix the login form”"),
+            ChatLinkedItem(kind: .ticket, name: "DEMO-10", text: "ticket DEMO-10 “Remember the last account”"),
+        ])
+        let kinds: [ProjectSection: ChatLinkedItemKind] = [.bundles: .bundle, .chats: .chat, .code: .codeFile, .docs: .docsFile,
+                                                           .web: .webTab, .skills: .skill]
+        for (section, kind) in kinds {
+            let items = linked(everySelection, section)
+            #expect(items.map(\.chatLinkedItem.kind) == [kind])
+            // The chip of the bubble shows the symbol of the composer's chip.
+            #expect(items.map { $0.chatLinkedItem.kind.section.symbol } == [section.symbol])
+        }
+    }
 
-            Can these two be done in one bundle?
-            """)
-        #expect(LinkedItems.messageText("", linked: items) == """
-            Open in the app: ticket DEMO-2 “Fix the login form”
-            Open in the app: ticket DEMO-10 “Remember the last account”
-            """)
-        #expect(LinkedItems.messageText("Hello", linked: []) == "Hello")
+    @Test func userBubbleShowsTheLinkedItemsAsChipsAndOnlyTheText() {
+        let item = ChatItem.user(UserItem(id: "u", created: created, text: "Which item do I have open?", sender: "MacBook",
+                                          linkedItems: [ChatLinkedItem(kind: .ticket, name: "DEMO-2", text: "ticket DEMO-2 “Fix <the> login form”")]))
+        let context = TranscriptRenderContext(projectRootPath: nil, chatIsRunning: false, displayedQuestion: nil, today: created)
+        let html = TranscriptRenderer.fragment(for: item, in: TranscriptState(), context: context).html
+        let chips = "<div class=\"linked-items\"><span class=\"linked-chip\" title=\"ticket DEMO-2 “Fix &lt;the&gt; login form”\">"
+            + "<span class=\"md-symbol-icon\" data-symbol=\"checklist\"></span><span class=\"linked-name\">DEMO-2</span></span></div>"
+        // Between the caption and the bubble.
+        let chipsRange = try? #require(html.range(of: chips))
+        let bubbleRange = html.range(of: "user-bubble")
+        #expect(chipsRange != nil && bubbleRange != nil && chipsRange!.upperBound <= bubbleRange!.lowerBound)
+        #expect(!html.contains("Open in the app"))
+        // Without linked items, no chip row.
+        let plain = ChatItem.user(UserItem(id: "p", created: created, text: "Hello", sender: "MacBook"))
+        #expect(!TranscriptRenderer.fragment(for: plain, in: TranscriptState(), context: context).html.contains("linked-items"))
     }
 
     @Test func unlinkedItemsAreNotPersisted() throws {

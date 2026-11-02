@@ -99,13 +99,18 @@ public struct UserItem: ChatItemPayload {
     public var attachments: [Attachment]
     /// Name of the device whose user sent the message, or `Claude`.
     public var sender: String
+    /// The items linked in the inspector's composer when the message was sent, in chip order;
+    /// not part of `text` (docs/chats.md › Linked items).
+    public var linkedItems: [ChatLinkedItem]
 
-    public init(id: String, created: Date, text: String, attachments: [Attachment] = [], sender: String) {
+    public init(id: String, created: Date, text: String, attachments: [Attachment] = [], sender: String,
+                linkedItems: [ChatLinkedItem] = []) {
         self.id = id
         self.created = created
         self.text = text
         self.attachments = attachments
         self.sender = sender
+        self.linkedItems = linkedItems
     }
 
     public init(from decoder: Decoder) throws {
@@ -114,6 +119,7 @@ public struct UserItem: ChatItemPayload {
         text = try c.required("text")
         attachments = try c.value("attachments", default: [])
         sender = try c.required("sender")
+        linkedItems = try c.value("linkedItems", default: [])
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -122,7 +128,34 @@ public struct UserItem: ChatItemPayload {
         try c.encode(text, "text")
         try c.encode(attachments, "attachments")
         try c.encode(sender, "sender")
+        try c.encode(linkedItems, "linkedItems")
     }
+}
+
+/// An item linked to a user message, as it was when the message was sent (docs/data-model.md ›
+/// Linked item).
+public struct ChatLinkedItem: Codable, Sendable, Hashable {
+    public var kind: ChatLinkedItemKind
+    /// The chip's short name.
+    public var name: String
+    /// `<item>` of the line `Open in the app: <item>` Claude receives, and the chip's tooltip.
+    public var text: String
+
+    public init(kind: ChatLinkedItemKind, name: String, text: String) {
+        self.kind = kind
+        self.name = name
+        self.text = text
+    }
+
+    /// The line Claude receives for the item (docs/chats.md › Linked items hook).
+    public var line: String {
+        "Open in the app: \(text)"
+    }
+}
+
+/// The kind of a linked item, which gives its chip's SF Symbol (docs/chats.md › Linked items).
+public enum ChatLinkedItemKind: String, Codable, Sendable, Hashable, CaseIterable {
+    case ticket, bundle, chat, codeFile, docsFile, webTab, skill
 }
 
 /// A text block written by Claude.

@@ -241,13 +241,14 @@ final class ChatViewModel {
     // MARK: Composer actions
 
     /// Send: `chats.send`, or `chats.create` for a draft; sending clears the text and the
-    /// attachment chips. The message starts with the `Open in the app:` lines of the linked items,
-    /// which stay linked.
+    /// attachment chips. The linked items go with the message, outside its text, and stay linked
+    /// (docs/chats.md › Linked items).
     func send() {
         guard canSend else { return }
         let sent = composer
-        let text = LinkedItems.messageText(sent.text, linked: linkedItems)
-        let message = ChatMessageInput(text: text, attachments: sent.attachments.isEmpty ? nil : sent.attachments)
+        let linked = linkedItems.map(\.chatLinkedItem)
+        let message = ChatMessageInput(text: sent.text, attachments: sent.attachments.isEmpty ? nil : sent.attachments,
+                                       linkedItems: linked.isEmpty ? nil : linked)
         composer = ComposerDraft()
         Task {
             do {
