@@ -92,6 +92,15 @@ button {
   margin: 0 4px 2px;
 }
 
+.caption-sender {
+  font-weight: 600;
+  color: var(--md-text);
+}
+
+.caption-time {
+  margin-left: 3px;
+}
+
 .bubble {
   position: relative;
   max-width: 85%;

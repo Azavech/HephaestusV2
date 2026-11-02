@@ -85,6 +85,8 @@ final class TranscriptController {
         var steps = 0
         /// For question sets: the label marked with ➡️.
         var markedLabel: String?
+        /// For user and assistant items: the day their captions were rendered for.
+        var today: Date?
     }
 
     /// `connection` and the chat's project serve the images of the page (`ResourceSchemeHandler`,
@@ -218,6 +220,10 @@ final class TranscriptController {
         }
         if case .questions(let set) = item {
             key.markedLabel = context.markedLabel(set)
+        }
+        switch item {
+        case .user, .assistant: key.today = context.today
+        default: break
         }
         guard renderKeys[item.id] != key else { return nil }
         renderKeys[item.id] = key

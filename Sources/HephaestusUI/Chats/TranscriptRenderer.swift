@@ -43,6 +43,9 @@ struct TranscriptRenderContext: Hashable {
     /// The identifiers of the projects of the window's device: their ticket and bundle ids are
     /// links (docs/chats.md › Links, images and files).
     var projectIdentifiers: Set<String> = []
+    /// The start of the current day: the captions of messages created on it show only the time
+    /// (docs/chats.md › Item rendering).
+    var today: Date = Calendar.autoupdatingCurrent.startOfDay(for: Date())
 
     /// The label marked in a question set: the displayed question of this set, when it is not
     /// completed.
@@ -96,7 +99,8 @@ enum TranscriptRenderer {
     static func streamHTML(kind: ChatDeltaEvent.Payload.Kind, text: String, context: TranscriptRenderContext) -> String {
         switch kind {
         case .text:
-            return "<div class=\"msg assistant\"><div class=\"bubble assistant-bubble\">\(markdown(text, context: context))</div></div>"
+            return "<div class=\"msg assistant\">" + caption("Claude", created: nil, context: context)
+                + "<div class=\"bubble assistant-bubble\">\(markdown(text, context: context))</div></div>"
         case .thinking:
             return thinkingHTML(text, open: true, context: context)
         case .toolInput:
@@ -110,7 +114,7 @@ enum TranscriptRenderer {
     // MARK: Items
 
     private static func userHTML(_ user: UserItem, context: TranscriptRenderContext) -> String {
-        var html = "<div class=\"msg user\"><div class=\"caption\">\(escape(user.sender))</div>"
+        var html = "<div class=\"msg user\">" + caption(user.sender, created: user.created, context: context)
         if !user.text.isEmpty {
             html += bubble(kind: "user-bubble", source: user.text, created: user.created, context: context)
         }
@@ -132,7 +136,19 @@ enum TranscriptRenderer {
     }
 
     private static func assistantHTML(text: String, created: Date, context: TranscriptRenderContext) -> String {
-        "<div class=\"msg assistant\">" + bubble(kind: "assistant-bubble", source: text, created: created, context: context) + "</div>"
+        "<div class=\"msg assistant\">" + caption("Claude", created: created, context: context)
+            + bubble(kind: "assistant-bubble", source: text, created: created, context: context) + "</div>"
+    }
+
+    /// The caption above a bubble: the sender in semibold followed by `<created>` in secondary
+    /// color, as the header of a ticket comment; a streaming bubble has no `created` yet and shows
+    /// the sender alone (docs/chats.md › Item rendering, › Streaming bubbles).
+    static func caption(_ sender: String, created: Date?, context: TranscriptRenderContext) -> String {
+        var html = "<div class=\"caption\"><span class=\"caption-sender\">\(escape(sender))</span>"
+        if let created {
+            html += " <span class=\"caption-time\">\(escape(ChatFormat.captionTime(created, today: context.today)))</span>"
+        }
+        return html + "</div>"
     }
 
     /// A bubble: the Markdown, its `created` time as tooltip and the Copy button shown on hover,

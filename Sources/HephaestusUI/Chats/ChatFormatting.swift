@@ -1,7 +1,9 @@
-// OWNER: ui-chats — the texts of the transcript and the chat views: durations, costs, tool card
-// summaries and icons, status lines (docs/chats.md › Item rendering, › Tool cards, › Chat states).
+// OWNER: ui-chats — the texts of the transcript and the chat views: durations, costs, captions, tool
+// card summaries and icons, status lines (docs/chats.md › Item rendering, › Tool cards, › Chat
+// states).
 import Foundation
 import HephaestusCore
+import Observation
 
 /// Formats of docs/chats.md › Item rendering.
 enum ChatFormat {
@@ -51,6 +53,16 @@ enum ChatFormat {
         return formatter
     }()
 
+    /// `<created>` of a bubble's caption: only the short time for a message created on the day of
+    /// `today`, else the abbreviated date and short time as in the ticket list's Created column, in
+    /// the user's locale and time zone.
+    static func captionTime(_ date: Date, today: Date, calendar: Calendar = .autoupdatingCurrent,
+                            locale: Locale = .autoupdatingCurrent) -> String {
+        let dateStyle: Date.FormatStyle.DateStyle = calendar.isDate(date, inSameDayAs: today) ? .omitted : .abbreviated
+        return date.formatted(Date.FormatStyle(date: dateStyle, time: .shortened, locale: locale, calendar: calendar,
+                                               timeZone: calendar.timeZone))
+    }
+
     /// A file-style byte count, for example `12 KB`.
     static func byteCount(_ bytes: Int) -> String {
         ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
@@ -92,6 +104,30 @@ enum ChatFormat {
         case .bundle: return "Ask Claude about \(bundleID ?? ""), or click Implement All."
         case .feedback: return nil
         }
+    }
+}
+
+/// The current day of the Mac, which the captions of the transcript depend on (docs/chats.md › Web
+/// view and bridge): its start, updated when the day changes, at midnight or with the time zone.
+@MainActor @Observable
+final class TranscriptDay {
+    static let shared = TranscriptDay()
+
+    private(set) var today = Calendar.autoupdatingCurrent.startOfDay(for: Date())
+
+    @ObservationIgnored private var observers: [NSObjectProtocol] = []
+
+    private init() {
+        for name in [Notification.Name.NSCalendarDayChanged, .NSSystemTimeZoneDidChange] {
+            observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refresh() }
+            })
+        }
+    }
+
+    func refresh() {
+        let day = Calendar.autoupdatingCurrent.startOfDay(for: Date())
+        if day != today { today = day }
     }
 }
 
