@@ -33,6 +33,8 @@ typealias MCPEngineCall = @Sendable (_ method: String, _ params: Data, _ actor: 
 struct MCPToolHandlers: Sendable {
     /// The text of a successful `ask_questions` (docs/mcp.md › Text returned to Claude).
     static let questionsShownText = "questions shown; answers arrive in the next user message; end your turn"
+    /// The text of a successful `ask_symbol` (docs/mcp.md › ask_symbol).
+    static let symbolShownText = "symbol request shown; the answer arrives in the next user message; end your turn"
 
     /// Runs the engine method; `Engine.dispatch` in the app, so the result text is byte for byte
     /// the JSON the dispatcher returns.
@@ -58,7 +60,7 @@ struct MCPToolHandlers: Sendable {
 
     private func run(_ tool: MCPToolDefinition, arguments: JSONValue, actor: Actor) async throws -> String {
         // Step 2: availability for the token.
-        if tool.handling == .askQuestions, actor.chat == nil {
+        if tool.handling == .askQuestions || tool.handling == .askSymbol, actor.chat == nil {
             throw MCPToolError(.forbidden, "Only the chat's own Claude can ask questions.")
         }
         if tool.handling == .closeChat, actor.chat == nil {
@@ -126,6 +128,13 @@ struct MCPToolHandlers: Sendable {
             let params: JSONValue = .object(["chatID": .string(chatID), "questions": args["questions"] ?? .array([])])
             _ = try await engineText(tool, params: params, actor: actor)
             return Self.questionsShownText
+
+        case .askSymbol:
+            // Step 2 made sure the token is a chat token.
+            var params = args
+            params["chatID"] = .string(actor.chat?.uuidString.uppercased() ?? "")
+            _ = try await engineText(tool, params: .object(params), actor: actor)
+            return Self.symbolShownText
 
         case .closeChat:
             // Step 2 made sure the token is a chat token.

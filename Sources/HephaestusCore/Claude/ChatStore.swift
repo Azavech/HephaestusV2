@@ -144,8 +144,8 @@ extension Engine {
         return items
     }
 
-    /// Records the question set that is not completed, whether a user message has text and the
-    /// chat's cost; returns whether the cost changed.
+    /// Records the question set that is not completed, the symbol request without answer, whether
+    /// a user message has text and the chat's cost; returns whether the cost changed.
     @discardableResult
     private func recordScan(_ chatID: ChatID, items: [ChatItem]) -> Bool {
         chats.scannedChats.insert(chatID)
@@ -153,15 +153,18 @@ extension Engine {
         let costChanged = chats.costs[chatID]?.costUSD != cost.costUSD
         chats.costs[chatID] = cost
         var open: QuestionsItem?
+        var openSymbol: SymbolItem?
         var hasText = false
         for item in items {
             switch item {
             case .questions(let set) where !set.completed: open = set
+            case .symbol(let request) where request.answer == nil: openSymbol = request
             case .user(let user) where !user.text.isEmpty: hasText = true
             default: break
             }
         }
         chats.openQuestionSets[chatID] = open
+        chats.openSymbolRequests[chatID] = openSymbol
         chats.hasTextMessage[chatID] = hasText
         return costChanged
     }

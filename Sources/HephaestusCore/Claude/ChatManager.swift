@@ -32,8 +32,12 @@ final class ChatManager {
     var runtimes: [ChatID: ChatRuntime] = [:]
     /// The question set that is not completed, per chat.
     var openQuestionSets: [ChatID: QuestionsItem] = [:]
+    /// The symbol request without answer, per chat (docs/chats.md › Symbol requests).
+    var openSymbolRequests: [ChatID: SymbolItem] = [:]
+    /// The problems of the symbol catalogue were logged (docs/chats.md › Symbol catalogue).
+    var loggedSymbolCatalogProblems = false
     /// Chats whose transcript was replayed since the engine started, so that their question
-    /// set and their pending permission requests are known.
+    /// set, their symbol request and their pending permission requests are known.
     var scannedChats: Set<ChatID> = []
     /// The driving device of each chat (docs/engine-api.md › Chat metadata in the API).
     var drivingDevices: [ChatID: String] = [:]
@@ -57,14 +61,15 @@ final class ChatManager {
 
     /// The computed state of a chat (docs/chats.md › Chat states): the first that applies of
     /// error, waitingPermission, starting, running, waitingAnswers, idle. A chat without runtime
-    /// state is idle, or waitingAnswers with a question set that is not completed.
+    /// state is idle, or waitingAnswers with a question set that is not completed or a symbol
+    /// request without answer.
     func state(of chatID: ChatID) -> ChatState {
         let runtime = runtimes[chatID]
         if runtime?.error == true { return .error }
         if let process = runtime?.process, !process.permissionOrder.isEmpty { return .waitingPermission }
         if runtime?.starting == true { return .starting }
         if runtime?.turnInProgress == true { return .running }
-        if openQuestionSets[chatID] != nil { return .waitingAnswers }
+        if openQuestionSets[chatID] != nil || openSymbolRequests[chatID] != nil { return .waitingAnswers }
         return .idle
     }
 

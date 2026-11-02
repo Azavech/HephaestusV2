@@ -74,6 +74,8 @@ enum TranscriptRenderer {
             return TranscriptFragment(id: request.id, type: "permissionRequest", html: permissionHTML(request))
         case .questions(let set):
             return TranscriptFragment(id: set.id, type: "questions", html: questionsHTML(set, context: context))
+        case .symbol(let request):
+            return TranscriptFragment(id: request.id, type: "symbol", html: symbolHTML(request, context: context))
         case .system(let system):
             return TranscriptFragment(id: system.id, type: "system",
                                       html: "<div class=\"system-line level-\(system.level.rawValue)\">\(escape(system.text))</div>")
@@ -262,6 +264,24 @@ enum TranscriptRenderer {
             html += "</div>"
         }
         return html + "</div>"
+    }
+
+    /// The `Symbol` card: the question, one line per suggestion drawn as its SF Symbol marker, the
+    /// recommended one followed by `(recommended)`, then the answer or `Not answered yet`.
+    private static func symbolHTML(_ request: SymbolItem, context: TranscriptRenderContext) -> String {
+        var html = "<div class=\"questions-card\"><div class=\"questions-title\">Symbol</div><div class=\"question\">"
+            + "<div class=\"question-text\">" + markdown(request.question, context: context) + "</div><ul class=\"options\">"
+        for name in request.suggestions {
+            let line = "![](sf:\(name))" + (name == request.recommended ? " (recommended)" : "")
+            html += "<li>\(symbolText(line))</li>"
+        }
+        html += "</ul>"
+        if let answer = request.answer {
+            html += "<div class=\"answer\">\(symbolText("Answer: " + answer))</div>"
+        } else {
+            html += "<div class=\"answer pending\">Not answered yet</div>"
+        }
+        return html + "</div></div>"
     }
 
     /// A thumbnail of a stored image, at most 240 × 240 pt; a click opens the image viewer.

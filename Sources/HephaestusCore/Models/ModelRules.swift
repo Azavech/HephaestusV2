@@ -321,4 +321,26 @@ public enum ModelRules {
             }
         }
     }
+
+    /// The rules of a symbol request (docs/workflow.md › Symbol requests), in their order, on the
+    /// trimmed suggestions and recommended symbol; `isSymbol` tells whether a name is in the
+    /// symbol catalogue of the main device.
+    public static func symbolRequest(question: String, suggestions: [String], recommended: String,
+                                     isSymbol: (String) -> Bool) throws {
+        guard !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ValidationError(field: "question", message: "ask_symbol needs a question.")
+        }
+        guard (2...10).contains(suggestions.count) else {
+            throw ValidationError(field: "suggestions", message: "ask_symbol needs 2 to 10 suggestions.")
+        }
+        guard !suggestions.contains(where: \.isEmpty), Set(suggestions).count == suggestions.count else {
+            throw ValidationError(field: "suggestions", message: "ask_symbol has an empty or repeated suggestion.")
+        }
+        if let unknown = suggestions.first(where: { !isSymbol($0) }) {
+            throw ValidationError(field: "suggestions", message: "\(unknown) is not an SF Symbol of this Mac.")
+        }
+        guard suggestions.contains(recommended) else {
+            throw ValidationError(field: "recommended", message: "ask_symbol: the recommended symbol must be one of the suggestions.")
+        }
+    }
 }

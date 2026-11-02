@@ -43,6 +43,12 @@ extension Engine {
         register(ChatsAnswerQuestion.self, actors: [.user]) { [unowned self] params, actor in
             try await self.chatsAnswerQuestion(params, actor)
         }
+        register(ChatsPostSymbol.self, actors: [.claude]) { [unowned self] params, actor in
+            try await self.chatsPostSymbol(params, actor)
+        }
+        register(ChatsAnswerSymbol.self, actors: [.user]) { [unowned self] params, actor in
+            try await self.chatsAnswerSymbol(params, actor)
+        }
         register(ChatsImplementTicket.self, actors: [.user, .claude]) { [unowned self] params, actor in
             try await self.chatsImplementTicket(params, actor)
         }
@@ -343,6 +349,7 @@ extension Engine {
         }
         chats.costs[chatID] = nil
         chats.openQuestionSets[chatID] = nil
+        chats.openSymbolRequests[chatID] = nil
         chats.drivingDevices[chatID] = nil
         chats.scannedChats.remove(chatID)
         chats.hasTextMessage[chatID] = nil
@@ -406,9 +413,7 @@ extension Engine {
         }
         _ = try requireChat(params.chatID)
         try ensureChatScanned(params.chatID)
-        guard chats.openQuestionSets[params.chatID] == nil else {
-            throw EngineError(.conflict, "Questions are already waiting for answers in this chat.")
-        }
+        try requireNoWaitingRequest(params.chatID)
         let setID = UUID()
         let item = QuestionsItem(id: setID.uuidString, created: ISODate.now(), questionSetID: setID, questions: questions)
         try appendChatItem(.questions(item), chatID: params.chatID, origin: actor)
@@ -457,6 +462,83 @@ extension Engine {
             chats.openQuestionSets[chatID] = set
         }
         return Empty()
+    }
+
+    /// A chat has at most one waiting request: a question set that is not completed or a symbol
+    /// request without answer (docs/chats.md › Posting questions, › Posting a symbol request).
+    private func requireNoWaitingRequest(_ chatID: ChatID) throws {
+        guard chats.openQuestionSets[chatID] == nil else {
+            throw EngineError(.conflict, "Questions are already waiting for answers in this chat.")
+        }
+        guard chats.openSymbolRequests[chatID] == nil else {
+            throw EngineError(.conflict, "A symbol request is already waiting for an answer in this chat.")
+        }
+    }
+
+    /// `chats.postSymbol` (docs/chats.md › Posting a symbol request).
+    func chatsPostSymbol(_ params: ChatsPostSymbol.Params, _ actor: Actor) async throws -> SymbolRequest {
+        try ActorRules.requireOwnChat(params.chatID, actor)
+        let catalog = SFSymbolCatalog.system
+        if !chats.loggedSymbolCatalogProblems {
+            chats.loggedSymbolCatalogProblems = true
+            for problem in catalog.problems {
+                log.error(.claude, "symbol catalogue: \(problem)")
+            }
+        }
+        let suggestions = params.suggestions.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let recommended = params.recommended.trimmingCharacters(in: .whitespacesAndNewlines)
+        try Engine.validated {
+            try ModelRules.symbolRequest(question: params.question, suggestions: suggestions, recommended: recommended,
+                                         isSymbol: catalog.contains)
+        }
+        _ = try requireChat(params.chatID)
+        try ensureChatScanned(params.chatID)
+        try requireNoWaitingRequest(params.chatID)
+        let requestID = UUID()
+        let question = ModelRules.normalizedLineBreaks(params.question)
+        let item = SymbolItem(id: requestID.uuidString, created: ISODate.now(), requestID: requestID, question: question,
+                              suggestions: suggestions, recommended: recommended)
+        try appendChatItem(.symbol(item), chatID: params.chatID, origin: actor)
+        chats.openSymbolRequests[params.chatID] = item
+        emitChatUpdated(params.chatID, origin: actor)
+        return SymbolRequest(requestID: requestID, chatID: params.chatID, question: question, suggestions: suggestions,
+                             recommended: recommended)
+    }
+
+    /// `chats.answerSymbol` (docs/chats.md › Answering a symbol request).
+    func chatsAnswerSymbol(_ params: ChatsAnswerSymbol.Params, _ actor: Actor) async throws -> Empty {
+        let chatID = params.chatID
+        let answer = ModelRules.normalizedLineBreaks(params.answer.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard (1...10_000).contains(answer.count) else {
+            throw EngineError.invalid("answer", "use 1 to 10,000 characters")
+        }
+        func check() throws -> SymbolItem {
+            _ = try requireChat(chatID)
+            try ensureChatScanned(chatID)
+            return try symbolRequest(params.requestID, chatID: chatID)
+        }
+        _ = try check()
+        _ = try await requireClaudeCLI()
+        let sender = senderName(actor)
+        var request = try check()
+        recordDrivingDevice(chatID, actor)
+        request.answer = answer
+        try appendChatItem(.symbol(request), chatID: chatID, op: .update, origin: actor)
+        chats.openSymbolRequests[chatID] = nil
+        try sendChatMessage(chatID, text: Engine.symbolMessage(answer), attachments: [], sender: sender, origin: actor)
+        return Empty()
+    }
+
+    /// The symbol request `requestID` of a chat without answer: the open one, or one of the
+    /// transcript; `conflict` when it has an answer, `notFound` when the chat has none with this id.
+    private func symbolRequest(_ requestID: UUID, chatID: ChatID) throws -> SymbolItem {
+        if let open = chats.openSymbolRequests[chatID], open.requestID == requestID { return open }
+        for item in try loadTranscript(chatID) {
+            guard case .symbol(let request) = item, request.requestID == requestID else { continue }
+            if request.answer != nil { throw EngineError(.conflict, "This symbol request was already answered.") }
+            return request
+        }
+        throw EngineError.notFound("Symbol request", requestID.uuidString)
     }
 
     /// The question set `questionSetID` of a chat: the open one, or one of the transcript;

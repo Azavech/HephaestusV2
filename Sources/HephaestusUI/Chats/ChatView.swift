@@ -8,7 +8,7 @@ import UniformTypeIdentifiers
 /// `DeviceWorkspace.transcripts`.
 ///
 /// From top to bottom: the header, the transcript, the pinned permission card, the pinned
-/// questions card, the status line and the composer. The header shows in the Chats section, the
+/// questions card or symbol card, the status line and the composer. The header shows in the Chats section, the
 /// ticket and bundle Chats tabs and chat windows; the inspector shows its picker instead.
 struct ChatView: View {
     /// The chat id, an uppercase UUID string; nil for a draft.
@@ -185,10 +185,11 @@ private struct ChatViewContent: View {
         }
     }
 
-    /// The question set of the chat once its transcript is loaded; nil while it is not.
+    /// The question set or symbol request of the chat once its transcript is loaded; nil while it
+    /// is not.
     private var shownQuestionSet: ShownQuestionSet? {
         guard let chatID = model.chatID, let state = workspace.transcripts[chatID] else { return nil }
-        return ShownQuestionSet(setID: state.incompleteQuestionSet?.questionSetID)
+        return ShownQuestionSet(setID: state.incompleteQuestionSet?.questionSetID ?? state.waitingSymbolRequest?.requestID)
     }
 
     // MARK: Transcript
@@ -223,16 +224,17 @@ private struct ChatViewContent: View {
 
     // MARK: Pinned cards
 
-    /// The permission card, then the questions card; together at most half of the view's height,
-    /// scrolling inside only when they are taller than that, without bounce while they fit, their
-    /// code blocks and tables always scrolling horizontally.
+    /// The permission card, then the questions card or the symbol card; together at most half of
+    /// the view's height, scrolling inside only when they are taller than that, without bounce
+    /// while they fit, their code blocks and tables always scrolling horizontally.
     @ViewBuilder
     private func pinnedCards(maxHeight: CGFloat) -> some View {
         let state = model.chatID.flatMap { workspace.transcripts[$0] }
         let pending = state?.pendingPermissionRequests ?? []
         let set = state?.incompleteQuestionSet
         let question = set.flatMap { model.displayedQuestion($0) }
-        if !pending.isEmpty || question != nil {
+        let symbolRequest = state?.waitingSymbolRequest
+        if !pending.isEmpty || question != nil || symbolRequest != nil {
             ScrollView(.vertical) {
                 VStack(spacing: 8) {
                     if let request = pending.first {
@@ -246,6 +248,17 @@ private struct ChatViewContent: View {
                         } else {
                             QuestionsCard(model: model, set: set, question: question) {
                                 app.setQuestionsCardMinimized(true, chatID: chatID, setID: set.questionSetID)
+                            }
+                        }
+                    }
+                    if let chatID = model.chatID, let symbolRequest {
+                        if app.isQuestionsCardMinimized(chatID: chatID, setID: symbolRequest.requestID) {
+                            QuestionsCollapsedBar(text: "Symbol") {
+                                app.setQuestionsCardMinimized(false, chatID: chatID, setID: symbolRequest.requestID)
+                            }
+                        } else {
+                            SymbolCard(model: model, request: symbolRequest) {
+                                app.setQuestionsCardMinimized(true, chatID: chatID, setID: symbolRequest.requestID)
                             }
                         }
                     }

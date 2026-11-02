@@ -18,7 +18,7 @@ HephaestusV2 talks to Claude through the Claude CLI. Every chat is one Claude Co
 
 ## Chat states
 
-`ChatMeta.state` is computed by the engine and is not persisted. The status line texts below: Default chosen at design time. After an engine start, a chat whose transcript holds a question set that is not completed is waitingAnswers, and every other chat is idle; the engine finds these sets by replaying each transcript once at launch ([Data model](data-model.md#loading)).
+`ChatMeta.state` is computed by the engine and is not persisted. The status line texts below: Default chosen at design time. After an engine start, a chat whose transcript holds a question set that is not completed or a symbol request without answer is waitingAnswers, and every other chat is idle; the engine finds them by replaying each transcript once at launch ([Data model](data-model.md#loading)).
 
 | State             | Meaning                                                                                                          | Status line above the composer     |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
@@ -30,6 +30,7 @@ HephaestusV2 talks to Claude through the Claude CLI. Every chat is one Claude Co
 | error             | The process failed to start, or exited with a non-zero status during a turn. The next message clears it.         | Claude stopped with an error (red) |
 
 - A turn is the time Claude spends on the messages the engine wrote to the process. It starts when the engine writes a user message while the chat has no turn in progress, or when a `system/init` arrives while none is in progress (a CLI turn the CLI starts on its own). It ends when no message the engine wrote is outstanding and no CLI turn is open ([Turn tracking](#turn-tracking)); a turn can thus span several CLI turns.
+- A symbol request without answer ([Symbol requests](#symbol-requests)) counts as a question set that is not completed, in the table above and in the transitions below.
 - When several states apply, the chat takes the first one of this order: error, waitingPermission, starting, running, waitingAnswers, idle.
 - A chat is running while its state is starting, running or waitingPermission.
 - A chat is working while it is running or its Claude process has background work running (`backgroundWork` true, [Background work](#background-work)); background work does not change the chat's state. The quit confirmation ([UI](ui.md#unsaved-changes-and-quitting)), the restart checks and the idle check before an automatic update ([Updater](updater.md#restart-rules)) and the removal of a project ([Projects](projects.md#removing-a-project)) count working chats.
@@ -50,7 +51,7 @@ HephaestusV2 talks to Claude through the Claude CLI. Every chat is one Claude Co
 | starting, running, waitingPermission | the process exits with a non-zero status, not after Stop or a termination by the engine | error                   |
 | starting, running, waitingPermission | the process exits after Stop or a termination by the engine, or with status 0           | idle, or waitingAnswers |
 
-`chats.send` accepts a message in every state ([Engine API](engine-api.md#chatssend)). During a turn the message is written to the process at once; the CLI keeps it in its queue until its CLI turn in progress ends, then runs it, together with the other messages waiting there, as a CLI turn of its own, and the chat stays running until that CLI turn ends ([Turn tracking](#turn-tracking)). A message sent while a question set waits leaves the set unchanged.
+`chats.send` accepts a message in every state ([Engine API](engine-api.md#chatssend)). During a turn the message is written to the process at once; the CLI keeps it in its queue until its CLI turn in progress ends, then runs it, together with the other messages waiting there, as a CLI turn of its own, and the chat stays running until that CLI turn ends ([Turn tracking](#turn-tracking)). A message sent while a question set or a symbol request waits leaves it unchanged.
 
 ## Claude CLI
 
@@ -153,8 +154,8 @@ Every row is one or two argv elements, in this order; no shell is involved.
 | 17  | `--plugin-dir` `<data dir>/Runtime/plugins/<project id>` | the project enables at least one skill of the library ([Skills](skills.md#generation)) |
 | 18  | `--settings` `{"ultracode":true}`                        | `settings.ultracode` is true                                                           |
 
-- Rows 14 and 15 let `ask_questions`, `close_chat`, the read-only `hephaestus` tools and the tools that create and edit tickets, comments and bundles (`create_ticket`, `update_ticket`, `set_ticket_status`, `add_comment`, `update_comment`, `create_bundle` and `update_bundle`) run in every permission mode, and keep Claude from using the CLI's own question tool. The tools that delete (`delete_ticket`, `delete_comment`, `remove_attachment` and `delete_bundle`) are not pre-approved, so in Ask Every Time the user approves each call. Default chosen at design time, except for `close_chat` and the ticket, comment and bundle tools, which the user chose.
-- `<pre-approved tools>` is this single argument: `mcp__hephaestus__ask_questions,mcp__hephaestus__close_chat,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__create_ticket,mcp__hephaestus__update_ticket,mcp__hephaestus__set_ticket_status,mcp__hephaestus__add_comment,mcp__hephaestus__update_comment,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__create_bundle,mcp__hephaestus__update_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat`. Every other tool, the other `hephaestus` tools included, follows the chat's permission mode.
+- Rows 14 and 15 let `ask_questions`, `ask_symbol`, `close_chat`, the read-only `hephaestus` tools and the tools that create and edit tickets, comments and bundles (`create_ticket`, `update_ticket`, `set_ticket_status`, `add_comment`, `update_comment`, `create_bundle` and `update_bundle`) run in every permission mode, and keep Claude from using the CLI's own question tool. The tools that delete (`delete_ticket`, `delete_comment`, `remove_attachment` and `delete_bundle`) are not pre-approved, so in Ask Every Time the user approves each call. Default chosen at design time, except for `ask_symbol`, `close_chat` and the ticket, comment and bundle tools, which the user chose.
+- `<pre-approved tools>` is this single argument: `mcp__hephaestus__ask_questions,mcp__hephaestus__ask_symbol,mcp__hephaestus__close_chat,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__create_ticket,mcp__hephaestus__update_ticket,mcp__hephaestus__set_ticket_status,mcp__hephaestus__add_comment,mcp__hephaestus__update_comment,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__create_bundle,mcp__hephaestus__update_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat`. Every other tool, the other `hephaestus` tools included, follows the chat's permission mode.
 - `--permission-mode` takes `manual` for Ask Every Time; the control request `set_permission_mode` takes `default` for the same mode ([Permission mode](#permission-mode)).
 
 Example, for a ticket chat that resumes its session in a project with enabled skills and ultracode on, with shell quoting and the prompt abbreviated:
@@ -165,7 +166,7 @@ claude -p --input-format stream-json --output-format stream-json --verbose --inc
   --model opus --effort high --permission-mode manual --allow-dangerously-skip-permissions \
   --permission-prompt-tool stdio \
   --mcp-config "$HOME/Library/Application Support/HephaestusV2/Runtime/mcp/3F2504E0-4F89-11D3-9A0C-0305E82C3301.json" \
-  --allowedTools mcp__hephaestus__ask_questions,mcp__hephaestus__close_chat,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__create_ticket,mcp__hephaestus__update_ticket,mcp__hephaestus__set_ticket_status,mcp__hephaestus__add_comment,mcp__hephaestus__update_comment,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__create_bundle,mcp__hephaestus__update_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat \
+  --allowedTools mcp__hephaestus__ask_questions,mcp__hephaestus__ask_symbol,mcp__hephaestus__close_chat,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__create_ticket,mcp__hephaestus__update_ticket,mcp__hephaestus__set_ticket_status,mcp__hephaestus__add_comment,mcp__hephaestus__update_comment,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__create_bundle,mcp__hephaestus__update_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat \
   --disallowedTools AskUserQuestion \
   --append-system-prompt "You are Claude, working inside HephaestusV2, …" \
   --plugin-dir "$HOME/Library/Application Support/HephaestusV2/Runtime/plugins/HEPH" \
@@ -659,7 +660,7 @@ The chat's `settings.permissionMode` follows the CLI. When the engine answers `a
 
 ## Questions
 
-Claude never invents unknowns: it asks with the MCP tool `ask_questions`, which calls `chats.postQuestions` for the chat that owns the token and returns at once. The rules Claude follows are in [Claude workflow](workflow.md#questions-protocol) and in the prompt [common](#prompt-common).
+Claude never invents unknowns: it asks with the MCP tool `ask_questions`, which calls `chats.postQuestions` for the chat that owns the token and returns at once. The rules Claude follows are in [Claude workflow](workflow.md#questions-protocol) and in the prompt [common](#prompt-common). To have the user choose an SF Symbol, Claude asks with `ask_symbol` instead ([Symbol requests](#symbol-requests)).
 
 ### Posting questions
 
@@ -675,7 +676,7 @@ Claude never invents unknowns: it asks with the MCP tool `ask_questions`, which 
 | Each option label is one line of at most 200 characters ([Data model](data-model.md#questions-item)).    |
 | `recommended` equals the `label` of one of the question's options, so exactly one option is recommended. |
 
-A chat has at most one question set that is not completed; posting another fails with `conflict` (`Questions are already waiting for answers in this chat.`). The MCP tool checks its own schema first ([MCP](mcp.md#question-rules)).
+A chat has at most one waiting request: posting fails with `conflict` while a question set is not completed (`Questions are already waiting for answers in this chat.`) or a symbol request has no answer (`A symbol request is already waiting for an answer in this chat.`). The MCP tool checks its own schema first ([MCP](mcp.md#question-rules)).
 
 Once the set passes these rules, the engine moves each question's recommended option to the first place of its `options`; the other options keep their relative order. Claude's prompts have no rule about the place of the recommended option: the engine does the reordering. The engine then adds a `questions` item {questionSetID (new uppercase UUID), questions in this order, answers `{}`, completed false} and returns the `QuestionSet` with the same order, so the pinned questions card, the transcript's Questions card and every other device list the recommended option first. When the turn that posted it ends, the state becomes waitingAnswers. Example of `questions`:
 
@@ -706,7 +707,7 @@ B: Skipped
 
 Claude leaves a skipped point out: it does not act on it or guess, and it mentions it in its reply ([Prompt: common](#prompt-common)).
 
-A set stays incomplete across process exits and app restarts; answering its last unanswered question later starts a process with `--resume`. Messages typed in the composer while a set is incomplete are delivered normally and do not change the set. Until every question of the set has an answer, the set stays pinned and Claude cannot post another set in this chat. Default chosen at design time.
+A set stays incomplete across process exits and app restarts; answering its last unanswered question later starts a process with `--resume`. Messages typed in the composer while a set is incomplete are delivered normally and do not change the set. Until every question of the set has an answer, the set stays pinned and Claude cannot post another set or a symbol request in this chat. Default chosen at design time.
 
 ### Pinned questions card
 
@@ -725,6 +726,75 @@ While the chat has a question set that is not completed, a native SwiftUI card i
 - The transcript's Questions card of the same chat view marks the displayed question with `➡️` before its label, and the mark moves when the card displays another question ([Item rendering](#item-rendering)).
 - Answers given in another view or on another device appear live through `chat.item`. When one is for the displayed question, the card keeps displaying that question and selects the new answer.
 - Minimize: the minimize button turns the card into a one-line collapsed bar above the composer, which shows the card's header text and a chevron pointing up. Clicking the bar opens the card again. The minimized state is kept per chat and applies to the question set that was minimized: a new question set of the chat opens the card. It is stored on this device only, never in the chat files and never synced, and survives an app restart ([UI › Persistence](ui.md#persistence)). Every view of the chat on this device shares it.
+
+## Symbol requests
+
+When Claude needs the user to choose an SF Symbol, it asks with the MCP tool `ask_symbol`, which calls `chats.postSymbol` for the chat that owns the token and returns at once ([MCP](mcp.md#ask_symbol)). The rules Claude follows are in [Claude workflow](workflow.md#symbol-requests) and in the prompt [common](#prompt-common).
+
+### Posting a symbol request
+
+`chats.postSymbol` {chatID, question, suggestions, recommended} accepts only the chat's own Claude ([Engine API](engine-api.md#chatspostsymbol)). It trims each suggestion and `recommended`, then checks the rules of [Claude workflow](workflow.md#symbol-requests) in their order and fails with `invalid` and the message of the first one broken. A suggestion is valid when it is a name of the [symbol catalogue](#symbol-catalogue) of the main device, localized variants included.
+
+A chat has at most one waiting request: posting fails with `conflict` while a question set is not completed (`Questions are already waiting for answers in this chat.`) or a symbol request has no answer (`A symbol request is already waiting for an answer in this chat.`).
+
+Once the request passes these checks, the engine adds a `symbol` item {requestID (new uppercase UUID), question, suggestions in Claude's order, recommended, answer null} ([Data model](data-model.md#symbol-item)) and returns the `SymbolRequest` ([Engine API](engine-api.md#symbolrequest)). When the turn that posted it ends, the state becomes waitingAnswers.
+
+### Answering a symbol request
+
+`chats.answerSymbol` {chatID, requestID, answer} ([Engine API](engine-api.md#chatsanswersymbol)) stores the answer:
+
+- `answer` is trimmed and has 1 to 10,000 characters (`invalid` otherwise). The [pinned symbol card](#pinned-symbol-card) sends `![](sf:<name>)` for a chosen symbol, the field's text for `Answer another way`, and `Skipped` for Skip.
+- A request that already has an answer gives `conflict` (`This symbol request was already answered.`). A client whose answer fails because the request was answered on another device (`conflict` while `chat.item` already carries the answer) shows no alert.
+- The item is replaced with its `answer`, and the engine delivers the message `Symbol: <answer>` as a user message whose `sender` is the name of the answering device; the answer keeps its own line breaks. During a turn it is delivered like any message ([Chat states](#chat-states)), and a closed chat reopens as for the Answers message ([Closing a chat](#closing-a-chat)).
+
+```
+Symbol: ![](sf:line.3.horizontal.decrease.circle)
+```
+
+Claude leaves a skipped request out: it does not act on it or guess, and it mentions it in its reply ([Prompt: common](#prompt-common)).
+
+A request stays waiting across process exits and app restarts; answering it later starts a process with `--resume`. Messages typed in the composer while it waits are delivered normally and do not change it. Until it has an answer, the request stays pinned and Claude cannot post another symbol request or a question set in this chat.
+
+### Symbol catalogue
+
+The SF Symbols of a Mac are read from the catalogue of its macOS, in `/System/Library/CoreServices/CoreGlyphs.bundle/Contents/Resources/`, the first time they are needed, and kept in memory until the app quits (`SFSymbolCatalog`, [Swift types](#swift-types)):
+
+| File                      | What is read                                                                                                                                                                                                                                                            |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name_availability.plist` | `symbols` maps each symbol name to its release, and `year_to_release` maps each release to its OS versions. A name belongs to the catalogue when the `macOS` version of its release is at most the running macOS version, or when its release gives no `macOS` version. |
+| `symbol_search.plist`     | The search keywords of each name; a name without entry has none.                                                                                                                                                                                                        |
+
+- A localized variant is a name whose last dot-separated component is one of `ar`, `bn`, `el`, `gu`, `he`, `hi`, `ja`, `km`, `kn`, `ko`, `ml`, `mni`, `mr`, `my`, `or`, `pa`, `rtl`, `ru`, `sat`, `si`, `ta`, `te`, `th` and `zh`, for example `character.book.closed.ja`. Claude may suggest a localized variant; the search never lists one.
+- `chats.postSymbol` checks the suggestions against the catalogue of the main device. The pinned symbol card searches the catalogue of the Mac that shows the window, so a window showing a remote device searches the symbols of its own Mac, as it draws them ([Links, images and files](#links-images-and-files)).
+- When `name_availability.plist` cannot be read, the catalogue is empty: `ask_symbol` refuses every suggestion and the search lists nothing. When `symbol_search.plist` cannot be read, the names have no keywords. The engine logs each failure to `engine.log` the first time `chats.postSymbol` uses the catalogue. Default chosen at design time.
+
+### Symbol search
+
+The search field of the [pinned symbol card](#pinned-symbol-card) searches the catalogue as the user types:
+
+1. The query is trimmed and lowercased. An empty query lists nothing; otherwise it is split at white space into words.
+2. A name matches by name when it contains every word. It matches by keyword when it does not match by name and each word is contained in the name or in one of its keywords, compared in lowercase. For example `filter` matches `line.3.horizontal.decrease.circle` by keyword.
+3. Localized variants and the request's suggestions are left out.
+4. The results are the name matches, then the keyword matches, each group in alphabetical order of name. Their number is not limited. Default chosen at design time.
+
+### Pinned symbol card
+
+While the chat has a symbol request without answer, a native SwiftUI card is pinned above the composer of every view of the chat, below the permission card when both exist. A chat never has a question set and a symbol request waiting together, so the pinned questions card and the pinned symbol card never show together.
+
+- Header `Symbol`, then at the top right a minimize button, a chevron pointing down.
+- The question text rendered as Markdown with SF Symbol markers, as in the [pinned questions card](#pinned-questions-card). The header and the question text are selectable (`textSelection(.enabled)`).
+- A search field with the placeholder `Search symbols` ([Symbol search](#symbol-search)).
+- A grid of icons: the suggestions first, in the order Claude gave them, then the search results; while the search field is empty, the suggestions only. Each cell is 36 × 36 pt and shows the symbol's image (`Image(systemName:)`) centered, with the symbol's name as tooltip; a suggestion that the Mac showing the window has no symbol for shows `questionmark.square.dashed`. The grid has as many columns as fit the card's width, shows at most 4 rows, and scrolls vertically inside itself when it has more.
+- The recommended suggestion's cell carries a star badge (`star.fill`) at its top trailing corner.
+- A click on a cell selects its symbol: the cell gets a rounded background in the accent color. Below the grid, the selected symbol's name, followed by the `Recommended` tag of the pinned questions card when it is the recommended suggestion; the line is empty while `Answer another way` is selected. The names in the grid and below it are not selectable as text.
+- A radio row `Answer another way` with a multi-line text field (1 to 6 visible lines), as in the pinned questions card: a click on the radio button, the label or the empty part of its line, or typing in the field, chooses this row and deselects the selected cell; a click on a cell chooses that symbol again. Return inserts a line break.
+- When the card appears for a request, the recommended suggestion is selected, and the field and the search field are empty.
+- Submit (⌘Return while the focus is in the chat view outside its composer, no permission card is shown and the card is not minimized) calls `chats.answerSymbol` with `![](sf:<name>)` for the selected symbol, or with the field's text. It is disabled while `Answer another way` is selected with an empty field.
+- Skip, next to Submit, calls `chats.answerSymbol` with the answer `Skipped`.
+- Once the request has its answer, from this view, another view or another device (`chat.item`), the card disappears.
+- Minimize works as for the pinned questions card: the collapsed bar shows `Symbol` and a chevron pointing up, and the minimized state is kept per chat for the request that was minimized, on this device only, and survives an app restart ([UI › Persistence](ui.md#persistence)).
+
+The texts `Symbol`, `Search symbols`, `Answer another way`, `Recommended`, Skip and Submit, the star badge, the grid size, the answer forms and the [search](#symbol-search) order and scope come from the user; the other details are Default chosen at design time.
 
 ## Chat settings
 
@@ -878,12 +948,13 @@ Messages to Swift (`window.webkit.messageHandlers.hephaestus.postMessage`):
 | `toolResult`        | Inside the card of its `toolUse`; a standalone card titled `Tool result` when no card has its `toolUseID`.                                                                                                                                                                                                                                                                                                                                                           |
 | `permissionRequest` | One small line: `<tool> · ` (the tool name, or for an MCP tool its short name followed by the badge `MCP · <server>`, as in the [pinned permission card](#pinned-permission-card)) followed by `Waiting for permission` (pending), `Allowed once by <decidedBy>`, `Always allowed by <decidedBy>`, `Denied by <decidedBy>`, or `Cancelled` (decision `deny` with `decidedBy` null); when `reason` is present, a second small line with the reason.                   |
 | `questions`         | A card titled `Questions`: each question as `<label>. <question>`, preceded by `➡️ ` (`➡️ B. <question>`) for the question that the [pinned questions card](#pinned-questions-card) of the same chat view displays while the set is not completed, then one line per option, `<option label> — <description>` (the ` — <description>` part left out when absent), the recommended option followed by `(recommended)`, then `Answer: <answer>` or `Not answered yet`. |
+| `symbol`            | A card titled `Symbol`: the question rendered as Markdown, then one line per suggestion with the symbol's icon followed by its name, drawn as the SF Symbol marker `![](sf:<name>)`, the recommended one followed by `(recommended)`, then `Answer: <answer>` or `Not answered yet`.                                                                                                                                                                                 |
 | `system`            | Small centered line; secondary color for info, orange for warning, red for error.                                                                                                                                                                                                                                                                                                                                                                                    |
 | `result`            | Small centered footer line: `Done · <duration> · session cost <cost>`, or `Error · <duration> · <summary>` when `isError`. The part ` · session cost <cost>` is left out when `costUSD` is null.                                                                                                                                                                                                                                                                     |
 
 - `<duration>` from `durationMs`: below 60 s, one decimal and ` s` (`3.5 s`); below one hour, `<m> min <s> s` (`2 min 5 s`); else `<h> h <m> min` (`1 h 2 min`).
 - `<cost>`: `< $0.01` below 0.01, else `$` and two decimals (`$0.42`). These formats are Default chosen at design time.
-- SF Symbol markers ([Links, images and files](#links-images-and-files)) are drawn as the symbol's icon followed by its name in the `user`, `assistant` and `thinking` bubbles, in the streaming bubbles, and in the `questions` card: in its question texts, which are Markdown, and in its option lines and answers, which are plain text ([SF Symbol markers](documentation-viewer.md#sf-symbol-markers)). The other items show a marker as its text.
+- SF Symbol markers ([Links, images and files](#links-images-and-files)) are drawn as the symbol's icon followed by its name in the `user`, `assistant` and `thinking` bubbles, in the streaming bubbles, in the `questions` card: in its question texts, which are Markdown, and in its option lines and answers, which are plain text, and in the `symbol` card: in its question, which is Markdown, and in its suggestion lines and answer, which are plain text ([SF Symbol markers](documentation-viewer.md#sf-symbol-markers)). The other items show a marker as its text.
 - Hovering a bubble shows its `created` time as a tooltip and a Copy button that copies its Markdown source.
 - `chat.css` follows the light and dark appearance (`prefers-color-scheme`); code colors are those of the [Code editor](code-editor.md).
 
@@ -970,7 +1041,7 @@ New Chat (⌥⌘N, or a New Chat button) shows a draft: an empty chat view whose
 
 ### Chat view
 
-From top to bottom: the header, the transcript, the pinned permission card, the pinned questions card, the status line ([Chat states](#chat-states)), the composer. The pinned cards take at most half of the view's height. They scroll inside that space only when they are taller than it; while they fit, they neither scroll nor bounce under a scroll gesture. In both cases, wide code blocks and tables inside the cards scroll horizontally inside their own box.
+From top to bottom: the header, the transcript, the pinned permission card, the pinned questions card or the pinned symbol card, the status line ([Chat states](#chat-states)), the composer. The pinned cards take at most half of the view's height. They scroll inside that space only when they are taller than it; while they fit, they neither scroll nor bounce under a scroll gesture. In both cases, wide code blocks and tables inside the cards scroll horizontally inside their own box.
 
 The chat view's background is the window background colour, except in the inspector, where it draws none and shows the inspector's frosted material, with a transparent transcript ([Web view and bridge](#web-view-and-bridge)).
 
@@ -984,7 +1055,7 @@ Header (in the Chats section, the ticket and bundle Chats tabs and chat windows;
 
 ### UI state
 
-`DeviceWorkspace.transcripts` keeps one `TranscriptState` per chat shown in a view of that device ([UI](ui.md#deviceworkspace)): the items in transcript order and the streaming buffers. Pending permission requests and the incomplete question set are read from the items. Every view of the chat in windows of the same device shares this state. Opening a chat calls `chats.get`; the events received while it is in flight are applied after its result, in arrival order ([UI](ui.md#deviceworkspace)).
+`DeviceWorkspace.transcripts` keeps one `TranscriptState` per chat shown in a view of that device ([UI](ui.md#deviceworkspace)): the items in transcript order and the streaming buffers. Pending permission requests, the incomplete question set and the symbol request without answer are read from the items. Every view of the chat in windows of the same device shares this state. Opening a chat calls `chats.get`; the events received while it is in flight are applied after its result, in arrival order ([UI](ui.md#deviceworkspace)).
 
 ## Implement and feedback chats
 
@@ -1134,6 +1205,8 @@ The method contract (actors, parameters, results, errors, events) is in [Engine 
 | `chats.answerPermission` | [Answer](#answer), [Cancellation](#cancellation)                                                                                                                                                                                                 |
 | `chats.postQuestions`    | [Posting questions](#posting-questions)                                                                                                                                                                                                          |
 | `chats.answerQuestion`   | [Answering](#answering)                                                                                                                                                                                                                          |
+| `chats.postSymbol`       | [Posting a symbol request](#posting-a-symbol-request), [Symbol catalogue](#symbol-catalogue)                                                                                                                                                     |
+| `chats.answerSymbol`     | [Answering a symbol request](#answering-a-symbol-request)                                                                                                                                                                                        |
 | `chats.close`            | [Closing a chat](#closing-a-chat)                                                                                                                                                                                                                |
 | `chats.reopen`           | [Closing a chat](#closing-a-chat)                                                                                                                                                                                                                |
 | `chats.implementTicket`  | [Implement and feedback chats](#implement-and-feedback-chats), [Orchestrated ticket chats](#orchestrated-ticket-chats), [Prompt: implement-ticket](#prompt-implement-ticket), [Prompt: implement-bundle-ticket](#prompt-implement-bundle-ticket) |
@@ -1149,8 +1222,9 @@ The Claude integration lives in `Sources/HephaestusCore/Claude/`. The type names
 | Type                               | Role                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ClaudeCLI`                        | The login-shell environment, the location of the CLI, its `ClaudeStatus` and the model list ([Claude CLI](#claude-cli)).                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `ChatManager`                      | The chats at runtime: processes, stream-json mapping, control protocol, the computed `state` and `backgroundWork`, pending permission requests, question sets, driving devices, chat tokens and idle termination. Chat metadata is loaded with its project.                                                                                                                                                                                                                                                                     |
+| `ChatManager`                      | The chats at runtime: processes, stream-json mapping, control protocol, the computed `state` and `backgroundWork`, pending permission requests, question sets, symbol requests, driving devices, chat tokens and idle termination. Chat metadata is loaded with its project.                                                                                                                                                                                                                                                    |
 | `ClaudeProcessLauncher` (protocol) | Every access of the Claude integration to the machine: `captureEnvironment(processEnvironment:log:)`, `homeDirectory`, `isExecutableFile(atPath:)`, and `start(_:)`, which spawns a process with pipes on stdin, stdout and stderr as the leader of a new process group. The app uses `SystemClaudeProcessLauncher`; tests use an in-memory launcher that replays fixture lines, so they never run the user's shell or CLI and never depend on the user's files ([Engine configuration](architecture.md#engine-configuration)). |
+| `SFSymbolCatalog`                  | The [symbol catalogue](#symbol-catalogue) of the Mac and its [search](#symbol-search); `SFSymbolCatalog.system` reads the running macOS's files, and tests read their own. The engine checks suggestions with it and the pinned symbol card searches it.                                                                                                                                                                                                                                                                        |
 | `TitleNamer` (protocol)            | `title(for:) async -> String?`, the seam the engine calls for [Haiku naming](#haiku-naming); nil keeps the provisional title. `HaikuTitleNamer` is the app's implementation; tests provide another.                                                                                                                                                                                                                                                                                                                             |
 
 ## Keyboard shortcuts
@@ -1165,7 +1239,9 @@ The Claude integration lives in `Sources/HephaestusCore/Claude/`. The type names
 | ⌥⌘Return     | chat view with a permission card, focus outside the composer, request shown for 1 s              | Always Allow                               |
 | ⇧⌘Return     | chat view with a permission card, focus outside the composer, request shown for 1 s              | Deny                                       |
 | ⌘Return      | chat view with a questions card not minimized and no permission card, focus outside the composer | Submit the answer                          |
+| ⌘Return      | chat view with a symbol card not minimized and no permission card, focus outside the composer    | Submit the answer                          |
 | Return       | answer field of the questions card                                                               | insert a line break                        |
+| Return       | answer field of the symbol card                                                                  | insert a line break                        |
 | ⌘A           | transcript                                                                                       | select the whole transcript                |
 | ⌘C           | transcript                                                                                       | copy the selection as plain text           |
 | ⌥⌘N          | any main window ([UI](ui.md))                                                                    | New Chat: a project chat draft             |
@@ -1310,7 +1386,7 @@ HephaestusV2 gives you the MCP server "hephaestus". Its tools appear to you as m
 - Projects: list_projects, get_project, create_project, update_project, remove_project, run_project (runs the project's build, run or test command), stop_run (stops a run).
 - Tickets: list_tickets, get_ticket, create_ticket, update_ticket, delete_ticket, set_ticket_status, add_comment, update_comment, delete_comment, remove_attachment, implement_ticket (starts a new chat that implements a ticket).
 - Bundles, groups of tickets implemented together: list_bundles, get_bundle, create_bundle, update_bundle, set_bundle_status, delete_bundle, implement_bundle (starts a new chat that implements a bundle).
-- Questions to the user: ask_questions.
+- Questions to the user: ask_questions, ask_symbol (asks the user to choose an SF Symbol).
 - Search and documentation: search (projects, tickets, bundles, docs, code, chats, skills and web tabs), list_docs.
 - Chats: list_chats, get_chat (a chat and its transcript, for example another chat of the same ticket), rename_chat, close_chat (closes the chat you run in).
 - The project's integrated browser: list_web_tabs, open_web_tab, update_web_tab, move_web_tab, close_web_tab.
@@ -1337,7 +1413,7 @@ Read and change HephaestusV2 data (projects, tickets, comments, bundles, chats, 
 - Set recommended to the label of exactly one option of each question: the option you recommend.
 - Add no "Other" option: the user can always answer another way.
 - After ask_questions returns, end your turn: call no other tool, and do not repeat the questions in your reply, because the chat shows them.
-- Never call ask_questions while earlier questions of this chat still wait for their answers.
+- Never call ask_questions while earlier questions or a symbol request of this chat still wait for their answers.
 
 The user answers the questions one by one in HephaestusV2. All the answers arrive in your next user message, in this form:
 
@@ -1510,6 +1586,8 @@ Close a project chat only when the user asks for it.
 # SF Symbols
 
 When you name an SF Symbol in a reply or in ask_questions, write it as ![](sf:<name>), for example ![](sf:line.3.horizontal.decrease.circle): HephaestusV2 shows the symbol's icon followed by its name there.
+
+When you need the user to choose an SF Symbol, ask with ask_symbol, never with symbol names as options of ask_questions: give the question, 2 to 10 suggested SF Symbol names and the recommended one. The user picks a suggestion or any other SF Symbol, answers in their own words, or skips. After ask_symbol returns, end your turn: call no other tool, and do not repeat the question in your reply. The answer arrives in your next user message as Symbol: ![](sf:<name>) for a chosen symbol, Symbol: <answer> for an answer in the user's own words, or Symbol: Skipped; handle Skipped as for a skipped question. Never call ask_symbol while questions or a symbol request of this chat still wait for their answers.
 
 # When the project is HephaestusV2
 
@@ -1702,3 +1780,4 @@ Follow "Implementing a bundle" as its orchestrator: take the tickets in this ord
 - R114: Claude marks each SF Symbol it names, and the chat transcript and the pinned questions card show the marker as the symbol's icon followed by its name.
 - R115: Claude creates and edits tickets, comments and bundles without a permission prompt in every permission mode; deletions follow the chat's permission mode.
 - R116: An update restart waits until all chats are done and Claude is not working.
+- R117: Claude asks the user to choose an SF Symbol with `ask_symbol`: suggestions show as icons, any SF Symbol of the Mac can be searched, the user picks one, answers another way or skips.

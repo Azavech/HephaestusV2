@@ -771,6 +771,39 @@ extension MCPToolCatalog {
             handling: .askQuestions
         ),
         MCPToolDefinition(
+            name: "ask_symbol",
+            description: #"""
+            Ask the user to choose one SF Symbol, instead of listing symbol names in ask_questions. Give the question, 2 to 10 suggested SF Symbol names and the recommended one. The app shows the suggestions as icons, the recommended one preselected, with a search over every SF Symbol of the Mac; the user can also answer in their own words or skip. This tool returns immediately: end your turn after calling it. The answer arrives in the next user message: "Symbol: ![](sf:<name>)" for a chosen symbol, "Symbol: <answer>" for an answer in the user's own words, or "Symbol: Skipped". Only available in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "question": {
+                  "type": "string",
+                  "description": "The question."
+                },
+                "suggestions": {
+                  "type": "array",
+                  "description": "2 to 10 distinct SF Symbol names, for example line.3.horizontal.decrease.circle.",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "recommended": {
+                  "type": "string",
+                  "description": "The recommended symbol: one of the suggestions, copied exactly."
+                }
+              },
+              "required": ["question", "suggestions", "recommended"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "chats.postSymbol",
+            handling: .askSymbol
+        ),
+        MCPToolDefinition(
             name: "list_chats",
             description: #"""
             List a project's chats of every kind (project, ticket, bundle, feedback), most recently updated first, with their title, kind, linked ticket or bundle, settings and state.

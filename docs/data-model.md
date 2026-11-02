@@ -687,6 +687,7 @@ Swift type `ChatItem`: an enum whose case is selected by the key `type` and whos
 | `toolResult`        | `.toolResult`        | `ToolResultItem`        | The result of a tool call.                               |
 | `permissionRequest` | `.permissionRequest` | `PermissionRequestItem` | A request to allow a tool call.                          |
 | `questions`         | `.questions`         | `QuestionsItem`         | A set of labelled questions.                             |
+| `symbol`            | `.symbol`            | `SymbolItem`            | A request to choose one SF Symbol.                       |
 | `system`            | `.system`            | `SystemItem`            | A line from the app, such as the session start.          |
 | `result`            | `.result`            | `ResultItem`            | The end of a CLI turn ([Chats](chats.md#turn-tracking)). |
 
@@ -699,6 +700,7 @@ public enum ChatItem: Codable, Sendable, Hashable, Identifiable {
     case toolResult(ToolResultItem)
     case permissionRequest(PermissionRequestItem)
     case questions(QuestionsItem)
+    case symbol(SymbolItem)
     case system(SystemItem)
     case result(ResultItem)
 }
@@ -797,6 +799,22 @@ The persisted form of a question set posted with the MCP tool `ask_questions` ([
 | ----------- | ------------- | --------- | -------- | ------- | ------------------------------------------------------------- |
 | label       | `label`       | `String`  | yes      | —       | Single line, 1–200 characters. Default chosen at design time. |
 | description | `description` | `String?` | no       | `null`  | Explanation shown with the option.                            |
+
+### Symbol item
+
+The persisted form of a symbol request posted with the MCP tool `ask_symbol` ([Chats](chats.md#symbol-requests)).
+
+| Swift name  | Key           | Type       | Required | Default | Rules                                                                                                                                              |
+| ----------- | ------------- | ---------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| requestID   | `requestID`   | `UUID`     | yes      | —       | Id of the request, used by `chats.answerSymbol`; the item's `id` is its uppercase string.                                                          |
+| question    | `question`    | `String`   | yes      | —       | Non-empty Markdown text.                                                                                                                           |
+| suggestions | `suggestions` | `[String]` | yes      | —       | 2 to 10 distinct SF Symbol names, trimmed, in the order Claude gave them ([Symbol catalogue](chats.md#symbol-catalogue)).                          |
+| recommended | `recommended` | `String`   | yes      | —       | One of `suggestions`.                                                                                                                              |
+| answer      | `answer`      | `String?`  | no       | `null`  | `null` until the user answers: then `![](sf:<name>)` for a chosen symbol, the user's own text, or `Skipped` for a skipped request. It is set once. |
+
+```json
+{"type":"symbol","id":"6C9D1E2F-3A4B-4C5D-8E6F-7A8B9C0D1E2F","created":"2026-11-01T14:20:01Z","requestID":"6C9D1E2F-3A4B-4C5D-8E6F-7A8B9C0D1E2F","question":"Which icon should the filter button use?","suggestions":["line.3.horizontal.decrease.circle","line.3.horizontal.decrease","slider.horizontal.3"],"recommended":"line.3.horizontal.decrease.circle","answer":"![](sf:line.3.horizontal.decrease.circle)"}
+```
 
 ### System item
 
@@ -1236,7 +1254,7 @@ At launch the engine:
 1. Creates the data directory and its missing subfolders.
 2. Reads `device.yml`, `secrets.json`, `settings.yml`, `registry.yml` and `remotes.yml`. A missing file is created with its defaults: a new device id, a new pairing code and external token, empty lists. An invalid file is renamed to `<file>.invalid`, replacing an older one, logged as an error, and recreated with its defaults. Then it reads `plan-usage.yml`, which is never created at launch: a missing file gives no plan usage, and an invalid one is renamed to `plan-usage.yml.invalid`, replacing an older one, logged as an error, and gives no plan usage. Default chosen at design time.
 3. Loads the projects of the registry in order, each followed by its sub projects, depth first in `subprojects` order. A project is skipped and logged when its project file is missing or invalid, or when its identifier is already used by a loaded project. A project skipped because its identifier is used is tried again, in registry order, each time a project is unloaded or unregistered. Default chosen at design time.
-4. Loads every ticket, bundle and chat metadata file of each loaded project. An invalid ticket or bundle file is skipped and logged, and loads once it becomes valid ([External changes](#external-changes)); an invalid chat metadata file is skipped and logged until the next launch. For each loaded chat the engine replays its transcript once, in a child task, to find whether it holds a question set that is not completed, which sets the chat's state to `waitingAnswers` ([Chats](chats.md#chat-states)) with `chat.updated`, and to cancel its pending permission requests ([Chats](chats.md#cancellation)); the items are not kept. Until the scan of a chat ends its state is `idle`. Clients read the items with `chats.get`. Default chosen at design time.
+4. Loads every ticket, bundle and chat metadata file of each loaded project. An invalid ticket or bundle file is skipped and logged, and loads once it becomes valid ([External changes](#external-changes)); an invalid chat metadata file is skipped and logged until the next launch. For each loaded chat the engine replays its transcript once, in a child task, to find whether it holds a question set that is not completed or a symbol request without answer, which sets the chat's state to `waitingAnswers` ([Chats](chats.md#chat-states)) with `chat.updated`, and to cancel its pending permission requests ([Chats](chats.md#cancellation)); the items are not kept. Until the scan of a chat ends its state is `idle`. Clients read the items with `chats.get`. Default chosen at design time.
 5. Deletes leftover temporary files in the folders it reads.
 6. Starts watching the files ([External changes](#external-changes)).
 
@@ -1318,3 +1336,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R111: Implement All runs one ticket chat per ticket, one at a time, coordinated by the bundle chat that started them, and pushes once at the end.
 - R112: Main windows show the Claude plan's weekly usage in the status bar as a small round progress indicator; a click shows the percentage used, when the week resets and the overage status.
 - R113: Claude can close the chat it runs in when the user asks or its work is finished; a closed chat shows `This conversation is over` in place of its composer until the user reopens it.
+- R117: Claude asks the user to choose an SF Symbol with `ask_symbol`: suggestions show as icons, any SF Symbol of the Mac can be searched, the user picks one, answers another way or skips.

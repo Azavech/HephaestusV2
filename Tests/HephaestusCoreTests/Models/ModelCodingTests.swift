@@ -318,6 +318,10 @@ struct ModelCodingTests {
             .questions(QuestionsItem(id: "q", created: created, questionSetID: UUID(), questions: [
                 Question(label: "A", question: "?", options: [QuestionOption(label: "x"), QuestionOption(label: "y")], recommended: "x"),
             ])),
+            .symbol(SymbolItem(id: "sy", created: created, requestID: UUID(), question: "Which?", suggestions: ["star", "heart"],
+                               recommended: "star")),
+            .symbol(SymbolItem(id: "sa", created: created, requestID: UUID(), question: "Which?", suggestions: ["star", "heart"],
+                               recommended: "star", answer: "![](sf:heart)")),
             .system(SystemItem(id: "s", created: created, text: "Session started", level: .warning)),
             .result(ResultItem(id: "r", created: created, durationMs: 10, costUSD: 0.5)),
         ]
@@ -329,7 +333,22 @@ struct ModelCodingTests {
             let object = try JSONDecoder().decode(JSONValue.self, from: data).objectValue?["item"]?.objectValue
             #expect(object?["type"] == .string(item.type.rawValue))
         }
-        #expect(items.map(\.id) == ["u", "a", "t", "tu", "tr", "p", "q", "s", "r"])
+        #expect(items.map(\.id) == ["u", "a", "t", "tu", "tr", "p", "q", "sy", "sa", "s", "r"])
+    }
+
+    @Test("The symbol item of docs/data-model.md › Symbol item: answer null until the user answers")
+    func symbolItem() throws {
+        let line = #"{"type":"symbol","id":"6C9D1E2F-3A4B-4C5D-8E6F-7A8B9C0D1E2F","created":"2026-11-01T14:20:01Z","requestID":"6C9D1E2F-3A4B-4C5D-8E6F-7A8B9C0D1E2F","question":"Which icon should the filter button use?","suggestions":["line.3.horizontal.decrease.circle","line.3.horizontal.decrease","slider.horizontal.3"],"recommended":"line.3.horizontal.decrease.circle","answer":"![](sf:line.3.horizontal.decrease.circle)"}"#
+        let item = try StorageJSON.decoder().decode(ChatItem.self, from: Data(line.utf8))
+        guard case .symbol(var request) = item else {
+            Issue.record("not a symbol item")
+            return
+        }
+        #expect(request.answer == "![](sf:line.3.horizontal.decrease.circle)")
+        #expect(request.suggestions.count == 3 && request.recommended == "line.3.horizontal.decrease.circle")
+        request.answer = nil
+        let encoded = try JSONDecoder().decode(JSONValue.self, from: StorageJSON.lineEncoder().encode(ChatItem.symbol(request)))
+        #expect(encoded.objectValue?["answer"] == .null)
     }
 
     @Test("MCP tool names are split after mcp__ at the first __")

@@ -125,6 +125,14 @@ struct TranscriptState {
         return nil
     }
 
+    /// The symbol request without answer; a chat has at most one.
+    var waitingSymbolRequest: SymbolItem? {
+        for item in items {
+            if case .symbol(let request) = item, request.answer == nil { return request }
+        }
+        return nil
+    }
+
     /// Every image of the chat's items in transcript order: user attachments and tool-result
     /// images.
     var images: [Attachment] {

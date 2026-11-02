@@ -114,8 +114,8 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | MCP request with the external token    | claude, chatID `external`                       |
 | Engine-internal work and tests         | system                                          |
 
-- **user** may call every method except `chats.postQuestions` and `chats.close`. Local and remote users have the same rights.
-- **claude** may call only the 44 methods that MCP tools map to (the Actors column says "claude"), with the rules below. Any other method fails with `forbidden` before its params are decoded.
+- **user** may call every method except `chats.postQuestions`, `chats.postSymbol` and `chats.close`. Local and remote users have the same rights.
+- **claude** may call only the 45 methods that MCP tools map to (the Actors column says "claude"), with the rules below. Any other method fails with `forbidden` before its params are decoded.
 - **system** may call every method, without restrictions.
 
 ### Rules for Claude
@@ -128,7 +128,7 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | tickets.setStatus                            | Changing the status of a ticket whose status is `done` is refused.                                                                                                                     | forbidden |
 | projects.update                              | `chatDefaults` must be absent.                                                                                                                                                         | forbidden |
 | chats.implementTicket, chats.implementBundle | `settings` must be absent; the new chat uses the project's defaults.                                                                                                                   | forbidden |
-| chats.postQuestions                          | Only the chat's own Claude may call it: the actor's chatID must equal the `chatID` param; the external token is refused.                                                               | forbidden |
+| chats.postQuestions, chats.postSymbol        | Only the chat's own Claude may call it: the actor's chatID must equal the `chatID` param; the external token is refused.                                                               | forbidden |
 | chats.close                                  | Only the chat's own Claude may call it: the actor's chatID must equal the `chatID` param; the external token is refused (`Only the chat's own Claude can close its chat.`).            | forbidden |
 | ui.open                                      | `deviceID` is ignored; the event targets the chat's driving device ([ui.open](#uiopen)).                                                                                               | none      |
 | webTabs.update                               | `locked` false is refused (`Only the user can unlock a tab.`): only the user unlocks a tab, so Claude never closes a locked tab.                                                       | forbidden |
@@ -223,6 +223,8 @@ The first column lists every engine method; it is the list the docs conformance 
 | `chats.answerPermission`   | ChatsAnswerPermission   | chatID, requestID, decision, message?                      | Empty            | user         |
 | `chats.postQuestions`      | ChatsPostQuestions      | chatID, questions                                          | QuestionSet      | claude       |
 | `chats.answerQuestion`     | ChatsAnswerQuestion     | chatID, questionSetID, label, answer                       | Empty            | user         |
+| `chats.postSymbol`         | ChatsPostSymbol         | chatID, question, suggestions, recommended                 | SymbolRequest    | claude       |
+| `chats.answerSymbol`       | ChatsAnswerSymbol       | chatID, requestID, answer                                  | Empty            | user         |
 | `chats.implementTicket`    | ChatsImplementTicket    | ticketID, settings?                                        | ChatMeta         | user, claude |
 | `chats.implementBundle`    | ChatsImplementBundle    | bundleID, settings?                                        | ChatMeta         | user, claude |
 | `chats.createFeedback`     | ChatsCreateFeedback     | projectID, comment, screenshot, context, settings?         | ChatMeta         | user         |
@@ -840,7 +842,7 @@ Chat states and their transitions, Claude processes, CLI flags, the stream-json 
 
 Every ChatMeta returned by a method or carried by chat.updated has the fields of the metadata file, `closed` included, which tells every client that the chat is closed ([Chats](chats.md#closing-a-chat)), and four fields computed by the engine and never written to `chats/<chatID>.yml`. They are the runtime keys `projectID`, `state`, `backgroundWork` and `costUSD` of [ChatMeta](data-model.md#chat-metadata-file). The engine emits chat.updated when the chat's `state` or `backgroundWork` changes ([Background work](chats.md#background-work)). The engine emits chat.updated when the chat's `costUSD` changes, followed by projects.changed, since the `ownCostUSD` and `costUSD` of its project and of the project's ancestors change with it ([Live updates](costs.md#live-updates)).
 
-The **driving device** of a chat is the device of the user actor that last called `chats.create` with a message, `chats.send`, `chats.answerQuestion`, `chats.answerPermission`, `chats.implementTicket`, `chats.implementBundle` or `chats.createFeedback` for it since the engine started; it is kept in memory only. A `ui.open` call made by that chat's Claude targets it. Default chosen at design time.
+The **driving device** of a chat is the device of the user actor that last called `chats.create` with a message, `chats.send`, `chats.answerQuestion`, `chats.answerSymbol`, `chats.answerPermission`, `chats.implementTicket`, `chats.implementBundle` or `chats.createFeedback` for it since the engine started; it is kept in memory only. A `ui.open` call made by that chat's Claude targets it. Default chosen at design time.
 
 ### chats.list
 
@@ -1078,12 +1080,12 @@ Called by the MCP tool `ask_questions`, which fills `chatID` from its token. The
 
 Moves each question's recommended option to the first place of its `options`, the other options keeping their relative order ([Chats](chats.md#posting-questions)), then creates a question set (new UUID, no answers, not completed) and adds a `questions` item. The stored item and the returned QuestionSet have the options in this order. When the turn ends, the chat's state becomes `waitingAnswers`.
 
-| Error     | When                                                                                                                   |
-| --------- | ---------------------------------------------------------------------------------------------------------------------- |
-| invalid   | chatID is not a UUID; a question breaks a rule (messages in [Workflow](workflow.md#validation)).                       |
-| notFound  | No such chat.                                                                                                          |
-| forbidden | The actor is not this chat's Claude (`Only the chat's own Claude can ask questions.`).                                 |
-| conflict  | The chat already has a question set that is not completed (`Questions are already waiting for answers in this chat.`). |
+| Error     | When                                                                                                                                                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| invalid   | chatID is not a UUID; a question breaks a rule (messages in [Workflow](workflow.md#validation)).                                                                                                                               |
+| notFound  | No such chat.                                                                                                                                                                                                                  |
+| forbidden | The actor is not this chat's Claude (`Only the chat's own Claude can ask questions.`).                                                                                                                                         |
+| conflict  | The chat already has a question set that is not completed (`Questions are already waiting for answers in this chat.`), or a symbol request without answer (`A symbol request is already waiting for an answer in this chat.`). |
 
 Events: chat.item, chat.updated.
 
@@ -1109,6 +1111,52 @@ Swift type `ChatsAnswerQuestion` · actors: user · result: [Empty](#empty)
 | unavailable | The answer completes the set and the Claude CLI is not available; nothing is stored.                                                                                                                                               |
 
 Events: chat.item (the `questions` item); when the set is completed, chat.item (the user message) and chat.updated.
+
+### chats.postSymbol
+
+Swift type `ChatsPostSymbol` · actors: claude (the chat's own Claude only) · result: [SymbolRequest](#symbolrequest)
+
+Called by the MCP tool `ask_symbol`, which fills `chatID` from its token ([MCP server](mcp.md#ask_symbol)). The protocol is in [Workflow](workflow.md#symbol-requests) and its UI in [Chats](chats.md#symbol-requests).
+
+| Param       | Type     | Required | Description                                                                                                                                                       |
+| ----------- | -------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| chatID      | ChatID   | yes      | Chat id; must be the actor's chatID.                                                                                                                              |
+| question    | String   | yes      | Markdown text, not empty after trimming.                                                                                                                          |
+| suggestions | [String] | yes      | 2 to 10 distinct SF Symbol names of the [symbol catalogue](chats.md#symbol-catalogue) of the main device, each trimmed ([Data model](data-model.md#symbol-item)). |
+| recommended | String   | yes      | One of the suggestions, trimmed.                                                                                                                                  |
+
+Checks the rules of [Workflow](workflow.md#symbol-requests), then creates a symbol request (new UUID, no answer) and adds a `symbol` item with the suggestions in the order given. When the turn ends, the chat's state becomes `waitingAnswers`.
+
+| Error     | When                                                                                                                                                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| invalid   | chatID is not a UUID; the request breaks a rule (messages in [Workflow](workflow.md#symbol-requests)).                                                                                                                         |
+| notFound  | No such chat.                                                                                                                                                                                                                  |
+| forbidden | The actor is not this chat's Claude (`Only the chat's own Claude can ask questions.`).                                                                                                                                         |
+| conflict  | The chat already has a question set that is not completed (`Questions are already waiting for answers in this chat.`), or a symbol request without answer (`A symbol request is already waiting for an answer in this chat.`). |
+
+Events: chat.item, chat.updated.
+
+### chats.answerSymbol
+
+Swift type `ChatsAnswerSymbol` · actors: user · result: [Empty](#empty)
+
+| Param     | Type   | Required | Description                                                                        |
+| --------- | ------ | -------- | ---------------------------------------------------------------------------------- |
+| chatID    | ChatID | yes      | Chat id.                                                                           |
+| requestID | UUID   | yes      | Symbol request id.                                                                 |
+| answer    | String | yes      | `![](sf:<name>)` for a chosen symbol, free text, or `Skipped`; trimmed; not empty. |
+
+- `answer` is trimmed and has 1 to 10,000 characters; the answer `Skipped` marks a skipped request ([Chats](chats.md#answering-a-symbol-request)).
+- The engine stores the answer in the `symbol` item and sends one user message, by the rules of `chats.send`, with `sender` the name of the actor's device: `Symbol: <answer>`. During a turn it is written to the Claude process at once and the CLI runs it after that turn, as for `chats.send`.
+
+| Error       | When                                                                                                                                        |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid     | chatID or requestID is not a UUID; answer is empty or longer than 10,000 characters after trimming (`answer: use 1 to 10,000 characters.`). |
+| notFound    | No such chat; no symbol request with this id in it.                                                                                         |
+| conflict    | The request already has an answer (`This symbol request was already answered.`).                                                            |
+| unavailable | The Claude CLI is not available; nothing is stored.                                                                                         |
+
+Events: chat.item (the `symbol` item), chat.item (the user message) and chat.updated.
 
 ### chats.implementTicket
 
@@ -2378,7 +2426,7 @@ String enum, the `state` of a ChatMeta in the API. Declared in `API/APITypes.swi
 | `starting`          | `.starting`          | A message was accepted and the Claude process is being launched or initialized. |
 | `running`           | `.running`           | Claude is working on a turn.                                                    |
 | `waitingPermission` | `.waitingPermission` | The turn waits for a permission decision.                                       |
-| `waitingAnswers`    | `.waitingAnswers`    | The last turn ended with a question set that is not completed.                  |
+| `waitingAnswers`    | `.waitingAnswers`    | The last turn ended with a question set or symbol request waiting.              |
 | `error`             | `.error`             | The process failed to start, or exited with a non-zero status during a turn.    |
 
 ### QuestionSet
@@ -2417,6 +2465,30 @@ String enum, the `state` of a ChatMeta in the API. Declared in `API/APITypes.swi
       "recommended": "1 day"
     }
   ]
+}
+```
+
+### SymbolRequest
+
+A symbol request posted by `chats.postSymbol` ([Chats](chats.md#symbol-requests)).
+
+| Field       | Type     | Required | Description                                                                          |
+| ----------- | -------- | -------- | ------------------------------------------------------------------------------------ |
+| requestID   | UUID     | yes      | Id of the request.                                                                   |
+| chatID      | ChatID   | yes      | Chat that asked.                                                                     |
+| question    | String   | yes      | Markdown text.                                                                       |
+| suggestions | [String] | yes      | 2 to 10 SF Symbol names, in the order Claude gave them.                              |
+| recommended | String   | yes      | One of the suggestions.                                                              |
+| answer      | String?  | yes      | The answer ([Data model](data-model.md#symbol-item)); `null` until the user answers. |
+
+```json
+{
+  "answer": null,
+  "chatID": "3F2504E0-4F89-11D3-9A0C-0305E82C3301",
+  "question": "Which icon should the filter button use?",
+  "recommended": "line.3.horizontal.decrease.circle",
+  "requestID": "6C9D1E2F-3A4B-4C5D-8E6F-7A8B9C0D1E2F",
+  "suggestions": ["line.3.horizontal.decrease.circle", "line.3.horizontal.decrease", "slider.horizontal.3"]
 }
 ```
 
@@ -2765,3 +2837,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R110: A bundle has a status: todo, in progress or done; Implement All sets it to in progress and is disabled until the user sets it back to To Do.
 - R112: Main windows show the Claude plan's weekly usage in the status bar as a small round progress indicator; a click shows the percentage used, when the week resets and the overage status.
 - R113: Claude can close the chat it runs in when the user asks or its work is finished; a closed chat shows `This conversation is over` in place of its composer until the user reopens it.
+- R117: Claude asks the user to choose an SF Symbol with `ask_symbol`: suggestions show as icons, any SF Symbol of the Mac can be searched, the user picks one, answers another way or skips.

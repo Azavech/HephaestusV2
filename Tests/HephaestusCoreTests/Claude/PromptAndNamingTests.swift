@@ -215,10 +215,24 @@ struct PromptAndNamingTests {
                       "deviceName": "Studio", "docsPath": "docs", "projectCommands": "- build: make build"]
         let common = Prompts.render(Prompts.text(.common), values)
         let range = try #require(common.range(of: rule))
-        #expect(common[range.upperBound...].hasPrefix("# When the project is HephaestusV2"))
+        #expect(common[range.upperBound...].hasPrefix("When you need the user to choose an SF Symbol, ask with ask_symbol"))
         for kind in [ChatKind.project, .ticket, .bundle, .feedback] {
             #expect(Prompts.systemPrompt(kind: kind, values: values).contains(rule), "\(kind)")
         }
+    }
+
+    @Test("The common prompt lists ask_symbol and tells Claude to use it to have the user choose an SF Symbol")
+    func askSymbolPrompt() throws {
+        let common = Prompts.text(.common)
+        #expect(common.contains("- Questions to the user: ask_questions, ask_symbol (asks the user to choose an SF Symbol).\n"))
+        #expect(common.contains("- Never call ask_questions while earlier questions or a symbol request of this chat still wait for their answers.\n"))
+        let lower = try #require(common.range(of: "# SF Symbols")).lowerBound
+        let upper = try #require(common.range(of: "# When the project is HephaestusV2")).lowerBound
+        let section = String(common[lower..<upper])
+        #expect(section.contains("When you need the user to choose an SF Symbol, ask with ask_symbol, never with symbol names as options of ask_questions"))
+        #expect(section.contains("After ask_symbol returns, end your turn"))
+        #expect(section.contains("Symbol: ![](sf:<name>) for a chosen symbol, Symbol: <answer> for an answer in the user's own words, or Symbol: Skipped"))
+        #expect(section.contains("Never call ask_symbol while questions or a symbol request of this chat still wait for their answers."))
     }
 
     @Test("Naming inputs: the label line, then the text cut at 4,000 characters")

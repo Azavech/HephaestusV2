@@ -164,6 +164,32 @@ struct MCPToolHandlersTests {
             == .failure(MCPToolError(code: .conflict, message: "A question set is waiting.")))
     }
 
+    @Test("ask_symbol: the external token fails before validation; a chat token posts to its chat")
+    func askSymbol() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        let refused = try await Self.call(handlers, "ask_symbol", #"{"suggestions":"not an array"}"#, actor: Self.external)
+        #expect(refused == .failure(MCPToolError(code: .forbidden, message: "Only the chat's own Claude can ask questions.")))
+        #expect(engine.calls.isEmpty)
+
+        #expect(try await Self.call(handlers, "ask_symbol", #"{"question":"Which?","suggestions":["star"]}"#)
+            == .failure(MCPToolError(code: .invalid, message: "recommended: required.")))
+        #expect(engine.calls.isEmpty)
+
+        let arguments = #"{"question":"Which icon?","suggestions":["star","heart"],"recommended":"star"}"#
+        let asked = try await Self.call(handlers, "ask_symbol", arguments)
+        #expect(asked == .success("symbol request shown; the answer arrives in the next user message; end your turn"))
+        let call = try #require(engine.calls.last)
+        #expect(call.method == "chats.postSymbol")
+        #expect(call.params == .object(["chatID": .string(Self.chatID.uuidString), "question": "Which icon?",
+                                        "suggestions": ["star", "heart"], "recommended": "star"]))
+        #expect(call.actor == Self.chat)
+
+        engine.answer("chats.postSymbol", .failure(EngineError(.conflict, "Questions are already waiting for answers in this chat.")))
+        #expect(try await Self.call(handlers, "ask_symbol", arguments)
+            == .failure(MCPToolError(code: .conflict, message: "Questions are already waiting for answers in this chat.")))
+    }
+
     @Test("close_chat: the external token fails before validation; a chat token closes its own chat")
     func closeChat() async throws {
         let engine = RecordedEngine()

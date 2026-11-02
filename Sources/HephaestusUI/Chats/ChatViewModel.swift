@@ -1,6 +1,6 @@
 // OWNER: ui-chats — the state and actions of one chat view: the chat or draft it shows, the
 // composer, the pinned cards and their keys, the header (docs/chats.md › Chat view, › Composer,
-// › Pinned permission card, › Pinned questions card, › Draft chats).
+// › Pinned permission card, › Pinned questions card, › Pinned symbol card, › Draft chats).
 import AppKit
 import HephaestusCore
 import Observation
@@ -27,6 +27,12 @@ struct DraftChat: Hashable {
 /// The choice of the questions card: an option's label, or `Answer another way`.
 enum QuestionChoice: Hashable {
     case option(String)
+    case other
+}
+
+/// The choice of the symbol card: a symbol of the grid, or `Answer another way`.
+enum SymbolChoice: Hashable {
+    case symbol(String)
     case other
 }
 
@@ -80,6 +86,14 @@ final class ChatViewModel {
     var questionChoice: QuestionChoice = .other
     var questionOther = ""
     var isSubmittingAnswer = false
+    /// The symbol request the symbol card shows, with its selection, field and search.
+    var symbolRequestID: UUID?
+    var symbolChoice: SymbolChoice = .other
+    var symbolOther = ""
+    var symbolSearch = ""
+    /// The search results of `symbolSearch`, without the suggestions (docs/chats.md › Symbol search).
+    var symbolResults: [String] = []
+    var isSubmittingSymbol = false
 
     // MARK: Header
 
@@ -466,6 +480,79 @@ final class ChatViewModel {
         return set.completed
     }
 
+    // MARK: Symbol card
+
+    /// The card appeared for a request: the recommended suggestion selected, the field and the
+    /// search empty. The same request keeps its selection.
+    func symbolRequestShown(_ request: SymbolItem) {
+        guard symbolRequestID != request.requestID else { return }
+        symbolRequestID = request.requestID
+        symbolChoice = .symbol(request.recommended)
+        symbolOther = ""
+        symbolSearch = ""
+        symbolResults = []
+    }
+
+    /// Searches the catalogue of this Mac for `symbolSearch`, off the main actor; a result that
+    /// arrives after the query changed is dropped.
+    func searchSymbols(excluding suggestions: [String]) {
+        let query = symbolSearch
+        let excluded = Set(suggestions)
+        Task {
+            let results = await Task.detached { SFSymbolCatalog.system.search(query, excluding: excluded) }.value
+            if symbolSearch == query {
+                symbolResults = results
+            }
+        }
+    }
+
+    /// The answer the card submits: `![](sf:<name>)` for the selected symbol, or the field's text.
+    var symbolAnswer: String {
+        switch symbolChoice {
+        case .symbol(let name): return "![](sf:\(name))"
+        case .other: return symbolOther.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
+    var canSubmitSymbol: Bool {
+        !symbolAnswer.isEmpty && !isSubmittingSymbol
+    }
+
+    /// Submit: `chats.answerSymbol` with the selected answer.
+    func submitSymbol() {
+        guard canSubmitSymbol else { return }
+        answerSymbolRequest(symbolAnswer, action: "Submit")
+    }
+
+    /// Skip: `chats.answerSymbol` with `Skipped`.
+    func skipSymbol() {
+        guard !isSubmittingSymbol else { return }
+        answerSymbolRequest(QuestionNavigation.skipped, action: "Skip")
+    }
+
+    /// Stores the answer of the waiting symbol request. An answer that fails because the request
+    /// was answered on another device shows no alert.
+    private func answerSymbolRequest(_ answer: String, action: String) {
+        guard let chatID, let uuid = UUID(uuidString: chatID), let request = transcriptState?.waitingSymbolRequest else { return }
+        isSubmittingSymbol = true
+        Task {
+            defer { isSubmittingSymbol = false }
+            do {
+                _ = try await workspace.call(ChatsAnswerSymbol.self, ChatsAnswerSymbol.Params(
+                    chatID: uuid, requestID: request.requestID, answer: answer))
+            } catch let error as EngineError where error.code == .conflict && answeredElsewhere(request.id) {
+                return
+            } catch {
+                alert(.failure(action, error))
+            }
+        }
+    }
+
+    private func answeredElsewhere(_ itemID: String) -> Bool {
+        guard case .symbol(let request)? = transcriptState?.item(itemID) else { return false }
+        return request.answer != nil
+    }
+
     // MARK: Card keys (docs/chats.md › Keyboard shortcuts)
 
     private func startKeyMonitor() {
@@ -484,9 +571,9 @@ final class ChatViewModel {
     }
 
     /// ⌘Return, ⌥⌘Return and ⇧⌘Return answer the permission card once its request has been shown
-    /// for 1 second; ⌘Return submits the questions card when no permission card is shown and the
-    /// card is not minimized. Both act
-    /// only while the focus is in this chat view outside its composer.
+    /// for 1 second; ⌘Return submits the questions card or the symbol card when no permission card
+    /// is shown and the card is not minimized. Both act only while the focus is in this chat view
+    /// outside its composer.
     func handleKey(_ event: NSEvent) -> Bool {
         guard let window, event.window === window else { return false }
         let flags = event.modifierFlags.intersection([.command, .option, .shift, .control])
@@ -509,6 +596,11 @@ final class ChatViewModel {
         if flags == [.command], let set = state.incompleteQuestionSet, let chatID,
            app?.isQuestionsCardMinimized(chatID: chatID, setID: set.questionSetID) != true {
             submitAnswer()
+            return true
+        }
+        if flags == [.command], let request = state.waitingSymbolRequest, let chatID,
+           app?.isQuestionsCardMinimized(chatID: chatID, setID: request.requestID) != true {
+            submitSymbol()
             return true
         }
         return false

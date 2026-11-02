@@ -11,6 +11,7 @@ public enum ChatItem: Codable, Sendable, Hashable, Identifiable {
     case toolResult(ToolResultItem)
     case permissionRequest(PermissionRequestItem)
     case questions(QuestionsItem)
+    case symbol(SymbolItem)
     case system(SystemItem)
     case result(ResultItem)
 
@@ -27,6 +28,7 @@ public enum ChatItem: Codable, Sendable, Hashable, Identifiable {
         case .toolResult(let item): return item
         case .permissionRequest(let item): return item
         case .questions(let item): return item
+        case .symbol(let item): return item
         case .system(let item): return item
         case .result(let item): return item
         }
@@ -43,6 +45,7 @@ public enum ChatItem: Codable, Sendable, Hashable, Identifiable {
         case .toolResult: self = .toolResult(try ToolResultItem(from: decoder))
         case .permissionRequest: self = .permissionRequest(try PermissionRequestItem(from: decoder))
         case .questions: self = .questions(try QuestionsItem(from: decoder))
+        case .symbol: self = .symbol(try SymbolItem(from: decoder))
         case .system: self = .system(try SystemItem(from: decoder))
         case .result: self = .result(try ResultItem(from: decoder))
         }
@@ -62,6 +65,7 @@ public enum ChatItemType: String, Codable, Sendable, Hashable, CaseIterable {
     case toolResult
     case permissionRequest
     case questions
+    case symbol
     case system
     case result
 }
@@ -437,6 +441,54 @@ public struct QuestionOption: Codable, Sendable, Hashable {
         var c = ModelEncodingContainer(encoder)
         try c.encode(label, "label")
         try c.encodeOptional(description, "description")
+    }
+}
+
+/// A request to choose one SF Symbol, posted with the MCP tool `ask_symbol`
+/// (docs/data-model.md › Symbol item).
+public struct SymbolItem: ChatItemPayload {
+    public static let itemType = ChatItemType.symbol
+    public var id: String
+    public var created: Date
+    public var requestID: UUID
+    /// Non-empty Markdown text.
+    public var question: String
+    /// 2 to 10 distinct SF Symbol names, in the order Claude gave them.
+    public var suggestions: [String]
+    /// One of `suggestions`.
+    public var recommended: String
+    /// nil until the user answers: `![](sf:<name>)`, the user's own text, or `Skipped`.
+    public var answer: String?
+
+    public init(id: String, created: Date, requestID: UUID, question: String, suggestions: [String], recommended: String,
+                answer: String? = nil) {
+        self.id = id
+        self.created = created
+        self.requestID = requestID
+        self.question = question
+        self.suggestions = suggestions
+        self.recommended = recommended
+        self.answer = answer
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try ModelDecodingContainer(decoder)
+        (id, created) = try ItemHeader.decode(c)
+        requestID = try c.required("requestID")
+        question = try c.required("question")
+        suggestions = try c.required("suggestions")
+        recommended = try c.required("recommended")
+        answer = try c.optional("answer")
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = ModelEncodingContainer(encoder)
+        try ItemHeader.encode(&c, type: Self.itemType, id: id, created: created)
+        try c.encode(requestID, "requestID")
+        try c.encode(question, "question")
+        try c.encode(suggestions, "suggestions")
+        try c.encode(recommended, "recommended")
+        try c.encodeOptional(answer, "answer")
     }
 }
 

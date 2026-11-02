@@ -219,6 +219,48 @@ public enum ChatsAnswerQuestion: EngineMethod {
     public typealias Result = Empty
 }
 
+/// `chats.postSymbol`: called by the MCP tool `ask_symbol`. Actors: claude (the chat's own Claude
+/// only).
+public enum ChatsPostSymbol: EngineMethod {
+    public static let name = "chats.postSymbol"
+    public struct Params: Codable, Sendable, Hashable {
+        /// Must be the actor's chatID.
+        public var chatID: ChatID
+        /// Markdown text, not empty after trimming.
+        public var question: String
+        /// 2 to 10 distinct SF Symbol names of the main device's catalogue.
+        public var suggestions: [String]
+        /// One of the suggestions.
+        public var recommended: String
+
+        public init(chatID: ChatID, question: String, suggestions: [String], recommended: String) {
+            self.chatID = chatID
+            self.question = question
+            self.suggestions = suggestions
+            self.recommended = recommended
+        }
+    }
+    public typealias Result = SymbolRequest
+}
+
+/// `chats.answerSymbol`. Actors: user.
+public enum ChatsAnswerSymbol: EngineMethod {
+    public static let name = "chats.answerSymbol"
+    public struct Params: Codable, Sendable, Hashable {
+        public var chatID: ChatID
+        public var requestID: UUID
+        /// `![](sf:<name>)` for a chosen symbol, free text, or `Skipped`; trimmed; not empty.
+        public var answer: String
+
+        public init(chatID: ChatID, requestID: UUID, answer: String) {
+            self.chatID = chatID
+            self.requestID = requestID
+            self.answer = answer
+        }
+    }
+    public typealias Result = Empty
+}
+
 /// `chats.implementTicket`. Actors: user, claude.
 public enum ChatsImplementTicket: EngineMethod {
     public static let name = "chats.implementTicket"

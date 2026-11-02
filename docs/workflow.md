@@ -10,7 +10,7 @@ This is the operating manual Claude follows in every HephaestusV2 chat. Claude n
 | `ticket`         | Implement, New Chat in a ticket's Chats tab, `implement_ticket`        | `common.md`, `ticket.md`   | Implement runs the [implementation workflow](#implementation-workflow); a ticket chat started by a bundle chat commits without pushing ([Bundles](#bundles)) |
 | `bundle`         | Implement All, New Chat in a bundle's Chats tab, `implement_bundle`    | `common.md`, `bundle.md`   | Implement All runs the [bundle workflow](#bundles): the chat orchestrates one ticket chat per ticket                                                         |
 | `feedback`       | The ladybug ([Feedback](feedback.md))                                  | `common.md`, `feedback.md` | Clarify the feedback, then create its ticket                                                                                                                 |
-| External session | A terminal Claude session using the external MCP token ([MCP](mcp.md)) | none                       | Only the [engine-enforced rules](#engine-enforced-rules); no `ask_questions`                                                                                 |
+| External session | A terminal Claude session using the external MCP token ([MCP](mcp.md)) | none                       | Only the [engine-enforced rules](#engine-enforced-rules); no `ask_questions` or `ask_symbol`                                                                 |
 
 - The prompt resources are in `Sources/HephaestusCore/Resources/prompts/`, and their full text is in [Chats](chats.md). `common.md` states every rule of this document in imperative form.
 - Claude CLI also reads the project's own `CLAUDE.md` from the project root. The `CLAUDE.md` of the HephaestusV2 repository links to this document. Default chosen at design time.
@@ -43,7 +43,7 @@ This is the operating manual Claude follows in every HephaestusV2 chat. Claude n
 - Claude puts every point that is unknown at that moment into one call. Default chosen at design time.
 - The tool returns at once with the text `questions shown; answers arrive in the next user message; end your turn`. Claude then ends its turn: it calls no further tool.
 - Claude does not repeat the questions in its reply text, because the chat shows them. Default chosen at design time.
-- A chat has at most one unanswered question set. Calling `ask_questions` while one is waiting fails with `conflict` and `Questions are already waiting for answers in this chat.`. Default chosen at design time.
+- A chat has at most one waiting request: a question set without all its answers, or a [symbol request](#symbol-requests) without answer. Calling `ask_questions` while a question set waits fails with `conflict` and `Questions are already waiting for answers in this chat.`, and while a symbol request waits with `conflict` and `A symbol request is already waiting for an answer in this chat.`. The question-set rule and its message are Default chosen at design time.
 - `ask_questions` works only with a chat's own token, never with the external token ([MCP](mcp.md)).
 
 ### Validation
@@ -84,7 +84,7 @@ B: <answer>
 
 ### Plain-text questions
 
-In an external session, where `ask_questions` is not available, Claude writes the questions in its reply in this form and ends its turn:
+In an external session, where `ask_questions` and `ask_symbol` are not available, Claude writes the questions in its reply in this form and ends its turn; a symbol choice becomes a question whose options are the symbol names:
 
 ```text
 A: <question>
@@ -96,6 +96,37 @@ B: <question>
 ```
 
 The user answers with one `<label>: <answer>` line per question. Default chosen at design time.
+
+### Symbol requests
+
+When Claude needs the user to choose an SF Symbol, it asks with the MCP tool `ask_symbol` instead of listing symbol names as options of `ask_questions` ([MCP](mcp.md#ask_symbol)).
+
+- One call asks for one symbol. Its inputs are `question`, the question; `suggestions`, 2 to 10 SF Symbol names; and `recommended`, the suggestion Claude recommends.
+- The tool returns at once with the text `symbol request shown; the answer arrives in the next user message; end your turn`. Claude then ends its turn: it calls no further tool, and it does not repeat the question in its reply.
+- A chat has at most one waiting request ([Asking](#asking)): calling `ask_symbol` while a question set waits fails with `conflict` and `Questions are already waiting for answers in this chat.`, and while a symbol request waits with `conflict` and `A symbol request is already waiting for an answer in this chat.`.
+- `ask_symbol` works only with a chat's own token, never with the external token ([MCP](mcp.md#ask_symbol)).
+
+`chats.postSymbol` checks the input, after trimming each suggestion and `recommended`. Every failure is `invalid` with the message below, and nothing is shown to the user. The messages are Default chosen at design time.
+
+| Rule                                                                                              | Message                                                              |
+| ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `question` is not empty after trimming                                                            | `ask_symbol needs a question.`                                       |
+| 2 to 10 suggestions                                                                               | `ask_symbol needs 2 to 10 suggestions.`                              |
+| Suggestions are not empty and are distinct                                                        | `ask_symbol has an empty or repeated suggestion.`                    |
+| Each suggestion is a name of the [symbol catalogue](chats.md#symbol-catalogue) of the main device | `<name> is not an SF Symbol of this Mac.`                            |
+| `recommended` equals one of the suggestions                                                       | `ask_symbol: the recommended symbol must be one of the suggestions.` |
+
+The suggestion check runs in the order of `suggestions` and names the first unknown suggestion.
+
+The request appears in the chat as a pinned symbol card above the composer ([Chats](chats.md#pinned-symbol-card)): the suggestions as icons, the recommended one marked and preselected, a search over every SF Symbol of the Mac, a free-text field `Answer another way`, a Skip button and a Submit button. The user answers once with `chats.answerSymbol`, from any window or device; the chat's state is `waitingAnswers` until then. The engine then sends Claude one user message:
+
+```text
+Symbol: <answer>
+```
+
+- `<answer>` is `![](sf:<name>)` for a symbol chosen in the card, for example `Symbol: ![](sf:line.3.horizontal.decrease.circle)`; the text the user typed, trimmed, with its line breaks; or `Skipped` for a skipped request.
+- A skipped request is handled like a skipped question: Claude leaves that point out, does not act on it or guess, and mentions it in its reply.
+- The answer is a decision: Claude applies it and does not ask again.
 
 ## Writing tickets
 
@@ -326,6 +357,8 @@ The format of this comment is a default. Default chosen at design time.
 
 When Claude names an SF Symbol in a reply or in `ask_questions`, it writes it as `![](sf:<name>)`, for example `![](sf:line.3.horizontal.decrease.circle)`. The chat transcript and the pinned questions card show such a marker as the symbol's icon followed by its name ([Chats](chats.md#links-images-and-files)); ticket descriptions, comments and docs do not draw it.
 
+When Claude needs the user to choose an SF Symbol, it asks with `ask_symbol` ([Symbol requests](#symbol-requests)).
+
 ## Self-update loop
 
 When the project is HephaestusV2 itself (the registered project whose git remote is the app's release repository, Info.plist key `HephaestusReleaseRepository`), a pushed change reaches the running app without manual steps:
@@ -357,8 +390,10 @@ When the project is HephaestusV2 itself (the registered project whose git remote
 | Tickets created without a title are named by Haiku                                | `tickets.create`                       | none              |
 | Claude never changes the status of a `done` ticket                                | `tickets.setStatus`                    | `forbidden`       |
 | Questions are labelled in order, with 2 to 10 options and exactly one recommended | `chats.postQuestions`                  | `invalid`         |
-| A chat has at most one unanswered question set                                    | `chats.postQuestions`                  | `conflict`        |
-| `ask_questions` needs a chat token                                                | MCP server                             | see [MCP](mcp.md) |
+| A chat has at most one waiting question set or symbol request                     | `chats.postQuestions`                  | `conflict`        |
+| Symbol requests have 2 to 10 distinct SF Symbol names, one recommended            | `chats.postSymbol`                     | `invalid`         |
+| A symbol request is refused while a question set or symbol request waits          | `chats.postSymbol`                     | `conflict`        |
+| `ask_questions` and `ask_symbol` need a chat token                                | MCP server                             | see [MCP](mcp.md) |
 | `close_chat` needs a chat token and closes only the calling chat                  | MCP server, `chats.close`              | see [MCP](mcp.md) |
 | A `done` ticket is not implemented                                                | `chats.implementTicket`                | `conflict`        |
 | A bundle is implemented only when one of its tickets is not `done`                | `chats.implementBundle`                | `conflict`        |
@@ -485,3 +520,4 @@ Notes
 - R111: Implement All runs one ticket chat per ticket, one at a time, coordinated by the bundle chat that started them, and pushes once at the end.
 - R113: Claude can close the chat it runs in when the user asks or its work is finished; a closed chat shows `This conversation is over` in place of its composer until the user reopens it.
 - R114: Claude marks each SF Symbol it names, and the chat transcript and the pinned questions card show the marker as the symbol's icon followed by its name.
+- R117: Claude asks the user to choose an SF Symbol with `ask_symbol`: suggestions show as icons, any SF Symbol of the Mac can be searched, the user picks one, answers another way or skips.

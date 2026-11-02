@@ -134,6 +134,11 @@ extension Engine {
         (["Answers:"] + set.questions.map { "\($0.label): \(set.answers[$0.label] ?? "")" }).joined(separator: "\n")
     }
 
+    /// docs/chats.md › Answering a symbol request: `Symbol: <answer>`.
+    static func symbolMessage(_ answer: String) -> String {
+        "Symbol: \(answer)"
+    }
+
     // MARK: System prompt
 
     /// The value of `--append-system-prompt` for a launch (docs/chats.md › Composition and

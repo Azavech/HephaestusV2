@@ -143,13 +143,7 @@ struct QuestionsCard: View {
                     symbolText(option.label)
                         .bold()
                     if option.label == question.recommended {
-                        Text("Recommended")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(Capsule().fill(Color.accentColor))
-                            .fixedSize()
+                        RecommendedTag()
                     }
                 }
                 if let description = option.description, !description.isEmpty {
@@ -195,8 +189,21 @@ struct QuestionsCard: View {
     }
 }
 
-/// A radio button of the questions card.
-private struct RadioButton: View {
+/// The `Recommended` tag of the questions card and the symbol card.
+struct RecommendedTag: View {
+    var body: some View {
+        Text("Recommended")
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(Color.accentColor))
+            .fixedSize()
+    }
+}
+
+/// A radio button of the questions card and the symbol card.
+struct RadioButton: View {
     let selected: Bool
     let choose: () -> Void
 

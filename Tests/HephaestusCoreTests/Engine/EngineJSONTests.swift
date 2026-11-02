@@ -64,6 +64,7 @@ struct EngineJSONTests {
         "### BinaryContent": roundTrip(BinaryContent.self),
         "### ChatMessageInput": roundTrip(ChatMessageInput.self),
         "### QuestionSet": roundTrip(QuestionSet.self),
+        "### SymbolRequest": roundTrip(SymbolRequest.self),
         "### FeedbackContext": roundTrip(FeedbackContext.self),
         "### ClaudeModel": roundTrip(ClaudeModel.self),
         "### ClaudeStatus": roundTrip([ClaudeStatus].self),
