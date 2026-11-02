@@ -516,7 +516,8 @@ Steps, as in [Tickets and bundles](tickets.md#creation-steps):
 3. Copy the attachments into `.hephaestus/attachments/<ticketID>/`.
 4. Write `ticket/<ticketID>.yml`: `status` todo; `created` and `updated` now; `createdBy` claude for a claude actor and user otherwise; `title` the given title, or else the provisional title ([Tickets and bundles](tickets.md#titles-and-naming)); `comments` empty; `chats` empty, or `[chatID]` for a feedback link (step 5).
 5. Feedback link: when the actor is claude with the chatID of a chat of kind feedback whose `ticket` is null, the ticket is written with that chat in its `chats`, then the chat's `ticket` is set to the new id. Only the first ticket a feedback chat creates is linked ([Feedback](feedback.md#resulting-ticket)).
-6. Without a given title, ask Haiku in the background; its answer replaces the title only while the ticket still has its provisional title ([Tickets and bundles](tickets.md#titles-and-naming)).
+6. Without a given title, ask Haiku; its answer replaces the title only while the ticket still has its provisional title ([Tickets and bundles](tickets.md#titles-and-naming)).
+7. Return the ticket: for a user, at once, while the naming goes on in the background; for claude, once the naming has ended, as stored, with Haiku's title or the provisional title.
 
 When step 3 or 4 fails, the copied files are removed and the allocated number stays used. The status is always todo; a user picks another status afterwards with `tickets.setStatus`.
 
@@ -527,7 +528,7 @@ When step 3 or 4 fails, the copied files are removed and the allocated number st
 | forbidden | The actor is claude and title is present (`Claude cannot set a ticket title; Haiku names the ticket.`); a user sent an attachment with sourcePath.                                                                                                                                  |
 | internal  | A file cannot be written.                                                                                                                                                                                                                                                           |
 
-Events: project.updated, ticket.updated, projects.changed, chat.updated (feedback link only); later ticket.updated with origin system when Haiku has named the ticket.
+Events: project.updated, ticket.updated, projects.changed, chat.updated (feedback link only); then ticket.updated with origin system when Haiku has named the ticket, before the result for claude and later for a user.
 
 ### tickets.update
 

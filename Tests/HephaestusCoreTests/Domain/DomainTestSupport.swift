@@ -48,9 +48,11 @@ struct DomainHarness {
     }
 }
 
-/// Runs `body` with a started engine whose Trash is a temporary folder. `prepare` receives the
-/// data directory and the projects folder before the engine opens them.
-func withDomainEngine<T>(prepare: (DataDirectory, URL) throws -> Void = { _, _ in },
+/// Runs `body` with a started engine whose Trash is a temporary folder and whose title namer is
+/// `titleNamer`, by default one that fails at once. `prepare` receives the data directory and
+/// the projects folder before the engine opens them.
+func withDomainEngine<T>(titleNamer: any TitleNamer = FixedTitleNamer(title: nil),
+                         prepare: (DataDirectory, URL) throws -> Void = { _, _ in },
                          _ body: (DomainHarness) async throws -> T) async throws -> T {
     try await TestEngineSlots.withSlot { try await withTemporaryDirectory { folder in
         let directory = DataDirectory(url: folder.appendingPathComponent("Data", isDirectory: true))
@@ -64,6 +66,7 @@ func withDomainEngine<T>(prepare: (DataDirectory, URL) throws -> Void = { _, _ i
         let engine = try await Engine(configuration: configuration)
         await engine.useFileTrash(.folder(trash))
         await engine.useCLITimings(.inert)
+        await engine.useTitleNamer(titleNamer)
         await engine.start()
         // The reload rules are tested by calling the domain's hooks; the FSEvents streams that
         // call them are tested in Files/, and their files.changed events would mix with the
@@ -180,16 +183,47 @@ final class DomainEventRecorder: @unchecked Sendable {
     }
 }
 
-/// A title namer that answers a fixed title after an optional delay.
-struct FixedTitleNamer: TitleNamer {
-    var title: String?
-    var delay: Duration = .zero
+/// A title namer that answers a fixed title after an optional delay. With a timeout shorter
+/// than the delay, the call ends with nil when the timeout passes, as a Haiku call does after
+/// 30 s. Counts the calls that have ended.
+final class FixedTitleNamer: TitleNamer, @unchecked Sendable {
+    let title: String?
+    let delay: Duration
+    let timeout: Duration?
+    private let lock = NSLock()
+    private var endedCount = 0
+
+    init(title: String?, delay: Duration = .zero, timeout: Duration? = nil) {
+        self.title = title
+        self.delay = delay
+        self.timeout = timeout
+    }
+
+    /// The calls that have returned their answer.
+    var ended: Int {
+        lock.withLock { endedCount }
+    }
 
     func title(for subject: NamingSubject) async -> String? {
-        if delay > .zero {
-            try? await Task.sleep(for: delay)
+        let answer = await withTaskGroup(of: String?.self) { group in
+            group.addTask { [title, delay] in
+                if delay > .zero {
+                    try? await Task.sleep(for: delay)
+                }
+                return title
+            }
+            if let timeout {
+                group.addTask {
+                    try? await Task.sleep(for: timeout)
+                    return nil
+                }
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
         }
-        return title
+        lock.withLock { endedCount += 1 }
+        return answer
     }
 }
 

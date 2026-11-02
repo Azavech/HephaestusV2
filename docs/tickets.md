@@ -138,7 +138,8 @@ Status changes requested by Claude:
 
 - The user may type a title in the New Ticket sheet. Leaving it empty lets Haiku name the ticket. Claude never gives a title when it creates a ticket (`create_ticket` has no title input), so Haiku names every ticket Claude creates.
 - Provisional title, used until Haiku answers: the first line of the description that is not empty after trimming and is not a heading line, trimmed, cut to its first 60 characters and trimmed again, with its Markdown kept as written. A heading line is a line that starts with `#` after trimming, or a template heading line as defined in [Template validation](#template-validation). When no such line exists, the provisional title is `Untitled Ticket`. Default chosen at design time.
-- Haiku naming starts in the background once the ticket file is written. It uses the call and the `naming-ticket.md` prompt of [Chats](chats.md), with the description as input and a result of at most 70 characters.
+- Haiku naming starts once the ticket file is written. It uses the call and the `naming-ticket.md` prompt of [Chats](chats.md), with the description as input and a result of at most 70 characters.
+- `tickets.create` as actor `claude` (`create_ticket`) returns the ticket once its naming has ended, as stored: with Haiku's title, or with the provisional title when it stays (below). As actor `user` (the New Ticket sheet), it returns the ticket at once with its provisional title, and the naming goes on in the background.
 - When Haiku answers, the engine stores its title only if the ticket still exists and still has the provisional title, then emits `ticket.updated` with actor `system`. A title changed in the meantime is never overwritten. Default chosen at design time.
 - When the call fails, times out after 30 s, gives an empty title or the Claude CLI is unavailable, the provisional title stays. The engine does not retry. Default chosen at design time.
 - Title edits (by the user in the detail view, or by Claude with `update_ticket`) are trimmed and must be 1 to 200 characters without line breaks; otherwise they fail with `invalid` and `Title must be 1 to 200 characters on one line.`. Default chosen at design time.
@@ -168,7 +169,7 @@ The placeholder, font and keys in this table are defaults. Default chosen at des
 
 - `create_ticket` (`projectID`, `description`, `attachments?`) calls `tickets.create` as actor `claude` ([MCP](mcp.md)).
 - The description must pass [Template validation](#template-validation).
-- There is no title: Haiku names the ticket.
+- There is no title: Haiku names the ticket, and `create_ticket` returns the ticket once the naming has ended, with Haiku's title or, when the naming fails, the provisional title ([Titles and naming](#titles-and-naming)).
 - The ticket gets `status: todo` and `createdBy: claude`.
 - `attachments` are file paths on the main device ([Adding attachments](#adding-attachments)).
 - A feedback chat creates its ticket this way, with the screenshot attached, and is linked to that ticket ([Feedback](feedback.md)).
@@ -182,7 +183,7 @@ The placeholder, font and keys in this table are defaults. Default chosen at des
 4. Write `.hephaestus/ticket/<ID>.yml` atomically with `status: todo`, `created` and `updated` set to now, `createdBy` from the actor, `comments: []`, `chats: []` (`[<chat id>]` for the first ticket a feedback chat creates, [Feedback](feedback.md#resulting-ticket)), and the provisional title when no title was given.
 5. Emit `project.updated` (the counter), `ticket.updated`, `projects.changed` because the ticket counts changed, and `chat.updated` when a feedback chat was linked ([Engine API](engine-api.md#ticketscreate)).
 6. Start Haiku naming when no title was given.
-7. Return the ticket.
+7. Return the ticket: at once for actor `user`; for actor `claude`, once the naming has ended, as stored.
 
 When step 3 or 4 fails, the engine removes the files it copied and returns the error; the allocated number stays used. Default chosen at design time.
 

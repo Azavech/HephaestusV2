@@ -54,8 +54,8 @@ public actor Engine {
     let claudeCLI = ClaudeCLI()
     /// Chat processes (Claude/ChatManager.swift).
     let chats = ChatManager()
-    /// Haiku naming (Claude/TitleNaming.swift).
-    let titleNamer: any TitleNamer
+    /// Haiku naming (Claude/TitleNaming.swift); tests replace it before `start()`.
+    var titleNamer: any TitleNamer
     /// The skills library (Skills/SkillsLibrary.swift).
     let skillsLibrary = SkillsLibrary()
     /// Generated skills plugin folders (Skills/SkillsPlugin.swift).

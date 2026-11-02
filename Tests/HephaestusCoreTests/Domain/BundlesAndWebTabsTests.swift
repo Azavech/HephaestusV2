@@ -158,7 +158,9 @@ struct BundlesAndWebTabsTests {
 
     @Test("Haiku names a bundle created without a title, unless its title changed")
     func bundleNaming() async throws {
-        try await withDomainEngine { h in
+        // The naming bundles.create starts does not answer during the test, so that it cannot end
+        // the namings started below.
+        try await withDomainEngine(titleNamer: FixedTitleNamer(title: nil, delay: .seconds(3600))) { h in
             try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
             try await h.ticket("HEPH", "Fix tabs")
             let bundle = try await h.connection.call(BundlesCreate.self, .init(projectID: "HEPH", ticketIDs: ["HEPH-1"]))

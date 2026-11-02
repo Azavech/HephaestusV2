@@ -118,13 +118,14 @@ extension Engine {
             emit(ChatUpdatedEvent.self, apiChatMeta(linkedChat), origin: actor)
         }
         // 6. Haiku names a ticket created without a title.
-        if title == nil {
-            startTicketNaming(ticketID, provisional: provisional, description: description)
-        }
+        let naming = title == nil ? startTicketNaming(ticketID, provisional: provisional, description: description) : nil
         if let linkFailure {
             throw linkFailure
         }
-        return ticket
+        // 7. Claude gets the ticket once its naming has ended, as stored; the user at once.
+        guard actor.kind == .claude, let naming else { return ticket }
+        await naming.value
+        return domain.ticket(ticketID) ?? ticket
     }
 
     /// docs/engine-api.md › tickets.update.
@@ -327,11 +328,14 @@ extension Engine {
     // MARK: Haiku naming (docs/tickets.md › Titles and naming)
 
     /// Asks the title namer in the background for a ticket created without a title; the answer
-    /// is applied only while the ticket still has its provisional title.
-    func startTicketNaming(_ ticketID: TicketID, provisional: String, description: String, namer: (any TitleNamer)? = nil) {
+    /// is applied only while the ticket still has its provisional title. The task ends once the
+    /// answer has been applied or dropped.
+    @discardableResult
+    func startTicketNaming(_ ticketID: TicketID, provisional: String, description: String,
+                           namer: (any TitleNamer)? = nil) -> Task<Void, Never> {
         domain.pendingTicketNames[ticketID] = provisional
         let namer = namer ?? titleNamer
-        Task { [weak self] in
+        return Task { [weak self] in
             let title = await namer.title(for: .ticket(description: description))
             await self?.applyTicketName(ticketID, provisional: provisional, title: title)
         }

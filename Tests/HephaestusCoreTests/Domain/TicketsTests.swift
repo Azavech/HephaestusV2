@@ -145,6 +145,20 @@ struct TicketsTests {
         }
     }
 
+    @Test("tickets.create as the user returns at once; Haiku's title arrives later")
+    func userCreationDoesNotWaitForNaming() async throws {
+        let namer = FixedTitleNamer(title: "Keep locked web tabs open", delay: .seconds(1))
+        try await withDomainEngine(titleNamer: namer) { h in
+            try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
+            let events = await DomainEventRecorder.make(h)
+            let ticket = try await h.connection.call(TicketsCreate.self, .init(projectID: "HEPH", description: templateDescription))
+            #expect(namer.ended == 0)
+            #expect(ticket.title == "Locked tabs close with Command-W.")
+            await events.wait(for: TicketUpdatedEvent.name, count: 2)
+            #expect(try await h.connection.call(TicketsGet.self, .init(ticketID: ticket.id)).title == "Keep locked web tabs open")
+        }
+    }
+
     @Test("A feedback chat is linked to the first ticket it creates")
     func feedbackLink() async throws {
         try await withDomainEngine { h in

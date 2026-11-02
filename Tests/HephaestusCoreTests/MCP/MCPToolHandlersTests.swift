@@ -290,4 +290,62 @@ struct MCPToolHandlersTests {
         #expect(MCPToolHandlers.contentType(path: "a/b") == "application/octet-stream")
         #expect(MCPToolHandlers.contentType(path: "a/b.unknownextension") == "application/octet-stream")
     }
+
+    // MARK: create_ticket and Haiku naming (docs/tickets.md › Titles and naming)
+
+    /// Runs `body` with handlers that call a started engine, whose title namer is `namer`, and the
+    /// project HEPH.
+    static func withEngine(namer: FixedTitleNamer, _ body: (MCPToolHandlers, DomainHarness) async throws -> Void) async throws {
+        try await withDomainEngine(titleNamer: namer) { h in
+            try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
+            let engine = h.engine
+            let handlers = MCPToolHandlers(engineCall: { method, params, actor in
+                try await engine.dispatch(method: method, params: params, actor: actor)
+            }, homeDirectory: "/Users/example")
+            try await body(handlers, h)
+        }
+    }
+
+    /// The ticket a `create_ticket` call with `templateDescription` returns.
+    static func createTicket(_ handlers: MCPToolHandlers) async throws -> Ticket {
+        let definition = try #require(MCPToolCatalog.tool(named: "create_ticket", debugTools: false))
+        let arguments: JSONValue = .object(["projectID": .string("HEPH"), "description": .string(templateDescription)])
+        let text = try await handlers.call(definition, arguments: arguments, actor: chat).get()
+        return try EngineJSON.decode(Ticket.self, from: Data(text.utf8))
+    }
+
+    @Test("create_ticket returns the ticket once Haiku has named it, with Haiku's title")
+    func createTicketNamed() async throws {
+        let namer = FixedTitleNamer(title: "Keep locked web tabs open", delay: .milliseconds(200))
+        try await Self.withEngine(namer: namer) { handlers, h in
+            let ticket = try await Self.createTicket(handlers)
+            #expect(ticket.title == "Keep locked web tabs open")
+            let stored = try await h.connection.call(TicketsGet.self, .init(ticketID: ticket.id))
+            #expect(ticket == stored)
+        }
+    }
+
+    @Test("create_ticket returns the ticket with its provisional title, as stored, when the naming fails")
+    func createTicketNamingFailed() async throws {
+        let namer = FixedTitleNamer(title: nil, delay: .milliseconds(200))
+        try await Self.withEngine(namer: namer) { handlers, h in
+            let ticket = try await Self.createTicket(handlers)
+            #expect(namer.ended == 1)
+            #expect(ticket.title == "Locked tabs close with Command-W.")
+            let stored = try await h.connection.call(TicketsGet.self, .init(ticketID: ticket.id))
+            #expect(ticket == stored)
+        }
+    }
+
+    @Test("create_ticket returns the ticket with its provisional title, as stored, when the naming times out")
+    func createTicketNamingTimedOut() async throws {
+        let namer = FixedTitleNamer(title: "Never answered", delay: .seconds(3600), timeout: .milliseconds(200))
+        try await Self.withEngine(namer: namer) { handlers, h in
+            let ticket = try await Self.createTicket(handlers)
+            #expect(namer.ended == 1)
+            #expect(ticket.title == "Locked tabs close with Command-W.")
+            let stored = try await h.connection.call(TicketsGet.self, .init(ticketID: ticket.id))
+            #expect(ticket == stored)
+        }
+    }
 }

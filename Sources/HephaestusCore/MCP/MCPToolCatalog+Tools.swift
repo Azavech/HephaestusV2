@@ -271,7 +271,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "create_ticket",
             description: #"""
-            Create a ticket in a project. It starts as todo and its title is generated from the description. The description must use this template, the six headings alone on their lines and in this order:
+            Create a ticket in a project. It starts as todo. Its title is generated from the description before the call returns; when the generation fails, the ticket keeps a provisional title taken from the description. The description must use this template, the six headings alone on their lines and in this order:
 
             Problem
             (Explain the problem)

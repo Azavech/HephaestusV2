@@ -759,15 +759,15 @@ Input schema:
 ### create_ticket
 
 - **Engine call:** tickets.create with `projectID`, `description` and `attachments` built from the paths ([Attachments from paths](#attachments-from-paths)). `title` is never sent, so Haiku names the ticket.
-- The engine checks the description against the template, stores the ticket with status `todo`, `createdBy: claude` and a provisional title, and replaces the title with Haiku's in the background, which emits `ticket.updated` ([Tickets](tickets.md#tickets-created-by-claude)).
+- The engine checks the description against the template, stores the ticket with status `todo`, `createdBy: claude` and a provisional title, then waits for Haiku naming to end; Haiku's title replaces the provisional one, which emits `ticket.updated` ([Tickets](tickets.md#tickets-created-by-claude)).
 - From a feedback chat, the engine also links the chat and the ticket ([Feedback](feedback.md#resulting-ticket), [Engine API](engine-api.md#ticketscreate)).
-- **Result:** the new `Ticket`, with its provisional title.
+- **Result:** the new `Ticket` as stored once the naming has ended: with Haiku's title, or with its provisional title when the naming fails, times out, gives an empty title or the Claude CLI is unavailable ([Tickets](tickets.md#titles-and-naming)).
 - **Errors:** Those of tickets.create ([Engine API](engine-api.md#ticketscreate)): unknown project (`notFound`), a description that does not follow the template or an invalid attachment (`invalid`).
 
 Description:
 
 ```text
-Create a ticket in a project. It starts as todo and its title is generated from the description. The description must use this template, the six headings alone on their lines and in this order:
+Create a ticket in a project. It starts as todo. Its title is generated from the description before the call returns; when the generation fails, the ticket keeps a provisional title taken from the description. The description must use this template, the six headings alone on their lines and in this order:
 
 Problem
 (Explain the problem)

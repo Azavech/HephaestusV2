@@ -23,6 +23,11 @@ extension Engine {
     func useCLITimings(_ timings: ClaudeCLITimings) {
         claudeCLI.timings = timings
     }
+
+    /// Replaces the Haiku namer before `start()`.
+    func useTitleNamer(_ namer: any TitleNamer) {
+        titleNamer = namer
+    }
 }
 
 extension FileTrash {

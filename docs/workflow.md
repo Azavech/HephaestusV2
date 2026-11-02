@@ -432,7 +432,7 @@ Docs
 - [http.md › Health](docs/http.md#health) (new)
 ```
 
-5. The engine creates `DEMO-7` with status `todo` and the provisional title `GET /health answers 500 Internal Server Error with an empty`, which Haiku then replaces. Claude tells the user the id.
+5. The engine creates `DEMO-7` with status `todo` and the provisional title `GET /health answers 500 Internal Server Error with an empty`, which Haiku replaces before `create_ticket` returns. Claude tells the user the id.
 6. The user clicks Implement on `DEMO-7`. In the new ticket chat, Claude sets `in_progress`, reads the ticket and `docs/http.md`, writes the Health section, changes the handler and its tests, runs `make build` and `make test`, commits `fix: answer 503 from /health when the database is down (DEMO-7)`, pushes, and comments:
 
 ```markdown
