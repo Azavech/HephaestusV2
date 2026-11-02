@@ -39,6 +39,28 @@ struct RestartWindowsTests {
         }
     }
 
+    @Test("One saved main window gives one main window: the launch window takes it and nothing else opens")
+    func oneSavedMainWindowGivesOneMainWindow() async throws {
+        try await withAppModel { engine in
+            let main = WindowState(deviceID: engine.deviceID)
+            main.section = .tickets
+            return [RestartWindowRecord(main: try #require(main.persistedJSON))]
+        } check: { app, records, opened in
+            let json = try #require(records[0].main)
+            let saved = try #require(WindowState.restored(fromJSON: json))
+            let launch = try #require(app.mainWindowRootAppeared(requestID: nil, restoredJSON: nil))
+            #expect(launch.id == saved.id)
+            #expect(launch.section == .tickets)
+            #expect(Array(app.windows.keys) == [saved.id])
+            #expect(opened.windows.isEmpty)
+
+            // The launch check after launch opens no default main window on a restart launch.
+            app.ensureLaunchWindow()
+            #expect(opened.windows.isEmpty)
+            #expect(Array(app.windows.keys) == [saved.id])
+        }
+    }
+
     @Test("Saved windows without a main window close the launch window and open the chat windows")
     func launchWindowSuppressedWithoutMainWindow() async throws {
         try await withAppModel { engine in
