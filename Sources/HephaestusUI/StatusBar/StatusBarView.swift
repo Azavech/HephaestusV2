@@ -167,8 +167,8 @@ struct StatusBarView: View {
 
     @ViewBuilder
     private func middleGroup(_ window: WindowState) -> some View {
-        let running = activeChats(states: [.starting, .running])
-        let waiting = activeChats(states: [.waitingPermission, .waitingAnswers])
+        let running = activeChats(StatusBarChats.isRunning)
+        let waiting = activeChats(StatusBarChats.isWaiting)
         HStack(spacing: 0) {
             if !running.isEmpty {
                 Button {
@@ -211,8 +211,8 @@ struct StatusBarView: View {
         }
     }
 
-    private func activeChats(states: Set<ChatState>) -> [ChatMeta] {
-        (workspace?.chats.values.filter { states.contains($0.state) } ?? []).sorted { $0.updated > $1.updated }
+    private func activeChats(_ isIncluded: (ChatMeta) -> Bool) -> [ChatMeta] {
+        (workspace?.chats.values.filter(isIncluded) ?? []).sorted { $0.updated > $1.updated }
     }
 
     private func newestRun(_ window: WindowState) -> RunState? {
@@ -305,7 +305,7 @@ private struct ChatsPopover: View {
                     open(chat)
                 } label: {
                     HStack(spacing: 8) {
-                        ChatStateMark(state: chat.state)
+                        ChatStateMark(state: StatusBarChats.markState(chat))
                             .frame(width: 12)
                         Text(chat.title)
                             .lineLimit(1)
@@ -313,7 +313,7 @@ private struct ChatsPopover: View {
                             .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(.secondary)
                         Spacer(minLength: 12)
-                        Text(Self.label(chat.state))
+                        Text(StatusBarChats.label(chat))
                             .foregroundStyle(.secondary)
                     }
                     .contentShape(Rectangle())
@@ -326,15 +326,42 @@ private struct ChatsPopover: View {
         .padding(8)
         .frame(minWidth: 320)
     }
+}
 
-    static func label(_ state: ChatState) -> String {
-        switch state {
+/// The chats the Running chats and Waiting chats items count, and their rows in the chats popover
+/// (docs/ui.md › Status bar).
+enum StatusBarChats {
+    /// Running: state starting or running, or idle while the chat's Claude process has background
+    /// work running (docs/chats.md › Background work).
+    static func isRunning(_ chat: ChatMeta) -> Bool {
+        chat.state == .starting || chat.state == .running || runsInBackground(chat)
+    }
+
+    /// Waiting: state waitingPermission or waitingAnswers.
+    static func isWaiting(_ chat: ChatMeta) -> Bool {
+        chat.state == .waitingPermission || chat.state == .waitingAnswers
+    }
+
+    /// An idle chat counted as running for its background work.
+    static func runsInBackground(_ chat: ChatMeta) -> Bool {
+        chat.state == .idle && chat.backgroundWork
+    }
+
+    /// The state label of a popover row.
+    static func label(_ chat: ChatMeta) -> String {
+        if runsInBackground(chat) { return "Running in background" }
+        switch chat.state {
         case .starting: return "Starting"
         case .running: return "Running"
         case .waitingPermission: return "Waiting for permission"
         case .waitingAnswers: return "Waiting for answers"
         case .idle, .error: return ""
         }
+    }
+
+    /// The state the row's indicator shows: the spinner of a running chat for background work.
+    static func markState(_ chat: ChatMeta) -> ChatState {
+        runsInBackground(chat) ? .running : chat.state
     }
 }
 

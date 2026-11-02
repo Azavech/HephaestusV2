@@ -51,6 +51,7 @@ extension Engine {
     func recordReportedState(_ meta: ChatMeta) {
         let previous = chats.reportedStates[meta.id]
         chats.reportedStates[meta.id] = meta.state
+        chats.reportedBackgroundWork[meta.id] = meta.backgroundWork
         let wasInTurn = previous.map { Engine.turnStates.contains($0) } ?? false
         if !wasInTurn, Engine.turnStates.contains(meta.state) {
             chats.runtimes[meta.id]?.turnReport = TurnReport()

@@ -261,7 +261,7 @@ struct ModelCodingTests {
         #expect(throws: Never.self) { try YAMLCoding.decode(ChatMeta.self, from: base + "kind: feedback\nticket: HEPH-12\n") }
     }
 
-    @Test("The runtime keys of ChatMeta are ignored in files and carried in JSON")
+    @Test("The runtime keys of ChatMeta, backgroundWork included, are ignored in files and carried in JSON")
     func chatMetaRuntimeKeys() throws {
         let yaml = "id: 3F2504E0-4F89-11D3-9A0C-0305E82C3301\nkind: project\ncreated: 2026-10-31T13:00:00Z\nprojectID: HEPH\nstate: running\n"
         let meta = try YAMLCoding.decode(ChatMeta.self, from: yaml)
@@ -272,10 +272,20 @@ struct ModelCodingTests {
         var api = meta
         api.projectID = "HEPH"
         api.state = .waitingAnswers
+        api.backgroundWork = true
         let json = try StorageJSON.lineEncoder().encode(api)
         let decoded = try StorageJSON.decoder().decode(ChatMeta.self, from: json)
         #expect(decoded.projectID == "HEPH")
         #expect(decoded.state == .waitingAnswers)
+        #expect(decoded.backgroundWork)
+        #expect(decoded.unknownKeys.isEmpty)
+        // backgroundWork is never written to the file and ignored when read from it; JSON without
+        // it reads as false.
+        let file = try YAMLCoding.encode(api)
+        #expect(!file.contains("backgroundWork"))
+        #expect(try YAMLCoding.decode(ChatMeta.self, from: yaml + "backgroundWork: true\n").backgroundWork == false)
+        let withoutKey = try StorageJSON.decoder().decode(ChatMeta.self, from: Data(#"{"id":"3F2504E0-4F89-11D3-9A0C-0305E82C3301","kind":"project","created":"2026-10-31T13:00:00Z"}"#.utf8))
+        #expect(!withoutKey.backgroundWork)
     }
 
     @Test("closed of ChatMeta: false when absent, always written, persisted in files and carried in JSON")

@@ -102,7 +102,7 @@ public enum JSONValue: Codable, Sendable, Hashable {
 
 ### JSON form in the engine API
 
-The engine API sends these types as JSON objects with the same keys and value rules, except that dates follow [JSON encoding](engine-api.md#json-encoding): the format of [Dates](#dates) for a date with whole seconds, which every date stored in these files has, and milliseconds for a date with a fraction. UUIDs are uppercase strings, absent optional values are `null`, `schema` is included, and unknown keys appear next to the known keys. `ChatMeta` adds three keys that are never stored, `projectID`, `state` and `costUSD` ([Chat metadata file](#chat-metadata-file)). Types that exist only in the API are defined in [Engine API](engine-api.md).
+The engine API sends these types as JSON objects with the same keys and value rules, except that dates follow [JSON encoding](engine-api.md#json-encoding): the format of [Dates](#dates) for a date with whole seconds, which every date stored in these files has, and milliseconds for a date with a fraction. UUIDs are uppercase strings, absent optional values are `null`, `schema` is included, and unknown keys appear next to the known keys. `ChatMeta` adds four keys that are never stored, `projectID`, `state`, `backgroundWork` and `costUSD` ([Chat metadata file](#chat-metadata-file)). Types that exist only in the API are defined in [Engine API](engine-api.md).
 
 ## Project folder layout
 
@@ -527,10 +527,11 @@ chats:
 | closed             | `closed`         | `Bool`                                 | no       | `false`                 | `true` once the chat is closed: its Claude process has ended and its composer is replaced by `This conversation is over`. Reopen, and any message delivered to the chat, set it back to `false` ([Closing a chat](chats.md#closing-a-chat)).       |
 | projectID          | `projectID`      | `ProjectID`                            | —        | `""`                    | Runtime only: the project whose folder holds the file. Never written to the file and ignored when read from it; always present in the engine API. Default chosen at design time.                                                                   |
 | state              | `state`          | [`ChatState`](engine-api.md#chatstate) | —        | `idle`                  | Runtime only: never written to the file and ignored when read from it; always present in the engine API.                                                                                                                                           |
+| backgroundWork     | `backgroundWork` | `Bool`                                 | —        | `false`                 | Runtime only: true while the chat's Claude process has background work running ([Background work](chats.md#background-work)). Never written to the file and ignored when read from it; always present in the engine API.                           |
 | costUSD            | `costUSD`        | `Double?`                              | —        | `null`                  | Runtime only: the chat's cost ([Chat cost](costs.md#chat-cost)), null when the chat has no cost or its transcript has not been replayed yet. Never written to the file and ignored when read from it; always present in the engine API.            |
 | unknownKeys        | —                | `[String: JSONValue]`                  | —        | `[:]`                   | [Unknown keys](#unknown-keys).                                                                                                                                                                                                                     |
 
-The storage layer sets `projectID` after decoding a file, the engine sets `state` from the chat's process and `costUSD` from the chat's transcript.
+The storage layer sets `projectID` after decoding a file, the engine sets `state` and `backgroundWork` from the chat's process and `costUSD` from the chat's transcript.
 
 ### Chat kinds
 

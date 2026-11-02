@@ -412,19 +412,44 @@ final class UpdateController {
         waiter.resume(returning: answered)
     }
 
+    /// What the automatic restart does now (docs/updater.md › Restart rules).
+    enum AutomaticRestart: Equatable {
+        /// No update waits for an automatic restart.
+        case notApplicable
+        /// The restart waits until the app is idle.
+        case waitsForIdle
+        /// The restart sequence starts now.
+        case startsNow
+    }
+
     /// State `ready`, `autoUpdate` true, Install not chosen: the restart sequence starts as soon
-    /// as the app is idle, without alerts, unless a restart for this build failed at step 3.
+    /// as the app is idle, without alerts, unless a restart for this build failed at step 3 or a
+    /// restart already runs.
+    static func automaticRestart(updaterRunning: Bool, autoUpdate: Bool, installChosen: Bool, restartChecksRunning: Bool,
+                                 restartInProgress: Bool, quittingPosted: Bool, status: UpdaterStatus, blockedBuild: Int?,
+                                 idle: @autoclosure () -> Bool) -> AutomaticRestart {
+        guard updaterRunning, autoUpdate, !installChosen, !restartChecksRunning, !restartInProgress, !quittingPosted,
+              status.state == .ready, let build = status.build, build != blockedBuild
+        else { return .notApplicable }
+        return idle() ? .startsNow : .waitsForIdle
+    }
+
     private func evaluateAutomaticRestart() {
         idleRecheckTask?.cancel()
         idleRecheckTask = nil
-        guard let app, isRunning, autoUpdate, !installChosen, !restartChecksRunning, !restartInProgress, !quittingPosted,
-              app.updaterStatus.state == .ready, let build = app.updaterStatus.build, build != autoRestartBlockedBuild
-        else { return }
-        if isAppIdle {
+        guard let app else { return }
+        let decision = Self.automaticRestart(updaterRunning: isRunning, autoUpdate: autoUpdate, installChosen: installChosen,
+                                             restartChecksRunning: restartChecksRunning, restartInProgress: restartInProgress,
+                                             quittingPosted: quittingPosted, status: app.updaterStatus,
+                                             blockedBuild: autoRestartBlockedBuild, idle: isAppIdle)
+        switch decision {
+        case .notApplicable:
+            break
+        case .startsNow:
             Task { [weak self] in
                 await self?.restartSequence()
             }
-        } else {
+        case .waitsForIdle:
             // Unsaved ticket descriptions (quit savers) and sheets of AppKit windows are not
             // observable; they are checked again every 2 seconds while the restart waits.
             idleRecheckTask = Task { [weak self] in
@@ -436,7 +461,7 @@ final class UpdateController {
     }
 
     /// Re-evaluates the automatic restart whenever a value read by `isAppIdle` changes: chat
-    /// states, editors, drafts, composers, sheets.
+    /// states and background work, editors, drafts, composers, sheets.
     private func observeIdleness() {
         withObservationTracking {
             _ = isAppIdle
@@ -449,14 +474,14 @@ final class UpdateController {
         }
     }
 
-    /// docs/updater.md › Restart rules: no chat of This Mac's engine in `starting`, `running` or
-    /// `waitingPermission`, and nothing unsaved in any window of this app: editors, ticket
-    /// description savers, comment drafts and changed description editors of ticket views, the
-    /// composer text and attachments of existing and draft chats, and every sheet.
+    /// docs/updater.md › Restart rules: no working chat of This Mac's engine (in `starting`,
+    /// `running` or `waitingPermission`, or with background work running), and nothing unsaved in
+    /// any window of this app: editors, ticket description savers, comment drafts and changed
+    /// description editors of ticket views, the composer text and attachments of existing and
+    /// draft chats, and every sheet.
     var isAppIdle: Bool {
         guard let app else { return false }
-        let busy: Set<ChatState> = [.starting, .running, .waitingPermission]
-        if app.localWorkspace.chats.values.contains(where: { busy.contains($0.state) }) {
+        if app.localWorkspace.chats.values.contains(where: \.isWorking) {
             return false
         }
         for window in app.windows.values where window.sheet != nil || !window.unsavedEditors().isEmpty {

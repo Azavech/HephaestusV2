@@ -347,6 +347,7 @@ extension Engine {
         chats.scannedChats.remove(chatID)
         chats.hasTextMessage[chatID] = nil
         chats.reportedStates[chatID] = nil
+        chats.reportedBackgroundWork[chatID] = nil
         try unlinkChat(chatID, origin: actor)
         try moveChatItemToTrash(folder.chatMetaFile(chatID))
         try moveChatItemToTrash(folder.transcriptFile(chatID))

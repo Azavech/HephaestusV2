@@ -103,6 +103,15 @@ extension ChatState {
     }
 }
 
+/// A working chat (docs/chats.md › Chat states): running, or its Claude process has background
+/// work running. The quit and restart checks, the idle check before an automatic update and the
+/// removal of a project count working chats.
+extension ChatMeta {
+    var isWorking: Bool {
+        state.isChatRunning || backgroundWork
+    }
+}
+
 /// Which attachments show as images (docs/tickets.md › Showing attachments).
 enum ChatAttachmentKind {
     static let imageTypes: Set<String> = [

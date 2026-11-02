@@ -10,6 +10,7 @@ extension Engine {
     func chatMeta(_ chatID: ChatID) -> ChatMeta? {
         guard var meta = domain.chat(chatID) else { return nil }
         meta.state = chats.state(of: chatID)
+        meta.backgroundWork = chats.backgroundWork(of: chatID)
         meta.costUSD = chats.costs[chatID]?.costUSD
         return meta
     }
@@ -44,6 +45,7 @@ extension Engine {
             throw EngineError.storage(error)
         }
         meta.state = chats.state(of: meta.id)
+        meta.backgroundWork = chats.backgroundWork(of: meta.id)
         meta.costUSD = chats.costs[meta.id]?.costUSD
         domain.upsertChat(meta)
         recordReportedState(meta)
@@ -60,10 +62,12 @@ extension Engine {
         }
     }
 
-    /// Emits `chat.updated` when the chat's state differs from the last one reported.
+    /// Emits `chat.updated` when the chat's state or `backgroundWork` differs from the last one
+    /// reported.
     func reportChatState(_ chatID: ChatID, origin: Actor = .system) {
         guard !chats.deleting.contains(chatID), let meta = chatMeta(chatID) else { return }
-        guard chats.reportedStates[chatID] != meta.state else { return }
+        guard chats.reportedStates[chatID] != meta.state || chats.reportedBackgroundWork[chatID, default: false] != meta.backgroundWork
+        else { return }
         recordReportedState(meta)
         emit(ChatUpdatedEvent.self, meta, origin: origin)
     }

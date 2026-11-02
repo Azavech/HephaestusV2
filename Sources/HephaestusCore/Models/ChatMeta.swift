@@ -28,6 +28,10 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     /// Runtime only: never written to the file and ignored when read from it; always present
     /// in the engine API.
     public var state: ChatState
+    /// Runtime only: true while the chat's Claude process has background work running
+    /// (docs/chats.md › Background work). Never written to the file and ignored when read from
+    /// it; always present in the engine API.
+    public var backgroundWork: Bool
     /// Runtime only: the chat's cost in US dollars (docs/costs.md › Chat cost); nil without a
     /// cost. Never written to the file and ignored when read from it; always present in the
     /// engine API.
@@ -40,7 +44,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     public init(schema: Int = 1, id: ChatID, title: String = ChatMeta.defaultTitle, kind: ChatKind,
                 ticketID: TicketID? = nil, bundleID: BundleID? = nil, orchestratorChatID: ChatID? = nil, created: Date, updated: Date? = nil,
                 settings: ChatSettings = ChatSettings(), sessionStarted: Bool = false, closed: Bool = false, projectID: ProjectID = "",
-                state: ChatState = .idle, costUSD: Double? = nil, unknownKeys: [String: JSONValue] = [:]) {
+                state: ChatState = .idle, backgroundWork: Bool = false, costUSD: Double? = nil, unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
         self.id = id
         self.title = title
@@ -55,6 +59,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         self.closed = closed
         self.projectID = projectID
         self.state = state
+        self.backgroundWork = backgroundWork
         self.costUSD = costUSD
         self.unknownKeys = unknownKeys
     }
@@ -62,7 +67,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     static let fileKeys: Set<String> = [
         "schema", "id", "title", "kind", "ticket", "bundle", "orchestrator", "created", "updated", "settings", "sessionStarted", "closed",
     ]
-    static let runtimeKeys: Set<String> = ["projectID", "state", "costUSD"]
+    static let runtimeKeys: Set<String> = ["projectID", "state", "backgroundWork", "costUSD"]
 
     public init(from decoder: Decoder) throws {
         let c = try ModelDecodingContainer(decoder)
@@ -83,10 +88,12 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         if c.isYAML {
             projectID = ""
             state = .idle
+            backgroundWork = false
             costUSD = nil
         } else {
             projectID = try c.value("projectID", default: "")
             state = try c.value("state", default: .idle)
+            backgroundWork = try c.value("backgroundWork", default: false)
             costUSD = try c.optional("costUSD")
         }
         unknownKeys = try c.unknownKeys(known: Self.fileKeys.union(Self.runtimeKeys))
@@ -113,6 +120,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         if !c.isYAML {
             try c.encode(projectID, "projectID")
             try c.encode(state, "state")
+            try c.encode(backgroundWork, "backgroundWork")
             try c.encodeOptional(costUSD, "costUSD")
         }
         try c.encodeUnknownKeys(unknownKeys, known: Self.fileKeys.union(Self.runtimeKeys))

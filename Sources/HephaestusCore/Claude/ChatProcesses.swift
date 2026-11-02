@@ -268,14 +268,16 @@ extension Engine {
                 reportChatState(chatID)
             }
         case .cliTurnOpened:
-            // docs/chats.md › Turn tracking, step 2.
+            // docs/chats.md › Turn tracking, step 2, and › Background work, rule 3: the turn the
+            // CLI starts for a background task is reported with the end of the background work.
             process.turns.cliTurnOpened()
+            process.background.cliTurnOpened()
             if !runtime.turnInProgress {
                 runtime.turnInProgress = true
                 runtime.idleTask?.cancel()
                 runtime.idleTask = nil
-                reportChatState(chatID)
             }
+            reportChatState(chatID)
         case .commandState(let uuid, let state):
             // Steps 3 and 5.
             if process.turns.commandState(uuid, state), !process.turns.isWorking, runtime.turnInProgress {
@@ -283,6 +285,13 @@ extension Engine {
             }
         case .permissionModeReported(let mode):
             applyCLIPermissionMode(mode, chatID: chatID, process: process)
+        case .backgroundTasks(let taskIDs):
+            // docs/chats.md › Background work, rules 1 and 2.
+            process.background.tasksChanged(taskIDs)
+            reportChatState(chatID)
+        case .taskNotification(let taskID):
+            process.background.taskEnded(taskID, cliTurnOpen: process.turns.cliTurnOpen)
+            reportChatState(chatID)
         case .delta(let itemID, let kind, let text):
             runtime.deltas.append(itemID: itemID, kind: kind, text: text)
             scheduleDeltaFlush(chatID)

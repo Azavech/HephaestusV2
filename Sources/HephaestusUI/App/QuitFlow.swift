@@ -75,7 +75,7 @@ extension AppModel {
         let editors = mainWindowsByKeyOrder.flatMap { $0.unsavedEditors() }
         guard await UnsavedChangesPrompt.confirm(editors, sheetOn: frontWindow) else { return false }
 
-        let chats = localWorkspace.chats.values.filter { [.starting, .running, .waitingPermission].contains($0.state) }.count
+        let chats = workingChatCount
         let runs = localWorkspace.runs.values.filter(\.isRunning).count
         if chats + runs > 0 {
             let alert = NSAlert()
@@ -91,6 +91,12 @@ extension AppModel {
             guard await AlertPresenter.present(alert, on: frontWindow) == .alertFirstButtonReturn else { return false }
         }
         return await runQuitSavers()
+    }
+
+    /// The chats of This Mac's engine that quitting or restarting stops: the working chats, background
+    /// work included (docs/ui.md › Unsaved changes and quitting).
+    var workingChatCount: Int {
+        localWorkspace.chats.values.filter(\.isWorking).count
     }
 
     /// `<chats> and <runs> on This Mac will be stopped.`, a part whose count is 0 left out together

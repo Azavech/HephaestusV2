@@ -90,7 +90,7 @@ enum ProjectFlows {
         }
         let runningRun = workspace.runs.values.contains { removedIDs.contains($0.info.projectID) && $0.isRunning }
         let runningChat = workspace.chats.values.contains {
-            removedIDs.contains($0.projectID) && [.starting, .running, .waitingPermission].contains($0.state)
+            removedIDs.contains($0.projectID) && $0.isWorking
         }
         if runningRun || runningChat {
             sentences.append("Running chats and runs of these projects are stopped.")

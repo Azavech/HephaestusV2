@@ -172,7 +172,7 @@ Project ▸ Remove Project… removes the window's active project, top-level or 
 2. It shows the alert `Remove “<project name>” from HephaestusV2?` with the message below and the buttons `Remove` (destructive) and `Cancel` (default).
 3. Remove calls `projects.remove` ([projects.remove](engine-api.md#projectsremove)). The engine unregisters the project and all its descendants, stops their runs, terminates the Claude processes of their chats and emits `project.removed` for each of them. No file is changed or deleted: `.hephaestus/`, its tickets, bundles and chats stay in the folders.
 
-The message is `The folder and its files stay on disk: <root path>.`, followed by `Its sub project “<name>” is removed with it.` when the project has one descendant or `Its <n> sub projects are removed with it.` when it has n > 1, followed by `Running chats and runs of these projects are stopped.` when the window's workspace knows a running run or a chat in state `starting`, `running` or `waitingPermission` among them.
+The message is `The folder and its files stay on disk: <root path>.`, followed by `Its sub project “<name>” is removed with it.` when the project has one descendant or `Its <n> sub projects are removed with it.` when it has n > 1, followed by `Running chats and runs of these projects are stopped.` when the window's workspace knows a running run or a working chat among them: a chat in state `starting`, `running` or `waitingPermission`, or with background work running ([Chat states](chats.md#chat-states)).
 
 When `project.removed` arrives, every client reacts:
 

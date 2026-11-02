@@ -45,6 +45,8 @@ final class ChatManager {
     var costs: [ChatID: ChatCost] = [:]
     /// The last state reported by `chat.updated`, per chat.
     var reportedStates: [ChatID: ChatState] = [:]
+    /// The last `backgroundWork` reported by `chat.updated`, per chat.
+    var reportedBackgroundWork: [ChatID: Bool] = [:]
     var timings = ChatTimings()
     let transcripts = JSONLinesWriter()
     var nextGeneration = 0
@@ -64,6 +66,13 @@ final class ChatManager {
         if runtime?.turnInProgress == true { return .running }
         if openQuestionSets[chatID] != nil { return .waitingAnswers }
         return .idle
+    }
+
+    /// True while the chat's process has background work running (docs/chats.md › Background
+    /// work); an exited process has none.
+    func backgroundWork(of chatID: ChatID) -> Bool {
+        guard let process = runtimes[chatID]?.process, !process.exited else { return false }
+        return process.background.isRunning
     }
 
     /// The device id of the user that last drove the chat since the engine started; `ui.open`
@@ -162,6 +171,8 @@ final class ChatProcess {
     var messagesBeforeInit: [ChatMessageLine] = []
     /// The messages written to the process that the CLI has not finished, and its open CLI turn.
     var turns = TurnTracker()
+    /// The background work the CLI reports for the process.
+    var background = BackgroundWorkTracker()
     var nextRequestNumber = 1
     var pendingControl: [String: (purpose: ControlPurpose, timer: Task<Void, Never>?)] = [:]
     var permissions: [String: PendingPermission] = [:]
@@ -261,6 +272,37 @@ struct TurnTracker: Sendable {
         } else if let index = outstanding.firstIndex(where: { $0.state == .none }) {
             outstanding.remove(at: index)
         }
+    }
+}
+
+/// docs/chats.md › Background work: the background tasks of one process that the CLI reports
+/// running, every task id it has listed, and whether a notification turn is pending: the CLI
+/// turn the CLI starts on its own to give Claude the result of a background task that ended while
+/// no CLI turn was open.
+struct BackgroundWorkTracker: Sendable {
+    private(set) var runningTasks: Set<String> = []
+    private var listedTasks: Set<String> = []
+    private(set) var notificationTurnPending = false
+
+    /// The process has background work running.
+    var isRunning: Bool { !runningTasks.isEmpty || notificationTurnPending }
+
+    /// Rule 1: `background_tasks_changed`.
+    mutating func tasksChanged(_ taskIDs: [String]) {
+        runningTasks = Set(taskIDs)
+        listedTasks.formUnion(taskIDs)
+    }
+
+    /// Rule 2: `task_notification`; only a listed task that ends while no CLI turn is open makes
+    /// a notification turn pending.
+    mutating func taskEnded(_ taskID: String, cliTurnOpen: Bool) {
+        guard !cliTurnOpen, listedTasks.contains(taskID) else { return }
+        notificationTurnPending = true
+    }
+
+    /// Rule 3: `system/init` ends the pending notification turn.
+    mutating func cliTurnOpened() {
+        notificationTurnPending = false
     }
 }
 

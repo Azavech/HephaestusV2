@@ -268,6 +268,7 @@ extension Engine {
     func apiChatMeta(_ meta: ChatMeta) -> ChatMeta {
         var copy = meta
         copy.state = chats.state(of: meta.id)
+        copy.backgroundWork = chats.backgroundWork(of: meta.id)
         copy.costUSD = chats.costs[meta.id]?.costUSD
         return copy
     }

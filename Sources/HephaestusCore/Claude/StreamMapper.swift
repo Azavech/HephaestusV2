@@ -21,6 +21,11 @@ enum MapperOutput: Sendable, Hashable {
     case commandState(uuid: String, state: String)
     /// A `system/status` line with `permissionMode`: the CLI value.
     case permissionModeReported(String)
+    /// A `system/background_tasks_changed` line: the `task_id` of every background task still
+    /// running (docs/chats.md › Background work).
+    case backgroundTasks([String])
+    /// A `system/task_notification` line: the task `taskID` has ended.
+    case taskNotification(taskID: String)
     /// Text appended to a streamed block.
     case delta(itemID: String, kind: ChatDeltaEvent.Payload.Kind, text: String)
     /// A `can_use_tool` request: its item, its input and `permission_suggestions`.
@@ -133,6 +138,13 @@ struct StreamMapper {
         }
         if subtype == "status", let mode = line["permissionMode"]?.stringValue {
             return [.permissionModeReported(mode)]
+        }
+        // docs/chats.md › Background work: an entry without a `task_id` string is skipped.
+        if subtype == "background_tasks_changed", let tasks = line["tasks"]?.arrayValue {
+            return [.backgroundTasks(tasks.compactMap { $0.objectValue?["task_id"]?.stringValue })]
+        }
+        if subtype == "task_notification", let taskID = line["task_id"]?.stringValue {
+            return [.taskNotification(taskID: taskID)]
         }
         return [.ignored(subtype.map { "ignored system/\($0)" } ?? "ignored system")]
     }
