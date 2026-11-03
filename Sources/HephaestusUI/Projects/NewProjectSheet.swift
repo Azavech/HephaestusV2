@@ -7,7 +7,7 @@ struct NewProjectSheet: View {
     let window: WindowState
     let workspace: DeviceWorkspace
     /// The parent preselected by New Sub Project…; nil for New Project, whose `Parent project`
-    /// starts at `None`.
+    /// follows the project folder until the user picks a value.
     let parentID: String?
     /// The folder of `Create Project Here…`: the sheet opens in Existing Folder mode with it.
     var existingFolder: String?
@@ -33,8 +33,7 @@ struct NewProjectSheet: View {
     @State private var folderName = ""
     @State private var folderNameEdited = false
     @State private var chosenFolder = ""
-    /// The selected parent; nil for `None`.
-    @State private var selectedParentID: String?
+    @State private var parentChoice = ParentProjectChoice()
     @State private var failure: String?
     @State private var offersOpen = false
     @State private var working = false
@@ -262,6 +261,13 @@ struct NewProjectSheet: View {
         }
     }
 
+    /// The selected parent; nil for `None`. Until the user picks a value it follows the project
+    /// folder, without moving the parent folder (docs/projects.md › Creating a project).
+    private var selectedParentID: String? {
+        parentChoice.parentID(following: ProjectRules.folderParent(newFolder: mode == .newFolder, parentFolder: parentFolder,
+                                                                   chosenFolder: chosenFolder, projects: workspace.projects))
+    }
+
     private var selectedParent: ProjectSummary? {
         selectedParentID.flatMap { workspace.project($0) }
     }
@@ -275,13 +281,14 @@ struct NewProjectSheet: View {
             + workspace.descendants(of: top.id).map { IndentedPopUpButton.Item(tag: $0.project.id, title: $0.project.name, indentation: $0.depth) }
     }
 
-    /// Choosing a parent moves the parent folder to that parent's root; choosing `None` leaves the
-    /// folders as they are (docs/projects.md › Creating a project, › Sub projects).
+    /// A value picked in the pop-up, the one it shows included, stops the parent from following the
+    /// folder. Picking another parent moves the parent folder to that parent's root; picking `None`
+    /// leaves the folders as they are (docs/projects.md › Creating a project, › Sub projects).
     private func selectParent(_ tag: String) {
         let id = tag.isEmpty ? nil : tag
-        guard id != selectedParentID else { return }
-        selectedParentID = id
-        if let id, let root = workspace.project(id)?.rootPath {
+        let changed = id != selectedParentID
+        parentChoice.pick(id)
+        if changed, let id, let root = workspace.project(id)?.rootPath {
             parentFolder = root
         }
     }
@@ -321,7 +328,7 @@ struct NewProjectSheet: View {
     private func prepare() async {
         guard !prepared else { return }
         prepared = true
-        selectedParentID = parentID
+        parentChoice = ParentProjectChoice(preselected: parentID)
         if let existingFolder {
             mode = .existingFolder
             chosenFolder = existingFolder

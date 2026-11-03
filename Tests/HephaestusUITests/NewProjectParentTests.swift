@@ -3,7 +3,8 @@ import Testing
 @testable import HephaestusUI
 
 /// docs/projects.md › Creating a project, › Sub projects: the New Project sheet's `Parent project`
-/// pop-up, the folder rules of a selected parent and the inside-a-project note.
+/// pop-up, the parent that follows the project folder until the user picks one, the folder rules of
+/// a selected parent and the inside-a-project note.
 @Suite("New Project parent")
 struct NewProjectParentTests {
     let projects = [
@@ -66,5 +67,73 @@ struct NewProjectParentTests {
         #expect(ProjectRules.insideNote(projectFolder: "/Users/example/Other", projects: projects) == nil)
         #expect(ProjectRules.insideNote(projectFolder: "/Users/example/Demo", projects: projects) == nil)
         #expect(ProjectRules.insideNote(projectFolder: "", projects: projects) == nil)
+    }
+
+    // MARK: Following the project folder
+
+    func folderParent(newFolder: Bool, parentFolder: String = "", chosenFolder: String = "") -> String? {
+        ProjectRules.folderParent(newFolder: newFolder, parentFolder: parentFolder, chosenFolder: chosenFolder, projects: projects)?.id
+    }
+
+    @Test func existingFolderSelectsTheInnermostProjectAtAnyDepth() {
+        #expect(folderParent(newFolder: false, chosenFolder: "/Users/example/Demo/tools") == "DEMO")
+        #expect(folderParent(newFolder: false, chosenFolder: "/Users/example/Demo/api/cli") == "API")
+        #expect(folderParent(newFolder: false, chosenFolder: "/Users/example/Demo/api/db/migrations/v1") == "DB")
+        #expect(folderParent(newFolder: false, chosenFolder: "/Users/example/Web/site/") == "WEB")
+    }
+
+    @Test func existingFolderOutsideEveryProjectSelectsNone() {
+        for folder in ["", "/Users/example", "/Users/example/Other", "/Users/example/Demonstration", "/Users/example/Demo"] {
+            #expect(folderParent(newFolder: false, chosenFolder: folder) == nil)
+        }
+        // A project's own root lies strictly inside its parent only.
+        #expect(folderParent(newFolder: false, chosenFolder: "/Users/example/Demo/api") == "DEMO")
+    }
+
+    @Test func newFolderSelectsTheProjectOfTheParentFolder() {
+        #expect(folderParent(newFolder: true, parentFolder: "/Users/example/Demo") == "DEMO")
+        #expect(folderParent(newFolder: true, parentFolder: "/Users/example/Demo/") == "DEMO")
+        #expect(folderParent(newFolder: true, parentFolder: "/Users/example/Demo/tools") == "DEMO")
+        #expect(folderParent(newFolder: true, parentFolder: "/Users/example/Demo/api") == "API")
+        #expect(folderParent(newFolder: true, parentFolder: "/Users/example/Demo/api/db/sql") == "DB")
+    }
+
+    @Test func newFolderOutsideEveryProjectSelectsNone() {
+        for folder in ["", "/Users/example", "/Users/example/Demonstration"] {
+            #expect(folderParent(newFolder: true, parentFolder: folder) == nil)
+        }
+    }
+
+    @Test func eachModeReadsItsOwnFolder() {
+        #expect(folderParent(newFolder: true, parentFolder: "/Users/example", chosenFolder: "/Users/example/Demo/tools") == nil)
+        #expect(folderParent(newFolder: false, parentFolder: "/Users/example/Demo", chosenFolder: "/Users/example/Other") == nil)
+    }
+
+    @Test func newProjectParentFollowsTheFolderBackToNone() {
+        let choice = ParentProjectChoice()
+        #expect(!choice.picked)
+        #expect(choice.parentID(following: nil) == nil)
+        #expect(choice.parentID(following: projects[1]) == "API")
+        #expect(choice.parentID(following: projects[2]) == "DB")
+        #expect(choice.parentID(following: nil) == nil)
+    }
+
+    @Test func aPickedParentStaysWhateverTheFolder() {
+        for picked in [nil, "DEMO", "API", "WEB"] as [String?] {
+            var choice = ParentProjectChoice()
+            choice.pick(picked)
+            #expect(choice.picked)
+            for folderParent in [nil, projects[0], projects[2], projects[3]] as [ProjectSummary?] {
+                #expect(choice.parentID(following: folderParent) == picked)
+            }
+        }
+    }
+
+    @Test func subProjectParentNeverFollowsTheFolder() {
+        let choice = ParentProjectChoice(preselected: "DEMO")
+        #expect(choice.picked)
+        for folderParent in [nil, projects[1], projects[2], projects[3]] as [ProjectSummary?] {
+            #expect(choice.parentID(following: folderParent) == "DEMO")
+        }
     }
 }

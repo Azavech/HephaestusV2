@@ -72,9 +72,10 @@ enum ProjectRules {
         return path.hasPrefix(root == "/" ? "/" : root + "/")
     }
 
-    /// The innermost loaded project whose root strictly contains `path`.
-    static func innermostProject(containing path: String, in projects: [ProjectSummary]) -> ProjectSummary? {
-        projects.filter { isInside(path, root: $0.rootPath, strictly: true) }.max { $0.rootPath.count < $1.rootPath.count }
+    /// The innermost loaded project whose root strictly contains `path`; without `strictly`, whose
+    /// root is `path` or contains it.
+    static func innermostProject(containing path: String, in projects: [ProjectSummary], strictly: Bool = true) -> ProjectSummary? {
+        projects.filter { isInside(path, root: $0.rootPath, strictly: strictly) }.max { $0.rootPath.count < $1.rootPath.count }
     }
 
     /// The path of `path` relative to `root`, for a path inside it.
@@ -128,6 +129,20 @@ enum ProjectRules {
         return "Choose a folder inside “\(parent.name)”."
     }
 
+    /// The parent that follows the project folder until the user picks one: the innermost loaded
+    /// project whose root strictly contains the project folder. In New Folder mode that folder is
+    /// parent folder + folder name, so the project whose root is the parent folder or contains it;
+    /// in Existing Folder mode, the chosen folder. nil for `None` (docs/projects.md › Creating a
+    /// project).
+    static func folderParent(newFolder: Bool, parentFolder: String, chosenFolder: String, projects: [ProjectSummary]) -> ProjectSummary? {
+        if newFolder {
+            guard !parentFolder.isEmpty else { return nil }
+            return innermostProject(containing: parentFolder, in: projects, strictly: false)
+        }
+        guard !chosenFolder.isEmpty else { return nil }
+        return innermostProject(containing: chosenFolder, in: projects)
+    }
+
     /// The note of a project folder inside a loaded project, shown while no parent is selected
     /// (docs/projects.md › Creating a project).
     static func insideNote(projectFolder: String, projects: [ProjectSummary]) -> String? {
@@ -168,5 +183,32 @@ struct ProjectTypeChoice: Equatable {
     mutating func follow(folderHasGoMod: Bool) {
         guard !picked else { return }
         type = folderHasGoMod ? .goService : .none
+    }
+}
+
+/// The Parent project of the New Project sheet: it follows the project folder until the user picks
+/// a value in the pop-up, `None` included. The parent preselected by New Sub Project… never follows
+/// the folder (docs/projects.md › Creating a project, › Sub projects).
+struct ParentProjectChoice: Equatable {
+    /// The value picked in the pop-up, nil for `None`.
+    private(set) var pickedID: String?
+    /// True once the user has picked a value, or for a preselected parent.
+    private(set) var picked: Bool
+
+    init(preselected parentID: String? = nil) {
+        pickedID = parentID
+        picked = parentID != nil
+    }
+
+    /// A value picked in the pop-up, nil for `None`: the parent no longer follows the folder.
+    mutating func pick(_ parentID: String?) {
+        pickedID = parentID
+        picked = true
+    }
+
+    /// The selected parent: the picked value, or until one is picked, the project that contains
+    /// the project folder (`ProjectRules.folderParent`).
+    func parentID(following folderParent: ProjectSummary?) -> String? {
+        picked ? pickedID : folderParent?.id
     }
 }
