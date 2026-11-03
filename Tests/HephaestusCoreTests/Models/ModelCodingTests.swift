@@ -322,6 +322,11 @@ struct ModelCodingTests {
                                recommended: "star")),
             .symbol(SymbolItem(id: "sa", created: created, requestID: UUID(), question: "Which?", suggestions: ["star", "heart"],
                                recommended: "star", answer: "![](sf:heart)")),
+            .color(ColorItem(id: "co", created: created, requestID: UUID(), question: "Which?", lightAndDark: false,
+                             suggestions: [.color("#FF9500"), .color("systemBlue")], recommended: .color("systemBlue"))),
+            .color(ColorItem(id: "cp", created: created, requestID: UUID(), question: "Which?", lightAndDark: true,
+                             suggestions: [.pair(light: "#FFFFFF", dark: "#1C1C1E"), .pair(light: "white", dark: "black")],
+                             recommended: .pair(light: "#FFFFFF", dark: "#1C1C1E"), answer: "Skipped")),
             .system(SystemItem(id: "s", created: created, text: "Session started", level: .warning)),
             .result(ResultItem(id: "r", created: created, durationMs: 10, costUSD: 0.5)),
         ]
@@ -333,7 +338,7 @@ struct ModelCodingTests {
             let object = try JSONDecoder().decode(JSONValue.self, from: data).objectValue?["item"]?.objectValue
             #expect(object?["type"] == .string(item.type.rawValue))
         }
-        #expect(items.map(\.id) == ["u", "a", "t", "tu", "tr", "p", "q", "sy", "sa", "s", "r"])
+        #expect(items.map(\.id) == ["u", "a", "t", "tu", "tr", "p", "q", "sy", "sa", "co", "cp", "s", "r"])
     }
 
     @Test("The symbol item of docs/data-model.md › Symbol item: answer null until the user answers")
@@ -349,6 +354,24 @@ struct ModelCodingTests {
         request.answer = nil
         let encoded = try JSONDecoder().decode(JSONValue.self, from: StorageJSON.lineEncoder().encode(ChatItem.symbol(request)))
         #expect(encoded.objectValue?["answer"] == .null)
+    }
+
+    @Test("The color item of docs/data-model.md › Color item: pairs as objects, answer null until the user answers")
+    func colorItem() throws {
+        let line = ##"{"type":"color","id":"7D0E2F3A-4B5C-4D6E-9F7A-8B9C0D1E2F3A","created":"2026-11-03T14:20:01Z","requestID":"7D0E2F3A-4B5C-4D6E-9F7A-8B9C0D1E2F3A","question":"Which background color should the card use?","lightAndDark":true,"suggestions":[{"light":"#FFFFFF","dark":"#1C1C1E"},{"light":"systemBackground","dark":"secondarySystemBackground"}],"recommended":{"light":"#FFFFFF","dark":"#1C1C1E"},"answer":"Light ![](color:#FFFFFF), Dark ![](color:#2C2C2E)"}"##
+        let item = try StorageJSON.decoder().decode(ChatItem.self, from: Data(line.utf8))
+        guard case .color(var request) = item else {
+            Issue.record("not a color item")
+            return
+        }
+        #expect(request.lightAndDark && request.answer == "Light ![](color:#FFFFFF), Dark ![](color:#2C2C2E)")
+        #expect(request.suggestions == [.pair(light: "#FFFFFF", dark: "#1C1C1E"),
+                                        .pair(light: "systemBackground", dark: "secondarySystemBackground")])
+        #expect(request.recommended == .pair(light: "#FFFFFF", dark: "#1C1C1E"))
+        request.answer = nil
+        let encoded = try JSONDecoder().decode(JSONValue.self, from: StorageJSON.lineEncoder().encode(ChatItem.color(request)))
+        #expect(encoded.objectValue?["answer"] == .null)
+        #expect(encoded.objectValue?["recommended"] == .object(["light": "#FFFFFF", "dark": "#1C1C1E"]))
     }
 
     @Test("MCP tool names are split after mcp__ at the first __")

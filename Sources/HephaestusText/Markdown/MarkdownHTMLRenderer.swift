@@ -282,6 +282,11 @@ struct HTMLWriter {
             let escapedName = Self.escaped(name)
             output += "<span class=\"md-symbol\"><span class=\"md-symbol-icon\" data-symbol=\"\(escapedName)\"></span>"
             output += "\(escapedName)</span>"
+        case .color(let color, let swatch):
+            // A color marker: the page draws a swatch of `data-light` or `data-dark`, followed by
+            // the color (docs/documentation-viewer.md › Color markers).
+            output += "<span class=\"md-color\"><span class=\"md-color-swatch\" data-light=\"\(Self.escaped(swatch.light))\""
+            output += " data-dark=\"\(Self.escaped(swatch.dark))\"></span>\(Self.escaped(color))</span>"
         case .itemID(let id, let code):
             // A ticket or bundle id (docs/documentation-viewer.md › Ticket and bundle ids).
             output += "<a class=\"md-id\" href=\"\(Self.escaped(MarkdownItemIDs.href(for: id)))\">"

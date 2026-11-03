@@ -2,19 +2,24 @@ import Foundation
 import Markdown
 
 /// SF Symbol markers (docs/documentation-viewer.md › SF Symbol markers): images whose source has
-/// the scheme `sf`, such as `![](sf:line.3.horizontal.decrease.circle)`. The renderers read them in
-/// Markdown when the options have `isSymbolAvailable`; these functions read them in plain text.
+/// the scheme `sf`, such as `![](sf:line.3.horizontal.decrease.circle)`, and color markers
+/// (› Color markers), whose source has the scheme `color`, such as `![](color:#FF9500)`. The
+/// renderers read them in Markdown when the options have `isSymbolAvailable` and `colorSwatch`;
+/// these functions read them in plain text.
 public enum MarkdownSymbolMarkers {
-    /// The plain text as `.text` and `.symbol` inlines: a marker of an available name becomes
-    /// `.symbol`, any other marker stays text.
-    public static func inlines(in text: String, isSymbolAvailable: (String) -> Bool) -> [MarkdownInline] {
-        inlines(in: text, isSymbolAvailable: isSymbolAvailable, projectIdentifiers: [])
+    /// The plain text as `.text`, `.symbol` and `.color` inlines: a marker of an available name
+    /// becomes `.symbol`, a color marker with a valid swatch `.color`, any other marker stays
+    /// text. Without `colorSwatch`, color markers are text.
+    public static func inlines(in text: String, isSymbolAvailable: (String) -> Bool,
+                               colorSwatch: ((String) -> MarkdownColorSwatch?)? = nil) -> [MarkdownInline] {
+        inlines(in: text, isSymbolAvailable: isSymbolAvailable, colorSwatch: colorSwatch, projectIdentifiers: [])
     }
 
-    /// The plain text as `.text`, `.symbol` and `.itemID` inlines: the text outside markers also
-    /// gets the ids of `projectIdentifiers` (docs/documentation-viewer.md › Ticket and bundle ids);
-    /// the text of a marker is never searched for ids.
+    /// The plain text as `.text`, `.symbol`, `.color` and `.itemID` inlines: the text outside
+    /// markers also gets the ids of `projectIdentifiers` (docs/documentation-viewer.md › Ticket and
+    /// bundle ids); the text of a marker is never searched for ids.
     public static func inlines(in text: String, isSymbolAvailable: (String) -> Bool,
+                               colorSwatch: ((String) -> MarkdownColorSwatch?)? = nil,
                                projectIdentifiers: Set<String>) -> [MarkdownInline] {
         var result: [MarkdownInline] = []
         var pending = ""
@@ -32,10 +37,12 @@ public enum MarkdownSymbolMarkers {
         }
         var index = text.startIndex
         while index < text.endIndex {
-            if text[index] == "!", let marker = marker(in: text, at: index) {
+            if text[index] == "!", let marker = marker(in: text, at: index), marker.isSymbol || colorSwatch != nil {
                 flush()
-                if isSymbolAvailable(marker.name) {
+                if marker.isSymbol, isSymbolAvailable(marker.name) {
                     append(.symbol(marker.name))
+                } else if !marker.isSymbol, let swatch = colorSwatch?(marker.name), swatch.isValid {
+                    append(.color(marker.name, swatch: swatch))
                 } else {
                     append(.text(String(text[index..<marker.end])))
                 }
@@ -49,16 +56,20 @@ public enum MarkdownSymbolMarkers {
         return result
     }
 
-    /// The plain text as HTML: escaped text, and the symbol HTML of docs/documentation-viewer.md ›
-    /// HTML output for each marker of an available name.
-    public static func html(_ text: String, isSymbolAvailable: (String) -> Bool) -> String {
-        html(text, isSymbolAvailable: isSymbolAvailable, projectIdentifiers: [])
+    /// The plain text as HTML: escaped text, and the symbol and color HTML of
+    /// docs/documentation-viewer.md › HTML output for each marker that is drawn.
+    public static func html(_ text: String, isSymbolAvailable: (String) -> Bool,
+                            colorSwatch: ((String) -> MarkdownColorSwatch?)? = nil) -> String {
+        html(text, isSymbolAvailable: isSymbolAvailable, colorSwatch: colorSwatch, projectIdentifiers: [])
     }
 
-    /// The plain text as HTML, with the symbol HTML of its markers and the id links of its ids.
-    public static func html(_ text: String, isSymbolAvailable: (String) -> Bool, projectIdentifiers: Set<String>) -> String {
+    /// The plain text as HTML, with the symbol and color HTML of its markers and the id links of
+    /// its ids.
+    public static func html(_ text: String, isSymbolAvailable: (String) -> Bool,
+                            colorSwatch: ((String) -> MarkdownColorSwatch?)? = nil, projectIdentifiers: Set<String>) -> String {
         var writer = HTMLWriter()
-        writer.inlines(inlines(in: text, isSymbolAvailable: isSymbolAvailable, projectIdentifiers: projectIdentifiers))
+        writer.inlines(inlines(in: text, isSymbolAvailable: isSymbolAvailable, colorSwatch: colorSwatch,
+                               projectIdentifiers: projectIdentifiers))
         return writer.output
     }
 
@@ -69,10 +80,17 @@ public enum MarkdownSymbolMarkers {
         return String(source.dropFirst(3))
     }
 
+    /// The color of a color marker's image source: the text after `color:` (any letter case); nil
+    /// for another source.
+    static func color(ofSource source: String) -> String? {
+        guard MarkdownLinks.scheme(of: source) == "color" else { return nil }
+        return String(source.dropFirst(6))
+    }
+
     /// A plain-text marker starting at `start`: `![`, an alt text without `[`, `]` or line break,
-    /// `](`, `sf:` in any letter case, a name of one or more characters other than `(`, `)` and
-    /// white space, and `)`.
-    private static func marker(in text: String, at start: String.Index) -> (name: String, end: String.Index)? {
+    /// `](`, `sf:` or `color:` in any letter case, a name of one or more characters other than
+    /// `(`, `)` and white space, and `)`.
+    private static func marker(in text: String, at start: String.Index) -> (name: String, isSymbol: Bool, end: String.Index)? {
         var index = start
         func take(_ expected: String, ignoringCase: Bool = false) -> Bool {
             for character in expected {
@@ -89,7 +107,16 @@ public enum MarkdownSymbolMarkers {
             if character == "[" || character.isNewline { return nil }
             index = text.index(after: index)
         }
-        guard take("]("), take("sf:", ignoringCase: true) else { return nil }
+        guard take("](") else { return nil }
+        let schemeStart = index
+        let isSymbol: Bool
+        if take("sf:", ignoringCase: true) {
+            isSymbol = true
+        } else {
+            index = schemeStart
+            guard take("color:", ignoringCase: true) else { return nil }
+            isSymbol = false
+        }
         let nameStart = index
         while index < text.endIndex, text[index] != ")" {
             let character = text[index]
@@ -98,7 +125,7 @@ public enum MarkdownSymbolMarkers {
         }
         guard index > nameStart, index < text.endIndex else { return nil }
         let name = String(text[nameStart..<index])
-        return (name, text.index(after: index))
+        return (name, isSymbol, text.index(after: index))
     }
 }
 

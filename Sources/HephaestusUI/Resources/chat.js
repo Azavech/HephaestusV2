@@ -60,6 +60,13 @@
       symbols[j].style.webkitMaskImage = mask;
       symbols[j].style.maskImage = mask;
     }
+    // Color markers: the swatch takes the light or dark value of its marker through two CSS
+    // variables (docs/chats.md › Links, images and files).
+    var swatches = element.querySelectorAll(".md-color-swatch[data-light][data-dark]");
+    for (var k = 0; k < swatches.length; k++) {
+      swatches[k].style.setProperty("--md-color-light", swatches[k].getAttribute("data-light"));
+      swatches[k].style.setProperty("--md-color-dark", swatches[k].getAttribute("data-dark"));
+    }
   }
 
   // MARK: Page structure

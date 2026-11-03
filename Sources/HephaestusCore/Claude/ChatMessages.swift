@@ -142,6 +142,11 @@ extension Engine {
         "Symbol: \(answer)"
     }
 
+    /// docs/chats.md › Answering a color request: `Color: <answer>`.
+    static func colorMessage(_ answer: String) -> String {
+        "Color: \(answer)"
+    }
+
     // MARK: System prompt
 
     /// The value of `--append-system-prompt` for a launch (docs/chats.md › Composition and

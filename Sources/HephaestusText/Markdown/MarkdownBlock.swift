@@ -58,6 +58,7 @@ public indirect enum MarkdownInline: Sendable, Equatable {
     case link(destination: String, title: String?, content: [MarkdownInline]) // accepted destinations only
     case image(source: MarkdownImageSource, alt: String, title: String?)
     case symbol(String)                  // an SF Symbol marker of an available symbol: its name
+    case color(String, swatch: MarkdownColorSwatch) // a color marker of an accepted color: the color as written and its swatch
     case itemID(String, code: Bool)      // a ticket or bundle id of a project of the device; code: written as a code span
     case softBreak
     case lineBreak

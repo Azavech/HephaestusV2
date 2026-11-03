@@ -124,6 +124,23 @@ struct ChatNotificationTests {
         }
     }
 
+    @Test("A color request posts needs you with its question")
+    func colorRequest() async throws {
+        let launcher = FakeClaudeLauncher()
+        launcher.chatScript = FakeClaudeLauncher.silentChat()
+        try await withChatEngine(launcher: launcher) { bed in
+            let chat = try await bed.createChat(message: "Plan")
+            let process = try #require(await launcher.chatProcess())
+            process.emit(FakeClaudeLauncher.initLine())
+            _ = try await ColorRequestTests.post(bed, chat.id, question: "Which tint for the tab?", suggestions: [.color("red"), .color("blue")],
+                                                 recommended: .color("red"))
+            process.emit(FakeClaudeLauncher.resultLine())
+            #expect(await Self.waitFor(bed, chat.id, .needsYou, .summary) != nil)
+            #expect(await Self.notifications(bed, chat.id).map(\.kind) == [.needsYou, .needsYou])
+            #expect(Self.summaryInputs(launcher) == ["Color request:\nWhich tint for the tab?"])
+        }
+    }
+
     @Test("A turn stopped with Stop posts no finished; error posts nothing")
     func stoppedAndError() async throws {
         let launcher = FakeClaudeLauncher()
@@ -255,6 +272,7 @@ struct ChatNotificationTests {
             Question(label: "A", question: "First?", options: options, recommended: "x"),
         ])) == "Questions:\nA: First?\nB: Second?")
         #expect(HaikuNotificationSummarizer.input(for: .symbol(question: "Which icon?")) == "Symbol request:\nWhich icon?")
+        #expect(HaikuNotificationSummarizer.input(for: .color(question: "Which tint?")) == "Color request:\nWhich tint?")
         #expect(HaikuNotificationSummarizer.input(for: .reply(String(repeating: "x", count: 5_000))).count == "Claude's reply:\n".count + 4_000)
     }
 

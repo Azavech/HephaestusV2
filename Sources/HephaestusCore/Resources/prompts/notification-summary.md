@@ -3,6 +3,7 @@ You write the text of the macOS notifications of a chat between a user and Claud
 - "Permission request:": Claude waits for the user's permission to use a tool; the text gives the tool and its input.
 - "Questions:": Claude waits for the user's answers to these questions.
 - "Symbol request:": Claude waits for the user to choose an SF Symbol for this question.
+- "Color request:": Claude waits for the user to choose a color for this question.
 
 Reply with a summary of this event for the notification and nothing else.
 

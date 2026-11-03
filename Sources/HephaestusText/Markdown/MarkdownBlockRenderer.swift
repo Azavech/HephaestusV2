@@ -63,13 +63,13 @@ enum CodeBlockLanguage {
 struct MarkdownConverter {
     let options: MarkdownRenderOptions
     private var anchors = HeadingAnchors()
-    /// The parsed text, kept only when SF Symbol markers are read: an unavailable marker shows
-    /// its source as written.
+    /// The parsed text, kept only when SF Symbol or color markers are read: a marker that is not
+    /// drawn shows its source as written.
     private let sourceLines: MarkdownSourceLines?
 
     init(options: MarkdownRenderOptions, source: String) {
         self.options = options
-        self.sourceLines = options.isSymbolAvailable == nil ? nil : MarkdownSourceLines(source)
+        self.sourceLines = options.isSymbolAvailable == nil && options.colorSwatch == nil ? nil : MarkdownSourceLines(source)
     }
 
     mutating func blocks<S: Sequence>(_ children: S) -> [MarkdownBlock] where S.Element == Markup {
@@ -213,6 +213,10 @@ struct MarkdownConverter {
                     result.append(symbolMarker(image, name: name, isSymbolAvailable: isSymbolAvailable))
                     continue
                 }
+                if let colorSwatch = options.colorSwatch, let color = MarkdownSymbolMarkers.color(ofSource: image.source ?? "") {
+                    result.append(colorMarker(image, color: color, colorSwatch: colorSwatch))
+                    continue
+                }
                 let source = MarkdownLinks.imageSource(image.source ?? "", options: options)
                 result.append(.image(source: source, alt: Self.altText(image.children), title: Self.nonEmpty(image.title)))
             case is SoftBreak:
@@ -239,6 +243,18 @@ struct MarkdownConverter {
     private func symbolMarker(_ image: Image, name: String, isSymbolAvailable: (String) -> Bool) -> MarkdownInline {
         if isSymbolAvailable(name) {
             return .symbol(name)
+        }
+        if let range = image.range, let text = sourceLines?.text(in: range) {
+            return .text(text)
+        }
+        return .text(image.format())
+    }
+
+    /// A color marker: `.color` for a color with a valid swatch, else its Markdown source as
+    /// written (docs/documentation-viewer.md › Color markers).
+    private func colorMarker(_ image: Image, color: String, colorSwatch: (String) -> MarkdownColorSwatch?) -> MarkdownInline {
+        if let swatch = colorSwatch(color), swatch.isValid {
+            return .color(color, swatch: swatch)
         }
         if let range = image.range, let text = sourceLines?.text(in: range) {
             return .text(text)

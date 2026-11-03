@@ -10,7 +10,7 @@ This is the operating manual Claude follows in every HephaestusV2 chat. Claude n
 | `ticket`         | Implement, New Chat in a ticket's Chats tab, `implement_ticket`        | `common.md`, `ticket.md`   | Implement runs the [implementation workflow](#implementation-workflow); a ticket chat started by a bundle chat commits on its own branch without pushing ([Bundles](#bundles)) |
 | `bundle`         | Implement All, New Chat in a bundle's Chats tab, `implement_bundle`    | `common.md`, `bundle.md`   | Implement All runs the [bundle workflow](#bundles): the chat orchestrates ticket chats that run in parallel, then merges their branches                                        |
 | `feedback`       | The ladybug ([Feedback](feedback.md))                                  | `common.md`, `feedback.md` | Clarify the feedback, then create its ticket                                                                                                                                   |
-| External session | A terminal Claude session using the external MCP token ([MCP](mcp.md)) | none                       | Only the [engine-enforced rules](#engine-enforced-rules); no `ask_questions` or `ask_symbol`                                                                                   |
+| External session | A terminal Claude session using the external MCP token ([MCP](mcp.md)) | none                       | Only the [engine-enforced rules](#engine-enforced-rules); no `ask_questions`, `ask_symbol` or `ask_color`                                                                      |
 
 - The prompt resources are in `Sources/HephaestusCore/Resources/prompts/`, and their full text is in [Chats](chats.md). `common.md` states every rule of this document in imperative form.
 - Claude CLI also reads the project's own `CLAUDE.md` from the project root. The `CLAUDE.md` of the HephaestusV2 repository links to this document. Default chosen at design time.
@@ -44,7 +44,7 @@ This is the operating manual Claude follows in every HephaestusV2 chat. Claude n
 - Claude puts every point that is unknown at that moment into one call. Default chosen at design time.
 - The tool returns at once with the text `questions shown; answers arrive in the next user message; end your turn`. Claude then ends its turn: it calls no further tool.
 - Claude does not repeat the questions in its reply text, because the chat shows them. Default chosen at design time.
-- A chat has at most one waiting request: a question set without all its answers, or a [symbol request](#symbol-requests) without answer. Calling `ask_questions` while a question set waits fails with `conflict` and `Questions are already waiting for answers in this chat.`, and while a symbol request waits with `conflict` and `A symbol request is already waiting for an answer in this chat.`. The question-set rule and its message are Default chosen at design time.
+- A chat has at most one waiting request: a question set without all its answers, a [symbol request](#symbol-requests) without answer, or a [color request](#color-requests) without answer. Calling `ask_questions` while a question set waits fails with `conflict` and `Questions are already waiting for answers in this chat.`, while a symbol request waits with `conflict` and `A symbol request is already waiting for an answer in this chat.`, and while a color request waits with `conflict` and `A color request is already waiting for an answer in this chat.`. The question-set rule and its message are Default chosen at design time.
 - `ask_questions` works only with a chat's own token, never with the external token ([MCP](mcp.md)).
 
 ### Validation
@@ -85,7 +85,7 @@ B: <answer>
 
 ### Plain-text questions
 
-In an external session, where `ask_questions` and `ask_symbol` are not available, Claude writes the questions in its reply in this form and ends its turn; a symbol choice becomes a question whose options are the symbol names:
+In an external session, where `ask_questions`, `ask_symbol` and `ask_color` are not available, Claude writes the questions in its reply in this form and ends its turn; a symbol choice becomes a question whose options are the symbol names, and a color choice a question whose options are the color values, a light and dark pair being written `Light <color>, Dark <color>`:
 
 ```text
 A: <question>
@@ -104,7 +104,7 @@ When Claude needs the user to choose an SF Symbol, it asks with the MCP tool `as
 
 - One call asks for one symbol. Its inputs are `question`, the question; `suggestions`, 2 to 10 SF Symbol names; and `recommended`, the suggestion Claude recommends.
 - The tool returns at once with the text `symbol request shown; the answer arrives in the next user message; end your turn`. Claude then ends its turn: it calls no further tool, and it does not repeat the question in its reply.
-- A chat has at most one waiting request ([Asking](#asking)): calling `ask_symbol` while a question set waits fails with `conflict` and `Questions are already waiting for answers in this chat.`, and while a symbol request waits with `conflict` and `A symbol request is already waiting for an answer in this chat.`.
+- A chat has at most one waiting request ([Asking](#asking)): calling `ask_symbol` while a question set waits fails with `conflict` and `Questions are already waiting for answers in this chat.`, while a symbol request waits with `conflict` and `A symbol request is already waiting for an answer in this chat.`, and while a color request waits with `conflict` and `A color request is already waiting for an answer in this chat.`.
 - `ask_symbol` works only with a chat's own token, never with the external token ([MCP](mcp.md#ask_symbol)).
 
 `chats.postSymbol` checks the input, after trimming each suggestion and `recommended`. Every failure is `invalid` with the message below, and nothing is shown to the user. The messages are Default chosen at design time.
@@ -126,6 +126,44 @@ Symbol: <answer>
 ```
 
 - `<answer>` is `![](sf:<name>)` for a symbol chosen in the card, for example `Symbol: ![](sf:line.3.horizontal.decrease.circle)`; the text the user typed, trimmed, with its line breaks; or `Skipped` for a skipped request.
+- A skipped request is handled like a skipped question: Claude leaves that point out, does not act on it or guess, and mentions it in its reply.
+- The answer is a decision: Claude applies it and does not ask again.
+
+### Color requests
+
+When Claude needs the user to choose a color, it asks with the MCP tool `ask_color` instead of listing color values as options of `ask_questions` ([MCP](mcp.md#ask_color)).
+
+- One call asks for one color, or for one light and dark pair. Its inputs are `question`, the question; `suggestions`, 2 to 10 suggestions; `recommended`, the suggestion Claude recommends; and `lightAndDark`, true to ask for a light and dark pair.
+- A color is opaque, without opacity: a hex color `#RRGGBB` in sRGB, its six hex digits in either letter case, or a [system color name](chats.md#system-colors) such as `systemBlue`, `label` or `accentColor`.
+- Claude sets `lightAndDark` when the destination of the color supports light and dark appearances, for example an asset catalog color set. Each suggestion and `recommended` are then pairs `{"light": "<color>", "dark": "<color>"}`; otherwise each is one color, a string.
+- The tool returns at once with the text `color request shown; the answer arrives in the next user message; end your turn`. Claude then ends its turn: it calls no further tool, and it does not repeat the question in its reply.
+- A chat has at most one waiting request ([Asking](#asking)): calling `ask_color` while a question set waits fails with `conflict` and `Questions are already waiting for answers in this chat.`, while a symbol request waits with `conflict` and `A symbol request is already waiting for an answer in this chat.`, and while a color request waits with `conflict` and `A color request is already waiting for an answer in this chat.`.
+- `ask_color` works only with a chat's own token, never with the external token ([MCP](mcp.md#ask_color)).
+
+`chats.postColor` checks the input, after trimming each color of `suggestions` and `recommended`. Every failure is `invalid` with the message below, and nothing is shown to the user. The messages are Default chosen at design time.
+
+| Rule                                                                                                    | Message                                                                               |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `question` is not empty after trimming                                                                  | `ask_color needs a question.`                                                         |
+| 2 to 10 suggestions                                                                                     | `ask_color needs 2 to 10 suggestions.`                                                |
+| Without `lightAndDark`, each suggestion and `recommended` are one color                                 | `ask_color needs one color per suggestion, or lightAndDark for light and dark pairs.` |
+| With `lightAndDark`, each suggestion and `recommended` are a light and dark pair                        | `ask_color needs a light and dark pair per suggestion.`                               |
+| Each color of the suggestions is a hex color `#RRGGBB` or a [system color name](chats.md#system-colors) | `<color> is not a hex color #RRGGBB or a system color name.`                          |
+| Suggestions are distinct                                                                                | `ask_color has a repeated suggestion.`                                                |
+| `recommended` equals one of the suggestions                                                             | `ask_color: the recommended color must be one of the suggestions.`                    |
+
+- `lightAndDark` absent counts as false.
+- The color check runs in the order of `suggestions`, the light color of a pair before its dark color, and names the first color that fails, as given.
+- Two colors are equal when their hex digits are equal ignoring letter case, or when they are the same system color name; names are compared with their letter case. Two pairs are equal when their light colors are equal and their dark colors are equal.
+
+The request appears in the chat as a pinned color card above the composer ([Chats](chats.md#pinned-color-card)): the suggestions as swatches, the recommended one marked and preselected, a grid of every system color, the macOS color panel and a hex field, a `Light and dark` toggle, a free-text field `Answer another way`, a Skip button and a Submit button. The user answers once with `chats.answerColor`, from any window or device; the chat's state is `waitingAnswers` until then. The engine then sends Claude one user message:
+
+```text
+Color: <answer>
+```
+
+- `<answer>` is `![](color:<color>)` for one color chosen in the card, for example `Color: ![](color:#FF9500)` or `Color: ![](color:systemBlue)`; `Light ![](color:<color>), Dark ![](color:<color>)` for a light and dark pair, for example `Color: Light ![](color:#FFFFFF), Dark ![](color:#1C1C1E)`; the text the user typed, trimmed, with its line breaks; or `Skipped` for a skipped request. A hex color chosen in the card is written in uppercase.
+- The user chooses between one color and a pair with the card's `Light and dark` toggle, which starts as `lightAndDark` asked: the answer to a pair request can be one color, and the answer to a one-color request a pair.
 - A skipped request is handled like a skipped question: Claude leaves that point out, does not act on it or guess, and mentions it in its reply.
 - The answer is a decision: Claude applies it and does not ask again.
 
@@ -371,6 +409,12 @@ When Claude names an SF Symbol in a reply or in `ask_questions`, it writes it as
 
 When Claude needs the user to choose an SF Symbol, it asks with `ask_symbol` ([Symbol requests](#symbol-requests)).
 
+## Colors
+
+When Claude names a color in a reply or in `ask_questions`, it writes it as `![](color:<color>)`, `<color>` being a hex color `#RRGGBB` or a [system color name](chats.md#system-colors), for example `![](color:#FF9500)` or `![](color:systemBlue)`. The chat transcript and the pinned questions card show such a marker as a swatch of the color followed by the hex or the name ([Chats](chats.md#links-images-and-files)); ticket descriptions, comments and docs do not draw it.
+
+When Claude needs the user to choose a color, it asks with `ask_color` ([Color requests](#color-requests)).
+
 ## Self-update loop
 
 When the project is HephaestusV2 itself (the registered project whose git remote is the app's release repository, Info.plist key `HephaestusReleaseRepository`), a pushed change reaches the running app without manual steps:
@@ -395,23 +439,25 @@ When the project is HephaestusV2 itself (the registered project whose git remote
 
 ## Engine-enforced rules
 
-| Rule                                                                                  | Checked by                             | Failure               |
-| ------------------------------------------------------------------------------------- | -------------------------------------- | --------------------- |
-| Descriptions written by Claude follow the template                                    | `tickets.create`, `tickets.update`     | `invalid`             |
-| New tickets start as `todo`                                                           | `tickets.create` (no status parameter) | none                  |
-| Tickets created without a title are named by Haiku                                    | `tickets.create`                       | none                  |
-| Claude never changes the status of a `done` ticket                                    | `tickets.setStatus`                    | `forbidden`           |
-| Questions are labelled in order, with 2 to 10 options and exactly one recommended     | `chats.postQuestions`                  | `invalid`             |
-| A chat has at most one waiting question set or symbol request                         | `chats.postQuestions`                  | `conflict`            |
-| Symbol requests have 2 to 10 distinct SF Symbol names, one recommended                | `chats.postSymbol`                     | `invalid`             |
-| A symbol request is refused while a question set or symbol request waits              | `chats.postSymbol`                     | `conflict`            |
-| `ask_questions` and `ask_symbol` need a chat token                                    | MCP server                             | see [MCP](mcp.md)     |
-| `close_chat` needs a chat token and closes only the calling chat                      | MCP server, `chats.close`              | see [MCP](mcp.md)     |
-| Links join two tickets of the same project, once per pair, without a Depends on cycle | `tickets.create`, `tickets.update`     | `invalid`, `notFound` |
-| A `done` ticket is not implemented                                                    | `chats.implementTicket`                | `conflict`            |
-| A bundle is implemented only when one of its tickets is not `done`                    | `chats.implementBundle`                | `conflict`            |
-| A bundle is implemented only when its status is `todo`                                | `chats.implementBundle`                | `conflict`            |
-| Claude never sets a bundle to `done` and never changes a `done` bundle                | `bundles.setStatus`                    | `forbidden`           |
+| Rule                                                                                                     | Checked by                             | Failure               |
+| -------------------------------------------------------------------------------------------------------- | -------------------------------------- | --------------------- |
+| Descriptions written by Claude follow the template                                                       | `tickets.create`, `tickets.update`     | `invalid`             |
+| New tickets start as `todo`                                                                              | `tickets.create` (no status parameter) | none                  |
+| Tickets created without a title are named by Haiku                                                       | `tickets.create`                       | none                  |
+| Claude never changes the status of a `done` ticket                                                       | `tickets.setStatus`                    | `forbidden`           |
+| Questions are labelled in order, with 2 to 10 options and exactly one recommended                        | `chats.postQuestions`                  | `invalid`             |
+| A chat has at most one waiting question set, symbol request or color request                             | `chats.postQuestions`                  | `conflict`            |
+| Symbol requests have 2 to 10 distinct SF Symbol names, one recommended                                   | `chats.postSymbol`                     | `invalid`             |
+| A symbol request is refused while a question set, symbol request or color request waits                  | `chats.postSymbol`                     | `conflict`            |
+| Color requests have 2 to 10 distinct hex colors or system color names, or pairs of them, one recommended | `chats.postColor`                      | `invalid`             |
+| A color request is refused while a question set, symbol request or color request waits                   | `chats.postColor`                      | `conflict`            |
+| `ask_questions`, `ask_symbol` and `ask_color` need a chat token                                          | MCP server                             | see [MCP](mcp.md)     |
+| `close_chat` needs a chat token and closes only the calling chat                                         | MCP server, `chats.close`              | see [MCP](mcp.md)     |
+| Links join two tickets of the same project, once per pair, without a Depends on cycle                    | `tickets.create`, `tickets.update`     | `invalid`, `notFound` |
+| A `done` ticket is not implemented                                                                       | `chats.implementTicket`                | `conflict`            |
+| A bundle is implemented only when one of its tickets is not `done`                                       | `chats.implementBundle`                | `conflict`            |
+| A bundle is implemented only when its status is `todo`                                                   | `chats.implementBundle`                | `conflict`            |
+| Claude never sets a bundle to `done` and never changes a `done` bundle                                   | `bundles.setStatus`                    | `forbidden`           |
 
 The engine does not check the other rules (never invent, docs first, build and test, the tests that allow `done`, commits, pushing and the completion comment); only the prompts carry them. A ticket file that Claude edits with its own file tools reaches the engine as an external change with the actor `system` ([Data model](data-model.md#external-changes)); the template and status rules are not applied to it. Only the prompt rule `Never create, edit or delete files inside a .hephaestus folder yourself` prevents it. The error messages of the ticket rules are in [Errors](tickets.md#errors).
 
@@ -535,3 +581,4 @@ Notes
 - R119: The Testing section of a ticket Claude writes lists only checks of the behaviour in the running app, never code tests; the code tests to add can be named under Change.
 - R124: A ticket can depend on other tickets of its project or be related to them; the other ticket shows the inverse link, Blocks or Related; the user and Claude add and remove links; the ticket list marks a ticket that depends on a ticket that is not done, and Implement asks for confirmation while one is not done.
 - R126: The engine sets a bundle to done when every ticket of the bundle is done, whoever changed the last ticket, and sets a done bundle back to in progress when one of its tickets is not done.
+- R132: Claude asks the user to choose a color with `ask_color`, as one color or a light and dark pair: suggestions show as swatches, any system color can be picked from a grid and any other color with the macOS color panel or a hex field, the user answers another way or skips, and the chat shows the colors Claude names and the answer as swatches.

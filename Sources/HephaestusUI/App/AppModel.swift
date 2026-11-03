@@ -43,9 +43,9 @@ public final class AppModel {
     private(set) var chatWindows: Set<ChatWindowValue> = []
     /// Last active project per device, persisted in `UserDefaults`.
     private(set) var lastProjectIDByDevice: [String: String]
-    /// Minimized questions and symbol cards: chat id → id of the minimized question set or symbol
-    /// request, persisted in `UserDefaults` (docs/chats.md › Pinned questions card, › Pinned
-    /// symbol card).
+    /// Minimized questions, symbol and color cards: chat id → id of the minimized question set,
+    /// symbol request or color request, persisted in `UserDefaults` (docs/chats.md › Pinned
+    /// questions card, › Pinned symbol card, › Pinned color card).
     private(set) var minimizedQuestionSets: [String: String]
     /// The last status received from the Updater.
     var updaterStatus = UpdaterStatus.initial
@@ -226,19 +226,20 @@ public final class AppModel {
         }
     }
 
-    /// Whether the questions card or the symbol card of a chat is minimized for this question set
-    /// or symbol request.
+    /// Whether the questions card, the symbol card or the color card of a chat is minimized for
+    /// this question set, symbol request or color request.
     func isQuestionsCardMinimized(chatID: String, setID: UUID) -> Bool {
         minimizedQuestionSets[chatID] == setID.uuidString
     }
 
-    /// The minimize button and the collapsed bar of the questions card and the symbol card.
+    /// The minimize button and the collapsed bar of the questions card, the symbol card and the
+    /// color card.
     func setQuestionsCardMinimized(_ minimized: Bool, chatID: String, setID: UUID) {
         updateMinimizedQuestionSet(chatID, minimized ? setID.uuidString : nil)
     }
 
-    /// Removes the entry of a chat whose card shows another question set or symbol request, or
-    /// none.
+    /// Removes the entry of a chat whose card shows another question set, symbol request or color
+    /// request, or none.
     func forgetMinimizedQuestionSet(chatID: String, shownSetID: UUID?) {
         guard let stored = minimizedQuestionSets[chatID], stored != shownSetID?.uuidString else { return }
         updateMinimizedQuestionSet(chatID, nil)

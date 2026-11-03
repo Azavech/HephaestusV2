@@ -8,7 +8,7 @@ import UniformTypeIdentifiers
 /// `DeviceWorkspace.transcripts`.
 ///
 /// From top to bottom: the header, the transcript, the pinned permission card, the pinned
-/// questions card or symbol card, the status line and the composer. The header shows in the Chats section, the
+/// questions card, symbol card or color card, the status line and the composer. The header shows in the Chats section, the
 /// ticket and bundle Chats tabs and chat windows; the inspector shows its picker instead.
 struct ChatView: View {
     /// The chat id, an uppercase UUID string; nil for a draft.
@@ -185,11 +185,12 @@ private struct ChatViewContent: View {
         }
     }
 
-    /// The question set or symbol request of the chat once its transcript is loaded; nil while it
-    /// is not.
+    /// The question set, symbol request or color request of the chat once its transcript is
+    /// loaded; nil while it is not.
     private var shownQuestionSet: ShownQuestionSet? {
         guard let chatID = model.chatID, let state = workspace.transcripts[chatID] else { return nil }
-        return ShownQuestionSet(setID: state.incompleteQuestionSet?.questionSetID ?? state.waitingSymbolRequest?.requestID)
+        return ShownQuestionSet(setID: state.incompleteQuestionSet?.questionSetID ?? state.waitingSymbolRequest?.requestID
+                                ?? state.waitingColorRequest?.requestID)
     }
 
     // MARK: Transcript
@@ -224,7 +225,7 @@ private struct ChatViewContent: View {
 
     // MARK: Pinned cards
 
-    /// The permission card, then the questions card or the symbol card; together at most half of
+    /// The permission card, then the questions card, the symbol card or the color card; together at most half of
     /// the view's height, scrolling inside only when they are taller than that, without bounce
     /// while they fit, their code blocks and tables always scrolling horizontally.
     @ViewBuilder
@@ -234,7 +235,8 @@ private struct ChatViewContent: View {
         let set = state?.incompleteQuestionSet
         let question = set.flatMap { model.displayedQuestion($0) }
         let symbolRequest = state?.waitingSymbolRequest
-        if !pending.isEmpty || question != nil || symbolRequest != nil {
+        let colorRequest = state?.waitingColorRequest
+        if !pending.isEmpty || question != nil || symbolRequest != nil || colorRequest != nil {
             ScrollView(.vertical) {
                 VStack(spacing: 8) {
                     if let request = pending.first {
@@ -259,6 +261,17 @@ private struct ChatViewContent: View {
                         } else {
                             SymbolCard(model: model, request: symbolRequest) {
                                 app.setQuestionsCardMinimized(true, chatID: chatID, setID: symbolRequest.requestID)
+                            }
+                        }
+                    }
+                    if let chatID = model.chatID, let colorRequest {
+                        if app.isQuestionsCardMinimized(chatID: chatID, setID: colorRequest.requestID) {
+                            QuestionsCollapsedBar(text: "Color") {
+                                app.setQuestionsCardMinimized(false, chatID: chatID, setID: colorRequest.requestID)
+                            }
+                        } else {
+                            ColorCard(model: model, request: colorRequest) {
+                                app.setQuestionsCardMinimized(true, chatID: chatID, setID: colorRequest.requestID)
                             }
                         }
                     }

@@ -553,6 +553,26 @@ a.md-id:hover {
   mask-position: center;
 }
 
+/* Color markers: chat.js copies the marker's light and dark values into two variables
+   (docs/chats.md › Links, images and files). */
+.md-color-swatch {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 0.25em;
+  vertical-align: -0.1em;
+  border-radius: 0.2em;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  background-color: var(--md-color-light);
+}
+
+@media (prefers-color-scheme: dark) {
+  .md-color-swatch {
+    background-color: var(--md-color-dark);
+  }
+}
+
 .system-line,
 .result-line {
   text-align: center;

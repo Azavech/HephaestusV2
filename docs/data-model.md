@@ -788,6 +788,7 @@ Swift type `ChatItem`: an enum whose case is selected by the key `type` and whos
 | `permissionRequest` | `.permissionRequest` | `PermissionRequestItem` | A request to allow a tool call.                          |
 | `questions`         | `.questions`         | `QuestionsItem`         | A set of labelled questions.                             |
 | `symbol`            | `.symbol`            | `SymbolItem`            | A request to choose one SF Symbol.                       |
+| `color`             | `.color`             | `ColorItem`             | A request to choose one color or a light and dark pair.  |
 | `system`            | `.system`            | `SystemItem`            | A line from the app, such as the session start.          |
 | `result`            | `.result`            | `ResultItem`            | The end of a CLI turn ([Chats](chats.md#turn-tracking)). |
 
@@ -801,6 +802,7 @@ public enum ChatItem: Codable, Sendable, Hashable, Identifiable {
     case permissionRequest(PermissionRequestItem)
     case questions(QuestionsItem)
     case symbol(SymbolItem)
+    case color(ColorItem)
     case system(SystemItem)
     case result(ResultItem)
 }
@@ -925,6 +927,23 @@ The persisted form of a symbol request posted with the MCP tool `ask_symbol` ([C
 
 ```json
 {"type":"symbol","id":"6C9D1E2F-3A4B-4C5D-8E6F-7A8B9C0D1E2F","created":"2026-11-01T14:20:01Z","requestID":"6C9D1E2F-3A4B-4C5D-8E6F-7A8B9C0D1E2F","question":"Which icon should the filter button use?","suggestions":["line.3.horizontal.decrease.circle","line.3.horizontal.decrease","slider.horizontal.3"],"recommended":"line.3.horizontal.decrease.circle","answer":"![](sf:line.3.horizontal.decrease.circle)"}
+```
+
+### Color item
+
+The persisted form of a color request posted with the MCP tool `ask_color` ([Chats](chats.md#color-requests)).
+
+| Swift name   | Key            | Type           | Required | Default | Rules                                                                                                                                                                                                                                                                                                           |
+| ------------ | -------------- | -------------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| requestID    | `requestID`    | `UUID`         | yes      | —       | Id of the request, used by `chats.answerColor`; the item's `id` is its uppercase string.                                                                                                                                                                                                                        |
+| question     | `question`     | `String`       | yes      | —       | Non-empty Markdown text.                                                                                                                                                                                                                                                                                        |
+| lightAndDark | `lightAndDark` | `Bool`         | yes      | —       | true when Claude asked for a light and dark pair.                                                                                                                                                                                                                                                               |
+| suggestions  | `suggestions`  | `[ColorValue]` | yes      | —       | 2 to 10 distinct suggestions, trimmed, in the order Claude gave them: colors, JSON strings, when `lightAndDark` is false; pairs, JSON objects `{"light", "dark"}`, when it is true ([ColorValue](engine-api.md#colorvalue)). A color is a hex color `#RRGGBB` or a [system color name](chats.md#system-colors). |
+| recommended  | `recommended`  | `ColorValue`   | yes      | —       | One of `suggestions`, as Claude wrote it.                                                                                                                                                                                                                                                                       |
+| answer       | `answer`       | `String?`      | no       | `null`  | `null` until the user answers: then `![](color:<color>)` for one color, `Light ![](color:<color>), Dark ![](color:<color>)` for a light and dark pair, the user's own text, or `Skipped` for a skipped request. It is set once.                                                                                 |
+
+```json
+{"type":"color","id":"7D0E2F3A-4B5C-4D6E-9F7A-8B9C0D1E2F3A","created":"2026-11-03T14:20:01Z","requestID":"7D0E2F3A-4B5C-4D6E-9F7A-8B9C0D1E2F3A","question":"Which background color should the card use?","lightAndDark":true,"suggestions":[{"light":"#FFFFFF","dark":"#1C1C1E"},{"light":"systemBackground","dark":"secondarySystemBackground"}],"recommended":{"light":"#FFFFFF","dark":"#1C1C1E"},"answer":"Light ![](color:#FFFFFF), Dark ![](color:#2C2C2E)"}
 ```
 
 ### System item
@@ -1373,7 +1392,7 @@ At launch the engine:
 1. Creates the data directory and its missing subfolders.
 2. Reads `device.yml`, `secrets.json`, `settings.yml`, `registry.yml` and `remotes.yml`. A missing file is created with its defaults: a new device id, a new pairing code and external token, empty lists. An invalid file is renamed to `<file>.invalid`, replacing an older one, logged as an error, and recreated with its defaults. Then it reads `plan-usage.yml`, which is never created at launch: a missing file gives no plan usage, and an invalid one is renamed to `plan-usage.yml.invalid`, replacing an older one, logged as an error, and gives no plan usage. Default chosen at design time.
 3. Loads the projects of the registry in order, each followed by its sub projects, depth first in `subprojects` order. A project is skipped and logged when its project file is missing or invalid, or when its identifier is already used by a loaded project. A project skipped because its identifier is used is tried again, in registry order, each time a project is unloaded or unregistered. Default chosen at design time.
-4. Loads every ticket, bundle and chat metadata file of each loaded project. An invalid ticket or bundle file is skipped and logged, and loads once it becomes valid ([External changes](#external-changes)); an invalid chat metadata file is skipped and logged until the next launch. For each loaded chat the engine replays its transcript once, in a child task, to find whether it holds a question set that is not completed or a symbol request without answer, which sets the chat's state to `waitingAnswers` ([Chats](chats.md#chat-states)) with `chat.updated`, and to cancel its pending permission requests ([Chats](chats.md#cancellation)); the items are not kept. Until the scan of a chat ends its state is `idle`. Clients read the items with `chats.get`. Default chosen at design time. Then the engine sets to `done` each bundle of the project that lists at least one ticket and whose tickets are all `done`, the Complete rule of [Bundle status rules](tickets.md#bundle-status-rules): it writes the bundle file and emits `bundle.updated` with the actor `system`. A bundle file that cannot be written keeps its status and is logged. The engine applies this rule each time it loads a project: at launch and when a project loads later, with `projects.open`, a changed `registry.yml`, a new sub project entry or a project file that appears.
+4. Loads every ticket, bundle and chat metadata file of each loaded project. An invalid ticket or bundle file is skipped and logged, and loads once it becomes valid ([External changes](#external-changes)); an invalid chat metadata file is skipped and logged until the next launch. For each loaded chat the engine replays its transcript once, in a child task, to find whether it holds a question set that is not completed, a symbol request without answer or a color request without answer, which sets the chat's state to `waitingAnswers` ([Chats](chats.md#chat-states)) with `chat.updated`, and to cancel its pending permission requests ([Chats](chats.md#cancellation)); the items are not kept. Until the scan of a chat ends its state is `idle`. Clients read the items with `chats.get`. Default chosen at design time. Then the engine sets to `done` each bundle of the project that lists at least one ticket and whose tickets are all `done`, the Complete rule of [Bundle status rules](tickets.md#bundle-status-rules): it writes the bundle file and emits `bundle.updated` with the actor `system`. A bundle file that cannot be written keeps its status and is logged. The engine applies this rule each time it loads a project: at launch and when a project loads later, with `projects.open`, a changed `registry.yml`, a new sub project entry or a project file that appears.
 5. Deletes leftover temporary files in the folders it reads.
 6. Starts watching the files ([External changes](#external-changes)).
 
@@ -1462,3 +1481,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R126: The engine sets a bundle to done when every ticket of the bundle is done, whoever changed the last ticket, and sets a done bundle back to in progress when one of its tickets is not done.
 - R127: A ticket keeps the history of its creation, status changes and renames, each with its author and date, and the Details tab shows it among the comments.
 - R128: A macOS notification, titled with the project identifier and the chat title and detailed by a Haiku summary, tells the user when a chat needs them or when Claude has finished replying; each Mac turns each kind and the summary off in Settings.
+- R132: Claude asks the user to choose a color with `ask_color`, as one color or a light and dark pair: suggestions show as swatches, any system color can be picked from a grid and any other color with the macOS color panel or a hex field, the user answers another way or skips, and the chat shows the colors Claude names and the answer as swatches.

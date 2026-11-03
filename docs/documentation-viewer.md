@@ -160,11 +160,14 @@ public struct MarkdownRenderOptions: Sendable {
     public var stripFrontMatter: Bool
     /// Draws the SF Symbol markers whose name it accepts; nil leaves `sf:` images refused.
     public var isSymbolAvailable: (@Sendable (String) -> Bool)?
+    /// Draws the color markers whose color it gives a swatch for; nil leaves `color:` images refused.
+    public var colorSwatch: (@Sendable (String) -> MarkdownColorSwatch?)?
     /// Identifiers of the projects of the device; their ticket and bundle ids become links.
     public var projectIdentifiers: Set<String>
 
     public init(baseDirectory: String = "", projectRootPath: String? = nil, stripFrontMatter: Bool = false,
-                isSymbolAvailable: (@Sendable (String) -> Bool)? = nil, projectIdentifiers: Set<String> = [])
+                isSymbolAvailable: (@Sendable (String) -> Bool)? = nil,
+                colorSwatch: (@Sendable (String) -> MarkdownColorSwatch?)? = nil, projectIdentifiers: Set<String> = [])
 }
 
 public enum MarkdownHTMLRenderer {
@@ -180,13 +183,13 @@ public enum MarkdownBlockRenderer {
 }
 ```
 
-| Caller                                                                 | `baseDirectory`  | `projectRootPath`        | `stripFrontMatter` | `isSymbolAvailable`                                                                     | `projectIdentifiers`                                                                                                     |
-| ---------------------------------------------------------------------- | ---------------- | ------------------------ | ------------------ | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Doc preview                                                            | the doc's folder | the project's `rootPath` | true               | nil                                                                                     | empty                                                                                                                    |
-| Chat transcript ([Chats](chats.md#web-view-and-bridge))                | `""`             | the project's `rootPath` | false              | the symbols of the Mac that shows the window ([Chats](chats.md#links-images-and-files)) | the identifiers of the projects of the window's device, sub projects included ([Chats](chats.md#links-images-and-files)) |
-| Ticket descriptions and comments ([Tickets](tickets.md#ticket-detail)) | `""`             | the project's `rootPath` | false              | nil                                                                                     | the identifiers of the projects of the window's device, sub projects included ([Tickets](tickets.md#ticket-detail))      |
+| Caller                                                                 | `baseDirectory`  | `projectRootPath`        | `stripFrontMatter` | `isSymbolAvailable`                                                                     | `colorSwatch`                                                                                                                             | `projectIdentifiers`                                                                                                     |
+| ---------------------------------------------------------------------- | ---------------- | ------------------------ | ------------------ | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Doc preview                                                            | the doc's folder | the project's `rootPath` | true               | nil                                                                                     | nil                                                                                                                                       | empty                                                                                                                    |
+| Chat transcript ([Chats](chats.md#web-view-and-bridge))                | `""`             | the project's `rootPath` | false              | the symbols of the Mac that shows the window ([Chats](chats.md#links-images-and-files)) | the light and dark values of the hex colors and system colors on the Mac that shows the window ([Chats](chats.md#links-images-and-files)) | the identifiers of the projects of the window's device, sub projects included ([Chats](chats.md#links-images-and-files)) |
+| Ticket descriptions and comments ([Tickets](tickets.md#ticket-detail)) | `""`             | the project's `rootPath` | false              | nil                                                                                     | nil                                                                                                                                       | the identifiers of the projects of the window's device, sub projects included ([Tickets](tickets.md#ticket-detail))      |
 
-Other callers state their options in their own document. The output depends only on the text and the options: the same input always gives the same bytes, as long as `isSymbolAvailable` gives the same answers. The doc preview links no ticket or bundle id ([Ticket and bundle ids](#ticket-and-bundle-ids)).
+Other callers state their options in their own document. The output depends only on the text and the options: the same input always gives the same bytes, as long as `isSymbolAvailable` and `colorSwatch` give the same answers. The doc preview links no ticket or bundle id ([Ticket and bundle ids](#ticket-and-bundle-ids)).
 
 ### Front matter
 
@@ -246,6 +249,8 @@ The unsupported list, the omitted comments and the inline attributes rendering a
 | Image with a refused source               | `<span class="md-image-blocked" title="Image not loaded">`, the escaped alt text, `</span>`                                                                                                                                                             |
 | SF Symbol marker of an available symbol   | `<span class="md-symbol"><span class="md-symbol-icon" data-symbol="…"></span>`, the escaped name, `</span>`; the `data-symbol` value is the name ([SF Symbol markers](#sf-symbol-markers))                                                              |
 | SF Symbol marker of another name          | its source text as written, escaped ([SF Symbol markers](#sf-symbol-markers))                                                                                                                                                                           |
+| Color marker of an accepted color         | `<span class="md-color"><span class="md-color-swatch" data-light="…" data-dark="…"></span>`, the escaped color, `</span>`; the `data-light` and `data-dark` values are the swatch's ([Color markers](#color-markers))                                   |
+| Color marker of another color             | its source text as written, escaped ([Color markers](#color-markers))                                                                                                                                                                                   |
 | URL autolink, extended URL autolink       | `<a href="…">…</a>`; a `www.` autolink gets the destination `http://www.…`                                                                                                                                                                              |
 | E-mail autolink, extended e-mail autolink | the escaped address as text                                                                                                                                                                                                                             |
 | Ticket or bundle id in text               | `<a class="md-id" href="hephaestus-id:…">`, the id, `</a>`; the `href` value is `hephaestus-id:` followed by the id ([Ticket and bundle ids](#ticket-and-bundle-ids))                                                                                   |
@@ -384,7 +389,7 @@ The links of ticket and bundle ids are not written by the text: the renderer mak
 
 Query and fragment of a project image are dropped. Loading remote images is a design-time choice. Default chosen at design time.
 
-An image whose source has the scheme `sf` is an [SF Symbol marker](#sf-symbol-markers) when the options have `isSymbolAvailable`. Only the chat transcript and the pinned questions card set it ([Chats](chats.md#links-images-and-files)): in the doc preview, ticket descriptions and comments an `sf:` image is refused, as the table says.
+An image whose source has the scheme `sf` is an [SF Symbol marker](#sf-symbol-markers) when the options have `isSymbolAvailable`. Only the chat transcript and the pinned questions card set it ([Chats](chats.md#links-images-and-files)): in the doc preview, ticket descriptions and comments an `sf:` image is refused, as the table says. An image whose source has the scheme `color` is a [color marker](#color-markers) when the options have `colorSwatch`, which the same callers set; elsewhere a `color:` image is refused.
 
 ### SF Symbol markers
 
@@ -396,14 +401,34 @@ An SF Symbol marker is an image whose source has the scheme `sf` (any letter cas
 
 ```swift
 public enum MarkdownSymbolMarkers {
-    /// The plain text as `.text` and `.symbol` inlines.
-    public static func inlines(in text: String, isSymbolAvailable: (String) -> Bool) -> [MarkdownInline]
-    /// The plain text as HTML: escaped text and the symbol HTML of HTML output.
-    public static func html(_ text: String, isSymbolAvailable: (String) -> Bool) -> String
+    /// The plain text as `.text`, `.symbol` and `.color` inlines.
+    public static func inlines(in text: String, isSymbolAvailable: (String) -> Bool,
+                               colorSwatch: ((String) -> MarkdownColorSwatch?)? = nil) -> [MarkdownInline]
+    /// The plain text as HTML: escaped text and the symbol and color HTML of HTML output.
+    public static func html(_ text: String, isSymbolAvailable: (String) -> Bool,
+                            colorSwatch: ((String) -> MarkdownColorSwatch?)? = nil) -> String
 }
 ```
 
 The marker syntax is the user's choice; the plain-text form and the HTML are Default chosen at design time.
+
+### Color markers
+
+A color marker is an image whose source has the scheme `color` (any letter case), for example `![](color:#FF9500)` or `![](color:systemBlue)`. Its color is the source after the first `:`. The renderers read color markers only when the options have `colorSwatch`.
+
+- When `colorSwatch` gives a swatch for the color, and the swatch's two values are CSS hex colors, `#` followed by 6 or 8 hex digits, the marker becomes `.color(color, swatch:)` in the block model and the color HTML of [HTML output](#html-output): an element with the class `md-color-swatch` that the page draws as a swatch of the swatch's light or dark value, followed by the color as written ([Chats](chats.md#links-images-and-files)). The alt text and the title are not shown.
+- Otherwise the marker becomes `.text` with its Markdown source as written, for example `![](color:#FF950080)`.
+- `MarkdownSymbolMarkers` finds color markers in plain text, when it is given `colorSwatch`, with the same two rules. In plain text a color marker is written as an SF Symbol marker with `color:`, in any letter case, in place of `sf:`.
+
+```swift
+public struct MarkdownColorSwatch: Sendable, Equatable {
+    /// CSS hex colors, `#RRGGBB` or `#RRGGBBAA`, of the light and the dark appearance.
+    public var light: String
+    public var dark: String
+}
+```
+
+The marker syntax and its drawing as a swatch followed by the color are the user's choice; the plain-text form and the HTML are Default chosen at design time.
 
 ### Ticket and bundle ids
 
@@ -413,11 +438,11 @@ When the options have `projectIdentifiers`, the renderers turn the ticket and bu
 - It is a whole word: the character before it and the character after it, when there are any, are not letters, digits, `_` or `-`. `HEPH-21.`, `(HEPH-21)` and `HEPH-21,` link `HEPH-21`; `HEPH-21a`, `XHEPH-21`, `HEPH-21-3`, `HEPH-021` and `heph-21` link nothing. `UTF-8`, `SHA-256` and `ABC-3` link only when a project of the device has the identifier `UTF`, `SHA` or `ABC`. Default chosen at design time.
 - Text: ids are found in text outside links, after the [extended URL autolinks](#renderer), so an id inside a link or an autolink keeps that link. Text split by the parser, for example around a backslash escape, is joined first.
 - Code spans: a code span whose content is exactly an id becomes a link around the code span. A code span that holds an id among other text stays code.
-- Ids are left as text in fenced and indented code blocks, HTML blocks, inline HTML, image alt texts and SF Symbol markers. Heading anchors are computed from the text as written, so they do not change.
+- Ids are left as text in fenced and indented code blocks, HTML blocks, inline HTML, image alt texts, SF Symbol markers and color markers. Heading anchors are computed from the text as written, so they do not change.
 
 HTML output: `<a class="md-id" href="hephaestus-id:HEPH-21">HEPH-21</a>` for an id in text, `<a class="md-id" href="hephaestus-id:HEPH-21"><code>HEPH-21</code></a>` for a code span. Block model: `.itemID("HEPH-21", code: false)` and `.itemID("HEPH-21", code: true)` ([Block model](#block-model)).
 
-`MarkdownItemIDs` finds ids in plain text with the same rules, for the texts that callers show outside Markdown: tool card summaries and results, permission lines and the option lines and answers of the chat transcript, and the pinned permission card ([Chats](chats.md#item-rendering)). `MarkdownSymbolMarkers` takes the same identifiers, so that one plain text gets both its SF Symbol markers and its ids; the text of a marker is never searched for ids. `renderCodeBlock` links the ids of its code with the same rules; the code blocks of Markdown text never do. In highlighted code, the id is written without token spans, so that it has the style of a link, and a token span that crosses an end of the id is closed before the link and opened again after it, for example `<span class="tok-string">&quot;</span><a class="md-id" href="hephaestus-id:HEPH-21">HEPH-21</a><span class="tok-string">&quot;</span>` for the JSON string `"HEPH-21"`.
+`MarkdownItemIDs` finds ids in plain text with the same rules, for the texts that callers show outside Markdown: tool card summaries and results, permission lines and the option lines and answers of the chat transcript, and the pinned permission card ([Chats](chats.md#item-rendering)). `MarkdownSymbolMarkers` takes the same identifiers, so that one plain text gets its SF Symbol markers, its color markers and its ids; the text of a marker is never searched for ids. `renderCodeBlock` links the ids of its code with the same rules; the code blocks of Markdown text never do. In highlighted code, the id is written without token spans, so that it has the style of a link, and a token span that crosses an end of the id is closed before the link and opened again after it, for example `<span class="tok-string">&quot;</span><a class="md-id" href="hephaestus-id:HEPH-21">HEPH-21</a><span class="tok-string">&quot;</span>` for the JSON string `"HEPH-21"`.
 
 ```swift
 public enum MarkdownItemIDs {
@@ -471,9 +496,9 @@ Raw HTML is always escaped ([Architecture](architecture.md#security-overview)):
 
 1. Every text and attribute value is escaped as in [HTML output](#html-output).
 2. HTML blocks and inline HTML never become markup: they are written as escaped text; HTML comments are left out.
-3. The renderer writes only the elements `p`, `h1`–`h6`, `hr`, `blockquote`, `ul`, `ol`, `li`, `input`, `div`, `pre`, `code`, `span`, `button`, `table`, `thead`, `tbody`, `tr`, `th`, `td`, `a`, `img`, `em`, `strong`, `del` and `br`, and only the attributes `id` (headings), `class` (the fixed `md-…` and `tok-…` names of this document), `start` (`ol`), `type`, `disabled` and `checked` (`input`), `type` (`button`), `href` and `title` (`a`), `src`, `alt`, `title` and `loading` (`img`), `data-lang` (`code`), `data-symbol` (`span`). It never writes `style` or event handler attributes.
+3. The renderer writes only the elements `p`, `h1`–`h6`, `hr`, `blockquote`, `ul`, `ol`, `li`, `input`, `div`, `pre`, `code`, `span`, `button`, `table`, `thead`, `tbody`, `tr`, `th`, `td`, `a`, `img`, `em`, `strong`, `del` and `br`, and only the attributes `id` (headings), `class` (the fixed `md-…` and `tok-…` names of this document), `start` (`ol`), `type`, `disabled` and `checked` (`input`), `type` (`button`), `href` and `title` (`a`), `src`, `alt`, `title` and `loading` (`img`), `data-lang` (`code`), `data-symbol`, `data-light` and `data-dark` (`span`). It never writes `style` or event handler attributes.
 4. Link destinations and image sources pass the tables of [Links](#links) and [Images](#images); a refused one never reaches an attribute. The `href` of an id link is `hephaestus-id:` followed by an id that matched the rules of [Ticket and bundle ids](#ticket-and-bundle-ids), which holds only letters, digits and `-`.
-5. Heading ids contain only letters, marks, numbers, connector punctuation and `-`; language labels only the characters of [Code blocks](#code-blocks); a `data-symbol` value only a name that `isSymbolAvailable` accepted, escaped.
+5. Heading ids contain only letters, marks, numbers, connector punctuation and `-`; language labels only the characters of [Code blocks](#code-blocks); a `data-symbol` value only a name that `isSymbolAvailable` accepted, escaped; a `data-light` or `data-dark` value only `#` followed by 6 or 8 hex digits.
 6. The pages that show rendered HTML run only their bundled script, set a Content Security Policy, never navigate and accept only the messages they define ([Preview web view](#preview-web-view), [Chats](chats.md#web-view-and-bridge)).
 
 HephaestusTextTests render the fixture pairs `Tests/HephaestusTextTests/Fixtures/markdown/<name>.md` and `<name>.html` and compare the output byte for byte. A pair is rendered with `baseDirectory` `docs`, `projectRootPath` `/Users/example/Developer/App` (the options of the path resolution examples) and `stripFrontMatter` true, as the doc preview renders; a file `<name>.options.json` next to the pair replaces any of these three values and can give `projectIdentifiers`, empty otherwise. The fixtures cover every row of the HTML output table, the example above, the heading anchor examples, the path resolution examples, and hostile input: `<script>` blocks, `javascript:` and `data:` links and images, `onerror=` inside raw HTML, and quotes in titles and alt texts. The pair `ids` renders with `projectIdentifiers` `HEPH` and covers the examples of [Ticket and bundle ids](#ticket-and-bundle-ids). Default chosen at design time.
@@ -522,6 +547,7 @@ public indirect enum MarkdownInline: Sendable, Equatable {
     case link(destination: String, title: String?, content: [MarkdownInline]) // accepted destinations only
     case image(source: MarkdownImageSource, alt: String, title: String?)
     case symbol(String)                  // an SF Symbol marker of an available symbol: its name
+    case color(String, swatch: MarkdownColorSwatch) // a color marker of an accepted color: the color as written and its swatch
     case itemID(String, code: Bool)      // a ticket or bundle id of a project of the device; code: written as a code span
     case softBreak
     case lineBreak
@@ -665,3 +691,4 @@ The Docs section works the same in a window that shows a remote device ([Remote 
 - R67: Each bubble renders Markdown.
 - R114: Claude marks each SF Symbol it names, and the chat transcript and the pinned questions card show the marker as the symbol's icon followed by its name.
 - R118: Ticket and bundle ids named in chats, ticket descriptions and comments are links that open the ticket or the bundle.
+- R132: Claude asks the user to choose a color with `ask_color`, as one color or a light and dark pair: suggestions show as swatches, any system color can be picked from a grid and any other color with the macOS color panel or a hex field, the user answers another way or skips, and the chat shows the colors Claude names and the answer as swatches.

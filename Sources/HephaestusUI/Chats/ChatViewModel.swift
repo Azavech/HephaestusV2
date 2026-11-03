@@ -1,6 +1,6 @@
 // OWNER: ui-chats — the state and actions of one chat view: the chat or draft it shows, the
 // composer, the pinned cards and their keys, the header (docs/chats.md › Chat view, › Composer,
-// › Pinned permission card, › Pinned questions card, › Pinned symbol card, › Draft chats).
+// › Pinned permission card, › Pinned questions card, › Pinned symbol card, › Pinned color card, › Draft chats).
 import AppKit
 import HephaestusCore
 import Observation
@@ -94,6 +94,10 @@ final class ChatViewModel {
     /// The search results of `symbolSearch`, without the suggestions (docs/chats.md › Symbol search).
     var symbolResults: [String] = []
     var isSubmittingSymbol = false
+    /// The color request the color card shows, with its selection and fields.
+    var colorRequestID: UUID?
+    var colorCard = ColorCardState()
+    var isSubmittingColor = false
 
     // MARK: Header
 
@@ -553,8 +557,55 @@ final class ChatViewModel {
     }
 
     private func answeredElsewhere(_ itemID: String) -> Bool {
-        guard case .symbol(let request)? = transcriptState?.item(itemID) else { return false }
-        return request.answer != nil
+        switch transcriptState?.item(itemID) {
+        case .symbol(let request)?: return request.answer != nil
+        case .color(let request)?: return request.answer != nil
+        default: return false
+        }
+    }
+
+    // MARK: Color card
+
+    /// The color card appears for a request: the toggle as Claude asked, the recommended
+    /// suggestion chosen, the field empty (docs/chats.md › Pinned color card).
+    func colorRequestShown(_ request: ColorItem) {
+        guard colorRequestID != request.requestID else { return }
+        colorRequestID = request.requestID
+        colorCard = ColorCardState(request: request)
+    }
+
+    var canSubmitColor: Bool {
+        colorCard.answer != nil && !isSubmittingColor
+    }
+
+    /// Submit: `chats.answerColor` with the chosen color, pair or text.
+    func submitColor() {
+        guard canSubmitColor, let answer = colorCard.answer else { return }
+        answerColorRequest(answer, action: "Submit")
+    }
+
+    /// Skip: `chats.answerColor` with `Skipped`.
+    func skipColor() {
+        guard !isSubmittingColor else { return }
+        answerColorRequest(QuestionNavigation.skipped, action: "Skip")
+    }
+
+    /// Stores the answer of the waiting color request. An answer that fails because the request
+    /// was answered on another device shows no alert.
+    private func answerColorRequest(_ answer: String, action: String) {
+        guard let chatID, let uuid = UUID(uuidString: chatID), let request = transcriptState?.waitingColorRequest else { return }
+        isSubmittingColor = true
+        Task {
+            defer { isSubmittingColor = false }
+            do {
+                _ = try await workspace.call(ChatsAnswerColor.self, ChatsAnswerColor.Params(
+                    chatID: uuid, requestID: request.requestID, answer: answer))
+            } catch let error as EngineError where error.code == .conflict && answeredElsewhere(request.id) {
+                return
+            } catch {
+                alert(.failure(action, error))
+            }
+        }
     }
 
     // MARK: Card keys (docs/chats.md › Keyboard shortcuts)
@@ -575,7 +626,7 @@ final class ChatViewModel {
     }
 
     /// ⌘Return, ⌥⌘Return and ⇧⌘Return answer the permission card once its request has been shown
-    /// for 1 second; ⌘Return submits the questions card or the symbol card when no permission card
+    /// for 1 second; ⌘Return submits the questions card, the symbol card or the color card when no permission card
     /// is shown and the card is not minimized. Both act only while the focus is in this chat view
     /// outside its composer.
     func handleKey(_ event: NSEvent) -> Bool {
@@ -605,6 +656,11 @@ final class ChatViewModel {
         if flags == [.command], let request = state.waitingSymbolRequest, let chatID,
            app?.isQuestionsCardMinimized(chatID: chatID, setID: request.requestID) != true {
             submitSymbol()
+            return true
+        }
+        if flags == [.command], let request = state.waitingColorRequest, let chatID,
+           app?.isQuestionsCardMinimized(chatID: chatID, setID: request.requestID) != true {
+            submitColor()
             return true
         }
         return false

@@ -154,17 +154,20 @@ extension Engine {
         chats.costs[chatID] = cost
         var open: QuestionsItem?
         var openSymbol: SymbolItem?
+        var openColor: ColorItem?
         var hasText = false
         for item in items {
             switch item {
             case .questions(let set) where !set.completed: open = set
             case .symbol(let request) where request.answer == nil: openSymbol = request
+            case .color(let request) where request.answer == nil: openColor = request
             case .user(let user) where !user.text.isEmpty: hasText = true
             default: break
             }
         }
         chats.openQuestionSets[chatID] = open
         chats.openSymbolRequests[chatID] = openSymbol
+        chats.openColorRequests[chatID] = openColor
         chats.hasTextMessage[chatID] = hasText
         return costChanged
     }

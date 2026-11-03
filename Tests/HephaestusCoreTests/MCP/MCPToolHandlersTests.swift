@@ -190,6 +190,37 @@ struct MCPToolHandlersTests {
             == .failure(MCPToolError(code: .conflict, message: "Questions are already waiting for answers in this chat.")))
     }
 
+    @Test("ask_color: the external token fails before validation; a chat token posts to its chat")
+    func askColor() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        let refused = try await Self.call(handlers, "ask_color", #"{"suggestions":"not an array"}"#, actor: Self.external)
+        #expect(refused == .failure(MCPToolError(code: .forbidden, message: "Only the chat's own Claude can ask questions.")))
+        #expect(engine.calls.isEmpty)
+
+        #expect(try await Self.call(handlers, "ask_color", #"{"question":"Which?","suggestions":["red"]}"#)
+            == .failure(MCPToolError(code: .invalid, message: "recommended: required.")))
+        #expect(try await Self.call(handlers, "ask_color", #"{"question":"Which?","suggestions":["red","blue"],"recommended":"red","lightAndDark":"yes"}"#)
+            == .failure(MCPToolError(code: .invalid, message: "lightAndDark: must be a boolean.")))
+        #expect(engine.calls.isEmpty)
+
+        let arguments = ##"{"question":"Which background?","suggestions":[{"light":"#FFFFFF","dark":"#1C1C1E"},{"light":"systemBackground","dark":"label"}],"recommended":{"light":"#FFFFFF","dark":"#1C1C1E"},"lightAndDark":true}"##
+        let asked = try await Self.call(handlers, "ask_color", arguments)
+        #expect(asked == .success("color request shown; the answer arrives in the next user message; end your turn"))
+        let call = try #require(engine.calls.last)
+        #expect(call.method == "chats.postColor")
+        #expect(call.params == .object([
+            "chatID": .string(Self.chatID.uuidString), "question": "Which background?",
+            "suggestions": .array([.object(["light": "#FFFFFF", "dark": "#1C1C1E"]), .object(["light": "systemBackground", "dark": "label"])]),
+            "recommended": .object(["light": "#FFFFFF", "dark": "#1C1C1E"]), "lightAndDark": .bool(true),
+        ]))
+        #expect(call.actor == Self.chat)
+
+        engine.answer("chats.postColor", .failure(EngineError(.conflict, "A color request is already waiting for an answer in this chat.")))
+        #expect(try await Self.call(handlers, "ask_color", arguments)
+            == .failure(MCPToolError(code: .conflict, message: "A color request is already waiting for an answer in this chat.")))
+    }
+
     @Test("close_chat: the external token fails before validation; a chat token closes its own chat")
     func closeChat() async throws {
         let engine = RecordedEngine()

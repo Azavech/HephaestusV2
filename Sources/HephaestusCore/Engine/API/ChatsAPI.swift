@@ -261,6 +261,53 @@ public enum ChatsAnswerSymbol: EngineMethod {
     public typealias Result = Empty
 }
 
+/// `chats.postColor`: called by the MCP tool `ask_color`. Actors: claude (the chat's own Claude
+/// only).
+public enum ChatsPostColor: EngineMethod {
+    public static let name = "chats.postColor"
+    public struct Params: Codable, Sendable, Hashable {
+        /// Must be the actor's chatID.
+        public var chatID: ChatID
+        /// Markdown text, not empty after trimming.
+        public var question: String
+        /// 2 to 10 distinct suggestions: colors without `lightAndDark`, pairs with it.
+        public var suggestions: [ColorValue]
+        /// One of the suggestions.
+        public var recommended: ColorValue
+        /// true asks for a light and dark pair; absent counts as false.
+        public var lightAndDark: Bool?
+
+        public init(chatID: ChatID, question: String, suggestions: [ColorValue], recommended: ColorValue,
+                    lightAndDark: Bool? = nil) {
+            self.chatID = chatID
+            self.question = question
+            self.suggestions = suggestions
+            self.recommended = recommended
+            self.lightAndDark = lightAndDark
+        }
+    }
+    public typealias Result = ColorRequest
+}
+
+/// `chats.answerColor`. Actors: user.
+public enum ChatsAnswerColor: EngineMethod {
+    public static let name = "chats.answerColor"
+    public struct Params: Codable, Sendable, Hashable {
+        public var chatID: ChatID
+        public var requestID: UUID
+        /// `![](color:<color>)`, `Light ![](color:<color>), Dark ![](color:<color>)`, free text, or
+        /// `Skipped`; trimmed; not empty.
+        public var answer: String
+
+        public init(chatID: ChatID, requestID: UUID, answer: String) {
+            self.chatID = chatID
+            self.requestID = requestID
+            self.answer = answer
+        }
+    }
+    public typealias Result = Empty
+}
+
 /// `chats.implementTicket`. Actors: user, claude.
 public enum ChatsImplementTicket: EngineMethod {
     public static let name = "chats.implementTicket"

@@ -34,6 +34,8 @@ final class ChatManager {
     var openQuestionSets: [ChatID: QuestionsItem] = [:]
     /// The symbol request without answer, per chat (docs/chats.md › Symbol requests).
     var openSymbolRequests: [ChatID: SymbolItem] = [:]
+    /// The color request without answer, per chat (docs/chats.md › Color requests).
+    var openColorRequests: [ChatID: ColorItem] = [:]
     /// The problems of the symbol catalogue were logged (docs/chats.md › Symbol catalogue).
     var loggedSymbolCatalogProblems = false
     /// Chats whose transcript was replayed since the engine started, so that their question
@@ -76,7 +78,9 @@ final class ChatManager {
         if let process = runtime?.process, !process.permissionOrder.isEmpty { return .waitingPermission }
         if runtime?.starting == true { return .starting }
         if runtime?.turnInProgress == true { return .running }
-        if openQuestionSets[chatID] != nil || openSymbolRequests[chatID] != nil { return .waitingAnswers }
+        if openQuestionSets[chatID] != nil || openSymbolRequests[chatID] != nil || openColorRequests[chatID] != nil {
+            return .waitingAnswers
+        }
         return .idle
     }
 

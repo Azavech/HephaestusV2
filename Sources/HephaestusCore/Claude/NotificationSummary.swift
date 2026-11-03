@@ -10,6 +10,8 @@ public enum NotificationSubject: Sendable, Hashable {
     case questions([Question])
     /// A chat waiting for answers: the question of the symbol request without answer.
     case symbol(question: String)
+    /// A chat waiting for answers: the question of the color request without answer.
+    case color(question: String)
 }
 
 /// Writes the detail of a chat notification (docs/chats.md › Notifications). A nil answer gives
@@ -70,6 +72,9 @@ public struct HaikuNotificationSummarizer: NotificationSummarizer {
             body = questions.sorted { $0.label < $1.label }.map { "\($0.label): \($0.question)" }.joined(separator: "\n")
         case .symbol(let question):
             label = "Symbol request:"
+            body = question
+        case .color(let question):
+            label = "Color request:"
             body = question
         }
         return label + "\n" + String(body.prefix(HaikuTitleNamer.inputLimit))

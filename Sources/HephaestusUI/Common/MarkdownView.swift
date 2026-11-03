@@ -260,6 +260,10 @@ enum MarkdownAttributed {
                     flush()
                     parts.append(Text(Image(systemName: name)))
                     current.append(MarkdownAttributed.run(" " + name, intent: intent, link: link))
+                case .color(let color, _):
+                    flush()
+                    parts.append(Text(Image(nsImage: ColorSwatches.image(color))))
+                    current.append(MarkdownAttributed.run(" " + color, intent: intent, link: link))
                 case .itemID(let id, let code):
                     // A ticket or bundle id: a link like the others of the text.
                     current.append(MarkdownAttributed.run(id, intent: code ? intent.union(.code) : intent,
@@ -529,6 +533,8 @@ enum MarkdownBlockCache {
         var stripFrontMatter: Bool
         /// SF Symbol markers are read; every caller that reads them asks the same Mac.
         var readsSymbols: Bool
+        /// Color markers are read; every caller that reads them asks the same Mac.
+        var readsColors: Bool
         var projectIdentifiers: Set<String>
     }
 
@@ -537,6 +543,7 @@ enum MarkdownBlockCache {
     static func blocks(_ markdown: String, options: MarkdownRenderOptions) -> [MarkdownBlock] {
         let key = Key(markdown: markdown, baseDirectory: options.baseDirectory, projectRootPath: options.projectRootPath,
                       stripFrontMatter: options.stripFrontMatter, readsSymbols: options.isSymbolAvailable != nil,
+                      readsColors: options.colorSwatch != nil,
                       projectIdentifiers: options.projectIdentifiers)
         if let blocks = entries[key] {
             return blocks

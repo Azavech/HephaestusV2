@@ -49,6 +49,12 @@ extension Engine {
         register(ChatsAnswerSymbol.self, actors: [.user]) { [unowned self] params, actor in
             try await self.chatsAnswerSymbol(params, actor)
         }
+        register(ChatsPostColor.self, actors: [.claude]) { [unowned self] params, actor in
+            try await self.chatsPostColor(params, actor)
+        }
+        register(ChatsAnswerColor.self, actors: [.user]) { [unowned self] params, actor in
+            try await self.chatsAnswerColor(params, actor)
+        }
         register(ChatsImplementTicket.self, actors: [.user, .claude]) { [unowned self] params, actor in
             try await self.chatsImplementTicket(params, actor)
         }
@@ -361,6 +367,7 @@ extension Engine {
         chats.costs[chatID] = nil
         chats.openQuestionSets[chatID] = nil
         chats.openSymbolRequests[chatID] = nil
+        chats.openColorRequests[chatID] = nil
         chats.drivingDevices[chatID] = nil
         chats.scannedChats.remove(chatID)
         chats.hasTextMessage[chatID] = nil
@@ -475,14 +482,18 @@ extension Engine {
         return Empty()
     }
 
-    /// A chat has at most one waiting request: a question set that is not completed or a symbol
-    /// request without answer (docs/chats.md › Posting questions, › Posting a symbol request).
+    /// A chat has at most one waiting request: a question set that is not completed, a symbol
+    /// request or a color request without answer (docs/chats.md › Posting questions, › Posting a
+    /// symbol request, › Posting a color request).
     private func requireNoWaitingRequest(_ chatID: ChatID) throws {
         guard chats.openQuestionSets[chatID] == nil else {
             throw EngineError(.conflict, "Questions are already waiting for answers in this chat.")
         }
         guard chats.openSymbolRequests[chatID] == nil else {
             throw EngineError(.conflict, "A symbol request is already waiting for an answer in this chat.")
+        }
+        guard chats.openColorRequests[chatID] == nil else {
+            throw EngineError(.conflict, "A color request is already waiting for an answer in this chat.")
         }
     }
 
@@ -550,6 +561,66 @@ extension Engine {
             return request
         }
         throw EngineError.notFound("Symbol request", requestID.uuidString)
+    }
+
+    /// `chats.postColor` (docs/chats.md › Posting a color request).
+    func chatsPostColor(_ params: ChatsPostColor.Params, _ actor: Actor) async throws -> ColorRequest {
+        try ActorRules.requireOwnChat(params.chatID, actor)
+        let suggestions = params.suggestions.map(\.trimmed)
+        let recommended = params.recommended.trimmed
+        let lightAndDark = params.lightAndDark ?? false
+        try Engine.validated {
+            try ModelRules.colorRequest(question: params.question, suggestions: suggestions, recommended: recommended,
+                                        lightAndDark: lightAndDark)
+        }
+        _ = try requireChat(params.chatID)
+        try ensureChatScanned(params.chatID)
+        try requireNoWaitingRequest(params.chatID)
+        let requestID = UUID()
+        let question = ModelRules.normalizedLineBreaks(params.question)
+        let item = ColorItem(id: requestID.uuidString, created: ISODate.now(), requestID: requestID, question: question,
+                             lightAndDark: lightAndDark, suggestions: suggestions, recommended: recommended)
+        try appendChatItem(.color(item), chatID: params.chatID, origin: actor)
+        chats.openColorRequests[params.chatID] = item
+        emitChatUpdated(params.chatID, origin: actor)
+        return ColorRequest(requestID: requestID, chatID: params.chatID, question: question, lightAndDark: lightAndDark,
+                            suggestions: suggestions, recommended: recommended)
+    }
+
+    /// `chats.answerColor` (docs/chats.md › Answering a color request).
+    func chatsAnswerColor(_ params: ChatsAnswerColor.Params, _ actor: Actor) async throws -> Empty {
+        let chatID = params.chatID
+        let answer = ModelRules.normalizedLineBreaks(params.answer.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard (1...10_000).contains(answer.count) else {
+            throw EngineError.invalid("answer", "use 1 to 10,000 characters")
+        }
+        func check() throws -> ColorItem {
+            _ = try requireChat(chatID)
+            try ensureChatScanned(chatID)
+            return try colorRequest(params.requestID, chatID: chatID)
+        }
+        _ = try check()
+        _ = try await requireClaudeCLI()
+        let sender = senderName(actor)
+        var request = try check()
+        recordDrivingDevice(chatID, actor)
+        request.answer = answer
+        try appendChatItem(.color(request), chatID: chatID, op: .update, origin: actor)
+        chats.openColorRequests[chatID] = nil
+        try sendChatMessage(chatID, text: Engine.colorMessage(answer), attachments: [], sender: sender, origin: actor)
+        return Empty()
+    }
+
+    /// The color request `requestID` of a chat without answer: the open one, or one of the
+    /// transcript; `conflict` when it has an answer, `notFound` when the chat has none with this id.
+    private func colorRequest(_ requestID: UUID, chatID: ChatID) throws -> ColorItem {
+        if let open = chats.openColorRequests[chatID], open.requestID == requestID { return open }
+        for item in try loadTranscript(chatID) {
+            guard case .color(let request) = item, request.requestID == requestID else { continue }
+            if request.answer != nil { throw EngineError(.conflict, "This color request was already answered.") }
+            return request
+        }
+        throw EngineError.notFound("Color request", requestID.uuidString)
     }
 
     /// The question set `questionSetID` of a chat: the open one, or one of the transcript;

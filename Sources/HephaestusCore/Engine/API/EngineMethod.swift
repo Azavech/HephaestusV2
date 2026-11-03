@@ -99,6 +99,7 @@ public enum EngineMethods {
         ChatsList.self, ChatsGet.self, ChatsCreate.self, ChatsSend.self, ChatsInterrupt.self,
         ChatsUpdateSettings.self, ChatsRename.self, ChatsDelete.self, ChatsClose.self, ChatsReopen.self, ChatsAnswerPermission.self,
         ChatsPostQuestions.self, ChatsAnswerQuestion.self, ChatsPostSymbol.self, ChatsAnswerSymbol.self,
+        ChatsPostColor.self, ChatsAnswerColor.self,
         ChatsImplementTicket.self, ChatsImplementBundle.self,
         ChatsCreateFeedback.self,
         ClaudeModels.self, ClaudeStatusMethod.self, ClaudePlanUsage.self, ClaudeReportPlanUsage.self,

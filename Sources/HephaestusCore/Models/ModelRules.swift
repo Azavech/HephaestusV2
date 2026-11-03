@@ -343,4 +343,33 @@ public enum ModelRules {
             throw ValidationError(field: "recommended", message: "ask_symbol: the recommended symbol must be one of the suggestions.")
         }
     }
+
+    /// The rules of a color request (docs/workflow.md › Color requests), in their order, on the
+    /// suggestions and the recommended suggestion with their colors trimmed.
+    public static func colorRequest(question: String, suggestions: [ColorValue], recommended: ColorValue,
+                                    lightAndDark: Bool) throws {
+        guard !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ValidationError(field: "question", message: "ask_color needs a question.")
+        }
+        guard (2...10).contains(suggestions.count) else {
+            throw ValidationError(field: "suggestions", message: "ask_color needs 2 to 10 suggestions.")
+        }
+        let values = suggestions + [recommended]
+        if !lightAndDark, values.contains(where: \.isPair) {
+            throw ValidationError(field: "suggestions",
+                                  message: "ask_color needs one color per suggestion, or lightAndDark for light and dark pairs.")
+        }
+        if lightAndDark, values.contains(where: { !$0.isPair }) {
+            throw ValidationError(field: "suggestions", message: "ask_color needs a light and dark pair per suggestion.")
+        }
+        if let unknown = suggestions.flatMap(\.colors).first(where: { !SystemColors.isColor($0) }) {
+            throw ValidationError(field: "suggestions", message: "\(unknown) is not a hex color #RRGGBB or a system color name.")
+        }
+        for (index, suggestion) in suggestions.enumerated() where suggestions[..<index].contains(where: { $0.isSame(as: suggestion) }) {
+            throw ValidationError(field: "suggestions", message: "ask_color has a repeated suggestion.")
+        }
+        guard suggestions.contains(where: { $0.isSame(as: recommended) }) else {
+            throw ValidationError(field: "recommended", message: "ask_color: the recommended color must be one of the suggestions.")
+        }
+    }
 }

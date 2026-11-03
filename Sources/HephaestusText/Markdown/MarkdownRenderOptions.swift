@@ -11,17 +11,50 @@ public struct MarkdownRenderOptions: Sendable {
     /// Draws the SF Symbol markers whose name it accepts; nil leaves `sf:` images refused
     /// (docs/documentation-viewer.md › SF Symbol markers).
     public var isSymbolAvailable: (@Sendable (String) -> Bool)?
+    /// Draws the color markers whose color it gives a swatch for; nil leaves `color:` images
+    /// refused (docs/documentation-viewer.md › Color markers).
+    public var colorSwatch: (@Sendable (String) -> MarkdownColorSwatch?)?
     /// Identifiers of the projects of the device; their ticket and bundle ids become links
     /// (docs/documentation-viewer.md › Ticket and bundle ids).
     public var projectIdentifiers: Set<String>
 
     public init(baseDirectory: String = "", projectRootPath: String? = nil, stripFrontMatter: Bool = false,
-                isSymbolAvailable: (@Sendable (String) -> Bool)? = nil, projectIdentifiers: Set<String> = []) {
+                isSymbolAvailable: (@Sendable (String) -> Bool)? = nil,
+                colorSwatch: (@Sendable (String) -> MarkdownColorSwatch?)? = nil, projectIdentifiers: Set<String> = []) {
         self.baseDirectory = baseDirectory
         self.projectRootPath = projectRootPath
         self.stripFrontMatter = stripFrontMatter
         self.isSymbolAvailable = isSymbolAvailable
+        self.colorSwatch = colorSwatch
         self.projectIdentifiers = projectIdentifiers
+    }
+}
+
+/// The light and dark values of a color marker's swatch (docs/documentation-viewer.md › Color
+/// markers): CSS hex colors, `#RRGGBB` or `#RRGGBBAA`.
+public struct MarkdownColorSwatch: Sendable, Equatable, Hashable {
+    public var light: String
+    public var dark: String
+
+    public init(light: String, dark: String) {
+        self.light = light
+        self.dark = dark
+    }
+
+    /// Both values are `#` followed by 6 or 8 hex digits, so they can be written in attributes.
+    public var isValid: Bool {
+        Self.isCSSHex(light) && Self.isCSSHex(dark)
+    }
+
+    static func isCSSHex(_ value: String) -> Bool {
+        let scalars = Array(value.unicodeScalars)
+        guard scalars.count == 7 || scalars.count == 9, scalars[0] == "#" else { return false }
+        return scalars.dropFirst().allSatisfy { scalar in
+            switch scalar {
+            case "0"..."9", "a"..."f", "A"..."F": return true
+            default: return false
+            }
+        }
     }
 }
 

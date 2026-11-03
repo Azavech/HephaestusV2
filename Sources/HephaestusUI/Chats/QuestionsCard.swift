@@ -81,6 +81,7 @@ struct QuestionsCard: View {
             MarkdownView(markdown: question.question)
                 .transformEnvironment(\.markdownContext) { context in
                     context.options.isSymbolAvailable = SFSymbols.isAvailable
+                    context.options.colorSwatch = ColorSwatches.swatch
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
@@ -160,9 +161,10 @@ struct QuestionsCard: View {
     }
 
     /// Plain text in which each SF Symbol marker of this Mac shows the symbol's image followed by a
-    /// space and its name.
+    /// space and its name, and each color marker a swatch followed by a space and the color.
     private func symbolText(_ text: String) -> Text {
-        MarkdownAttributed.text(MarkdownSymbolMarkers.inlines(in: text, isSymbolAvailable: SFSymbols.isAvailable))
+        MarkdownAttributed.text(MarkdownSymbolMarkers.inlines(in: text, isSymbolAvailable: SFSymbols.isAvailable,
+                                                              colorSwatch: ColorSwatches.swatch))
     }
 
     /// `Answer another way` with a multi-line field of 1 to 6 visible lines; a click on its line
@@ -202,7 +204,7 @@ struct RecommendedTag: View {
     }
 }
 
-/// A radio button of the questions card and the symbol card.
+/// A radio button of the questions card, the symbol card and the color card.
 struct RadioButton: View {
     let selected: Bool
     let choose: () -> Void

@@ -114,26 +114,26 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | MCP request with the external token    | claude, chatID `external`                       |
 | Engine-internal work and tests         | system                                          |
 
-- **user** may call every method except `chats.postQuestions`, `chats.postSymbol` and `chats.close`. Local and remote users have the same rights.
-- **claude** may call only the 45 methods that MCP tools map to (the Actors column says "claude"), with the rules below. Any other method fails with `forbidden` before its params are decoded.
+- **user** may call every method except `chats.postQuestions`, `chats.postSymbol`, `chats.postColor` and `chats.close`. Local and remote users have the same rights.
+- **claude** may call only the 46 methods that MCP tools map to (the Actors column says "claude"), with the rules below. Any other method fails with `forbidden` before its params are decoded.
 - **system** may call every method, without restrictions.
 
 ### Rules for Claude
 
-| Applies to                                   | Rule                                                                                                                                                                                   | Error     |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| tickets.create                               | `title` must be absent: Haiku always names the tickets Claude creates.                                                                                                                 | forbidden |
-| tickets.create, tickets.update               | `description` must follow the ticket template ([Tickets and bundles](tickets.md#template-validation)), at creation and on update.                                                      | invalid   |
-| bundles.setStatus                            | Setting `done` is refused, and so is changing the status of a bundle whose status is `done`.                                                                                           | forbidden |
-| tickets.setStatus                            | Changing the status of a ticket whose status is `done` is refused.                                                                                                                     | forbidden |
-| projects.update                              | `chatDefaults` must be absent.                                                                                                                                                         | forbidden |
-| chats.implementTicket, chats.implementBundle | `settings` must be absent; the new chat uses the project's defaults, or the calling bundle chat's settings for an orchestrated ticket chat.                                            | forbidden |
-| chats.postQuestions, chats.postSymbol        | Only the chat's own Claude may call it: the actor's chatID must equal the `chatID` param; the external token is refused.                                                               | forbidden |
-| chats.close                                  | Only the chat's own Claude may call it: the actor's chatID must equal the `chatID` param; the external token is refused (`Only the chat's own Claude can close its chat.`).            | forbidden |
-| ui.open                                      | `deviceID` is ignored; the event targets the chat's driving device ([ui.open](#uiopen)).                                                                                               | none      |
-| webTabs.update                               | `locked` false is refused (`Only the user can unlock a tab.`): only the user unlocks a tab, so Claude never closes a locked tab.                                                       | forbidden |
-| projects.remove                              | The project that holds the calling chat, or one of its ancestors, is refused (`A chat cannot remove the project it belongs to.`): removing it would end the chat's own Claude process. | forbidden |
-| Every AttachmentUpload                       | `sourcePath` is accepted from claude and system only; from user it fails.                                                                                                              | forbidden |
+| Applies to                                             | Rule                                                                                                                                                                                   | Error     |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| tickets.create                                         | `title` must be absent: Haiku always names the tickets Claude creates.                                                                                                                 | forbidden |
+| tickets.create, tickets.update                         | `description` must follow the ticket template ([Tickets and bundles](tickets.md#template-validation)), at creation and on update.                                                      | invalid   |
+| bundles.setStatus                                      | Setting `done` is refused, and so is changing the status of a bundle whose status is `done`.                                                                                           | forbidden |
+| tickets.setStatus                                      | Changing the status of a ticket whose status is `done` is refused.                                                                                                                     | forbidden |
+| projects.update                                        | `chatDefaults` must be absent.                                                                                                                                                         | forbidden |
+| chats.implementTicket, chats.implementBundle           | `settings` must be absent; the new chat uses the project's defaults, or the calling bundle chat's settings for an orchestrated ticket chat.                                            | forbidden |
+| chats.postQuestions, chats.postSymbol, chats.postColor | Only the chat's own Claude may call it: the actor's chatID must equal the `chatID` param; the external token is refused.                                                               | forbidden |
+| chats.close                                            | Only the chat's own Claude may call it: the actor's chatID must equal the `chatID` param; the external token is refused (`Only the chat's own Claude can close its chat.`).            | forbidden |
+| ui.open                                                | `deviceID` is ignored; the event targets the chat's driving device ([ui.open](#uiopen)).                                                                                               | none      |
+| webTabs.update                                         | `locked` false is refused (`Only the user can unlock a tab.`): only the user unlocks a tab, so Claude never closes a locked tab.                                                       | forbidden |
+| projects.remove                                        | The project that holds the calling chat, or one of its ancestors, is refused (`A chat cannot remove the project it belongs to.`): removing it would end the chat's own Claude process. | forbidden |
+| Every AttachmentUpload                                 | `sourcePath` is accepted from claude and system only; from user it fails.                                                                                                              | forbidden |
 
 The restrictions on `chatDefaults` and `settings` keep Claude from raising its own permission mode. Default chosen at design time. The rules on `webTabs.update` and `projects.remove` keep locked tabs open and the calling chat's own Claude process running. Default chosen at design time.
 
@@ -225,6 +225,8 @@ The first column lists every engine method; it is the list the docs conformance 
 | `chats.answerQuestion`     | ChatsAnswerQuestion     | chatID, questionSetID, label, answer                       | Empty            | user         |
 | `chats.postSymbol`         | ChatsPostSymbol         | chatID, question, suggestions, recommended                 | SymbolRequest    | claude       |
 | `chats.answerSymbol`       | ChatsAnswerSymbol       | chatID, requestID, answer                                  | Empty            | user         |
+| `chats.postColor`          | ChatsPostColor          | chatID, question, suggestions, recommended, lightAndDark?  | ColorRequest     | claude       |
+| `chats.answerColor`        | ChatsAnswerColor        | chatID, requestID, answer                                  | Empty            | user         |
 | `chats.implementTicket`    | ChatsImplementTicket    | ticketID, settings?                                        | ChatMeta         | user, claude |
 | `chats.implementBundle`    | ChatsImplementBundle    | bundleID, settings?                                        | ChatMeta         | user, claude |
 | `chats.createFeedback`     | ChatsCreateFeedback     | projectID, comment, screenshot, context, settings?         | ChatMeta         | user         |
@@ -1093,12 +1095,12 @@ Called by the MCP tool `ask_questions`, which fills `chatID` from its token. The
 
 Moves each question's recommended option to the first place of its `options`, the other options keeping their relative order ([Chats](chats.md#posting-questions)), then creates a question set (new UUID, no answers, not completed) and adds a `questions` item. The stored item and the returned QuestionSet have the options in this order. When the turn ends, the chat's state becomes `waitingAnswers`.
 
-| Error     | When                                                                                                                                                                                                                           |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| invalid   | chatID is not a UUID; a question breaks a rule (messages in [Workflow](workflow.md#validation)).                                                                                                                               |
-| notFound  | No such chat.                                                                                                                                                                                                                  |
-| forbidden | The actor is not this chat's Claude (`Only the chat's own Claude can ask questions.`).                                                                                                                                         |
-| conflict  | The chat already has a question set that is not completed (`Questions are already waiting for answers in this chat.`), or a symbol request without answer (`A symbol request is already waiting for an answer in this chat.`). |
+| Error     | When                                                                                                                                                                                                                                                                                                                              |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid   | chatID is not a UUID; a question breaks a rule (messages in [Workflow](workflow.md#validation)).                                                                                                                                                                                                                                  |
+| notFound  | No such chat.                                                                                                                                                                                                                                                                                                                     |
+| forbidden | The actor is not this chat's Claude (`Only the chat's own Claude can ask questions.`).                                                                                                                                                                                                                                            |
+| conflict  | The chat already has a question set that is not completed (`Questions are already waiting for answers in this chat.`), a symbol request without answer (`A symbol request is already waiting for an answer in this chat.`), or a color request without answer (`A color request is already waiting for an answer in this chat.`). |
 
 Events: chat.item, chat.updated.
 
@@ -1140,12 +1142,12 @@ Called by the MCP tool `ask_symbol`, which fills `chatID` from its token ([MCP s
 
 Checks the rules of [Workflow](workflow.md#symbol-requests), then creates a symbol request (new UUID, no answer) and adds a `symbol` item with the suggestions in the order given. When the turn ends, the chat's state becomes `waitingAnswers`.
 
-| Error     | When                                                                                                                                                                                                                           |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| invalid   | chatID is not a UUID; the request breaks a rule (messages in [Workflow](workflow.md#symbol-requests)).                                                                                                                         |
-| notFound  | No such chat.                                                                                                                                                                                                                  |
-| forbidden | The actor is not this chat's Claude (`Only the chat's own Claude can ask questions.`).                                                                                                                                         |
-| conflict  | The chat already has a question set that is not completed (`Questions are already waiting for answers in this chat.`), or a symbol request without answer (`A symbol request is already waiting for an answer in this chat.`). |
+| Error     | When                                                                                                                                                                                                                                                                                                                              |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid   | chatID is not a UUID; the request breaks a rule (messages in [Workflow](workflow.md#symbol-requests)).                                                                                                                                                                                                                            |
+| notFound  | No such chat.                                                                                                                                                                                                                                                                                                                     |
+| forbidden | The actor is not this chat's Claude (`Only the chat's own Claude can ask questions.`).                                                                                                                                                                                                                                            |
+| conflict  | The chat already has a question set that is not completed (`Questions are already waiting for answers in this chat.`), a symbol request without answer (`A symbol request is already waiting for an answer in this chat.`), or a color request without answer (`A color request is already waiting for an answer in this chat.`). |
 
 Events: chat.item, chat.updated.
 
@@ -1170,6 +1172,53 @@ Swift type `ChatsAnswerSymbol` · actors: user · result: [Empty](#empty)
 | unavailable | The Claude CLI is not available; nothing is stored.                                                                                         |
 
 Events: chat.item (the `symbol` item), chat.item (the user message) and chat.updated.
+
+### chats.postColor
+
+Swift type `ChatsPostColor` · actors: claude (the chat's own Claude only) · result: [ColorRequest](#colorrequest)
+
+Called by the MCP tool `ask_color`, which fills `chatID` from its token ([MCP server](mcp.md#ask_color)). The protocol is in [Workflow](workflow.md#color-requests) and its UI in [Chats](chats.md#color-requests).
+
+| Param        | Type         | Required | Description                                                                                                                                                                                                      |
+| ------------ | ------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| chatID       | ChatID       | yes      | Chat id; must be the actor's chatID.                                                                                                                                                                             |
+| question     | String       | yes      | Markdown text, not empty after trimming.                                                                                                                                                                         |
+| suggestions  | [ColorValue] | yes      | 2 to 10 distinct suggestions: colors without `lightAndDark`, pairs with it; each color a hex color `#RRGGBB` or a [system color name](chats.md#system-colors), trimmed ([Data model](data-model.md#color-item)). |
+| recommended  | ColorValue   | yes      | One of the suggestions, its colors trimmed.                                                                                                                                                                      |
+| lightAndDark | Bool         | no       | true asks for a light and dark pair; absent counts as false.                                                                                                                                                     |
+
+Checks the rules of [Workflow](workflow.md#color-requests), then creates a color request (new UUID, no answer) and adds a `color` item with the trimmed suggestions in the order given and `lightAndDark`. When the turn ends, the chat's state becomes `waitingAnswers`.
+
+| Error     | When                                                                                                                                                                                                                                                                                                                              |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid   | chatID is not a UUID; a suggestion or `recommended` is neither a string nor an object with the strings `light` and `dark` (the message of [Dispatcher errors](#dispatcher-errors)); the request breaks a rule (messages in [Workflow](workflow.md#color-requests)).                                                               |
+| notFound  | No such chat.                                                                                                                                                                                                                                                                                                                     |
+| forbidden | The actor is not this chat's Claude (`Only the chat's own Claude can ask questions.`).                                                                                                                                                                                                                                            |
+| conflict  | The chat already has a question set that is not completed (`Questions are already waiting for answers in this chat.`), a symbol request without answer (`A symbol request is already waiting for an answer in this chat.`), or a color request without answer (`A color request is already waiting for an answer in this chat.`). |
+
+Events: chat.item, chat.updated.
+
+### chats.answerColor
+
+Swift type `ChatsAnswerColor` · actors: user · result: [Empty](#empty)
+
+| Param     | Type   | Required | Description                                                                                                                                      |
+| --------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| chatID    | ChatID | yes      | Chat id.                                                                                                                                         |
+| requestID | UUID   | yes      | Color request id.                                                                                                                                |
+| answer    | String | yes      | `![](color:<color>)` for one color, `Light ![](color:<color>), Dark ![](color:<color>)` for a pair, free text, or `Skipped`; trimmed; not empty. |
+
+- `answer` is trimmed and has 1 to 10,000 characters; the answer `Skipped` marks a skipped request ([Chats](chats.md#answering-a-color-request)).
+- The engine stores the answer in the `color` item and sends one user message, by the rules of `chats.send`, with `sender` the name of the actor's device: `Color: <answer>`. During a turn it is written to the Claude process at once and the CLI runs it after that turn, as for `chats.send`.
+
+| Error       | When                                                                                                                                        |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid     | chatID or requestID is not a UUID; answer is empty or longer than 10,000 characters after trimming (`answer: use 1 to 10,000 characters.`). |
+| notFound    | No such chat; no color request with this id in it.                                                                                          |
+| conflict    | The request already has an answer (`This color request was already answered.`).                                                             |
+| unavailable | The Claude CLI is not available; nothing is stored.                                                                                         |
+
+Events: chat.item (the `color` item), chat.item (the user message) and chat.updated.
 
 ### chats.implementTicket
 
@@ -2452,14 +2501,14 @@ Rules:
 
 String enum, the `state` of a ChatMeta in the API. Declared in `API/APITypes.swift`; transitions and the state after an engine start are in [Chats](chats.md#chat-states).
 
-| Value               | Swift case           | Meaning                                                                         |
-| ------------------- | -------------------- | ------------------------------------------------------------------------------- |
-| `idle`              | `.idle`              | No turn in progress and no question set waiting for answers.                    |
-| `starting`          | `.starting`          | A message was accepted and the Claude process is being launched or initialized. |
-| `running`           | `.running`           | Claude is working on a turn.                                                    |
-| `waitingPermission` | `.waitingPermission` | The turn waits for a permission decision.                                       |
-| `waitingAnswers`    | `.waitingAnswers`    | The last turn ended with a question set or symbol request waiting.              |
-| `error`             | `.error`             | The process failed to start, or exited with a non-zero status during a turn.    |
+| Value               | Swift case           | Meaning                                                                           |
+| ------------------- | -------------------- | --------------------------------------------------------------------------------- |
+| `idle`              | `.idle`              | No turn in progress and no question set waiting for answers.                      |
+| `starting`          | `.starting`          | A message was accepted and the Claude process is being launched or initialized.   |
+| `running`           | `.running`           | Claude is working on a turn.                                                      |
+| `waitingPermission` | `.waitingPermission` | The turn waits for a permission decision.                                         |
+| `waitingAnswers`    | `.waitingAnswers`    | The last turn ended with a question set, symbol request or color request waiting. |
+| `error`             | `.error`             | The process failed to start, or exited with a non-zero status during a turn.      |
 
 ### QuestionSet
 
@@ -2522,6 +2571,40 @@ A symbol request posted by `chats.postSymbol` ([Chats](chats.md#symbol-requests)
   "requestID": "6C9D1E2F-3A4B-4C5D-8E6F-7A8B9C0D1E2F",
   "suggestions": ["line.3.horizontal.decrease.circle", "line.3.horizontal.decrease", "slider.horizontal.3"]
 }
+```
+
+### ColorRequest
+
+A color request posted by `chats.postColor` ([Chats](chats.md#color-requests)).
+
+| Field        | Type         | Required | Description                                                                                       |
+| ------------ | ------------ | -------- | ------------------------------------------------------------------------------------------------- |
+| requestID    | UUID         | yes      | Id of the request.                                                                                |
+| chatID       | ChatID       | yes      | Chat that asked.                                                                                  |
+| question     | String       | yes      | Markdown text.                                                                                    |
+| lightAndDark | Bool         | yes      | true when Claude asked for a light and dark pair.                                                 |
+| suggestions  | [ColorValue] | yes      | 2 to 10 suggestions, in the order Claude gave them: colors, or pairs when `lightAndDark` is true. |
+| recommended  | ColorValue   | yes      | One of the suggestions.                                                                           |
+| answer       | String?      | yes      | The answer ([Data model](data-model.md#color-item)); `null` until the user answers.               |
+
+```json
+{
+  "answer": null,
+  "chatID": "3F2504E0-4F89-11D3-9A0C-0305E82C3301",
+  "lightAndDark": true,
+  "question": "Which background color should the card use?",
+  "recommended": {"dark": "#1C1C1E", "light": "#FFFFFF"},
+  "requestID": "7D0E2F3A-4B5C-4D6E-9F7A-8B9C0D1E2F3A",
+  "suggestions": [{"dark": "#1C1C1E", "light": "#FFFFFF"}, {"dark": "secondarySystemBackground", "light": "systemBackground"}]
+}
+```
+
+### ColorValue
+
+A suggestion of a color request: one color, a JSON string, or a light and dark pair, a JSON object with the strings `light` and `dark`. A color is a hex color `#RRGGBB` or a [system color name](chats.md#system-colors). Declared in `Models/ChatItem.swift` as the enum `ColorValue` with the cases `color(String)` and `pair(light: String, dark: String)`. Any other JSON value does not decode.
+
+```json
+["#FF9500", "systemBlue", {"dark": "#1C1C1E", "light": "#FFFFFF"}]
 ```
 
 ### FeedbackContext
@@ -2876,3 +2959,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R127: A ticket keeps the history of its creation, status changes and renames, each with its author and date, and the Details tab shows it among the comments.
 - R128: A macOS notification, titled with the project identifier and the chat title and detailed by a Haiku summary, tells the user when a chat needs them or when Claude has finished replying; each Mac turns each kind and the summary off in Settings.
 - R130: The New Project and New Sub Project sheets set the project type to Go service when the project folder has a `go.mod` file, until the user picks a type.
+- R132: Claude asks the user to choose a color with `ask_color`, as one color or a light and dark pair: suggestions show as swatches, any system color can be picked from a grid and any other color with the macOS color panel or a hex field, the user answers another way or skips, and the chat shows the colors Claude names and the answer as swatches.

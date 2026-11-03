@@ -569,6 +569,46 @@ public struct SymbolRequest: Codable, Sendable, Hashable {
     }
 }
 
+/// A color request posted by `chats.postColor` (docs/engine-api.md › ColorRequest).
+public struct ColorRequest: Codable, Sendable, Hashable {
+    public var requestID: UUID
+    public var chatID: ChatID
+    public var question: String
+    /// true when Claude asked for a light and dark pair.
+    public var lightAndDark: Bool
+    /// 2 to 10 suggestions, in the order Claude gave them: colors, or pairs with `lightAndDark`.
+    public var suggestions: [ColorValue]
+    public var recommended: ColorValue
+    /// nil until the user answers; encoded as `null`.
+    public var answer: String?
+
+    public init(requestID: UUID, chatID: ChatID, question: String, lightAndDark: Bool, suggestions: [ColorValue],
+                recommended: ColorValue, answer: String? = nil) {
+        self.requestID = requestID
+        self.chatID = chatID
+        self.question = question
+        self.lightAndDark = lightAndDark
+        self.suggestions = suggestions
+        self.recommended = recommended
+        self.answer = answer
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case requestID, chatID, question, lightAndDark, suggestions, recommended, answer
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(requestID, forKey: .requestID)
+        try c.encode(chatID, forKey: .chatID)
+        try c.encode(question, forKey: .question)
+        try c.encode(lightAndDark, forKey: .lightAndDark)
+        try c.encode(suggestions, forKey: .suggestions)
+        try c.encode(recommended, forKey: .recommended)
+        try c.encode(answer, forKey: .answer)
+    }
+}
+
 /// Where a feedback was taken (docs/engine-api.md › FeedbackContext).
 public struct FeedbackContext: Codable, Sendable, Hashable {
     public var appVersion: String

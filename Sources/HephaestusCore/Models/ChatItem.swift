@@ -12,6 +12,7 @@ public enum ChatItem: Codable, Sendable, Hashable, Identifiable {
     case permissionRequest(PermissionRequestItem)
     case questions(QuestionsItem)
     case symbol(SymbolItem)
+    case color(ColorItem)
     case system(SystemItem)
     case result(ResultItem)
 
@@ -29,6 +30,7 @@ public enum ChatItem: Codable, Sendable, Hashable, Identifiable {
         case .permissionRequest(let item): return item
         case .questions(let item): return item
         case .symbol(let item): return item
+        case .color(let item): return item
         case .system(let item): return item
         case .result(let item): return item
         }
@@ -46,6 +48,7 @@ public enum ChatItem: Codable, Sendable, Hashable, Identifiable {
         case .permissionRequest: self = .permissionRequest(try PermissionRequestItem(from: decoder))
         case .questions: self = .questions(try QuestionsItem(from: decoder))
         case .symbol: self = .symbol(try SymbolItem(from: decoder))
+        case .color: self = .color(try ColorItem(from: decoder))
         case .system: self = .system(try SystemItem(from: decoder))
         case .result: self = .result(try ResultItem(from: decoder))
         }
@@ -66,6 +69,7 @@ public enum ChatItemType: String, Codable, Sendable, Hashable, CaseIterable {
     case permissionRequest
     case questions
     case symbol
+    case color
     case system
     case result
 }
@@ -519,6 +523,140 @@ public struct SymbolItem: ChatItemPayload {
         try ItemHeader.encode(&c, type: Self.itemType, id: id, created: created)
         try c.encode(requestID, "requestID")
         try c.encode(question, "question")
+        try c.encode(suggestions, "suggestions")
+        try c.encode(recommended, "recommended")
+        try c.encodeOptional(answer, "answer")
+    }
+}
+
+/// A suggestion of a color request: one color, a JSON string, or a light and dark pair, a JSON
+/// object with the strings `light` and `dark` (docs/engine-api.md › ColorValue). A color is a hex
+/// color `#RRGGBB` or a system color name (docs/chats.md › System colors).
+public enum ColorValue: Codable, Sendable, Hashable {
+    case color(String)
+    case pair(light: String, dark: String)
+
+    private enum CodingKeys: String, CodingKey {
+        case light, dark
+    }
+
+    public init(from decoder: Decoder) throws {
+        if let container = try? decoder.singleValueContainer(), let color = try? container.decode(String.self) {
+            self = .color(color)
+            return
+        }
+        guard let c = try? decoder.container(keyedBy: CodingKeys.self),
+              let light = try? c.decode(String.self, forKey: .light), let dark = try? c.decode(String.self, forKey: .dark) else {
+            throw DecodingError.dataCorrupted(DecodingError.Context(
+                codingPath: decoder.codingPath, debugDescription: "must be a color string or an object with the strings light and dark"))
+        }
+        self = .pair(light: light, dark: dark)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        switch self {
+        case .color(let color):
+            var c = encoder.singleValueContainer()
+            try c.encode(color)
+        case .pair(let light, let dark):
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(light, forKey: .light)
+            try c.encode(dark, forKey: .dark)
+        }
+    }
+
+    /// The colors of the value: one, or the light then the dark color of a pair.
+    public var colors: [String] {
+        switch self {
+        case .color(let color): return [color]
+        case .pair(let light, let dark): return [light, dark]
+        }
+    }
+
+    /// The color, or the light color of a pair.
+    public var light: String {
+        switch self {
+        case .color(let color): return color
+        case .pair(let light, _): return light
+        }
+    }
+
+    public var isPair: Bool {
+        if case .pair = self { return true }
+        return false
+    }
+
+    /// The value with each color trimmed.
+    public var trimmed: ColorValue {
+        switch self {
+        case .color(let color): return .color(color.trimmingCharacters(in: .whitespacesAndNewlines))
+        case .pair(let light, let dark):
+            return .pair(light: light.trimmingCharacters(in: .whitespacesAndNewlines),
+                         dark: dark.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+    }
+
+    /// Equality of docs/workflow.md › Color requests: hex digits ignoring their letter case,
+    /// names with theirs; pairs color by color.
+    public func isSame(as other: ColorValue) -> Bool {
+        switch (self, other) {
+        case (.color(let lhs), .color(let rhs)): return SystemColors.isSame(lhs, rhs)
+        case (.pair(let lightL, let darkL), .pair(let lightR, let darkR)):
+            return SystemColors.isSame(lightL, lightR) && SystemColors.isSame(darkL, darkR)
+        default: return false
+        }
+    }
+}
+
+/// A request to choose one color or a light and dark pair, posted with the MCP tool `ask_color`
+/// (docs/data-model.md › Color item).
+public struct ColorItem: ChatItemPayload {
+    public static let itemType = ChatItemType.color
+    public var id: String
+    public var created: Date
+    public var requestID: UUID
+    /// Non-empty Markdown text.
+    public var question: String
+    /// true when Claude asked for a light and dark pair.
+    public var lightAndDark: Bool
+    /// 2 to 10 distinct suggestions, in the order Claude gave them: colors, or pairs when
+    /// `lightAndDark` is true.
+    public var suggestions: [ColorValue]
+    /// One of `suggestions`.
+    public var recommended: ColorValue
+    /// nil until the user answers: `![](color:<color>)`, `Light ![](color:<color>), Dark
+    /// ![](color:<color>)`, the user's own text, or `Skipped`.
+    public var answer: String?
+
+    public init(id: String, created: Date, requestID: UUID, question: String, lightAndDark: Bool, suggestions: [ColorValue],
+                recommended: ColorValue, answer: String? = nil) {
+        self.id = id
+        self.created = created
+        self.requestID = requestID
+        self.question = question
+        self.lightAndDark = lightAndDark
+        self.suggestions = suggestions
+        self.recommended = recommended
+        self.answer = answer
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try ModelDecodingContainer(decoder)
+        (id, created) = try ItemHeader.decode(c)
+        requestID = try c.required("requestID")
+        question = try c.required("question")
+        lightAndDark = try c.required("lightAndDark")
+        suggestions = try c.required("suggestions")
+        recommended = try c.required("recommended")
+        answer = try c.optional("answer")
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = ModelEncodingContainer(encoder)
+        try ItemHeader.encode(&c, type: Self.itemType, id: id, created: created)
+        try c.encode(requestID, "requestID")
+        try c.encode(question, "question")
+        try c.encode(lightAndDark, "lightAndDark")
         try c.encode(suggestions, "suggestions")
         try c.encode(recommended, "recommended")
         try c.encodeOptional(answer, "answer")

@@ -844,6 +844,42 @@ extension MCPToolCatalog {
             handling: .askSymbol
         ),
         MCPToolDefinition(
+            name: "ask_color",
+            description: #"""
+            Ask the user to choose one color, instead of listing color values in ask_questions. A color is a hex color #RRGGBB (sRGB, without opacity) or a system color name such as systemBlue, label or accentColor. Give the question, 2 to 10 suggested colors and the recommended one. Set lightAndDark when the destination of the color supports light and dark appearances, for example an asset catalog color set: each suggestion and recommended are then objects {"light": "<color>", "dark": "<color>"}. The app shows the suggestions as swatches, the recommended one preselected, with every system color, the macOS color panel and a hex field; the user can switch between one color and a light and dark pair, answer in their own words or skip. This tool returns immediately: end your turn after calling it. The answer arrives in the next user message: "Color: ![](color:<color>)" for one color, "Color: Light ![](color:<color>), Dark ![](color:<color>)" for a pair, "Color: <answer>" for an answer in the user's own words, or "Color: Skipped". Only available in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "question": {
+                  "type": "string",
+                  "description": "The question."
+                },
+                "suggestions": {
+                  "type": "array",
+                  "description": "2 to 10 distinct suggestions. Each is a color, a hex color #RRGGBB or a system color name such as systemBlue; with lightAndDark, each is an object {\"light\": \"<color>\", \"dark\": \"<color>\"}.",
+                  "items": {
+                    "description": "A color, or with lightAndDark an object {\"light\": \"<color>\", \"dark\": \"<color>\"}."
+                  }
+                },
+                "recommended": {
+                  "description": "The recommended suggestion: one of the suggestions, copied exactly."
+                },
+                "lightAndDark": {
+                  "type": "boolean",
+                  "description": "true to ask for a light and dark pair, when the destination of the color supports light and dark appearances, for example an asset catalog color set."
+                }
+              },
+              "required": ["question", "suggestions", "recommended"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "chats.postColor",
+            handling: .askColor
+        ),
+        MCPToolDefinition(
             name: "list_chats",
             description: #"""
             List a project's chats of every kind (project, ticket, bundle, feedback), most recently updated first, with their title, kind, linked ticket or bundle, settings and state.

@@ -67,6 +67,7 @@ extension Engine {
             }
             if let set = chats.openQuestionSets[meta.id] { return .questions(set.questions) }
             if let symbol = chats.openSymbolRequests[meta.id] { return .symbol(question: symbol.question) }
+            if let color = chats.openColorRequests[meta.id] { return .color(question: color.question) }
             return nil
         }
     }

@@ -14,7 +14,7 @@ HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server th
 | JSON-RPC methods  | `initialize`, `ping`, `tools/list`, `tools/call`; every notification is accepted and ignored                                                             |
 | Server name       | `hephaestus`, in `serverInfo` and as the server's key in Claude's MCP configuration, so Claude names the tools `mcp__hephaestus__<tool>`                 |
 | Authentication    | `Authorization: Bearer <token>` with a chat token or the external token on `/mcp`, with a hook token on `/hooks/user-prompt-submit`                      |
-| Tools             | The 45 tools of the [tool catalogue](#tool-catalogue), plus 4 [debug tools](#debug-tools) when `HEPHAESTUS_DEBUG_TOOLS=1`                                |
+| Tools             | The 46 tools of the [tool catalogue](#tool-catalogue), plus 4 [debug tools](#debug-tools) when `HEPHAESTUS_DEBUG_TOOLS=1`                                |
 
 Every tool call runs an engine method ([Engine API](engine-api.md)) with the actor `claude`. The engine validates it exactly as it validates a call from the UI or from a remote device and emits the same events, so every client, local or remote, shows the change live.
 
@@ -130,7 +130,7 @@ The chat tokens and the hook tokens are created, kept and revoked as this table 
 
 - A relaunch of a chat's process issues a new token. Sub-agents of the chat run in the same process and use the same token.
 - The external token is read and regenerated only through the external MCP token service of the windows of this Mac; no engine method or MCP tool exposes it ([Architecture](architecture.md#local-only-services)). Regenerate (Settings > MCP, [UI](ui.md)) replaces it at once: requests with the old token get 401, and terminal sessions must add the server again ([External use](#external-use)). When `secrets.json` cannot be written, the old token stays valid and Settings shows the alert `Regenerate failed` with the storage error's message. Default chosen at design time.
-- A chat token identifies the calling chat: `ask_questions` posts its questions to that chat, `ask_symbol` its symbol request, `close_chat` closes that chat, and `open_in_app` reaches that chat's driving device.
+- A chat token identifies the calling chat: `ask_questions` posts its questions to that chat, `ask_symbol` its symbol request, `ask_color` its color request, `close_chat` closes that chat, and `open_in_app` reaches that chat's driving device.
 - Tokens are never logged.
 
 ## User prompt hook
@@ -295,7 +295,7 @@ From step 2 on, every failure is a tool result with `isError: true`, never a JSO
 
 - `content` holds exactly one text item; there is no `structuredContent`.
 - For a tool backed by an engine method, the text is the method's result encoded with `EngineJSON.encoder()`, byte for byte the JSON that `Engine.dispatch` returns: sorted keys, dates as in [JSON encoding](engine-api.md#json-encoding) (whole seconds without a fraction, milliseconds when a fraction exists), `{}` for an empty result ([Engine API](engine-api.md#json-encoding)). `list_tickets` with `status` encodes the filtered array with the same encoder, and `get_ticket` the ticket with absolute attachment paths ([get_ticket](#get_ticket)).
-- `ask_questions` and `ask_symbol` return plain text ([Text returned to Claude](#text-returned-to-claude), [ask_symbol](#ask_symbol)) and the debug tools return the JSON given in their sections.
+- `ask_questions`, `ask_symbol` and `ask_color` return plain text ([Text returned to Claude](#text-returned-to-claude), [ask_symbol](#ask_symbol), [ask_color](#ask_color)) and the debug tools return the JSON given in their sections.
 
 ### Tool errors
 
@@ -387,7 +387,7 @@ A chat token runs every engine call as the actor `claude` with the chat's id, th
 | Claude never changes the status of a `done` bundle                                                 | bundles.setStatus ([Tickets](tickets.md#bundle-status-rules))                                      | `forbidden`            |
 | A comment added by Claude has `author: claude`                                                     | tickets.addComment ([Tickets](tickets.md#comments))                                                | —                      |
 | Claude never sets a ticket title at creation, chat settings or project chat defaults               | The tools never send these params ([Engine API](engine-api.md#rules-for-claude))                   | —                      |
-| Only the chat's own Claude asks questions and symbol requests                                      | `ask_questions`, `ask_symbol`, chats.postQuestions, chats.postSymbol                               | `forbidden`            |
+| Only the chat's own Claude asks questions, symbol requests and color requests                      | `ask_questions`, `ask_symbol`, `ask_color`, chats.postQuestions, chats.postSymbol, chats.postColor | `forbidden`            |
 | Only the chat's own Claude closes its chat                                                         | `close_chat`, chats.close                                                                          | `forbidden`            |
 | A feedback chat is linked to the ticket it creates                                                 | tickets.create ([Feedback](feedback.md#resulting-ticket))                                          | —                      |
 | Claude never unlocks a web tab, so it never closes a locked tab                                    | webTabs.update, webTabs.close ([Engine API](engine-api.md#rules-for-claude))                       | `forbidden`            |
@@ -428,6 +428,7 @@ The table lists every tool in the order of `tools/list`. "Required inputs" holds
 | `implement_bundle`  | `bundleID`                               | —                                | chats.implementBundle    | ChatMeta         |
 | `ask_questions`     | `questions`                              | —                                | chats.postQuestions      | text             |
 | `ask_symbol`        | `question`, `suggestions`, `recommended` | —                                | chats.postSymbol         | text             |
+| `ask_color`         | `question`, `suggestions`, `recommended` | `lightAndDark`                   | chats.postColor          | text             |
 | `list_chats`        | `projectID`                              | —                                | chats.list               | [ChatMeta]       |
 | `get_chat`          | `chatID`                                 | —                                | chats.get                | ChatTranscript   |
 | `rename_chat`       | `chatID`, `title`                        | —                                | chats.rename             | ChatMeta         |
@@ -1382,7 +1383,7 @@ Input schema:
 - **Errors:**
   - The external token (`forbidden`, message above).
   - A [question rule](#question-rules) fails (`invalid`).
-  - The chat already has a question set without all its answers or a symbol request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostquestions)).
+  - The chat already has a question set without all its answers, a symbol request without answer or a color request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostquestions)).
 
 Description:
 
@@ -1487,7 +1488,7 @@ B: Skipped
 - **Errors:**
   - The external token (`forbidden`, message above).
   - A [symbol rule](#symbol-rules) fails (`invalid`).
-  - The chat already has a question set without all its answers or a symbol request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostsymbol)).
+  - The chat already has a question set without all its answers, a symbol request without answer or a color request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostsymbol)).
 
 Description:
 
@@ -1539,6 +1540,77 @@ The app shows the request in a pinned symbol card: the suggestions as a grid of 
 
 ```text
 Symbol: ![](sf:line.3.horizontal.decrease.circle)
+```
+
+### ask_color
+
+- **Engine call:** chats.postColor with `chatID` = the calling chat and `question`, `suggestions`, `recommended` and `lightAndDark` as given ([Engine API](engine-api.md#chatspostcolor)).
+- **Availability:** chat tokens only. With the external token the call fails before argument validation with `Only the chat's own Claude can ask questions.`, as `ask_questions` does. The tool is listed for every token.
+- **Permission:** pre-approved, so it runs without a permission prompt in every permission mode ([Chats](chats.md#command-line)).
+- **Result:** plain text, not JSON. On success the text is exactly `color request shown; the answer arrives in the next user message; end your turn`, and Claude then ends its turn ([Workflow](workflow.md#color-requests)). Default chosen at design time.
+- **Errors:**
+  - The external token (`forbidden`, message above).
+  - A suggestion or `recommended` is neither a string nor an object with the strings `light` and `dark` (`invalid`, the message of params that do not decode, [Engine API](engine-api.md#dispatcher-errors)).
+  - A [color rule](#color-rules) fails (`invalid`).
+  - The chat already has a question set without all its answers, a symbol request without answer or a color request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostcolor)).
+
+Description:
+
+```text
+Ask the user to choose one color, instead of listing color values in ask_questions. A color is a hex color #RRGGBB (sRGB, without opacity) or a system color name such as systemBlue, label or accentColor. Give the question, 2 to 10 suggested colors and the recommended one. Set lightAndDark when the destination of the color supports light and dark appearances, for example an asset catalog color set: each suggestion and recommended are then objects {"light": "<color>", "dark": "<color>"}. The app shows the suggestions as swatches, the recommended one preselected, with every system color, the macOS color panel and a hex field; the user can switch between one color and a light and dark pair, answer in their own words or skip. This tool returns immediately: end your turn after calling it. The answer arrives in the next user message: "Color: ![](color:<color>)" for one color, "Color: Light ![](color:<color>), Dark ![](color:<color>)" for a pair, "Color: <answer>" for an answer in the user's own words, or "Color: Skipped". Only available in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "question": {
+      "type": "string",
+      "description": "The question."
+    },
+    "suggestions": {
+      "type": "array",
+      "description": "2 to 10 distinct suggestions. Each is a color, a hex color #RRGGBB or a system color name such as systemBlue; with lightAndDark, each is an object {\"light\": \"<color>\", \"dark\": \"<color>\"}.",
+      "items": {
+        "description": "A color, or with lightAndDark an object {\"light\": \"<color>\", \"dark\": \"<color>\"}."
+      }
+    },
+    "recommended": {
+      "description": "The recommended suggestion: one of the suggestions, copied exactly."
+    },
+    "lightAndDark": {
+      "type": "boolean",
+      "description": "true to ask for a light and dark pair, when the destination of the color supports light and dark appearances, for example an asset catalog color set."
+    }
+  },
+  "required": ["question", "suggestions", "recommended"],
+  "additionalProperties": false
+}
+```
+
+The elements of `suggestions` and `recommended` have no `type`, so the input schema accepts a string or an object there; chats.postColor reads each one as a color or as a pair ([Engine API](engine-api.md#colorvalue)).
+
+#### Color rules
+
+The input schema checks only the shape of the arguments. chats.postColor checks the rules below, after trimming each color of `suggestions` and `recommended`, and refuses the call with `invalid` when one fails, so nothing is shown to the user; the messages are in [Workflow](workflow.md#color-requests).
+
+| Rule                 | Detail                                                                                                                                                                                       |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Question text        | Not empty after trimming.                                                                                                                                                                    |
+| Suggestions          | 2 to 10.                                                                                                                                                                                     |
+| Kind                 | Without `lightAndDark` (absent or false), each suggestion and `recommended` are one color, a string; with `lightAndDark` true, each is a pair, an object with the colors `light` and `dark`. |
+| Colors               | Each color of the suggestions is a hex color `#RRGGBB`, its six hex digits in either letter case, or a [system color name](chats.md#system-colors), with its letter case.                    |
+| Distinct suggestions | No two suggestions are equal: hex colors are compared ignoring the letter case of their digits, and pairs color by color.                                                                    |
+| Recommended color    | `recommended` equals one of the suggestions, by the same comparison.                                                                                                                         |
+
+#### Color answer
+
+The app shows the request in a pinned color card: the suggestions as swatches, the recommended one preselected and starred, a grid of every system color, the macOS color panel and a hex field kept in sync, a `Light and dark` toggle that starts as `lightAndDark` asked, a free-text field `Answer another way`, Skip and Submit ([Chats](chats.md#pinned-color-card)). The user answers once, with chats.answerColor. The engine then sends Claude one user message, `Color: <answer>`, `<answer>` being `![](color:<color>)` for one color, `Light ![](color:<color>), Dark ![](color:<color>)` for a light and dark pair, the text the user typed, or `Skipped` for a skipped request ([Workflow](workflow.md#color-requests)). For example:
+
+```text
+Color: Light ![](color:#FFFFFF), Dark ![](color:#1C1C1E)
 ```
 
 ### list_chats
@@ -2203,7 +2275,7 @@ claude mcp add --transport http hephaestus http://127.0.0.1:47820/mcp --header "
 ```
 
 - Calls run as `claude` with chatID `external`: the [actor rules](#actor-rules) apply, tickets created this way have `createdBy: claude` and comments `author: claude`.
-- `ask_questions` and `ask_symbol` fail, so Claude asks its questions in plain text ([Workflow](workflow.md#plain-text-questions)); `close_chat` fails, as there is no chat to close; `open_in_app` makes every client navigate.
+- `ask_questions`, `ask_symbol` and `ask_color` fail, so Claude asks its questions in plain text ([Workflow](workflow.md#plain-text-questions)); `close_chat` fails, as there is no chat to close; `open_in_app` makes every client navigate.
 - These sessions do not receive the app's system prompts ([Chats](chats.md)); the tool descriptions state what Claude needs: the ticket template, the statuses Claude may set and how questions are asked.
 - The token survives app restarts and updates. After Regenerate or a port change, the server must be removed with `claude mcp remove hephaestus` and the new command run, as `claude mcp add` refuses a name that already exists.
 
@@ -2673,3 +2745,4 @@ Unauthorized: missing or invalid bearer token.
 - R123: Implement, Implement All and the feedback sheet let the user choose the model, the effort and the permission mode of the chat they start; the ticket chats that a bundle chat starts take its settings.
 - R124: A ticket can depend on other tickets of its project or be related to them; the other ticket shows the inverse link, Blocks or Related; the user and Claude add and remove links; the ticket list marks a ticket that depends on a ticket that is not done, and Implement asks for confirmation while one is not done.
 - R127: A ticket keeps the history of its creation, status changes and renames, each with its author and date, and the Details tab shows it among the comments.
+- R132: Claude asks the user to choose a color with `ask_color`, as one color or a light and dark pair: suggestions show as swatches, any system color can be picked from a grid and any other color with the macOS color panel or a hex field, the user answers another way or skips, and the chat shows the colors Claude names and the answer as swatches.
