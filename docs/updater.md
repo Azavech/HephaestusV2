@@ -1,6 +1,6 @@
 # Updater
 
-HephaestusV2 updates itself from the GitHub releases of its own repository. A second executable, the Updater, runs beside the app: it checks the release feed 10 seconds after it starts, then every `updateCheckIntervalMinutes` and on demand; it downloads and verifies a newer build, and when the app quits it replaces the app bundle and, for a restart, relaunches the app. The app and the Updater talk through distributed notifications. The app shows the Updater's state in the About window, in Settings > Updates and in the update-ready banner, and decides when to restart. How releases are built and published is in [CI and releases](ci.md); the path from a ticket to an installed update is the [self-update loop](workflow.md#self-update-loop).
+HephaestusV2 updates itself from the GitHub releases of its own repository. A second executable, the Updater, runs beside the app: it checks the release feed 10 seconds after it starts, then every `updateCheckIntervalMinutes` and on demand; it downloads and verifies a newer build, and when the app quits it replaces the app bundle and, for a restart, relaunches the app. The app and the Updater talk through distributed notifications. The app shows the Updater's state in the About window, in Settings > Updates and in the status bar's Update item, and decides when to restart. How releases are built and published is in [CI and releases](ci.md); the path from a ticket to an installed update is the [self-update loop](workflow.md#self-update-loop).
 
 ## Overview
 
@@ -8,7 +8,7 @@ HephaestusV2 updates itself from the GitHub releases of its own repository. A se
 | ----------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Updater     | `HephaestusV2.app/Contents/Helpers/Updater`, built from `Sources/Updater/` | Separate process: feed checks, download, verification, bundle replacement, relaunch. Bundle id `ca.azavech.hephaestusv2.updater`, embedded in the executable ([CI](ci.md#updater-infoplist)). |
 | UpdaterCore | `Sources/UpdaterCore/`                                                     | Library used by the Updater and by the app: versions, release manifest, feed client, verification, install steps, IPC names and payloads ([Swift shape](#swift-shape)).                       |
-| App side    | `UpdateController` in `Sources/HephaestusUI/About/`, owned by `AppModel`   | Starts the Updater, sends its requests, keeps `AppModel.updaterStatus`, shows the About window, the banner and the Settings status line, restarts the app.                                    |
+| App side    | `UpdateController` in `Sources/HephaestusUI/About/`, owned by `AppModel`   | Starts the Updater, sends its requests, keeps `AppModel.updaterStatus`, shows the About window, the Update item and the Settings status line, restarts the app.                               |
 
 The name `UpdateController` is Default chosen at design time.
 
@@ -22,7 +22,7 @@ The name `UpdateController` is Default chosen at design time.
 | About version line | version and build of the running app      | `Version <version> (<build>)` | `Version 0.4.0 (57)` |
 
 - Only builds are compared: a release is newer when its build is greater than the running app's build. Version strings are shown and checked for equality, never compared. Release builds grow with every commit on `main` ([Versioning](ci.md#versioning)).
-- Every Mac updates its own app with its own Updater, using the `autoUpdate` and `updateCheckIntervalMinutes` values of its own `settings.yml` ([Data model](data-model.md#settings-file)), whatever device a window shows. The About window, the banner and Settings > Updates always describe this Mac's app.
+- Every Mac updates its own app with its own Updater, using the `autoUpdate` and `updateCheckIntervalMinutes` values of its own `settings.yml` ([Data model](data-model.md#settings-file)), whatever device a window shows. The About window, the Update item and Settings > Updates always describe this Mac's app.
 
 ## Starting the Updater
 
@@ -182,7 +182,7 @@ The app tells the Updater that it quits with [`app.quitting`](#ipc). The payload
 
 1. The app saves its windows ([Persistence](ui.md#persistence)), then posts `app.quitting` with `restart` true ([Restart rules](#restart-rules)).
 2. In state `ready`, the Updater switches to `installing` and posts its status. In any other state it ignores the notification and posts its current status again.
-3. The app waits at most 5 seconds for the status `installing`. When it arrives, the app terminates as on Quit, without the quit confirmations ([Shutdown](architecture.md#shutdown)). When it does not arrive, the app keeps running and shows the error `The updater did not respond; the update was not installed.` in the About window and the banner. Default chosen at design time.
+3. The app waits at most 5 seconds for the status `installing`. When it arrives, the app terminates as on Quit, without the quit confirmations ([Shutdown](architecture.md#shutdown)). When it does not arrive, the app keeps running and shows the error `The updater did not respond; the update was not installed.` in the About window. Default chosen at design time. It also shows that error in an alert window with an `OK` button, whatever started the sequence ([Update item](#update-item)).
 4. The Updater waits for the app's pid to exit, at most 60 seconds. When the app is still running after 60 seconds, the state goes back to `ready` with the message `HephaestusV2 did not quit; the update waits for the next restart.` Default chosen at design time.
 5. The Updater replaces the bundle: `FileManager.default.replaceItemAt(<--app URL>, withItemAt: <build>/expanded/HephaestusV2.app URL)`.
 6. It removes the extended attribute `com.apple.quarantine` from the installed bundle folder and from every file and folder inside it (`removexattr` with `XATTR_NOFOLLOW`; a missing attribute is not an error).
@@ -208,13 +208,13 @@ The app is **idle** when both hold:
 
 The composer and sheet conditions are Default chosen at design time. Project runs are not part of the definition: a run still going is stopped by the restart like on Quit ([Shutdown](architecture.md#shutdown)).
 
-| Situation                                                                              | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| State `ready`, `autoUpdate` true, the user did not choose Install, the app is idle     | The restart sequence starts at once ([Restart for an update](#restart-for-an-update)).                                                                                                                                                                                                                                                                                                                                                  |
-| State `ready`, `autoUpdate` true, the user did not choose Install, the app is not idle | The banner `Update v0.5.0(61) ready — restarts when idle` appears; the restart sequence starts as soon as the app is idle, re-evaluated whenever a chat state, a chat's `backgroundWork`, an editor, a draft, a composer or a sheet changes. While a chat's background work runs the banner stays; once that work and the turn the CLI starts to report it have ended, the restart sequence starts if the rest of the definition holds. |
-| State `ready` and `autoUpdate` false, the user did not choose Install                  | The banner `Update v0.5.0(61) ready` appears; the app does not restart by itself. Default chosen at design time.                                                                                                                                                                                                                                                                                                                        |
-| The user chose Install in the About window and the state is or becomes `ready`         | The restart checks run, then the restart sequence.                                                                                                                                                                                                                                                                                                                                                                                      |
-| The user clicks Restart Now in the banner                                              | The restart checks run, then the restart sequence.                                                                                                                                                                                                                                                                                                                                                                                      |
+| Situation                                                                              | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| State `ready`, `autoUpdate` true, the user did not choose Install, the app is idle     | The restart sequence starts at once ([Restart for an update](#restart-for-an-update)).                                                                                                                                                                                                                                                                                                                                                                                       |
+| State `ready`, `autoUpdate` true, the user did not choose Install, the app is not idle | The [Update item](#update-item) appears, with the tooltip `Update v0.5.0(61) ready — restarts when idle`; the restart sequence starts as soon as the app is idle, re-evaluated whenever a chat state, a chat's `backgroundWork`, an editor, a draft, a composer or a sheet changes. While a chat's background work runs the item stays; once that work and the turn the CLI starts to report it have ended, the restart sequence starts if the rest of the definition holds. |
+| State `ready` and `autoUpdate` false, the user did not choose Install                  | The Update item appears, with the tooltip `Update v0.5.0(61) ready`; the app does not restart by itself. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                      |
+| The user chose Install in the About window and the state is or becomes `ready`         | The restart checks run, then the restart sequence.                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| The user clicks the Update item                                                        | The restart checks run, then the restart sequence.                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 **Restart checks.** They are the checks of quitting ([Unsaved changes and quitting](ui.md#unsaved-changes-and-quitting)): unsaved changes first, then running work, with this alert instead of the quit alert when This Mac's engine has working chats (in state `starting`, `running` or `waitingPermission`, or with background work running) or running runs:
 
@@ -222,7 +222,7 @@ The composer and sheet conditions are Default chosen at design time. Project run
 | -------------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------- |
 | `Restart to install v0.5.0(61)?` | `<chats> and <runs> on This Mac will be stopped.`, with the same wording rules as the quit alert | `Restart` (default), `Cancel` |
 
-After a restart sequence that failed at step 3 of [Restart for an update](#restart-for-an-update), the app does not start the sequence again by itself for that build; Install and Restart Now start it again. Default chosen at design time.
+After a restart sequence that failed at step 3 of [Restart for an update](#restart-for-an-update), the app does not start the sequence again by itself for that build; Install and a click on the Update item start it again. Default chosen at design time.
 
 Cancel at either step cancels the restart; the update stays `ready` and the About window shows `v0.5.0(61) available` with Install and Not Now again. An automatic restart never shows these alerts, because it happens only when the app is idle. The alert texts and the counting of runs are Default chosen at design time.
 
@@ -318,20 +318,19 @@ Each time the window appears (opened while it was closed), the app posts `check`
 - **Try Again** posts `install` when the error carries a build, and `check` otherwise.
 - Rows 1, 3, 9 and 10, the timeout and the Try Again button are Default chosen at design time.
 
-## Update-ready banner
+## Update item
 
-When the state is `ready` and the user did not choose Install, every main window of this app shows the banner ([Main window layout](ui.md#main-window-layout)) over the top of its columns, full width, 36 points high, whatever device the window shows:
+While the Updater runs, the state is `ready`, the user did not choose Install and the restart sequence has not started, the status bar of every main window of this app shows the Update item in its right group, before Weekly usage ([Status bar](ui.md#status-bar)), whatever device the window shows. Chat windows do not show it.
 
-| `autoUpdate` | Text                                           | Controls      |
-| ------------ | ---------------------------------------------- | ------------- |
-| true         | `Update v0.5.0(61) ready — restarts when idle` | `Restart Now` |
-| false        | `Update v0.5.0(61) ready`                      | `Restart Now` |
+| `autoUpdate` | Text                | Tooltip                                        |
+| ------------ | ------------------- | ---------------------------------------------- |
+| true         | `Update available…` | `Update v0.5.0(61) ready — restarts when idle` |
+| false        | `Update available…` | `Update v0.5.0(61) ready`                      |
 
-- Restart Now runs the [restart checks](#restart-rules), then the restart sequence.
-- The banner has no close button. It disappears when the restart sequence starts or the state leaves `ready`.
-- The banner is not shown while the Updater is not running for one of the reasons of [Starting the Updater](#starting-the-updater) or after it stopped for good (row 1 of the [About window](#about-window)): no restart could install the update then. Default chosen at design time.
-- When the restart sequence fails at step 3 of [Installing](#installing), the banner shows `The updater did not respond; the update was not installed.` with Restart Now.
-- The position and height are Default chosen at design time.
+- A click on the item runs the [restart checks](#restart-rules), then the restart sequence.
+- The item disappears when the restart sequence starts or the state leaves `ready`.
+- The item is not shown while the Updater is not running for one of the reasons of [Starting the Updater](#starting-the-updater) or after it stopped for good (row 1 of the [About window](#about-window)): no restart could install the update then. Default chosen at design time.
+- When the restart sequence fails at step 3 of [Restart for an update](#restart-for-an-update), whatever started it, the app shows an alert window with the text `The updater did not respond; the update was not installed.` and an `OK` button. The item stays with `Update available…`; a click on it runs the restart checks and the sequence again.
 
 ## Settings
 

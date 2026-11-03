@@ -108,8 +108,7 @@ struct MainWindowView: View {
 }
 
 /// Everything between the toolbar and the status bar: the reconnect view, the device's loading
-/// state, the welcome view, or the three columns; the search panel and the update-ready banner
-/// over them.
+/// state, the welcome view, or the three columns; the search panel over them.
 private struct MainWindowColumns: View {
     let state: WindowState
     let workspace: DeviceWorkspace
@@ -130,11 +129,8 @@ private struct MainWindowColumns: View {
             }
         }
         .overlay(alignment: .top) {
-            ZStack(alignment: .top) {
-                if state.searchVisible {
-                    SearchPanel(window: state, workspace: workspace)
-                }
-                UpdateBanner()
+            if state.searchVisible {
+                SearchPanel(window: state, workspace: workspace)
             }
         }
         .onAppear {

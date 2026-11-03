@@ -76,7 +76,7 @@ struct IPCPayloadTests {
     }
 }
 
-/// docs/updater.md › Starting the Updater, › About window, › Update-ready banner, › Settings.
+/// docs/updater.md › Starting the Updater, › About window, › Update item, › Settings.
 @Suite("App presentation")
 struct PresentationTests {
     let folder: TemporaryFolder
@@ -174,10 +174,12 @@ struct PresentationTests {
         #expect(UpdateArea.settingsStatusLine(Input(status: UpdaterStatus(state: .upToDate))) == "No update available")
     }
 
-    @Test("The banner texts")
-    func banner() {
+    @Test("The Update item's text and tooltips")
+    func updateItem() {
         let version = AppVersion(version: "0.5.0", build: 61)
-        #expect(UpdaterTexts.bannerReady(version, autoUpdate: true) == "Update v0.5.0(61) ready — restarts when idle")
-        #expect(UpdaterTexts.bannerReady(version, autoUpdate: false) == "Update v0.5.0(61) ready")
+        #expect(UpdaterTexts.updateItem == "Update available…")
+        #expect(UpdaterTexts.updateItemTooltip(version, autoUpdate: true) == "Update v0.5.0(61) ready — restarts when idle")
+        #expect(UpdaterTexts.updateItemTooltip(version, autoUpdate: false) == "Update v0.5.0(61) ready")
+        #expect(UpdaterTexts.restartFailed == "The updater did not respond; the update was not installed.")
     }
 }

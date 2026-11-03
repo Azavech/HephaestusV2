@@ -1,6 +1,6 @@
 // OWNER: release — the app side of the Updater: starting and supervising it, the IPC, the restart
-// sequence (docs/updater.md › Starting the Updater, › IPC, › Restart for an update, › Install on
-// quit, › Updater states).
+// sequence, the status bar's Update item (docs/updater.md › Starting the Updater, › IPC, › Restart
+// for an update, › Install on quit, › Updater states, › Update item).
 import AppKit
 import Foundation
 import Observation
@@ -317,22 +317,30 @@ final class UpdateController {
         }
     }
 
-    // MARK: Update-ready banner
+    // MARK: Update item
 
-    /// docs/updater.md › Update-ready banner: the Updater running, state `ready`, Install not
-    /// chosen, the restart sequence not started.
-    var bannerVisible: Bool {
-        isRunning && app?.updaterStatus.state == .ready && !installChosen && !restartInProgress
+    /// docs/updater.md › Update item: the status bar of main windows shows the item while the
+    /// Updater runs, the state is `ready`, Install is not chosen and the restart sequence has not
+    /// started.
+    static func updateItemVisible(updaterRunning: Bool, state: UpdaterState, installChosen: Bool, restartInProgress: Bool) -> Bool {
+        updaterRunning && state == .ready && !installChosen && !restartInProgress
     }
 
-    var bannerText: String {
-        if let restartFailedMessage { return restartFailedMessage }
+    var updateItemVisible: Bool {
+        Self.updateItemVisible(updaterRunning: isRunning, state: app?.updaterStatus.state ?? .idle, installChosen: installChosen,
+                               restartInProgress: restartInProgress)
+    }
+
+    /// `Update available…`, whatever `autoUpdate` is.
+    var updateItemText: String { UpdaterTexts.updateItem }
+
+    var updateItemTooltip: String {
         let version = app?.updaterStatus.appVersion ?? appVersion
-        return UpdaterTexts.bannerReady(version, autoUpdate: autoUpdate)
+        return UpdaterTexts.updateItemTooltip(version, autoUpdate: autoUpdate)
     }
 
-    /// Restart Now: the restart checks, then the restart sequence.
-    func restartNow() {
+    /// A click on the Update item: the restart checks, then the restart sequence.
+    func updateItemClicked() {
         runRestartChecksAndRestart()
     }
 
@@ -360,7 +368,8 @@ final class UpdateController {
     /// docs/updater.md › Restart for an update, steps 1 to 3 (app side): save the windows, post
     /// `app.quitting` with `restart` true, wait at most 5 seconds for `installing`, then terminate
     /// without the quit confirmations. Without an answer the app keeps running and shows
-    /// `The updater did not respond; the update was not installed.`.
+    /// `The updater did not respond; the update was not installed.` in the About window and in an
+    /// alert window, whatever started the sequence.
     private func restartSequence() async {
         guard let app, started, !restartInProgress, !quittingPosted else { return }
         let build = app.updaterStatus.build
@@ -390,6 +399,16 @@ final class UpdateController {
         if process == nil {
             updaterExited(status: -1)
         }
+        await showRestartFailedAlert()
+    }
+
+    /// docs/updater.md › Update item: the failure of step 3 shows an alert window with an OK
+    /// button; the Update item stays.
+    private func showRestartFailedAlert() async {
+        let alert = NSAlert()
+        alert.messageText = UpdaterTexts.restartFailed
+        alert.addButton(withTitle: "OK")
+        _ = await AlertPresenter.present(alert, on: nil)
     }
 
     private func waitForInstalling() async -> Bool {

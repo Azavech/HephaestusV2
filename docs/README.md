@@ -45,7 +45,7 @@ Every change starts in these docs; the code is generated or updated to match the
 | [remote.md](remote.md)                             | Remote devices: discovery, pairing, handshake and encryption, messages, reconnection and the localhost rewrite.                                                   |
 | [data-model.md](data-model.md)                     | Exact formats of the project, ticket, bundle, chat, device and skill files, with validation, id allocation and loading.                                           |
 | [engine-api.md](engine-api.md)                     | Every engine method and event with params, results, errors and actor rules, the API types and the Swift shape.                                                    |
-| [updater.md](updater.md)                           | The Updater: release feed, check schedule, download and verification, install and restart, IPC, About window and update banner.                                   |
+| [updater.md](updater.md)                           | The Updater: release feed, check schedule, download and verification, install and restart, IPC, About window and the status bar's Update item.                    |
 | [ci.md](ci.md)                                     | GitHub workflows, versioning, app bundle, signing, release assets, checks, docs conformance tests and make targets.                                               |
 | [development.md](development.md)                   | Building, running a second isolated instance, automated UI checks, tests, fixtures and contribution rules.                                                        |
 

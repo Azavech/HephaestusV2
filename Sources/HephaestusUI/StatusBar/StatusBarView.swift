@@ -1,5 +1,5 @@
-// OWNER: ui-shell — the status bar of main windows and chat windows, its chats popover and the
-// ladybug button (docs/ui.md › Status bar).
+// OWNER: ui-shell — the status bar of main windows and chat windows, its chats popover, the Update
+// item and the ladybug button (docs/ui.md › Status bar).
 import AppKit
 import HephaestusCore
 import SwiftUI
@@ -56,7 +56,7 @@ struct DeviceStateLabel: View {
 
 /// The status bar: 26 points high, at the bottom of every main window and chat window, separated
 /// from the content by a hairline. Chat windows show only the device state, the weekly usage and the
-/// ladybug.
+/// ladybug; the Update item is in main windows only.
 struct StatusBarView: View {
     enum Context {
         case main(WindowState)
@@ -79,6 +79,7 @@ struct StatusBarView: View {
                 if case .main(let window) = context {
                     middleGroup(window)
                     Spacer(minLength: 16)
+                    updateItem
                 }
                 WeeklyUsageItem(usage: workspace?.planUsage, now: usageClock)
                 if case .main(let window) = context {
@@ -144,7 +145,22 @@ struct StatusBarView: View {
         }
     }
 
-    // MARK: Right: costs
+    // MARK: Right: update, costs
+
+    /// Shown while an update is ready; a click runs the restart checks, then the restart sequence
+    /// (docs/updater.md › Update item).
+    @ViewBuilder
+    private var updateItem: some View {
+        let controller = app.updateController
+        if controller.updateItemVisible {
+            Button(controller.updateItemText) {
+                controller.updateItemClicked()
+            }
+            .buttonStyle(.plain)
+            .help(controller.updateItemTooltip)
+            separator
+        }
+    }
 
     /// The active project's total, sub projects included; a click selects the Costs section
     /// (docs/costs.md › Status bar item).

@@ -201,7 +201,7 @@ The type names of this table are Default chosen at design time.
 | `Workspace/` | `DeviceWorkspace`, `WindowState`, navigation.                                                                                                          |
 | `Toolbar/`   | Run and Stop buttons, the `Device ▸ Project ▸ Sub project` selector, trailing toolbar buttons.                                                         |
 | `Sidebar/`   | Section list.                                                                                                                                          |
-| `StatusBar/` | Status bar, the Weekly usage item with its popover, and the ladybug button.                                                                            |
+| `StatusBar/` | Status bar, the Weekly usage item with its popover, the Update item, and the ladybug button.                                                           |
 | `Projects/`  | New, open and remove project flows, folder pickers, project settings ([Projects](projects.md)).                                                        |
 | `Tickets/`   | Ticket list and detail, comments, attachments, image viewer ([Tickets and bundles](tickets.md)).                                                       |
 | `Bundles/`   | Bundle list and detail ([Tickets and bundles](tickets.md)).                                                                                            |
@@ -215,7 +215,7 @@ The type names of this table are Default chosen at design time.
 | `Search/`    | Search panel ([Search](search.md)).                                                                                                                    |
 | `Feedback/`  | In-process window capture, feedback sheet ([Feedback](feedback.md)).                                                                                   |
 | `Settings/`  | Settings window ([User interface](ui.md)).                                                                                                             |
-| `About/`     | About window and update banner ([Updater](updater.md)).                                                                                                |
+| `About/`     | About window and the state of the status bar's Update item ([Updater](updater.md)).                                                                    |
 | `Devices/`   | Add Device and Manage Devices ([Remote devices](remote.md)).                                                                                           |
 | `Console/`   | Run console drawer ([Projects](projects.md)).                                                                                                          |
 | `Common/`    | Shared views, error presentation, the web view host for rendered Markdown.                                                                             |

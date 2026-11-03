@@ -60,10 +60,13 @@ public enum UpdaterTexts {
         "\(version.display) available"
     }
 
-    // docs/updater.md › Update-ready banner
-    /// `Update v0.5.0(61) ready — restarts when idle` with `autoUpdate`, `Update v0.5.0(61) ready`
-    /// without.
-    public static func bannerReady(_ version: AppVersion, autoUpdate: Bool) -> String {
+    // docs/updater.md › Update item
+    /// The text of the status bar's Update item, whatever `autoUpdate` is.
+    public static let updateItem = "Update available…"
+
+    /// The Update item's tooltip: `Update v0.5.0(61) ready — restarts when idle` with
+    /// `autoUpdate`, `Update v0.5.0(61) ready` without.
+    public static func updateItemTooltip(_ version: AppVersion, autoUpdate: Bool) -> String {
         autoUpdate ? "Update \(version.display) ready — restarts when idle" : "Update \(version.display) ready"
     }
 }
