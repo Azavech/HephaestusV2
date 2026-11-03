@@ -275,6 +275,9 @@ enum MarkdownAttributed {
                     current.append(MarkdownAttributed.run("\u{25B6}\u{FE0E}", intent: intent,
                                                           link: MarkdownLinkURL.url(for: MarkdownAttributed.soundDestination(name))))
                     current.append(MarkdownAttributed.run(" " + name, intent: intent, link: link))
+                case .shortcut(let caps):
+                    // A shortcut marker: its key caps as text.
+                    current.append(MarkdownAttributed.run(caps.joined(), intent: intent, link: link))
                 case .itemID(let id, let code):
                     // A ticket or bundle id: a link like the others of the text.
                     current.append(MarkdownAttributed.run(id, intent: code ? intent.union(.code) : intent,
@@ -560,6 +563,8 @@ enum MarkdownBlockCache {
         /// Color markers are read; every caller that reads them asks the same Mac.
         var readsColors: Bool
         var readsSoundMarkers: Bool
+        /// Shortcut markers are read; every caller that reads them uses the same notation.
+        var readsShortcuts: Bool
         var projectIdentifiers: Set<String>
     }
 
@@ -569,7 +574,7 @@ enum MarkdownBlockCache {
         let key = Key(markdown: markdown, baseDirectory: options.baseDirectory, projectRootPath: options.projectRootPath,
                       stripFrontMatter: options.stripFrontMatter, readsSymbols: options.isSymbolAvailable != nil,
                       readsColors: options.colorSwatch != nil,
-                      readsSoundMarkers: options.readsSoundMarkers,
+                      readsSoundMarkers: options.readsSoundMarkers, readsShortcuts: options.shortcutKeys != nil,
                       projectIdentifiers: options.projectIdentifiers)
         if let blocks = entries[key] {
             return blocks

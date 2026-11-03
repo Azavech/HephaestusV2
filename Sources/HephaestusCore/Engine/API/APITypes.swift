@@ -644,6 +644,46 @@ public struct SoundRequest: Codable, Sendable, Hashable {
     }
 }
 
+/// A shortcut request posted by `chats.postShortcut` (docs/engine-api.md › ShortcutRequest).
+public struct ShortcutRequest: Codable, Sendable, Hashable {
+    public var requestID: UUID
+    public var chatID: ChatID
+    public var question: String
+    /// 2 to 10 shortcuts, in the order Claude gave them.
+    public var suggestions: [String]
+    public var recommended: String
+    /// The app's own shortcuts, in the order Claude gave them.
+    public var inUse: [ShortcutInUse]
+    /// nil until the user answers; encoded as `null`.
+    public var answer: String?
+
+    public init(requestID: UUID, chatID: ChatID, question: String, suggestions: [String], recommended: String,
+                inUse: [ShortcutInUse], answer: String? = nil) {
+        self.requestID = requestID
+        self.chatID = chatID
+        self.question = question
+        self.suggestions = suggestions
+        self.recommended = recommended
+        self.inUse = inUse
+        self.answer = answer
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case requestID, chatID, question, suggestions, recommended, inUse, answer
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(requestID, forKey: .requestID)
+        try c.encode(chatID, forKey: .chatID)
+        try c.encode(question, forKey: .question)
+        try c.encode(suggestions, forKey: .suggestions)
+        try c.encode(recommended, forKey: .recommended)
+        try c.encode(inUse, forKey: .inUse)
+        try c.encode(answer, forKey: .answer)
+    }
+}
+
 /// Where a feedback was taken (docs/engine-api.md › FeedbackContext).
 public struct FeedbackContext: Codable, Sendable, Hashable {
     public var appVersion: String

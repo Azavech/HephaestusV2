@@ -293,6 +293,12 @@ struct HTMLWriter {
             let escapedName = Self.escaped(name)
             output += "<span class=\"md-sound\"><button type=\"button\" class=\"md-sound-play\" data-sound=\"\(escapedName)\">"
             output += "<span class=\"md-symbol-icon\" data-symbol=\"play.circle.fill\"></span></button>\(escapedName)</span>"
+        case .shortcut(let keyCaps):
+            // A shortcut marker: one `kbd` per key cap (docs/documentation-viewer.md › Shortcut
+            // markers).
+            output += "<span class=\"md-shortcut\">"
+            output += keyCaps.map { "<kbd>\(Self.escaped($0))</kbd>" }.joined()
+            output += "</span>"
         case .itemID(let id, let code):
             // A ticket or bundle id (docs/documentation-viewer.md › Ticket and bundle ids).
             output += "<a class=\"md-id\" href=\"\(Self.escaped(MarkdownItemIDs.href(for: id)))\">"

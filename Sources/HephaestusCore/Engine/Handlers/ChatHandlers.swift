@@ -61,6 +61,12 @@ extension Engine {
         register(ChatsAnswerSound.self, actors: [.user]) { [unowned self] params, actor in
             try await self.chatsAnswerSound(params, actor)
         }
+        register(ChatsPostShortcut.self, actors: [.claude]) { [unowned self] params, actor in
+            try await self.chatsPostShortcut(params, actor)
+        }
+        register(ChatsAnswerShortcut.self, actors: [.user]) { [unowned self] params, actor in
+            try await self.chatsAnswerShortcut(params, actor)
+        }
         register(ChatsImplementTicket.self, actors: [.user, .claude]) { [unowned self] params, actor in
             try await self.chatsImplementTicket(params, actor)
         }
@@ -375,6 +381,7 @@ extension Engine {
         chats.openSymbolRequests[chatID] = nil
         chats.openColorRequests[chatID] = nil
         chats.openSoundRequests[chatID] = nil
+        chats.openShortcutRequests[chatID] = nil
         chats.drivingDevices[chatID] = nil
         chats.scannedChats.remove(chatID)
         chats.hasTextMessage[chatID] = nil
@@ -490,9 +497,10 @@ extension Engine {
     }
 
     /// A chat has at most one waiting request: a question set that is not completed, or a symbol
-    /// request, a color request or a sound request without answer (docs/chats.md › Posting
-    /// questions, › Posting a symbol request, › Posting a color request, › Posting a sound request).
-    private func requireNoWaitingRequest(_ chatID: ChatID) throws {
+    /// request, a color request, a sound request or a shortcut request without answer
+    /// (docs/chats.md › Posting questions, › Posting a symbol request, › Posting a color request,
+    /// › Posting a sound request, › Posting a shortcut request).
+    func requireNoWaitingRequest(_ chatID: ChatID) throws {
         guard chats.openQuestionSets[chatID] == nil else {
             throw EngineError(.conflict, "Questions are already waiting for answers in this chat.")
         }
@@ -505,6 +513,15 @@ extension Engine {
         guard chats.openSoundRequests[chatID] == nil else {
             throw EngineError(.conflict, "A sound request is already waiting for an answer in this chat.")
         }
+        guard chats.openShortcutRequests[chatID] == nil else {
+            throw EngineError(.conflict, "A shortcut request is already waiting for an answer in this chat.")
+        }
+    }
+
+    /// The ask tools of Swift application projects (docs/projects.md › Project types): `refusal`
+    /// when the chat's project has another type.
+    func requireSwiftApplication(_ projectID: ProjectID, else refusal: EngineError) throws {
+        guard domain.project(projectID)?.type == .swiftApplication else { throw refusal }
     }
 
     /// `chats.postSymbol` (docs/chats.md › Posting a symbol request).
@@ -638,9 +655,8 @@ extension Engine {
     func chatsPostSound(_ params: ChatsPostSound.Params, _ actor: Actor) async throws -> SoundRequest {
         try ActorRules.requireOwnChat(params.chatID, actor)
         let meta = try requireChat(params.chatID)
-        guard domain.isLoaded(meta.projectID), loaded(meta.projectID).project.type == .swiftApplication else {
-            throw EngineError(.forbidden, "ask_sound is only available in Swift application projects.")
-        }
+        try requireSwiftApplication(meta.projectID,
+                                    else: EngineError(.forbidden, "ask_sound is only available in Swift application projects."))
         let catalog = try await soundCatalog(meta.projectID)
         let suggestions = params.suggestions.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         let recommended = params.recommended.trimmingCharacters(in: .whitespacesAndNewlines)

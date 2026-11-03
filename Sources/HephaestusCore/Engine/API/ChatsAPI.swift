@@ -350,6 +350,52 @@ public enum ChatsAnswerSound: EngineMethod {
     public typealias Result = Empty
 }
 
+/// `chats.postShortcut`: called by the MCP tool `ask_shortcut`. Actors: claude (the chat's own
+/// Claude only).
+public enum ChatsPostShortcut: EngineMethod {
+    public static let name = "chats.postShortcut"
+    public struct Params: Codable, Sendable, Hashable {
+        /// Must be the actor's chatID; the chat's project has the type `swiftApplication`.
+        public var chatID: ChatID
+        /// Markdown text, not empty after trimming.
+        public var question: String
+        /// 2 to 10 distinct shortcuts of the shortcut notation.
+        public var suggestions: [String]
+        /// One of the suggestions.
+        public var recommended: String
+        /// The app's own shortcuts with their commands; may be empty.
+        public var inUse: [ShortcutInUse]
+
+        public init(chatID: ChatID, question: String, suggestions: [String], recommended: String, inUse: [ShortcutInUse]) {
+            self.chatID = chatID
+            self.question = question
+            self.suggestions = suggestions
+            self.recommended = recommended
+            self.inUse = inUse
+        }
+    }
+    public typealias Result = ShortcutRequest
+}
+
+/// `chats.answerShortcut`. Actors: user.
+public enum ChatsAnswerShortcut: EngineMethod {
+    public static let name = "chats.answerShortcut"
+    public struct Params: Codable, Sendable, Hashable {
+        public var chatID: ChatID
+        public var requestID: UUID
+        /// `![](shortcut:<shortcut>)` for a chosen or recorded shortcut, free text, or `Skipped`;
+        /// trimmed; not empty.
+        public var answer: String
+
+        public init(chatID: ChatID, requestID: UUID, answer: String) {
+            self.chatID = chatID
+            self.requestID = requestID
+            self.answer = answer
+        }
+    }
+    public typealias Result = Empty
+}
+
 /// `chats.implementTicket`. Actors: user, claude.
 public enum ChatsImplementTicket: EngineMethod {
     public static let name = "chats.implementTicket"

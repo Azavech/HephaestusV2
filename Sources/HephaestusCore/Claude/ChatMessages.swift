@@ -152,6 +152,11 @@ extension Engine {
         "Sound: \(answer)"
     }
 
+    /// docs/chats.md › Answering a shortcut request: `Shortcut: <answer>`.
+    static func shortcutMessage(_ answer: String) -> String {
+        "Shortcut: \(answer)"
+    }
+
     // MARK: System prompt
 
     /// The value of `--append-system-prompt` for a launch (docs/chats.md › Composition and

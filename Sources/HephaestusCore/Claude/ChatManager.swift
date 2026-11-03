@@ -40,6 +40,8 @@ final class ChatManager {
     var loggedSymbolCatalogProblems = false
     /// The sound request without answer, per chat (docs/chats.md › Sound requests).
     var openSoundRequests: [ChatID: SoundItem] = [:]
+    /// The shortcut request without answer, per chat (docs/chats.md › Shortcut requests).
+    var openShortcutRequests: [ChatID: ShortcutItem] = [:]
     /// The macOS and Simulator runtime sounds, read the first time they are needed and kept
     /// until the engine stops (docs/chats.md › Sound catalogue).
     var systemSounds: Task<SoundCatalog.SystemSounds, Never>?
@@ -84,7 +86,7 @@ final class ChatManager {
         if runtime?.starting == true { return .starting }
         if runtime?.turnInProgress == true { return .running }
         if openQuestionSets[chatID] != nil || openSymbolRequests[chatID] != nil || openColorRequests[chatID] != nil
-            || openSoundRequests[chatID] != nil {
+            || openSoundRequests[chatID] != nil || openShortcutRequests[chatID] != nil {
             return .waitingAnswers
         }
         return .idle

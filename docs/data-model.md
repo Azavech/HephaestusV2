@@ -790,6 +790,7 @@ Swift type `ChatItem`: an enum whose case is selected by the key `type` and whos
 | `symbol`            | `.symbol`            | `SymbolItem`            | A request to choose one SF Symbol.                       |
 | `color`             | `.color`             | `ColorItem`             | A request to choose one color or a light and dark pair.  |
 | `sound`             | `.sound`             | `SoundItem`             | A request to choose one sound.                           |
+| `shortcut`          | `.shortcut`          | `ShortcutItem`          | A request to choose one keyboard shortcut.               |
 | `system`            | `.system`            | `SystemItem`            | A line from the app, such as the session start.          |
 | `result`            | `.result`            | `ResultItem`            | The end of a CLI turn ([Chats](chats.md#turn-tracking)). |
 
@@ -805,6 +806,7 @@ public enum ChatItem: Codable, Sendable, Hashable, Identifiable {
     case symbol(SymbolItem)
     case color(ColorItem)
     case sound(SoundItem)
+    case shortcut(ShortcutItem)
     case system(SystemItem)
     case result(ResultItem)
 }
@@ -962,6 +964,23 @@ The persisted form of a sound request posted with the MCP tool `ask_sound` ([Cha
 
 ```json
 {"type":"sound","id":"8E1F2A3B-4C5D-4E6F-9A7B-8C9D0E1F2A3B","created":"2026-11-03T18:40:12Z","requestID":"8E1F2A3B-4C5D-4E6F-9A7B-8C9D0E1F2A3B","question":"Which sound should the app play when a message arrives?","suggestions":["iOS 26.1/sms-received1.caf","iOS 26.1/new-mail.caf","Project/Sounds/alert.caf"],"recommended":"iOS 26.1/sms-received1.caf","answer":"![](sound:iOS 26.1/sms-received1.caf)"}
+```
+
+### Shortcut item
+
+The persisted form of a shortcut request posted with the MCP tool `ask_shortcut` ([Chats](chats.md#shortcut-requests)).
+
+| Swift name  | Key           | Type              | Required | Default | Rules                                                                                                                                                                                                                  |
+| ----------- | ------------- | ----------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| requestID   | `requestID`   | `UUID`            | yes      | —       | Id of the request, used by `chats.answerShortcut`; the item's `id` is its uppercase string.                                                                                                                            |
+| question    | `question`    | `String`          | yes      | —       | Non-empty Markdown text.                                                                                                                                                                                               |
+| suggestions | `suggestions` | `[String]`        | yes      | —       | 2 to 10 distinct shortcuts of the [shortcut notation](chats.md#shortcut-notation), trimmed, in the order Claude gave them.                                                                                             |
+| recommended | `recommended` | `String`          | yes      | —       | One of `suggestions`.                                                                                                                                                                                                  |
+| inUse       | `inUse`       | `[ShortcutInUse]` | yes      | —       | The app's own shortcuts, in the order Claude gave them, each `{shortcut, command}`: `shortcut` in the notation, `command` one line of 1 to 200 characters, both trimmed; no shortcut twice; at most 500; may be empty. |
+| answer      | `answer`      | `String?`         | no       | `null`  | `null` until the user answers: then `![](shortcut:<shortcut>)` for a chosen or recorded shortcut, the user's own text, or `Skipped` for a skipped request. It is set once.                                             |
+
+```json
+{"type":"shortcut","id":"7D0E2F3A-4B5C-4D6E-9F7A-8B9C0D1E2F3A","created":"2026-11-03T14:20:01Z","requestID":"7D0E2F3A-4B5C-4D6E-9F7A-8B9C0D1E2F3A","question":"Which shortcut should open the ticket filter?","suggestions":["⇧⌘F","⌥⌘F","⌃⌘F"],"recommended":"⇧⌘F","inUse":[{"shortcut":"⌘N","command":"New Ticket"}],"answer":"![](shortcut:⇧⌘F)"}
 ```
 
 ### System item
@@ -1410,7 +1429,7 @@ At launch the engine:
 1. Creates the data directory and its missing subfolders.
 2. Reads `device.yml`, `secrets.json`, `settings.yml`, `registry.yml` and `remotes.yml`. A missing file is created with its defaults: a new device id, a new pairing code and external token, empty lists. An invalid file is renamed to `<file>.invalid`, replacing an older one, logged as an error, and recreated with its defaults. Then it reads `plan-usage.yml`, which is never created at launch: a missing file gives no plan usage, and an invalid one is renamed to `plan-usage.yml.invalid`, replacing an older one, logged as an error, and gives no plan usage. Default chosen at design time.
 3. Loads the projects of the registry in order, each followed by its sub projects, depth first in `subprojects` order. A project is skipped and logged when its project file is missing or invalid, or when its identifier is already used by a loaded project. A project skipped because its identifier is used is tried again, in registry order, each time a project is unloaded or unregistered. Default chosen at design time.
-4. Loads every ticket, bundle and chat metadata file of each loaded project. An invalid ticket or bundle file is skipped and logged, and loads once it becomes valid ([External changes](#external-changes)); an invalid chat metadata file is skipped and logged until the next launch. For each loaded chat the engine replays its transcript once, in a child task, to find whether it holds a question set that is not completed, a symbol request without answer, a color request without answer or a sound request without answer, which sets the chat's state to `waitingAnswers` ([Chats](chats.md#chat-states)) with `chat.updated`, and to cancel its pending permission requests ([Chats](chats.md#cancellation)); the items are not kept. Until the scan of a chat ends its state is `idle`. Clients read the items with `chats.get`. Default chosen at design time. Then the engine sets to `done` each bundle of the project that lists at least one ticket and whose tickets are all `done`, the Complete rule of [Bundle status rules](tickets.md#bundle-status-rules): it writes the bundle file and emits `bundle.updated` with the actor `system`. A bundle file that cannot be written keeps its status and is logged. The engine applies this rule each time it loads a project: at launch and when a project loads later, with `projects.open`, a changed `registry.yml`, a new sub project entry or a project file that appears.
+4. Loads every ticket, bundle and chat metadata file of each loaded project. An invalid ticket or bundle file is skipped and logged, and loads once it becomes valid ([External changes](#external-changes)); an invalid chat metadata file is skipped and logged until the next launch. For each loaded chat the engine replays its transcript once, in a child task, to find whether it holds a question set that is not completed, a symbol request without answer, a color request without answer, a sound request without answer or a shortcut request without answer, which sets the chat's state to `waitingAnswers` ([Chats](chats.md#chat-states)) with `chat.updated`, and to cancel its pending permission requests ([Chats](chats.md#cancellation)); the items are not kept. Until the scan of a chat ends its state is `idle`. Clients read the items with `chats.get`. Default chosen at design time. Then the engine sets to `done` each bundle of the project that lists at least one ticket and whose tickets are all `done`, the Complete rule of [Bundle status rules](tickets.md#bundle-status-rules): it writes the bundle file and emits `bundle.updated` with the actor `system`. A bundle file that cannot be written keeps its status and is logged. The engine applies this rule each time it loads a project: at launch and when a project loads later, with `projects.open`, a changed `registry.yml`, a new sub project entry or a project file that appears.
 5. Deletes leftover temporary files in the folders it reads.
 6. Starts watching the files ([External changes](#external-changes)).
 
@@ -1501,3 +1520,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R128: A macOS notification, titled with the project identifier and the chat title and detailed by a Haiku summary, tells the user when a chat needs them or when Claude has finished replying; each Mac turns each kind and the summary off in Settings.
 - R132: Claude asks the user to choose a color with `ask_color`, as one color or a light and dark pair: suggestions show as swatches, any system color can be picked from a grid and any other color with the macOS color panel or a hex field, the user answers another way or skips, and the chat shows the colors Claude names and the answer as swatches.
 - R133: In a Swift application project, Claude asks the user to choose a sound with `ask_sound`: the card lists the suggestions and searches the macOS sounds, the installed Simulator runtimes' sounds and the project's sound files; selecting one plays it; the user picks one, answers another way or skips.
+- R134: In a Swift application project, Claude asks the user to choose a keyboard shortcut with `ask_shortcut`: suggestions show as key caps, the user can record another combination and sees when macOS or the app already uses the selected one, then picks one, answers another way or skips.

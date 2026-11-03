@@ -164,12 +164,15 @@ public struct MarkdownRenderOptions: Sendable {
     public var colorSwatch: (@Sendable (String) -> MarkdownColorSwatch?)?
     /// Draws the sound markers; false leaves `sound:` images refused.
     public var readsSoundMarkers: Bool
+    /// The key caps of a shortcut marker's shortcut, nil for a text it refuses; nil leaves `shortcut:` images refused.
+    public var shortcutKeys: (@Sendable (String) -> [String]?)?
     /// Identifiers of the projects of the device; their ticket and bundle ids become links.
     public var projectIdentifiers: Set<String>
 
     public init(baseDirectory: String = "", projectRootPath: String? = nil, stripFrontMatter: Bool = false,
                 isSymbolAvailable: (@Sendable (String) -> Bool)? = nil,
                 colorSwatch: (@Sendable (String) -> MarkdownColorSwatch?)? = nil, readsSoundMarkers: Bool = false,
+                shortcutKeys: (@Sendable (String) -> [String]?)? = nil,
                 projectIdentifiers: Set<String> = [])
 }
 
@@ -186,13 +189,13 @@ public enum MarkdownBlockRenderer {
 }
 ```
 
-| Caller                                                                 | `baseDirectory`  | `projectRootPath`        | `stripFrontMatter` | `isSymbolAvailable`                                                                     | `colorSwatch`                                                                                                                             | `readsSoundMarkers`                             | `projectIdentifiers`                                                                                                     |
-| ---------------------------------------------------------------------- | ---------------- | ------------------------ | ------------------ | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Doc preview                                                            | the doc's folder | the project's `rootPath` | true               | nil                                                                                     | nil                                                                                                                                       | false                                           | empty                                                                                                                    |
-| Chat transcript ([Chats](chats.md#web-view-and-bridge))                | `""`             | the project's `rootPath` | false              | the symbols of the Mac that shows the window ([Chats](chats.md#links-images-and-files)) | the light and dark values of the hex colors and system colors on the Mac that shows the window ([Chats](chats.md#links-images-and-files)) | true ([Chats](chats.md#links-images-and-files)) | the identifiers of the projects of the window's device, sub projects included ([Chats](chats.md#links-images-and-files)) |
-| Ticket descriptions and comments ([Tickets](tickets.md#ticket-detail)) | `""`             | the project's `rootPath` | false              | nil                                                                                     | nil                                                                                                                                       | false                                           | the identifiers of the projects of the window's device, sub projects included ([Tickets](tickets.md#ticket-detail))      |
+| Caller                                                                 | `baseDirectory`  | `projectRootPath`        | `stripFrontMatter` | `isSymbolAvailable`                                                                     | `colorSwatch`                                                                                                                             | `readsSoundMarkers`                             | `shortcutKeys`                                                                                                 | `projectIdentifiers`                                                                                                     |
+| ---------------------------------------------------------------------- | ---------------- | ------------------------ | ------------------ | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Doc preview                                                            | the doc's folder | the project's `rootPath` | true               | nil                                                                                     | nil                                                                                                                                       | false                                           | nil                                                                                                            | empty                                                                                                                    |
+| Chat transcript ([Chats](chats.md#web-view-and-bridge))                | `""`             | the project's `rootPath` | false              | the symbols of the Mac that shows the window ([Chats](chats.md#links-images-and-files)) | the light and dark values of the hex colors and system colors on the Mac that shows the window ([Chats](chats.md#links-images-and-files)) | true ([Chats](chats.md#links-images-and-files)) | the key caps of the [shortcut notation](chats.md#shortcut-notation) ([Chats](chats.md#links-images-and-files)) | the identifiers of the projects of the window's device, sub projects included ([Chats](chats.md#links-images-and-files)) |
+| Ticket descriptions and comments ([Tickets](tickets.md#ticket-detail)) | `""`             | the project's `rootPath` | false              | nil                                                                                     | nil                                                                                                                                       | false                                           | nil                                                                                                            | the identifiers of the projects of the window's device, sub projects included ([Tickets](tickets.md#ticket-detail))      |
 
-Other callers state their options in their own document. The output depends only on the text and the options: the same input always gives the same bytes, as long as `isSymbolAvailable` and `colorSwatch` give the same answers. The doc preview links no ticket or bundle id ([Ticket and bundle ids](#ticket-and-bundle-ids)).
+Other callers state their options in their own document. The output depends only on the text and the options: the same input always gives the same bytes, as long as `isSymbolAvailable`, `colorSwatch` and `shortcutKeys` give the same answers. The doc preview links no ticket or bundle id ([Ticket and bundle ids](#ticket-and-bundle-ids)).
 
 ### Front matter
 
@@ -255,6 +258,8 @@ The unsupported list, the omitted comments and the inline attributes rendering a
 | Color marker of an accepted color         | `<span class="md-color"><span class="md-color-swatch" data-light="…" data-dark="…"></span>`, the escaped color, `</span>`; the `data-light` and `data-dark` values are the swatch's ([Color markers](#color-markers))                                               |
 | Color marker of another color             | its source text as written, escaped ([Color markers](#color-markers))                                                                                                                                                                                               |
 | Sound marker                              | `<span class="md-sound"><button type="button" class="md-sound-play" data-sound="…"><span class="md-symbol-icon" data-symbol="play.circle.fill"></span></button>`, the escaped name, `</span>`; the `data-sound` value is the name ([Sound markers](#sound-markers)) |
+| Shortcut marker of an accepted shortcut   | `<span class="md-shortcut">`, then for each key cap `<kbd>`, the escaped key cap, `</kbd>`, then `</span>` ([Shortcut markers](#shortcut-markers))                                                                                                                  |
+| Shortcut marker of another text           | its source text as written, escaped ([Shortcut markers](#shortcut-markers))                                                                                                                                                                                         |
 | URL autolink, extended URL autolink       | `<a href="…">…</a>`; a `www.` autolink gets the destination `http://www.…`                                                                                                                                                                                          |
 | E-mail autolink, extended e-mail autolink | the escaped address as text                                                                                                                                                                                                                                         |
 | Ticket or bundle id in text               | `<a class="md-id" href="hephaestus-id:…">`, the id, `</a>`; the `href` value is `hephaestus-id:` followed by the id ([Ticket and bundle ids](#ticket-and-bundle-ids))                                                                                               |
@@ -393,7 +398,7 @@ The links of ticket and bundle ids are not written by the text: the renderer mak
 
 Query and fragment of a project image are dropped. Loading remote images is a design-time choice. Default chosen at design time.
 
-An image whose source has the scheme `sf` is an [SF Symbol marker](#sf-symbol-markers) when the options have `isSymbolAvailable`. Only the chat transcript and the pinned questions card set it ([Chats](chats.md#links-images-and-files)): in the doc preview, ticket descriptions and comments an `sf:` image is refused, as the table says. An image whose source has the scheme `color` is a [color marker](#color-markers) when the options have `colorSwatch`, which the same callers set; elsewhere a `color:` image is refused. An image whose source has the scheme `sound` is a [sound marker](#sound-markers) when the options have `readsSoundMarkers` true, which only the chat transcript and the pinned cards of a chat set; elsewhere a `sound:` image is refused.
+An image whose source has the scheme `sf` is an [SF Symbol marker](#sf-symbol-markers) when the options have `isSymbolAvailable`. Only the chat transcript and the pinned questions card set it ([Chats](chats.md#links-images-and-files)): in the doc preview, ticket descriptions and comments an `sf:` image is refused, as the table says. An image whose source has the scheme `color` is a [color marker](#color-markers) when the options have `colorSwatch`, which the same callers set; elsewhere a `color:` image is refused. An image whose source has the scheme `sound` is a [sound marker](#sound-markers) when the options have `readsSoundMarkers` true, which only the chat transcript and the pinned cards of a chat set; elsewhere a `sound:` image is refused. An image whose source has the scheme `shortcut` is a [shortcut marker](#shortcut-markers) when the options have `shortcutKeys`, which only the chat transcript sets; elsewhere a `shortcut:` image is refused.
 
 ### SF Symbol markers
 
@@ -405,14 +410,15 @@ An SF Symbol marker is an image whose source has the scheme `sf` (any letter cas
 
 ```swift
 public enum MarkdownSymbolMarkers {
-    /// The plain text as `.text`, `.symbol`, `.color`, `.sound` and `.itemID` inlines.
+    /// The plain text as `.text`, `.symbol`, `.color`, `.sound`, `.shortcut` and `.itemID` inlines.
     public static func inlines(in text: String, isSymbolAvailable: (String) -> Bool,
                                colorSwatch: ((String) -> MarkdownColorSwatch?)? = nil, readsSoundMarkers: Bool = false,
+                               shortcutKeys: ((String) -> [String]?)? = nil,
                                projectIdentifiers: Set<String> = []) -> [MarkdownInline]
-    /// The plain text as HTML: escaped text and the symbol, color, sound and id HTML of HTML output.
+    /// The plain text as HTML: escaped text and the symbol, color, sound, shortcut and id HTML of HTML output.
     public static func html(_ text: String, isSymbolAvailable: (String) -> Bool,
                             colorSwatch: ((String) -> MarkdownColorSwatch?)? = nil, readsSoundMarkers: Bool = false,
-                            projectIdentifiers: Set<String> = []) -> String
+                            shortcutKeys: ((String) -> [String]?)? = nil, projectIdentifiers: Set<String> = []) -> String
 }
 ```
 
@@ -448,6 +454,16 @@ A sound marker names a sound of the [sound catalogue](chats.md#sound-catalogue) 
 
 The marker syntax `![](sound:<name>)` with the name as it is comes from the user; the plain-text form, the HTML and the SwiftUI drawing are Default chosen at design time.
 
+### Shortcut markers
+
+A shortcut marker is an image whose source has the scheme `shortcut` (any letter case), for example `![](shortcut:⇧⌘K)`. Its shortcut is the source after the first `:`, as Markdown reads it, so a backslash escape such as `\(` gives `(` ([Chats](chats.md#links-images-and-files)). The renderers read markers only when the options have `shortcutKeys`.
+
+- When `shortcutKeys` returns key caps for the shortcut, the marker becomes `.shortcut(keyCaps)` in the block model and the shortcut HTML of [HTML output](#html-output): one `kbd` element per key cap inside an element with the class `md-shortcut`, which the page draws as key caps ([Chats](chats.md#links-images-and-files)). The alt text and the title are not shown.
+- Otherwise the marker becomes `.text` with its Markdown source as written, for example `![](shortcut:⌘⇧K)`.
+- `MarkdownSymbolMarkers` finds shortcut markers in plain text too, with the same two rules, when it is given `shortcutKeys`. In plain text a shortcut marker is `![`, an alt text without `[`, `]` or line break, `](`, `shortcut:` in any letter case, a shortcut of one or more characters other than white space, `(` and `)`, in which `\` followed by any character stands for that character, and `)`.
+
+The marker syntax and the drawing as key caps come from the user; the plain-text form and the HTML are Default chosen at design time.
+
 ### Ticket and bundle ids
 
 When the options have `projectIdentifiers`, the renderers turn the ticket and bundle ids of these projects into links. The callers that set it give the identifiers of every project of the device the window shows, sub projects included ([Chats](chats.md#links-images-and-files), [Tickets](tickets.md#ticket-detail)); with an empty set, which the doc preview uses, no id is linked.
@@ -456,7 +472,7 @@ When the options have `projectIdentifiers`, the renderers turn the ticket and bu
 - It is a whole word: the character before it and the character after it, when there are any, are not letters, digits, `_` or `-`. `HEPH-21.`, `(HEPH-21)` and `HEPH-21,` link `HEPH-21`; `HEPH-21a`, `XHEPH-21`, `HEPH-21-3`, `HEPH-021` and `heph-21` link nothing. `UTF-8`, `SHA-256` and `ABC-3` link only when a project of the device has the identifier `UTF`, `SHA` or `ABC`. Default chosen at design time.
 - Text: ids are found in text outside links, after the [extended URL autolinks](#renderer), so an id inside a link or an autolink keeps that link. Text split by the parser, for example around a backslash escape, is joined first.
 - Code spans: a code span whose content is exactly an id becomes a link around the code span. A code span that holds an id among other text stays code.
-- Ids are left as text in fenced and indented code blocks, HTML blocks, inline HTML, image alt texts, SF Symbol markers, color markers and sound markers. Heading anchors are computed from the text as written, so they do not change.
+- Ids are left as text in fenced and indented code blocks, HTML blocks, inline HTML, image alt texts, SF Symbol markers, color markers, sound markers and shortcut markers. Heading anchors are computed from the text as written, so they do not change.
 
 HTML output: `<a class="md-id" href="hephaestus-id:HEPH-21">HEPH-21</a>` for an id in text, `<a class="md-id" href="hephaestus-id:HEPH-21"><code>HEPH-21</code></a>` for a code span. Block model: `.itemID("HEPH-21", code: false)` and `.itemID("HEPH-21", code: true)` ([Block model](#block-model)).
 
@@ -508,9 +524,9 @@ Raw HTML is always escaped ([Architecture](architecture.md#security-overview)):
 
 1. Every text and attribute value is escaped as in [HTML output](#html-output).
 2. HTML blocks and inline HTML never become markup: they are written as escaped text; HTML comments are left out.
-3. The renderer writes only the elements `p`, `h1`–`h6`, `hr`, `blockquote`, `ul`, `ol`, `li`, `input`, `div`, `pre`, `code`, `span`, `button`, `table`, `thead`, `tbody`, `tr`, `th`, `td`, `a`, `img`, `em`, `strong`, `del` and `br`, and only the attributes `id` (headings), `class` (the fixed `md-…` and `tok-…` names of this document), `start` (`ol`), `type`, `disabled` and `checked` (`input`), `type` and `data-sound` (`button`), `href` and `title` (`a`), `src`, `alt`, `title` and `loading` (`img`), `data-lang` (`code`), `data-symbol`, `data-light` and `data-dark` (`span`). It never writes `style` or event handler attributes.
+3. The renderer writes only the elements `p`, `h1`–`h6`, `hr`, `blockquote`, `ul`, `ol`, `li`, `input`, `div`, `pre`, `code`, `span`, `button`, `table`, `thead`, `tbody`, `tr`, `th`, `td`, `a`, `img`, `em`, `strong`, `del`, `br` and `kbd`, and only the attributes `id` (headings), `class` (the fixed `md-…` and `tok-…` names of this document), `start` (`ol`), `type`, `disabled` and `checked` (`input`), `type` and `data-sound` (`button`), `href` and `title` (`a`), `src`, `alt`, `title` and `loading` (`img`), `data-lang` (`code`), `data-symbol`, `data-light` and `data-dark` (`span`). It never writes `style` or event handler attributes.
 4. Link destinations and image sources pass the tables of [Links](#links) and [Images](#images); a refused one never reaches an attribute. The `href` of an id link is `hephaestus-id:` followed by an id that matched the rules of [Ticket and bundle ids](#ticket-and-bundle-ids), which holds only letters, digits and `-`.
-5. Heading ids contain only letters, marks, numbers, connector punctuation and `-`; language labels only the characters of [Code blocks](#code-blocks); a `data-symbol` value only a name that `isSymbolAvailable` accepted, or `play.circle.fill`, escaped; a `data-light` or `data-dark` value only `#` followed by 6 or 8 hex digits; a `data-sound` value only the name of a sound marker, escaped.
+5. Heading ids contain only letters, marks, numbers, connector punctuation and `-`; language labels only the characters of [Code blocks](#code-blocks); a `data-symbol` value only a name that `isSymbolAvailable` accepted, or `play.circle.fill`, escaped; a `data-light` or `data-dark` value only `#` followed by 6 or 8 hex digits; a `data-sound` value only the name of a sound marker, escaped; a `kbd` element only a key cap that `shortcutKeys` gave, escaped.
 6. The pages that show rendered HTML run only their bundled script, set a Content Security Policy, never navigate and accept only the messages they define ([Preview web view](#preview-web-view), [Chats](chats.md#web-view-and-bridge)).
 
 HephaestusTextTests render the fixture pairs `Tests/HephaestusTextTests/Fixtures/markdown/<name>.md` and `<name>.html` and compare the output byte for byte. A pair is rendered with `baseDirectory` `docs`, `projectRootPath` `/Users/example/Developer/App` (the options of the path resolution examples) and `stripFrontMatter` true, as the doc preview renders; a file `<name>.options.json` next to the pair replaces any of these three values and can give `projectIdentifiers`, empty otherwise. The fixtures cover every row of the HTML output table, the example above, the heading anchor examples, the path resolution examples, and hostile input: `<script>` blocks, `javascript:` and `data:` links and images, `onerror=` inside raw HTML, and quotes in titles and alt texts. The pair `ids` renders with `projectIdentifiers` `HEPH` and covers the examples of [Ticket and bundle ids](#ticket-and-bundle-ids). Default chosen at design time.
@@ -561,6 +577,7 @@ public indirect enum MarkdownInline: Sendable, Equatable {
     case symbol(String)                  // an SF Symbol marker of an available symbol: its name
     case color(String, swatch: MarkdownColorSwatch) // a color marker of an accepted color: the color as written and its swatch
     case sound(String)                   // a sound marker: the sound's name
+    case shortcut([String])              // a shortcut marker of an accepted shortcut: its key caps
     case itemID(String, code: Bool)      // a ticket or bundle id of a project of the device; code: written as a code span
     case softBreak
     case lineBreak
@@ -706,3 +723,4 @@ The Docs section works the same in a window that shows a remote device ([Remote 
 - R118: Ticket and bundle ids named in chats, ticket descriptions and comments are links that open the ticket or the bundle.
 - R132: Claude asks the user to choose a color with `ask_color`, as one color or a light and dark pair: suggestions show as swatches, any system color can be picked from a grid and any other color with the macOS color panel or a hex field, the user answers another way or skips, and the chat shows the colors Claude names and the answer as swatches.
 - R133: In a Swift application project, Claude asks the user to choose a sound with `ask_sound`: the card lists the suggestions and searches the macOS sounds, the installed Simulator runtimes' sounds and the project's sound files; selecting one plays it; the user picks one, answers another way or skips.
+- R134: In a Swift application project, Claude asks the user to choose a keyboard shortcut with `ask_shortcut`: suggestions show as key caps, the user can record another combination and sees when macOS or the app already uses the selected one, then picks one, answers another way or skips.

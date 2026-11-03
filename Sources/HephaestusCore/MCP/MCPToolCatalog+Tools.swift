@@ -913,6 +913,58 @@ extension MCPToolCatalog {
             handling: .askSound
         ),
         MCPToolDefinition(
+            name: "ask_shortcut",
+            description: #"""
+            Ask the user to choose one keyboard shortcut, instead of listing shortcuts in ask_questions. Only available in projects of type Swift application. Write each shortcut in macOS menu notation: the modifiers ⌃ ⌥ ⇧ ⌘ in this order, then one key: an uppercase letter, a digit or punctuation as typed without Shift, ↩ ⌤ ⎋ ⇥ Space ⌫ ⌦ ← → ↑ ↓ ↖ ↘ ⇞ ⇟, or F1 to F20, for example ⇧⌘K, ⇧⌘/ or ⌃⌥Space. Give the question, 2 to 10 suggested shortcuts, the recommended one, and in inUse every shortcut the app already uses with its command name. The app shows the suggestions as key caps, the recommended one preselected, lets the user record another combination, and warns when the selected shortcut is a standard macOS shortcut or one of inUse; the user can also answer in their own words or skip. This tool returns immediately: end your turn after calling it. The answer arrives in the next user message: "Shortcut: ![](shortcut:<shortcut>)" for a chosen or recorded shortcut, "Shortcut: <answer>" for an answer in the user's own words, or "Shortcut: Skipped". Only available in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "question": {
+                  "type": "string",
+                  "description": "The question."
+                },
+                "suggestions": {
+                  "type": "array",
+                  "description": "2 to 10 distinct shortcuts in macOS menu notation, for example ⇧⌘K.",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "recommended": {
+                  "type": "string",
+                  "description": "The recommended shortcut: one of the suggestions, copied exactly."
+                },
+                "inUse": {
+                  "type": "array",
+                  "description": "Every shortcut the app already uses, with the name of its command, for example ⌘N with New Ticket; an empty array when the app has none.",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "shortcut": {
+                        "type": "string",
+                        "description": "The shortcut, in the same notation."
+                      },
+                      "command": {
+                        "type": "string",
+                        "description": "The name of the command that uses it."
+                      }
+                    },
+                    "required": ["shortcut", "command"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["question", "suggestions", "recommended", "inUse"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "chats.postShortcut",
+            handling: .askShortcut
+        ),
+        MCPToolDefinition(
             name: "list_chats",
             description: #"""
             List a project's chats of every kind (project, ticket, bundle, feedback), most recently updated first, with their title, kind, linked ticket or bundle, settings and state.

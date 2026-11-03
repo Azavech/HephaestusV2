@@ -591,6 +591,26 @@ a.md-id:hover {
   color: inherit;
 }
 
+/* Shortcut markers: one key cap per kbd, a thin border in the text color (docs/chats.md › Links,
+   images and files). */
+.md-shortcut kbd {
+  display: inline-block;
+  min-width: 1em;
+  margin-right: 0.15em;
+  padding: 0 0.3em;
+  border: 1px solid currentColor;
+  border-radius: 0.3em;
+  font: inherit;
+  font-size: 0.9em;
+  line-height: 1.35;
+  text-align: center;
+  opacity: 0.9;
+}
+
+.md-shortcut kbd:last-child {
+  margin-right: 0;
+}
+
 .system-line,
 .result-line {
   text-align: center;

@@ -60,6 +60,7 @@ public indirect enum MarkdownInline: Sendable, Equatable {
     case symbol(String)                  // an SF Symbol marker of an available symbol: its name
     case color(String, swatch: MarkdownColorSwatch) // a color marker of an accepted color: the color as written and its swatch
     case sound(String)                   // a sound marker: the sound's name
+    case shortcut([String])              // a shortcut marker of an accepted shortcut: its key caps
     case itemID(String, code: Bool)      // a ticket or bundle id of a project of the device; code: written as a code span
     case softBreak
     case lineBreak

@@ -18,7 +18,7 @@ HephaestusV2 talks to Claude through the Claude CLI. Every chat is one Claude Co
 
 ## Chat states
 
-`ChatMeta.state` is computed by the engine and is not persisted. The status line texts below: Default chosen at design time. After an engine start, a chat whose transcript holds a question set that is not completed, a symbol request without answer, a color request without answer or a sound request without answer is waitingAnswers, and every other chat is idle; the engine finds them by replaying each transcript once at launch ([Data model](data-model.md#loading)).
+`ChatMeta.state` is computed by the engine and is not persisted. The status line texts below: Default chosen at design time. After an engine start, a chat whose transcript holds a question set that is not completed, a symbol request without answer, a color request without answer, a sound request without answer or a shortcut request without answer is waitingAnswers, and every other chat is idle; the engine finds them by replaying each transcript once at launch ([Data model](data-model.md#loading)).
 
 | State             | Meaning                                                                                                          | Status line above the composer     |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
@@ -30,7 +30,7 @@ HephaestusV2 talks to Claude through the Claude CLI. Every chat is one Claude Co
 | error             | The process failed to start, or exited with a non-zero status during a turn. The next message clears it.         | Claude stopped with an error (red) |
 
 - A turn is the time Claude spends on the messages the engine wrote to the process. It starts when the engine writes a user message while the chat has no turn in progress, or when a `system/init` arrives while none is in progress (a CLI turn the CLI starts on its own). It ends when no message the engine wrote is outstanding and no CLI turn is open ([Turn tracking](#turn-tracking)); a turn can thus span several CLI turns.
-- A symbol request without answer ([Symbol requests](#symbol-requests)), a color request without answer ([Color requests](#color-requests)) and a sound request without answer ([Sound requests](#sound-requests)) count as a question set that is not completed, in the table above and in the transitions below.
+- A symbol request without answer ([Symbol requests](#symbol-requests)), a color request without answer ([Color requests](#color-requests)), a sound request without answer ([Sound requests](#sound-requests)) and a shortcut request without answer ([Shortcut requests](#shortcut-requests)) count as a question set that is not completed, in the table above and in the transitions below.
 - When several states apply, the chat takes the first one of this order: error, waitingPermission, starting, running, waitingAnswers, idle.
 - A chat is running while its state is starting, running or waitingPermission.
 - A chat is working while it is running or its Claude process has background work running (`backgroundWork` true, [Background work](#background-work)); background work does not change the chat's state. The quit confirmation ([UI](ui.md#unsaved-changes-and-quitting)), the restart checks and the idle check before an automatic update ([Updater](updater.md#restart-rules)) and the removal of a project ([Projects](projects.md#removing-a-project)) count working chats.
@@ -52,7 +52,7 @@ HephaestusV2 talks to Claude through the Claude CLI. Every chat is one Claude Co
 | starting, running, waitingPermission | the process exits with a non-zero status, not after Stop or a termination by the engine | error                   |
 | starting, running, waitingPermission | the process exits after Stop or a termination by the engine, or with status 0           | idle, or waitingAnswers |
 
-`chats.send` accepts a message in every state ([Engine API](engine-api.md#chatssend)). During a turn the message is written to the process at once; the CLI keeps it in its queue until its CLI turn in progress ends, then runs it, together with the other messages waiting there, as a CLI turn of its own, and the chat stays running until that CLI turn ends ([Turn tracking](#turn-tracking)). A message sent while a question set, a symbol request, a color request or a sound request waits leaves it unchanged.
+`chats.send` accepts a message in every state ([Engine API](engine-api.md#chatssend)). During a turn the message is written to the process at once; the CLI keeps it in its queue until its CLI turn in progress ends, then runs it, together with the other messages waiting there, as a CLI turn of its own, and the chat stays running until that CLI turn ends ([Turn tracking](#turn-tracking)). A message sent while a question set, a symbol request, a color request, a sound request or a shortcut request waits leaves it unchanged.
 
 ## Claude CLI
 
@@ -155,8 +155,8 @@ Every row is one or two argv elements, in this order; no shell is involved.
 | 17  | `--plugin-dir` `<data dir>/Runtime/plugins/<project id>` | the project enables at least one skill of the library ([Skills](skills.md#generation)) |
 | 18  | `--settings` `<settings JSON>`                           | always                                                                                 |
 
-- Rows 14 and 15 let `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `close_chat`, the read-only `hephaestus` tools and the tools that create and edit tickets, comments and bundles (`create_ticket`, `update_ticket`, `set_ticket_status`, `add_comment`, `update_comment`, `create_bundle` and `update_bundle`) run in every permission mode, and keep Claude from using the CLI's own question tool. The tools that delete (`delete_ticket`, `delete_comment`, `remove_attachment` and `delete_bundle`) are not pre-approved, so in Ask Every Time the user approves each call. Default chosen at design time, except for `ask_symbol`, `ask_color`, `close_chat` and the ticket, comment and bundle tools, which the user chose.
-- `<pre-approved tools>` is this single argument: `mcp__hephaestus__ask_questions,mcp__hephaestus__ask_symbol,mcp__hephaestus__ask_color,mcp__hephaestus__ask_sound,mcp__hephaestus__close_chat,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__create_ticket,mcp__hephaestus__update_ticket,mcp__hephaestus__set_ticket_status,mcp__hephaestus__add_comment,mcp__hephaestus__update_comment,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__create_bundle,mcp__hephaestus__update_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat`. Every other tool, the other `hephaestus` tools included, follows the chat's permission mode.
+- Rows 14 and 15 let `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `close_chat`, the read-only `hephaestus` tools and the tools that create and edit tickets, comments and bundles (`create_ticket`, `update_ticket`, `set_ticket_status`, `add_comment`, `update_comment`, `create_bundle` and `update_bundle`) run in every permission mode, and keep Claude from using the CLI's own question tool. The tools that delete (`delete_ticket`, `delete_comment`, `remove_attachment` and `delete_bundle`) are not pre-approved, so in Ask Every Time the user approves each call. Default chosen at design time, except for `ask_symbol`, `ask_color`, `ask_shortcut`, `close_chat` and the ticket, comment and bundle tools, which the user chose.
+- `<pre-approved tools>` is this single argument: `mcp__hephaestus__ask_questions,mcp__hephaestus__ask_symbol,mcp__hephaestus__ask_color,mcp__hephaestus__ask_sound,mcp__hephaestus__ask_shortcut,mcp__hephaestus__close_chat,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__create_ticket,mcp__hephaestus__update_ticket,mcp__hephaestus__set_ticket_status,mcp__hephaestus__add_comment,mcp__hephaestus__update_comment,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__create_bundle,mcp__hephaestus__update_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat`. Every other tool, the other `hephaestus` tools included, follows the chat's permission mode.
 - `--permission-mode` takes `manual` for Ask Every Time; the control request `set_permission_mode` takes `default` for the same mode ([Permission mode](#permission-mode)).
 - `<settings JSON>` is this single argument, which holds the `UserPromptSubmit` hook of the [linked items hook](#linked-items-hook): `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"http","url":"http://127.0.0.1:<port>/hooks/user-prompt-submit","headers":{"Authorization":"Bearer $HEPHAESTUS_HOOK_TOKEN"},"allowedEnvVars":["HEPHAESTUS_HOOK_TOKEN"],"timeout":10}]}]}}`. When `settings.ultracode` is true, it starts with `{"ultracode":true,` in place of `{`. `<port>` is the port of the [MCP configuration file](#mcp-configuration-file). The CLI replaces `$HEPHAESTUS_HOOK_TOKEN` with the variable of its environment, so the token is not part of the arguments. The timeout of 10 s: Default chosen at design time.
 
@@ -168,7 +168,7 @@ claude -p --input-format stream-json --output-format stream-json --verbose --inc
   --model opus --effort high --permission-mode manual --allow-dangerously-skip-permissions \
   --permission-prompt-tool stdio \
   --mcp-config "$HOME/Library/Application Support/HephaestusV2/Runtime/mcp/3F2504E0-4F89-11D3-9A0C-0305E82C3301.json" \
-  --allowedTools mcp__hephaestus__ask_questions,mcp__hephaestus__ask_symbol,mcp__hephaestus__ask_color,mcp__hephaestus__ask_sound,mcp__hephaestus__close_chat,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__create_ticket,mcp__hephaestus__update_ticket,mcp__hephaestus__set_ticket_status,mcp__hephaestus__add_comment,mcp__hephaestus__update_comment,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__create_bundle,mcp__hephaestus__update_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat \
+  --allowedTools mcp__hephaestus__ask_questions,mcp__hephaestus__ask_symbol,mcp__hephaestus__ask_color,mcp__hephaestus__ask_sound,mcp__hephaestus__ask_shortcut,mcp__hephaestus__close_chat,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__create_ticket,mcp__hephaestus__update_ticket,mcp__hephaestus__set_ticket_status,mcp__hephaestus__add_comment,mcp__hephaestus__update_comment,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__create_bundle,mcp__hephaestus__update_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat \
   --disallowedTools AskUserQuestion \
   --append-system-prompt "You are Claude, working inside HephaestusV2, …" \
   --plugin-dir "$HOME/Library/Application Support/HephaestusV2/Runtime/plugins/HEPH" \
@@ -677,7 +677,7 @@ The chat's `settings.permissionMode` follows the CLI. When the engine answers `a
 
 ## Questions
 
-Claude never invents unknowns: it asks with the MCP tool `ask_questions`, which calls `chats.postQuestions` for the chat that owns the token and returns at once. The rules Claude follows are in [Claude workflow](workflow.md#questions-protocol) and in the prompt [common](#prompt-common). To have the user choose an SF Symbol, Claude asks with `ask_symbol` instead ([Symbol requests](#symbol-requests)), to have the user choose a color, with `ask_color` ([Color requests](#color-requests)), and to have the user choose a sound, in a Swift application project, with `ask_sound` ([Sound requests](#sound-requests)).
+Claude never invents unknowns: it asks with the MCP tool `ask_questions`, which calls `chats.postQuestions` for the chat that owns the token and returns at once. The rules Claude follows are in [Claude workflow](workflow.md#questions-protocol) and in the prompt [common](#prompt-common). To have the user choose an SF Symbol, Claude asks with `ask_symbol` instead ([Symbol requests](#symbol-requests)), to have the user choose a color, with `ask_color` ([Color requests](#color-requests)), to have the user choose a sound, in a Swift application project, with `ask_sound` ([Sound requests](#sound-requests)), and to have the user choose a keyboard shortcut, in a Swift application project, with `ask_shortcut` ([Shortcut requests](#shortcut-requests)).
 
 ### Posting questions
 
@@ -693,7 +693,7 @@ Claude never invents unknowns: it asks with the MCP tool `ask_questions`, which 
 | Each option label is one line of at most 200 characters ([Data model](data-model.md#questions-item)).    |
 | `recommended` equals the `label` of one of the question's options, so exactly one option is recommended. |
 
-A chat has at most one waiting request: posting fails with `conflict` while a question set is not completed (`Questions are already waiting for answers in this chat.`), a symbol request has no answer (`A symbol request is already waiting for an answer in this chat.`), a color request has no answer (`A color request is already waiting for an answer in this chat.`) or a sound request has no answer (`A sound request is already waiting for an answer in this chat.`). The MCP tool checks its own schema first ([MCP](mcp.md#question-rules)).
+A chat has at most one waiting request: posting fails with `conflict` while a question set is not completed (`Questions are already waiting for answers in this chat.`), a symbol request has no answer (`A symbol request is already waiting for an answer in this chat.`), a color request has no answer (`A color request is already waiting for an answer in this chat.`), a sound request has no answer (`A sound request is already waiting for an answer in this chat.`) or a shortcut request has no answer (`A shortcut request is already waiting for an answer in this chat.`). The MCP tool checks its own schema first ([MCP](mcp.md#question-rules)).
 
 Once the set passes these rules, the engine moves each question's recommended option to the first place of its `options`; the other options keep their relative order. Claude's prompts have no rule about the place of the recommended option: the engine does the reordering. The engine then adds a `questions` item {questionSetID (new uppercase UUID), questions in this order, answers `{}`, completed false} and returns the `QuestionSet` with the same order, so the pinned questions card, the transcript's Questions card and every other device list the recommended option first. When the turn that posted it ends, the state becomes waitingAnswers. Example of `questions`:
 
@@ -724,7 +724,7 @@ B: Skipped
 
 Claude leaves a skipped point out: it does not act on it or guess, and it mentions it in its reply ([Prompt: common](#prompt-common)).
 
-A set stays incomplete across process exits and app restarts; answering its last unanswered question later starts a process with `--resume`. Messages typed in the composer while a set is incomplete are delivered normally and do not change the set. Until every question of the set has an answer, the set stays pinned and Claude cannot post another set, a symbol request, a color request or a sound request in this chat. Default chosen at design time.
+A set stays incomplete across process exits and app restarts; answering its last unanswered question later starts a process with `--resume`. Messages typed in the composer while a set is incomplete are delivered normally and do not change the set. Until every question of the set has an answer, the set stays pinned and Claude cannot post another set, a symbol request, a color request, a sound request or a shortcut request in this chat. Default chosen at design time.
 
 ### Pinned questions card
 
@@ -752,7 +752,7 @@ When Claude needs the user to choose an SF Symbol, it asks with the MCP tool `as
 
 `chats.postSymbol` {chatID, question, suggestions, recommended} accepts only the chat's own Claude ([Engine API](engine-api.md#chatspostsymbol)). It trims each suggestion and `recommended`, then checks the rules of [Claude workflow](workflow.md#symbol-requests) in their order and fails with `invalid` and the message of the first one broken. A suggestion is valid when it is a name of the [symbol catalogue](#symbol-catalogue) of the main device, localized variants included.
 
-A chat has at most one waiting request: posting fails with `conflict` while a question set is not completed (`Questions are already waiting for answers in this chat.`), a symbol request has no answer (`A symbol request is already waiting for an answer in this chat.`), a color request has no answer (`A color request is already waiting for an answer in this chat.`) or a sound request has no answer (`A sound request is already waiting for an answer in this chat.`).
+A chat has at most one waiting request: posting fails with `conflict` while a question set is not completed (`Questions are already waiting for answers in this chat.`), a symbol request has no answer (`A symbol request is already waiting for an answer in this chat.`), a color request has no answer (`A color request is already waiting for an answer in this chat.`), a sound request has no answer (`A sound request is already waiting for an answer in this chat.`) or a shortcut request has no answer (`A shortcut request is already waiting for an answer in this chat.`).
 
 Once the request passes these checks, the engine adds a `symbol` item {requestID (new uppercase UUID), question, suggestions in Claude's order, recommended, answer null} ([Data model](data-model.md#symbol-item)) and returns the `SymbolRequest` ([Engine API](engine-api.md#symbolrequest)). When the turn that posted it ends, the state becomes waitingAnswers.
 
@@ -770,7 +770,7 @@ Symbol: ![](sf:line.3.horizontal.decrease.circle)
 
 Claude leaves a skipped request out: it does not act on it or guess, and it mentions it in its reply ([Prompt: common](#prompt-common)).
 
-A request stays waiting across process exits and app restarts; answering it later starts a process with `--resume`. Messages typed in the composer while it waits are delivered normally and do not change it. Until it has an answer, the request stays pinned and Claude cannot post another symbol request, a question set, a color request or a sound request in this chat.
+A request stays waiting across process exits and app restarts; answering it later starts a process with `--resume`. Messages typed in the composer while it waits are delivered normally and do not change it. Until it has an answer, the request stays pinned and Claude cannot post another symbol request, a question set, a color request, a sound request or a shortcut request in this chat.
 
 ### Symbol catalogue
 
@@ -796,7 +796,7 @@ The search field of the [pinned symbol card](#pinned-symbol-card) searches the c
 
 ### Pinned symbol card
 
-While the chat has a symbol request without answer, a native SwiftUI card is pinned above the composer of every view of the chat, below the permission card when both exist. A chat has at most one waiting request, so the pinned questions card, the pinned symbol card, the pinned [color card](#pinned-color-card) and the pinned [sound card](#pinned-sound-card) never show together.
+While the chat has a symbol request without answer, a native SwiftUI card is pinned above the composer of every view of the chat, below the permission card when both exist. A chat has at most one waiting request, so the pinned questions card, the pinned symbol card, the pinned [color card](#pinned-color-card), the pinned [sound card](#pinned-sound-card) and the pinned [shortcut card](#pinned-shortcut-card) never show together.
 
 - Header `Symbol`, then at the top right a minimize button, a chevron pointing down.
 - The question text rendered as Markdown with SF Symbol markers, color markers, sound markers and ticket and bundle id links, as in the [pinned questions card](#pinned-questions-card). The header and the question text are selectable (`textSelection(.enabled)`).
@@ -821,7 +821,7 @@ When Claude needs the user to choose a color, it asks with the MCP tool `ask_col
 
 `chats.postColor` {chatID, question, suggestions, recommended, lightAndDark} accepts only the chat's own Claude ([Engine API](engine-api.md#chatspostcolor)). It trims each color of the suggestions and of `recommended`, then checks the rules of [Claude workflow](workflow.md#color-requests) in their order and fails with `invalid` and the message of the first one broken. A color is valid when it is a hex color `#RRGGBB`, its six hex digits in either letter case, or a name of [System colors](#system-colors), with its letter case. The check is the same on every device: it does not depend on the colors a Mac can draw.
 
-A chat has at most one waiting request: posting fails with `conflict` while a question set is not completed (`Questions are already waiting for answers in this chat.`), a symbol request has no answer (`A symbol request is already waiting for an answer in this chat.`), a color request has no answer (`A color request is already waiting for an answer in this chat.`) or a sound request has no answer (`A sound request is already waiting for an answer in this chat.`).
+A chat has at most one waiting request: posting fails with `conflict` while a question set is not completed (`Questions are already waiting for answers in this chat.`), a symbol request has no answer (`A symbol request is already waiting for an answer in this chat.`), a color request has no answer (`A color request is already waiting for an answer in this chat.`), a sound request has no answer (`A sound request is already waiting for an answer in this chat.`) or a shortcut request has no answer (`A shortcut request is already waiting for an answer in this chat.`).
 
 Once the request passes these checks, the engine adds a `color` item {requestID (new uppercase UUID), question, lightAndDark (false when absent), suggestions in Claude's order, recommended, answer null} ([Data model](data-model.md#color-item)) and returns the `ColorRequest` ([Engine API](engine-api.md#colorrequest)). The colors are stored trimmed, as Claude wrote them otherwise. When the turn that posted it ends, the state becomes waitingAnswers.
 
@@ -839,7 +839,7 @@ Color: Light ![](color:#FFFFFF), Dark ![](color:#1C1C1E)
 
 Claude leaves a skipped request out: it does not act on it or guess, and it mentions it in its reply ([Prompt: common](#prompt-common)).
 
-A request stays waiting across process exits and app restarts; answering it later starts a process with `--resume`. Messages typed in the composer while it waits are delivered normally and do not change it. Until it has an answer, the request stays pinned and Claude cannot post another color request, a question set, a symbol request or a sound request in this chat.
+A request stays waiting across process exits and app restarts; answering it later starts a process with `--resume`. Messages typed in the composer while it waits are delivered normally and do not change it. Until it has an answer, the request stays pinned and Claude cannot post another color request, a question set, a symbol request, a sound request or a shortcut request in this chat.
 
 ### System colors
 
@@ -877,7 +877,7 @@ The names come from the user's choice of the SwiftUI, UIKit and AppKit colors an
 
 ### Pinned color card
 
-While the chat has a color request without answer, a native SwiftUI card is pinned above the composer of every view of the chat, below the permission card when both exist. A chat has at most one waiting request, so the pinned questions card, the pinned symbol card, the pinned color card and the pinned [sound card](#pinned-sound-card) never show together. The card holds one color, or two rows `Light` and `Dark` while its toggle `Light and dark` is on.
+While the chat has a color request without answer, a native SwiftUI card is pinned above the composer of every view of the chat, below the permission card when both exist. A chat has at most one waiting request, so the pinned questions card, the pinned symbol card, the pinned color card, the pinned [sound card](#pinned-sound-card) and the pinned [shortcut card](#pinned-shortcut-card) never show together. The card holds one color, or two rows `Light` and `Dark` while its toggle `Light and dark` is on.
 
 - Header `Color`, then at the top right a minimize button, a chevron pointing down.
 - The question text rendered as Markdown with SF Symbol markers, color markers and ticket and bundle id links, as in the [pinned questions card](#pinned-questions-card). The header and the question text are selectable (`textSelection(.enabled)`).
@@ -909,7 +909,7 @@ When, in a project whose type is Swift application ([Project types](projects.md#
 
 `chats.postSound` {chatID, question, suggestions, recommended} accepts only the chat's own Claude ([Engine API](engine-api.md#chatspostsound)), and only in a chat whose project has the type `swiftApplication`: in a project of another type it fails with `forbidden` (`ask_sound is only available in Swift application projects.`) and nothing is shown to the user. It then trims each suggestion and `recommended`, checks the rules of [Claude workflow](workflow.md#sound-requests) in their order and fails with `invalid` and the message of the first one broken. A suggestion is valid when it is a name of the [sound catalogue](#sound-catalogue) of the main device for the chat's project.
 
-A chat has at most one waiting request: posting fails with `conflict` while a question set is not completed (`Questions are already waiting for answers in this chat.`), a symbol request has no answer (`A symbol request is already waiting for an answer in this chat.`), a color request has no answer (`A color request is already waiting for an answer in this chat.`) or a sound request has no answer (`A sound request is already waiting for an answer in this chat.`).
+A chat has at most one waiting request: posting fails with `conflict` while a question set is not completed (`Questions are already waiting for answers in this chat.`), a symbol request has no answer (`A symbol request is already waiting for an answer in this chat.`), a color request has no answer (`A color request is already waiting for an answer in this chat.`), a sound request has no answer (`A sound request is already waiting for an answer in this chat.`) or a shortcut request has no answer (`A shortcut request is already waiting for an answer in this chat.`).
 
 Once the request passes these checks, the engine adds a `sound` item {requestID (new uppercase UUID), question, suggestions in Claude's order, recommended, answer null} ([Data model](data-model.md#sound-item)) and returns the `SoundRequest` ([Engine API](engine-api.md#soundrequest)). When the turn that posted it ends, the state becomes waitingAnswers.
 
@@ -927,7 +927,7 @@ Sound: ![](sound:iOS 26.1/sms-received1.caf)
 
 Claude leaves a skipped request out: it does not act on it or guess, and it mentions it in its reply ([Prompt: common](#prompt-common)).
 
-A request stays waiting across process exits and app restarts; answering it later starts a process with `--resume`. Messages typed in the composer while it waits are delivered normally and do not change it. Until it has an answer, the request stays pinned and Claude cannot post another sound request, a symbol request, a color request or a question set in this chat.
+A request stays waiting across process exits and app restarts; answering it later starts a process with `--resume`. Messages typed in the composer while it waits are delivered normally and do not change it. Until it has an answer, the request stays pinned and Claude cannot post another sound request, a symbol request, a color request, a shortcut request or a question set in this chat.
 
 ### Sound catalogue
 
@@ -973,7 +973,7 @@ The player and the alert are Default chosen at design time.
 
 ### Pinned sound card
 
-While the chat has a sound request without answer, a native SwiftUI card is pinned above the composer of every view of the chat, below the permission card when both exist. A chat never has two requests waiting together, so the pinned questions card, the pinned symbol card, the pinned [color card](#pinned-color-card) and the pinned sound card never show together.
+While the chat has a sound request without answer, a native SwiftUI card is pinned above the composer of every view of the chat, below the permission card when both exist. A chat never has two requests waiting together, so the pinned questions card, the pinned symbol card, the pinned [color card](#pinned-color-card), the pinned sound card and the pinned [shortcut card](#pinned-shortcut-card) never show together.
 
 - Header `Sound`, then at the top right a minimize button, a chevron pointing down.
 - The question text rendered as Markdown with SF Symbol markers, sound markers and ticket and bundle id links, as in the [pinned questions card](#pinned-questions-card). The header and the question text are selectable (`textSelection(.enabled)`).
@@ -989,6 +989,177 @@ While the chat has a sound request without answer, a native SwiftUI card is pinn
 - Minimize works as for the pinned questions card: the collapsed bar shows `Sound` and a chevron pointing up, and the minimized state is kept per chat for the request that was minimized, on this device only, and survives an app restart ([UI › Persistence](ui.md#persistence)).
 
 The texts `Sound`, `Search sounds`, `Answer another way`, Skip and Submit, the row texts, the star, the preselection, the playback on selection, the answer forms and the scope of the search come from the user; the other details are Default chosen at design time.
+
+## Shortcut requests
+
+In a project whose [type](projects.md#project-types) is Swift application (`swiftApplication`), when Claude needs the user to choose a keyboard shortcut, it asks with the MCP tool `ask_shortcut`, which calls `chats.postShortcut` for the chat that owns the token and returns at once ([MCP](mcp.md#ask_shortcut)). The rules Claude follows are in [Claude workflow](workflow.md#shortcut-requests) and in the prompt [common](#prompt-common).
+
+### Posting a shortcut request
+
+`chats.postShortcut` {chatID, question, suggestions, recommended, inUse} accepts only the chat's own Claude ([Engine API](engine-api.md#chatspostshortcut)). In a chat whose project does not have the type `swiftApplication`, it fails with `forbidden` and `ask_shortcut is available only in Swift application projects.`. It then trims each suggestion, `recommended`, and each `shortcut` and `command` of `inUse`, checks the rules of [Claude workflow](workflow.md#shortcut-requests) in their order and fails with `invalid` and the message of the first one broken. A suggestion, and the `shortcut` of an entry of `inUse`, is valid when it is written in the [shortcut notation](#shortcut-notation).
+
+A chat has at most one waiting request: posting fails with `conflict` while a question set is not completed (`Questions are already waiting for answers in this chat.`), a symbol request has no answer (`A symbol request is already waiting for an answer in this chat.`), a color request has no answer (`A color request is already waiting for an answer in this chat.`), a sound request has no answer (`A sound request is already waiting for an answer in this chat.`) or a shortcut request has no answer (`A shortcut request is already waiting for an answer in this chat.`).
+
+Once the request passes these checks, the engine adds a `shortcut` item {requestID (new uppercase UUID), question, suggestions in Claude's order, recommended, inUse in Claude's order, answer null} ([Data model](data-model.md#shortcut-item)) and returns the `ShortcutRequest` ([Engine API](engine-api.md#shortcutrequest)). When the turn that posted it ends, the state becomes waitingAnswers.
+
+### Answering a shortcut request
+
+`chats.answerShortcut` {chatID, requestID, answer} ([Engine API](engine-api.md#chatsanswershortcut)) stores the answer:
+
+- `answer` is trimmed and has 1 to 10,000 characters (`invalid` otherwise). The [pinned shortcut card](#pinned-shortcut-card) sends `![](shortcut:<shortcut>)` for a chosen or recorded shortcut, written as [Links, images and files](#links-images-and-files) says, the field's text for `Answer another way`, and `Skipped` for Skip.
+- A request that already has an answer gives `conflict` (`This shortcut request was already answered.`). A client whose answer fails because the request was answered on another device (`conflict` while `chat.item` already carries the answer) shows no alert.
+- The item is replaced with its `answer`, and the engine delivers the message `Shortcut: <answer>` as a user message whose `sender` is the name of the answering device; the answer keeps its own line breaks. During a turn it is delivered like any message ([Chat states](#chat-states)), and a closed chat reopens as for the Answers message ([Closing a chat](#closing-a-chat)).
+
+```
+Shortcut: ![](shortcut:⇧⌘K)
+```
+
+Claude leaves a skipped request out: it does not act on it or guess, and it mentions it in its reply ([Prompt: common](#prompt-common)).
+
+A request stays waiting across process exits and app restarts; answering it later starts a process with `--resume`. Messages typed in the composer while it waits are delivered normally and do not change it. Until it has an answer, the request stays pinned and Claude cannot post another shortcut request, a symbol request, a color request, a sound request or a question set in this chat.
+
+### Shortcut notation
+
+A shortcut is written as macOS menus write it: its modifiers, then its key, with nothing between them, for example `⇧⌘K`, `⌃⌥K`, `⌘↩`, `⎋` or `⌃Space` (`KeyShortcut`, [Swift types](#swift-types)).
+
+- The modifiers are `⌃` (Control), `⌥` (Option), `⇧` (Shift) and `⌘` (Command), each at most once, in this order: `⇧⌘K` is a shortcut, `⌘⇧K` is not. A shortcut may have no modifier, for example `⎋` or `F5`.
+- The key is exactly one of the keys of this table:
+
+| Key                                                  | Written                                                                                                                                                                                               |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A letter                                             | The letter in uppercase, for example `K`; a lowercase letter is refused.                                                                                                                              |
+| A digit, a punctuation mark, any other character key | The character the key types without Shift or Option in the keyboard layout in use, for example `1`, `/`, `,` or `[`. With Shift, `⇧` is written before the key: Shift-Command-/ is `⇧⌘/`, never `⌘?`. |
+| Return, keypad Enter                                 | `↩`, `⌤`                                                                                                                                                                                              |
+| Escape                                               | `⎋`                                                                                                                                                                                                   |
+| Tab                                                  | `⇥`                                                                                                                                                                                                   |
+| Space bar                                            | `Space`                                                                                                                                                                                               |
+| Delete, Forward Delete                               | `⌫`, `⌦`                                                                                                                                                                                              |
+| Left, Right, Up and Down Arrow                       | `←`, `→`, `↑`, `↓`                                                                                                                                                                                    |
+| Home, End                                            | `↖`, `↘`                                                                                                                                                                                              |
+| Page Up, Page Down                                   | `⇞`, `⇟`                                                                                                                                                                                              |
+| Function keys                                        | `F1` to `F20`                                                                                                                                                                                         |
+
+- A character key is one character that is not white space, a control or private-use character or one of `⌃`, `⌥`, `⇧` and `⌘`, and that stays the same in uppercase; the glyphs of the table are such characters.
+- Two shortcuts are the same when they are written the same.
+- A shortcut is drawn as key caps: one key cap per modifier and one for the key, in the order written, so `⇧⌘K` gives the key caps `⇧`, `⌘` and `K`, and `⌃Space` gives `⌃` and `Space`.
+
+The glyphs of macOS menus, the strict order of the modifiers, the uppercase letters, the unshifted key written with `⇧`, and the keys of the table come from the user; the character-key rule is Default chosen at design time.
+
+### Standard macOS shortcuts
+
+The [pinned shortcut card](#pinned-shortcut-card) warns when the selected shortcut is one of the standard macOS shortcuts below (`StandardShortcuts`, [Swift types](#swift-types)). The list is fixed and the same on every Mac. It is taken from Apple's article [Mac keyboard shortcuts](https://support.apple.com/en-us/102650): its sections Cut, copy, paste, and other common shortcuts; Sleep, log out, and shut down shortcuts; and Accessibility shortcuts, plus the entries of its section Finder and system shortcuts that act in every app: Mission Control, the application windows, the input sources, the Dock and Siri. The combinations that need Fn or Globe, the Power button, a media key or the mouse cannot be written in the [notation](#shortcut-notation) and are left out, and a shortcut that the article lists twice appears once. The sections come from the user; each action is a short name of Apple's description, Default chosen at design time.
+
+| Shortcut  | Action                    |
+| --------- | ------------------------- |
+| `⌘X`      | Cut                       |
+| `⌘C`      | Copy                      |
+| `⌘V`      | Paste                     |
+| `⌘Z`      | Undo                      |
+| `⇧⌘Z`     | Redo                      |
+| `⌘A`      | Select All                |
+| `⌘F`      | Find                      |
+| `⌘G`      | Find Again                |
+| `⇧⌘G`     | Find Previous             |
+| `⌘H`      | Hide                      |
+| `⌥⌘H`     | Hide Others               |
+| `⌘M`      | Minimize                  |
+| `⌥⌘M`     | Minimize All              |
+| `⌘O`      | Open                      |
+| `⌘P`      | Print                     |
+| `⌘Q`      | Quit                      |
+| `⌘S`      | Save                      |
+| `⌘T`      | New Tab                   |
+| `⌘W`      | Close Window              |
+| `⌥⌘W`     | Close All Windows         |
+| `⌥⌘⎋`     | Force Quit                |
+| `⌘Space`  | Spotlight                 |
+| `⌥⌘Space` | Spotlight in Finder       |
+| `⌃⌘Space` | Character Viewer          |
+| `⌃⌘F`     | Full Screen               |
+| `Space`   | Quick Look                |
+| `⌘⇥`      | Switch Apps               |
+| ⌘&#96;    | Switch Windows            |
+| `⇧⌘3`     | Screenshot                |
+| `⇧⌘4`     | Screenshot                |
+| `⇧⌘5`     | Screenshot or Recording   |
+| `⇧⌘N`     | New Folder                |
+| `⌃⌘N`     | New Folder with Selection |
+| `⌘,`      | Settings                  |
+| `⌃⌘Q`     | Lock Screen               |
+| `⇧⌘Q`     | Log Out                   |
+| `⌥⇧⌘Q`    | Log Out Immediately       |
+| `⌥⌘D`     | Show or Hide Dock         |
+| `⌃↑`      | Mission Control           |
+| `⌃↓`      | Application Windows       |
+| `⇧⌘6`     | Ask Siri About Selection  |
+| `⇧⌘Space` | Ask Siri About Window     |
+| `⌃Space`  | Previous Input Source     |
+| `⌃⌥Space` | Next Input Source         |
+| `⌃⌥⌘8`    | Invert Colors             |
+| `⌃⌥⌘,`    | Reduce Contrast           |
+| `⌃⌥⌘.`    | Increase Contrast         |
+| `⌃F2`     | Focus Menu Bar            |
+| `⌃F3`     | Focus Dock                |
+| `⌃F4`     | Focus Window              |
+| `⌃F5`     | Focus Toolbar             |
+| `⌃F6`     | Focus Floating Window     |
+| `⌃⇧F6`    | Focus Previous Panel      |
+| `⌃F7`     | Tab Focus Mode            |
+| `⌃F8`     | Focus Status Menu         |
+| ⇧⌘&#96;   | Previous Window           |
+| ⌥⌘&#96;   | Focus Window Drawer       |
+| `⇥`       | Next Control              |
+| `⇧⇥`      | Previous Control          |
+| `⌃⇥`      | Next Control              |
+| `⌃⇧⇥`     | Previous Control Group    |
+| `←`       | Move to Adjacent Item     |
+| `→`       | Move to Adjacent Item     |
+| `↑`       | Move to Adjacent Item     |
+| `↓`       | Move to Adjacent Item     |
+| `⌃←`      | Move to Adjacent Control  |
+| `⌃→`      | Move to Adjacent Control  |
+| `⌥⌘F5`    | Accessibility Shortcuts   |
+
+### Shortcut recorder
+
+The recorder field of the [pinned shortcut card](#pinned-shortcut-card) records a key combination the user presses:
+
+- The field shows its recorded shortcut as key caps, or while it has none the placeholder `Record Shortcut` in secondary color.
+- A click on the field selects it, as a click on a suggestion selects that suggestion, and starts recording. Selected, the field has the rounded accent background of a selected suggestion; while it records, it has the text background color and a 2 pt border in the accent color instead.
+- While the field records, every key press of the window goes to it: no menu item, no other shortcut of the app, ⌘Return of the cards included, and no other control of the window receives it. A key press of a modifier alone (`⌃`, `⌥`, `⇧`, `⌘`, Caps Lock, Fn) records nothing.
+- The first key press of another key records the shortcut made of that key and of the modifiers held among `⌃`, `⌥`, `⇧` and `⌘`, written in the [notation](#shortcut-notation); Caps Lock and Fn are not part of it. The field shows the shortcut as key caps, recording stops, and the shortcut becomes the card's selected shortcut. Escape, Return, Tab, Space and the arrows are recorded as any other key, with or without modifiers.
+- A key that the notation cannot write, such as Help or a keypad Clear key, records nothing, and recording goes on.
+- A click on the field while it has a shortcut starts a new recording; the shortcut stays shown and selected until the next combination replaces it.
+- A click elsewhere in the window, or the window losing its key status, stops recording; the field keeps its shortcut.
+- The combinations that macOS handles before any app, such as `⌘⇥`, never reach the field: macOS acts on them. The user can still choose such a shortcut among the suggestions, or give it with `Answer another way`.
+
+The placeholder `Record Shortcut` and the recording of every combination, ⌘Return included, come from the user; the other details are Default chosen at design time.
+
+### Shortcut warnings
+
+While a shortcut is selected in the card, a suggestion or the shortcut of the recorder field, the card shows below the recorder field one line per use of that shortcut:
+
+- `Used by macOS: <action>` when it is a [standard macOS shortcut](#standard-macos-shortcuts), `<action>` being its action, for example `Used by macOS: Spotlight` for `⌘Space`;
+- `Used by the app: <command>` when it is the `shortcut` of an entry of the request's `inUse`, `<command>` being that entry's command, for example `Used by the app: New Ticket` for `⌘N`.
+
+Both lines show when both apply, the macOS line first. Each line starts with the symbol `exclamationmark.triangle.fill`, and the symbol and the text are in the orange system color. No line shows while `Answer another way` is selected or while the recorder field is selected without a shortcut. A warning does not block: Submit stays enabled, and Claude receives the shortcut. The texts and the non-blocking rule come from the user; the symbol and the color are Default chosen at design time.
+
+### Pinned shortcut card
+
+While the chat has a shortcut request without answer, a native SwiftUI card is pinned above the composer of every view of the chat, below the permission card when both exist. A chat never has two requests waiting together, so the pinned questions card, the pinned symbol card, the pinned [color card](#pinned-color-card), the pinned [sound card](#pinned-sound-card) and the pinned shortcut card never show together.
+
+- Header `Shortcut`, then at the top right a minimize button, a chevron pointing down.
+- The question text rendered as Markdown with SF Symbol markers and ticket and bundle id links, as in the [pinned questions card](#pinned-questions-card). The header and the question text are selectable (`textSelection(.enabled)`).
+- The suggestions, in the order Claude gave them, each a button that shows the shortcut's key caps, with the shortcut as tooltip; the buttons wrap onto as many rows as needed to fit the card's width. The recommended suggestion's button carries a star badge (`star.fill`) at its top trailing corner. A click on a button selects its shortcut: the button gets a rounded background in the accent color. The key caps are not selectable as text.
+- The recorder field ([Shortcut recorder](#shortcut-recorder)), then the [warnings](#shortcut-warnings) of the selected shortcut.
+- A radio row `Answer another way` with a multi-line text field (1 to 6 visible lines), as in the pinned questions card: a click on the radio button, the label or the empty part of its line, or typing in the field, chooses this row and deselects the selected suggestion or recorder field; a click on a suggestion or on the recorder field chooses it again. Return inserts a line break.
+- When the card appears for a request, the recommended suggestion is selected, the recorder field has no shortcut and does not record, and the answer field is empty.
+- Submit (⌘Return while the focus is in the chat view outside its composer, no permission card is shown, the card is not minimized and the recorder field does not record) calls `chats.answerShortcut` with `![](shortcut:<shortcut>)` for the selected suggestion or the recorder field's shortcut, or with the field's text. It is disabled while `Answer another way` is selected with an empty field, and while the recorder field is selected without a shortcut.
+- Skip, next to Submit, calls `chats.answerShortcut` with the answer `Skipped`.
+- Once the request has its answer, from this view, another view or another device (`chat.item`), the card disappears.
+- Minimize works as for the pinned questions card: the collapsed bar shows `Shortcut` and a chevron pointing up, and the minimized state is kept per chat for the request that was minimized, on this device only, and survives an app restart ([UI › Persistence](ui.md#persistence)).
+
+The texts `Shortcut`, `Record Shortcut`, `Answer another way`, Skip and Submit, the key caps, the star badge, the preselected recommended suggestion and the answer forms come from the user; the other details are Default chosen at design time.
 
 ## Chat settings
 
@@ -1159,16 +1330,18 @@ Messages to Swift (`window.webkit.messageHandlers.hephaestus.postMessage`):
 | `symbol`            | A card titled `Symbol`: the question rendered as Markdown, then one line per suggestion with the symbol's icon followed by its name, drawn as the SF Symbol marker `![](sf:<name>)`, the recommended one followed by `(recommended)`, then `Answer: <answer>` or `Not answered yet`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `color`             | A card titled `Color`: the question rendered as Markdown, then one line per suggestion, the recommended one followed by `(recommended)`, then `Answer: <answer>` or `Not answered yet`. A suggestion of one color is drawn as the color marker `![](color:<color>)`, a swatch followed by the color; a pair as `Light ![](color:<light>), Dark ![](color:<dark>)`.                                                                                                                                                                                                                                                                                                                                                                                           |
 | `sound`             | A card titled `Sound`: the question rendered as Markdown, then one line per suggestion drawn as the sound marker `![](sound:<name>)`, a play button followed by its name, the recommended one followed by `(recommended)`, then `Answer: <answer>` or `Not answered yet`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `shortcut`          | A card titled `Shortcut`: the question rendered as Markdown, then one line per suggestion with the shortcut drawn as its key caps ([Shortcut notation](#shortcut-notation)), the recommended one followed by `(recommended)`, then `Answer: <answer>` or `Not answered yet`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `system`            | Small centered line; secondary color for info, orange for warning, red for error.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `result`            | Small centered footer line: `Done · <duration> · session cost <cost>`, or `Error · <duration> · <summary>` when `isError`. The part ` · session cost <cost>` is left out when `costUSD` is null.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 - `<created>` of a caption: the item's `created` date in the user's locale and time zone. For a message created today, only the short time (`15:12`); for an older message, the abbreviated date and short time, as in the ticket list's Created column ([Ticket list](tickets.md#ticket-list)) (`1 Nov 2026 at 15:12`). When the day changes while a transcript is shown, its captions are rendered again ([Web view and bridge](#web-view-and-bridge)).
 - `<duration>` from `durationMs`: below 60 s, one decimal and ` s` (`3.5 s`); below one hour, `<m> min <s> s` (`2 min 5 s`); else `<h> h <m> min` (`1 h 2 min`).
 - `<cost>`: `< $0.01` below 0.01, else `$` and two decimals (`$0.42`). These formats are Default chosen at design time.
-- SF Symbol markers ([Links, images and files](#links-images-and-files)) are drawn as the symbol's icon followed by its name in the `user`, `assistant` and `thinking` bubbles, in the streaming bubbles, in the `questions` card: in its question texts, which are Markdown, and in its option lines and answers, which are plain text, in the `symbol` and `color` cards: in their question, which is Markdown, and in their suggestion lines and answer, which are plain text, and in the `sound` card: in its question, which is Markdown, and in its answer, which is plain text ([SF Symbol markers](documentation-viewer.md#sf-symbol-markers)). The other items show a marker as its text.
+- SF Symbol markers ([Links, images and files](#links-images-and-files)) are drawn as the symbol's icon followed by its name in the `user`, `assistant` and `thinking` bubbles, in the streaming bubbles, in the `questions` card: in its question texts, which are Markdown, and in its option lines and answers, which are plain text, in the `symbol` and `color` cards: in their question, which is Markdown, and in their suggestion lines and answer, which are plain text, and in the `sound` and `shortcut` cards: in their question, which is Markdown, and in their answer, which is plain text ([SF Symbol markers](documentation-viewer.md#sf-symbol-markers)). The other items show a marker as its text.
+- Shortcut markers ([Links, images and files](#links-images-and-files)) are drawn as key caps where SF Symbol markers are drawn, with the same Markdown and plain-text rules ([Shortcut markers](documentation-viewer.md#shortcut-markers)). The other items show a marker as its text.
 - Color markers ([Links, images and files](#links-images-and-files)) are drawn as a swatch of the color followed by the color wherever SF Symbol markers are drawn, and both kinds of markers are drawn in the `color` card: in its question, which is Markdown, and in its suggestion lines and answer, which are plain text ([Color markers](documentation-viewer.md#color-markers)). The other items show a marker as its text.
 - Sound markers ([Links, images and files](#links-images-and-files)) are drawn as a play button followed by the name in the same places as SF Symbol markers, and in the suggestion lines of the `sound` card ([Sound markers](documentation-viewer.md#sound-markers)). The other items show a sound marker as its text.
-- Ticket and bundle ids of the projects of the window's device are links ([Links, images and files](#links-images-and-files)) in the `user`, `assistant` and `thinking` bubbles and in the streaming bubbles, which are Markdown; in the `questions` card: in its question texts, which are Markdown, and in its option lines and answers, which are plain text; in the `symbol`, `color` and `sound` cards: in their question, which is Markdown, and in their answer, which is plain text; in the two lines of a `permissionRequest` item, the tool line and the reason, which are plain text; and in tool cards ([Tool cards](#tool-cards)). Plain texts find ids with `MarkdownItemIDs`, and with `MarkdownSymbolMarkers` where they also draw SF Symbol, color and sound markers ([Ticket and bundle ids](documentation-viewer.md#ticket-and-bundle-ids)). The suggestion lines of the `symbol`, `color` and `sound` cards, the `system` and `result` lines and the `Preparing tool call…` card show ids as text.
+- Ticket and bundle ids of the projects of the window's device are links ([Links, images and files](#links-images-and-files)) in the `user`, `assistant` and `thinking` bubbles and in the streaming bubbles, which are Markdown; in the `questions` card: in its question texts, which are Markdown, and in its option lines and answers, which are plain text; in the `symbol`, `color`, `sound` and `shortcut` cards: in their question, which is Markdown, and in their answer, which is plain text; in the two lines of a `permissionRequest` item, the tool line and the reason, which are plain text; and in tool cards ([Tool cards](#tool-cards)). Plain texts find ids with `MarkdownItemIDs`, and with `MarkdownSymbolMarkers` where they also draw SF Symbol, color, sound and shortcut markers ([Ticket and bundle ids](documentation-viewer.md#ticket-and-bundle-ids)). The suggestion lines of the `symbol`, `color`, `sound` and `shortcut` cards, the `system` and `result` lines and the `Preparing tool call…` card show ids as text.
 - Hovering a bubble shows its `created` time as a tooltip and a Copy button that copies its Markdown source.
 - `chat.css` follows the light and dark appearance (`prefers-color-scheme`); code colors are those of the [Code editor](code-editor.md).
 
@@ -1218,6 +1391,8 @@ Generic rule: the first of the input fields `command`, `file_path`, `path`, `pat
 - A sound marker is a Markdown image whose source has the scheme `sound`, for example `![](sound:macOS/Glass.aiff)` ([Sound markers](documentation-viewer.md#sound-markers)). The name, a name of the [sound catalogue](#sound-catalogue), is written as it is, spaces included: `![](sound:iOS 26.1/sms-received1.caf)`. The marker ends at the `)` that closes its `(`, so a name may also hold balanced parentheses, as in `![](sound:Project/Sounds/alert (2).caf)`; the CommonMark form with angle brackets, `![](<sound:iOS 26.1/sms-received1.caf>)`, is read too. The transcript renders Markdown with `readsSoundMarkers` true and draws every marker as a play button followed by the name; the name is not checked against the catalogue, so the play button of a sound that does not exist fails when clicked ([Sound playback](#sound-playback)).
 - The play button is the `md-sound-play` button of the marker, which holds the `play.circle.fill` icon, drawn as the icon of an SF Symbol marker (`md-symbol-icon`); the name follows it. A click on the button posts `playSound` with the name ([Web view and bridge](#web-view-and-bridge)), and Swift plays the sound of the chat's project ([Sound playback](#sound-playback)). Default chosen at design time.
 - In the question texts of the pinned cards, which SwiftUI draws, the play button of a sound marker is the character `▶` drawn as a link, followed by a space and the name; a click on it plays the sound. The option rows of the pinned questions card show a sound marker as its text, so that a click in a row always chooses the option. Default chosen at design time.
+- A shortcut marker is a Markdown image whose source has the scheme `shortcut`, for example `![](shortcut:⇧⌘K)` ([Shortcut markers](documentation-viewer.md#shortcut-markers)). The transcript renders Markdown with `shortcutKeys` giving the key caps of a shortcut written in the [shortcut notation](#shortcut-notation), and nothing for any other text. A marker of such a shortcut is drawn as its key caps, inline with the text: each key cap is a `kbd` element, a rounded box with a thin border in the color of the text around it, 0.15em apart; any other marker shows its text unchanged, for example `![](shortcut:⌘⇧K)`. Default chosen at design time for the drawing.
+- In a shortcut marker, a key `(`, `)` or `\` is written with a `\` before it, as Markdown requires in a link destination: `![](shortcut:⌘\()` names the shortcut `⌘(`. The pinned shortcut card writes its answers this way. Default chosen at design time.
 
 ### Selection and copying
 
@@ -1267,7 +1442,7 @@ New Chat (⌥⌘N, or a New Chat button) shows a draft: an empty chat view whose
 
 ### Chat view
 
-From top to bottom: the header, the transcript, the pinned permission card, the pinned questions card, the pinned symbol card, the pinned color card or the pinned sound card, the status line ([Chat states](#chat-states)), the composer. The pinned cards take at most half of the view's height. They scroll inside that space only when they are taller than it; while they fit, they neither scroll nor bounce under a scroll gesture. In both cases, wide code blocks and tables inside the cards scroll horizontally inside their own box.
+From top to bottom: the header, the transcript, the pinned permission card, the pinned questions card, the pinned symbol card, the pinned color card, the pinned sound card or the pinned shortcut card, the status line ([Chat states](#chat-states)), the composer. The pinned cards take at most half of the view's height. They scroll inside that space only when they are taller than it; while they fit, they neither scroll nor bounce under a scroll gesture. In both cases, wide code blocks and tables inside the cards scroll horizontally inside their own box.
 
 The chat view's background is the window background colour, except in the inspector, where it draws none and shows the inspector's frosted material, with a transparent transcript ([Web view and bridge](#web-view-and-bridge)).
 
@@ -1281,7 +1456,7 @@ Header (in the Chats section, the ticket and bundle Chats tabs and chat windows;
 
 ### UI state
 
-`DeviceWorkspace.transcripts` keeps one `TranscriptState` per chat shown in a view of that device ([UI](ui.md#deviceworkspace)): the items in transcript order and the streaming buffers. Pending permission requests, the incomplete question set, the symbol request without answer, the color request without answer and the sound request without answer are read from the items. Every view of the chat in windows of the same device shares this state. Opening a chat calls `chats.get`; the events received while it is in flight are applied after its result, in arrival order ([UI](ui.md#deviceworkspace)).
+`DeviceWorkspace.transcripts` keeps one `TranscriptState` per chat shown in a view of that device ([UI](ui.md#deviceworkspace)): the items in transcript order and the streaming buffers. Pending permission requests, the incomplete question set, the symbol request without answer, the color request without answer, the sound request without answer and the shortcut request without answer are read from the items. Every view of the chat in windows of the same device shares this state. Opening a chat calls `chats.get`; the events received while it is in flight are applied after its result, in arrival order ([UI](ui.md#deviceworkspace)).
 
 ## Implement and feedback chats
 
@@ -1445,14 +1620,15 @@ A Haiku call names tickets created without a title, bundles created without a ti
 
 A summary call writes the detail of a chat notification ([Notifications](#notifications)). It runs the [command](#command) with the prompt notification-summary, in the same working directory and environment. After 30 s it receives SIGTERM, then SIGKILL 2 s later ([Signals](#signals)), and the notification takes the fallback detail.
 
-| Event                     | `<input>`                                                                                                                        |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| finished                  | `Claude's reply:` + `\n` + Claude's last reply of the turn                                                                       |
-| needs you, permission     | `Permission request:` + `\n` + `Tool: <tool name>` + `\n` + `Input: <input>`, the input as JSON without indentation, keys sorted |
-| needs you, question set   | `Questions:` + `\n` + one line `<label>: <question>` per question, in label order                                                |
-| needs you, symbol request | `Symbol request:` + `\n` + the question                                                                                          |
-| needs you, color request  | `Color request:` + `\n` + the question                                                                                           |
-| needs you, sound request  | `Sound request:` + `\n` + the question                                                                                           |
+| Event                       | `<input>`                                                                                                                        |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| finished                    | `Claude's reply:` + `\n` + Claude's last reply of the turn                                                                       |
+| needs you, permission       | `Permission request:` + `\n` + `Tool: <tool name>` + `\n` + `Input: <input>`, the input as JSON without indentation, keys sorted |
+| needs you, question set     | `Questions:` + `\n` + one line `<label>: <question>` per question, in label order                                                |
+| needs you, symbol request   | `Symbol request:` + `\n` + the question                                                                                          |
+| needs you, color request    | `Color request:` + `\n` + the question                                                                                           |
+| needs you, sound request    | `Sound request:` + `\n` + the question                                                                                           |
+| needs you, shortcut request | `Shortcut request:` + `\n` + the question                                                                                        |
 
 - The part after the label is cut at 4,000 characters, as for naming.
 - At most 2 summary calls run at once, besides the naming calls; the others wait in first-in first-out order. While the Claude CLI is unavailable the call fails at once. Failures and timeouts are written to `engine.log`.
@@ -1470,10 +1646,10 @@ The inputs, the queue and the cleanup are Default chosen at design time; the 150
 
 The engine reports two kinds of chat events, which the Macs showing the chat's device turn into macOS notifications ([UI › Status bar](ui.md#status-bar)); the [Notifications](ui.md#notifications) tab of each Mac's Settings turns them off on that Mac.
 
-| Kind      | API value  | Event                                                                                                                                                       |
-| --------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| needs you | `needsYou` | The chat's state becomes `waitingPermission` or `waitingAnswers` (a question set, a symbol request, a color request or a sound request) from another state. |
-| finished  | `finished` | A turn ends ([Turn tracking](#turn-tracking)) and the chat's state becomes `idle`.                                                                          |
+| Kind      | API value  | Event                                                                                                                                                                           |
+| --------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| needs you | `needsYou` | The chat's state becomes `waitingPermission` or `waitingAnswers` (a question set, a symbol request, a color request, a sound request or a shortcut request) from another state. |
+| finished  | `finished` | A turn ends ([Turn tracking](#turn-tracking)) and the chat's state becomes `idle`.                                                                                              |
 
 - The `error` state posts nothing ([Chat states](#chat-states)). A turn that ends in `waitingAnswers` posts only the "needs you" notification.
 - No "finished" notification for a turn stopped with Stop ([Stopping a turn](#stopping-a-turn)), for a turn of an orchestrated ticket chat ([Orchestrated ticket chats](#orchestrated-ticket-chats)), or for a turn of a bundle chat that ends while one of the ticket chats it orchestrates, the chats whose `orchestrator` is that bundle chat, is working ([Chat states](#chat-states)). A bundle chat thus posts "finished" when its turn ends and none of its ticket chats is working. These chats post their "needs you" notifications as every chat.
@@ -1484,14 +1660,15 @@ The engine reports two kinds of chat events, which the Macs showing the chat's d
 - Title: `<project identifier> · <chat title>`, for example `HEPH · Status history for tickets`. Each Mac builds it from the chat's metadata when it posts.
 - Detail: a summary of at most 150 characters written by the Haiku model ([Summary call](#summary-call)) from:
 
-| Event                                       | Haiku summarizes                                                                                          |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| finished                                    | Claude's last reply of the turn                                                                           |
-| needs you, `waitingPermission`              | the tool name and the input of the oldest pending permission request ([Request](#request))                |
-| needs you, `waitingAnswers`, question set   | the texts of the questions of the set that is not completed ([Posting questions](#posting-questions))     |
-| needs you, `waitingAnswers`, symbol request | the question of the symbol request without answer ([Posting a symbol request](#posting-a-symbol-request)) |
-| needs you, `waitingAnswers`, color request  | the question of the color request without answer ([Posting a color request](#posting-a-color-request))    |
-| needs you, `waitingAnswers`, sound request  | the question of the sound request without answer ([Posting a sound request](#posting-a-sound-request))    |
+| Event                                         | Haiku summarizes                                                                                                |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| finished                                      | Claude's last reply of the turn                                                                                 |
+| needs you, `waitingPermission`                | the tool name and the input of the oldest pending permission request ([Request](#request))                      |
+| needs you, `waitingAnswers`, question set     | the texts of the questions of the set that is not completed ([Posting questions](#posting-questions))           |
+| needs you, `waitingAnswers`, symbol request   | the question of the symbol request without answer ([Posting a symbol request](#posting-a-symbol-request))       |
+| needs you, `waitingAnswers`, color request    | the question of the color request without answer ([Posting a color request](#posting-a-color-request))          |
+| needs you, `waitingAnswers`, sound request    | the question of the sound request without answer ([Posting a sound request](#posting-a-sound-request))          |
+| needs you, `waitingAnswers`, shortcut request | the question of the shortcut request without answer ([Posting a shortcut request](#posting-a-shortcut-request)) |
 
 - Claude's last reply of the turn is the text of the turn's last `assistant` item without `parentToolUseID`, as in the report of an orchestrated ticket chat; for "needs you", that of the turn in progress or of the turn that just ended.
 - Fallback detail, used when the summary call fails or times out, and by a Mac whose `AI-generated summary` toggle is off: the first line of Claude's last reply of the turn that is not empty after trimming, trimmed and cut to 200 characters. When the turn has no reply text, the status line text of the state ([Chat states](#chat-states)), `Waiting for your permission` or `Waiting for your answers`, or `Claude finished replying` for a finished turn.
@@ -1543,6 +1720,8 @@ The method contract (actors, parameters, results, errors, events) is in [Engine 
 | `chats.answerColor`      | [Answering a color request](#answering-a-color-request)                                                                                                                                                                                          |
 | `chats.postSound`        | [Posting a sound request](#posting-a-sound-request), [Sound catalogue](#sound-catalogue)                                                                                                                                                         |
 | `chats.answerSound`      | [Answering a sound request](#answering-a-sound-request)                                                                                                                                                                                          |
+| `chats.postShortcut`     | [Posting a shortcut request](#posting-a-shortcut-request), [Shortcut notation](#shortcut-notation)                                                                                                                                               |
+| `chats.answerShortcut`   | [Answering a shortcut request](#answering-a-shortcut-request)                                                                                                                                                                                    |
 | `chats.close`            | [Closing a chat](#closing-a-chat)                                                                                                                                                                                                                |
 | `chats.reopen`           | [Closing a chat](#closing-a-chat)                                                                                                                                                                                                                |
 | `chats.implementTicket`  | [Implement and feedback chats](#implement-and-feedback-chats), [Orchestrated ticket chats](#orchestrated-ticket-chats), [Prompt: implement-ticket](#prompt-implement-ticket), [Prompt: implement-bundle-ticket](#prompt-implement-bundle-ticket) |
@@ -1560,38 +1739,43 @@ The Claude integration lives in `Sources/HephaestusCore/Claude/`. The type names
 | Type                                | Role                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ClaudeCLI`                         | The login-shell environment, the location of the CLI, its `ClaudeStatus` and the model list ([Claude CLI](#claude-cli)).                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `ChatManager`                       | The chats at runtime: processes, stream-json mapping, control protocol, the computed `state` and `backgroundWork`, pending permission requests, question sets, symbol requests, color requests, sound requests, driving devices, chat tokens and idle termination. Chat metadata is loaded with its project.                                                                                                                                                                                                                    |
+| `ChatManager`                       | The chats at runtime: processes, stream-json mapping, control protocol, the computed `state` and `backgroundWork`, pending permission requests, question sets, symbol requests, color requests, sound requests, shortcut requests, driving devices, chat tokens and idle termination. Chat metadata is loaded with its project.                                                                                                                                                                                                 |
 | `ClaudeProcessLauncher` (protocol)  | Every access of the Claude integration to the machine: `captureEnvironment(processEnvironment:log:)`, `homeDirectory`, `isExecutableFile(atPath:)`, and `start(_:)`, which spawns a process with pipes on stdin, stdout and stderr as the leader of a new process group. The app uses `SystemClaudeProcessLauncher`; tests use an in-memory launcher that replays fixture lines, so they never run the user's shell or CLI and never depend on the user's files ([Engine configuration](architecture.md#engine-configuration)). |
 | `SFSymbolCatalog`                   | The [symbol catalogue](#symbol-catalogue) of the Mac and its [search](#symbol-search); `SFSymbolCatalog.system` reads the running macOS's files, and tests read their own. The engine checks suggestions with it and the pinned symbol card searches it.                                                                                                                                                                                                                                                                        |
 | `SystemColors`                      | The names of [System colors](#system-colors) in their order, the UIKit values of the names AppKit lacks, and the check of a color: a hex color `#RRGGBB` or a system color name. The engine checks the colors of `chats.postColor` with it; the pinned color card lists its names, and the renderers accept color markers with it.                                                                                                                                                                                              |
 | `SoundCatalog`                      | The [sound catalogue](#sound-catalogue) of a project on the main device and its [search](#sound-search): the macOS and Simulator runtime sounds, read once (`SoundCatalog.SystemSounds`), and the project's sound files. The engine checks the suggestions of `chats.postSound` with it and answers `sounds.list` and `sounds.read` from it; tests give their own system sounds.                                                                                                                                                |
+| `KeyShortcut`                       | A shortcut of the [shortcut notation](#shortcut-notation): `init?(_:)` reads a notation and refuses any other text, `notation` writes it and `keyCaps` gives its key caps. The engine checks suggestions and `inUse` with it, and the transcript and the pinned shortcut card draw key caps with it.                                                                                                                                                                                                                            |
+| `StandardShortcuts`                 | The [standard macOS shortcuts](#standard-macos-shortcuts) and their actions; `action(for:)` gives the action of a shortcut, nil for any other. The pinned shortcut card reads it for its [warnings](#shortcut-warnings).                                                                                                                                                                                                                                                                                                        |
 | `TitleNamer` (protocol)             | `title(for:) async -> String?`, the seam the engine calls for [Haiku naming](#haiku-naming); nil keeps the provisional title. `HaikuTitleNamer` is the app's implementation; tests provide another.                                                                                                                                                                                                                                                                                                                             |
 | `NotificationSummarizer` (protocol) | `summary(for:) async -> String?`, the seam the engine calls for the [summary call](#summary-call) of a [notification](#notifications); nil gives the fallback detail. `HaikuNotificationSummarizer` is the app's implementation; tests provide another.                                                                                                                                                                                                                                                                         |
 
 ## Keyboard shortcuts
 
-| Shortcut     | Where                                                                                            | Action                                     |
-| ------------ | ------------------------------------------------------------------------------------------------ | ------------------------------------------ |
-| Return       | composer                                                                                         | Send                                       |
-| Shift-Return | composer                                                                                         | insert a line break                        |
-| Escape       | composer, while the chat is running                                                              | Stop                                       |
-| ⌘V           | composer                                                                                         | paste; files and images become attachments |
-| ⌘Return      | chat view with a permission card, focus outside the composer, request shown for 1 s              | Allow Once                                 |
-| ⌥⌘Return     | chat view with a permission card, focus outside the composer, request shown for 1 s              | Always Allow                               |
-| ⇧⌘Return     | chat view with a permission card, focus outside the composer, request shown for 1 s              | Deny                                       |
-| ⌘Return      | chat view with a questions card not minimized and no permission card, focus outside the composer | Submit the answer                          |
-| ⌘Return      | chat view with a symbol card not minimized and no permission card, focus outside the composer    | Submit the answer                          |
-| ⌘Return      | chat view with a color card not minimized and no permission card, focus outside the composer     | Submit the answer                          |
-| ⌘Return      | chat view with a sound card not minimized and no permission card, focus outside the composer     | Submit the answer                          |
-| Return       | answer field of the questions card                                                               | insert a line break                        |
-| Return       | answer field of the symbol card                                                                  | insert a line break                        |
-| Return       | answer field of the color card                                                                   | insert a line break                        |
-| Return       | answer field of the sound card                                                                   | insert a line break                        |
-| ⌘A           | transcript                                                                                       | select the whole transcript                |
-| ⌘C           | transcript                                                                                       | copy the selection as plain text           |
-| ⌥⌘N          | any main window ([UI](ui.md))                                                                    | New Chat: a project chat draft             |
-| ⌥⌘0          | any main window ([UI](ui.md))                                                                    | show or hide the inspector                 |
-| ⌘4           | any main window ([UI](ui.md))                                                                    | Chats section                              |
+| Shortcut        | Where                                                                                                                                  | Action                                                           |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Return          | composer                                                                                                                               | Send                                                             |
+| Shift-Return    | composer                                                                                                                               | insert a line break                                              |
+| Escape          | composer, while the chat is running                                                                                                    | Stop                                                             |
+| ⌘V              | composer                                                                                                                               | paste; files and images become attachments                       |
+| ⌘Return         | chat view with a permission card, focus outside the composer, request shown for 1 s                                                    | Allow Once                                                       |
+| ⌥⌘Return        | chat view with a permission card, focus outside the composer, request shown for 1 s                                                    | Always Allow                                                     |
+| ⇧⌘Return        | chat view with a permission card, focus outside the composer, request shown for 1 s                                                    | Deny                                                             |
+| ⌘Return         | chat view with a questions card not minimized and no permission card, focus outside the composer                                       | Submit the answer                                                |
+| ⌘Return         | chat view with a symbol card not minimized and no permission card, focus outside the composer                                          | Submit the answer                                                |
+| ⌘Return         | chat view with a color card not minimized and no permission card, focus outside the composer                                           | Submit the answer                                                |
+| ⌘Return         | chat view with a sound card not minimized and no permission card, focus outside the composer                                           | Submit the answer                                                |
+| ⌘Return         | chat view with a shortcut card not minimized, no permission card and a recorder field that does not record, focus outside the composer | Submit the answer                                                |
+| any combination | recorder field of the shortcut card, while it records                                                                                  | record the combination ([Shortcut recorder](#shortcut-recorder)) |
+| Return          | answer field of the questions card                                                                                                     | insert a line break                                              |
+| Return          | answer field of the symbol card                                                                                                        | insert a line break                                              |
+| Return          | answer field of the color card                                                                                                         | insert a line break                                              |
+| Return          | answer field of the sound card                                                                                                         | insert a line break                                              |
+| Return          | answer field of the shortcut card                                                                                                      | insert a line break                                              |
+| ⌘A              | transcript                                                                                                                             | select the whole transcript                                      |
+| ⌘C              | transcript                                                                                                                             | copy the selection as plain text                                 |
+| ⌥⌘N             | any main window ([UI](ui.md))                                                                                                          | New Chat: a project chat draft                                   |
+| ⌥⌘0             | any main window ([UI](ui.md))                                                                                                          | show or hide the inspector                                       |
+| ⌘4              | any main window ([UI](ui.md))                                                                                                          | Chats section                                                    |
 
 ## System prompts
 
@@ -1740,7 +1924,7 @@ HephaestusV2 gives you the MCP server "hephaestus". Its tools appear to you as m
 - Projects: list_projects, get_project, create_project, update_project, remove_project, run_project (runs the project's build, run or test command), stop_run (stops a run).
 - Tickets: list_tickets, get_ticket, create_ticket, update_ticket, delete_ticket, set_ticket_status, add_comment, update_comment, delete_comment, remove_attachment, implement_ticket (starts a new chat that implements a ticket).
 - Bundles, groups of tickets implemented together: list_bundles, get_bundle, create_bundle, update_bundle, set_bundle_status, delete_bundle, implement_bundle (starts a new chat that implements a bundle).
-- Questions to the user: ask_questions, ask_symbol (asks the user to choose an SF Symbol), ask_color (asks the user to choose a color), ask_sound (asks the user to choose a sound, in a Swift application project).
+- Questions to the user: ask_questions, ask_symbol (asks the user to choose an SF Symbol), ask_color (asks the user to choose a color), ask_sound (asks the user to choose a sound, in a Swift application project), ask_shortcut (asks the user to choose a keyboard shortcut, in a Swift application project).
 - Search and documentation: search (projects, tickets, bundles, docs, code, chats, skills and web tabs), list_docs.
 - Chats: list_chats, get_chat (a chat and its transcript, for example another chat of the same ticket), rename_chat, close_chat (closes the chat you run in).
 - The project's integrated browser: list_web_tabs, open_web_tab, update_web_tab, move_web_tab, close_web_tab.
@@ -1767,7 +1951,7 @@ Read and change HephaestusV2 data (projects, tickets, comments, bundles, chats, 
 - Set recommended to the label of exactly one option of each question: the option you recommend.
 - Add no "Other" option: the user can always answer another way.
 - After ask_questions returns, end your turn: call no other tool, and do not repeat the questions in your reply, because the chat shows them.
-- Never call ask_questions while earlier questions, a symbol request, a color request or a sound request of this chat still wait for their answers.
+- Never call ask_questions while earlier questions, a symbol request, a color request, a sound request or a shortcut request of this chat still wait for their answers.
 
 The user answers the questions one by one in HephaestusV2. All the answers arrive in your next user message, in this form:
 
@@ -1948,17 +2132,21 @@ Close a project chat only when the user asks for it.
 
 When you name an SF Symbol in a reply or in ask_questions, write it as ![](sf:<name>), for example ![](sf:line.3.horizontal.decrease.circle): HephaestusV2 shows the symbol's icon followed by its name there.
 
-When you need the user to choose an SF Symbol, ask with ask_symbol, never with symbol names as options of ask_questions: give the question, 2 to 10 suggested SF Symbol names and the recommended one. The user picks a suggestion or any other SF Symbol, answers in their own words, or skips. After ask_symbol returns, end your turn: call no other tool, and do not repeat the question in your reply. The answer arrives in your next user message as Symbol: ![](sf:<name>) for a chosen symbol, Symbol: <answer> for an answer in the user's own words, or Symbol: Skipped; handle Skipped as for a skipped question. Never call ask_symbol while questions, a symbol request, a color request or a sound request of this chat still wait for their answers.
+When you need the user to choose an SF Symbol, ask with ask_symbol, never with symbol names as options of ask_questions: give the question, 2 to 10 suggested SF Symbol names and the recommended one. The user picks a suggestion or any other SF Symbol, answers in their own words, or skips. After ask_symbol returns, end your turn: call no other tool, and do not repeat the question in your reply. The answer arrives in your next user message as Symbol: ![](sf:<name>) for a chosen symbol, Symbol: <answer> for an answer in the user's own words, or Symbol: Skipped; handle Skipped as for a skipped question. Never call ask_symbol while questions, a symbol request, a color request, a sound request or a shortcut request of this chat still wait for their answers.
 
 # Colors
 
 When you name a color in a reply or in ask_questions, write it as ![](color:<color>), <color> being a hex color #RRGGBB or a system color name such as systemBlue, label or accentColor, for example ![](color:#FF9500): HephaestusV2 shows a swatch of the color followed by the color there.
 
-When you need the user to choose a color, ask with ask_color, never with color values as options of ask_questions: give the question, 2 to 10 suggested colors and the recommended one. When the destination of the color supports light and dark appearances, for example an asset catalog color set, set lightAndDark and give each suggestion and the recommended one as a pair {"light": "<color>", "dark": "<color>"}. The user picks a suggestion, a system color or any other color, as one color or as a light and dark pair, answers in their own words, or skips. After ask_color returns, end your turn: call no other tool, and do not repeat the question in your reply. The answer arrives in your next user message as Color: ![](color:<color>) for one color, Color: Light ![](color:<color>), Dark ![](color:<color>) for a light and dark pair, Color: <answer> for an answer in the user's own words, or Color: Skipped; handle Skipped as for a skipped question. Never call ask_color while questions, a symbol request, a color request or a sound request of this chat still wait for their answers.
+When you need the user to choose a color, ask with ask_color, never with color values as options of ask_questions: give the question, 2 to 10 suggested colors and the recommended one. When the destination of the color supports light and dark appearances, for example an asset catalog color set, set lightAndDark and give each suggestion and the recommended one as a pair {"light": "<color>", "dark": "<color>"}. The user picks a suggestion, a system color or any other color, as one color or as a light and dark pair, answers in their own words, or skips. After ask_color returns, end your turn: call no other tool, and do not repeat the question in your reply. The answer arrives in your next user message as Color: ![](color:<color>) for one color, Color: Light ![](color:<color>), Dark ![](color:<color>) for a light and dark pair, Color: <answer> for an answer in the user's own words, or Color: Skipped; handle Skipped as for a skipped question. Never call ask_color while questions, a symbol request, a color request, a sound request or a shortcut request of this chat still wait for their answers.
 
 # Sounds
 
-When the project's type is Swift application (get_project gives it) and you need the user to choose a sound for an app of an Apple platform, ask with ask_sound, never with sound names as options of ask_questions: give the question, 2 to 10 suggested sound names and the recommended one. A sound name is macOS/<file> for a sound of /System/Library/Sounds, for example macOS/Glass.aiff; <runtime>/<path> for a sound under System/Library/Audio/UISounds of an installed Simulator runtime, <runtime> being the runtime's name in xcrun simctl list runtimes, for example iOS 26.1/sms-received1.caf; or Project/<path from the project root> for a .caf, .aiff, .wav or .mp3 file of the project. The user listens to the sounds, picks a suggestion or any other sound, answers in their own words, or skips. After ask_sound returns, end your turn: call no other tool, and do not repeat the question in your reply. The answer arrives in your next user message as Sound: ![](sound:<name>) for a chosen sound, Sound: <answer> for an answer in the user's own words, or Sound: Skipped; handle Skipped as for a skipped question. Never call ask_sound while questions, a symbol request, a color request or a sound request of this chat still wait for their answers.
+When the project's type is Swift application (get_project gives it) and you need the user to choose a sound for an app of an Apple platform, ask with ask_sound, never with sound names as options of ask_questions: give the question, 2 to 10 suggested sound names and the recommended one. A sound name is macOS/<file> for a sound of /System/Library/Sounds, for example macOS/Glass.aiff; <runtime>/<path> for a sound under System/Library/Audio/UISounds of an installed Simulator runtime, <runtime> being the runtime's name in xcrun simctl list runtimes, for example iOS 26.1/sms-received1.caf; or Project/<path from the project root> for a .caf, .aiff, .wav or .mp3 file of the project. The user listens to the sounds, picks a suggestion or any other sound, answers in their own words, or skips. After ask_sound returns, end your turn: call no other tool, and do not repeat the question in your reply. The answer arrives in your next user message as Sound: ![](sound:<name>) for a chosen sound, Sound: <answer> for an answer in the user's own words, or Sound: Skipped; handle Skipped as for a skipped question. Never call ask_sound while questions, a symbol request, a color request, a sound request or a shortcut request of this chat still wait for their answers.
+
+# Keyboard shortcuts
+
+When the project's type is Swift application (get_project gives it) and you need the user to choose a keyboard shortcut, ask with ask_shortcut, never with shortcuts as options of ask_questions: give the question, 2 to 10 suggested shortcuts in macOS menu notation (the modifiers ⌃ ⌥ ⇧ ⌘ in this order, then one key, for example ⇧⌘K), the recommended one, and in inUse every shortcut the app already uses, each with the name of its command. The user picks a suggestion or records another combination, answers in their own words, or skips. After ask_shortcut returns, end your turn: call no other tool, and do not repeat the question in your reply. The answer arrives in your next user message as Shortcut: ![](shortcut:<shortcut>) for a chosen or recorded shortcut, Shortcut: <answer> for an answer in the user's own words, or Shortcut: Skipped; handle Skipped as for a skipped question. Never call ask_shortcut while questions, a symbol request, a color request, a sound request or a shortcut request of this chat still wait for their answers.
 
 # When the project is HephaestusV2
 
@@ -2096,6 +2284,7 @@ You write the text of the macOS notifications of a chat between a user and Claud
 - "Symbol request:": Claude waits for the user to choose an SF Symbol for this question.
 - "Color request:": Claude waits for the user to choose a color for this question.
 - "Sound request:": Claude waits for the user to choose a sound for this question.
+- "Shortcut request:": Claude waits for the user to choose a keyboard shortcut for this question.
 
 Reply with a summary of this event for the notification and nothing else.
 
@@ -2185,3 +2374,4 @@ Follow "Implementing a bundle" as its orchestrator: skip the tickets that are do
 - R128: A macOS notification, titled with the project identifier and the chat title and detailed by a Haiku summary, tells the user when a chat needs them or when Claude has finished replying; each Mac turns each kind and the summary off in Settings.
 - R132: Claude asks the user to choose a color with `ask_color`, as one color or a light and dark pair: suggestions show as swatches, any system color can be picked from a grid and any other color with the macOS color panel or a hex field, the user answers another way or skips, and the chat shows the colors Claude names and the answer as swatches.
 - R133: In a Swift application project, Claude asks the user to choose a sound with `ask_sound`: the card lists the suggestions and searches the macOS sounds, the installed Simulator runtimes' sounds and the project's sound files; selecting one plays it; the user picks one, answers another way or skips.
+- R134: In a Swift application project, Claude asks the user to choose a keyboard shortcut with `ask_shortcut`: suggestions show as key caps, the user can record another combination and sees when macOS or the app already uses the selected one, then picks one, answers another way or skips.

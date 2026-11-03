@@ -100,6 +100,7 @@ public enum EngineMethods {
         ChatsUpdateSettings.self, ChatsRename.self, ChatsDelete.self, ChatsClose.self, ChatsReopen.self, ChatsAnswerPermission.self,
         ChatsPostQuestions.self, ChatsAnswerQuestion.self, ChatsPostSymbol.self, ChatsAnswerSymbol.self,
         ChatsPostColor.self, ChatsAnswerColor.self, ChatsPostSound.self, ChatsAnswerSound.self,
+        ChatsPostShortcut.self, ChatsAnswerShortcut.self,
         ChatsImplementTicket.self, ChatsImplementBundle.self,
         ChatsCreateFeedback.self,
         SoundsList.self, SoundsRead.self,

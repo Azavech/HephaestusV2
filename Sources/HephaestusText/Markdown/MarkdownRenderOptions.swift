@@ -17,6 +17,9 @@ public struct MarkdownRenderOptions: Sendable {
     /// Draws the sound markers; false leaves `sound:` images refused (docs/documentation-viewer.md
     /// › Sound markers).
     public var readsSoundMarkers: Bool
+    /// The key caps of a shortcut marker's shortcut, nil for a text it refuses; nil leaves
+    /// `shortcut:` images refused (docs/documentation-viewer.md › Shortcut markers).
+    public var shortcutKeys: (@Sendable (String) -> [String]?)?
     /// Identifiers of the projects of the device; their ticket and bundle ids become links
     /// (docs/documentation-viewer.md › Ticket and bundle ids).
     public var projectIdentifiers: Set<String>
@@ -24,6 +27,7 @@ public struct MarkdownRenderOptions: Sendable {
     public init(baseDirectory: String = "", projectRootPath: String? = nil, stripFrontMatter: Bool = false,
                 isSymbolAvailable: (@Sendable (String) -> Bool)? = nil,
                 colorSwatch: (@Sendable (String) -> MarkdownColorSwatch?)? = nil, readsSoundMarkers: Bool = false,
+                shortcutKeys: (@Sendable (String) -> [String]?)? = nil,
                 projectIdentifiers: Set<String> = []) {
         self.baseDirectory = baseDirectory
         self.projectRootPath = projectRootPath
@@ -31,6 +35,7 @@ public struct MarkdownRenderOptions: Sendable {
         self.isSymbolAvailable = isSymbolAvailable
         self.colorSwatch = colorSwatch
         self.readsSoundMarkers = readsSoundMarkers
+        self.shortcutKeys = shortcutKeys
         self.projectIdentifiers = projectIdentifiers
     }
 }

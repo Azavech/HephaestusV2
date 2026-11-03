@@ -1,7 +1,7 @@
 // OWNER: ui-chats — the state and actions of one chat view: the chat or draft it shows, the
 // composer, the pinned cards and their keys, the header (docs/chats.md › Chat view, › Composer,
 // › Pinned permission card, › Pinned questions card, › Pinned symbol card, › Pinned color card,
-// › Pinned sound card, › Draft chats).
+// › Pinned sound card, › Pinned shortcut card, › Draft chats).
 import AppKit
 import HephaestusCore
 import Observation
@@ -40,6 +40,13 @@ enum SymbolChoice: Hashable {
 /// The choice of the sound card: a sound of the list, or `Answer another way`.
 enum SoundChoice: Hashable {
     case sound(String)
+    case other
+}
+
+/// The choice of the shortcut card: a suggestion, the recorder field, or `Answer another way`.
+enum ShortcutChoice: Hashable {
+    case suggestion(String)
+    case recorder
     case other
 }
 
@@ -116,6 +123,14 @@ final class ChatViewModel {
     /// The search results of `soundSearch`, without the suggestions (docs/chats.md › Sound search).
     var soundResults: [String] = []
     var isSubmittingSound = false
+    /// The shortcut request the shortcut card shows, with its selection, recorder and field.
+    var shortcutRequestID: UUID?
+    var shortcutChoice: ShortcutChoice = .other
+    /// The shortcut of the recorder field; nil until a combination is recorded.
+    var recordedShortcut: KeyShortcut?
+    var isRecordingShortcut = false
+    var shortcutOther = ""
+    var isSubmittingShortcut = false
 
     // MARK: Header
 
@@ -123,6 +138,10 @@ final class ChatViewModel {
     var renameText = ""
 
     @ObservationIgnored private var keyMonitor: Any?
+    /// While the recorder field records: the click monitor and the key-status observer that stop
+    /// it (docs/chats.md › Shortcut recorder).
+    @ObservationIgnored private var recordingMonitor: Any?
+    @ObservationIgnored private var recordingObserver: NSObjectProtocol?
     @ObservationIgnored private var opened = false
 
     init(workspace: DeviceWorkspace, chatID: String?, draft: DraftChat?) {
@@ -257,6 +276,7 @@ final class ChatViewModel {
             ChatTranscriptStore.shared.close(chatID, in: workspace)
         }
         stopKeyMonitor()
+        stopRecordingShortcut()
     }
 
     /// Loads the transcript for the workspace's current connection.
@@ -723,6 +743,141 @@ final class ChatViewModel {
         }
     }
 
+    // MARK: Shortcut card
+
+    /// The card appeared for a request: the recommended suggestion selected, the recorder field
+    /// empty and not recording, the answer field empty. The same request keeps its selection.
+    func shortcutRequestShown(_ request: ShortcutItem) {
+        guard shortcutRequestID != request.requestID else { return }
+        shortcutRequestID = request.requestID
+        shortcutChoice = .suggestion(request.recommended)
+        recordedShortcut = nil
+        stopRecordingShortcut()
+        shortcutOther = ""
+    }
+
+    /// The selected shortcut: the selected suggestion or the recorder field's shortcut; nil while
+    /// `Answer another way` or an empty recorder field is selected.
+    var selectedShortcut: String? {
+        switch shortcutChoice {
+        case .suggestion(let shortcut): return shortcut
+        case .recorder: return recordedShortcut?.notation
+        case .other: return nil
+        }
+    }
+
+    /// The warnings of the selected shortcut (docs/chats.md › Shortcut warnings): the macOS line,
+    /// then the app line.
+    func shortcutWarnings(_ request: ShortcutItem) -> [String] {
+        guard let shortcut = selectedShortcut else { return [] }
+        var warnings: [String] = []
+        if let action = StandardShortcuts.action(for: shortcut) {
+            warnings.append("Used by macOS: \(action)")
+        }
+        if let use = request.inUse.first(where: { $0.shortcut == shortcut }) {
+            warnings.append("Used by the app: \(use.command)")
+        }
+        return warnings
+    }
+
+    /// The answer the card submits: `![](shortcut:<shortcut>)` for the selected shortcut, or the
+    /// field's text.
+    var shortcutAnswer: String {
+        switch shortcutChoice {
+        case .suggestion(let shortcut): return KeyShortcut(shortcut)?.marker ?? "![](shortcut:\(shortcut))"
+        case .recorder: return recordedShortcut?.marker ?? ""
+        case .other: return shortcutOther.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
+    var canSubmitShortcut: Bool {
+        !shortcutAnswer.isEmpty && !isSubmittingShortcut
+    }
+
+    /// A click on the recorder field: selects it and starts recording; a click anywhere in the
+    /// window or the window losing its key status stops recording.
+    func startRecordingShortcut() {
+        stopRecordingShortcut()
+        shortcutChoice = .recorder
+        isRecordingShortcut = true
+        recordingMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
+            MainActor.assumeIsolated { self?.stopRecordingShortcut() }
+            return event
+        }
+        if let window {
+            recordingObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window,
+                                                                       queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.stopRecordingShortcut() }
+            }
+        }
+    }
+
+    /// Stops recording; the recorder field keeps its shortcut.
+    func stopRecordingShortcut() {
+        isRecordingShortcut = false
+        if let recordingMonitor {
+            NSEvent.removeMonitor(recordingMonitor)
+        }
+        recordingMonitor = nil
+        if let recordingObserver {
+            NotificationCenter.default.removeObserver(recordingObserver)
+        }
+        recordingObserver = nil
+    }
+
+    /// A key press while the recorder field records (docs/chats.md › Shortcut recorder): a key
+    /// the notation can write records the shortcut with the modifiers held and stops recording;
+    /// another key records nothing. Every key press is consumed.
+    func recordShortcutKey(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags, unmodifiedCharacters: String?) {
+        guard isRecordingShortcut,
+              let key = KeyShortcut.recordedKey(keyCode: keyCode, unmodifiedCharacters: unmodifiedCharacters) else { return }
+        var modifiers: [KeyShortcut.Modifier] = []
+        if modifierFlags.contains(.control) { modifiers.append(.control) }
+        if modifierFlags.contains(.option) { modifiers.append(.option) }
+        if modifierFlags.contains(.shift) { modifiers.append(.shift) }
+        if modifierFlags.contains(.command) { modifiers.append(.command) }
+        guard let shortcut = KeyShortcut(modifiers: modifiers, key: key) else { return }
+        recordedShortcut = shortcut
+        shortcutChoice = .recorder
+        stopRecordingShortcut()
+    }
+
+    /// Submit: `chats.answerShortcut` with the selected answer.
+    func submitShortcut() {
+        guard canSubmitShortcut else { return }
+        answerShortcutRequest(shortcutAnswer, action: "Submit")
+    }
+
+    /// Skip: `chats.answerShortcut` with `Skipped`.
+    func skipShortcut() {
+        guard !isSubmittingShortcut else { return }
+        answerShortcutRequest(QuestionNavigation.skipped, action: "Skip")
+    }
+
+    /// Stores the answer of the waiting shortcut request. An answer that fails because the
+    /// request was answered on another device shows no alert.
+    private func answerShortcutRequest(_ answer: String, action: String) {
+        guard let chatID, let uuid = UUID(uuidString: chatID), let request = transcriptState?.waitingShortcutRequest else { return }
+        stopRecordingShortcut()
+        isSubmittingShortcut = true
+        Task {
+            defer { isSubmittingShortcut = false }
+            do {
+                _ = try await workspace.call(ChatsAnswerShortcut.self, ChatsAnswerShortcut.Params(
+                    chatID: uuid, requestID: request.requestID, answer: answer))
+            } catch let error as EngineError where error.code == .conflict && shortcutAnsweredElsewhere(request.id) {
+                return
+            } catch {
+                alert(.failure(action, error))
+            }
+        }
+    }
+
+    private func shortcutAnsweredElsewhere(_ itemID: String) -> Bool {
+        guard case .shortcut(let request)? = transcriptState?.item(itemID) else { return false }
+        return request.answer != nil
+    }
+
     // MARK: Card keys (docs/chats.md › Keyboard shortcuts)
 
     private func startKeyMonitor() {
@@ -740,13 +895,18 @@ final class ChatViewModel {
         keyMonitor = nil
     }
 
-    /// ⌘Return, ⌥⌘Return and ⇧⌘Return answer the permission card once its request has been shown
-    /// for 1 second; ⌘Return submits the questions card, the symbol card, the color card or the
-    /// sound card when no permission card is shown and the card is not minimized. Both act only
-    /// while the focus is in this chat view
-    /// outside its composer.
+    /// While the shortcut card's recorder field records, every key press of the window goes to
+    /// it. Otherwise ⌘Return, ⌥⌘Return and ⇧⌘Return answer the permission card once its request
+    /// has been shown for 1 second; ⌘Return submits the questions card, the symbol card, the color
+    /// card, the sound card or the shortcut card when no permission card is shown and the card is
+    /// not minimized. Both act only while the focus is in this chat view outside its composer.
     func handleKey(_ event: NSEvent) -> Bool {
         guard let window, event.window === window else { return false }
+        if isRecordingShortcut {
+            recordShortcutKey(keyCode: event.keyCode, modifierFlags: event.modifierFlags,
+                              unmodifiedCharacters: event.characters(byApplyingModifiers: []))
+            return true
+        }
         let flags = event.modifierFlags.intersection([.command, .option, .shift, .control])
         if handleFindKey(event, flags: flags, window: window) { return true }
         guard event.keyCode == 36 || event.keyCode == 76 else { return false }
@@ -782,6 +942,11 @@ final class ChatViewModel {
         if flags == [.command], let request = state.waitingSoundRequest, let chatID,
            app?.isQuestionsCardMinimized(chatID: chatID, setID: request.requestID) != true {
             submitSound()
+            return true
+        }
+        if flags == [.command], let request = state.waitingShortcutRequest, let chatID,
+           app?.isQuestionsCardMinimized(chatID: chatID, setID: request.requestID) != true {
+            submitShortcut()
             return true
         }
         return false

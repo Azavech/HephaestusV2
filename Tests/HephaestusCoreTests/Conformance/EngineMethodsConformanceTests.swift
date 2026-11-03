@@ -27,7 +27,7 @@ struct EngineMethodsConformanceTests {
     @Test("The documented method names equal Engine.registeredMethods")
     func registeredMethods() async throws {
         let documented = Set(try Self.methodRows().map(\.name))
-        #expect(documented.count == 82)
+        #expect(documented.count == 84)
         try await withTestEngine { engine, _, _ in
             #expect(Set(await engine.registeredMethods) == documented)
         }
@@ -69,7 +69,7 @@ struct EngineMethodsConformanceTests {
                 }
             }
             let toolMethods = Set(MCPToolCatalog.tools.compactMap(\.engineMethod))
-            #expect(claudeMethods.count == 47)
+            #expect(claudeMethods.count == 48)
             #expect(claudeMethods == toolMethods)
         }
     }

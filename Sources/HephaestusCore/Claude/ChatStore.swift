@@ -156,6 +156,7 @@ extension Engine {
         var openSymbol: SymbolItem?
         var openColor: ColorItem?
         var openSound: SoundItem?
+        var openShortcut: ShortcutItem?
         var hasText = false
         for item in items {
             switch item {
@@ -163,6 +164,7 @@ extension Engine {
             case .symbol(let request) where request.answer == nil: openSymbol = request
             case .color(let request) where request.answer == nil: openColor = request
             case .sound(let request) where request.answer == nil: openSound = request
+            case .shortcut(let request) where request.answer == nil: openShortcut = request
             case .user(let user) where !user.text.isEmpty: hasText = true
             default: break
             }
@@ -171,6 +173,7 @@ extension Engine {
         chats.openSymbolRequests[chatID] = openSymbol
         chats.openColorRequests[chatID] = openColor
         chats.openSoundRequests[chatID] = openSound
+        chats.openShortcutRequests[chatID] = openShortcut
         chats.hasTextMessage[chatID] = hasText
         return costChanged
     }

@@ -394,4 +394,43 @@ public enum ModelRules {
             throw ValidationError(field: "recommended", message: "ask_sound: the recommended sound must be one of the suggestions.")
         }
     }
+
+    /// The rules of a shortcut request (docs/workflow.md › Shortcut requests), in their order, on
+    /// the trimmed suggestions, recommended shortcut and `inUse` entries.
+    public static func shortcutRequest(question: String, suggestions: [String], recommended: String,
+                                       inUse: [ShortcutInUse]) throws {
+        func notationError(_ shortcut: String, field: String) -> ValidationError {
+            ValidationError(field: field,
+                            message: "\(shortcut) is not a shortcut in menu notation: the modifiers ⌃⌥⇧⌘ in this order, then one key.")
+        }
+        guard !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ValidationError(field: "question", message: "ask_shortcut needs a question.")
+        }
+        guard (2...10).contains(suggestions.count) else {
+            throw ValidationError(field: "suggestions", message: "ask_shortcut needs 2 to 10 suggestions.")
+        }
+        guard !suggestions.contains(where: \.isEmpty), Set(suggestions).count == suggestions.count else {
+            throw ValidationError(field: "suggestions", message: "ask_shortcut has an empty or repeated suggestion.")
+        }
+        if let wrong = suggestions.first(where: { KeyShortcut($0) == nil }) {
+            throw notationError(wrong, field: "suggestions")
+        }
+        guard suggestions.contains(recommended) else {
+            throw ValidationError(field: "recommended", message: "ask_shortcut: the recommended shortcut must be one of the suggestions.")
+        }
+        guard inUse.count <= 500 else {
+            throw ValidationError(field: "inUse", message: "ask_shortcut accepts at most 500 inUse entries.")
+        }
+        var seen = Set<String>()
+        for entry in inUse {
+            guard KeyShortcut(entry.shortcut) != nil else { throw notationError(entry.shortcut, field: "inUse") }
+            guard (1...200).contains(entry.command.count), !containsLineBreak(entry.command) else {
+                throw ValidationError(field: "inUse",
+                                      message: "ask_shortcut: the command of \(entry.shortcut) in inUse must be one line of 1 to 200 characters.")
+            }
+            guard seen.insert(entry.shortcut).inserted else {
+                throw ValidationError(field: "inUse", message: "ask_shortcut: \(entry.shortcut) appears twice in inUse.")
+            }
+        }
+    }
 }

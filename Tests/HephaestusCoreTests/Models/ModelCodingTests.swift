@@ -330,6 +330,9 @@ struct ModelCodingTests {
             .sound(SoundItem(id: "so", created: created, requestID: UUID(), question: "Which?",
                              suggestions: ["macOS/Glass.aiff", "iOS 26.1/sms-received1.caf"], recommended: "macOS/Glass.aiff",
                              answer: "![](sound:iOS 26.1/sms-received1.caf)")),
+            .shortcut(ShortcutItem(id: "sc", created: created, requestID: UUID(), question: "Which?", suggestions: ["⇧⌘K", "⌘K"],
+                                   recommended: "⇧⌘K", inUse: [ShortcutInUse(shortcut: "⌘N", command: "New Ticket")],
+                                   answer: "![](shortcut:⌘K)")),
             .system(SystemItem(id: "s", created: created, text: "Session started", level: .warning)),
             .result(ResultItem(id: "r", created: created, durationMs: 10, costUSD: 0.5)),
         ]
@@ -341,7 +344,7 @@ struct ModelCodingTests {
             let object = try JSONDecoder().decode(JSONValue.self, from: data).objectValue?["item"]?.objectValue
             #expect(object?["type"] == .string(item.type.rawValue))
         }
-        #expect(items.map(\.id) == ["u", "a", "t", "tu", "tr", "p", "q", "sy", "sa", "co", "cp", "so", "s", "r"])
+        #expect(items.map(\.id) == ["u", "a", "t", "tu", "tr", "p", "q", "sy", "sa", "co", "cp", "so", "sc", "s", "r"])
     }
 
     @Test("The symbol item of docs/data-model.md › Symbol item: answer null until the user answers")
@@ -391,6 +394,24 @@ struct ModelCodingTests {
         let encoded = try JSONDecoder().decode(JSONValue.self, from: StorageJSON.lineEncoder().encode(ChatItem.sound(request)))
         #expect(encoded.objectValue?["answer"] == .null)
         #expect(encoded.objectValue?["type"] == .string("sound"))
+    }
+
+    @Test("The shortcut item of docs/data-model.md › Shortcut item: answer null until the user answers")
+    func shortcutItem() throws {
+        let doc = try Repository.doc("data-model.md")
+        let block = try #require(MarkdownSource.fencedBlocks(in: doc).first { $0.heading == "### Shortcut item" && $0.info == "json" })
+        let item = try StorageJSON.decoder().decode(ChatItem.self, from: Data(block.text.utf8))
+        guard case .shortcut(var request) = item else {
+            Issue.record("not a shortcut item")
+            return
+        }
+        #expect(request.answer == "![](shortcut:⇧⌘F)")
+        #expect(request.suggestions == ["⇧⌘F", "⌥⌘F", "⌃⌘F"] && request.recommended == "⇧⌘F")
+        #expect(request.inUse == [ShortcutInUse(shortcut: "⌘N", command: "New Ticket")])
+        request.answer = nil
+        let encoded = try JSONDecoder().decode(JSONValue.self, from: StorageJSON.lineEncoder().encode(ChatItem.shortcut(request)))
+        #expect(encoded.objectValue?["answer"] == .null)
+        #expect(encoded.objectValue?["inUse"] == [["shortcut": "⌘N", "command": "New Ticket"]])
     }
 
     @Test("MCP tool names are split after mcp__ at the first __")

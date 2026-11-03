@@ -3,11 +3,12 @@ import Markdown
 
 /// SF Symbol markers (docs/documentation-viewer.md › SF Symbol markers): images whose source has
 /// the scheme `sf`, such as `![](sf:line.3.horizontal.decrease.circle)`; color markers (› Color
-/// markers), whose source has the scheme `color`, such as `![](color:#FF9500)`; and sound markers
+/// markers), whose source has the scheme `color`, such as `![](color:#FF9500)`; sound markers
 /// (› Sound markers), whose source has the scheme `sound`, such as
-/// `![](sound:iOS 26.1/sms-received1.caf)`. The renderers read them in Markdown when the options
-/// have `isSymbolAvailable`, `colorSwatch` or `readsSoundMarkers`; these functions read them in
-/// plain text.
+/// `![](sound:iOS 26.1/sms-received1.caf)`; and shortcut markers (› Shortcut markers), whose source
+/// has the scheme `shortcut`, such as `![](shortcut:⇧⌘K)`. The renderers read them in Markdown
+/// when the options have `isSymbolAvailable`, `colorSwatch`, `readsSoundMarkers` or
+/// `shortcutKeys`; these functions read them in plain text.
 public enum MarkdownSymbolMarkers {
     /// A piece of a text split at its sound markers.
     enum SoundPiece: Equatable {
@@ -15,14 +16,17 @@ public enum MarkdownSymbolMarkers {
         case sound(String)
     }
 
-    /// The plain text as `.text`, `.symbol`, `.color`, `.sound` and `.itemID` inlines: a marker of
-    /// an available name becomes `.symbol`, a color marker with a valid swatch `.color`, a sound
-    /// marker `.sound`, any other marker stays text. Without `colorSwatch`, color markers are text;
-    /// sound markers are read only when `readsSoundMarkers`. The text outside markers also gets the
-    /// ids of `projectIdentifiers` (docs/documentation-viewer.md › Ticket and bundle ids); the text
-    /// of a marker is never searched for ids.
+    /// The plain text as `.text`, `.symbol`, `.color`, `.sound`, `.shortcut` and `.itemID`
+    /// inlines: a marker of an available name becomes `.symbol`, a color marker with a valid swatch
+    /// `.color`, a sound marker `.sound`, a shortcut marker whose shortcut `shortcutKeys` gives key
+    /// caps for `.shortcut`, any other marker stays text. Without `colorSwatch`, color markers are
+    /// text; sound markers are read only when `readsSoundMarkers`; without `shortcutKeys`, shortcut
+    /// markers are text. The text outside markers also gets the ids of `projectIdentifiers`
+    /// (docs/documentation-viewer.md › Ticket and bundle ids); the text of a marker is never
+    /// searched for ids.
     public static func inlines(in text: String, isSymbolAvailable: (String) -> Bool,
                                colorSwatch: ((String) -> MarkdownColorSwatch?)? = nil, readsSoundMarkers: Bool = false,
+                               shortcutKeys: ((String) -> [String]?)? = nil,
                                projectIdentifiers: Set<String> = []) -> [MarkdownInline] {
         var result: [MarkdownInline] = []
         var pending = ""
@@ -41,7 +45,8 @@ public enum MarkdownSymbolMarkers {
         var index = text.startIndex
         while index < text.endIndex {
             if text[index] == "!",
-               let marker = marker(in: text, at: index, readsColors: colorSwatch != nil, readsSounds: readsSoundMarkers) {
+               let marker = marker(in: text, at: index, readsColors: colorSwatch != nil, readsSounds: readsSoundMarkers,
+                                   readsShortcuts: shortcutKeys != nil) {
                 flush()
                 switch marker.kind {
                 case .sound:
@@ -51,6 +56,12 @@ public enum MarkdownSymbolMarkers {
                 case .color:
                     if let swatch = colorSwatch?(marker.name), swatch.isValid {
                         append(.color(marker.name, swatch: swatch))
+                    } else {
+                        append(.text(String(text[index..<marker.end])))
+                    }
+                case .shortcut:
+                    if let keyCaps = shortcutKeys?(marker.name) {
+                        append(.shortcut(keyCaps))
                     } else {
                         append(.text(String(text[index..<marker.end])))
                     }
@@ -67,15 +78,16 @@ public enum MarkdownSymbolMarkers {
         return result
     }
 
-    /// The plain text as HTML: escaped text, the symbol, color and sound HTML of
+    /// The plain text as HTML: escaped text, the symbol, color, sound and shortcut HTML of
     /// docs/documentation-viewer.md › HTML output for each marker that is drawn, and the id links
     /// of its ids.
     public static func html(_ text: String, isSymbolAvailable: (String) -> Bool,
                             colorSwatch: ((String) -> MarkdownColorSwatch?)? = nil, readsSoundMarkers: Bool = false,
-                            projectIdentifiers: Set<String> = []) -> String {
+                            shortcutKeys: ((String) -> [String]?)? = nil, projectIdentifiers: Set<String> = []) -> String {
         var writer = HTMLWriter()
         writer.inlines(inlines(in: text, isSymbolAvailable: isSymbolAvailable, colorSwatch: colorSwatch,
-                               readsSoundMarkers: readsSoundMarkers, projectIdentifiers: projectIdentifiers))
+                               readsSoundMarkers: readsSoundMarkers, shortcutKeys: shortcutKeys,
+                               projectIdentifiers: projectIdentifiers))
         return writer.output
     }
 
@@ -100,13 +112,21 @@ public enum MarkdownSymbolMarkers {
         return String(source.dropFirst(6))
     }
 
+    /// The shortcut of a shortcut marker's image source: the text after `shortcut:` (any letter
+    /// case); nil for another source.
+    static func shortcut(ofSource source: String) -> String? {
+        guard MarkdownLinks.scheme(of: source) == "shortcut" else { return nil }
+        return String(source.dropFirst("shortcut:".count))
+    }
+
     /// A text split at its plain-text sound markers.
     static func soundPieces(in text: String) -> [SoundPiece] {
         var pieces: [SoundPiece] = []
         var pending = ""
         var index = text.startIndex
         while index < text.endIndex {
-            if text[index] == "!", let marker = marker(in: text, at: index, readsColors: false, readsSounds: true),
+            if text[index] == "!",
+               let marker = marker(in: text, at: index, readsColors: false, readsSounds: true, readsShortcuts: false),
                marker.kind == .sound {
                 if !pending.isEmpty { pieces.append(.text(pending)) }
                 pending = ""
@@ -125,15 +145,18 @@ public enum MarkdownSymbolMarkers {
         case symbol
         case color
         case sound
+        case shortcut
     }
 
     /// A plain-text marker starting at `start`: `![`, an alt text without `[`, `]` or line break,
     /// `](`, then either `sf:` or, when `readsColors`, `color:` in any letter case, a name of one or
-    /// more characters other than `(`, `)` and white space, and `)`; or, when `readsSounds`,
-    /// `sound:` in any letter case, a name of one or more characters without line break in which
-    /// each `(` is closed by a `)`, and the `)` that closes the marker.
-    private static func marker(in text: String, at start: String.Index, readsColors: Bool,
-                               readsSounds: Bool) -> (kind: MarkerKind, name: String, end: String.Index)? {
+    /// more characters other than `(`, `)` and white space, and `)`; or, when `readsShortcuts`,
+    /// `shortcut:` in any letter case, a shortcut of one or more characters other than white space,
+    /// `(` and `)`, in which `\` followed by a character stands for that character, and `)`; or,
+    /// when `readsSounds`, `sound:` in any letter case, a name of one or more characters without
+    /// line break in which each `(` is closed by a `)`, and the `)` that closes the marker.
+    private static func marker(in text: String, at start: String.Index, readsColors: Bool, readsSounds: Bool,
+                               readsShortcuts: Bool) -> (kind: MarkerKind, name: String, end: String.Index)? {
         var index = start
         func take(_ expected: String, ignoringCase: Bool = false) -> Bool {
             var cursor = index
@@ -158,6 +181,8 @@ public enum MarkdownSymbolMarkers {
             kind = .symbol
         } else if readsColors, take("color:", ignoringCase: true) {
             kind = .color
+        } else if readsShortcuts, take("shortcut:", ignoringCase: true) {
+            kind = .shortcut
         } else {
             guard readsSounds, take("sound:", ignoringCase: true) else { return nil }
             let nameStart = index
@@ -175,14 +200,20 @@ public enum MarkdownSymbolMarkers {
             guard index > nameStart, index < text.endIndex else { return nil }
             return (.sound, String(text[nameStart..<index]), text.index(after: index))
         }
-        let nameStart = index
+        var name = ""
         while index < text.endIndex, text[index] != ")" {
-            let character = text[index]
+            var character = text[index]
             if character == "(" || character.isWhitespace { return nil }
+            if kind == .shortcut, character == "\\" {
+                index = text.index(after: index)
+                guard index < text.endIndex, !text[index].isWhitespace else { return nil }
+                character = text[index]
+            }
+            name.append(character)
             index = text.index(after: index)
         }
-        guard index > nameStart, index < text.endIndex else { return nil }
-        return (kind, String(text[nameStart..<index]), text.index(after: index))
+        guard !name.isEmpty, index < text.endIndex else { return nil }
+        return (kind, name, text.index(after: index))
     }
 }
 

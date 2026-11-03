@@ -247,6 +247,36 @@ struct MCPToolHandlersTests {
             == .failure(MCPToolError(code: .forbidden, message: "ask_sound is only available in Swift application projects.")))
     }
 
+    @Test("ask_shortcut: the external token fails before validation; a chat token posts to its chat")
+    func askShortcut() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        let refused = try await Self.call(handlers, "ask_shortcut", #"{"suggestions":"not an array"}"#, actor: Self.external)
+        #expect(refused == .failure(MCPToolError(code: .forbidden, message: "Only the chat's own Claude can ask questions.")))
+        #expect(engine.calls.isEmpty)
+
+        #expect(try await Self.call(handlers, "ask_shortcut", #"{"question":"Which?","suggestions":["⌘K","⌘L"],"recommended":"⌘K"}"#)
+            == .failure(MCPToolError(code: .invalid, message: "inUse: required.")))
+        #expect(try await Self.call(handlers, "ask_shortcut",
+                                    #"{"question":"Which?","suggestions":["⌘K","⌘L"],"recommended":"⌘K","inUse":[{"shortcut":"⌘N"}]}"#)
+            == .failure(MCPToolError(code: .invalid, message: "inUse[0].command: required.")))
+        #expect(engine.calls.isEmpty)
+
+        let arguments = #"{"question":"Which shortcut?","suggestions":["⇧⌘K","⌘K"],"recommended":"⇧⌘K","inUse":[{"shortcut":"⌘N","command":"New Ticket"}]}"#
+        let asked = try await Self.call(handlers, "ask_shortcut", arguments)
+        #expect(asked == .success("shortcut request shown; the answer arrives in the next user message; end your turn"))
+        let call = try #require(engine.calls.last)
+        #expect(call.method == "chats.postShortcut")
+        #expect(call.params == .object(["chatID": .string(Self.chatID.uuidString), "question": "Which shortcut?",
+                                        "suggestions": ["⇧⌘K", "⌘K"], "recommended": "⇧⌘K",
+                                        "inUse": [["shortcut": "⌘N", "command": "New Ticket"]]]))
+        #expect(call.actor == Self.chat)
+
+        engine.answer("chats.postShortcut", .failure(EngineError(.forbidden, "ask_shortcut is available only in Swift application projects.")))
+        #expect(try await Self.call(handlers, "ask_shortcut", arguments)
+            == .failure(MCPToolError(code: .forbidden, message: "ask_shortcut is available only in Swift application projects.")))
+    }
+
     @Test("close_chat: the external token fails before validation; a chat token closes its own chat")
     func closeChat() async throws {
         let engine = RecordedEngine()

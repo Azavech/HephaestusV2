@@ -5,10 +5,10 @@ import Foundation
 enum ClaudeCommandLine {
     /// Row 14: the tools that run in every permission mode.
     static let preApprovedTools = [
-        "ask_questions", "ask_symbol", "ask_color", "ask_sound", "close_chat", "list_projects", "get_project", "list_tickets",
-        "get_ticket", "create_ticket", "update_ticket", "set_ticket_status", "add_comment", "update_comment", "list_bundles",
-        "get_bundle", "create_bundle", "update_bundle", "search", "list_docs", "list_web_tabs", "list_skills", "get_skill",
-        "list_chats", "get_chat",
+        "ask_questions", "ask_symbol", "ask_color", "ask_sound", "ask_shortcut", "close_chat", "list_projects", "get_project",
+        "list_tickets", "get_ticket", "create_ticket", "update_ticket", "set_ticket_status", "add_comment", "update_comment",
+        "list_bundles", "get_bundle", "create_bundle", "update_bundle", "search", "list_docs", "list_web_tabs", "list_skills",
+        "get_skill", "list_chats", "get_chat",
     ].map { "mcp__hephaestus__\($0)" }.joined(separator: ",")
 
     /// The argv of a chat process, the CLI path first; no shell is involved.

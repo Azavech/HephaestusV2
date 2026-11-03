@@ -10,7 +10,7 @@ This is the operating manual Claude follows in every HephaestusV2 chat. Claude n
 | `ticket`         | Implement, New Chat in a ticket's Chats tab, `implement_ticket`        | `common.md`, `ticket.md`   | Implement runs the [implementation workflow](#implementation-workflow); a ticket chat started by a bundle chat commits on its own branch without pushing ([Bundles](#bundles)) |
 | `bundle`         | Implement All, New Chat in a bundle's Chats tab, `implement_bundle`    | `common.md`, `bundle.md`   | Implement All runs the [bundle workflow](#bundles): the chat orchestrates ticket chats that run in parallel, then merges their branches                                        |
 | `feedback`       | The ladybug ([Feedback](feedback.md))                                  | `common.md`, `feedback.md` | Clarify the feedback, then create its ticket                                                                                                                                   |
-| External session | A terminal Claude session using the external MCP token ([MCP](mcp.md)) | none                       | Only the [engine-enforced rules](#engine-enforced-rules); no `ask_questions`, `ask_symbol`, `ask_color` or `ask_sound`                                                         |
+| External session | A terminal Claude session using the external MCP token ([MCP](mcp.md)) | none                       | Only the [engine-enforced rules](#engine-enforced-rules); no `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound` or `ask_shortcut`                                         |
 
 - The prompt resources are in `Sources/HephaestusCore/Resources/prompts/`, and their full text is in [Chats](chats.md). `common.md` states every rule of this document in imperative form.
 - Claude CLI also reads the project's own `CLAUDE.md` from the project root. The `CLAUDE.md` of the HephaestusV2 repository links to this document. Default chosen at design time.
@@ -44,7 +44,7 @@ This is the operating manual Claude follows in every HephaestusV2 chat. Claude n
 - Claude puts every point that is unknown at that moment into one call. Default chosen at design time.
 - The tool returns at once with the text `questions shown; answers arrive in the next user message; end your turn`. Claude then ends its turn: it calls no further tool.
 - Claude does not repeat the questions in its reply text, because the chat shows them. Default chosen at design time.
-- A chat has at most one waiting request: a question set without all its answers, a [symbol request](#symbol-requests) without answer, a [color request](#color-requests) without answer, or a [sound request](#sound-requests) without answer. Calling `ask_questions` while a question set waits fails with `conflict` and `Questions are already waiting for answers in this chat.`, while a symbol request waits with `conflict` and `A symbol request is already waiting for an answer in this chat.`, while a color request waits with `conflict` and `A color request is already waiting for an answer in this chat.`, and while a sound request waits with `conflict` and `A sound request is already waiting for an answer in this chat.`. The question-set rule and its message are Default chosen at design time.
+- A chat has at most one waiting request: a question set without all its answers, a [symbol request](#symbol-requests) without answer, a [color request](#color-requests) without answer, a [sound request](#sound-requests) without answer, or a [shortcut request](#shortcut-requests) without answer. Calling `ask_questions` while a question set waits fails with `conflict` and `Questions are already waiting for answers in this chat.`, while a symbol request waits with `conflict` and `A symbol request is already waiting for an answer in this chat.`, while a color request waits with `conflict` and `A color request is already waiting for an answer in this chat.`, while a sound request waits with `conflict` and `A sound request is already waiting for an answer in this chat.`, and while a shortcut request waits with `conflict` and `A shortcut request is already waiting for an answer in this chat.`. The question-set rule and its message are Default chosen at design time.
 - `ask_questions` works only with a chat's own token, never with the external token ([MCP](mcp.md)).
 
 ### Validation
@@ -85,7 +85,7 @@ B: <answer>
 
 ### Plain-text questions
 
-In an external session, where `ask_questions`, `ask_symbol`, `ask_color` and `ask_sound` are not available, Claude writes the questions in its reply in this form and ends its turn; a symbol choice becomes a question whose options are the symbol names, a color choice a question whose options are the color values, a light and dark pair being written `Light <color>, Dark <color>`, and a sound choice a question whose options are the sound names:
+In an external session, where `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound` and `ask_shortcut` are not available, Claude writes the questions in its reply in this form and ends its turn; a symbol choice becomes a question whose options are the symbol names, a color choice a question whose options are the color values, a light and dark pair being written `Light <color>, Dark <color>`, a sound choice a question whose options are the sound names, and a shortcut choice a question whose options are the shortcuts:
 
 ```text
 A: <question>
@@ -104,7 +104,7 @@ When Claude needs the user to choose an SF Symbol, it asks with the MCP tool `as
 
 - One call asks for one symbol. Its inputs are `question`, the question; `suggestions`, 2 to 10 SF Symbol names; and `recommended`, the suggestion Claude recommends.
 - The tool returns at once with the text `symbol request shown; the answer arrives in the next user message; end your turn`. Claude then ends its turn: it calls no further tool, and it does not repeat the question in its reply.
-- A chat has at most one waiting request ([Asking](#asking)): calling `ask_symbol` while a question set waits fails with `conflict` and `Questions are already waiting for answers in this chat.`, while a symbol request waits with `conflict` and `A symbol request is already waiting for an answer in this chat.`, while a color request waits with `conflict` and `A color request is already waiting for an answer in this chat.`, and while a sound request waits with `conflict` and `A sound request is already waiting for an answer in this chat.`.
+- A chat has at most one waiting request ([Asking](#asking)): calling `ask_symbol` while a question set waits fails with `conflict` and `Questions are already waiting for answers in this chat.`, while a symbol request waits with `conflict` and `A symbol request is already waiting for an answer in this chat.`, while a color request waits with `conflict` and `A color request is already waiting for an answer in this chat.`, while a sound request waits with `conflict` and `A sound request is already waiting for an answer in this chat.`, and while a shortcut request waits with `conflict` and `A shortcut request is already waiting for an answer in this chat.`.
 - `ask_symbol` works only with a chat's own token, never with the external token ([MCP](mcp.md#ask_symbol)).
 
 `chats.postSymbol` checks the input, after trimming each suggestion and `recommended`. Every failure is `invalid` with the message below, and nothing is shown to the user. The messages are Default chosen at design time.
@@ -137,7 +137,7 @@ When Claude needs the user to choose a color, it asks with the MCP tool `ask_col
 - A color is opaque, without opacity: a hex color `#RRGGBB` in sRGB, its six hex digits in either letter case, or a [system color name](chats.md#system-colors) such as `systemBlue`, `label` or `accentColor`.
 - Claude sets `lightAndDark` when the destination of the color supports light and dark appearances, for example an asset catalog color set. Each suggestion and `recommended` are then pairs `{"light": "<color>", "dark": "<color>"}`; otherwise each is one color, a string.
 - The tool returns at once with the text `color request shown; the answer arrives in the next user message; end your turn`. Claude then ends its turn: it calls no further tool, and it does not repeat the question in its reply.
-- A chat has at most one waiting request ([Asking](#asking)): calling `ask_color` while a question set waits fails with `conflict` and `Questions are already waiting for answers in this chat.`, while a symbol request waits with `conflict` and `A symbol request is already waiting for an answer in this chat.`, while a color request waits with `conflict` and `A color request is already waiting for an answer in this chat.`, and while a sound request waits with `conflict` and `A sound request is already waiting for an answer in this chat.`.
+- A chat has at most one waiting request ([Asking](#asking)): calling `ask_color` while a question set waits fails with `conflict` and `Questions are already waiting for answers in this chat.`, while a symbol request waits with `conflict` and `A symbol request is already waiting for an answer in this chat.`, while a color request waits with `conflict` and `A color request is already waiting for an answer in this chat.`, while a sound request waits with `conflict` and `A sound request is already waiting for an answer in this chat.`, and while a shortcut request waits with `conflict` and `A shortcut request is already waiting for an answer in this chat.`.
 - `ask_color` works only with a chat's own token, never with the external token ([MCP](mcp.md#ask_color)).
 
 `chats.postColor` checks the input, after trimming each color of `suggestions` and `recommended`. Every failure is `invalid` with the message below, and nothing is shown to the user. The messages are Default chosen at design time.
@@ -173,7 +173,7 @@ When Claude needs the user to choose a sound for an app of an Apple platform (iO
 - A sound name is `macOS/<file>` for a sound of `/System/Library/Sounds`, `<platform> <version>/<path>` for a sound of an installed Simulator runtime, for example `iOS 26.1/sms-received1.caf`, or `Project/<path from the project root>` for a sound file of the project ([Sound catalogue](chats.md#sound-catalogue)).
 - `ask_sound` works only in a project of type Swift application: in a project of another type it fails with `forbidden` and `ask_sound is only available in Swift application projects.`, and nothing is shown to the user.
 - The tool returns at once with the text `sound request shown; the answer arrives in the next user message; end your turn`. Claude then ends its turn: it calls no further tool, and it does not repeat the question in its reply.
-- A chat has at most one waiting request ([Asking](#asking)): calling `ask_sound` while a question set waits fails with `conflict` and `Questions are already waiting for answers in this chat.`, while a symbol request waits with `conflict` and `A symbol request is already waiting for an answer in this chat.`, while a color request waits with `conflict` and `A color request is already waiting for an answer in this chat.`, and while a sound request waits with `conflict` and `A sound request is already waiting for an answer in this chat.`.
+- A chat has at most one waiting request ([Asking](#asking)): calling `ask_sound` while a question set waits fails with `conflict` and `Questions are already waiting for answers in this chat.`, while a symbol request waits with `conflict` and `A symbol request is already waiting for an answer in this chat.`, while a color request waits with `conflict` and `A color request is already waiting for an answer in this chat.`, while a sound request waits with `conflict` and `A sound request is already waiting for an answer in this chat.`, and while a shortcut request waits with `conflict` and `A shortcut request is already waiting for an answer in this chat.`.
 - `ask_sound` works only with a chat's own token, never with the external token ([MCP](mcp.md#ask_sound)).
 
 `chats.postSound` checks the project type, then the input, after trimming each suggestion and `recommended`. Every input failure is `invalid` with the message below, and nothing is shown to the user. The messages are Default chosen at design time.
@@ -195,6 +195,41 @@ Sound: <answer>
 ```
 
 - `<answer>` is `![](sound:<name>)` for a sound chosen in the card, for example `Sound: ![](sound:iOS 26.1/sms-received1.caf)`; the text the user typed, trimmed, with its line breaks; or `Skipped` for a skipped request.
+- A skipped request is handled like a skipped question: Claude leaves that point out, does not act on it or guess, and mentions it in its reply.
+- The answer is a decision: Claude applies it and does not ask again.
+
+### Shortcut requests
+
+In a project whose [type](projects.md#project-types) is Swift application (`swiftApplication`), when Claude needs the user to choose a keyboard shortcut, it asks with the MCP tool `ask_shortcut` instead of listing shortcuts as options of `ask_questions` ([MCP](mcp.md#ask_shortcut)).
+
+- One call asks for one shortcut. Its inputs are `question`, the question; `suggestions`, 2 to 10 shortcuts written in the [shortcut notation](chats.md#shortcut-notation), for example `⇧⌘K`; `recommended`, the suggestion Claude recommends; and `inUse`, every shortcut the app already uses, each with the name of its command, for example `⌘N` with `New Ticket`, or an empty array.
+- The tool returns at once with the text `shortcut request shown; the answer arrives in the next user message; end your turn`. Claude then ends its turn: it calls no further tool, and it does not repeat the question in its reply.
+- A chat has at most one waiting request ([Asking](#asking)): calling `ask_shortcut` while a question set waits fails with `conflict` and `Questions are already waiting for answers in this chat.`, while a symbol request waits with `conflict` and `A symbol request is already waiting for an answer in this chat.`, while a color request waits with `conflict` and `A color request is already waiting for an answer in this chat.`, while a sound request waits with `conflict` and `A sound request is already waiting for an answer in this chat.`, and while a shortcut request waits with `conflict` and `A shortcut request is already waiting for an answer in this chat.`.
+- `ask_shortcut` works only with a chat's own token, never with the external token ([MCP](mcp.md#ask_shortcut)).
+- In a project of another type, the call fails with `forbidden` and `ask_shortcut is available only in Swift application projects.`, and nothing is shown to the user. The code and the message are Default chosen at design time.
+
+`chats.postShortcut` checks the project type, then the input, after trimming each suggestion, `recommended`, and each `shortcut` and `command` of `inUse`. Every failure of the input is `invalid` with the message below, and nothing is shown to the user. The checks run in this order; the suggestions and the entries of `inUse` are checked in their order, and the message names the first one that fails. The 500-entry limit, the command length and the messages are Default chosen at design time.
+
+| Rule                                                                      | Message                                                                                          |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `question` is not empty after trimming                                    | `ask_shortcut needs a question.`                                                                 |
+| 2 to 10 suggestions                                                       | `ask_shortcut needs 2 to 10 suggestions.`                                                        |
+| Suggestions are not empty and are distinct                                | `ask_shortcut has an empty or repeated suggestion.`                                              |
+| Each suggestion is in the [shortcut notation](chats.md#shortcut-notation) | `<shortcut> is not a shortcut in menu notation: the modifiers ⌃⌥⇧⌘ in this order, then one key.` |
+| `recommended` equals one of the suggestions                               | `ask_shortcut: the recommended shortcut must be one of the suggestions.`                         |
+| At most 500 entries in `inUse`                                            | `ask_shortcut accepts at most 500 inUse entries.`                                                |
+| Each `shortcut` of `inUse` is in the shortcut notation                    | `<shortcut> is not a shortcut in menu notation: the modifiers ⌃⌥⇧⌘ in this order, then one key.` |
+| Each `command` of `inUse` is one line of 1 to 200 characters              | `ask_shortcut: the command of <shortcut> in inUse must be one line of 1 to 200 characters.`      |
+| No shortcut appears twice in `inUse`                                      | `ask_shortcut: <shortcut> appears twice in inUse.`                                               |
+
+The request appears in the chat as a pinned shortcut card above the composer ([Chats](chats.md#pinned-shortcut-card)): the suggestions drawn as key caps, the recommended one marked and preselected, a recorder field `Record Shortcut`, the warnings `Used by macOS: <action>` and `Used by the app: <command>` for the selected shortcut, a free-text field `Answer another way`, a Skip button and a Submit button. The user answers once with `chats.answerShortcut`, from any window or device; the chat's state is `waitingAnswers` until then. The engine then sends Claude one user message:
+
+```text
+Shortcut: <answer>
+```
+
+- `<answer>` is `![](shortcut:<shortcut>)` for a shortcut chosen or recorded in the card, for example `Shortcut: ![](shortcut:⇧⌘K)`; the text the user typed, trimmed, with its line breaks; or `Skipped` for a skipped request.
+- A shortcut that macOS or the app already uses can be the answer: the warnings do not block Submit.
 - A skipped request is handled like a skipped question: Claude leaves that point out, does not act on it or guess, and mentions it in its reply.
 - The answer is a decision: Claude applies it and does not ask again.
 
@@ -474,28 +509,31 @@ When the project is HephaestusV2 itself (the registered project whose git remote
 
 ## Engine-enforced rules
 
-| Rule                                                                                                     | Checked by                             | Failure               |
-| -------------------------------------------------------------------------------------------------------- | -------------------------------------- | --------------------- |
-| Descriptions written by Claude follow the template                                                       | `tickets.create`, `tickets.update`     | `invalid`             |
-| New tickets start as `todo`                                                                              | `tickets.create` (no status parameter) | none                  |
-| Tickets created without a title are named by Haiku                                                       | `tickets.create`                       | none                  |
-| Claude never changes the status of a `done` ticket                                                       | `tickets.setStatus`                    | `forbidden`           |
-| Questions are labelled in order, with 2 to 10 options and exactly one recommended                        | `chats.postQuestions`                  | `invalid`             |
-| A chat has at most one waiting question set, symbol, color or sound request                              | `chats.postQuestions`                  | `conflict`            |
-| Symbol requests have 2 to 10 distinct SF Symbol names, one recommended                                   | `chats.postSymbol`                     | `invalid`             |
-| A symbol request is refused while a question set, symbol, color or sound request waits                   | `chats.postSymbol`                     | `conflict`            |
-| Color requests have 2 to 10 distinct hex colors or system color names, or pairs of them, one recommended | `chats.postColor`                      | `invalid`             |
-| A color request is refused while a question set, symbol, color or sound request waits                    | `chats.postColor`                      | `conflict`            |
-| Sound requests are posted only in projects of type Swift application                                     | `chats.postSound`                      | `forbidden`           |
-| Sound requests have 2 to 10 distinct names of the sound catalogue, one recommended                       | `chats.postSound`                      | `invalid`             |
-| A sound request is refused while a question set, symbol, color or sound request waits                    | `chats.postSound`                      | `conflict`            |
-| `ask_questions`, `ask_symbol`, `ask_color` and `ask_sound` need a chat token                             | MCP server                             | see [MCP](mcp.md)     |
-| `close_chat` needs a chat token and closes only the calling chat                                         | MCP server, `chats.close`              | see [MCP](mcp.md)     |
-| Links join two tickets of the same project, once per pair, without a Depends on cycle                    | `tickets.create`, `tickets.update`     | `invalid`, `notFound` |
-| A `done` ticket is not implemented                                                                       | `chats.implementTicket`                | `conflict`            |
-| A bundle is implemented only when one of its tickets is not `done`                                       | `chats.implementBundle`                | `conflict`            |
-| A bundle is implemented only when its status is `todo`                                                   | `chats.implementBundle`                | `conflict`            |
-| Claude never sets a bundle to `done` and never changes a `done` bundle                                   | `bundles.setStatus`                    | `forbidden`           |
+| Rule                                                                                                           | Checked by                             | Failure               |
+| -------------------------------------------------------------------------------------------------------------- | -------------------------------------- | --------------------- |
+| Descriptions written by Claude follow the template                                                             | `tickets.create`, `tickets.update`     | `invalid`             |
+| New tickets start as `todo`                                                                                    | `tickets.create` (no status parameter) | none                  |
+| Tickets created without a title are named by Haiku                                                             | `tickets.create`                       | none                  |
+| Claude never changes the status of a `done` ticket                                                             | `tickets.setStatus`                    | `forbidden`           |
+| Questions are labelled in order, with 2 to 10 options and exactly one recommended                              | `chats.postQuestions`                  | `invalid`             |
+| A chat has at most one waiting question set, symbol, color, sound or shortcut request                          | `chats.postQuestions`                  | `conflict`            |
+| Symbol requests have 2 to 10 distinct SF Symbol names, one recommended                                         | `chats.postSymbol`                     | `invalid`             |
+| A symbol request is refused while a question set, symbol, color, sound or shortcut request waits               | `chats.postSymbol`                     | `conflict`            |
+| Color requests have 2 to 10 distinct hex colors or system color names, or pairs of them, one recommended       | `chats.postColor`                      | `invalid`             |
+| A color request is refused while a question set, symbol, color, sound or shortcut request waits                | `chats.postColor`                      | `conflict`            |
+| Sound requests are posted only in projects of type Swift application                                           | `chats.postSound`                      | `forbidden`           |
+| Sound requests have 2 to 10 distinct names of the sound catalogue, one recommended                             | `chats.postSound`                      | `invalid`             |
+| A sound request is refused while a question set, symbol, color, sound or shortcut request waits                | `chats.postSound`                      | `conflict`            |
+| Shortcut requests are posted only in Swift application projects                                                | `chats.postShortcut`                   | `forbidden`           |
+| Shortcut requests have 2 to 10 distinct shortcuts in menu notation, one recommended, and valid `inUse` entries | `chats.postShortcut`                   | `invalid`             |
+| A shortcut request is refused while a question set, symbol, color, sound or shortcut request waits             | `chats.postShortcut`                   | `conflict`            |
+| `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound` and `ask_shortcut` need a chat token                   | MCP server                             | see [MCP](mcp.md)     |
+| `close_chat` needs a chat token and closes only the calling chat                                               | MCP server, `chats.close`              | see [MCP](mcp.md)     |
+| Links join two tickets of the same project, once per pair, without a Depends on cycle                          | `tickets.create`, `tickets.update`     | `invalid`, `notFound` |
+| A `done` ticket is not implemented                                                                             | `chats.implementTicket`                | `conflict`            |
+| A bundle is implemented only when one of its tickets is not `done`                                             | `chats.implementBundle`                | `conflict`            |
+| A bundle is implemented only when its status is `todo`                                                         | `chats.implementBundle`                | `conflict`            |
+| Claude never sets a bundle to `done` and never changes a `done` bundle                                         | `bundles.setStatus`                    | `forbidden`           |
 
 The engine does not check the other rules (never invent, docs first, build and test, the tests that allow `done`, commits, pushing and the completion comment); only the prompts carry them. A ticket file that Claude edits with its own file tools reaches the engine as an external change with the actor `system` ([Data model](data-model.md#external-changes)); the template and status rules are not applied to it. Only the prompt rule `Never create, edit or delete files inside a .hephaestus folder yourself` prevents it. The error messages of the ticket rules are in [Errors](tickets.md#errors).
 
@@ -621,3 +659,4 @@ Notes
 - R126: The engine sets a bundle to done when every ticket of the bundle is done, whoever changed the last ticket, and sets a done bundle back to in progress when one of its tickets is not done.
 - R132: Claude asks the user to choose a color with `ask_color`, as one color or a light and dark pair: suggestions show as swatches, any system color can be picked from a grid and any other color with the macOS color panel or a hex field, the user answers another way or skips, and the chat shows the colors Claude names and the answer as swatches.
 - R133: In a Swift application project, Claude asks the user to choose a sound with `ask_sound`: the card lists the suggestions and searches the macOS sounds, the installed Simulator runtimes' sounds and the project's sound files; selecting one plays it; the user picks one, answers another way or skips.
+- R134: In a Swift application project, Claude asks the user to choose a keyboard shortcut with `ask_shortcut`: suggestions show as key caps, the user can record another combination and sees when macOS or the app already uses the selected one, then picks one, answers another way or skips.

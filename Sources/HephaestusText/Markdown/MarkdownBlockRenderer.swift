@@ -63,13 +63,14 @@ enum CodeBlockLanguage {
 struct MarkdownConverter {
     let options: MarkdownRenderOptions
     private var anchors = HeadingAnchors()
-    /// The parsed text, kept only when SF Symbol or color markers are read: a marker that is not
-    /// drawn shows its source as written.
+    /// The parsed text, kept only when SF Symbol, color or shortcut markers are read: a marker that
+    /// is not drawn shows its source as written.
     private let sourceLines: MarkdownSourceLines?
 
     init(options: MarkdownRenderOptions, source: String) {
         self.options = options
-        self.sourceLines = options.isSymbolAvailable == nil && options.colorSwatch == nil ? nil : MarkdownSourceLines(source)
+        self.sourceLines = options.isSymbolAvailable == nil && options.colorSwatch == nil && options.shortcutKeys == nil
+            ? nil : MarkdownSourceLines(source)
     }
 
     mutating func blocks<S: Sequence>(_ children: S) -> [MarkdownBlock] where S.Element == Markup {
@@ -233,6 +234,11 @@ struct MarkdownConverter {
                     result.append(colorMarker(image, color: color, colorSwatch: colorSwatch))
                     continue
                 }
+                if let shortcutKeys = options.shortcutKeys,
+                   let shortcut = MarkdownSymbolMarkers.shortcut(ofSource: image.source ?? "") {
+                    result.append(shortcutKeys(shortcut).map { .shortcut($0) } ?? sourceText(image))
+                    continue
+                }
                 let source = MarkdownLinks.imageSource(image.source ?? "", options: options)
                 result.append(.image(source: source, alt: Self.altText(image.children), title: Self.nonEmpty(image.title)))
             case is SoftBreak:
@@ -277,10 +283,7 @@ struct MarkdownConverter {
         if let swatch = colorSwatch(color), swatch.isValid {
             return .color(color, swatch: swatch)
         }
-        if let range = image.range, let text = sourceLines?.text(in: range) {
-            return .text(text)
-        }
-        return .text(image.format())
+        return sourceText(image)
     }
 
     /// A link with an accepted destination; a refused one becomes its content.

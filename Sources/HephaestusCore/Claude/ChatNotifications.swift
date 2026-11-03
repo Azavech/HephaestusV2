@@ -69,6 +69,7 @@ extension Engine {
             if let symbol = chats.openSymbolRequests[meta.id] { return .symbol(question: symbol.question) }
             if let color = chats.openColorRequests[meta.id] { return .color(question: color.question) }
             if let sound = chats.openSoundRequests[meta.id] { return .sound(question: sound.question) }
+            if let shortcut = chats.openShortcutRequests[meta.id] { return .shortcut(question: shortcut.question) }
             return nil
         }
     }
