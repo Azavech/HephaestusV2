@@ -150,3 +150,23 @@ enum ProjectRules {
         return valid ? nil : "Enter a folder path inside the project, for example docs."
     }
 }
+
+/// The Project type of the New Project and New Sub Project sheets: it follows the project folder
+/// until the user picks a type in the menu (docs/projects.md › Creating a project).
+struct ProjectTypeChoice: Equatable {
+    private(set) var type = ProjectType.none
+    /// True once the user has picked a type in the menu.
+    private(set) var picked = false
+
+    /// A type picked in the menu: the type no longer follows the folder.
+    mutating func pick(_ type: ProjectType) {
+        self.type = type
+        picked = true
+    }
+
+    /// The project folder was checked: `Go service` when it has `go.mod`, `None` otherwise.
+    mutating func follow(folderHasGoMod: Bool) {
+        guard !picked else { return }
+        type = folderHasGoMod ? .goService : .none
+    }
+}

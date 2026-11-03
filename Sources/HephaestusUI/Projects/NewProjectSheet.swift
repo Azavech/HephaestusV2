@@ -27,7 +27,7 @@ struct NewProjectSheet: View {
     @State private var nameEdited = false
     @State private var identifier = ""
     @State private var identifierEdited = false
-    @State private var type = ProjectType.none
+    @State private var typeChoice = ProjectTypeChoice()
     @State private var mode = FolderMode.newFolder
     @State private var parentFolder = ""
     @State private var folderName = ""
@@ -72,7 +72,7 @@ struct NewProjectSheet: View {
                 }
                 GridRow {
                     label("Project type")
-                    ProjectTypeMenu(selection: $type)
+                    ProjectTypeMenu(selection: typeBinding)
                 }
                 if !isSubProject {
                     parentRow
@@ -154,6 +154,9 @@ struct NewProjectSheet: View {
         .task {
             await prepare()
         }
+        .task(id: projectFolder) {
+            await followProjectFolder(projectFolder)
+        }
         .sheet(item: $remotePicker) { field in
             ChooseFolderSheet(window: window, workspace: workspace, purpose: .projectFolder,
                               initialPath: field == .parentFolder ? parentFolder : chosenFolder) { path in
@@ -190,6 +193,11 @@ struct NewProjectSheet: View {
         })
     }
 
+    /// Picking a type in the menu stops the type from following the project folder.
+    private var typeBinding: Binding<ProjectType> {
+        Binding(get: { typeChoice.type }, set: { typeChoice.pick($0) })
+    }
+
     private var folderNameBinding: Binding<String> {
         Binding(get: { folderName }, set: { value in
             guard value != folderName else { return }
@@ -206,6 +214,20 @@ struct NewProjectSheet: View {
         if !folderNameEdited {
             folderName = ProjectRules.folderNameSuggestion(from: name)
         }
+    }
+
+    /// Until the user picks a type, the type follows the project folder: `fs.browse` on the
+    /// window's device tells whether the folder has `go.mod`; a failed call, for a folder that does
+    /// not exist yet for example, counts as none (docs/projects.md › Creating a project).
+    private func followProjectFolder(_ folder: String) async {
+        guard !typeChoice.picked else { return }
+        var hasGoMod = false
+        if !folder.isEmpty {
+            hasGoMod = (try? await workspace.call(FSBrowse.self, FSBrowse.Params(path: folder)))?.hasGoMod ?? false
+        }
+        // A newer project folder has started its own check.
+        guard !Task.isCancelled else { return }
+        typeChoice.follow(folderHasGoMod: hasGoMod)
     }
 
     private var identifierMessage: String? {
@@ -347,7 +369,7 @@ struct NewProjectSheet: View {
     private func create() {
         guard canCreate, !working else { return }
         let params = ProjectsCreate.Params(rootPath: projectFolder, name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-                                           identifier: identifier, parentID: selectedParentID, type: type,
+                                           identifier: identifier, parentID: selectedParentID, type: typeChoice.type,
                                            createDirectory: mode == .newFolder)
         run {
             try await workspace.call(ProjectsCreate.self, params)

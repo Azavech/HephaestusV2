@@ -25,8 +25,15 @@ struct EngineJSONTests {
     func encoding() throws {
         let entry = BrowseResult.Entry(name: "HephaestusV2", path: "/Users/example/Developer/HephaestusV2", hasProject: true)
         #expect(try Self.encoded(entry) == #"{"hasProject":true,"name":"HephaestusV2","path":"/Users/example/Developer/HephaestusV2"}"#)
-        #expect(try Self.encoded(BrowseResult(path: "/")) == #"{"entries":[],"path":"/"}"#)
+        #expect(try Self.encoded(BrowseResult(path: "/")) == #"{"entries":[],"hasGoMod":false,"path":"/"}"#)
+        #expect(try Self.encoded(BrowseResult(path: "/Users/example/api", hasGoMod: true)) == #"{"entries":[],"hasGoMod":true,"path":"/Users/example/api"}"#)
         #expect(try Self.encoded(Empty()) == "{}")
+    }
+
+    @Test("BrowseResult: hasGoMod absent, from an engine of an earlier version, reads as false")
+    func browseResultWithoutGoMod() throws {
+        let result = try EngineJSON.decode(BrowseResult.self, from: Data(#"{"entries":[],"path":"/"}"#.utf8))
+        #expect(result == BrowseResult(path: "/"))
     }
 
     @Test("Patch: absent keeps, null clears, a value replaces")

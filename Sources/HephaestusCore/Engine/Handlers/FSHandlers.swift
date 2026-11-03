@@ -9,7 +9,8 @@ extension Engine {
     }
 
     /// docs/engine-api.md › fs.browse: the sub-directories of a folder of the main device whose
-    /// name does not start with `.`, in Finder order, each telling whether it holds a project.
+    /// name does not start with `.`, in Finder order, each telling whether it holds a project, and
+    /// whether the folder itself holds `go.mod`.
     func fsBrowse(_ params: FSBrowse.Params, _ actor: Actor) async throws -> BrowseResult {
         let requested = params.path ?? FileManager.default.homeDirectoryForCurrentUser.path
         guard let path = FileSystemItems.standardizedAbsolutePath(requested) else {
@@ -37,6 +38,7 @@ extension Engine {
         }
         entries.sort { FileSystemItems.finderOrder($0.name, $1.name) }
         let parent = path == "/" ? nil : (path as NSString).deletingLastPathComponent
-        return BrowseResult(path: path, parent: parent, entries: entries)
+        let hasGoMod = FileItem.at(path == "/" ? "/go.mod" : path + "/go.mod")?.kind == .file
+        return BrowseResult(path: path, parent: parent, entries: entries, hasGoMod: hasGoMod)
     }
 }

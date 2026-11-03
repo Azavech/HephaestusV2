@@ -264,11 +264,27 @@ public struct BrowseResult: Codable, Sendable, Hashable {
     public var parent: String?
     /// Sub-directories, sorted by name in Finder order.
     public var entries: [Entry]
+    /// true when the listed directory contains a file named `go.mod`.
+    public var hasGoMod: Bool
 
-    public init(path: String, parent: String? = nil, entries: [Entry] = []) {
+    public init(path: String, parent: String? = nil, entries: [Entry] = [], hasGoMod: Bool = false) {
         self.path = path
         self.parent = parent
         self.entries = entries
+        self.hasGoMod = hasGoMod
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case path, parent, entries, hasGoMod
+    }
+
+    /// An engine of an earlier version omits `hasGoMod`: it reads as false.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        path = try c.decode(String.self, forKey: .path)
+        parent = try c.decodeIfPresent(String.self, forKey: .parent)
+        entries = try c.decode([Entry].self, forKey: .entries)
+        hasGoMod = try c.decodeIfPresent(Bool.self, forKey: .hasGoMod) ?? false
     }
 }
 

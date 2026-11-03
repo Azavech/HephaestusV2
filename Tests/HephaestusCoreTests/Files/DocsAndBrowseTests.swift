@@ -83,6 +83,25 @@ struct FSBrowseTests {
         }
     }
 
+    @Test("hasGoMod tells whether the listed folder itself has a go.mod file")
+    func goMod() async throws {
+        try await withFileTestEngine { _, connection, project in
+            let base = project.folder.appendingPathComponent("Modules", isDirectory: true)
+            for name in ["service", "linked", "plain", "folderNamedGoMod/go.mod", "parentOfModule/child"] {
+                try FileManager.default.createDirectory(at: base.appendingPathComponent(name), withIntermediateDirectories: true)
+            }
+            try Data("module example.com/service\n".utf8).write(to: base.appendingPathComponent("service/go.mod"))
+            try Data().write(to: base.appendingPathComponent("parentOfModule/child/go.mod"))
+            try FileManager.default.createSymbolicLink(atPath: base.appendingPathComponent("linked/go.mod").path,
+                                                       withDestinationPath: "../service/go.mod")
+
+            for (name, expected) in [("service", true), ("linked", true), ("plain", false), ("folderNamedGoMod", false), ("parentOfModule", false)] {
+                let result = try await connection.call(FSBrowse.self, .init(path: base.appendingPathComponent(name).path))
+                #expect(result.hasGoMod == expected, "\(name)")
+            }
+        }
+    }
+
     @Test("The root has no parent")
     func root() async throws {
         try await withFileTestEngine { _, connection, _ in

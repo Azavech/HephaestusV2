@@ -1459,13 +1459,13 @@ Events: none.
 
 Swift type `FSBrowse` · actors: user · result: [BrowseResult](#browseresult)
 
-Lists folders of the main device so a remote window can pick a location for `projects.create` and `projects.open` ([Projects](projects.md)).
+Lists folders of the main device so a remote window can pick a location for `projects.create` and `projects.open`, and tells the New Project and New Sub Project sheets whether the project folder has `go.mod` ([Projects](projects.md), [Creating a project](projects.md#creating-a-project)).
 
 | Param | Type   | Required | Description                                                                          |
 | ----- | ------ | -------- | ------------------------------------------------------------------------------------ |
 | path  | String | no       | Absolute directory path. Default: the home directory of the user running the engine. |
 
-The result's `path` is the standardized path; `parent` is its parent directory and is absent for `/`; `entries` are its sub-directories whose name does not start with `.`, sorted by name in Finder order; `hasProject` is true when the entry contains `.hephaestus/project.yml`. Default chosen at design time.
+The result's `path` is the standardized path; `parent` is its parent directory and is absent for `/`; `entries` are its sub-directories whose name does not start with `.`, sorted by name in Finder order; `hasProject` is true when the entry contains `.hephaestus/project.yml`; `hasGoMod` is true when the listed directory itself contains a file named `go.mod`, a symbolic link to a file included. Default chosen at design time.
 
 | Error    | When                                                                                            |
 | -------- | ----------------------------------------------------------------------------------------------- |
@@ -2254,11 +2254,12 @@ At most one of `text` and `dataBase64` is present; neither is present when the f
 
 ### BrowseResult
 
-| Field   | Type          | Required | Description                                         |
-| ------- | ------------- | -------- | --------------------------------------------------- |
-| path    | String        | yes      | Standardized absolute path of the listed directory. |
-| parent  | String        | no       | Parent directory; absent for `/`.                   |
-| entries | [BrowseEntry] | yes      | Sub-directories, sorted by name in Finder order.    |
+| Field    | Type          | Required | Description                                                    |
+| -------- | ------------- | -------- | -------------------------------------------------------------- |
+| path     | String        | yes      | Standardized absolute path of the listed directory.            |
+| parent   | String        | no       | Parent directory; absent for `/`.                              |
+| entries  | [BrowseEntry] | yes      | Sub-directories, sorted by name in Finder order.               |
+| hasGoMod | Bool          | yes      | true when the listed directory contains a file named `go.mod`. |
 
 BrowseEntry (Swift `BrowseResult.Entry`):
 
@@ -2274,6 +2275,7 @@ BrowseEntry (Swift `BrowseResult.Entry`):
     {"hasProject": true, "name": "HephaestusV2", "path": "/Users/example/Developer/HephaestusV2"},
     {"hasProject": false, "name": "scratch", "path": "/Users/example/Developer/scratch"}
   ],
+  "hasGoMod": false,
   "parent": "/Users/example",
   "path": "/Users/example/Developer"
 }
@@ -2872,3 +2874,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R126: The engine sets a bundle to done when every ticket of the bundle is done, whoever changed the last ticket, and sets a done bundle back to in progress when one of its tickets is not done.
 - R127: A ticket keeps the history of its creation, status changes and renames, each with its author and date, and the Details tab shows it among the comments.
 - R128: A macOS notification, titled with the project identifier and the chat title and detailed by a Haiku summary, tells the user when a chat needs them or when Claude has finished replying; each Mac turns each kind and the summary off in Settings.
+- R130: The New Project and New Sub Project sheets set the project type to Go service when the project folder has a `go.mod` file, until the user picks a type.
