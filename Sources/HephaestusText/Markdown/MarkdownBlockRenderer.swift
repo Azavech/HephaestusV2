@@ -160,21 +160,33 @@ struct MarkdownConverter {
     func inlines<S: Sequence>(_ children: S, inLink: Bool = false) -> [MarkdownInline] where S.Element == Markup {
         var result: [MarkdownInline] = []
         var pendingText = ""
+        func appendText(_ text: String) {
+            // Ids are found in the text outside autolinks (docs/documentation-viewer.md › Ticket
+            // and bundle ids).
+            for piece in ExtendedAutolinks.pieces(in: text) {
+                switch piece {
+                case .text(let text):
+                    result.append(contentsOf: MarkdownItemIDs.inlines(in: text, projectIdentifiers: options.projectIdentifiers))
+                case .link(let destination, let text):
+                    result.append(contentsOf: link(destination: destination, title: nil, content: [.text(text)]))
+                }
+            }
+        }
         func flush() {
             guard !pendingText.isEmpty else { return }
             if inLink {
                 result.append(.text(pendingText))
-            } else {
-                // Ids are found in the text outside autolinks (docs/documentation-viewer.md › Ticket
-                // and bundle ids).
-                for piece in ExtendedAutolinks.pieces(in: pendingText) {
+            } else if options.readsSoundMarkers {
+                // A sound marker whose name holds a space is text for CommonMark
+                // (docs/documentation-viewer.md › Sound markers).
+                for piece in MarkdownSymbolMarkers.soundPieces(in: pendingText) {
                     switch piece {
-                    case .text(let text):
-                        result.append(contentsOf: MarkdownItemIDs.inlines(in: text, projectIdentifiers: options.projectIdentifiers))
-                    case .link(let destination, let text):
-                        result.append(contentsOf: link(destination: destination, title: nil, content: [.text(text)]))
+                    case .text(let text): appendText(text)
+                    case .sound(let name): result.append(.sound(name))
                     }
                 }
+            } else {
+                appendText(pendingText)
             }
             pendingText = ""
         }
@@ -209,6 +221,10 @@ struct MarkdownConverter {
                 result.append(contentsOf: self.link(destination: link.destination ?? "", title: link.title,
                                                     content: inlines(link.children, inLink: true)))
             case let image as Image:
+                if options.readsSoundMarkers, let name = MarkdownSymbolMarkers.soundName(ofSource: image.source ?? "") {
+                    result.append(!inLink && !name.isEmpty ? .sound(name) : sourceText(image))
+                    continue
+                }
                 if let isSymbolAvailable = options.isSymbolAvailable, let name = MarkdownSymbolMarkers.name(ofSource: image.source ?? "") {
                     result.append(symbolMarker(image, name: name, isSymbolAvailable: isSymbolAvailable))
                     continue
@@ -244,6 +260,11 @@ struct MarkdownConverter {
         if isSymbolAvailable(name) {
             return .symbol(name)
         }
+        return sourceText(image)
+    }
+
+    /// An image as its Markdown source as written.
+    private func sourceText(_ image: Image) -> MarkdownInline {
         if let range = image.range, let text = sourceLines?.text(in: range) {
             return .text(text)
         }

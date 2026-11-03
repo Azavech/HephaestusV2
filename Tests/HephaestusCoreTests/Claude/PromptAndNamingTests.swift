@@ -280,16 +280,17 @@ struct PromptAndNamingTests {
     func askSymbolPrompt() throws {
         let common = Prompts.text(.common)
         #expect(common.contains("- Questions to the user: ask_questions, ask_symbol (asks the user to choose an SF Symbol), "
-            + "ask_color (asks the user to choose a color).\n"))
-        #expect(common.contains("- Never call ask_questions while earlier questions, a symbol request or a color request of this chat "
-            + "still wait for their answers.\n"))
+            + "ask_color (asks the user to choose a color), ask_sound (asks the user to choose a sound, in a Swift application "
+            + "project).\n"))
+        #expect(common.contains("- Never call ask_questions while earlier questions, a symbol request, a color request or a sound "
+            + "request of this chat still wait for their answers.\n"))
         let lower = try #require(common.range(of: "# SF Symbols")).lowerBound
         let upper = try #require(common.range(of: "# Colors")).lowerBound
         let section = String(common[lower..<upper])
         #expect(section.contains("When you need the user to choose an SF Symbol, ask with ask_symbol, never with symbol names as options of ask_questions"))
         #expect(section.contains("After ask_symbol returns, end your turn"))
         #expect(section.contains("Symbol: ![](sf:<name>) for a chosen symbol, Symbol: <answer> for an answer in the user's own words, or Symbol: Skipped"))
-        #expect(section.contains("Never call ask_symbol while questions, a symbol request or a color request of this chat still wait for their answers."))
+        #expect(section.contains("Never call ask_symbol while questions, a symbol request, a color request or a sound request of this chat still wait for their answers."))
     }
 
     @Test("The common prompt tells Claude to write colors as ![](color:<color>) and to ask for colors with ask_color")
@@ -298,7 +299,7 @@ struct PromptAndNamingTests {
                       "deviceName": "Studio", "docsPath": "docs", "projectCommands": "- build: make build"]
         let common = Prompts.render(Prompts.text(.common), values)
         let lower = try #require(common.range(of: "# Colors\n\n")).lowerBound
-        let upper = try #require(common.range(of: "# When the project is HephaestusV2")).lowerBound
+        let upper = try #require(common.range(of: "# Sounds")).lowerBound
         let section = String(common[lower..<upper])
         #expect(section.contains("When you name a color in a reply or in ask_questions, write it as ![](color:<color>)"))
         #expect(section.contains("When you need the user to choose a color, ask with ask_color, never with color values as options of ask_questions"))
@@ -307,10 +308,29 @@ struct PromptAndNamingTests {
         #expect(section.contains("After ask_color returns, end your turn"))
         #expect(section.contains("Color: ![](color:<color>) for one color, Color: Light ![](color:<color>), Dark ![](color:<color>) for a "
             + "light and dark pair, Color: <answer> for an answer in the user's own words, or Color: Skipped"))
-        #expect(section.contains("Never call ask_color while questions, a symbol request or a color request of this chat still wait for their answers."))
+        #expect(section.contains("Never call ask_color while questions, a symbol request, a color request or a sound request of this chat still wait for their answers."))
         for kind in [ChatKind.project, .ticket, .bundle, .feedback] {
             #expect(Prompts.systemPrompt(kind: kind, values: values).contains(section), "\(kind)")
         }
+    }
+
+    @Test("The common prompt tells Claude to use ask_sound in a Swift application project to have the user choose a sound")
+    func askSoundPrompt() throws {
+        let common = Prompts.text(.common)
+        let lower = try #require(common.range(of: "# Sounds\n")).lowerBound
+        let upper = try #require(common.range(of: "# When the project is HephaestusV2")).lowerBound
+        let section = String(common[lower..<upper])
+        #expect(section.contains("When the project's type is Swift application (get_project gives it) and you need the user to choose a "
+            + "sound for an app of an Apple platform, ask with ask_sound, never with sound names as options of ask_questions"))
+        #expect(section.contains("macOS/<file> for a sound of /System/Library/Sounds"))
+        #expect(section.contains("iOS 26.1/sms-received1.caf"))
+        #expect(section.contains("Project/<path from the project root>"))
+        #expect(section.contains("After ask_sound returns, end your turn"))
+        #expect(section.contains("Sound: ![](sound:<name>) for a chosen sound, Sound: <answer> for an answer in the user's own words, or "
+            + "Sound: Skipped"))
+        #expect(section.contains("Never call ask_sound while questions, a symbol request, a color request or a sound request of this "
+            + "chat still wait for their answers."))
+        #expect(ClaudeCommandLine.preApprovedTools.contains("mcp__hephaestus__ask_color,mcp__hephaestus__ask_sound,"))
     }
 
     @Test("Naming inputs: the label line, then the text cut at 4,000 characters")

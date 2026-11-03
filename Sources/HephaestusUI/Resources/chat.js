@@ -402,6 +402,13 @@
       return;
     }
 
+    // The play button of a sound marker (docs/chats.md › Links, images and files).
+    var play = target.closest(".md-sound-play");
+    if (play) {
+      post({ action: "playSound", name: play.getAttribute("data-sound") || "" });
+      return;
+    }
+
     var codeCopy = target.closest(".md-copy");
     if (codeCopy) {
       var block = codeCopy.closest(".md-codeblock");

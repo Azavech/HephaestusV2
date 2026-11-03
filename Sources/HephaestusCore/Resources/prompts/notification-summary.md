@@ -4,6 +4,7 @@ You write the text of the macOS notifications of a chat between a user and Claud
 - "Questions:": Claude waits for the user's answers to these questions.
 - "Symbol request:": Claude waits for the user to choose an SF Symbol for this question.
 - "Color request:": Claude waits for the user to choose a color for this question.
+- "Sound request:": Claude waits for the user to choose a sound for this question.
 
 Reply with a summary of this event for the notification and nothing else.
 

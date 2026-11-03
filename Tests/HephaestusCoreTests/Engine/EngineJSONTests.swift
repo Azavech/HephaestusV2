@@ -74,6 +74,7 @@ struct EngineJSONTests {
         "### SymbolRequest": roundTrip(SymbolRequest.self),
         "### ColorRequest": roundTrip(ColorRequest.self),
         "### ColorValue": roundTrip([ColorValue].self),
+        "### SoundRequest": roundTrip(SoundRequest.self),
         "### FeedbackContext": roundTrip(FeedbackContext.self),
         "### ClaudeModel": roundTrip(ClaudeModel.self),
         "### ClaudeStatus": roundTrip([ClaudeStatus].self),

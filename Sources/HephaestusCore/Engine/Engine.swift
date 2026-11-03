@@ -320,6 +320,7 @@ public actor Engine {
         registerAttachmentHandlers()
         registerBundleHandlers()
         registerChatHandlers()
+        registerSoundHandlers()
         registerClaudeHandlers()
         registerFileHandlers()
         registerDocHandlers()

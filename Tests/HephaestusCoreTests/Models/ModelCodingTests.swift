@@ -327,6 +327,9 @@ struct ModelCodingTests {
             .color(ColorItem(id: "cp", created: created, requestID: UUID(), question: "Which?", lightAndDark: true,
                              suggestions: [.pair(light: "#FFFFFF", dark: "#1C1C1E"), .pair(light: "white", dark: "black")],
                              recommended: .pair(light: "#FFFFFF", dark: "#1C1C1E"), answer: "Skipped")),
+            .sound(SoundItem(id: "so", created: created, requestID: UUID(), question: "Which?",
+                             suggestions: ["macOS/Glass.aiff", "iOS 26.1/sms-received1.caf"], recommended: "macOS/Glass.aiff",
+                             answer: "![](sound:iOS 26.1/sms-received1.caf)")),
             .system(SystemItem(id: "s", created: created, text: "Session started", level: .warning)),
             .result(ResultItem(id: "r", created: created, durationMs: 10, costUSD: 0.5)),
         ]
@@ -338,7 +341,7 @@ struct ModelCodingTests {
             let object = try JSONDecoder().decode(JSONValue.self, from: data).objectValue?["item"]?.objectValue
             #expect(object?["type"] == .string(item.type.rawValue))
         }
-        #expect(items.map(\.id) == ["u", "a", "t", "tu", "tr", "p", "q", "sy", "sa", "co", "cp", "s", "r"])
+        #expect(items.map(\.id) == ["u", "a", "t", "tu", "tr", "p", "q", "sy", "sa", "co", "cp", "so", "s", "r"])
     }
 
     @Test("The symbol item of docs/data-model.md › Symbol item: answer null until the user answers")
@@ -372,6 +375,22 @@ struct ModelCodingTests {
         let encoded = try JSONDecoder().decode(JSONValue.self, from: StorageJSON.lineEncoder().encode(ChatItem.color(request)))
         #expect(encoded.objectValue?["answer"] == .null)
         #expect(encoded.objectValue?["recommended"] == .object(["light": "#FFFFFF", "dark": "#1C1C1E"]))
+    }
+
+    @Test("The sound item of docs/data-model.md › Sound item: answer null until the user answers")
+    func soundItem() throws {
+        let line = #"{"type":"sound","id":"8E1F2A3B-4C5D-4E6F-9A7B-8C9D0E1F2A3B","created":"2026-11-03T18:40:12Z","requestID":"8E1F2A3B-4C5D-4E6F-9A7B-8C9D0E1F2A3B","question":"Which sound should the app play when a message arrives?","suggestions":["iOS 26.1/sms-received1.caf","iOS 26.1/new-mail.caf","Project/Sounds/alert.caf"],"recommended":"iOS 26.1/sms-received1.caf","answer":"![](sound:iOS 26.1/sms-received1.caf)"}"#
+        let item = try StorageJSON.decoder().decode(ChatItem.self, from: Data(line.utf8))
+        guard case .sound(var request) = item else {
+            Issue.record("not a sound item")
+            return
+        }
+        #expect(request.answer == "![](sound:iOS 26.1/sms-received1.caf)")
+        #expect(request.suggestions.count == 3 && request.recommended == "iOS 26.1/sms-received1.caf")
+        request.answer = nil
+        let encoded = try JSONDecoder().decode(JSONValue.self, from: StorageJSON.lineEncoder().encode(ChatItem.sound(request)))
+        #expect(encoded.objectValue?["answer"] == .null)
+        #expect(encoded.objectValue?["type"] == .string("sound"))
     }
 
     @Test("MCP tool names are split after mcp__ at the first __")

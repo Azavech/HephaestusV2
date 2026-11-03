@@ -16,12 +16,18 @@ struct MarkdownContext {
     var openID: (@MainActor (String) -> Void)?
     /// Reads a project file for an image (`files.read`).
     var loadProjectImage: (@MainActor (String) async -> NSImage?)?
+    /// Called with the name of a sound marker whose play button was clicked
+    /// (docs/documentation-viewer.md › Sound markers).
+    var playSound: (@MainActor (String) -> Void)?
 
-    /// A clicked link: an id link goes to `openID`, any other link to `openLink`.
+    /// A clicked link: an id link goes to `openID`, a sound marker's play button to `playSound`,
+    /// any other link to `openLink`.
     @MainActor
     func open(_ destination: String) {
         if let id = MarkdownItemIDs.id(fromHref: destination) {
             openID?(id)
+        } else if let name = MarkdownAttributed.soundName(fromDestination: destination) {
+            playSound?(name)
         } else {
             openLink?(destination)
         }
@@ -264,6 +270,11 @@ enum MarkdownAttributed {
                     flush()
                     parts.append(Text(Image(nsImage: ColorSwatches.image(color))))
                     current.append(MarkdownAttributed.run(" " + color, intent: intent, link: link))
+                case .sound(let name):
+                    // The play button is `▶` drawn as a link, then a space and the name.
+                    current.append(MarkdownAttributed.run("\u{25B6}\u{FE0E}", intent: intent,
+                                                          link: MarkdownLinkURL.url(for: MarkdownAttributed.soundDestination(name))))
+                    current.append(MarkdownAttributed.run(" " + name, intent: intent, link: link))
                 case .itemID(let id, let code):
                     // A ticket or bundle id: a link like the others of the text.
                     current.append(MarkdownAttributed.run(id, intent: code ? intent.union(.code) : intent,
@@ -282,6 +293,19 @@ enum MarkdownAttributed {
             current = AttributedString()
         }
     }
+
+    /// The link destination of a sound marker's play button.
+    static func soundDestination(_ name: String) -> String {
+        soundScheme + name
+    }
+
+    /// The name of a sound marker's play button destination; nil for another destination.
+    static func soundName(fromDestination destination: String) -> String? {
+        guard destination.hasPrefix(soundScheme) else { return nil }
+        return String(destination.dropFirst(soundScheme.count))
+    }
+
+    private static let soundScheme = "hephaestus-sound:"
 
     private static func run(_ text: String, intent: InlinePresentationIntent, link: URL?) -> AttributedString {
         var run = AttributedString(text)
@@ -535,6 +559,7 @@ enum MarkdownBlockCache {
         var readsSymbols: Bool
         /// Color markers are read; every caller that reads them asks the same Mac.
         var readsColors: Bool
+        var readsSoundMarkers: Bool
         var projectIdentifiers: Set<String>
     }
 
@@ -544,6 +569,7 @@ enum MarkdownBlockCache {
         let key = Key(markdown: markdown, baseDirectory: options.baseDirectory, projectRootPath: options.projectRootPath,
                       stripFrontMatter: options.stripFrontMatter, readsSymbols: options.isSymbolAvailable != nil,
                       readsColors: options.colorSwatch != nil,
+                      readsSoundMarkers: options.readsSoundMarkers,
                       projectIdentifiers: options.projectIdentifiers)
         if let blocks = entries[key] {
             return blocks

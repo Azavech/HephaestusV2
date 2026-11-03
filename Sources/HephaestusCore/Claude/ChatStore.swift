@@ -155,12 +155,14 @@ extension Engine {
         var open: QuestionsItem?
         var openSymbol: SymbolItem?
         var openColor: ColorItem?
+        var openSound: SoundItem?
         var hasText = false
         for item in items {
             switch item {
             case .questions(let set) where !set.completed: open = set
             case .symbol(let request) where request.answer == nil: openSymbol = request
             case .color(let request) where request.answer == nil: openColor = request
+            case .sound(let request) where request.answer == nil: openSound = request
             case .user(let user) where !user.text.isEmpty: hasText = true
             default: break
             }
@@ -168,6 +170,7 @@ extension Engine {
         chats.openQuestionSets[chatID] = open
         chats.openSymbolRequests[chatID] = openSymbol
         chats.openColorRequests[chatID] = openColor
+        chats.openSoundRequests[chatID] = openSound
         chats.hasTextMessage[chatID] = hasText
         return costChanged
     }

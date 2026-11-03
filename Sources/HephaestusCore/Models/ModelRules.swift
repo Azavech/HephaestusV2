@@ -372,4 +372,26 @@ public enum ModelRules {
             throw ValidationError(field: "recommended", message: "ask_color: the recommended color must be one of the suggestions.")
         }
     }
+
+    /// The rules of a sound request (docs/workflow.md › Sound requests), in their order, on the
+    /// trimmed suggestions and recommended sound; `isSound` tells whether a name is in the sound
+    /// catalogue of the main device for the chat's project.
+    public static func soundRequest(question: String, suggestions: [String], recommended: String,
+                                    isSound: (String) -> Bool) throws {
+        guard !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ValidationError(field: "question", message: "ask_sound needs a question.")
+        }
+        guard (2...10).contains(suggestions.count) else {
+            throw ValidationError(field: "suggestions", message: "ask_sound needs 2 to 10 suggestions.")
+        }
+        guard !suggestions.contains(where: \.isEmpty), Set(suggestions).count == suggestions.count else {
+            throw ValidationError(field: "suggestions", message: "ask_sound has an empty or repeated suggestion.")
+        }
+        if let unknown = suggestions.first(where: { !isSound($0) }) {
+            throw ValidationError(field: "suggestions", message: "\(unknown) is not a sound of this Mac or of the project.")
+        }
+        guard suggestions.contains(recommended) else {
+            throw ValidationError(field: "recommended", message: "ask_sound: the recommended sound must be one of the suggestions.")
+        }
+    }
 }

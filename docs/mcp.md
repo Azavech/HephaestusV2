@@ -1,6 +1,6 @@
 # MCP server
 
-HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server that the Claude CLI processes of the app's chats, and terminal Claude sessions holding the external token, call to read and change projects, tickets, bundles, chats, web tabs and skills, to ask the user labelled questions or an SF Symbol and to navigate the app. The server implements MCP's Streamable HTTP transport limited to JSON answers: JSON-RPC 2.0 messages are POSTed to `http://127.0.0.1:47820/mcp`, each one authenticated by a bearer token that identifies the calling chat. Every tool call runs an engine method with the actor `claude`, so it is validated like any other call and emits the same events, which every connected client, local or remote, receives live. This document specifies the transport, the authentication, the JSON-RPC handling, every tool with its exact description and input schema, the results and errors, the actor rules, external use and the debug tools.
+HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server that the Claude CLI processes of the app's chats, and terminal Claude sessions holding the external token, call to read and change projects, tickets, bundles, chats, web tabs and skills, to ask the user labelled questions, an SF Symbol, a color or a sound and to navigate the app. The server implements MCP's Streamable HTTP transport limited to JSON answers: JSON-RPC 2.0 messages are POSTed to `http://127.0.0.1:47820/mcp`, each one authenticated by a bearer token that identifies the calling chat. Every tool call runs an engine method with the actor `claude`, so it is validated like any other call and emits the same events, which every connected client, local or remote, receives live. This document specifies the transport, the authentication, the JSON-RPC handling, every tool with its exact description and input schema, the results and errors, the actor rules, external use and the debug tools.
 
 ## Overview
 
@@ -14,7 +14,7 @@ HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server th
 | JSON-RPC methods  | `initialize`, `ping`, `tools/list`, `tools/call`; every notification is accepted and ignored                                                             |
 | Server name       | `hephaestus`, in `serverInfo` and as the server's key in Claude's MCP configuration, so Claude names the tools `mcp__hephaestus__<tool>`                 |
 | Authentication    | `Authorization: Bearer <token>` with a chat token or the external token on `/mcp`, with a hook token on `/hooks/user-prompt-submit`                      |
-| Tools             | The 46 tools of the [tool catalogue](#tool-catalogue), plus 4 [debug tools](#debug-tools) when `HEPHAESTUS_DEBUG_TOOLS=1`                                |
+| Tools             | The 47 tools of the [tool catalogue](#tool-catalogue), plus 4 [debug tools](#debug-tools) when `HEPHAESTUS_DEBUG_TOOLS=1`                                |
 
 Every tool call runs an engine method ([Engine API](engine-api.md)) with the actor `claude`. The engine validates it exactly as it validates a call from the UI or from a remote device and emits the same events, so every client, local or remote, shows the change live.
 
@@ -130,7 +130,7 @@ The chat tokens and the hook tokens are created, kept and revoked as this table 
 
 - A relaunch of a chat's process issues a new token. Sub-agents of the chat run in the same process and use the same token.
 - The external token is read and regenerated only through the external MCP token service of the windows of this Mac; no engine method or MCP tool exposes it ([Architecture](architecture.md#local-only-services)). Regenerate (Settings > MCP, [UI](ui.md)) replaces it at once: requests with the old token get 401, and terminal sessions must add the server again ([External use](#external-use)). When `secrets.json` cannot be written, the old token stays valid and Settings shows the alert `Regenerate failed` with the storage error's message. Default chosen at design time.
-- A chat token identifies the calling chat: `ask_questions` posts its questions to that chat, `ask_symbol` its symbol request, `ask_color` its color request, `close_chat` closes that chat, and `open_in_app` reaches that chat's driving device.
+- A chat token identifies the calling chat: `ask_questions` posts its questions to that chat, `ask_symbol` its symbol request, `ask_color` its color request, `ask_sound` its sound request, `close_chat` closes that chat, and `open_in_app` reaches that chat's driving device.
 - Tokens are never logged.
 
 ## User prompt hook
@@ -295,7 +295,7 @@ From step 2 on, every failure is a tool result with `isError: true`, never a JSO
 
 - `content` holds exactly one text item; there is no `structuredContent`.
 - For a tool backed by an engine method, the text is the method's result encoded with `EngineJSON.encoder()`, byte for byte the JSON that `Engine.dispatch` returns: sorted keys, dates as in [JSON encoding](engine-api.md#json-encoding) (whole seconds without a fraction, milliseconds when a fraction exists), `{}` for an empty result ([Engine API](engine-api.md#json-encoding)). `list_tickets` with `status` encodes the filtered array with the same encoder, and `get_ticket` the ticket with absolute attachment paths ([get_ticket](#get_ticket)).
-- `ask_questions`, `ask_symbol` and `ask_color` return plain text ([Text returned to Claude](#text-returned-to-claude), [ask_symbol](#ask_symbol), [ask_color](#ask_color)) and the debug tools return the JSON given in their sections.
+- `ask_questions`, `ask_symbol`, `ask_color` and `ask_sound` return plain text ([Text returned to Claude](#text-returned-to-claude), [ask_symbol](#ask_symbol), [ask_color](#ask_color), [ask_sound](#ask_sound)) and the debug tools return the JSON given in their sections.
 
 ### Tool errors
 
@@ -377,27 +377,28 @@ The engine reads and copies each file; a path that is missing, unreadable or not
 
 A chat token runs every engine call as the actor `claude` with the chat's id, the external token as `claude` with chatID `external` ([Engine API](engine-api.md#actors)). The engine enforces the rules below whatever the token, and the events it emits carry the origin `{actor: claude, chatID}`, so every client knows who made a change.
 
-| Rule                                                                                               | Enforced by                                                                                        | Failure                |
-| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ---------------------- |
-| A ticket created by Claude starts as `todo`, has `createdBy: claude` and gets its title from Haiku | tickets.create ([Tickets](tickets.md#tickets-created-by-claude))                                   | —                      |
-| A description written by Claude, at creation or on update, follows the template                    | tickets.create, tickets.update ([Tickets](tickets.md#template-validation))                         | `invalid`              |
-| Claude sets only `todo`, `in_progress`, `review` and `done`                                        | Input schema of `set_ticket_status`                                                                | `invalid`              |
-| Claude never changes the status of a `done` ticket                                                 | tickets.setStatus ([Tickets](tickets.md#status-rules))                                             | `forbidden`            |
-| Claude sets a bundle only to `todo` and `in_progress`                                              | Input schema of `set_bundle_status`; bundles.setStatus ([Tickets](tickets.md#bundle-status-rules)) | `invalid`, `forbidden` |
-| Claude never changes the status of a `done` bundle                                                 | bundles.setStatus ([Tickets](tickets.md#bundle-status-rules))                                      | `forbidden`            |
-| A comment added by Claude has `author: claude`                                                     | tickets.addComment ([Tickets](tickets.md#comments))                                                | —                      |
-| Claude never sets a ticket title at creation, chat settings or project chat defaults               | The tools never send these params ([Engine API](engine-api.md#rules-for-claude))                   | —                      |
-| Only the chat's own Claude asks questions, symbol requests and color requests                      | `ask_questions`, `ask_symbol`, `ask_color`, chats.postQuestions, chats.postSymbol, chats.postColor | `forbidden`            |
-| Only the chat's own Claude closes its chat                                                         | `close_chat`, chats.close                                                                          | `forbidden`            |
-| A feedback chat is linked to the ticket it creates                                                 | tickets.create ([Feedback](feedback.md#resulting-ticket))                                          | —                      |
-| Claude never unlocks a web tab, so it never closes a locked tab                                    | webTabs.update, webTabs.close ([Engine API](engine-api.md#rules-for-claude))                       | `forbidden`            |
-| A chat never removes the project it belongs to                                                     | projects.remove ([Engine API](engine-api.md#rules-for-claude))                                     | `forbidden`            |
+| Rule                                                                                               | Enforced by                                                                                                                      | Failure                |
+| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| A ticket created by Claude starts as `todo`, has `createdBy: claude` and gets its title from Haiku | tickets.create ([Tickets](tickets.md#tickets-created-by-claude))                                                                 | —                      |
+| A description written by Claude, at creation or on update, follows the template                    | tickets.create, tickets.update ([Tickets](tickets.md#template-validation))                                                       | `invalid`              |
+| Claude sets only `todo`, `in_progress`, `review` and `done`                                        | Input schema of `set_ticket_status`                                                                                              | `invalid`              |
+| Claude never changes the status of a `done` ticket                                                 | tickets.setStatus ([Tickets](tickets.md#status-rules))                                                                           | `forbidden`            |
+| Claude sets a bundle only to `todo` and `in_progress`                                              | Input schema of `set_bundle_status`; bundles.setStatus ([Tickets](tickets.md#bundle-status-rules))                               | `invalid`, `forbidden` |
+| Claude never changes the status of a `done` bundle                                                 | bundles.setStatus ([Tickets](tickets.md#bundle-status-rules))                                                                    | `forbidden`            |
+| A comment added by Claude has `author: claude`                                                     | tickets.addComment ([Tickets](tickets.md#comments))                                                                              | —                      |
+| Claude never sets a ticket title at creation, chat settings or project chat defaults               | The tools never send these params ([Engine API](engine-api.md#rules-for-claude))                                                 | —                      |
+| Only the chat's own Claude asks questions, symbol, color and sound requests                        | `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, chats.postQuestions, chats.postSymbol, chats.postColor, chats.postSound | `forbidden`            |
+| Claude asks for a sound only in a project of type Swift application                                | chats.postSound ([Projects](projects.md#project-types))                                                                          | `forbidden`            |
+| Only the chat's own Claude closes its chat                                                         | `close_chat`, chats.close                                                                                                        | `forbidden`            |
+| A feedback chat is linked to the ticket it creates                                                 | tickets.create ([Feedback](feedback.md#resulting-ticket))                                                                        | —                      |
+| Claude never unlocks a web tab, so it never closes a locked tab                                    | webTabs.update, webTabs.close ([Engine API](engine-api.md#rules-for-claude))                                                     | `forbidden`            |
+| A chat never removes the project it belongs to                                                     | projects.remove ([Engine API](engine-api.md#rules-for-claude))                                                                   | `forbidden`            |
 
 The tools are not limited to the calling chat's project: a chat may read and change every project of the device. Default chosen at design time. The MCP server asks the user nothing itself; the Claude CLI asks before tool calls according to the chat's permission mode and the app shows those requests ([Chats](chats.md)). The workflow Claude follows with these tools is in [Workflow](workflow.md).
 
 ## Tool catalogue
 
-The table lists every tool in the order of `tools/list`. "Required inputs" holds the names in the tool's `inputSchema.required` and "Optional inputs" its other top-level properties; `—` means none. The result types are defined in [Engine API](engine-api.md#api-types) and [Data model](data-model.md); `{}` is an empty result and `text` the plain text of [ask_questions](#ask_questions) and [ask_symbol](#ask_symbol). The [conformance test](#conformance) reads this table.
+The table lists every tool in the order of `tools/list`. "Required inputs" holds the names in the tool's `inputSchema.required` and "Optional inputs" its other top-level properties; `—` means none. The result types are defined in [Engine API](engine-api.md#api-types) and [Data model](data-model.md); `{}` is an empty result and `text` the plain text of [ask_questions](#ask_questions), [ask_symbol](#ask_symbol), [ask_color](#ask_color) and [ask_sound](#ask_sound). The [conformance test](#conformance) reads this table.
 
 | Tool                | Required inputs                          | Optional inputs                  | Engine method            | Result           |
 | ------------------- | ---------------------------------------- | -------------------------------- | ------------------------ | ---------------- |
@@ -429,6 +430,7 @@ The table lists every tool in the order of `tools/list`. "Required inputs" holds
 | `ask_questions`     | `questions`                              | —                                | chats.postQuestions      | text             |
 | `ask_symbol`        | `question`, `suggestions`, `recommended` | —                                | chats.postSymbol         | text             |
 | `ask_color`         | `question`, `suggestions`, `recommended` | `lightAndDark`                   | chats.postColor          | text             |
+| `ask_sound`         | `question`, `suggestions`, `recommended` | —                                | chats.postSound          | text             |
 | `list_chats`        | `projectID`                              | —                                | chats.list               | [ChatMeta]       |
 | `get_chat`          | `chatID`                                 | —                                | chats.get                | ChatTranscript   |
 | `rename_chat`       | `chatID`, `title`                        | —                                | chats.rename             | ChatMeta         |
@@ -1383,7 +1385,7 @@ Input schema:
 - **Errors:**
   - The external token (`forbidden`, message above).
   - A [question rule](#question-rules) fails (`invalid`).
-  - The chat already has a question set without all its answers, a symbol request without answer or a color request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostquestions)).
+  - The chat already has a question set without all its answers, a symbol request without answer, a color request without answer or a sound request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostquestions)).
 
 Description:
 
@@ -1488,7 +1490,7 @@ B: Skipped
 - **Errors:**
   - The external token (`forbidden`, message above).
   - A [symbol rule](#symbol-rules) fails (`invalid`).
-  - The chat already has a question set without all its answers, a symbol request without answer or a color request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostsymbol)).
+  - The chat already has a question set without all its answers, a symbol request without answer, a color request without answer or a sound request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostsymbol)).
 
 Description:
 
@@ -1552,7 +1554,7 @@ Symbol: ![](sf:line.3.horizontal.decrease.circle)
   - The external token (`forbidden`, message above).
   - A suggestion or `recommended` is neither a string nor an object with the strings `light` and `dark` (`invalid`, the message of params that do not decode, [Engine API](engine-api.md#dispatcher-errors)).
   - A [color rule](#color-rules) fails (`invalid`).
-  - The chat already has a question set without all its answers, a symbol request without answer or a color request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostcolor)).
+  - The chat already has a question set without all its answers, a symbol request without answer, a color request without answer or a sound request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostcolor)).
 
 Description:
 
@@ -1611,6 +1613,71 @@ The app shows the request in a pinned color card: the suggestions as swatches, t
 
 ```text
 Color: Light ![](color:#FFFFFF), Dark ![](color:#1C1C1E)
+```
+
+### ask_sound
+
+- **Engine call:** chats.postSound with `chatID` = the calling chat and `question`, `suggestions` and `recommended` as given ([Engine API](engine-api.md#chatspostsound)).
+- **Availability:** chat tokens only. With the external token the call fails before argument validation with `Only the chat's own Claude can ask questions.`, as `ask_questions` does. The tool is listed for every token. Default chosen at design time.
+- **Project type:** only in a chat whose project has the type `swiftApplication` ([Project types](projects.md#project-types)). In a project of another type the call fails with `forbidden` and `ask_sound is only available in Swift application projects.`, and nothing is shown to the user. The message is Default chosen at design time.
+- **Permission:** pre-approved, so it runs without a permission prompt in every permission mode ([Chats](chats.md#command-line)).
+- **Result:** plain text, not JSON. On success the text is exactly `sound request shown; the answer arrives in the next user message; end your turn`, and Claude then ends its turn ([Workflow](workflow.md#sound-requests)). Default chosen at design time.
+- **Errors:**
+  - The external token (`forbidden`, message above).
+  - The project type is not `swiftApplication` (`forbidden`, message above).
+  - A [sound rule](#sound-rules) fails (`invalid`).
+  - The chat already has a question set without all its answers, a symbol request without answer, a color request without answer or a sound request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostsound)).
+
+Description:
+
+```text
+Ask the user to choose one sound for an app of an Apple platform, instead of listing sound names in ask_questions. Only available in projects of type Swift application. Give the question, 2 to 10 suggested sound names and the recommended one. A sound name is macOS/<file> for a sound of /System/Library/Sounds, for example macOS/Glass.aiff; <runtime>/<path> for a sound under System/Library/Audio/UISounds of an installed Simulator runtime, <runtime> being the runtime's name in xcrun simctl list runtimes, for example iOS 26.1/sms-received1.caf; or Project/<path from the project root> for a .caf, .aiff, .wav or .mp3 file of the project, for example Project/Sounds/alert.caf. The app lists the suggestions, the recommended one preselected, with a search over every sound of the Mac and the project, and plays the sound the user selects; the user can also answer in their own words or skip. This tool returns immediately: end your turn after calling it. The answer arrives in the next user message: "Sound: ![](sound:<name>)" for a chosen sound, "Sound: <answer>" for an answer in the user's own words, or "Sound: Skipped". Only available in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "question": {
+      "type": "string",
+      "description": "The question."
+    },
+    "suggestions": {
+      "type": "array",
+      "description": "2 to 10 distinct sound names, for example macOS/Glass.aiff or iOS 26.1/sms-received1.caf.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "recommended": {
+      "type": "string",
+      "description": "The recommended sound: one of the suggestions, copied exactly."
+    }
+  },
+  "required": ["question", "suggestions", "recommended"],
+  "additionalProperties": false
+}
+```
+
+#### Sound rules
+
+The input schema checks only the shape of the arguments. chats.postSound checks the project type, then the rules below, after trimming each suggestion and `recommended`, and refuses the call with `invalid` when one fails, so nothing is shown to the user; the messages are in [Workflow](workflow.md#sound-requests).
+
+| Rule              | Detail                                                                                                                  |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Question text     | Not empty after trimming.                                                                                               |
+| Suggestions       | 2 to 10, each not empty and distinct from the others.                                                                   |
+| Sound names       | Each suggestion is a name of the [sound catalogue](chats.md#sound-catalogue) of the main device for the chat's project. |
+| Recommended sound | `recommended` equals one of the suggestions.                                                                            |
+
+#### Sound answer
+
+The app shows the request in a pinned sound card: the suggestions in a list, the recommended one preselected and starred, a search over every sound of the catalogue, a free-text field `Answer another way`, Skip and Submit; selecting a row plays its sound ([Chats](chats.md#pinned-sound-card)). The user answers once, with chats.answerSound. The engine then sends Claude one user message, `Sound: <answer>`, `<answer>` being `![](sound:<name>)` for a chosen sound, the text the user typed, or `Skipped` for a skipped request ([Workflow](workflow.md#sound-requests)). For example:
+
+```text
+Sound: ![](sound:iOS 26.1/sms-received1.caf)
 ```
 
 ### list_chats
@@ -2275,7 +2342,7 @@ claude mcp add --transport http hephaestus http://127.0.0.1:47820/mcp --header "
 ```
 
 - Calls run as `claude` with chatID `external`: the [actor rules](#actor-rules) apply, tickets created this way have `createdBy: claude` and comments `author: claude`.
-- `ask_questions`, `ask_symbol` and `ask_color` fail, so Claude asks its questions in plain text ([Workflow](workflow.md#plain-text-questions)); `close_chat` fails, as there is no chat to close; `open_in_app` makes every client navigate.
+- `ask_questions`, `ask_symbol`, `ask_color` and `ask_sound` fail, so Claude asks its questions in plain text ([Workflow](workflow.md#plain-text-questions)); `close_chat` fails, as there is no chat to close; `open_in_app` makes every client navigate.
 - These sessions do not receive the app's system prompts ([Chats](chats.md)); the tool descriptions state what Claude needs: the ticket template, the statuses Claude may set and how questions are asked.
 - The token survives app restarts and updates. After Regenerate or a port change, the server must be removed with `claude mcp remove hephaestus` and the new command run, as `claude mcp add` refuses a name that already exists.
 
@@ -2746,3 +2813,4 @@ Unauthorized: missing or invalid bearer token.
 - R124: A ticket can depend on other tickets of its project or be related to them; the other ticket shows the inverse link, Blocks or Related; the user and Claude add and remove links; the ticket list marks a ticket that depends on a ticket that is not done, and Implement asks for confirmation while one is not done.
 - R127: A ticket keeps the history of its creation, status changes and renames, each with its author and date, and the Details tab shows it among the comments.
 - R132: Claude asks the user to choose a color with `ask_color`, as one color or a light and dark pair: suggestions show as swatches, any system color can be picked from a grid and any other color with the macOS color panel or a hex field, the user answers another way or skips, and the chat shows the colors Claude names and the answer as swatches.
+- R133: In a Swift application project, Claude asks the user to choose a sound with `ask_sound`: the card lists the suggestions and searches the macOS sounds, the installed Simulator runtimes' sounds and the project's sound files; selecting one plays it; the user picks one, answers another way or skips.

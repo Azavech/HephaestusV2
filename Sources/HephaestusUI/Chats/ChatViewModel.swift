@@ -1,6 +1,7 @@
 // OWNER: ui-chats — the state and actions of one chat view: the chat or draft it shows, the
 // composer, the pinned cards and their keys, the header (docs/chats.md › Chat view, › Composer,
-// › Pinned permission card, › Pinned questions card, › Pinned symbol card, › Pinned color card, › Draft chats).
+// › Pinned permission card, › Pinned questions card, › Pinned symbol card, › Pinned color card,
+// › Pinned sound card, › Draft chats).
 import AppKit
 import HephaestusCore
 import Observation
@@ -33,6 +34,12 @@ enum QuestionChoice: Hashable {
 /// The choice of the symbol card: a symbol of the grid, or `Answer another way`.
 enum SymbolChoice: Hashable {
     case symbol(String)
+    case other
+}
+
+/// The choice of the sound card: a sound of the list, or `Answer another way`.
+enum SoundChoice: Hashable {
+    case sound(String)
     case other
 }
 
@@ -98,6 +105,17 @@ final class ChatViewModel {
     var colorRequestID: UUID?
     var colorCard = ColorCardState()
     var isSubmittingColor = false
+    /// The sound request the sound card shows, with its selection, field and search.
+    var soundRequestID: UUID?
+    var soundChoice: SoundChoice = .other
+    var soundOther = ""
+    var soundSearch = ""
+    /// The names of the sound catalogue of the chat's project, from `sounds.list`; empty until
+    /// they arrive (docs/chats.md › Pinned sound card).
+    var soundNames: [String] = []
+    /// The search results of `soundSearch`, without the suggestions (docs/chats.md › Sound search).
+    var soundResults: [String] = []
+    var isSubmittingSound = false
 
     // MARK: Header
 
@@ -218,6 +236,9 @@ final class ChatViewModel {
         }
         transcript.onOpenAttachment = { [weak self] path in
             self?.openAttachment(path)
+        }
+        transcript.onPlaySound = { [weak self] name in
+            self?.playSound(name)
         }
         startKeyMonitor()
         if chatID == nil {
@@ -608,6 +629,100 @@ final class ChatViewModel {
         }
     }
 
+    // MARK: Sound card
+
+    /// The card appeared for a request: the recommended suggestion selected without playing, the
+    /// field and the search empty, and the catalogue asked with `sounds.list`. The same request
+    /// keeps its selection.
+    func soundRequestShown(_ request: SoundItem) {
+        guard soundRequestID != request.requestID else { return }
+        soundRequestID = request.requestID
+        soundChoice = .sound(request.recommended)
+        soundOther = ""
+        soundSearch = ""
+        soundNames = []
+        soundResults = []
+        let projectID = chatProjectID
+        Task {
+            guard let names = try? await workspace.call(SoundsList.self, SoundsList.Params(projectID: projectID)),
+                  soundRequestID == request.requestID else { return }
+            soundNames = names
+            searchSounds(excluding: request.suggestions)
+        }
+    }
+
+    /// Searches the catalogue for `soundSearch` (docs/chats.md › Sound search).
+    func searchSounds(excluding suggestions: [String]) {
+        soundResults = SoundCatalog.search(soundSearch, in: soundNames, excluding: Set(suggestions))
+    }
+
+    /// A click on a row: selects its sound and plays it.
+    func chooseSound(_ name: String) {
+        soundChoice = .sound(name)
+        playSound(name)
+    }
+
+    /// The answer the card submits: `![](sound:<name>)` for the selected sound, or the field's
+    /// text.
+    var soundAnswer: String {
+        switch soundChoice {
+        case .sound(let name): return "![](sound:\(name))"
+        case .other: return soundOther.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
+    var canSubmitSound: Bool {
+        !soundAnswer.isEmpty && !isSubmittingSound
+    }
+
+    /// Submit: `chats.answerSound` with the selected answer.
+    func submitSound() {
+        guard canSubmitSound else { return }
+        answerSoundRequest(soundAnswer, action: "Submit")
+    }
+
+    /// Skip: `chats.answerSound` with `Skipped`.
+    func skipSound() {
+        guard !isSubmittingSound else { return }
+        answerSoundRequest(QuestionNavigation.skipped, action: "Skip")
+    }
+
+    /// Stores the answer of the waiting sound request. An answer that fails because the request
+    /// was answered on another device shows no alert.
+    private func answerSoundRequest(_ answer: String, action: String) {
+        guard let chatID, let uuid = UUID(uuidString: chatID), let request = transcriptState?.waitingSoundRequest else { return }
+        isSubmittingSound = true
+        Task {
+            defer { isSubmittingSound = false }
+            do {
+                _ = try await workspace.call(ChatsAnswerSound.self, ChatsAnswerSound.Params(
+                    chatID: uuid, requestID: request.requestID, answer: answer))
+            } catch let error as EngineError where error.code == .conflict && soundAnsweredElsewhere(request.id) {
+                return
+            } catch {
+                alert(.failure(action, error))
+            }
+        }
+    }
+
+    private func soundAnsweredElsewhere(_ itemID: String) -> Bool {
+        guard case .sound(let request)? = transcriptState?.item(itemID) else { return false }
+        return request.answer != nil
+    }
+
+    /// Plays a sound of the chat's project: a row of the sound card or the play button of a sound
+    /// marker (docs/chats.md › Sound playback).
+    func playSound(_ name: String) {
+        let projectID = chatProjectID
+        Task {
+            do {
+                try await SoundPlayer.play(name, projectID: projectID, workspace: workspace)
+            } catch {
+                alert(.failure("Play Sound", error))
+            }
+        }
+    }
+
     // MARK: Card keys (docs/chats.md › Keyboard shortcuts)
 
     private func startKeyMonitor() {
@@ -626,8 +741,9 @@ final class ChatViewModel {
     }
 
     /// ⌘Return, ⌥⌘Return and ⇧⌘Return answer the permission card once its request has been shown
-    /// for 1 second; ⌘Return submits the questions card, the symbol card or the color card when no permission card
-    /// is shown and the card is not minimized. Both act only while the focus is in this chat view
+    /// for 1 second; ⌘Return submits the questions card, the symbol card, the color card or the
+    /// sound card when no permission card is shown and the card is not minimized. Both act only
+    /// while the focus is in this chat view
     /// outside its composer.
     func handleKey(_ event: NSEvent) -> Bool {
         guard let window, event.window === window else { return false }
@@ -661,6 +777,11 @@ final class ChatViewModel {
         if flags == [.command], let request = state.waitingColorRequest, let chatID,
            app?.isQuestionsCardMinimized(chatID: chatID, setID: request.requestID) != true {
             submitColor()
+            return true
+        }
+        if flags == [.command], let request = state.waitingSoundRequest, let chatID,
+           app?.isQuestionsCardMinimized(chatID: chatID, setID: request.requestID) != true {
+            submitSound()
             return true
         }
         return false

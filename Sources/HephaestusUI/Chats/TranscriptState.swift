@@ -141,6 +141,14 @@ struct TranscriptState {
         return nil
     }
 
+    /// The sound request without answer; a chat has at most one.
+    var waitingSoundRequest: SoundItem? {
+        for item in items {
+            if case .sound(let request) = item, request.answer == nil { return request }
+        }
+        return nil
+    }
+
     /// Every image of the chat's items in transcript order: user attachments and tool-result
     /// images.
     var images: [Attachment] {

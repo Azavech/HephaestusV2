@@ -38,6 +38,11 @@ final class ChatManager {
     var openColorRequests: [ChatID: ColorItem] = [:]
     /// The problems of the symbol catalogue were logged (docs/chats.md › Symbol catalogue).
     var loggedSymbolCatalogProblems = false
+    /// The sound request without answer, per chat (docs/chats.md › Sound requests).
+    var openSoundRequests: [ChatID: SoundItem] = [:]
+    /// The macOS and Simulator runtime sounds, read the first time they are needed and kept
+    /// until the engine stops (docs/chats.md › Sound catalogue).
+    var systemSounds: Task<SoundCatalog.SystemSounds, Never>?
     /// Chats whose transcript was replayed since the engine started, so that their question
     /// set, their symbol request and their pending permission requests are known.
     var scannedChats: Set<ChatID> = []
@@ -78,7 +83,8 @@ final class ChatManager {
         if let process = runtime?.process, !process.permissionOrder.isEmpty { return .waitingPermission }
         if runtime?.starting == true { return .starting }
         if runtime?.turnInProgress == true { return .running }
-        if openQuestionSets[chatID] != nil || openSymbolRequests[chatID] != nil || openColorRequests[chatID] != nil {
+        if openQuestionSets[chatID] != nil || openSymbolRequests[chatID] != nil || openColorRequests[chatID] != nil
+            || openSoundRequests[chatID] != nil {
             return .waitingAnswers
         }
         return .idle

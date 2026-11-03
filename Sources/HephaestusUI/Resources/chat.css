@@ -573,6 +573,24 @@ a.md-id:hover {
   }
 }
 
+/* Sound markers: a play button that holds the play.circle.fill icon, then the name
+   (docs/chats.md › Links, images and files). */
+.md-sound-play {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--md-link);
+  font: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.user-bubble .md-sound-play {
+  color: inherit;
+}
+
 .system-line,
 .result-line {
   text-align: center;

@@ -221,6 +221,32 @@ struct MCPToolHandlersTests {
             == .failure(MCPToolError(code: .conflict, message: "A color request is already waiting for an answer in this chat.")))
     }
 
+    @Test("ask_sound: the external token fails before validation; a chat token posts to its chat")
+    func askSound() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        let refused = try await Self.call(handlers, "ask_sound", #"{"suggestions":"not an array"}"#, actor: Self.external)
+        #expect(refused == .failure(MCPToolError(code: .forbidden, message: "Only the chat's own Claude can ask questions.")))
+        #expect(engine.calls.isEmpty)
+
+        #expect(try await Self.call(handlers, "ask_sound", #"{"question":"Which?","suggestions":["macOS/Glass.aiff"]}"#)
+            == .failure(MCPToolError(code: .invalid, message: "recommended: required.")))
+        #expect(engine.calls.isEmpty)
+
+        let arguments = #"{"question":"Which sound?","suggestions":["macOS/Glass.aiff","iOS 26.1/sms-received1.caf"],"recommended":"macOS/Glass.aiff"}"#
+        let asked = try await Self.call(handlers, "ask_sound", arguments)
+        #expect(asked == .success("sound request shown; the answer arrives in the next user message; end your turn"))
+        let call = try #require(engine.calls.last)
+        #expect(call.method == "chats.postSound")
+        #expect(call.params == .object(["chatID": .string(Self.chatID.uuidString), "question": "Which sound?",
+                                        "suggestions": ["macOS/Glass.aiff", "iOS 26.1/sms-received1.caf"], "recommended": "macOS/Glass.aiff"]))
+        #expect(call.actor == Self.chat)
+
+        engine.answer("chats.postSound", .failure(EngineError(.forbidden, "ask_sound is only available in Swift application projects.")))
+        #expect(try await Self.call(handlers, "ask_sound", arguments)
+            == .failure(MCPToolError(code: .forbidden, message: "ask_sound is only available in Swift application projects.")))
+    }
+
     @Test("close_chat: the external token fails before validation; a chat token closes its own chat")
     func closeChat() async throws {
         let engine = RecordedEngine()

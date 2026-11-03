@@ -287,6 +287,12 @@ struct HTMLWriter {
             // the color (docs/documentation-viewer.md › Color markers).
             output += "<span class=\"md-color\"><span class=\"md-color-swatch\" data-light=\"\(Self.escaped(swatch.light))\""
             output += " data-dark=\"\(Self.escaped(swatch.dark))\"></span>\(Self.escaped(color))</span>"
+        case .sound(let name):
+            // A sound marker: a play button that the page sends to Swift, followed by the name
+            // (docs/documentation-viewer.md › Sound markers).
+            let escapedName = Self.escaped(name)
+            output += "<span class=\"md-sound\"><button type=\"button\" class=\"md-sound-play\" data-sound=\"\(escapedName)\">"
+            output += "<span class=\"md-symbol-icon\" data-symbol=\"play.circle.fill\"></span></button>\(escapedName)</span>"
         case .itemID(let id, let code):
             // A ticket or bundle id (docs/documentation-viewer.md › Ticket and bundle ids).
             output += "<a class=\"md-id\" href=\"\(Self.escaped(MarkdownItemIDs.href(for: id)))\">"

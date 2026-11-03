@@ -58,6 +58,8 @@ final class TranscriptController {
     @ObservationIgnored var onOpenLink: ((String, Bool) -> Void)?
     /// `openAttachment`: the data path.
     @ObservationIgnored var onOpenAttachment: ((String) -> Void)?
+    /// `playSound`: the name of a sound marker (docs/chats.md › Sound playback).
+    @ObservationIgnored var onPlaySound: ((String) -> Void)?
 
     @ObservationIgnored private(set) weak var webView: TranscriptWKWebView?
     @ObservationIgnored private let connection: any EngineConnection
@@ -306,6 +308,9 @@ final class TranscriptController {
             onOpenAttachment?(path)
         case "loadEarlier":
             loadEarlier()
+        case "playSound":
+            guard let name = message["name"] as? String else { return }
+            onPlaySound?(name)
         default:
             break
         }

@@ -55,6 +55,8 @@ public enum MCPToolHandling: String, Sendable, Hashable, CaseIterable {
     case askSymbol
     /// `ask_color`: chat tokens only, `chatID` from the token, plain-text result.
     case askColor
+    /// `ask_sound`: chat tokens only, `chatID` from the token, plain-text result.
+    case askSound
     /// `close_chat`: chat tokens only, `chatID` from the token.
     case closeChat
     /// `open_in_app`: the target rules of docs/mcp.md › Target kinds.

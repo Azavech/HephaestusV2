@@ -147,6 +147,11 @@ extension Engine {
         "Color: \(answer)"
     }
 
+    /// docs/chats.md › Answering a sound request: `Sound: <answer>`.
+    static func soundMessage(_ answer: String) -> String {
+        "Sound: \(answer)"
+    }
+
     // MARK: System prompt
 
     /// The value of `--append-system-prompt` for a launch (docs/chats.md › Composition and

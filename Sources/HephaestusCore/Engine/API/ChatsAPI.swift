@@ -308,6 +308,48 @@ public enum ChatsAnswerColor: EngineMethod {
     public typealias Result = Empty
 }
 
+/// `chats.postSound`: called by the MCP tool `ask_sound`. Actors: claude (the chat's own Claude
+/// only), in a project of type Swift application.
+public enum ChatsPostSound: EngineMethod {
+    public static let name = "chats.postSound"
+    public struct Params: Codable, Sendable, Hashable {
+        /// Must be the actor's chatID.
+        public var chatID: ChatID
+        /// Markdown text, not empty after trimming.
+        public var question: String
+        /// 2 to 10 distinct names of the sound catalogue of the main device for the chat's project.
+        public var suggestions: [String]
+        /// One of the suggestions.
+        public var recommended: String
+
+        public init(chatID: ChatID, question: String, suggestions: [String], recommended: String) {
+            self.chatID = chatID
+            self.question = question
+            self.suggestions = suggestions
+            self.recommended = recommended
+        }
+    }
+    public typealias Result = SoundRequest
+}
+
+/// `chats.answerSound`. Actors: user.
+public enum ChatsAnswerSound: EngineMethod {
+    public static let name = "chats.answerSound"
+    public struct Params: Codable, Sendable, Hashable {
+        public var chatID: ChatID
+        public var requestID: UUID
+        /// `![](sound:<name>)` for a chosen sound, free text, or `Skipped`; trimmed; not empty.
+        public var answer: String
+
+        public init(chatID: ChatID, requestID: UUID, answer: String) {
+            self.chatID = chatID
+            self.requestID = requestID
+            self.answer = answer
+        }
+    }
+    public typealias Result = Empty
+}
+
 /// `chats.implementTicket`. Actors: user, claude.
 public enum ChatsImplementTicket: EngineMethod {
     public static let name = "chats.implementTicket"

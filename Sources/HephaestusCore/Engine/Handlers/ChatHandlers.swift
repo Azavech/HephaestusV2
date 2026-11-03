@@ -55,6 +55,12 @@ extension Engine {
         register(ChatsAnswerColor.self, actors: [.user]) { [unowned self] params, actor in
             try await self.chatsAnswerColor(params, actor)
         }
+        register(ChatsPostSound.self, actors: [.claude]) { [unowned self] params, actor in
+            try await self.chatsPostSound(params, actor)
+        }
+        register(ChatsAnswerSound.self, actors: [.user]) { [unowned self] params, actor in
+            try await self.chatsAnswerSound(params, actor)
+        }
         register(ChatsImplementTicket.self, actors: [.user, .claude]) { [unowned self] params, actor in
             try await self.chatsImplementTicket(params, actor)
         }
@@ -368,6 +374,7 @@ extension Engine {
         chats.openQuestionSets[chatID] = nil
         chats.openSymbolRequests[chatID] = nil
         chats.openColorRequests[chatID] = nil
+        chats.openSoundRequests[chatID] = nil
         chats.drivingDevices[chatID] = nil
         chats.scannedChats.remove(chatID)
         chats.hasTextMessage[chatID] = nil
@@ -482,9 +489,9 @@ extension Engine {
         return Empty()
     }
 
-    /// A chat has at most one waiting request: a question set that is not completed, a symbol
-    /// request or a color request without answer (docs/chats.md › Posting questions, › Posting a
-    /// symbol request, › Posting a color request).
+    /// A chat has at most one waiting request: a question set that is not completed, or a symbol
+    /// request, a color request or a sound request without answer (docs/chats.md › Posting
+    /// questions, › Posting a symbol request, › Posting a color request, › Posting a sound request).
     private func requireNoWaitingRequest(_ chatID: ChatID) throws {
         guard chats.openQuestionSets[chatID] == nil else {
             throw EngineError(.conflict, "Questions are already waiting for answers in this chat.")
@@ -494,6 +501,9 @@ extension Engine {
         }
         guard chats.openColorRequests[chatID] == nil else {
             throw EngineError(.conflict, "A color request is already waiting for an answer in this chat.")
+        }
+        guard chats.openSoundRequests[chatID] == nil else {
+            throw EngineError(.conflict, "A sound request is already waiting for an answer in this chat.")
         }
     }
 
@@ -621,6 +631,71 @@ extension Engine {
             return request
         }
         throw EngineError.notFound("Color request", requestID.uuidString)
+    }
+
+    /// `chats.postSound` (docs/chats.md › Posting a sound request): the actor, the chat, the type
+    /// of its project, the rules, then the waiting request.
+    func chatsPostSound(_ params: ChatsPostSound.Params, _ actor: Actor) async throws -> SoundRequest {
+        try ActorRules.requireOwnChat(params.chatID, actor)
+        let meta = try requireChat(params.chatID)
+        guard domain.isLoaded(meta.projectID), loaded(meta.projectID).project.type == .swiftApplication else {
+            throw EngineError(.forbidden, "ask_sound is only available in Swift application projects.")
+        }
+        let catalog = try await soundCatalog(meta.projectID)
+        let suggestions = params.suggestions.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let recommended = params.recommended.trimmingCharacters(in: .whitespacesAndNewlines)
+        try Engine.validated {
+            try ModelRules.soundRequest(question: params.question, suggestions: suggestions, recommended: recommended,
+                                        isSound: catalog.contains)
+        }
+        _ = try requireChat(params.chatID)
+        try ensureChatScanned(params.chatID)
+        try requireNoWaitingRequest(params.chatID)
+        let requestID = UUID()
+        let question = ModelRules.normalizedLineBreaks(params.question)
+        let item = SoundItem(id: requestID.uuidString, created: ISODate.now(), requestID: requestID, question: question,
+                             suggestions: suggestions, recommended: recommended)
+        try appendChatItem(.sound(item), chatID: params.chatID, origin: actor)
+        chats.openSoundRequests[params.chatID] = item
+        emitChatUpdated(params.chatID, origin: actor)
+        return SoundRequest(requestID: requestID, chatID: params.chatID, question: question, suggestions: suggestions,
+                            recommended: recommended)
+    }
+
+    /// `chats.answerSound` (docs/chats.md › Answering a sound request).
+    func chatsAnswerSound(_ params: ChatsAnswerSound.Params, _ actor: Actor) async throws -> Empty {
+        let chatID = params.chatID
+        let answer = ModelRules.normalizedLineBreaks(params.answer.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard (1...10_000).contains(answer.count) else {
+            throw EngineError.invalid("answer", "use 1 to 10,000 characters")
+        }
+        func check() throws -> SoundItem {
+            _ = try requireChat(chatID)
+            try ensureChatScanned(chatID)
+            return try soundRequest(params.requestID, chatID: chatID)
+        }
+        _ = try check()
+        _ = try await requireClaudeCLI()
+        let sender = senderName(actor)
+        var request = try check()
+        recordDrivingDevice(chatID, actor)
+        request.answer = answer
+        try appendChatItem(.sound(request), chatID: chatID, op: .update, origin: actor)
+        chats.openSoundRequests[chatID] = nil
+        try sendChatMessage(chatID, text: Engine.soundMessage(answer), attachments: [], sender: sender, origin: actor)
+        return Empty()
+    }
+
+    /// The sound request `requestID` of a chat without answer: the open one, or one of the
+    /// transcript; `conflict` when it has an answer, `notFound` when the chat has none with this id.
+    private func soundRequest(_ requestID: UUID, chatID: ChatID) throws -> SoundItem {
+        if let open = chats.openSoundRequests[chatID], open.requestID == requestID { return open }
+        for item in try loadTranscript(chatID) {
+            guard case .sound(let request) = item, request.requestID == requestID else { continue }
+            if request.answer != nil { throw EngineError(.conflict, "This sound request was already answered.") }
+            return request
+        }
+        throw EngineError.notFound("Sound request", requestID.uuidString)
     }
 
     /// The question set `questionSetID` of a chat: the open one, or one of the transcript;

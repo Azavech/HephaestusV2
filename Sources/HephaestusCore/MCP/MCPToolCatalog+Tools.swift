@@ -880,6 +880,39 @@ extension MCPToolCatalog {
             handling: .askColor
         ),
         MCPToolDefinition(
+            name: "ask_sound",
+            description: #"""
+            Ask the user to choose one sound for an app of an Apple platform, instead of listing sound names in ask_questions. Only available in projects of type Swift application. Give the question, 2 to 10 suggested sound names and the recommended one. A sound name is macOS/<file> for a sound of /System/Library/Sounds, for example macOS/Glass.aiff; <runtime>/<path> for a sound under System/Library/Audio/UISounds of an installed Simulator runtime, <runtime> being the runtime's name in xcrun simctl list runtimes, for example iOS 26.1/sms-received1.caf; or Project/<path from the project root> for a .caf, .aiff, .wav or .mp3 file of the project, for example Project/Sounds/alert.caf. The app lists the suggestions, the recommended one preselected, with a search over every sound of the Mac and the project, and plays the sound the user selects; the user can also answer in their own words or skip. This tool returns immediately: end your turn after calling it. The answer arrives in the next user message: "Sound: ![](sound:<name>)" for a chosen sound, "Sound: <answer>" for an answer in the user's own words, or "Sound: Skipped". Only available in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "question": {
+                  "type": "string",
+                  "description": "The question."
+                },
+                "suggestions": {
+                  "type": "array",
+                  "description": "2 to 10 distinct sound names, for example macOS/Glass.aiff or iOS 26.1/sms-received1.caf.",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "recommended": {
+                  "type": "string",
+                  "description": "The recommended sound: one of the suggestions, copied exactly."
+                }
+              },
+              "required": ["question", "suggestions", "recommended"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "chats.postSound",
+            handling: .askSound
+        ),
+        MCPToolDefinition(
             name: "list_chats",
             description: #"""
             List a project's chats of every kind (project, ticket, bundle, feedback), most recently updated first, with their title, kind, linked ticket or bundle, settings and state.

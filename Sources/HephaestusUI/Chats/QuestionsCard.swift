@@ -82,6 +82,7 @@ struct QuestionsCard: View {
                 .transformEnvironment(\.markdownContext) { context in
                     context.options.isSymbolAvailable = SFSymbols.isAvailable
                     context.options.colorSwatch = ColorSwatches.swatch
+                    context.options.readsSoundMarkers = true
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)

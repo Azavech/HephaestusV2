@@ -18,7 +18,7 @@ HephaestusV2 talks to Claude through the Claude CLI. Every chat is one Claude Co
 
 ## Chat states
 
-`ChatMeta.state` is computed by the engine and is not persisted. The status line texts below: Default chosen at design time. After an engine start, a chat whose transcript holds a question set that is not completed, a symbol request without answer or a color request without answer is waitingAnswers, and every other chat is idle; the engine finds them by replaying each transcript once at launch ([Data model](data-model.md#loading)).
+`ChatMeta.state` is computed by the engine and is not persisted. The status line texts below: Default chosen at design time. After an engine start, a chat whose transcript holds a question set that is not completed, a symbol request without answer, a color request without answer or a sound request without answer is waitingAnswers, and every other chat is idle; the engine finds them by replaying each transcript once at launch ([Data model](data-model.md#loading)).
 
 | State             | Meaning                                                                                                          | Status line above the composer     |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
@@ -30,7 +30,7 @@ HephaestusV2 talks to Claude through the Claude CLI. Every chat is one Claude Co
 | error             | The process failed to start, or exited with a non-zero status during a turn. The next message clears it.         | Claude stopped with an error (red) |
 
 - A turn is the time Claude spends on the messages the engine wrote to the process. It starts when the engine writes a user message while the chat has no turn in progress, or when a `system/init` arrives while none is in progress (a CLI turn the CLI starts on its own). It ends when no message the engine wrote is outstanding and no CLI turn is open ([Turn tracking](#turn-tracking)); a turn can thus span several CLI turns.
-- A symbol request without answer ([Symbol requests](#symbol-requests)) and a color request without answer ([Color requests](#color-requests)) count as a question set that is not completed, in the table above and in the transitions below.
+- A symbol request without answer ([Symbol requests](#symbol-requests)), a color request without answer ([Color requests](#color-requests)) and a sound request without answer ([Sound requests](#sound-requests)) count as a question set that is not completed, in the table above and in the transitions below.
 - When several states apply, the chat takes the first one of this order: error, waitingPermission, starting, running, waitingAnswers, idle.
 - A chat is running while its state is starting, running or waitingPermission.
 - A chat is working while it is running or its Claude process has background work running (`backgroundWork` true, [Background work](#background-work)); background work does not change the chat's state. The quit confirmation ([UI](ui.md#unsaved-changes-and-quitting)), the restart checks and the idle check before an automatic update ([Updater](updater.md#restart-rules)) and the removal of a project ([Projects](projects.md#removing-a-project)) count working chats.
@@ -52,7 +52,7 @@ HephaestusV2 talks to Claude through the Claude CLI. Every chat is one Claude Co
 | starting, running, waitingPermission | the process exits with a non-zero status, not after Stop or a termination by the engine | error                   |
 | starting, running, waitingPermission | the process exits after Stop or a termination by the engine, or with status 0           | idle, or waitingAnswers |
 
-`chats.send` accepts a message in every state ([Engine API](engine-api.md#chatssend)). During a turn the message is written to the process at once; the CLI keeps it in its queue until its CLI turn in progress ends, then runs it, together with the other messages waiting there, as a CLI turn of its own, and the chat stays running until that CLI turn ends ([Turn tracking](#turn-tracking)). A message sent while a question set, a symbol request or a color request waits leaves it unchanged.
+`chats.send` accepts a message in every state ([Engine API](engine-api.md#chatssend)). During a turn the message is written to the process at once; the CLI keeps it in its queue until its CLI turn in progress ends, then runs it, together with the other messages waiting there, as a CLI turn of its own, and the chat stays running until that CLI turn ends ([Turn tracking](#turn-tracking)). A message sent while a question set, a symbol request, a color request or a sound request waits leaves it unchanged.
 
 ## Claude CLI
 
@@ -155,8 +155,8 @@ Every row is one or two argv elements, in this order; no shell is involved.
 | 17  | `--plugin-dir` `<data dir>/Runtime/plugins/<project id>` | the project enables at least one skill of the library ([Skills](skills.md#generation)) |
 | 18  | `--settings` `<settings JSON>`                           | always                                                                                 |
 
-- Rows 14 and 15 let `ask_questions`, `ask_symbol`, `ask_color`, `close_chat`, the read-only `hephaestus` tools and the tools that create and edit tickets, comments and bundles (`create_ticket`, `update_ticket`, `set_ticket_status`, `add_comment`, `update_comment`, `create_bundle` and `update_bundle`) run in every permission mode, and keep Claude from using the CLI's own question tool. The tools that delete (`delete_ticket`, `delete_comment`, `remove_attachment` and `delete_bundle`) are not pre-approved, so in Ask Every Time the user approves each call. Default chosen at design time, except for `ask_symbol`, `ask_color`, `close_chat` and the ticket, comment and bundle tools, which the user chose.
-- `<pre-approved tools>` is this single argument: `mcp__hephaestus__ask_questions,mcp__hephaestus__ask_symbol,mcp__hephaestus__ask_color,mcp__hephaestus__close_chat,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__create_ticket,mcp__hephaestus__update_ticket,mcp__hephaestus__set_ticket_status,mcp__hephaestus__add_comment,mcp__hephaestus__update_comment,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__create_bundle,mcp__hephaestus__update_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat`. Every other tool, the other `hephaestus` tools included, follows the chat's permission mode.
+- Rows 14 and 15 let `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `close_chat`, the read-only `hephaestus` tools and the tools that create and edit tickets, comments and bundles (`create_ticket`, `update_ticket`, `set_ticket_status`, `add_comment`, `update_comment`, `create_bundle` and `update_bundle`) run in every permission mode, and keep Claude from using the CLI's own question tool. The tools that delete (`delete_ticket`, `delete_comment`, `remove_attachment` and `delete_bundle`) are not pre-approved, so in Ask Every Time the user approves each call. Default chosen at design time, except for `ask_symbol`, `ask_color`, `close_chat` and the ticket, comment and bundle tools, which the user chose.
+- `<pre-approved tools>` is this single argument: `mcp__hephaestus__ask_questions,mcp__hephaestus__ask_symbol,mcp__hephaestus__ask_color,mcp__hephaestus__ask_sound,mcp__hephaestus__close_chat,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__create_ticket,mcp__hephaestus__update_ticket,mcp__hephaestus__set_ticket_status,mcp__hephaestus__add_comment,mcp__hephaestus__update_comment,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__create_bundle,mcp__hephaestus__update_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat`. Every other tool, the other `hephaestus` tools included, follows the chat's permission mode.
 - `--permission-mode` takes `manual` for Ask Every Time; the control request `set_permission_mode` takes `default` for the same mode ([Permission mode](#permission-mode)).
 - `<settings JSON>` is this single argument, which holds the `UserPromptSubmit` hook of the [linked items hook](#linked-items-hook): `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"http","url":"http://127.0.0.1:<port>/hooks/user-prompt-submit","headers":{"Authorization":"Bearer $HEPHAESTUS_HOOK_TOKEN"},"allowedEnvVars":["HEPHAESTUS_HOOK_TOKEN"],"timeout":10}]}]}}`. When `settings.ultracode` is true, it starts with `{"ultracode":true,` in place of `{`. `<port>` is the port of the [MCP configuration file](#mcp-configuration-file). The CLI replaces `$HEPHAESTUS_HOOK_TOKEN` with the variable of its environment, so the token is not part of the arguments. The timeout of 10 s: Default chosen at design time.
 
@@ -168,7 +168,7 @@ claude -p --input-format stream-json --output-format stream-json --verbose --inc
   --model opus --effort high --permission-mode manual --allow-dangerously-skip-permissions \
   --permission-prompt-tool stdio \
   --mcp-config "$HOME/Library/Application Support/HephaestusV2/Runtime/mcp/3F2504E0-4F89-11D3-9A0C-0305E82C3301.json" \
-  --allowedTools mcp__hephaestus__ask_questions,mcp__hephaestus__ask_symbol,mcp__hephaestus__ask_color,mcp__hephaestus__close_chat,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__create_ticket,mcp__hephaestus__update_ticket,mcp__hephaestus__set_ticket_status,mcp__hephaestus__add_comment,mcp__hephaestus__update_comment,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__create_bundle,mcp__hephaestus__update_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat \
+  --allowedTools mcp__hephaestus__ask_questions,mcp__hephaestus__ask_symbol,mcp__hephaestus__ask_color,mcp__hephaestus__ask_sound,mcp__hephaestus__close_chat,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__create_ticket,mcp__hephaestus__update_ticket,mcp__hephaestus__set_ticket_status,mcp__hephaestus__add_comment,mcp__hephaestus__update_comment,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__create_bundle,mcp__hephaestus__update_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat \
   --disallowedTools AskUserQuestion \
   --append-system-prompt "You are Claude, working inside HephaestusV2, …" \
   --plugin-dir "$HOME/Library/Application Support/HephaestusV2/Runtime/plugins/HEPH" \
@@ -677,7 +677,7 @@ The chat's `settings.permissionMode` follows the CLI. When the engine answers `a
 
 ## Questions
 
-Claude never invents unknowns: it asks with the MCP tool `ask_questions`, which calls `chats.postQuestions` for the chat that owns the token and returns at once. The rules Claude follows are in [Claude workflow](workflow.md#questions-protocol) and in the prompt [common](#prompt-common). To have the user choose an SF Symbol, Claude asks with `ask_symbol` instead ([Symbol requests](#symbol-requests)), and to have the user choose a color, with `ask_color` ([Color requests](#color-requests)).
+Claude never invents unknowns: it asks with the MCP tool `ask_questions`, which calls `chats.postQuestions` for the chat that owns the token and returns at once. The rules Claude follows are in [Claude workflow](workflow.md#questions-protocol) and in the prompt [common](#prompt-common). To have the user choose an SF Symbol, Claude asks with `ask_symbol` instead ([Symbol requests](#symbol-requests)), to have the user choose a color, with `ask_color` ([Color requests](#color-requests)), and to have the user choose a sound, in a Swift application project, with `ask_sound` ([Sound requests](#sound-requests)).
 
 ### Posting questions
 
@@ -693,7 +693,7 @@ Claude never invents unknowns: it asks with the MCP tool `ask_questions`, which 
 | Each option label is one line of at most 200 characters ([Data model](data-model.md#questions-item)).    |
 | `recommended` equals the `label` of one of the question's options, so exactly one option is recommended. |
 
-A chat has at most one waiting request: posting fails with `conflict` while a question set is not completed (`Questions are already waiting for answers in this chat.`), a symbol request has no answer (`A symbol request is already waiting for an answer in this chat.`) or a color request has no answer (`A color request is already waiting for an answer in this chat.`). The MCP tool checks its own schema first ([MCP](mcp.md#question-rules)).
+A chat has at most one waiting request: posting fails with `conflict` while a question set is not completed (`Questions are already waiting for answers in this chat.`), a symbol request has no answer (`A symbol request is already waiting for an answer in this chat.`), a color request has no answer (`A color request is already waiting for an answer in this chat.`) or a sound request has no answer (`A sound request is already waiting for an answer in this chat.`). The MCP tool checks its own schema first ([MCP](mcp.md#question-rules)).
 
 Once the set passes these rules, the engine moves each question's recommended option to the first place of its `options`; the other options keep their relative order. Claude's prompts have no rule about the place of the recommended option: the engine does the reordering. The engine then adds a `questions` item {questionSetID (new uppercase UUID), questions in this order, answers `{}`, completed false} and returns the `QuestionSet` with the same order, so the pinned questions card, the transcript's Questions card and every other device list the recommended option first. When the turn that posted it ends, the state becomes waitingAnswers. Example of `questions`:
 
@@ -724,7 +724,7 @@ B: Skipped
 
 Claude leaves a skipped point out: it does not act on it or guess, and it mentions it in its reply ([Prompt: common](#prompt-common)).
 
-A set stays incomplete across process exits and app restarts; answering its last unanswered question later starts a process with `--resume`. Messages typed in the composer while a set is incomplete are delivered normally and do not change the set. Until every question of the set has an answer, the set stays pinned and Claude cannot post another set, a symbol request or a color request in this chat. Default chosen at design time.
+A set stays incomplete across process exits and app restarts; answering its last unanswered question later starts a process with `--resume`. Messages typed in the composer while a set is incomplete are delivered normally and do not change the set. Until every question of the set has an answer, the set stays pinned and Claude cannot post another set, a symbol request, a color request or a sound request in this chat. Default chosen at design time.
 
 ### Pinned questions card
 
@@ -732,7 +732,7 @@ While the chat has a question set that is not completed, a native SwiftUI card i
 
 - Header `Question <label> (<position> of <count>)`, where `<position>` is the displayed question's place in the set counting from 1, for example `Question A (1 of 1)` or `Question B (2 of 3)`.
 - At the top right, previous and next arrow buttons, then a minimize button, a chevron pointing down. The arrows display the previous and the next question of the set, in label order, answered or not; they wrap at neither end: the previous arrow is disabled on the first question and the next arrow on the last one.
-- The question text rendered as Markdown ([Block model](documentation-viewer.md#block-model)) with the `isSymbolAvailable`, the `colorSwatch` and the `projectIdentifiers` of [Links, images and files](#links-images-and-files): an SF Symbol marker of an available symbol shows the symbol's image (`Image(systemName:)`) followed by a space and its name, inline in the text, and a color marker of an accepted color a swatch of the color followed by a space and its value; any other marker shows its text unchanged. Ticket and bundle ids of the question text are links: a click on one opens the ticket or the bundle as in [Links, images and files](#links-images-and-files).
+- The question text rendered as Markdown ([Block model](documentation-viewer.md#block-model)) with the `isSymbolAvailable`, the `colorSwatch`, the `readsSoundMarkers` and the `projectIdentifiers` of [Links, images and files](#links-images-and-files): an SF Symbol marker of an available symbol shows the symbol's image (`Image(systemName:)`) followed by a space and its name, inline in the text, and a color marker of an accepted color a swatch of the color followed by a space and its value; any other `sf:` or `color:` marker shows its text unchanged; a sound marker shows its play button followed by its name ([Links, images and files](#links-images-and-files)). Ticket and bundle ids of the question text are links: a click on one opens the ticket or the bundle as in [Links, images and files](#links-images-and-files).
 - One row per option: a radio button, then the label in bold and the description in secondary text. The label and the description are plain text in which each SF Symbol marker of an available symbol shows the symbol's image followed by a space and its name ([SF Symbol markers](documentation-viewer.md#sf-symbol-markers)), and each color marker of an accepted color a swatch of the color followed by a space and its value ([Color markers](documentation-viewer.md#color-markers)). A click anywhere in the row (the radio button, the label, the `Recommended` tag, the description or the empty space) chooses the option. The label and the description are not selectable as text, and the ticket and bundle ids in them stay plain text, so that a click on one chooses the option too. The recommended option carries a `Recommended` tag.
 - The header and the question text are selectable (`textSelection(.enabled)`); the texts of the option rows are not.
 - A last radio row `Answer another way` with a multi-line text field (1 to 6 visible lines). A click on the radio button, the label `Answer another way` or the empty part of its line chooses this row; the field stays editable, and typing in it selects this row; Return inserts a line break.
@@ -752,7 +752,7 @@ When Claude needs the user to choose an SF Symbol, it asks with the MCP tool `as
 
 `chats.postSymbol` {chatID, question, suggestions, recommended} accepts only the chat's own Claude ([Engine API](engine-api.md#chatspostsymbol)). It trims each suggestion and `recommended`, then checks the rules of [Claude workflow](workflow.md#symbol-requests) in their order and fails with `invalid` and the message of the first one broken. A suggestion is valid when it is a name of the [symbol catalogue](#symbol-catalogue) of the main device, localized variants included.
 
-A chat has at most one waiting request: posting fails with `conflict` while a question set is not completed (`Questions are already waiting for answers in this chat.`), a symbol request has no answer (`A symbol request is already waiting for an answer in this chat.`) or a color request has no answer (`A color request is already waiting for an answer in this chat.`).
+A chat has at most one waiting request: posting fails with `conflict` while a question set is not completed (`Questions are already waiting for answers in this chat.`), a symbol request has no answer (`A symbol request is already waiting for an answer in this chat.`), a color request has no answer (`A color request is already waiting for an answer in this chat.`) or a sound request has no answer (`A sound request is already waiting for an answer in this chat.`).
 
 Once the request passes these checks, the engine adds a `symbol` item {requestID (new uppercase UUID), question, suggestions in Claude's order, recommended, answer null} ([Data model](data-model.md#symbol-item)) and returns the `SymbolRequest` ([Engine API](engine-api.md#symbolrequest)). When the turn that posted it ends, the state becomes waitingAnswers.
 
@@ -770,7 +770,7 @@ Symbol: ![](sf:line.3.horizontal.decrease.circle)
 
 Claude leaves a skipped request out: it does not act on it or guess, and it mentions it in its reply ([Prompt: common](#prompt-common)).
 
-A request stays waiting across process exits and app restarts; answering it later starts a process with `--resume`. Messages typed in the composer while it waits are delivered normally and do not change it. Until it has an answer, the request stays pinned and Claude cannot post another symbol request, a question set or a color request in this chat.
+A request stays waiting across process exits and app restarts; answering it later starts a process with `--resume`. Messages typed in the composer while it waits are delivered normally and do not change it. Until it has an answer, the request stays pinned and Claude cannot post another symbol request, a question set, a color request or a sound request in this chat.
 
 ### Symbol catalogue
 
@@ -796,10 +796,10 @@ The search field of the [pinned symbol card](#pinned-symbol-card) searches the c
 
 ### Pinned symbol card
 
-While the chat has a symbol request without answer, a native SwiftUI card is pinned above the composer of every view of the chat, below the permission card when both exist. A chat has at most one waiting request, so the pinned questions card, the pinned symbol card and the pinned [color card](#pinned-color-card) never show together.
+While the chat has a symbol request without answer, a native SwiftUI card is pinned above the composer of every view of the chat, below the permission card when both exist. A chat has at most one waiting request, so the pinned questions card, the pinned symbol card, the pinned [color card](#pinned-color-card) and the pinned [sound card](#pinned-sound-card) never show together.
 
 - Header `Symbol`, then at the top right a minimize button, a chevron pointing down.
-- The question text rendered as Markdown with SF Symbol markers, color markers and ticket and bundle id links, as in the [pinned questions card](#pinned-questions-card). The header and the question text are selectable (`textSelection(.enabled)`).
+- The question text rendered as Markdown with SF Symbol markers, color markers, sound markers and ticket and bundle id links, as in the [pinned questions card](#pinned-questions-card). The header and the question text are selectable (`textSelection(.enabled)`).
 - A search field with the placeholder `Search symbols` ([Symbol search](#symbol-search)).
 - A grid of icons: the suggestions first, in the order Claude gave them, then the search results; while the search field is empty, the suggestions only. Each cell is 36 × 36 pt and shows the symbol's image (`Image(systemName:)`) centered, with the symbol's name as tooltip; a suggestion that the Mac showing the window has no symbol for shows `questionmark.square.dashed`. The grid has as many columns as fit the card's width, shows at most 4 rows, and scrolls vertically inside itself when it has more.
 - The recommended suggestion's cell carries a star badge (`star.fill`) at its top trailing corner.
@@ -821,7 +821,7 @@ When Claude needs the user to choose a color, it asks with the MCP tool `ask_col
 
 `chats.postColor` {chatID, question, suggestions, recommended, lightAndDark} accepts only the chat's own Claude ([Engine API](engine-api.md#chatspostcolor)). It trims each color of the suggestions and of `recommended`, then checks the rules of [Claude workflow](workflow.md#color-requests) in their order and fails with `invalid` and the message of the first one broken. A color is valid when it is a hex color `#RRGGBB`, its six hex digits in either letter case, or a name of [System colors](#system-colors), with its letter case. The check is the same on every device: it does not depend on the colors a Mac can draw.
 
-A chat has at most one waiting request: posting fails with `conflict` while a question set is not completed (`Questions are already waiting for answers in this chat.`), a symbol request has no answer (`A symbol request is already waiting for an answer in this chat.`) or a color request has no answer (`A color request is already waiting for an answer in this chat.`).
+A chat has at most one waiting request: posting fails with `conflict` while a question set is not completed (`Questions are already waiting for answers in this chat.`), a symbol request has no answer (`A symbol request is already waiting for an answer in this chat.`), a color request has no answer (`A color request is already waiting for an answer in this chat.`) or a sound request has no answer (`A sound request is already waiting for an answer in this chat.`).
 
 Once the request passes these checks, the engine adds a `color` item {requestID (new uppercase UUID), question, lightAndDark (false when absent), suggestions in Claude's order, recommended, answer null} ([Data model](data-model.md#color-item)) and returns the `ColorRequest` ([Engine API](engine-api.md#colorrequest)). The colors are stored trimmed, as Claude wrote them otherwise. When the turn that posted it ends, the state becomes waitingAnswers.
 
@@ -839,7 +839,7 @@ Color: Light ![](color:#FFFFFF), Dark ![](color:#1C1C1E)
 
 Claude leaves a skipped request out: it does not act on it or guess, and it mentions it in its reply ([Prompt: common](#prompt-common)).
 
-A request stays waiting across process exits and app restarts; answering it later starts a process with `--resume`. Messages typed in the composer while it waits are delivered normally and do not change it. Until it has an answer, the request stays pinned and Claude cannot post another color request, a question set or a symbol request in this chat.
+A request stays waiting across process exits and app restarts; answering it later starts a process with `--resume`. Messages typed in the composer while it waits are delivered normally and do not change it. Until it has an answer, the request stays pinned and Claude cannot post another color request, a question set, a symbol request or a sound request in this chat.
 
 ### System colors
 
@@ -877,7 +877,7 @@ The names come from the user's choice of the SwiftUI, UIKit and AppKit colors an
 
 ### Pinned color card
 
-While the chat has a color request without answer, a native SwiftUI card is pinned above the composer of every view of the chat, below the permission card when both exist. A chat has at most one waiting request, so the pinned questions card, the pinned symbol card and the pinned color card never show together. The card holds one color, or two rows `Light` and `Dark` while its toggle `Light and dark` is on.
+While the chat has a color request without answer, a native SwiftUI card is pinned above the composer of every view of the chat, below the permission card when both exist. A chat has at most one waiting request, so the pinned questions card, the pinned symbol card, the pinned color card and the pinned [sound card](#pinned-sound-card) never show together. The card holds one color, or two rows `Light` and `Dark` while its toggle `Light and dark` is on.
 
 - Header `Color`, then at the top right a minimize button, a chevron pointing down.
 - The question text rendered as Markdown with SF Symbol markers, color markers and ticket and bundle id links, as in the [pinned questions card](#pinned-questions-card). The header and the question text are selectable (`textSelection(.enabled)`).
@@ -900,6 +900,95 @@ While the chat has a color request without answer, a native SwiftUI card is pinn
 - Minimize works as for the pinned questions card: the collapsed bar shows `Color` and a chevron pointing up, and the minimized state is kept per chat for the request that was minimized, on this device only, and survives an app restart ([UI › Persistence](ui.md#persistence)).
 
 The texts `Color`, `Light and dark`, `Light`, `Dark`, `Answer another way`, Skip and Submit, the star badge, the grid of every system color laid out as the symbol grid, the split swatch of a pair, the color panel and the hex field kept in sync, the hex field showing the name of a system color, the toggle's start, its effect on the clicks and on the pair suggestions, and the answer forms come from the user; the other details are Default chosen at design time.
+
+## Sound requests
+
+When, in a project whose type is Swift application ([Project types](projects.md#project-types)), Claude needs the user to choose a sound for an app of an Apple platform, it asks with the MCP tool `ask_sound`, which calls `chats.postSound` for the chat that owns the token and returns at once ([MCP](mcp.md#ask_sound)). The rules Claude follows are in [Claude workflow](workflow.md#sound-requests) and in the prompt [common](#prompt-common).
+
+### Posting a sound request
+
+`chats.postSound` {chatID, question, suggestions, recommended} accepts only the chat's own Claude ([Engine API](engine-api.md#chatspostsound)), and only in a chat whose project has the type `swiftApplication`: in a project of another type it fails with `forbidden` (`ask_sound is only available in Swift application projects.`) and nothing is shown to the user. It then trims each suggestion and `recommended`, checks the rules of [Claude workflow](workflow.md#sound-requests) in their order and fails with `invalid` and the message of the first one broken. A suggestion is valid when it is a name of the [sound catalogue](#sound-catalogue) of the main device for the chat's project.
+
+A chat has at most one waiting request: posting fails with `conflict` while a question set is not completed (`Questions are already waiting for answers in this chat.`), a symbol request has no answer (`A symbol request is already waiting for an answer in this chat.`), a color request has no answer (`A color request is already waiting for an answer in this chat.`) or a sound request has no answer (`A sound request is already waiting for an answer in this chat.`).
+
+Once the request passes these checks, the engine adds a `sound` item {requestID (new uppercase UUID), question, suggestions in Claude's order, recommended, answer null} ([Data model](data-model.md#sound-item)) and returns the `SoundRequest` ([Engine API](engine-api.md#soundrequest)). When the turn that posted it ends, the state becomes waitingAnswers.
+
+### Answering a sound request
+
+`chats.answerSound` {chatID, requestID, answer} ([Engine API](engine-api.md#chatsanswersound)) stores the answer:
+
+- `answer` is trimmed and has 1 to 10,000 characters (`invalid` otherwise). The [pinned sound card](#pinned-sound-card) sends `![](sound:<name>)` for a chosen sound, the field's text for `Answer another way`, and `Skipped` for Skip.
+- A request that already has an answer gives `conflict` (`This sound request was already answered.`). A client whose answer fails because the request was answered on another device (`conflict` while `chat.item` already carries the answer) shows no alert.
+- The item is replaced with its `answer`, and the engine delivers the message `Sound: <answer>` as a user message whose `sender` is the name of the answering device; the answer keeps its own line breaks. During a turn it is delivered like any message ([Chat states](#chat-states)), and a closed chat reopens as for the Answers message ([Closing a chat](#closing-a-chat)).
+
+```
+Sound: ![](sound:iOS 26.1/sms-received1.caf)
+```
+
+Claude leaves a skipped request out: it does not act on it or guess, and it mentions it in its reply ([Prompt: common](#prompt-common)).
+
+A request stays waiting across process exits and app restarts; answering it later starts a process with `--resume`. Messages typed in the composer while it waits are delivered normally and do not change it. Until it has an answer, the request stays pinned and Claude cannot post another sound request, a symbol request, a color request or a question set in this chat.
+
+### Sound catalogue
+
+The sound catalogue of a project is the list of the sound names that `chats.postSound` accepts, that the [sound search](#sound-search) lists and that `sounds.read` reads ([Engine API](engine-api.md#sounds)). The engine of the main device builds it from three sources (`SoundCatalog`, [Swift types](#swift-types)):
+
+| Source            | Files                                                                                                            | Name                                         | Example                                                     |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------- |
+| macOS             | the files directly in `/System/Library/Sounds`                                                                   | `macOS/<file name>`                          | `macOS/Glass.aiff`                                          |
+| Simulator runtime | the files under `<runtime root>/System/Library/Audio/UISounds` of each installed Simulator runtime, at any depth | `<platform> <version>/<path under UISounds>` | `iOS 26.1/sms-received1.caf`, `iOS 26.1/New/Anticipate.caf` |
+| Project           | the files of the project's code search [file list](search.md#file-list)                                          | `Project/<path from the project root>`       | `Project/Sounds/alert.caf`                                  |
+
+- A sound is a regular file whose extension is `.caf`, `.aiff`, `.wav` or `.mp3`, in any letter case. In `/System/Library/Sounds` and the runtime folders, names that start with `.` and symbolic links are skipped.
+- The part of a name before its first `/` is the sound's source: `macOS`, the runtime's `<platform> <version>`, or `Project`; the part after it is the sound's file.
+- Simulator runtimes: the engine runs `/usr/bin/xcrun simctl list runtimes --json` with the environment of [Child processes](architecture.md#child-processes) and a timeout of 30 s, and reads the `name` and the `runtimeRoot` of each entry of `runtimes`. The name is the runtime's `<platform> <version>`, for example `iOS 26.1`, `watchOS 26.1`, `tvOS 26.1` or `visionOS 26.1`. When two runtimes have the same name, only the first one listed is read. When `xcrun` fails to start, exits with a non-zero status, times out or prints no readable JSON, for example on a Mac without Xcode, the catalogue has no runtime sounds.
+- Project: the files listed for the root folder of the chat's project on the main device (`rootPath`), also for an orchestrated ticket chat that works in a worktree ([Working directory](#working-directory)). The code search file list leaves out the files git ignores and the folders of sub projects.
+- Order: the macOS sounds, then the sounds of each runtime in the order of the runtime names, then the project's sounds; the runtime names and the paths within each source in Finder order (`localizedStandardCompare`).
+- A name that holds a line break or parentheses that do not balance, or that starts or ends with white space, is left out, since a [sound marker](#links-images-and-files) could not carry it.
+- The macOS and runtime sounds are read the first time the engine needs the catalogue and kept in memory until the app quits, so a runtime installed later appears after the next launch. The project's sounds are read again at each `chats.postSound`, `sounds.list` and `sounds.read` call. The engine logs a failed `xcrun` run to `engine.log` the first time it reads the runtimes.
+- A window that shows a remote device searches and plays the sounds of the main device: the pinned sound card gets the catalogue with `sounds.list`, and every sound is played through `sounds.read` ([Sound playback](#sound-playback)).
+
+The three sources and the forms of the names come from the user; the folders read, the `xcrun` command, the order and the reading times are Default chosen at design time.
+
+### Sound search
+
+The search field of the [pinned sound card](#pinned-sound-card) searches the catalogue as the user types:
+
+1. The query is trimmed and lowercased. An empty query lists nothing; otherwise it is split at white space into words.
+2. A sound matches when its name, lowercased, contains every word. The name includes the source, so `ios 26.1 sms` lists the iOS 26.1 sounds whose path contains `sms`, and `project` the project's sounds.
+3. The request's suggestions are left out.
+4. The results keep the order of the catalogue. Their number is not limited.
+
+The search rules are Default chosen at design time.
+
+### Sound playback
+
+The pinned sound card and the sound markers of a chat view play a sound the same way:
+
+- The window calls `sounds.read` with the chat's project and the sound's name through its engine connection ([Engine API](engine-api.md#soundsread)), so a window that shows a remote device plays the file of the main device.
+- It plays the data with `NSSound(data:)` on the Mac that shows the window. One sound plays at a time in the window's app: starting a sound stops the one that plays.
+- A failed call shows the alert `Play Sound failed` with the error's message; data that `NSSound` cannot read shows it with the message `The sound cannot be played.` ([UI › Principles](ui.md#principles)).
+
+The player and the alert are Default chosen at design time.
+
+### Pinned sound card
+
+While the chat has a sound request without answer, a native SwiftUI card is pinned above the composer of every view of the chat, below the permission card when both exist. A chat never has two requests waiting together, so the pinned questions card, the pinned symbol card, the pinned [color card](#pinned-color-card) and the pinned sound card never show together.
+
+- Header `Sound`, then at the top right a minimize button, a chevron pointing down.
+- The question text rendered as Markdown with SF Symbol markers, sound markers and ticket and bundle id links, as in the [pinned questions card](#pinned-questions-card). The header and the question text are selectable (`textSelection(.enabled)`).
+- A search field with the placeholder `Search sounds` ([Sound search](#sound-search)). When the card appears for a request, it calls `sounds.list` for the chat's project; until the list arrives, and when the call fails, the search lists nothing.
+- A list: the suggestions first, in the order Claude gave them, then the search results; while the search field is empty, the suggestions only. Each row is one line: the sound's file, then ` · ` and its source in secondary text, for example `sms-received1.caf · iOS 26.1`, `Glass.aiff · macOS` or `Sounds/alert.caf · Project`, with the sound's name as tooltip. The list shows at most 8 rows and scrolls vertically inside itself when it has more.
+- The recommended suggestion's row carries a star (`star.fill`) at its trailing end.
+- A click on a row selects its sound and plays it ([Sound playback](#sound-playback)), also when the row is already selected: the selected row gets a rounded background in the accent color. The texts of the rows are not selectable.
+- A radio row `Answer another way` with a multi-line text field (1 to 6 visible lines), as in the pinned symbol card: a click on the radio button, the label or the empty part of its line, or typing in the field, chooses this row and deselects the selected row; a click on a row chooses that sound again. Return inserts a line break.
+- When the card appears for a request, the recommended suggestion is selected without playing, and the field and the search field are empty.
+- Submit (⌘Return while the focus is in the chat view outside its composer, no permission card is shown and the card is not minimized) calls `chats.answerSound` with `![](sound:<name>)` for the selected sound, or with the field's text. It is disabled while `Answer another way` is selected with an empty field.
+- Skip, next to Submit, calls `chats.answerSound` with the answer `Skipped`.
+- Once the request has its answer, from this view, another view or another device (`chat.item`), the card disappears.
+- Minimize works as for the pinned questions card: the collapsed bar shows `Sound` and a chevron pointing up, and the minimized state is kept per chat for the request that was minimized, on this device only, and survives an app restart ([UI › Persistence](ui.md#persistence)).
+
+The texts `Sound`, `Search sounds`, `Answer another way`, Skip and Submit, the row texts, the star, the preselection, the playback on selection, the answer forms and the scope of the search come from the user; the other details are Default chosen at design time.
 
 ## Chat settings
 
@@ -1047,13 +1136,14 @@ A fragment is `{id, type, html, parentToolUseID, toolUseID}`: `type` is the item
 
 Messages to Swift (`window.webkit.messageHandlers.hephaestus.postMessage`):
 
-| Message                                              | Effect                                                          |
-| ---------------------------------------------------- | --------------------------------------------------------------- |
-| `{"action":"ready"}`                                 | the page is loaded; Swift calls `reset`                         |
-| `{"action":"openLink","url":"…","commandKey":false}` | [Links, images and files](#links-images-and-files)              |
-| `{"action":"copy","text":"…"}`                       | puts the text on the general pasteboard as plain text           |
-| `{"action":"openAttachment","path":"…"}`             | opens the attachment (`path` relative to `.hephaestus/`)        |
-| `{"action":"loadEarlier"}`                           | Swift calls `prepend` with the 300 items before the first shown |
+| Message                                              | Effect                                                                    |
+| ---------------------------------------------------- | ------------------------------------------------------------------------- |
+| `{"action":"ready"}`                                 | the page is loaded; Swift calls `reset`                                   |
+| `{"action":"openLink","url":"…","commandKey":false}` | [Links, images and files](#links-images-and-files)                        |
+| `{"action":"copy","text":"…"}`                       | puts the text on the general pasteboard as plain text                     |
+| `{"action":"openAttachment","path":"…"}`             | opens the attachment (`path` relative to `.hephaestus/`)                  |
+| `{"action":"loadEarlier"}`                           | Swift calls `prepend` with the 300 items before the first shown           |
+| `{"action":"playSound","name":"…"}`                  | plays the sound of the chat's project ([Sound playback](#sound-playback)) |
 
 ### Item rendering
 
@@ -1068,15 +1158,17 @@ Messages to Swift (`window.webkit.messageHandlers.hephaestus.postMessage`):
 | `questions`         | A card titled `Questions`: each question as `<label>. <question>`, preceded by `➡️ ` (`➡️ B. <question>`) for the question that the [pinned questions card](#pinned-questions-card) of the same chat view displays while the set is not completed, then one line per option, `<option label> — <description>` (the ` — <description>` part left out when absent), the recommended option followed by `(recommended)`, then `Answer: <answer>` or `Not answered yet`.                                                                                                                                                                                                                                                                                         |
 | `symbol`            | A card titled `Symbol`: the question rendered as Markdown, then one line per suggestion with the symbol's icon followed by its name, drawn as the SF Symbol marker `![](sf:<name>)`, the recommended one followed by `(recommended)`, then `Answer: <answer>` or `Not answered yet`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `color`             | A card titled `Color`: the question rendered as Markdown, then one line per suggestion, the recommended one followed by `(recommended)`, then `Answer: <answer>` or `Not answered yet`. A suggestion of one color is drawn as the color marker `![](color:<color>)`, a swatch followed by the color; a pair as `Light ![](color:<light>), Dark ![](color:<dark>)`.                                                                                                                                                                                                                                                                                                                                                                                           |
+| `sound`             | A card titled `Sound`: the question rendered as Markdown, then one line per suggestion drawn as the sound marker `![](sound:<name>)`, a play button followed by its name, the recommended one followed by `(recommended)`, then `Answer: <answer>` or `Not answered yet`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `system`            | Small centered line; secondary color for info, orange for warning, red for error.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `result`            | Small centered footer line: `Done · <duration> · session cost <cost>`, or `Error · <duration> · <summary>` when `isError`. The part ` · session cost <cost>` is left out when `costUSD` is null.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 - `<created>` of a caption: the item's `created` date in the user's locale and time zone. For a message created today, only the short time (`15:12`); for an older message, the abbreviated date and short time, as in the ticket list's Created column ([Ticket list](tickets.md#ticket-list)) (`1 Nov 2026 at 15:12`). When the day changes while a transcript is shown, its captions are rendered again ([Web view and bridge](#web-view-and-bridge)).
 - `<duration>` from `durationMs`: below 60 s, one decimal and ` s` (`3.5 s`); below one hour, `<m> min <s> s` (`2 min 5 s`); else `<h> h <m> min` (`1 h 2 min`).
 - `<cost>`: `< $0.01` below 0.01, else `$` and two decimals (`$0.42`). These formats are Default chosen at design time.
-- SF Symbol markers ([Links, images and files](#links-images-and-files)) are drawn as the symbol's icon followed by its name in the `user`, `assistant` and `thinking` bubbles, in the streaming bubbles, in the `questions` card: in its question texts, which are Markdown, and in its option lines and answers, which are plain text, and in the `symbol` card: in its question, which is Markdown, and in its suggestion lines and answer, which are plain text ([SF Symbol markers](documentation-viewer.md#sf-symbol-markers)). The other items show a marker as its text.
+- SF Symbol markers ([Links, images and files](#links-images-and-files)) are drawn as the symbol's icon followed by its name in the `user`, `assistant` and `thinking` bubbles, in the streaming bubbles, in the `questions` card: in its question texts, which are Markdown, and in its option lines and answers, which are plain text, in the `symbol` and `color` cards: in their question, which is Markdown, and in their suggestion lines and answer, which are plain text, and in the `sound` card: in its question, which is Markdown, and in its answer, which is plain text ([SF Symbol markers](documentation-viewer.md#sf-symbol-markers)). The other items show a marker as its text.
 - Color markers ([Links, images and files](#links-images-and-files)) are drawn as a swatch of the color followed by the color wherever SF Symbol markers are drawn, and both kinds of markers are drawn in the `color` card: in its question, which is Markdown, and in its suggestion lines and answer, which are plain text ([Color markers](documentation-viewer.md#color-markers)). The other items show a marker as its text.
-- Ticket and bundle ids of the projects of the window's device are links ([Links, images and files](#links-images-and-files)) in the `user`, `assistant` and `thinking` bubbles and in the streaming bubbles, which are Markdown; in the `questions` card: in its question texts, which are Markdown, and in its option lines and answers, which are plain text; in the `symbol` and `color` cards: in their question, which is Markdown, and in their answer, which is plain text; in the two lines of a `permissionRequest` item, the tool line and the reason, which are plain text; and in tool cards ([Tool cards](#tool-cards)). Plain texts find ids with `MarkdownItemIDs`, and with `MarkdownSymbolMarkers` where they also draw SF Symbol and color markers ([Ticket and bundle ids](documentation-viewer.md#ticket-and-bundle-ids)). The suggestion lines of the `symbol` and `color` cards, the `system` and `result` lines and the `Preparing tool call…` card show ids as text.
+- Sound markers ([Links, images and files](#links-images-and-files)) are drawn as a play button followed by the name in the same places as SF Symbol markers, and in the suggestion lines of the `sound` card ([Sound markers](documentation-viewer.md#sound-markers)). The other items show a sound marker as its text.
+- Ticket and bundle ids of the projects of the window's device are links ([Links, images and files](#links-images-and-files)) in the `user`, `assistant` and `thinking` bubbles and in the streaming bubbles, which are Markdown; in the `questions` card: in its question texts, which are Markdown, and in its option lines and answers, which are plain text; in the `symbol`, `color` and `sound` cards: in their question, which is Markdown, and in their answer, which is plain text; in the two lines of a `permissionRequest` item, the tool line and the reason, which are plain text; and in tool cards ([Tool cards](#tool-cards)). Plain texts find ids with `MarkdownItemIDs`, and with `MarkdownSymbolMarkers` where they also draw SF Symbol, color and sound markers ([Ticket and bundle ids](documentation-viewer.md#ticket-and-bundle-ids)). The suggestion lines of the `symbol`, `color` and `sound` cards, the `system` and `result` lines and the `Preparing tool call…` card show ids as text.
 - Hovering a bubble shows its `created` time as a tooltip and a Copy button that copies its Markdown source.
 - `chat.css` follows the light and dark appearance (`prefers-color-scheme`); code colors are those of the [Code editor](code-editor.md).
 
@@ -1123,6 +1215,9 @@ Generic rule: the first of the input fields `command`, `file_path`, `path`, `pat
 - `SymbolSchemeHandler`, registered for `hephaestus-symbol` on the transcript web view only, answers a GET whose host is `symbol` with a PNG of the symbol named by the percent-decoded path without its leading `/`, drawn from `NSImage(systemSymbolName:accessibilityDescription:)` at 48 points and scale 2. The response has status 200, `Content-Type: image/png`, `Content-Length` and `Access-Control-Allow-Origin: *`, since WebKit loads mask images in CORS mode. It makes no engine call, so a window showing a remote device draws the symbols of its own Mac. A name without symbol fails with `URLError(.fileDoesNotExist)` and a malformed URL with `URLError(.noPermissionsToReadFile)`. Default chosen at design time.
 - A color marker is a Markdown image whose source has the scheme `color`, for example `![](color:#FF9500)` or `![](color:systemBlue)` ([Color markers](documentation-viewer.md#color-markers)). The transcript renders Markdown with `colorSwatch`, which accepts a hex color `#RRGGBB`, in either letter case, or a name of [System colors](#system-colors), and gives the color's light and dark values on the Mac that shows the window. A marker of such a color is drawn as a swatch of the color followed by the color as written; any other marker shows its text unchanged, for example `![](color:#FF950080)`.
 - The swatch is the `md-color-swatch` element of the marker: a 0.9em square with corners of radius 0.2em and a 1px border of the text color at 30 % opacity, 0.25em before the color, aligned with the text. Its background is the element's `data-light` value, or its `data-dark` value while the page is in the dark appearance (`prefers-color-scheme: dark`); `chat.js` copies them into the CSS variables `--md-color-light` and `--md-color-dark` of the element. A hex color has its own value in both; a system color has the values the Mac that shows the window gives it in the light (Aqua) and dark (Dark Aqua) appearances ([System colors](#system-colors)), written `#RRGGBB`, or `#RRGGBBAA` when it is not opaque. Default chosen at design time.
+- A sound marker is a Markdown image whose source has the scheme `sound`, for example `![](sound:macOS/Glass.aiff)` ([Sound markers](documentation-viewer.md#sound-markers)). The name, a name of the [sound catalogue](#sound-catalogue), is written as it is, spaces included: `![](sound:iOS 26.1/sms-received1.caf)`. The marker ends at the `)` that closes its `(`, so a name may also hold balanced parentheses, as in `![](sound:Project/Sounds/alert (2).caf)`; the CommonMark form with angle brackets, `![](<sound:iOS 26.1/sms-received1.caf>)`, is read too. The transcript renders Markdown with `readsSoundMarkers` true and draws every marker as a play button followed by the name; the name is not checked against the catalogue, so the play button of a sound that does not exist fails when clicked ([Sound playback](#sound-playback)).
+- The play button is the `md-sound-play` button of the marker, which holds the `play.circle.fill` icon, drawn as the icon of an SF Symbol marker (`md-symbol-icon`); the name follows it. A click on the button posts `playSound` with the name ([Web view and bridge](#web-view-and-bridge)), and Swift plays the sound of the chat's project ([Sound playback](#sound-playback)). Default chosen at design time.
+- In the question texts of the pinned cards, which SwiftUI draws, the play button of a sound marker is the character `▶` drawn as a link, followed by a space and the name; a click on it plays the sound. The option rows of the pinned questions card show a sound marker as its text, so that a click in a row always chooses the option. Default chosen at design time.
 
 ### Selection and copying
 
@@ -1172,7 +1267,7 @@ New Chat (⌥⌘N, or a New Chat button) shows a draft: an empty chat view whose
 
 ### Chat view
 
-From top to bottom: the header, the transcript, the pinned permission card, the pinned questions card, the pinned symbol card or the pinned color card, the status line ([Chat states](#chat-states)), the composer. The pinned cards take at most half of the view's height. They scroll inside that space only when they are taller than it; while they fit, they neither scroll nor bounce under a scroll gesture. In both cases, wide code blocks and tables inside the cards scroll horizontally inside their own box.
+From top to bottom: the header, the transcript, the pinned permission card, the pinned questions card, the pinned symbol card, the pinned color card or the pinned sound card, the status line ([Chat states](#chat-states)), the composer. The pinned cards take at most half of the view's height. They scroll inside that space only when they are taller than it; while they fit, they neither scroll nor bounce under a scroll gesture. In both cases, wide code blocks and tables inside the cards scroll horizontally inside their own box.
 
 The chat view's background is the window background colour, except in the inspector, where it draws none and shows the inspector's frosted material, with a transparent transcript ([Web view and bridge](#web-view-and-bridge)).
 
@@ -1186,7 +1281,7 @@ Header (in the Chats section, the ticket and bundle Chats tabs and chat windows;
 
 ### UI state
 
-`DeviceWorkspace.transcripts` keeps one `TranscriptState` per chat shown in a view of that device ([UI](ui.md#deviceworkspace)): the items in transcript order and the streaming buffers. Pending permission requests, the incomplete question set, the symbol request without answer and the color request without answer are read from the items. Every view of the chat in windows of the same device shares this state. Opening a chat calls `chats.get`; the events received while it is in flight are applied after its result, in arrival order ([UI](ui.md#deviceworkspace)).
+`DeviceWorkspace.transcripts` keeps one `TranscriptState` per chat shown in a view of that device ([UI](ui.md#deviceworkspace)): the items in transcript order and the streaming buffers. Pending permission requests, the incomplete question set, the symbol request without answer, the color request without answer and the sound request without answer are read from the items. Every view of the chat in windows of the same device shares this state. Opening a chat calls `chats.get`; the events received while it is in flight are applied after its result, in arrival order ([UI](ui.md#deviceworkspace)).
 
 ## Implement and feedback chats
 
@@ -1357,6 +1452,7 @@ A summary call writes the detail of a chat notification ([Notifications](#notifi
 | needs you, question set   | `Questions:` + `\n` + one line `<label>: <question>` per question, in label order                                                |
 | needs you, symbol request | `Symbol request:` + `\n` + the question                                                                                          |
 | needs you, color request  | `Color request:` + `\n` + the question                                                                                           |
+| needs you, sound request  | `Sound request:` + `\n` + the question                                                                                           |
 
 - The part after the label is cut at 4,000 characters, as for naming.
 - At most 2 summary calls run at once, besides the naming calls; the others wait in first-in first-out order. While the Claude CLI is unavailable the call fails at once. Failures and timeouts are written to `engine.log`.
@@ -1374,10 +1470,10 @@ The inputs, the queue and the cleanup are Default chosen at design time; the 150
 
 The engine reports two kinds of chat events, which the Macs showing the chat's device turn into macOS notifications ([UI › Status bar](ui.md#status-bar)); the [Notifications](ui.md#notifications) tab of each Mac's Settings turns them off on that Mac.
 
-| Kind      | API value  | Event                                                                                                                                      |
-| --------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| needs you | `needsYou` | The chat's state becomes `waitingPermission` or `waitingAnswers` (a question set, a symbol request or a color request) from another state. |
-| finished  | `finished` | A turn ends ([Turn tracking](#turn-tracking)) and the chat's state becomes `idle`.                                                         |
+| Kind      | API value  | Event                                                                                                                                                       |
+| --------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| needs you | `needsYou` | The chat's state becomes `waitingPermission` or `waitingAnswers` (a question set, a symbol request, a color request or a sound request) from another state. |
+| finished  | `finished` | A turn ends ([Turn tracking](#turn-tracking)) and the chat's state becomes `idle`.                                                                          |
 
 - The `error` state posts nothing ([Chat states](#chat-states)). A turn that ends in `waitingAnswers` posts only the "needs you" notification.
 - No "finished" notification for a turn stopped with Stop ([Stopping a turn](#stopping-a-turn)), for a turn of an orchestrated ticket chat ([Orchestrated ticket chats](#orchestrated-ticket-chats)), or for a turn of a bundle chat that ends while one of the ticket chats it orchestrates, the chats whose `orchestrator` is that bundle chat, is working ([Chat states](#chat-states)). A bundle chat thus posts "finished" when its turn ends and none of its ticket chats is working. These chats post their "needs you" notifications as every chat.
@@ -1395,6 +1491,7 @@ The engine reports two kinds of chat events, which the Macs showing the chat's d
 | needs you, `waitingAnswers`, question set   | the texts of the questions of the set that is not completed ([Posting questions](#posting-questions))     |
 | needs you, `waitingAnswers`, symbol request | the question of the symbol request without answer ([Posting a symbol request](#posting-a-symbol-request)) |
 | needs you, `waitingAnswers`, color request  | the question of the color request without answer ([Posting a color request](#posting-a-color-request))    |
+| needs you, `waitingAnswers`, sound request  | the question of the sound request without answer ([Posting a sound request](#posting-a-sound-request))    |
 
 - Claude's last reply of the turn is the text of the turn's last `assistant` item without `parentToolUseID`, as in the report of an orchestrated ticket chat; for "needs you", that of the turn in progress or of the turn that just ended.
 - Fallback detail, used when the summary call fails or times out, and by a Mac whose `AI-generated summary` toggle is off: the first line of Claude's last reply of the turn that is not empty after trimming, trimmed and cut to 200 characters. When the turn has no reply text, the status line text of the state ([Chat states](#chat-states)), `Waiting for your permission` or `Waiting for your answers`, or `Claude finished replying` for a finished turn.
@@ -1444,6 +1541,8 @@ The method contract (actors, parameters, results, errors, events) is in [Engine 
 | `chats.answerSymbol`     | [Answering a symbol request](#answering-a-symbol-request)                                                                                                                                                                                        |
 | `chats.postColor`        | [Posting a color request](#posting-a-color-request), [System colors](#system-colors)                                                                                                                                                             |
 | `chats.answerColor`      | [Answering a color request](#answering-a-color-request)                                                                                                                                                                                          |
+| `chats.postSound`        | [Posting a sound request](#posting-a-sound-request), [Sound catalogue](#sound-catalogue)                                                                                                                                                         |
+| `chats.answerSound`      | [Answering a sound request](#answering-a-sound-request)                                                                                                                                                                                          |
 | `chats.close`            | [Closing a chat](#closing-a-chat)                                                                                                                                                                                                                |
 | `chats.reopen`           | [Closing a chat](#closing-a-chat)                                                                                                                                                                                                                |
 | `chats.implementTicket`  | [Implement and feedback chats](#implement-and-feedback-chats), [Orchestrated ticket chats](#orchestrated-ticket-chats), [Prompt: implement-ticket](#prompt-implement-ticket), [Prompt: implement-bundle-ticket](#prompt-implement-bundle-ticket) |
@@ -1451,6 +1550,8 @@ The method contract (actors, parameters, results, errors, events) is in [Engine 
 | `chats.createFeedback`   | [Implement and feedback chats](#implement-and-feedback-chats), [Prompt: feedback](#prompt-feedback)                                                                                                                                              |
 | `claude.models`          | [Models](#models)                                                                                                                                                                                                                                |
 | `claude.status`          | [Version and status](#version-and-status)                                                                                                                                                                                                        |
+| `sounds.list`            | [Sound catalogue](#sound-catalogue), [Pinned sound card](#pinned-sound-card)                                                                                                                                                                     |
+| `sounds.read`            | [Sound catalogue](#sound-catalogue), [Sound playback](#sound-playback)                                                                                                                                                                           |
 
 ## Swift types
 
@@ -1459,10 +1560,11 @@ The Claude integration lives in `Sources/HephaestusCore/Claude/`. The type names
 | Type                                | Role                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ClaudeCLI`                         | The login-shell environment, the location of the CLI, its `ClaudeStatus` and the model list ([Claude CLI](#claude-cli)).                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `ChatManager`                       | The chats at runtime: processes, stream-json mapping, control protocol, the computed `state` and `backgroundWork`, pending permission requests, question sets, symbol requests, color requests, driving devices, chat tokens and idle termination. Chat metadata is loaded with its project.                                                                                                                                                                                                                                    |
+| `ChatManager`                       | The chats at runtime: processes, stream-json mapping, control protocol, the computed `state` and `backgroundWork`, pending permission requests, question sets, symbol requests, color requests, sound requests, driving devices, chat tokens and idle termination. Chat metadata is loaded with its project.                                                                                                                                                                                                                    |
 | `ClaudeProcessLauncher` (protocol)  | Every access of the Claude integration to the machine: `captureEnvironment(processEnvironment:log:)`, `homeDirectory`, `isExecutableFile(atPath:)`, and `start(_:)`, which spawns a process with pipes on stdin, stdout and stderr as the leader of a new process group. The app uses `SystemClaudeProcessLauncher`; tests use an in-memory launcher that replays fixture lines, so they never run the user's shell or CLI and never depend on the user's files ([Engine configuration](architecture.md#engine-configuration)). |
 | `SFSymbolCatalog`                   | The [symbol catalogue](#symbol-catalogue) of the Mac and its [search](#symbol-search); `SFSymbolCatalog.system` reads the running macOS's files, and tests read their own. The engine checks suggestions with it and the pinned symbol card searches it.                                                                                                                                                                                                                                                                        |
 | `SystemColors`                      | The names of [System colors](#system-colors) in their order, the UIKit values of the names AppKit lacks, and the check of a color: a hex color `#RRGGBB` or a system color name. The engine checks the colors of `chats.postColor` with it; the pinned color card lists its names, and the renderers accept color markers with it.                                                                                                                                                                                              |
+| `SoundCatalog`                      | The [sound catalogue](#sound-catalogue) of a project on the main device and its [search](#sound-search): the macOS and Simulator runtime sounds, read once (`SoundCatalog.SystemSounds`), and the project's sound files. The engine checks the suggestions of `chats.postSound` with it and answers `sounds.list` and `sounds.read` from it; tests give their own system sounds.                                                                                                                                                |
 | `TitleNamer` (protocol)             | `title(for:) async -> String?`, the seam the engine calls for [Haiku naming](#haiku-naming); nil keeps the provisional title. `HaikuTitleNamer` is the app's implementation; tests provide another.                                                                                                                                                                                                                                                                                                                             |
 | `NotificationSummarizer` (protocol) | `summary(for:) async -> String?`, the seam the engine calls for the [summary call](#summary-call) of a [notification](#notifications); nil gives the fallback detail. `HaikuNotificationSummarizer` is the app's implementation; tests provide another.                                                                                                                                                                                                                                                                         |
 
@@ -1480,9 +1582,11 @@ The Claude integration lives in `Sources/HephaestusCore/Claude/`. The type names
 | ⌘Return      | chat view with a questions card not minimized and no permission card, focus outside the composer | Submit the answer                          |
 | ⌘Return      | chat view with a symbol card not minimized and no permission card, focus outside the composer    | Submit the answer                          |
 | ⌘Return      | chat view with a color card not minimized and no permission card, focus outside the composer     | Submit the answer                          |
+| ⌘Return      | chat view with a sound card not minimized and no permission card, focus outside the composer     | Submit the answer                          |
 | Return       | answer field of the questions card                                                               | insert a line break                        |
 | Return       | answer field of the symbol card                                                                  | insert a line break                        |
 | Return       | answer field of the color card                                                                   | insert a line break                        |
+| Return       | answer field of the sound card                                                                   | insert a line break                        |
 | ⌘A           | transcript                                                                                       | select the whole transcript                |
 | ⌘C           | transcript                                                                                       | copy the selection as plain text           |
 | ⌥⌘N          | any main window ([UI](ui.md))                                                                    | New Chat: a project chat draft             |
@@ -1636,7 +1740,7 @@ HephaestusV2 gives you the MCP server "hephaestus". Its tools appear to you as m
 - Projects: list_projects, get_project, create_project, update_project, remove_project, run_project (runs the project's build, run or test command), stop_run (stops a run).
 - Tickets: list_tickets, get_ticket, create_ticket, update_ticket, delete_ticket, set_ticket_status, add_comment, update_comment, delete_comment, remove_attachment, implement_ticket (starts a new chat that implements a ticket).
 - Bundles, groups of tickets implemented together: list_bundles, get_bundle, create_bundle, update_bundle, set_bundle_status, delete_bundle, implement_bundle (starts a new chat that implements a bundle).
-- Questions to the user: ask_questions, ask_symbol (asks the user to choose an SF Symbol), ask_color (asks the user to choose a color).
+- Questions to the user: ask_questions, ask_symbol (asks the user to choose an SF Symbol), ask_color (asks the user to choose a color), ask_sound (asks the user to choose a sound, in a Swift application project).
 - Search and documentation: search (projects, tickets, bundles, docs, code, chats, skills and web tabs), list_docs.
 - Chats: list_chats, get_chat (a chat and its transcript, for example another chat of the same ticket), rename_chat, close_chat (closes the chat you run in).
 - The project's integrated browser: list_web_tabs, open_web_tab, update_web_tab, move_web_tab, close_web_tab.
@@ -1663,7 +1767,7 @@ Read and change HephaestusV2 data (projects, tickets, comments, bundles, chats, 
 - Set recommended to the label of exactly one option of each question: the option you recommend.
 - Add no "Other" option: the user can always answer another way.
 - After ask_questions returns, end your turn: call no other tool, and do not repeat the questions in your reply, because the chat shows them.
-- Never call ask_questions while earlier questions, a symbol request or a color request of this chat still wait for their answers.
+- Never call ask_questions while earlier questions, a symbol request, a color request or a sound request of this chat still wait for their answers.
 
 The user answers the questions one by one in HephaestusV2. All the answers arrive in your next user message, in this form:
 
@@ -1844,13 +1948,17 @@ Close a project chat only when the user asks for it.
 
 When you name an SF Symbol in a reply or in ask_questions, write it as ![](sf:<name>), for example ![](sf:line.3.horizontal.decrease.circle): HephaestusV2 shows the symbol's icon followed by its name there.
 
-When you need the user to choose an SF Symbol, ask with ask_symbol, never with symbol names as options of ask_questions: give the question, 2 to 10 suggested SF Symbol names and the recommended one. The user picks a suggestion or any other SF Symbol, answers in their own words, or skips. After ask_symbol returns, end your turn: call no other tool, and do not repeat the question in your reply. The answer arrives in your next user message as Symbol: ![](sf:<name>) for a chosen symbol, Symbol: <answer> for an answer in the user's own words, or Symbol: Skipped; handle Skipped as for a skipped question. Never call ask_symbol while questions, a symbol request or a color request of this chat still wait for their answers.
+When you need the user to choose an SF Symbol, ask with ask_symbol, never with symbol names as options of ask_questions: give the question, 2 to 10 suggested SF Symbol names and the recommended one. The user picks a suggestion or any other SF Symbol, answers in their own words, or skips. After ask_symbol returns, end your turn: call no other tool, and do not repeat the question in your reply. The answer arrives in your next user message as Symbol: ![](sf:<name>) for a chosen symbol, Symbol: <answer> for an answer in the user's own words, or Symbol: Skipped; handle Skipped as for a skipped question. Never call ask_symbol while questions, a symbol request, a color request or a sound request of this chat still wait for their answers.
 
 # Colors
 
 When you name a color in a reply or in ask_questions, write it as ![](color:<color>), <color> being a hex color #RRGGBB or a system color name such as systemBlue, label or accentColor, for example ![](color:#FF9500): HephaestusV2 shows a swatch of the color followed by the color there.
 
-When you need the user to choose a color, ask with ask_color, never with color values as options of ask_questions: give the question, 2 to 10 suggested colors and the recommended one. When the destination of the color supports light and dark appearances, for example an asset catalog color set, set lightAndDark and give each suggestion and the recommended one as a pair {"light": "<color>", "dark": "<color>"}. The user picks a suggestion, a system color or any other color, as one color or as a light and dark pair, answers in their own words, or skips. After ask_color returns, end your turn: call no other tool, and do not repeat the question in your reply. The answer arrives in your next user message as Color: ![](color:<color>) for one color, Color: Light ![](color:<color>), Dark ![](color:<color>) for a light and dark pair, Color: <answer> for an answer in the user's own words, or Color: Skipped; handle Skipped as for a skipped question. Never call ask_color while questions, a symbol request or a color request of this chat still wait for their answers.
+When you need the user to choose a color, ask with ask_color, never with color values as options of ask_questions: give the question, 2 to 10 suggested colors and the recommended one. When the destination of the color supports light and dark appearances, for example an asset catalog color set, set lightAndDark and give each suggestion and the recommended one as a pair {"light": "<color>", "dark": "<color>"}. The user picks a suggestion, a system color or any other color, as one color or as a light and dark pair, answers in their own words, or skips. After ask_color returns, end your turn: call no other tool, and do not repeat the question in your reply. The answer arrives in your next user message as Color: ![](color:<color>) for one color, Color: Light ![](color:<color>), Dark ![](color:<color>) for a light and dark pair, Color: <answer> for an answer in the user's own words, or Color: Skipped; handle Skipped as for a skipped question. Never call ask_color while questions, a symbol request, a color request or a sound request of this chat still wait for their answers.
+
+# Sounds
+
+When the project's type is Swift application (get_project gives it) and you need the user to choose a sound for an app of an Apple platform, ask with ask_sound, never with sound names as options of ask_questions: give the question, 2 to 10 suggested sound names and the recommended one. A sound name is macOS/<file> for a sound of /System/Library/Sounds, for example macOS/Glass.aiff; <runtime>/<path> for a sound under System/Library/Audio/UISounds of an installed Simulator runtime, <runtime> being the runtime's name in xcrun simctl list runtimes, for example iOS 26.1/sms-received1.caf; or Project/<path from the project root> for a .caf, .aiff, .wav or .mp3 file of the project. The user listens to the sounds, picks a suggestion or any other sound, answers in their own words, or skips. After ask_sound returns, end your turn: call no other tool, and do not repeat the question in your reply. The answer arrives in your next user message as Sound: ![](sound:<name>) for a chosen sound, Sound: <answer> for an answer in the user's own words, or Sound: Skipped; handle Skipped as for a skipped question. Never call ask_sound while questions, a symbol request, a color request or a sound request of this chat still wait for their answers.
 
 # When the project is HephaestusV2
 
@@ -1987,6 +2095,7 @@ You write the text of the macOS notifications of a chat between a user and Claud
 - "Questions:": Claude waits for the user's answers to these questions.
 - "Symbol request:": Claude waits for the user to choose an SF Symbol for this question.
 - "Color request:": Claude waits for the user to choose a color for this question.
+- "Sound request:": Claude waits for the user to choose a sound for this question.
 
 Reply with a summary of this event for the notification and nothing else.
 
@@ -2075,3 +2184,4 @@ Follow "Implementing a bundle" as its orchestrator: skip the tickets that are do
 - R125: The chat lists have a filter button that hides closed chats: the chats closed by Claude and the chats whose ticket is done.
 - R128: A macOS notification, titled with the project identifier and the chat title and detailed by a Haiku summary, tells the user when a chat needs them or when Claude has finished replying; each Mac turns each kind and the summary off in Settings.
 - R132: Claude asks the user to choose a color with `ask_color`, as one color or a light and dark pair: suggestions show as swatches, any system color can be picked from a grid and any other color with the macOS color panel or a hex field, the user answers another way or skips, and the chat shows the colors Claude names and the answer as swatches.
+- R133: In a Swift application project, Claude asks the user to choose a sound with `ask_sound`: the card lists the suggestions and searches the macOS sounds, the installed Simulator runtimes' sounds and the project's sound files; selecting one plays it; the user picks one, answers another way or skips.

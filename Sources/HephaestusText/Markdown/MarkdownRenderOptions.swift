@@ -14,18 +14,23 @@ public struct MarkdownRenderOptions: Sendable {
     /// Draws the color markers whose color it gives a swatch for; nil leaves `color:` images
     /// refused (docs/documentation-viewer.md › Color markers).
     public var colorSwatch: (@Sendable (String) -> MarkdownColorSwatch?)?
+    /// Draws the sound markers; false leaves `sound:` images refused (docs/documentation-viewer.md
+    /// › Sound markers).
+    public var readsSoundMarkers: Bool
     /// Identifiers of the projects of the device; their ticket and bundle ids become links
     /// (docs/documentation-viewer.md › Ticket and bundle ids).
     public var projectIdentifiers: Set<String>
 
     public init(baseDirectory: String = "", projectRootPath: String? = nil, stripFrontMatter: Bool = false,
                 isSymbolAvailable: (@Sendable (String) -> Bool)? = nil,
-                colorSwatch: (@Sendable (String) -> MarkdownColorSwatch?)? = nil, projectIdentifiers: Set<String> = []) {
+                colorSwatch: (@Sendable (String) -> MarkdownColorSwatch?)? = nil, readsSoundMarkers: Bool = false,
+                projectIdentifiers: Set<String> = []) {
         self.baseDirectory = baseDirectory
         self.projectRootPath = projectRootPath
         self.stripFrontMatter = stripFrontMatter
         self.isSymbolAvailable = isSymbolAvailable
         self.colorSwatch = colorSwatch
+        self.readsSoundMarkers = readsSoundMarkers
         self.projectIdentifiers = projectIdentifiers
     }
 }

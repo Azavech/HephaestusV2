@@ -43,9 +43,10 @@ public final class AppModel {
     private(set) var chatWindows: Set<ChatWindowValue> = []
     /// Last active project per device, persisted in `UserDefaults`.
     private(set) var lastProjectIDByDevice: [String: String]
-    /// Minimized questions, symbol and color cards: chat id → id of the minimized question set,
-    /// symbol request or color request, persisted in `UserDefaults` (docs/chats.md › Pinned
-    /// questions card, › Pinned symbol card, › Pinned color card).
+    /// Minimized questions, symbol, color and sound cards: chat id → id of the minimized question
+    /// set, symbol request, color request or sound request, persisted in `UserDefaults`
+    /// (docs/chats.md › Pinned questions card, › Pinned symbol card, › Pinned color card, › Pinned
+    /// sound card).
     private(set) var minimizedQuestionSets: [String: String]
     /// The last status received from the Updater.
     var updaterStatus = UpdaterStatus.initial
