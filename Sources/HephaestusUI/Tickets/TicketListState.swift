@@ -5,69 +5,80 @@ import HephaestusCore
 
 /// The ticket list's filters and sort order (`ProjectViewState.ticketList`); not persisted.
 struct TicketListState: Codable, Hashable {
-    /// The status filter: All, To Do, In Progress, In Review, Done.
-    enum StatusFilter: String, Codable, Hashable, CaseIterable {
-        case all, todo, inProgress, review, done
-
-        /// The segment title.
-        var title: String {
-            switch self {
-            case .all: return "All"
-            case .todo: return "To Do"
-            case .inProgress: return "In Progress"
-            case .review: return "In Review"
-            case .done: return "Done"
-            }
-        }
-
-        /// The status a ticket needs to pass the filter; nil for All.
-        var status: TicketStatus? {
-            switch self {
-            case .all: return nil
-            case .todo: return .todo
-            case .inProgress: return .inProgress
-            case .review: return .review
-            case .done: return .done
-            }
-        }
-    }
-
     /// The sorted column.
     enum SortColumn: String, Codable, Hashable, CaseIterable {
         case id, title, status, created
     }
 
-    var statusFilter = StatusFilter.all
+    /// The statuses that To Do, In Progress and In Review of the Filter by Status menu turn on and
+    /// off, in menu order.
+    static let filterStatuses: [TicketStatus] = [.todo, .inProgress, .review]
+
+    /// The statuses checked in the Filter by Status menu; All is checked while it holds the three
+    /// `filterStatuses`.
+    var statuses = Set(filterStatuses)
+    /// Show Done of the menu: done tickets are listed only while All and Show Done are checked.
+    var showDone = false
     var textFilter = ""
     /// The list starts sorted by ID, newest first.
     var sortColumn = SortColumn.id
     var sortAscending = false
 
-    /// True when a filter is set.
-    var isFiltering: Bool {
-        statusFilter != .all || !Self.terms(of: textFilter).isEmpty
+    init() {}
+
+    /// All of the menu: checked while To Do, In Progress and In Review are all on.
+    var isAll: Bool {
+        statuses.isSuperset(of: Self.filterStatuses)
     }
 
-    /// A `ticket` navigation target clears the filters that hide its ticket
-    /// (docs/ui.md › Resolving a target). `ticket` is nil while the project is not loaded; both
-    /// filters are then cleared, so that the ticket shows once loaded.
+    /// True while the menu's choice differs from the starting state (All checked, Show Done off);
+    /// the Filter by Status button then shows its filled symbol in the accent color.
+    var isFiltering: Bool {
+        !isAll || showDone
+    }
+
+    /// Choosing All turns To Do, In Progress and In Review on; it changes nothing when All is checked.
+    mutating func selectAll() {
+        statuses = Set(Self.filterStatuses)
+    }
+
+    /// Turns one of To Do, In Progress and In Review on or off.
+    mutating func toggle(_ status: TicketStatus) {
+        if statuses.contains(status) {
+            statuses.remove(status)
+        } else {
+            statuses.insert(status)
+        }
+    }
+
+    /// A `ticket` navigation target, and a ticket created in the New Ticket sheet, clear the filters
+    /// that hide the ticket (docs/ui.md › Resolving a target): a ticket whose status is off turns All
+    /// on, a done ticket turns All and Show Done on, and a text filter the ticket does not match is
+    /// emptied. `ticket` is nil while the project is not loaded; All and Show Done are then turned on
+    /// and the text filter emptied, so that the ticket shows once loaded.
     mutating func clearFilters(hiding ticket: Ticket?) {
         guard let ticket else {
-            statusFilter = .all
+            selectAll()
+            showDone = true
             textFilter = ""
             return
         }
         if !passesStatusFilter(ticket) {
-            statusFilter = .all
+            selectAll()
+            if ticket.status == .done {
+                showDone = true
+            }
         }
         if !passesTextFilter(ticket) {
             textFilter = ""
         }
     }
 
-    /// Clear Filters of the empty list: the status filter becomes All and the text filter empty.
+    /// Clear Filters of the empty list: the starting state of the menu (All checked, Show Done off)
+    /// and an empty text filter.
     mutating func clearFilters() {
-        statusFilter = .all
+        selectAll()
+        showDone = false
         textFilter = ""
     }
 
@@ -78,8 +89,9 @@ struct TicketListState: Codable, Hashable {
         passesStatusFilter(ticket) && passesTextFilter(ticket)
     }
 
+    /// A done ticket passes while All and Show Done are checked; another ticket while its status is on.
     func passesStatusFilter(_ ticket: Ticket) -> Bool {
-        statusFilter.status.map { $0 == ticket.status } ?? true
+        ticket.status == .done ? isAll && showDone : statuses.contains(ticket.status)
     }
 
     /// A ticket matches when every whitespace-separated term appears in its id, title or
@@ -148,6 +160,31 @@ struct TicketListState: Codable, Hashable {
         case .review: return 2
         case .done: return 3
         }
+    }
+
+    // MARK: Coding
+
+    enum CodingKeys: String, CodingKey {
+        case statuses, showDone, textFilter, sortColumn, sortAscending
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        statuses = Set(try c.decodeIfPresent([TicketStatus].self, forKey: .statuses) ?? Self.filterStatuses)
+        showDone = try c.decodeIfPresent(Bool.self, forKey: .showDone) ?? false
+        textFilter = try c.decodeIfPresent(String.self, forKey: .textFilter) ?? ""
+        sortColumn = try c.decodeIfPresent(SortColumn.self, forKey: .sortColumn) ?? .id
+        sortAscending = try c.decodeIfPresent(Bool.self, forKey: .sortAscending) ?? false
+    }
+
+    // The checked statuses are encoded in menu order so that the JSON is stable.
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(Self.filterStatuses.filter(statuses.contains), forKey: .statuses)
+        try c.encode(showDone, forKey: .showDone)
+        try c.encode(textFilter, forKey: .textFilter)
+        try c.encode(sortColumn, forKey: .sortColumn)
+        try c.encode(sortAscending, forKey: .sortAscending)
     }
 }
 

@@ -198,7 +198,8 @@ final class ChatMenuAnchor {
     }
 }
 
-private struct ChatMenuAnchorView: NSViewRepresentable {
+/// The view of a `ChatMenuAnchor`, put in the background of the button the menu opens under.
+struct ChatMenuAnchorView: NSViewRepresentable {
     let anchor: ChatMenuAnchor
 
     func makeNSView(context: Context) -> FlippedView {

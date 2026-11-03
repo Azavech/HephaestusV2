@@ -37,8 +37,8 @@ struct TicketStatusTests {
 
     @Test("In Review sits between In Progress and Done in the filter and the menus, with an orange capsule")
     func inReview() {
-        #expect(TicketListState.StatusFilter.allCases.map(\.title) == ["All", "To Do", "In Progress", "In Review", "Done"])
-        #expect(TicketListState.StatusFilter.review.status == .review)
+        // The Filter by Status menu lists All, these statuses, then Show Done.
+        #expect(TicketListState.filterStatuses.map(\.label) == ["To Do", "In Progress", "In Review"])
         // The status pop-up of the ticket detail and the Set Status ▸ menus list TicketStatus.allCases.
         #expect(TicketStatus.allCases.map(\.label) == ["To Do", "In Progress", "In Review", "Done"])
         #expect(TicketStatus.allCases.map { StatusCapsule.color(of: $0) } == [.gray, .blue, .orange, .green])

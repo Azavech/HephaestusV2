@@ -47,32 +47,20 @@ struct TicketListView: View {
 
     // MARK: Header
 
+    /// One row at every width: the text filter takes the width the buttons leave.
     private var header: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                statusFilter
-                filterField
-                    .frame(minWidth: 90)
-                bundleButton
-                newTicketButton
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                statusFilter
-                    .fillingWidth()
-                HStack(spacing: 8) {
-                    filterField
-                    bundleButton
-                    newTicketButton
-                }
-            }
+        HStack(spacing: 8) {
+            statusFilterButton
+            filterField
+            bundleButton
+            newTicketButton
         }
     }
 
-    private var statusFilter: StatusFilterControl {
-        StatusFilterControl(selection: Binding(
-            get: { listState.statusFilter },
-            set: { value in window.updateViewState(of: projectID) { $0.ticketList.statusFilter = value } }
-        ))
+    private var statusFilterButton: FilterByStatusButton {
+        FilterByStatusButton(state: listState) { change in
+            window.updateViewState(of: projectID) { change(&$0.ticketList) }
+        }
     }
 
     private var filterField: some View {
@@ -247,64 +235,48 @@ struct TicketListView: View {
     }
 }
 
-/// The status filter: a small segmented control whose segments are as wide as their titles
-/// (211 pt), so that it fits the list at its 240 pt minimum width. SwiftUI's segmented picker
-/// gives every segment the width of the widest (318 pt), which made the list's content wider than
-/// its column. With `fillsWidth` it takes the width it is offered, never less than its natural
-/// width, and its segments share the extra space.
-struct StatusFilterControl: NSViewRepresentable {
-    @Binding var selection: TicketListState.StatusFilter
-    var fillsWidth = false
+/// The Filter by Status button: an icon without menu arrow that opens the menu All, To Do, In
+/// Progress, In Review, then Show Done, each item a toggle with a checkmark when on. Its symbol is
+/// filled and accent-colored while the menu's choice differs from the starting state.
+struct FilterByStatusButton: View {
+    let state: TicketListState
+    /// Applies a change of the menu to the window's `ticketList`.
+    let change: ((inout TicketListState) -> Void) -> Void
+    @State private var anchor = ChatMenuAnchor()
 
-    private static let filters = TicketListState.StatusFilter.allCases
-
-    /// The same control, taking the full width it is offered.
-    func fillingWidth() -> StatusFilterControl {
-        var control = self
-        control.fillsWidth = true
-        return control
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
-
-    func makeNSView(context: Context) -> NSSegmentedControl {
-        let control = NSSegmentedControl(labels: Self.filters.map(\.title), trackingMode: .selectOne,
-                                         target: context.coordinator, action: #selector(Coordinator.changed(_:)))
-        control.controlSize = .small
-        control.font = .systemFont(ofSize: NSFont.systemFontSize(for: .small))
-        control.setAccessibilityLabel("Status")
-        return control
-    }
-
-    func updateNSView(_ control: NSSegmentedControl, context: Context) {
-        context.coordinator.parent = self
-        control.segmentDistribution = fillsWidth ? .fill : .fit
-        let index = Self.filters.firstIndex(of: selection) ?? 0
-        if control.selectedSegment != index {
-            control.selectedSegment = index
+    var body: some View {
+        // Borderless, as the other buttons of the header.
+        Button {
+            anchor.popUp(menu())
+        } label: {
+            if state.isFiltering {
+                Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                    .foregroundStyle(Color.accentColor)
+            } else {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+            }
         }
+        .buttonStyle(.borderless)
+        .background(ChatMenuAnchorView(anchor: anchor))
+        .help("Filter by Status")
+        .accessibilityLabel("Filter by Status")
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSSegmentedControl, context: Context) -> CGSize? {
-        let natural = nsView.intrinsicContentSize
-        guard fillsWidth, let width = proposal.width, width.isFinite else { return natural }
-        return CGSize(width: max(width, natural.width), height: natural.height)
-    }
-
-    @MainActor
-    final class Coordinator: NSObject {
-        var parent: StatusFilterControl
-
-        init(_ parent: StatusFilterControl) {
-            self.parent = parent
+    /// The menu, built from the state at the click. Show Done is disabled while All is not checked.
+    private func menu() -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        menu.addItem(ChatMenuItem(title: "All", checked: state.isAll) { change { $0.selectAll() } })
+        for status in TicketListState.filterStatuses {
+            menu.addItem(ChatMenuItem(title: status.label, checked: state.statuses.contains(status)) {
+                change { $0.toggle(status) }
+            })
         }
-
-        @objc func changed(_ sender: NSSegmentedControl) {
-            guard StatusFilterControl.filters.indices.contains(sender.selectedSegment) else { return }
-            parent.selection = StatusFilterControl.filters[sender.selectedSegment]
-        }
+        menu.addItem(.separator())
+        let showDone = ChatMenuItem(title: "Show Done", checked: state.showDone) { change { $0.showDone.toggle() } }
+        showDone.isEnabled = state.isAll
+        menu.addItem(showDone)
+        return menu
     }
 }
 
