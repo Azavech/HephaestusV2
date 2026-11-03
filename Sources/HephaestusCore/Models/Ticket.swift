@@ -17,6 +17,9 @@ public struct Ticket: Codable, Sendable, Hashable, Identifiable {
     public var chatIDs: [ChatID]
     /// The links this ticket declares (docs/tickets.md › Ticket links).
     public var links: [TicketLink]
+    /// The creation, the status changes and the renames, oldest first (docs/tickets.md › Ticket
+    /// history). Never empty: a file without a history reads with a creation entry.
+    public var history: [TicketHistoryEntry]
     /// Runtime only: the links that the other tickets of the project declare to this one, as the
     /// engine computes them. Never written to the file and ignored when read from it; always
     /// present in the engine API.
@@ -26,7 +29,8 @@ public struct Ticket: Codable, Sendable, Hashable, Identifiable {
     public init(schema: Int = 1, id: TicketID, title: String, status: TicketStatus = .todo, created: Date,
                 updated: Date? = nil, createdBy: Author = .user, description: String = "",
                 attachments: [Attachment] = [], comments: [Comment] = [], chatIDs: [ChatID] = [],
-                links: [TicketLink] = [], inverseLinks: [TicketInverseLink] = [], unknownKeys: [String: JSONValue] = [:]) {
+                links: [TicketLink] = [], history: [TicketHistoryEntry]? = nil, inverseLinks: [TicketInverseLink] = [],
+                unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
         self.id = id
         self.title = title
@@ -39,13 +43,14 @@ public struct Ticket: Codable, Sendable, Hashable, Identifiable {
         self.comments = comments
         self.chatIDs = chatIDs
         self.links = links
+        self.history = Self.history(history ?? [], created: created, createdBy: createdBy)
         self.inverseLinks = inverseLinks
         self.unknownKeys = unknownKeys
     }
 
     static let fileKeys: Set<String> = [
         "schema", "id", "title", "status", "created", "updated", "createdBy", "description",
-        "attachments", "comments", "chats", "links",
+        "attachments", "comments", "chats", "links", "history",
     ]
     static let runtimeKeys: Set<String> = ["inverseLinks"]
     static let knownKeys = fileKeys.union(runtimeKeys)
@@ -65,6 +70,7 @@ public struct Ticket: Codable, Sendable, Hashable, Identifiable {
         comments = try c.value("comments", default: [])
         chatIDs = try c.value("chats", default: [])
         links = try c.value("links", default: [])
+        history = Self.history(try c.value("history", default: []), created: created, createdBy: createdBy)
         inverseLinks = c.isYAML ? [] : try c.value("inverseLinks", default: [])
         unknownKeys = try c.unknownKeys(known: Self.knownKeys)
     }
@@ -83,10 +89,17 @@ public struct Ticket: Codable, Sendable, Hashable, Identifiable {
         try c.encode(comments, "comments")
         try c.encode(chatIDs, "chats")
         try c.encode(links, "links")
+        try c.encode(history, "history")
         if !c.isYAML {
             try c.encode(inverseLinks, "inverseLinks")
         }
         try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
+    }
+
+    /// A history that is absent or empty is one creation entry made from `created` and
+    /// `createdBy` (docs/data-model.md › Ticket file).
+    static func history(_ entries: [TicketHistoryEntry], created: Date, createdBy: Author) -> [TicketHistoryEntry] {
+        entries.isEmpty ? [.creation(created: created, createdBy: createdBy)] : entries
     }
 
     /// The project identifier part of `id`.

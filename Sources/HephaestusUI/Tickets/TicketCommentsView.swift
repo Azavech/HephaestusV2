@@ -4,7 +4,7 @@ import AppKit
 import HephaestusCore
 import SwiftUI
 
-/// The comments, oldest first, then the composer.
+/// The comments mixed with the history entries, oldest first, then the composer.
 struct TicketCommentsView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -18,8 +18,13 @@ struct TicketCommentsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ForEach(ticket.comments.sorted { $0.created < $1.created }) { comment in
-                commentRow(comment)
+            ForEach(TicketTimeline.items(of: ticket)) { item in
+                switch item {
+                case .comment(let comment):
+                    commentRow(comment)
+                case .entry(_, let entry):
+                    TicketHistoryLine(window: window, workspace: workspace, entry: entry)
+                }
             }
             CommentComposer(window: window, workspace: workspace, projectID: projectID, ticketID: ticket.id)
         }

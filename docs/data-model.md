@@ -313,24 +313,25 @@ A new chat takes the settings given to the call that creates it, else the projec
 
 ## Ticket file
 
-`.hephaestus/ticket/<TICKET-ID>.yml` holds one ticket with its comments, attachments, linked chats and the links it declares to other tickets. Swift type `Ticket`.
+`.hephaestus/ticket/<TICKET-ID>.yml` holds one ticket with its comments, attachments, linked chats, the links it declares to other tickets and its history. Swift type `Ticket`.
 
-| Swift name   | Key            | Type                  | Required | Default   | Rules                                                                                                                                                                                                                                                                                                                                                 |
-| ------------ | -------------- | --------------------- | -------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| schema       | `schema`       | `Int`                 | no       | `1`       | See [Keys and values](#keys-and-values).                                                                                                                                                                                                                                                                                                              |
-| id           | `id`           | `TicketID`            | yes      | —         | Ticket id ([Ids](#ids)). Equals the file name without `.yml`; its identifier part equals the project's `id`.                                                                                                                                                                                                                                          |
-| title        | `title`        | `String`              | yes      | —         | Single line, 1–200 characters. Default chosen at design time. Provisional titles and naming with Haiku: [Tickets](tickets.md).                                                                                                                                                                                                                        |
-| status       | `status`       | `TicketStatus`        | no       | `todo`    | Who may set which status: [Tickets](tickets.md).                                                                                                                                                                                                                                                                                                      |
-| created      | `created`      | `Date`                | yes      | —         | Creation time. Never changed.                                                                                                                                                                                                                                                                                                                         |
-| updated      | `updated`      | `Date`                | no       | `created` | Set to the current time by every engine write of the file. Default chosen at design time.                                                                                                                                                                                                                                                             |
-| createdBy    | `createdBy`    | `Author`              | no       | `user`    | Who created the ticket.                                                                                                                                                                                                                                                                                                                               |
-| description  | `description`  | `String`              | no       | `""`      | Markdown. Not empty after trimming when written through the API; a file may hold an empty description. Default chosen at design time. Tickets created by Claude follow the description template ([Tickets](tickets.md)).                                                                                                                              |
-| attachments  | `attachments`  | `[Attachment]`        | no       | `[]`      | Ticket-level files, for example the feedback screenshot, in the order they were added ([Attachments](#attachments)).                                                                                                                                                                                                                                  |
-| comments     | `comments`     | `[Comment]`           | no       | `[]`      | Comments, oldest first. Comment `id`s are unique within the ticket.                                                                                                                                                                                                                                                                                   |
-| chatIDs      | `chats`        | `[ChatID]`            | no       | `[]`      | Chats linked to this ticket, in the order they were linked, without duplicates: its chats of kind `ticket` and the feedback chat that created it ([Chat metadata file](#chat-metadata-file)).                                                                                                                                                         |
-| links        | `links`        | `[TicketLink]`        | no       | `[]`      | Links this ticket declares to other tickets of the same project, in the order given ([Ticket links](tickets.md#ticket-links)). Only the declaring ticket stores a link; the other ticket gets its inverse in `inverseLinks`. Deleting a ticket removes the links to it from every ticket of the project; a link whose ticket file is missing is kept. |
-| inverseLinks | `inverseLinks` | `[TicketInverseLink]` | —        | `[]`      | Runtime only: the links that the other tickets of the project declare to this ticket, computed by the engine from their `links`, in ascending ticket number of the declaring ticket. Never written to the file and ignored when read from it; always present in the engine API.                                                                       |
-| unknownKeys  | —              | `[String: JSONValue]` | —        | `[:]`     | [Unknown keys](#unknown-keys).                                                                                                                                                                                                                                                                                                                        |
+| Swift name   | Key            | Type                   | Required | Default          | Rules                                                                                                                                                                                                                                                                                                                                                          |
+| ------------ | -------------- | ---------------------- | -------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| schema       | `schema`       | `Int`                  | no       | `1`              | See [Keys and values](#keys-and-values).                                                                                                                                                                                                                                                                                                                       |
+| id           | `id`           | `TicketID`             | yes      | —                | Ticket id ([Ids](#ids)). Equals the file name without `.yml`; its identifier part equals the project's `id`.                                                                                                                                                                                                                                                   |
+| title        | `title`        | `String`               | yes      | —                | Single line, 1–200 characters. Default chosen at design time. Provisional titles and naming with Haiku: [Tickets](tickets.md).                                                                                                                                                                                                                                 |
+| status       | `status`       | `TicketStatus`         | no       | `todo`           | Who may set which status: [Tickets](tickets.md).                                                                                                                                                                                                                                                                                                               |
+| created      | `created`      | `Date`                 | yes      | —                | Creation time. Never changed.                                                                                                                                                                                                                                                                                                                                  |
+| updated      | `updated`      | `Date`                 | no       | `created`        | Set to the current time by every engine write of the file. Default chosen at design time.                                                                                                                                                                                                                                                                      |
+| createdBy    | `createdBy`    | `Author`               | no       | `user`           | Who created the ticket.                                                                                                                                                                                                                                                                                                                                        |
+| description  | `description`  | `String`               | no       | `""`             | Markdown. Not empty after trimming when written through the API; a file may hold an empty description. Default chosen at design time. Tickets created by Claude follow the description template ([Tickets](tickets.md)).                                                                                                                                       |
+| attachments  | `attachments`  | `[Attachment]`         | no       | `[]`             | Ticket-level files, for example the feedback screenshot, in the order they were added ([Attachments](#attachments)).                                                                                                                                                                                                                                           |
+| comments     | `comments`     | `[Comment]`            | no       | `[]`             | Comments, oldest first. Comment `id`s are unique within the ticket.                                                                                                                                                                                                                                                                                            |
+| chatIDs      | `chats`        | `[ChatID]`             | no       | `[]`             | Chats linked to this ticket, in the order they were linked, without duplicates: its chats of kind `ticket` and the feedback chat that created it ([Chat metadata file](#chat-metadata-file)).                                                                                                                                                                  |
+| links        | `links`        | `[TicketLink]`         | no       | `[]`             | Links this ticket declares to other tickets of the same project, in the order given ([Ticket links](tickets.md#ticket-links)). Only the declaring ticket stores a link; the other ticket gets its inverse in `inverseLinks`. Deleting a ticket removes the links to it from every ticket of the project; a link whose ticket file is missing is kept.          |
+| history      | `history`      | `[TicketHistoryEntry]` | no       | a creation entry | The ticket's history, oldest first: its creation, then each status change and each rename made through the engine ([Ticket history](tickets.md#ticket-history), [Ticket history entry](#ticket-history-entry)). When the key is absent, `null` or empty, the ticket reads with one creation entry made from `created` and `createdBy`, without device or chat. |
+| inverseLinks | `inverseLinks` | `[TicketInverseLink]`  | —        | `[]`             | Runtime only: the links that the other tickets of the project declare to this ticket, computed by the engine from their `links`, in ascending ticket number of the declaring ticket. Never written to the file and ignored when read from it; always present in the engine API.                                                                                |
+| unknownKeys  | —              | `[String: JSONValue]`  | —        | `[:]`            | [Unknown keys](#unknown-keys).                                                                                                                                                                                                                                                                                                                                 |
 
 `TicketStatus`:
 
@@ -393,9 +394,43 @@ Swift type `TicketInverseLink`, one element of the runtime key `inverseLinks`: a
 | `blocks`  | `.blocks`  | Blocks   |
 | `related` | `.related` | Related  |
 
+### Ticket history entry
+
+Swift type `TicketHistoryEntry`, one element of the key `history` of a ticket file: the creation of the ticket, a status change or a rename, with who made it and when ([Ticket history](tickets.md#ticket-history)).
+
+| Swift name  | Key      | Type                  | Required | Default | Rules                                                                                                                                                                                                                                                |
+| ----------- | -------- | --------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| kind        | `kind`   | `TicketHistoryKind`   | yes      | —       | What the entry records.                                                                                                                                                                                                                              |
+| date        | `date`   | `Date`                | yes      | —       | Time of the change.                                                                                                                                                                                                                                  |
+| from        | `from`   | `String?`             | no       | `null`  | The value before the change: a `TicketStatus` value for `status`, the previous title for `title`; `null` for `created`. Required for `status` and `title`.                                                                                           |
+| to          | `to`     | `String`              | yes      | —       | The value after the change: the status the ticket was created with, `todo`, for `created`; the new `TicketStatus` value for `status`; the new title for `title`.                                                                                     |
+| author      | `author` | `TicketHistoryAuthor` | yes      | —       | Who made the change.                                                                                                                                                                                                                                 |
+| device      | `device` | `String?`             | no       | `null`  | For the author `user`: the name of the user's device at the time of the change. `null` for the other authors, and in the creation entry of a file without history.                                                                                   |
+| chat        | `chat`   | `String?`             | no       | `null`  | For the author `claude`: the id of the chat whose Claude made the change, an uppercase UUID, or `external` for the external token ([Actor](engine-api.md#actor)). `null` for the other authors, and in the creation entry of a file without history. |
+| unknownKeys | —        | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                                                                                                                                                       |
+
+- A `status` entry whose `from` or `to` is not a `TicketStatus` value, a `created` entry whose `to` is not one, and a `status` or `title` entry without `from`, make the file invalid.
+- The engine only appends entries: it never changes or removes one.
+
+`TicketHistoryKind`:
+
+| Value     | Swift case | Meaning                                                         |
+| --------- | ---------- | --------------------------------------------------------------- |
+| `created` | `.created` | The ticket was created.                                         |
+| `status`  | `.status`  | The status changed from `from` to `to`.                         |
+| `title`   | `.title`   | The ticket was renamed from the title `from` to the title `to`. |
+
+`TicketHistoryAuthor`:
+
+| Value       | Swift case   | Meaning                                                             |
+| ----------- | ------------ | ------------------------------------------------------------------- |
+| `user`      | `.user`      | A person using HephaestusV2 on any device, local or remote.         |
+| `claude`    | `.claude`    | Claude, through the MCP server, from a chat or an external session. |
+| `automatic` | `.automatic` | The engine itself: Haiku's naming of the ticket.                    |
+
 ### Ticket file examples
 
-A ticket created by Claude from a feedback chat, with a ticket attachment, a comment by the user, a comment by Claude with an attachment, two linked chats and a Related link to HEPH-13:
+A ticket created by Claude from a feedback chat, with a ticket attachment, a comment by the user, a comment by Claude with an attachment, two linked chats, a Related link to HEPH-13, and a history: its creation, Haiku's naming, a rename by the user on the device `Studio` and the status change made by Claude in its ticket chat:
 
 ```yaml
 # .hephaestus/ticket/HEPH-12.yml
@@ -471,9 +506,38 @@ chats:
 links:
 - kind: related
   ticket: HEPH-13
+history:
+- kind: created
+  date: 2026-10-31T12:00:00Z
+  from: null
+  to: todo
+  author: claude
+  device: null
+  chat: B5A4C3D2-E1F0-4A9B-8C7D-6E5F4A3B2C1D
+- kind: title
+  date: 2026-10-31T12:00:03Z
+  from: A locked web tab can be closed with Command-W.
+  to: Command-W closes locked web tabs
+  author: automatic
+  device: null
+  chat: null
+- kind: title
+  date: 2026-10-31T12:05:00Z
+  from: Command-W closes locked web tabs
+  to: Locked web tabs close with Command-W
+  author: user
+  device: Studio
+  chat: null
+- kind: status
+  date: 2026-10-31T12:15:00Z
+  from: todo
+  to: in_progress
+  author: claude
+  device: null
+  chat: C0FFEE00-1234-4ABC-9DEF-0123456789AB
 ```
 
-A minimal ticket file; it reads as a ticket created by the user, status `todo`, empty description:
+A minimal ticket file; it reads as a ticket created by the user, status `todo`, empty description, with one creation entry made from `created`:
 
 ```yaml
 # .hephaestus/ticket/HEPH-13.yml
@@ -1389,3 +1453,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R121: The items open in the app reach the inspector chat's Claude as context outside the message text, and the user's message shows them as chips.
 - R124: A ticket can depend on other tickets of its project or be related to them; the other ticket shows the inverse link, Blocks or Related; the user and Claude add and remove links; the ticket list marks a ticket that depends on a ticket that is not done, and Implement asks for confirmation while one is not done.
 - R126: The engine sets a bundle to done when every ticket of the bundle is done, whoever changed the last ticket, and sets a done bundle back to in progress when one of its tickets is not done.
+- R127: A ticket keeps the history of its creation, status changes and renames, each with its author and date, and the Details tab shows it among the comments.

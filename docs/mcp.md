@@ -752,13 +752,13 @@ Input schema:
 
 - **Engine call:** tickets.get with `ticketID`, then projects.get with the project identifier of the ticket's id, for the project's `rootPath`.
 - The MCP layer replaces the `path` of every attachment of the ticket and of its comments, relative to `.hephaestus/` in the ticket file ([Data model](data-model.md)), with the absolute path of the file on the main device, `<project root>/.hephaestus/<path>`: the form of `{{ticket}}` ([Rendered blocks](chats.md#rendered-blocks)). Claude reads the file at that path with its own file tools and never searches the disk for it ([Workflow](workflow.md#app-data-through-mcp)).
-- **Result:** the `Ticket` with these absolute attachment paths, the links it declares, `links`, and those other tickets declare to it, `inverseLinks` ([Ticket links](tickets.md#ticket-links)), encoded with `EngineJSON.encoder()`.
+- **Result:** the `Ticket` with these absolute attachment paths, the links it declares, `links`, and those other tickets declare to it, `inverseLinks` ([Ticket links](tickets.md#ticket-links)), and its history, `history`: its creation, status changes and renames with their authors and dates ([Ticket history](tickets.md#ticket-history)), encoded with `EngineJSON.encoder()`.
 - **Errors:** Those of tickets.get: malformed id (`invalid`), no such ticket (`notFound`). Those of projects.get when the project is removed between the two calls: no project with this identifier (`notFound`).
 
 Description:
 
 ```text
-Get a ticket: title, status, dates, creator, description, attachments, comments, chat ids and links. links are the links the ticket declares (dependsOn, related); inverseLinks are the links other tickets declare to it (blocks, related). Attachment paths are absolute paths on this Mac.
+Get a ticket: title, status, dates, creator, description, attachments, comments, chat ids, links and history. links are the links the ticket declares (dependsOn, related); inverseLinks are the links other tickets declare to it (blocks, related). history lists its creation, status changes and renames with their authors and dates. Attachment paths are absolute paths on this Mac.
 ```
 
 Input schema:
@@ -2671,3 +2671,4 @@ Unauthorized: missing or invalid bearer token.
 - R121: The items open in the app reach the inspector chat's Claude as context outside the message text, and the user's message shows them as chips.
 - R123: Implement, Implement All and the feedback sheet let the user choose the model, the effort and the permission mode of the chat they start; the ticket chats that a bundle chat starts take its settings.
 - R124: A ticket can depend on other tickets of its project or be related to them; the other ticket shows the inverse link, Blocks or Related; the user and Claude add and remove links; the ticket list marks a ticket that depends on a ticket that is not done, and Implement asks for confirmation while one is not done.
+- R127: A ticket keeps the history of its creation, status changes and renames, each with its author and date, and the Details tab shows it among the comments.

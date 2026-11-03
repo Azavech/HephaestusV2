@@ -35,7 +35,7 @@ struct ModelCodingTests {
         let keys = encoded.components(separatedBy: "\n").filter { !$0.hasPrefix(" ") && !$0.hasPrefix("-") && $0.contains(":") }
             .map { String($0.prefix { $0 != ":" }) }
         #expect(keys == ["schema", "id", "title", "status", "created", "updated", "createdBy", "description",
-                         "attachments", "comments", "chats", "links", "estimate", "labels"])
+                         "attachments", "comments", "chats", "links", "history", "estimate", "labels"])
     }
 
     @Test("A mutation keeps the unknown keys of nested types")

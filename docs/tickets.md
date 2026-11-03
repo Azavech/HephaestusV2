@@ -1,6 +1,6 @@
 # Tickets and bundles
 
-Tickets are the work items of a project. Bundles group tickets of one project so that Claude implements them together: a bundle chat starts one ticket chat per ticket. This document specifies their behaviour as the user sees it: identifiers, fields, the description template, the status rules, naming, ticket links, the Tickets and Bundles sections of the main window, comments, attachments, the image viewer, ticket chats with Implement, and bundle chats with Implement All. File formats are in [Data model](data-model.md), engine methods and events in [Engine API](engine-api.md), MCP tools in [MCP](mcp.md), and the rules Claude follows when it writes or implements tickets in [Claude workflow](workflow.md). Ticket and bundle data lives in the project's `.hephaestus/` folder on the main device. Every change reaches every window and remote device as soon as it is made, whether it comes from a window, a remote device, Claude or another program.
+Tickets are the work items of a project. Bundles group tickets of one project so that Claude implements them together: a bundle chat starts one ticket chat per ticket. This document specifies their behaviour as the user sees it: identifiers, fields, the description template, the status rules, naming, ticket links, the Tickets and Bundles sections of the main window, comments, the ticket history, attachments, the image viewer, ticket chats with Implement, and bundle chats with Implement All. File formats are in [Data model](data-model.md), engine methods and events in [Engine API](engine-api.md), MCP tools in [MCP](mcp.md), and the rules Claude follows when it writes or implements tickets in [Claude workflow](workflow.md). Ticket and bundle data lives in the project's `.hephaestus/` folder on the main device. Every change reaches every window and remote device as soon as it is made, whether it comes from a window, a remote device, Claude or another program.
 
 ## Identifiers
 
@@ -102,6 +102,7 @@ Status changes requested by Claude:
 - The user, from any device, may make every change in this table, including leaving `done`.
 - The status changes only through `tickets.setStatus` (MCP tool `set_ticket_status`); `tickets.update` has no status parameter. The engine applies the rules for every caller: local windows, remote devices, chats and external Claude sessions.
 - Setting the current status again succeeds, returns the ticket, writes nothing and emits no event. Default chosen at design time.
+- Every status change made with `tickets.setStatus`, by any caller, adds a status entry to the ticket's history, with the previous status, the new status and the actor of the call as its author ([Ticket history](#ticket-history)). Setting the current status again adds no entry. A status changed in the ticket file by another program adds none.
 - The engine does not check the tests before Claude sets `done`; only the prompt carries that rule ([Claude workflow](workflow.md#ticket-status)).
 - Any change by Claude to a `done` ticket, setting `done` again included, fails with `forbidden` and `<ID> is done; only the user can change its status.`. Default chosen at design time.
 - No ticket status is set automatically: Implement and Implement All start a chat, and Claude sets `in_progress` itself as the first step of its workflow ([Claude workflow](workflow.md#implementation-workflow)). Implement All sets only the bundle's status ([Bundle status rules](#bundle-status-rules)).
@@ -160,8 +161,10 @@ Status changes requested by Claude:
 - Haiku naming starts once the ticket file is written. It uses the call and the `naming-ticket.md` prompt of [Chats](chats.md), with the description as input and a result of at most 70 characters.
 - `tickets.create` as actor `claude` (`create_ticket`) returns the ticket once its naming has ended, as stored: with Haiku's title, or with the provisional title when it stays (below). As actor `user` (the New Ticket sheet), it returns the ticket at once with its provisional title, and the naming goes on in the background.
 - When Haiku answers, the engine stores its title only if the ticket still exists and still has the provisional title, then emits `ticket.updated` with actor `system`. A title changed in the meantime is never overwritten. Default chosen at design time.
+- Storing Haiku's title adds a rename entry to the ticket's history, from the provisional title to Haiku's title, with the author `automatic` ([Ticket history](#ticket-history)).
 - When the call fails, times out after 30 s, gives an empty title or the Claude CLI is unavailable, the provisional title stays. The engine does not retry. Default chosen at design time.
 - Title edits (by the user in the detail view, or by Claude with `update_ticket`) are trimmed and must be 1 to 200 characters without line breaks; otherwise they fail with `invalid` and `Title must be 1 to 200 characters on one line.`. Default chosen at design time.
+- A title edit that changes the title adds a rename entry to the ticket's history, from the previous title to the new one, with the actor of the call as its author ([Ticket history](#ticket-history)). Saving a title equal to the stored one after trimming changes nothing and adds no entry. A title changed in the ticket file by another program adds none.
 - Bundle titles follow the same rules, with the differences listed in [Bundle rules](#bundle-rules).
 
 ## Creating tickets
@@ -200,7 +203,7 @@ The placeholder, font and keys in this table are defaults. Default chosen at des
 1. Find the project. Validate the title when given, the description (with the template when the actor is Claude), the attachments and the links ([Link rules](#link-rules)). A failure stops here and uses no number.
 2. Allocate the number ([Identifiers](#identifiers)).
 3. Copy the attachments into `.hephaestus/attachments/<ID>/`.
-4. Write `.hephaestus/ticket/<ID>.yml` atomically with `status: todo`, `created` and `updated` set to now, `createdBy` from the actor, `comments: []`, `chats: []` (`[<chat id>]` for the first ticket a feedback chat creates, [Feedback](feedback.md#resulting-ticket)), `links` as given, and the provisional title when no title was given.
+4. Write `.hephaestus/ticket/<ID>.yml` atomically with `status: todo`, `created` and `updated` set to now, `createdBy` from the actor, `comments: []`, `chats: []` (`[<chat id>]` for the first ticket a feedback chat creates, [Feedback](feedback.md#resulting-ticket)), `links` as given, the provisional title when no title was given, and a `history` holding the creation entry, whose author is the actor ([Ticket history](#ticket-history)).
 5. Emit `project.updated` (the counter), `ticket.updated`, `projects.changed` because the ticket counts changed, `chat.updated` when a feedback chat was linked, and `ticket.updated` for each ticket the new ticket links to, whose `inverseLinks` gained it ([Engine API](engine-api.md#ticketscreate)).
 6. Start Haiku naming when no title was given.
 7. Return the ticket: at once for actor `user`; for actor `claude`, once the naming has ended, as stored.
@@ -311,7 +314,7 @@ The Details tab shows, from top to bottom:
 
 1. Description. It is rendered with the shared Markdown renderer ([Documentation viewer](documentation-viewer.md)). A line outside a fenced code block that is a heading line of [Template validation](#template-validation) step 2 (for example `Problem`, `## Current Behavior` or `Expected:`) is shown as a level-3 heading of the heading's words as written, without its `#` characters and its colon, and the lines after it start a new paragraph, so that each template heading stands above its section text. Only the display changes: the stored description keeps the user's text. The Edit button replaces it with a plain-text editor (SF Mono 13) with the buttons Cancel (Esc) and Save (⌘Return); Save calls `tickets.update` with the description. Default chosen at design time.
 2. Attachments of the ticket ([Attachments](#attachments)).
-3. Comments ([Comments](#comments)).
+3. Comments, mixed with the entries of the ticket's history in date order ([Comments](#comments), [Ticket history](#ticket-history)), then the comment composer.
 
 - In each group of the Links line the ids are in ascending ticket number. Related shows the Related links the ticket declares and those other tickets declare to it, and only the declared ones have a remove button. Default chosen at design time.
 - The id of a declared link whose ticket does not exist is followed by an orange `exclamationmark.triangle.fill` symbol with the tooltip `Ticket HEPH-15 was not found.`, naming that id. A click on the id shows `Ticket <id> was not found.`, as for every id of a ticket that does not exist.
@@ -342,7 +345,7 @@ The starting kind, the layout and the keys are defaults. Default chosen at desig
 
 ## Comments
 
-- Comments are listed oldest first.
+- Comments are listed oldest first, mixed with the entries of the ticket's history ([Ticket history](#ticket-history)).
 - Each comment shows its author (`You` or `Claude`), its creation date, `(edited)` when `updated` is set (with the edit date as tooltip), its text rendered as Markdown, with its ticket and bundle ids as links ([Ticket detail](#ticket-detail)), and then its attachments ([Showing attachments](#showing-attachments)). Default chosen at design time.
 - Below the last comment is the composer: a multi-line editor that grows to 8 lines and then scrolls, with the placeholder `Add a comment…`; a paperclip button that opens an open panel for several files; and a Comment button (⌘Return). Return inserts a line break. Default chosen at design time.
 - Files and images dropped or pasted on the composer become pending attachments, shown as chips that can be removed before posting. Default chosen at design time.
@@ -355,6 +358,47 @@ The starting kind, the layout and the keys are defaults. Default chosen at desig
 - The user may edit and delete every comment, including Claude's. Default chosen at design time.
 - Claude adds, edits and deletes comments with `add_comment`, `update_comment` and `delete_comment`.
 - A comment needs text that is not empty after trimming, or at least one attachment. Otherwise `tickets.addComment` and `tickets.updateComment` fail with `invalid` and `A comment needs text or at least one attachment.`. Default chosen at design time.
+
+## Ticket history
+
+A ticket's history records its creation, each change of its status and each rename, with who made it and when. It is stored in the ticket file, in the key `history` ([Data model](data-model.md#ticket-history-entry)), so it reaches every window and remote device with the ticket's `ticket.updated` event, and `tickets.get` and `get_ticket` return it ([MCP](mcp.md#get_ticket)).
+
+| Entry         | Added by                                                                                                              | From → to                    |
+| ------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| Creation      | `tickets.create` ([Creation steps](#creation-steps))                                                                  | `todo`                       |
+| Status change | `tickets.setStatus` with a status other than the current one ([Status rules](#status-rules))                          | previous status → new status |
+| Rename        | `tickets.update` with a title other than the stored one, and Haiku's naming ([Titles and naming](#titles-and-naming)) | previous title → new title   |
+
+The author of an entry is the actor of the call that made the change ([Actor](engine-api.md#actor)):
+
+| Actor                          | Stored as                               | Shown as                 |
+| ------------------------------ | --------------------------------------- | ------------------------ |
+| A user, on any device          | `author: user`, `device: <device name>` | `You on <device name>`   |
+| Claude with a chat token       | `author: claude`, `chat: <chat id>`     | `Claude in <chat title>` |
+| Claude with the external token | `author: claude`, `chat: external`      | `Claude (external)`      |
+| The engine: Haiku's naming     | `author: automatic`                     | `Automatic`              |
+
+- `<device name>` is the name the engine gives the user's device when the change is made ([Request handling](remote.md#request-handling)): this device's name for a local window, the name the remote device sent for a remote window. A device renamed later keeps its old name in its entries. Default chosen at design time.
+- `<chat title>` is the chat's current title, taken from its chat metadata, so a renamed chat shows its new title. It is a link: a click opens the chat (the `chat` target, [UI](ui.md#resolving-a-target)). When the chat's metadata is not on the device, because the chat was deleted or the ticket comes from another clone, whose chat files are git-ignored, the author shows `Claude`, without a link.
+- Other calls of the engine itself, which only tests make, are stored with the author `automatic`. Default chosen at design time.
+- A ticket file without a history, written before the history existed or by another program, reads with one creation entry made from its `created` date and its `createdBy`, without device or chat: its author shows `You` or `Claude`. The changes made before are not shown.
+- A status or a title changed in the ticket file by another program (git, an editor) adds no entry. Entries written by the engine of another Mac arrive with the file.
+- Bundles have no history.
+
+In the Details tab, each entry is one line of secondary text in the font of the comment headers, shown among the comments ([Ticket detail](#ticket-detail)):
+
+| Entry         | Line                                                             |
+| ------------- | ---------------------------------------------------------------- |
+| Creation      | `Created as To Do · <author> · <date>`                           |
+| Status change | `<previous status> → <new status> · <author> · <date>`           |
+| Rename        | `Renamed “<previous title>” → “<new title>” · <author> · <date>` |
+
+- Statuses are shown with their UI labels, for example `In Progress → In Review · Claude in Implement HEPH-12 · 2 Nov 2026 at 18:52`.
+- `<date>` is the date of the entry in the format of the ticket list's Created column ([Ticket list](#ticket-list)).
+- A line too long for the width wraps.
+- Comments and entries are listed together, oldest first: a comment by its `created` date, an entry by its `date`. At equal dates, the creation entry comes first, then the comments, then the other entries.
+
+The secondary text, the font, the wrapping and the order at equal dates are defaults. Default chosen at design time.
 
 ## Attachments
 
@@ -575,7 +619,7 @@ The confirmation texts, and keeping the chats of a deleted ticket or bundle, are
 
 ## Live updates
 
-- Every change emits events to every client ([Engine API](engine-api.md)): `ticket.updated`, `ticket.deleted`, `bundle.updated`, `bundle.deleted`, and `projects.changed` when ticket counts change. A change of a ticket's links also emits `ticket.updated` for each other ticket whose `inverseLinks` changed ([Ticket links](#ticket-links)). Lists, details, badges, picker sheets and image viewers update without reloading, in every window and on every remote device.
+- Every change emits events to every client ([Engine API](engine-api.md)): `ticket.updated`, `ticket.deleted`, `bundle.updated`, `bundle.deleted`, and `projects.changed` when ticket counts change. A change of a ticket's links also emits `ticket.updated` for each other ticket whose `inverseLinks` changed ([Ticket links](#ticket-links)). A ticket's history is part of the ticket, so each new entry reaches every window and remote device with the `ticket.updated` of its change ([Ticket history](#ticket-history)). Lists, details, badges, picker sheets and image viewers update without reloading, in every window and on every remote device.
 - Text being edited is never replaced by an incoming change; the rest of the view updates. This covers the title fields, the description editor, the comment composer and the comment editor.
 - The engine watches `.hephaestus/ticket/` and `.hephaestus/bundle/` of every registered project. A file added or changed by another program (git or an editor) is read again and emitted as `ticket.updated` or `bundle.updated`; a ticket file whose `links` changed is followed by `ticket.updated` for each other ticket whose `inverseLinks` changed. A removed file emits `ticket.deleted` or `bundle.deleted`; a removed ticket file is followed by `ticket.updated` for each ticket it declared a link to. A file that cannot be decoded is reported in `engine.log`: a ticket or bundle already loaded keeps its last valid version and no event is sent ([Data model](data-model.md#processing-a-change)); one that never loaded is left out of the lists, and every method that names it (`tickets.get` included) fails with `internal` and `Ticket file <ID>.yml cannot be read: <reason>.`. A write made by the engine itself emits exactly one event. Default chosen at design time.
 - Unsaved description edits and comment drafts that are not empty count as unsaved editors for the automatic restart after an update ([Updater](updater.md)). Default chosen at design time.
@@ -685,3 +729,4 @@ Shortcuts of this document. All global shortcuts are listed in [UI](ui.md).
 - R124: A ticket can depend on other tickets of its project or be related to them; the other ticket shows the inverse link, Blocks or Related; the user and Claude add and remove links; the ticket list marks a ticket that depends on a ticket that is not done, and Implement asks for confirmation while one is not done.
 - R125: The chat lists have a filter button that hides closed chats: the chats closed by Claude and the chats whose ticket is done.
 - R126: The engine sets a bundle to done when every ticket of the bundle is done, whoever changed the last ticket, and sets a done bundle back to in progress when one of its tickets is not done.
+- R127: A ticket keeps the history of its creation, status changes and renames, each with its author and date, and the Details tab shows it among the comments.

@@ -249,7 +249,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "get_ticket",
             description: #"""
-            Get a ticket: title, status, dates, creator, description, attachments, comments, chat ids and links. links are the links the ticket declares (dependsOn, related); inverseLinks are the links other tickets declare to it (blocks, related). Attachment paths are absolute paths on this Mac.
+            Get a ticket: title, status, dates, creator, description, attachments, comments, chat ids, links and history. links are the links the ticket declares (dependsOn, related); inverseLinks are the links other tickets declare to it (blocks, related). history lists its creation, status changes and renames with their authors and dates. Attachment paths are absolute paths on this Mac.
             """#,
             inputSchema: schema(#"""
             {

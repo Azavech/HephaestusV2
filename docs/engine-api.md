@@ -519,9 +519,9 @@ Steps, as in [Tickets and bundles](tickets.md#creation-steps):
 1. Validate the params, `links` included; a failure uses no number.
 2. Allocate the number n ([Data model](data-model.md#id-allocation)): project.yml is written with the next number. The id is `<projectID>-<n>`.
 3. Copy the attachments into `.hephaestus/attachments/<ticketID>/`.
-4. Write `ticket/<ticketID>.yml`: `status` todo; `created` and `updated` now; `createdBy` claude for a claude actor and user otherwise; `title` the given title, or else the provisional title ([Tickets and bundles](tickets.md#titles-and-naming)); `comments` empty; `chats` empty, or `[chatID]` for a feedback link (step 5); `links` as given.
+4. Write `ticket/<ticketID>.yml`: `status` todo; `created` and `updated` now; `createdBy` claude for a claude actor and user otherwise; `title` the given title, or else the provisional title ([Tickets and bundles](tickets.md#titles-and-naming)); `comments` empty; `chats` empty, or `[chatID]` for a feedback link (step 5); `links` as given; `history` with one creation entry whose author is the actor ([Ticket history](tickets.md#ticket-history)).
 5. Feedback link: when the actor is claude with the chatID of a chat of kind feedback whose `ticket` is null, the ticket is written with that chat in its `chats`, then the chat's `ticket` is set to the new id. Only the first ticket a feedback chat creates is linked ([Feedback](feedback.md#resulting-ticket)).
-6. Without a given title, ask Haiku; its answer replaces the title only while the ticket still has its provisional title ([Tickets and bundles](tickets.md#titles-and-naming)).
+6. Without a given title, ask Haiku; its answer replaces the title only while the ticket still has its provisional title ([Tickets and bundles](tickets.md#titles-and-naming)), and adds a rename entry with the author `automatic` to the ticket's history in the same write.
 7. Return the ticket: for a user, at once, while the naming goes on in the background; for claude, once the naming has ended, as stored, with Haiku's title or the provisional title.
 
 When step 3 or 4 fails, the copied files are removed and the allocated number stays used. The status is always todo; a user picks another status afterwards with `tickets.setStatus`.
@@ -548,6 +548,8 @@ Swift type `TicketsUpdate` · actors: user, claude · result: [Ticket](data-mode
 
 Status, comments, attachments and chats change only through their own methods. A title set here is never replaced by a pending Haiku answer.
 
+A title other than the stored one, after trimming, adds a rename entry to the ticket's history, with the previous title, the new title and the actor of the call as its author, in the same write of the ticket file; the stored title adds none ([Ticket history](tickets.md#ticket-history)).
+
 | Error    | When                                                                                                                                                                  |
 | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | invalid  | ticketID is malformed; title is invalid; description is empty; a claude description does not follow the template; a link breaks a [link rule](tickets.md#link-rules). |
@@ -567,6 +569,7 @@ Swift type `TicketsSetStatus` · actors: user, claude · result: [Ticket](data-m
 - A user may set any status at any time.
 - Claude may set any status, and never changes the status of a ticket whose status is `done` ([Tickets and bundles](tickets.md#status-rules)). It sets `done` only when every test of the ticket has passed; the engine does not check this.
 - Setting the current status changes nothing.
+- Each change adds a status entry to the ticket's history, with the previous status, the new status and the actor of the call as its author, in the same write of the ticket file ([Ticket history](tickets.md#ticket-history)).
 - After writing the ticket file, the engine applies the [automatic bundle status rules](tickets.md#bundle-status-rules) to each bundle of the project that lists the ticket, in bundle number order, and writes each bundle whose status changes, whoever the actor is: the bundle becomes `done` when every ticket it lists is `done`, and a `done` bundle becomes `in_progress` when one of them is not.
 
 | Error     | When                                                                                      |
@@ -1931,6 +1934,8 @@ Who makes a call, and the `origin` of an event.
 | deviceID | String    | for user only   | Device of the user: this device for local windows, the remote device for remote windows. |
 | chatID   | String    | for claude only | Chat whose token made the call, or `external` for the external token.                    |
 
+The actor of `tickets.create`, `tickets.update` and `tickets.setStatus` becomes the author of the entries these calls add to a ticket's history: `user` with the name of its device, `claude` with its chatID, and `automatic` for `system` ([Ticket history](tickets.md#ticket-history)).
+
 ```json
 [
   {"actor": "user", "deviceID": "9F1C2A4E-0B7D-4E21-8C3A-5D6E7F809A1B"},
@@ -2852,3 +2857,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R123: Implement, Implement All and the feedback sheet let the user choose the model, the effort and the permission mode of the chat they start; the ticket chats that a bundle chat starts take its settings.
 - R124: A ticket can depend on other tickets of its project or be related to them; the other ticket shows the inverse link, Blocks or Related; the user and Claude add and remove links; the ticket list marks a ticket that depends on a ticket that is not done, and Implement asks for confirmation while one is not done.
 - R126: The engine sets a bundle to done when every ticket of the bundle is done, whoever changed the last ticket, and sets a done bundle back to in progress when one of its tickets is not done.
+- R127: A ticket keeps the history of its creation, status changes and renames, each with its author and date, and the Details tab shows it among the comments.

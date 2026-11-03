@@ -90,7 +90,8 @@ extension Engine {
         let provisional = TicketTemplate.provisionalTitle(for: description)
         let ticket = Ticket(id: ticketID, title: title ?? provisional, status: .todo, created: now, updated: now,
                             createdBy: actor.kind == .claude ? .claude : .user, description: description,
-                            attachments: attachments, comments: [], chatIDs: feedbackChat.map { [$0.id] } ?? [], links: links)
+                            attachments: attachments, comments: [], chatIDs: feedbackChat.map { [$0.id] } ?? [], links: links,
+                            history: [historyEntry(.created, from: nil, to: TicketStatus.todo.rawValue, actor: actor, date: now)])
         do {
             try saveTicket(ticket)
         } catch {
@@ -151,7 +152,11 @@ extension Engine {
             domain.pendingTicketNames[old.id] = nil
         }
         guard new != old else { return old }
-        new.updated = ISODate.now()
+        let now = ISODate.now()
+        if new.title != old.title {
+            new.history.append(historyEntry(.title, from: old.title, to: new.title, actor: actor, date: now))
+        }
+        new.updated = now
         try saveTicket(new)
         emitTicketUpdated(new, origin: actor)
         emitInverseLinkChanges(of: new.id, old: old.links, new: new.links, origin: actor)
@@ -168,8 +173,10 @@ extension Engine {
         try ActorRules.requireNotDoneTicket(old, actor)
         guard old.status != status else { return old }
         var new = old
+        let now = ISODate.now()
         new.status = status
-        new.updated = ISODate.now()
+        new.history.append(historyEntry(.status, from: old.status.rawValue, to: status.rawValue, actor: actor, date: now))
+        new.updated = now
         try saveTicket(new)
         emitTicketUpdated(new, origin: actor)
         emitProjectsChanged(origin: actor)
@@ -332,6 +339,22 @@ extension Engine {
         }
     }
 
+    /// The history entry of a change made by `actor` (docs/tickets.md › Ticket history): a user
+    /// with the name of its device, Claude with its chat id or `external`, and `automatic` for the
+    /// engine itself.
+    func historyEntry(_ kind: TicketHistoryKind, from: String?, to: String, actor: Actor, date: Date) -> TicketHistoryEntry {
+        switch actor {
+        case .user(let deviceID):
+            return TicketHistoryEntry(kind: kind, date: date, from: from, to: to, author: .user,
+                                      device: userDeviceName(deviceID: deviceID))
+        case .claude(let chatID):
+            return TicketHistoryEntry(kind: kind, date: date, from: from, to: to, author: .claude,
+                                      chat: actor.chat?.uuidString ?? chatID)
+        case .system:
+            return TicketHistoryEntry(kind: kind, date: date, from: from, to: to, author: .automatic)
+        }
+    }
+
     /// The EngineError of a failed attachment write.
     func storageFailure(_ error: Error) -> Error {
         if let error = error as? StorageError {
@@ -367,8 +390,10 @@ extension Engine {
             log.warn(.claude, "the Haiku title of \(ticketID) is not a valid title and is ignored")
             return
         }
+        let now = ISODate.now()
+        ticket.history.append(historyEntry(.title, from: ticket.title, to: valid, actor: .system, date: now))
         ticket.title = valid
-        ticket.updated = ISODate.now()
+        ticket.updated = now
         do {
             try saveTicket(ticket)
         } catch {
