@@ -441,6 +441,49 @@ public enum ChatsAnswerFont: EngineMethod {
     public typealias Result = Empty
 }
 
+/// `chats.postAnimation`: called by the MCP tool `ask_animation`. Actors: claude (the chat's own
+/// Claude only), in a Swift application project.
+public enum ChatsPostAnimation: EngineMethod {
+    public static let name = "chats.postAnimation"
+    public struct Params: Codable, Sendable, Hashable {
+        /// Must be the actor's chatID.
+        public var chatID: ChatID
+        /// Markdown text, not empty after trimming.
+        public var question: String
+        /// 2 to 10 distinct SwiftUI animation expressions.
+        public var suggestions: [String]
+        /// One of the suggestions.
+        public var recommended: String
+
+        public init(chatID: ChatID, question: String, suggestions: [String], recommended: String) {
+            self.chatID = chatID
+            self.question = question
+            self.suggestions = suggestions
+            self.recommended = recommended
+        }
+    }
+    public typealias Result = AnimationRequest
+}
+
+/// `chats.answerAnimation`. Actors: user.
+public enum ChatsAnswerAnimation: EngineMethod {
+    public static let name = "chats.answerAnimation"
+    public struct Params: Codable, Sendable, Hashable {
+        public var chatID: ChatID
+        public var requestID: UUID
+        /// `![](animation:<expression>)` for a chosen animation, free text, or `Skipped`; trimmed;
+        /// not empty.
+        public var answer: String
+
+        public init(chatID: ChatID, requestID: UUID, answer: String) {
+            self.chatID = chatID
+            self.requestID = requestID
+            self.answer = answer
+        }
+    }
+    public typealias Result = Empty
+}
+
 /// `chats.implementTicket`. Actors: user, claude.
 public enum ChatsImplementTicket: EngineMethod {
     public static let name = "chats.implementTicket"

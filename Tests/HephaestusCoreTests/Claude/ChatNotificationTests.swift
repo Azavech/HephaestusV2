@@ -141,6 +141,24 @@ struct ChatNotificationTests {
         }
     }
 
+    @Test("An animation request posts needs you with its question")
+    func animationRequest() async throws {
+        let launcher = FakeClaudeLauncher()
+        launcher.chatScript = FakeClaudeLauncher.silentChat()
+        try await withChatEngine(launcher: launcher) { bed in
+            try await AnimationRequestTests.makeSwiftApplication(bed)
+            let chat = try await bed.createChat(message: "Plan")
+            let process = try #require(await launcher.chatProcess())
+            process.emit(FakeClaudeLauncher.initLine())
+            _ = try await AnimationRequestTests.post(bed, chat.id, question: "How should the sidebar slide in?",
+                                                     suggestions: [".snappy", ".smooth"], recommended: ".snappy")
+            process.emit(FakeClaudeLauncher.resultLine())
+            #expect(await Self.waitFor(bed, chat.id, .needsYou, .summary) != nil)
+            #expect(await Self.notifications(bed, chat.id).map(\.kind) == [.needsYou, .needsYou])
+            #expect(Self.summaryInputs(launcher) == ["Animation request:\nHow should the sidebar slide in?"])
+        }
+    }
+
     @Test("A turn stopped with Stop posts no finished; error posts nothing")
     func stoppedAndError() async throws {
         let launcher = FakeClaudeLauncher()
@@ -275,6 +293,7 @@ struct ChatNotificationTests {
         #expect(HaikuNotificationSummarizer.input(for: .color(question: "Which tint?")) == "Color request:\nWhich tint?")
         #expect(HaikuNotificationSummarizer.input(for: .shortcut(question: "Which shortcut?")) == "Shortcut request:\nWhich shortcut?")
         #expect(HaikuNotificationSummarizer.input(for: .font(question: "Which font?")) == "Font request:\nWhich font?")
+        #expect(HaikuNotificationSummarizer.input(for: .animation(question: "How?")) == "Animation request:\nHow?")
         #expect(HaikuNotificationSummarizer.input(for: .reply(String(repeating: "x", count: 5_000))).count == "Claude's reply:\n".count + 4_000)
     }
 

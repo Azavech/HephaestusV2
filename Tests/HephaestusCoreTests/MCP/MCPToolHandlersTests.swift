@@ -164,6 +164,32 @@ struct MCPToolHandlersTests {
             == .failure(MCPToolError(code: .conflict, message: "A question set is waiting.")))
     }
 
+    @Test("ask_animation: the external token fails before validation; a chat token posts to its chat")
+    func askAnimation() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        let refused = try await Self.call(handlers, "ask_animation", #"{"suggestions":"not an array"}"#, actor: Self.external)
+        #expect(refused == .failure(MCPToolError(code: .forbidden, message: "Only the chat's own Claude can ask questions.")))
+        #expect(engine.calls.isEmpty)
+
+        #expect(try await Self.call(handlers, "ask_animation", #"{"question":"How?","suggestions":[".snappy"]}"#)
+            == .failure(MCPToolError(code: .invalid, message: "recommended: required.")))
+        #expect(engine.calls.isEmpty)
+
+        let arguments = #"{"question":"How?","suggestions":[".snappy",".spring(duration: 0.4, bounce: 0.2)"],"recommended":".snappy"}"#
+        let asked = try await Self.call(handlers, "ask_animation", arguments)
+        #expect(asked == .success("animation request shown; the answer arrives in the next user message; end your turn"))
+        let call = try #require(engine.calls.last)
+        #expect(call.method == "chats.postAnimation")
+        #expect(call.params == .object(["chatID": .string(Self.chatID.uuidString), "question": "How?",
+                                        "suggestions": [".snappy", ".spring(duration: 0.4, bounce: 0.2)"], "recommended": ".snappy"]))
+        #expect(call.actor == Self.chat)
+
+        engine.answer("chats.postAnimation", .failure(EngineError(.forbidden, "ask_animation is available only in Swift application projects.")))
+        #expect(try await Self.call(handlers, "ask_animation", arguments)
+            == .failure(MCPToolError(code: .forbidden, message: "ask_animation is available only in Swift application projects.")))
+    }
+
     @Test("ask_symbol: the external token fails before validation; a chat token posts to its chat")
     func askSymbol() async throws {
         let engine = RecordedEngine()

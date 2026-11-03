@@ -23,6 +23,9 @@ public struct MarkdownRenderOptions: Sendable {
     /// Draws the font markers whose font it accepts; nil leaves `font:` images refused
     /// (docs/documentation-viewer.md › Font markers).
     public var fontMarker: (@Sendable (String) -> MarkdownFontMarker?)?
+    /// Draws the animation markers whose expression it gives a curve for; nil leaves `animation:`
+    /// images refused (docs/documentation-viewer.md › Animation markers).
+    public var animationCurve: (@Sendable (String) -> MarkdownAnimationCurve?)?
     /// Identifiers of the projects of the device; their ticket and bundle ids become links
     /// (docs/documentation-viewer.md › Ticket and bundle ids).
     public var projectIdentifiers: Set<String>
@@ -32,6 +35,7 @@ public struct MarkdownRenderOptions: Sendable {
                 colorSwatch: (@Sendable (String) -> MarkdownColorSwatch?)? = nil, readsSoundMarkers: Bool = false,
                 shortcutKeys: (@Sendable (String) -> [String]?)? = nil,
                 fontMarker: (@Sendable (String) -> MarkdownFontMarker?)? = nil,
+                animationCurve: (@Sendable (String) -> MarkdownAnimationCurve?)? = nil,
                 projectIdentifiers: Set<String> = []) {
         self.baseDirectory = baseDirectory
         self.projectRootPath = projectRootPath
@@ -41,6 +45,7 @@ public struct MarkdownRenderOptions: Sendable {
         self.readsSoundMarkers = readsSoundMarkers
         self.shortcutKeys = shortcutKeys
         self.fontMarker = fontMarker
+        self.animationCurve = animationCurve
         self.projectIdentifiers = projectIdentifiers
     }
 }

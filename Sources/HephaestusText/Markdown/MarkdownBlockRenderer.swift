@@ -63,14 +63,14 @@ enum CodeBlockLanguage {
 struct MarkdownConverter {
     let options: MarkdownRenderOptions
     private var anchors = HeadingAnchors()
-    /// The parsed text, kept only when SF Symbol, color, shortcut or font markers are read: a marker
-    /// that is not drawn shows its source as written.
+    /// The parsed text, kept only when SF Symbol, color, shortcut, font or animation markers are
+    /// read: a marker that is not drawn shows its source as written.
     private let sourceLines: MarkdownSourceLines?
 
     init(options: MarkdownRenderOptions, source: String) {
         self.options = options
         self.sourceLines = options.isSymbolAvailable == nil && options.colorSwatch == nil && options.shortcutKeys == nil
-            && options.fontMarker == nil ? nil : MarkdownSourceLines(source)
+            && options.fontMarker == nil && options.animationCurve == nil ? nil : MarkdownSourceLines(source)
     }
 
     mutating func blocks<S: Sequence>(_ children: S) -> [MarkdownBlock] where S.Element == Markup {
@@ -184,6 +184,18 @@ struct MarkdownConverter {
                 }
             }
         }
+        func appendAnimationsFontsAndText(_ text: String) {
+            // An animation marker whose expression holds a space is text for CommonMark
+            // (docs/documentation-viewer.md › Animation markers).
+            guard let animationCurve = options.animationCurve else { return appendFontsAndText(text) }
+            for piece in MarkdownSymbolMarkers.animationPieces(in: text) {
+                switch piece {
+                case .text(let text): appendFontsAndText(text)
+                case .marker(let expression, let source):
+                    result.append(animationCurve(expression).map { .animation(expression, $0) } ?? .text(source))
+                }
+            }
+        }
         func flush() {
             guard !pendingText.isEmpty else { return }
             if inLink {
@@ -193,12 +205,12 @@ struct MarkdownConverter {
                 // (docs/documentation-viewer.md › Sound markers).
                 for piece in MarkdownSymbolMarkers.soundPieces(in: pendingText) {
                     switch piece {
-                    case .text(let text): appendFontsAndText(text)
+                    case .text(let text): appendAnimationsFontsAndText(text)
                     case .sound(let name): result.append(.sound(name))
                     }
                 }
             } else {
-                appendFontsAndText(pendingText)
+                appendAnimationsFontsAndText(pendingText)
             }
             pendingText = ""
         }
@@ -252,6 +264,11 @@ struct MarkdownConverter {
                 }
                 if let fontMarker = options.fontMarker, let font = MarkdownSymbolMarkers.font(ofSource: image.source ?? "") {
                     result.append(fontMarker(font).map { .font($0) } ?? sourceText(image))
+                    continue
+                }
+                if let animationCurve = options.animationCurve,
+                   let expression = MarkdownSymbolMarkers.animation(ofSource: image.source ?? "") {
+                    result.append(animationCurve(expression).map { .animation(expression, $0) } ?? sourceText(image))
                     continue
                 }
                 let source = MarkdownLinks.imageSource(image.source ?? "", options: options)

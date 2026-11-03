@@ -6,10 +6,12 @@ import Markdown
 /// markers), whose source has the scheme `color`, such as `![](color:#FF9500)`; sound markers
 /// (› Sound markers), whose source has the scheme `sound`, such as
 /// `![](sound:iOS 26.1/sms-received1.caf)`; shortcut markers (› Shortcut markers), whose source
-/// has the scheme `shortcut`, such as `![](shortcut:⇧⌘K)`; and font markers (› Font markers), whose
-/// source has the scheme `font`, such as `![](font:System Rounded/Semibold/17)`. The renderers read
-/// them in Markdown when the options have `isSymbolAvailable`, `colorSwatch`, `readsSoundMarkers`,
-/// `shortcutKeys` or `fontMarker`; these functions read them in plain text.
+/// has the scheme `shortcut`, such as `![](shortcut:⇧⌘K)`; font markers (› Font markers), whose
+/// source has the scheme `font`, such as `![](font:System Rounded/Semibold/17)`; and animation
+/// markers (› Animation markers), whose source has the scheme `animation`, such as
+/// `![](animation:.spring(duration: 0.4, bounce: 0.2))`. The renderers read them in Markdown when
+/// the options have `isSymbolAvailable`, `colorSwatch`, `readsSoundMarkers`, `shortcutKeys`,
+/// `fontMarker` or `animationCurve`; these functions read them in plain text.
 public enum MarkdownSymbolMarkers {
     /// A piece of a text split at its sound markers.
     enum SoundPiece: Equatable {
@@ -24,19 +26,29 @@ public enum MarkdownSymbolMarkers {
         case marker(font: String, source: String)
     }
 
-    /// The plain text as `.text`, `.symbol`, `.color`, `.sound`, `.shortcut`, `.font` and `.itemID`
-    /// inlines: a marker of an available name becomes `.symbol`, a color marker with a valid swatch
-    /// `.color`, a sound marker `.sound`, a shortcut marker whose shortcut `shortcutKeys` gives key
-    /// caps for `.shortcut`, a font marker whose font `fontMarker` accepts `.font`, any other marker
-    /// stays text. Without `colorSwatch`, color markers are text; sound markers are read only when
-    /// `readsSoundMarkers`; without `shortcutKeys`, shortcut markers are text; without
-    /// `fontMarker`, font markers are text. The text outside markers also gets the ids of `projectIdentifiers`
-    /// (docs/documentation-viewer.md › Ticket and bundle ids); the text of a marker is never
-    /// searched for ids.
+    /// A piece of a text split at its animation markers.
+    enum AnimationPiece: Equatable {
+        case text(String)
+        /// A marker: its expression and its source as written.
+        case marker(expression: String, source: String)
+    }
+
+    /// The plain text as `.text`, `.symbol`, `.color`, `.sound`, `.shortcut`, `.font`, `.animation`
+    /// and `.itemID` inlines: a marker of an available name becomes `.symbol`, a color marker with a
+    /// valid swatch `.color`, a sound marker `.sound`, a shortcut marker whose shortcut
+    /// `shortcutKeys` gives key caps for `.shortcut`, a font marker whose font `fontMarker` accepts
+    /// `.font`, an animation marker whose expression `animationCurve` gives a curve for
+    /// `.animation`, any other marker stays text. Without `colorSwatch`, color markers are text;
+    /// sound markers are read only when `readsSoundMarkers`; without `shortcutKeys`, shortcut
+    /// markers are text; without `fontMarker`, font markers are text; without `animationCurve`,
+    /// animation markers are text. The text outside markers also gets the ids of
+    /// `projectIdentifiers` (docs/documentation-viewer.md › Ticket and bundle ids); the text of a
+    /// marker is never searched for ids.
     public static func inlines(in text: String, isSymbolAvailable: (String) -> Bool,
                                colorSwatch: ((String) -> MarkdownColorSwatch?)? = nil, readsSoundMarkers: Bool = false,
                                shortcutKeys: ((String) -> [String]?)? = nil,
                                fontMarker: ((String) -> MarkdownFontMarker?)? = nil,
+                               animationCurve: ((String) -> MarkdownAnimationCurve?)? = nil,
                                projectIdentifiers: Set<String> = []) -> [MarkdownInline] {
         var result: [MarkdownInline] = []
         var pending = ""
@@ -56,7 +68,8 @@ public enum MarkdownSymbolMarkers {
         while index < text.endIndex {
             if text[index] == "!",
                let marker = marker(in: text, at: index, readsColors: colorSwatch != nil, readsSounds: readsSoundMarkers,
-                                   readsShortcuts: shortcutKeys != nil, readsFonts: fontMarker != nil) {
+                                   readsShortcuts: shortcutKeys != nil, readsFonts: fontMarker != nil,
+                                   readsAnimations: animationCurve != nil) {
                 flush()
                 switch marker.kind {
                 case .sound:
@@ -81,6 +94,12 @@ public enum MarkdownSymbolMarkers {
                     } else {
                         append(.text(String(text[index..<marker.end])))
                     }
+                case .animation:
+                    if let curve = animationCurve?(marker.name) {
+                        append(.animation(marker.name, curve))
+                    } else {
+                        append(.text(String(text[index..<marker.end])))
+                    }
                 case .symbol:
                     append(.text(String(text[index..<marker.end])))
                 }
@@ -94,17 +113,18 @@ public enum MarkdownSymbolMarkers {
         return result
     }
 
-    /// The plain text as HTML: escaped text, the symbol, color, sound, shortcut and font HTML of
-    /// docs/documentation-viewer.md › HTML output for each marker that is drawn, and the id links
-    /// of its ids.
+    /// The plain text as HTML: escaped text, the symbol, color, sound, shortcut, font and animation
+    /// HTML of docs/documentation-viewer.md › HTML output for each marker that is drawn, and the id
+    /// links of its ids.
     public static func html(_ text: String, isSymbolAvailable: (String) -> Bool,
                             colorSwatch: ((String) -> MarkdownColorSwatch?)? = nil, readsSoundMarkers: Bool = false,
                             shortcutKeys: ((String) -> [String]?)? = nil, fontMarker: ((String) -> MarkdownFontMarker?)? = nil,
+                            animationCurve: ((String) -> MarkdownAnimationCurve?)? = nil,
                             projectIdentifiers: Set<String> = []) -> String {
         var writer = HTMLWriter()
         writer.inlines(inlines(in: text, isSymbolAvailable: isSymbolAvailable, colorSwatch: colorSwatch,
                                readsSoundMarkers: readsSoundMarkers, shortcutKeys: shortcutKeys, fontMarker: fontMarker,
-                               projectIdentifiers: projectIdentifiers))
+                               animationCurve: animationCurve, projectIdentifiers: projectIdentifiers))
         return writer.output
     }
 
@@ -143,6 +163,13 @@ public enum MarkdownSymbolMarkers {
         return String(source.dropFirst("font:".count))
     }
 
+    /// The expression of an animation marker's image source: the text after `animation:` (any
+    /// letter case); nil for another source.
+    static func animation(ofSource source: String) -> String? {
+        guard MarkdownLinks.scheme(of: source) == "animation" else { return nil }
+        return String(source.dropFirst("animation:".count))
+    }
+
     /// A text split at its plain-text sound markers.
     static func soundPieces(in text: String) -> [SoundPiece] {
         var pieces: [SoundPiece] = []
@@ -151,7 +178,7 @@ public enum MarkdownSymbolMarkers {
         while index < text.endIndex {
             if text[index] == "!",
                let marker = marker(in: text, at: index, readsColors: false, readsSounds: true, readsShortcuts: false,
-                                   readsFonts: false),
+                                   readsFonts: false, readsAnimations: false),
                marker.kind == .sound {
                 if !pending.isEmpty { pieces.append(.text(pending)) }
                 pending = ""
@@ -174,11 +201,35 @@ public enum MarkdownSymbolMarkers {
         while index < text.endIndex {
             if text[index] == "!",
                let marker = marker(in: text, at: index, readsColors: false, readsSounds: false, readsShortcuts: false,
-                                   readsFonts: true),
+                                   readsFonts: true, readsAnimations: false),
                marker.kind == .font {
                 if !pending.isEmpty { pieces.append(.text(pending)) }
                 pending = ""
                 pieces.append(.marker(font: marker.name, source: String(text[index..<marker.end])))
+                index = marker.end
+            } else {
+                pending.append(text[index])
+                index = text.index(after: index)
+            }
+        }
+        if !pending.isEmpty { pieces.append(.text(pending)) }
+        return pieces
+    }
+
+    /// A text split at its plain-text animation markers (docs/documentation-viewer.md › Animation
+    /// markers).
+    static func animationPieces(in text: String) -> [AnimationPiece] {
+        var pieces: [AnimationPiece] = []
+        var pending = ""
+        var index = text.startIndex
+        while index < text.endIndex {
+            if text[index] == "!",
+               let marker = marker(in: text, at: index, readsColors: false, readsSounds: false, readsShortcuts: false,
+                                   readsFonts: false, readsAnimations: true),
+               marker.kind == .animation {
+                if !pending.isEmpty { pieces.append(.text(pending)) }
+                pending = ""
+                pieces.append(.marker(expression: marker.name, source: String(text[index..<marker.end])))
                 index = marker.end
             } else {
                 pending.append(text[index])
@@ -195,6 +246,7 @@ public enum MarkdownSymbolMarkers {
         case sound
         case shortcut
         case font
+        case animation
     }
 
     /// A plain-text marker starting at `start`: `![`, an alt text without `[`, `]` or line break,
@@ -203,11 +255,14 @@ public enum MarkdownSymbolMarkers {
     /// `shortcut:` in any letter case, a shortcut of one or more characters other than white space,
     /// `(` and `)`, in which `\` followed by a character stands for that character, and `)`; or,
     /// when `readsFonts`, `font:` in any letter case, a font of one or more characters other than
-    /// `(`, `)` and line breaks, and `)`; or, when `readsSounds`, `sound:` in any letter case, a name
-    /// of one or more characters without line break in which each `(` is closed by a `)`, and the
-    /// `)` that closes the marker.
+    /// `(`, `)` and line breaks, and `)`; or, when `readsAnimations`, `animation:` in any letter
+    /// case, an expression without line break up to the first `)` that closes no `(` of its own, and
+    /// that `)`; or, when `readsSounds`, `sound:` in any letter case, a name of one or more
+    /// characters without line break in which each `(` is closed by a `)`, and the `)` that closes
+    /// the marker.
     private static func marker(in text: String, at start: String.Index, readsColors: Bool, readsSounds: Bool,
-                               readsShortcuts: Bool, readsFonts: Bool) -> (kind: MarkerKind, name: String, end: String.Index)? {
+                               readsShortcuts: Bool, readsFonts: Bool,
+                               readsAnimations: Bool) -> (kind: MarkerKind, name: String, end: String.Index)? {
         var index = start
         func take(_ expected: String, ignoringCase: Bool = false) -> Bool {
             var cursor = index
@@ -243,6 +298,21 @@ public enum MarkdownSymbolMarkers {
             }
             guard index > fontStart, index < text.endIndex else { return nil }
             return (.font, String(text[fontStart..<index]), text.index(after: index))
+        } else if readsAnimations, take("animation:", ignoringCase: true) {
+            let expressionStart = index
+            var depth = 0
+            while index < text.endIndex {
+                let character = text[index]
+                if character.isNewline { return nil }
+                if character == "(" { depth += 1 }
+                if character == ")" {
+                    if depth == 0 { break }
+                    depth -= 1
+                }
+                index = text.index(after: index)
+            }
+            guard index < text.endIndex else { return nil }
+            return (.animation, String(text[expressionStart..<index]), text.index(after: index))
         } else {
             guard readsSounds, take("sound:", ignoringCase: true) else { return nil }
             let nameStart = index

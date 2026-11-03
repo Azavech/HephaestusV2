@@ -73,6 +73,12 @@ extension Engine {
         register(ChatsAnswerFont.self, actors: [.user]) { [unowned self] params, actor in
             try await self.chatsAnswerFont(params, actor)
         }
+        register(ChatsPostAnimation.self, actors: [.claude]) { [unowned self] params, actor in
+            try await self.chatsPostAnimation(params, actor)
+        }
+        register(ChatsAnswerAnimation.self, actors: [.user]) { [unowned self] params, actor in
+            try await self.chatsAnswerAnimation(params, actor)
+        }
         register(ChatsImplementTicket.self, actors: [.user, .claude]) { [unowned self] params, actor in
             try await self.chatsImplementTicket(params, actor)
         }
@@ -389,6 +395,7 @@ extension Engine {
         chats.openSoundRequests[chatID] = nil
         chats.openShortcutRequests[chatID] = nil
         chats.openFontRequests[chatID] = nil
+        chats.openAnimationRequests[chatID] = nil
         chats.drivingDevices[chatID] = nil
         chats.scannedChats.remove(chatID)
         chats.hasTextMessage[chatID] = nil
@@ -504,9 +511,10 @@ extension Engine {
     }
 
     /// A chat has at most one waiting request: a question set that is not completed, or a symbol
-    /// request, a color request, a sound request, a shortcut request or a font request without
-    /// answer (docs/chats.md › Posting questions, › Posting a symbol request, › Posting a color
-    /// request, › Posting a sound request, › Posting a shortcut request, › Posting a font request).
+    /// request, a color request, a sound request, a shortcut request, a font request or an
+    /// animation request without answer (docs/chats.md › Posting questions, › Posting a symbol
+    /// request, › Posting a color request, › Posting a sound request, › Posting a shortcut request,
+    /// › Posting a font request, › Posting an animation request).
     func requireNoWaitingRequest(_ chatID: ChatID) throws {
         guard chats.openQuestionSets[chatID] == nil else {
             throw EngineError(.conflict, "Questions are already waiting for answers in this chat.")
@@ -525,6 +533,9 @@ extension Engine {
         }
         guard chats.openFontRequests[chatID] == nil else {
             throw EngineError(.conflict, "A font request is already waiting for an answer in this chat.")
+        }
+        guard chats.openAnimationRequests[chatID] == nil else {
+            throw EngineError(.conflict, "An animation request is already waiting for an answer in this chat.")
         }
     }
 
@@ -786,6 +797,67 @@ extension Engine {
             return request
         }
         throw EngineError.notFound("Font request", requestID.uuidString)
+    }
+
+    /// `chats.postAnimation` (docs/chats.md › Posting an animation request): the actor, the chat,
+    /// the project type, the rules, then the waiting request.
+    func chatsPostAnimation(_ params: ChatsPostAnimation.Params, _ actor: Actor) async throws -> AnimationRequest {
+        try ActorRules.requireOwnChat(params.chatID, actor)
+        let meta = try requireChat(params.chatID)
+        try requireSwiftApplication(meta.projectID,
+                                    else: EngineError(.forbidden, "ask_animation is available only in Swift application projects."))
+        let suggestions = params.suggestions.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let recommended = params.recommended.trimmingCharacters(in: .whitespacesAndNewlines)
+        try Engine.validated {
+            try ModelRules.animationRequest(question: params.question, suggestions: suggestions, recommended: recommended)
+        }
+        try ensureChatScanned(params.chatID)
+        try requireNoWaitingRequest(params.chatID)
+        let requestID = UUID()
+        let question = ModelRules.normalizedLineBreaks(params.question)
+        let item = AnimationItem(id: requestID.uuidString, created: ISODate.now(), requestID: requestID, question: question,
+                                 suggestions: suggestions, recommended: recommended)
+        try appendChatItem(.animation(item), chatID: params.chatID, origin: actor)
+        chats.openAnimationRequests[params.chatID] = item
+        emitChatUpdated(params.chatID, origin: actor)
+        return AnimationRequest(requestID: requestID, chatID: params.chatID, question: question, suggestions: suggestions,
+                                recommended: recommended)
+    }
+
+    /// `chats.answerAnimation` (docs/chats.md › Answering an animation request).
+    func chatsAnswerAnimation(_ params: ChatsAnswerAnimation.Params, _ actor: Actor) async throws -> Empty {
+        let chatID = params.chatID
+        let answer = ModelRules.normalizedLineBreaks(params.answer.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard (1...10_000).contains(answer.count) else {
+            throw EngineError.invalid("answer", "use 1 to 10,000 characters")
+        }
+        func check() throws -> AnimationItem {
+            _ = try requireChat(chatID)
+            try ensureChatScanned(chatID)
+            return try animationRequest(params.requestID, chatID: chatID)
+        }
+        _ = try check()
+        _ = try await requireClaudeCLI()
+        let sender = senderName(actor)
+        var request = try check()
+        recordDrivingDevice(chatID, actor)
+        request.answer = answer
+        try appendChatItem(.animation(request), chatID: chatID, op: .update, origin: actor)
+        chats.openAnimationRequests[chatID] = nil
+        try sendChatMessage(chatID, text: Engine.animationMessage(answer), attachments: [], sender: sender, origin: actor)
+        return Empty()
+    }
+
+    /// The animation request `requestID` of a chat without answer: the open one, or one of the
+    /// transcript; `conflict` when it has an answer, `notFound` when the chat has none with this id.
+    private func animationRequest(_ requestID: UUID, chatID: ChatID) throws -> AnimationItem {
+        if let open = chats.openAnimationRequests[chatID], open.requestID == requestID { return open }
+        for item in try loadTranscript(chatID) {
+            guard case .animation(let request) = item, request.requestID == requestID else { continue }
+            if request.answer != nil { throw EngineError(.conflict, "This animation request was already answered.") }
+            return request
+        }
+        throw EngineError.notFound("Animation request", requestID.uuidString)
     }
 
     /// The question set `questionSetID` of a chat: the open one, or one of the transcript;

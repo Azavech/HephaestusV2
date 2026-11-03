@@ -44,11 +44,14 @@ final class ChatManager {
     var openShortcutRequests: [ChatID: ShortcutItem] = [:]
     /// The font request without answer, per chat (docs/chats.md › Font requests).
     var openFontRequests: [ChatID: FontItem] = [:]
+    /// The animation request without answer, per chat (docs/chats.md › Animation requests).
+    var openAnimationRequests: [ChatID: AnimationItem] = [:]
     /// The macOS and Simulator runtime sounds, read the first time they are needed and kept
     /// until the engine stops (docs/chats.md › Sound catalogue).
     var systemSounds: Task<SoundCatalog.SystemSounds, Never>?
-    /// Chats whose transcript was replayed since the engine started, so that their question
-    /// set, their symbol request and their pending permission requests are known.
+    /// Chats whose transcript was replayed since the engine started, so that their question set,
+    /// their symbol, color, sound, shortcut, font and animation requests and their pending
+    /// permission requests are known.
     var scannedChats: Set<ChatID> = []
     /// The driving device of each chat (docs/engine-api.md › Chat metadata in the API).
     var drivingDevices: [ChatID: String] = [:]
@@ -79,8 +82,8 @@ final class ChatManager {
 
     /// The computed state of a chat (docs/chats.md › Chat states): the first that applies of
     /// error, waitingPermission, starting, running, waitingAnswers, idle. A chat without runtime
-    /// state is idle, or waitingAnswers with a question set that is not completed or a symbol
-    /// request without answer.
+    /// state is idle, or waitingAnswers with a question set that is not completed or a symbol,
+    /// color, sound, shortcut, font or animation request without answer.
     func state(of chatID: ChatID) -> ChatState {
         let runtime = runtimes[chatID]
         if runtime?.error == true { return .error }
@@ -88,7 +91,8 @@ final class ChatManager {
         if runtime?.starting == true { return .starting }
         if runtime?.turnInProgress == true { return .running }
         if openQuestionSets[chatID] != nil || openSymbolRequests[chatID] != nil || openColorRequests[chatID] != nil
-            || openSoundRequests[chatID] != nil || openShortcutRequests[chatID] != nil || openFontRequests[chatID] != nil {
+            || openSoundRequests[chatID] != nil || openShortcutRequests[chatID] != nil || openFontRequests[chatID] != nil
+            || openAnimationRequests[chatID] != nil {
             return .waitingAnswers
         }
         return .idle

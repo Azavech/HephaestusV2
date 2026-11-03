@@ -144,8 +144,9 @@ extension Engine {
         return items
     }
 
-    /// Records the question set that is not completed, the symbol request without answer, whether
-    /// a user message has text and the chat's cost; returns whether the cost changed.
+    /// Records the question set that is not completed, the symbol, color, sound, shortcut, font and
+    /// animation requests without answer, whether a user message has text and the chat's cost;
+    /// returns whether the cost changed.
     @discardableResult
     private func recordScan(_ chatID: ChatID, items: [ChatItem]) -> Bool {
         chats.scannedChats.insert(chatID)
@@ -158,6 +159,7 @@ extension Engine {
         var openSound: SoundItem?
         var openShortcut: ShortcutItem?
         var openFont: FontItem?
+        var openAnimation: AnimationItem?
         var hasText = false
         for item in items {
             switch item {
@@ -167,6 +169,7 @@ extension Engine {
             case .sound(let request) where request.answer == nil: openSound = request
             case .shortcut(let request) where request.answer == nil: openShortcut = request
             case .font(let request) where request.answer == nil: openFont = request
+            case .animation(let request) where request.answer == nil: openAnimation = request
             case .user(let user) where !user.text.isEmpty: hasText = true
             default: break
             }
@@ -177,6 +180,7 @@ extension Engine {
         chats.openSoundRequests[chatID] = openSound
         chats.openShortcutRequests[chatID] = openShortcut
         chats.openFontRequests[chatID] = openFont
+        chats.openAnimationRequests[chatID] = openAnimation
         chats.hasTextMessage[chatID] = hasText
         return costChanged
     }

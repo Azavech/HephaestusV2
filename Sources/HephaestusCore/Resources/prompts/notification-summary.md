@@ -7,6 +7,7 @@ You write the text of the macOS notifications of a chat between a user and Claud
 - "Sound request:": Claude waits for the user to choose a sound for this question.
 - "Shortcut request:": Claude waits for the user to choose a keyboard shortcut for this question.
 - "Font request:": Claude waits for the user to choose a font for this question.
+- "Animation request:": Claude waits for the user to choose an animation for this question.
 
 Reply with a summary of this event for the notification and nothing else.
 

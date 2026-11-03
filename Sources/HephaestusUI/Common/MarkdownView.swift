@@ -263,6 +263,10 @@ enum MarkdownAttributed {
                 case .image(_, let alt, _):
                     // Images inside a link or another run are shown by their alt text.
                     current.append(MarkdownAttributed.run(alt, intent: intent, link: link))
+                case .animation(let expression, _):
+                    // Native views show an animation marker as its expression
+                    // (docs/documentation-viewer.md › Animation markers).
+                    current.append(MarkdownAttributed.run(expression, intent: intent, link: link))
                 case .symbol(let name):
                     flush()
                     parts.append(Text(Image(systemName: name)))
@@ -574,6 +578,8 @@ enum MarkdownBlockCache {
         var readsShortcuts: Bool
         /// Font markers are read; every caller that reads them accepts the same fonts.
         var readsFonts: Bool
+        /// Animation markers are read; every caller that reads them uses the same curves.
+        var readsAnimations: Bool
         var projectIdentifiers: Set<String>
     }
 
@@ -584,7 +590,7 @@ enum MarkdownBlockCache {
                       stripFrontMatter: options.stripFrontMatter, readsSymbols: options.isSymbolAvailable != nil,
                       readsColors: options.colorSwatch != nil,
                       readsSoundMarkers: options.readsSoundMarkers, readsShortcuts: options.shortcutKeys != nil,
-                      readsFonts: options.fontMarker != nil,
+                      readsFonts: options.fontMarker != nil, readsAnimations: options.animationCurve != nil,
                       projectIdentifiers: options.projectIdentifiers)
         if let blocks = entries[key] {
             return blocks

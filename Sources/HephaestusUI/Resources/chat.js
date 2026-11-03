@@ -94,6 +94,27 @@
     return name;
   }
 
+  // MARK: Animation markers (docs/chats.md › Links, images and files)
+
+  /// Plays the lane of an animation marker: the circle starts again from the left end and moves
+  /// to the right end with the marker's duration and easing, then stays there.
+  function playAnimation(marker) {
+    var lane = marker.querySelector(".md-animation-lane");
+    var dot = marker.querySelector(".md-animation-dot");
+    if (!lane || !dot || !dot.animate) return;
+    dot.getAnimations().forEach(function (animation) {
+      animation.cancel();
+    });
+    var travel = Math.max(0, lane.clientWidth - dot.offsetWidth);
+    var duration = Math.max(0, parseFloat(marker.getAttribute("data-duration")) || 0) * 1000;
+    var frames = [{ transform: "translateX(0px)" }, { transform: "translateX(" + travel + "px)" }];
+    try {
+      dot.animate(frames, { duration: duration, easing: marker.getAttribute("data-easing") || "linear", fill: "forwards" });
+    } catch (e) {
+      dot.animate(frames, { duration: duration, easing: "linear", fill: "forwards" });
+    }
+  }
+
   // MARK: Page structure
 
   var transcript, streamsBox, placeholder, earlier, earlierButton, jump;
@@ -431,6 +452,14 @@
     var play = target.closest(".md-sound-play");
     if (play) {
       post({ action: "playSound", name: play.getAttribute("data-sound") || "" });
+      return;
+    }
+
+    // The replay button of an animation marker (docs/chats.md › Links, images and files).
+    var replay = target.closest(".md-animation-play");
+    if (replay) {
+      var marker = replay.closest(".md-animation");
+      if (marker) playAnimation(marker);
       return;
     }
 

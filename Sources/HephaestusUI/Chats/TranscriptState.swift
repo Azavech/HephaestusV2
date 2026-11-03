@@ -165,6 +165,14 @@ struct TranscriptState {
         return nil
     }
 
+    /// The animation request without answer; a chat has at most one.
+    var waitingAnimationRequest: AnimationItem? {
+        for item in items {
+            if case .animation(let request) = item, request.answer == nil { return request }
+        }
+        return nil
+    }
+
     /// Every image of the chat's items in transcript order: user attachments and tool-result
     /// images.
     var images: [Attachment] {

@@ -162,6 +162,11 @@ extension Engine {
         "Font: \(answer)"
     }
 
+    /// docs/chats.md › Answering an animation request: `Animation: <answer>`.
+    static func animationMessage(_ answer: String) -> String {
+        "Animation: \(answer)"
+    }
+
     // MARK: System prompt
 
     /// The value of `--append-system-prompt` for a launch (docs/chats.md › Composition and

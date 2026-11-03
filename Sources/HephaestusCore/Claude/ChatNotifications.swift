@@ -71,6 +71,7 @@ extension Engine {
             if let sound = chats.openSoundRequests[meta.id] { return .sound(question: sound.question) }
             if let shortcut = chats.openShortcutRequests[meta.id] { return .shortcut(question: shortcut.question) }
             if let font = chats.openFontRequests[meta.id] { return .font(question: font.question) }
+            if let animation = chats.openAnimationRequests[meta.id] { return .animation(question: animation.question) }
             return nil
         }
     }

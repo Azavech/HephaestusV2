@@ -1,7 +1,8 @@
 // OWNER: ui-chats — the state and actions of one chat view: the chat or draft it shows, the
 // composer, the pinned cards and their keys, the header (docs/chats.md › Chat view, › Composer,
 // › Pinned permission card, › Pinned questions card, › Pinned symbol card, › Pinned color card,
-// › Pinned sound card, › Pinned shortcut card, › Pinned font card, › Draft chats).
+// › Pinned sound card, › Pinned shortcut card, › Pinned font card, › Pinned animation card,
+// › Draft chats).
 import AppKit
 import HephaestusCore
 import Observation
@@ -57,6 +58,19 @@ enum FontChoice: Hashable {
     case family(String)
     case textStyle(FontTextStyle)
     case other
+}
+
+/// The choice of the animation card: a suggestion, the Custom row, or `Answer another way`.
+enum AnimationChoice: Hashable {
+    case suggestion(String)
+    case custom
+    case other
+}
+
+/// A lane of the animation card: a suggestion's, by its expression, or the Custom row's.
+enum AnimationLaneID: Hashable {
+    case suggestion(String)
+    case custom
 }
 
 /// The question a questions card displays: its set and its label.
@@ -158,6 +172,17 @@ final class ChatViewModel {
     var fontFacesRevision = 0
     var isSubmittingFont = false
     @ObservationIgnored var projectFonts: ProjectFonts?
+    /// The animation request the animation card shows, with its selection, its Custom row, its
+    /// field and the plays of its lanes.
+    var animationRequestID: UUID?
+    var animationChoice: AnimationChoice = .other
+    var animationOther = ""
+    var animationCustomPreset: AnimationPreset = .spring
+    /// The values of the Duration, Bounce and Extra Bounce sliders, kept when the preset changes.
+    var animationCustomValues: [AnimationParameter: Double] = [:]
+    /// How many times each lane was played; a change plays the lane.
+    var animationPlays: [AnimationLaneID: Int] = [:]
+    var isSubmittingAnimation = false
 
     // MARK: Header
 
@@ -905,6 +930,124 @@ final class ChatViewModel {
         return request.answer != nil
     }
 
+    // MARK: Animation card
+
+    /// The card appeared for a request: the recommended suggestion selected, the Custom row
+    /// holding its preset and parameters, the field empty and every circle at the left end. The
+    /// same request keeps its state.
+    func animationRequestShown(_ request: AnimationItem) {
+        guard animationRequestID != request.requestID else { return }
+        animationRequestID = request.requestID
+        animationChoice = .suggestion(request.recommended)
+        animationOther = ""
+        let recommended = (try? AnimationExpression(parsing: request.recommended)) ?? AnimationExpression(preset: .spring)
+        animationCustomPreset = recommended.preset
+        animationCustomValues = Dictionary(uniqueKeysWithValues: AnimationParameter.allCases.map { ($0, recommended.value($0)) })
+        animationPlays = [:]
+    }
+
+    /// The Custom row's animation: its preset with the values of the preset's sliders.
+    var animationCustom: AnimationExpression {
+        AnimationExpression(preset: animationCustomPreset,
+                            values: animationCustomValues.filter { animationCustomPreset.parameters.contains($0.key) })
+    }
+
+    /// Plays a lane again from the left end.
+    func playAnimationLane(_ lane: AnimationLaneID) {
+        animationPlays[lane, default: 0] += 1
+    }
+
+    /// Play All: every suggestion's lane and the Custom lane together.
+    func playAllAnimationLanes(_ request: AnimationItem) {
+        for suggestion in request.suggestions {
+            playAnimationLane(.suggestion(suggestion))
+        }
+        playAnimationLane(.custom)
+    }
+
+    /// A click on a suggestion's row: selects it and plays its lane.
+    func selectAnimationSuggestion(_ expression: String) {
+        animationChoice = .suggestion(expression)
+        playAnimationLane(.suggestion(expression))
+    }
+
+    /// A click on the Custom row: selects it and plays its lane.
+    func selectAnimationCustom() {
+        animationChoice = .custom
+        playAnimationLane(.custom)
+    }
+
+    /// Choosing a preset selects the Custom row and plays its lane.
+    func setAnimationCustomPreset(_ preset: AnimationPreset) {
+        animationCustomPreset = preset
+        animationChoice = .custom
+        playAnimationLane(.custom)
+    }
+
+    /// Moving a slider selects the Custom row; the value is kept rounded to two decimals.
+    func setAnimationCustomValue(_ value: Double, for parameter: AnimationParameter) {
+        let hundredths = (value * 100).rounded()
+        let rounded = hundredths == 0 ? 0 : hundredths / 100
+        animationCustomValues[parameter] = min(max(rounded, parameter.range.lowerBound), parameter.range.upperBound)
+        animationChoice = .custom
+    }
+
+    /// The value of a slider of the Custom row.
+    func animationCustomValue(_ parameter: AnimationParameter) -> Double {
+        animationCustomValues[parameter] ?? animationCustomPreset.defaultValue(parameter)
+    }
+
+    /// The answer the card submits: `![](animation:<expression>)` for the selected suggestion or
+    /// the Custom row, or the field's text.
+    var animationAnswer: String {
+        switch animationChoice {
+        case .suggestion(let expression): return "![](animation:\(expression))"
+        case .custom: return "![](animation:\(animationCustom.fullExpression))"
+        case .other: return animationOther.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
+    var canSubmitAnimation: Bool {
+        !animationAnswer.isEmpty && !isSubmittingAnimation
+    }
+
+    /// Submit: `chats.answerAnimation` with the selected answer.
+    func submitAnimation() {
+        guard canSubmitAnimation else { return }
+        answerAnimationRequest(animationAnswer, action: "Submit")
+    }
+
+    /// Skip: `chats.answerAnimation` with `Skipped`.
+    func skipAnimation() {
+        guard !isSubmittingAnimation else { return }
+        answerAnimationRequest(QuestionNavigation.skipped, action: "Skip")
+    }
+
+    /// Stores the answer of the waiting animation request. An answer that fails because the
+    /// request was answered on another device shows no alert.
+    private func answerAnimationRequest(_ answer: String, action: String) {
+        guard let chatID, let uuid = UUID(uuidString: chatID), let request = transcriptState?.waitingAnimationRequest else {
+            return
+        }
+        isSubmittingAnimation = true
+        Task {
+            defer { isSubmittingAnimation = false }
+            do {
+                _ = try await workspace.call(ChatsAnswerAnimation.self, ChatsAnswerAnimation.Params(
+                    chatID: uuid, requestID: request.requestID, answer: answer))
+            } catch let error as EngineError where error.code == .conflict && animationAnsweredElsewhere(request.id) {
+                return
+            } catch {
+                alert(.failure(action, error))
+            }
+        }
+    }
+
+    private func animationAnsweredElsewhere(_ itemID: String) -> Bool {
+        guard case .animation(let request)? = transcriptState?.item(itemID) else { return false }
+        return request.answer != nil
+    }
+
     // MARK: Card keys (docs/chats.md › Keyboard shortcuts)
 
     private func startKeyMonitor() {
@@ -925,9 +1068,9 @@ final class ChatViewModel {
     /// While the shortcut card's recorder field records, every key press of the window goes to
     /// it. Otherwise ⌘Return, ⌥⌘Return and ⇧⌘Return answer the permission card once its request
     /// has been shown for 1 second; ⌘Return submits the questions card, the symbol card, the color
-    /// card, the sound card, the shortcut card or the font card when no permission card is shown
-    /// and the card is not minimized. Both act only while the focus is in this chat view outside
-    /// its composer.
+    /// card, the sound card, the shortcut card, the font card or the animation card when no
+    /// permission card is shown and the card is not minimized. Both act only while the focus is in
+    /// this chat view outside its composer.
     func handleKey(_ event: NSEvent) -> Bool {
         guard let window, event.window === window else { return false }
         if isRecordingShortcut {
@@ -980,6 +1123,11 @@ final class ChatViewModel {
         if flags == [.command], let request = state.waitingFontRequest, let chatID,
            app?.isQuestionsCardMinimized(chatID: chatID, setID: request.requestID) != true {
             submitFont()
+            return true
+        }
+        if flags == [.command], let request = state.waitingAnimationRequest, let chatID,
+           app?.isQuestionsCardMinimized(chatID: chatID, setID: request.requestID) != true {
+            submitAnimation()
             return true
         }
         return false

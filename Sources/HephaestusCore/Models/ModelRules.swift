@@ -468,4 +468,47 @@ public enum ModelRules {
             throw ValidationError(field: "recommended", message: "ask_font: the recommended font must be one of the suggestions.")
         }
     }
+
+    /// The rules of an animation request (docs/workflow.md › Animation validation), in their
+    /// order, on the trimmed suggestions and recommended animation; each suggestion is checked
+    /// completely before the next.
+    public static func animationRequest(question: String, suggestions: [String], recommended: String) throws {
+        guard !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ValidationError(field: "question", message: "ask_animation needs a question.")
+        }
+        guard (2...10).contains(suggestions.count) else {
+            throw ValidationError(field: "suggestions", message: "ask_animation needs 2 to 10 suggestions.")
+        }
+        guard !suggestions.contains(where: \.isEmpty), Set(suggestions).count == suggestions.count else {
+            throw ValidationError(field: "suggestions", message: "ask_animation has an empty or repeated suggestion.")
+        }
+        for suggestion in suggestions {
+            do {
+                _ = try AnimationExpression(parsing: suggestion)
+            } catch let error as AnimationExpressionError {
+                throw ValidationError(field: "suggestions", message: animationMessage(error, suggestion: suggestion))
+            }
+        }
+        guard suggestions.contains(recommended) else {
+            throw ValidationError(field: "recommended",
+                                  message: "ask_animation: the recommended animation must be one of the suggestions.")
+        }
+    }
+
+    /// The message of a suggestion that is not an animation of `ask_animation`.
+    static func animationMessage(_ error: AnimationExpressionError, suggestion: String) -> String {
+        switch error {
+        case .syntax:
+            return "\(suggestion) is not a SwiftUI animation expression."
+        case .unknownPreset:
+            let presets = AnimationPreset.allCases.map(\.expression)
+            return "\(suggestion): use \(presets.dropLast().joined(separator: ", ")) or \(presets.last ?? "")."
+        case .parameters(let preset):
+            return "\(suggestion): \(preset.expression) takes (\(preset.parameters.map { $0.rawValue + ":" }.joined()))."
+        case .range(let parameter):
+            let range = parameter.range
+            return "\(suggestion): \(parameter.rawValue) must be from \(AnimationExpression.format(range.lowerBound)) to "
+                + "\(AnimationExpression.format(range.upperBound))."
+        }
+    }
 }

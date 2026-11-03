@@ -337,6 +337,8 @@ struct ModelCodingTests {
                            suggestions: [".headline", "System/Bold/17"], recommended: ".headline")),
             .font(FontItem(id: "fa", created: created, requestID: UUID(), question: "Which?", sample: "Title",
                            suggestions: [".headline", "System/Bold/17"], recommended: ".headline", answer: "![](font:System/Bold/17)")),
+            .animation(AnimationItem(id: "an", created: created, requestID: UUID(), question: "How?", suggestions: [".snappy", ".smooth"],
+                                     recommended: ".snappy", answer: "![](animation:.smooth)")),
             .system(SystemItem(id: "s", created: created, text: "Session started", level: .warning)),
             .result(ResultItem(id: "r", created: created, durationMs: 10, costUSD: 0.5)),
         ]
@@ -348,7 +350,7 @@ struct ModelCodingTests {
             let object = try JSONDecoder().decode(JSONValue.self, from: data).objectValue?["item"]?.objectValue
             #expect(object?["type"] == .string(item.type.rawValue))
         }
-        #expect(items.map(\.id) == ["u", "a", "t", "tu", "tr", "p", "q", "sy", "sa", "co", "cp", "so", "sc", "fo", "fa", "s", "r"])
+        #expect(items.map(\.id) == ["u", "a", "t", "tu", "tr", "p", "q", "sy", "sa", "co", "cp", "so", "sc", "fo", "fa", "an", "s", "r"])
     }
 
     @Test("The symbol item of docs/data-model.md › Symbol item: answer null until the user answers")
@@ -437,6 +439,21 @@ struct ModelCodingTests {
         let encoded = try JSONDecoder().decode(JSONValue.self, from: StorageJSON.lineEncoder().encode(ChatItem.font(request)))
         #expect(encoded.objectValue?["answer"] == .null)
         #expect(encoded.objectValue?["type"] == .string("font"))
+    }
+
+    @Test("The animation item of docs/data-model.md › Animation item: answer null until the user answers")
+    func animationItem() throws {
+        let line = #"{"type":"animation","id":"8E1F2A3B-4C5D-4E6F-9A0B-1C2D3E4F5A6B","created":"2026-11-03T14:20:01Z","requestID":"8E1F2A3B-4C5D-4E6F-9A0B-1C2D3E4F5A6B","question":"How should the sidebar slide in?","suggestions":[".snappy",".spring(duration: 0.4, bounce: 0.2)",".easeInOut(duration: 0.25)"],"recommended":".snappy","answer":"![](animation:.spring(duration: 0.4, bounce: 0.2))"}"#
+        let item = try StorageJSON.decoder().decode(ChatItem.self, from: Data(line.utf8))
+        guard case .animation(var request) = item else {
+            Issue.record("not an animation item")
+            return
+        }
+        #expect(request.answer == "![](animation:.spring(duration: 0.4, bounce: 0.2))")
+        #expect(request.suggestions.count == 3 && request.recommended == ".snappy")
+        request.answer = nil
+        let encoded = try JSONDecoder().decode(JSONValue.self, from: StorageJSON.lineEncoder().encode(ChatItem.animation(request)))
+        #expect(encoded.objectValue?["answer"] == .null)
     }
 
     @Test("MCP tool names are split after mcp__ at the first __")

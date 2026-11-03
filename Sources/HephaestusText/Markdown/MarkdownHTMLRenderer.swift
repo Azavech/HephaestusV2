@@ -308,6 +308,14 @@ struct HTMLWriter {
                 output += " data-font-face=\"\(Self.escaped(faceURL))\""
             }
             output += ">\(Self.escaped(marker.label))</span>"
+        case .animation(let expression, let curve):
+            // An animation marker: a replay button, a lane and the expression; the page plays the
+            // lane (docs/documentation-viewer.md › Animation markers).
+            output += "<span class=\"md-animation\" data-duration=\"\(String(format: "%.3f", curve.duration))\""
+            output += " data-easing=\"\(Self.escaped(MarkdownAnimationMarkers.sanitizedEasing(curve.easing)))\">"
+            output += "<button type=\"button\" class=\"md-animation-play\"><span class=\"md-symbol-icon\" data-symbol=\"play.fill\"></span></button>"
+            output += "<span class=\"md-animation-lane\"><span class=\"md-animation-dot\"></span></span>"
+            output += "\(Self.escaped(expression))</span>"
         case .itemID(let id, let code):
             // A ticket or bundle id (docs/documentation-viewer.md › Ticket and bundle ids).
             output += "<a class=\"md-id\" href=\"\(Self.escaped(MarkdownItemIDs.href(for: id)))\">"

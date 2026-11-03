@@ -62,6 +62,7 @@ public indirect enum MarkdownInline: Sendable, Equatable {
     case sound(String)                   // a sound marker: the sound's name
     case shortcut([String])              // a shortcut marker of an accepted shortcut: its key caps
     case font(MarkdownFontMarker)        // a font marker of a font that `fontMarker` accepted
+    case animation(String, MarkdownAnimationCurve) // an animation marker with a curve: its expression
     case itemID(String, code: Bool)      // a ticket or bundle id of a project of the device; code: written as a code span
     case softBreak
     case lineBreak

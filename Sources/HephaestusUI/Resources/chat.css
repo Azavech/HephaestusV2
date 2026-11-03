@@ -611,6 +611,45 @@ a.md-id:hover {
   margin-right: 0;
 }
 
+/* Animation markers: a replay button, a lane and the expression; chat.js plays the lane
+   (docs/chats.md › Links, images and files). */
+.md-animation {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  vertical-align: -0.1em;
+}
+
+.md-animation-play {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.md-animation-lane {
+  position: relative;
+  display: inline-block;
+  width: 3em;
+  height: 0.8em;
+  border-radius: 0.4em;
+  background-color: color-mix(in srgb, currentColor 20%, transparent);
+}
+
+.md-animation-dot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0.8em;
+  height: 0.8em;
+  border-radius: 50%;
+  background-color: currentColor;
+}
+
 .system-line,
 .result-line {
   text-align: center;

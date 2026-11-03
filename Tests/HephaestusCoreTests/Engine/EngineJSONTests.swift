@@ -79,6 +79,7 @@ struct EngineJSONTests {
         "### ShortcutRequest": roundTrip(ShortcutRequest.self),
         "### ShortcutInUse": roundTrip(ShortcutInUse.self),
         "### FontRequest": roundTrip(FontRequest.self),
+        "### AnimationRequest": roundTrip(AnimationRequest.self),
         "### FeedbackContext": roundTrip(FeedbackContext.self),
         "### ClaudeModel": roundTrip(ClaudeModel.self),
         "### ClaudeStatus": roundTrip([ClaudeStatus].self),

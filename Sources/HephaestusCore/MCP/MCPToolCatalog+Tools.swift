@@ -1002,6 +1002,39 @@ extension MCPToolCatalog {
             handling: .askFont
         ),
         MCPToolDefinition(
+            name: "ask_animation",
+            description: #"""
+            Ask the user to choose one SwiftUI animation, instead of listing animation expressions in ask_questions. Only available in projects of type Swift application. Give the question, 2 to 10 suggested animations written as SwiftUI expressions and the recommended one. An animation is .smooth, .snappy or .bouncy with (duration:extraBounce:), .spring with (duration:bounce:), or .easeIn, .easeOut, .easeInOut or .linear with (duration:), with its parameters or without them (SwiftUI's defaults), for example .spring(duration: 0.4, bounce: 0.2); duration goes from 0.1 to 2, bounce from -1 to 1 and extraBounce from 0 to 1. The app plays each suggestion as a circle sliding along a lane, the recommended one preselected, with a Custom row where the user sets a preset and its parameters; the user can also answer in their own words or skip. This tool returns immediately: end your turn after calling it. The answer arrives in the next user message: "Animation: ![](animation:<expression>)" for a chosen animation, "Animation: <answer>" for an answer in the user's own words, or "Animation: Skipped". Only available in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "question": {
+                  "type": "string",
+                  "description": "The question."
+                },
+                "suggestions": {
+                  "type": "array",
+                  "description": "2 to 10 distinct SwiftUI animation expressions, for example .spring(duration: 0.4, bounce: 0.2).",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "recommended": {
+                  "type": "string",
+                  "description": "The recommended animation: one of the suggestions, copied exactly."
+                }
+              },
+              "required": ["question", "suggestions", "recommended"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "chats.postAnimation",
+            handling: .askAnimation
+        ),
+        MCPToolDefinition(
             name: "list_chats",
             description: #"""
             List a project's chats of every kind (project, ticket, bundle, feedback), most recently updated first, with their title, kind, linked ticket or bundle, settings and state.
