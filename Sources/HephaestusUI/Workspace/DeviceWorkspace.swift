@@ -17,7 +17,7 @@ struct WorkspaceEvent: Sendable {
     var kind: EventKind {
         switch event {
         case .chatDelta, .runOutput: return .stream
-        case .uiOpen, .unknown: return .action
+        case .uiOpen, .chatNotification, .unknown: return .action
         default: return .state
         }
     }

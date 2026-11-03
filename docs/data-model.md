@@ -1099,6 +1099,9 @@ projects:
 | updateCheckIntervalMinutes | `updateCheckIntervalMinutes` | `Int`                 | no       | `30`                                                                       | Minutes between update checks. 5–1440. Default chosen at design time.                                                                                                                      |
 | formatGoOnSave             | `formatGoOnSave`             | `Bool`                | no       | `true`                                                                     | Format Go files with `gofmt` on save when `gofmt` is found ([Code editor](code-editor.md)).                                                                                                |
 | formatSwiftOnSave          | `formatSwiftOnSave`          | `Bool`                | no       | `false`                                                                    | Format Swift files with `swift-format` on save when `swift-format` is found.                                                                                                               |
+| notifyNeedsYou             | `notifyNeedsYou`             | `Bool`                | no       | `true`                                                                     | This Mac posts a notification when a chat needs the user ([UI › Notifications](ui.md#notifications)).                                                                                      |
+| notifyFinished             | `notifyFinished`             | `Bool`                | no       | `true`                                                                     | This Mac posts a notification when Claude finishes replying.                                                                                                                               |
+| notifyAISummary            | `notifyAISummary`            | `Bool`                | no       | `true`                                                                     | This Mac posts the notifications with Haiku's summary; `false` posts them at once with the fallback detail ([Chats › Notifications](chats.md#notifications)).                              |
 | unknownKeys                | —                            | `[String: JSONValue]` | —        | `[:]`                                                                      | [Unknown keys](#unknown-keys).                                                                                                                                                             |
 
 - The engine writes the whole file when a setting changes; `settings.update` takes partial changes ([Engine API](engine-api.md)).
@@ -1124,6 +1127,9 @@ autoUpdate: true
 updateCheckIntervalMinutes: 30
 formatGoOnSave: true
 formatSwiftOnSave: false
+notifyNeedsYou: true
+notifyFinished: true
+notifyAISummary: false
 ```
 
 A settings file that reads as all defaults:
@@ -1454,3 +1460,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R124: A ticket can depend on other tickets of its project or be related to them; the other ticket shows the inverse link, Blocks or Related; the user and Claude add and remove links; the ticket list marks a ticket that depends on a ticket that is not done, and Implement asks for confirmation while one is not done.
 - R126: The engine sets a bundle to done when every ticket of the bundle is done, whoever changed the last ticket, and sets a done bundle back to in progress when one of its tickets is not done.
 - R127: A ticket keeps the history of its creation, status changes and renames, each with its author and date, and the Details tab shows it among the comments.
+- R128: A macOS notification, titled with the project identifier and the chat title and detailed by a Haiku summary, tells the user when a chat needs them or when Claude has finished replying; each Mac turns each kind and the summary off in Settings.

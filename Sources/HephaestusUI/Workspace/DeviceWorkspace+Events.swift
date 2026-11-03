@@ -67,9 +67,10 @@ extension DeviceWorkspace {
         case .planUsageUpdated(let usage):
             planUsage = usage
             planUsageStored?()
-        case .uiOpen, .unknown:
-            // `ui.open` is routed by AppModel (docs/ui.md › Choosing the window); unknown events
-            // are handled by the document that defines them.
+        case .uiOpen, .chatNotification, .unknown:
+            // `ui.open` is routed and `chat.notification` posted by AppModel (docs/ui.md ›
+            // Choosing the window, › Status bar); unknown events are handled by the document that
+            // defines them.
             break
         }
     }

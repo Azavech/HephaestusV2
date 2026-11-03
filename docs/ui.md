@@ -213,6 +213,19 @@ The chats popover lists the chats counted by the Running chats and Waiting chats
 
 While chats of any open workspace are in state `waitingPermission` or `waitingAnswers`, the Dock icon shows their number as its badge (`NSApp.dockTile.badgeLabel`, cleared at 0). When a chat enters one of these states while HephaestusV2 is not the active app, the app calls `NSApp.requestUserAttention(.informationalRequest)` once for it. Default chosen at design time.
 
+A `chat.notification` event ([Chats › Notifications](chats.md#notifications)) of an open workspace becomes a macOS notification of this Mac, which `AppModel` posts with UserNotifications. The Dock badge and the single `requestUserAttention` above do not change.
+
+- This Mac posts the notifications of its own chats, whatever its windows show. It posts those of a remote device while its workspace of that device is open, that is while one of its main windows or chat windows shows that device ([AppModel](#appmodel)).
+- This Mac's [Notifications](#notifications) settings choose the events: `needsYou` events are ignored while `Notify when a chat needs you` is off, and `finished` events while `Notify when Claude finishes replying` is off. While `AI-generated summary` is on, the Mac posts at the `summary` stage and ignores the `immediate` stage; while it is off, it posts at the `immediate` stage and ignores the `summary` stage.
+- Title `<project identifier> · <chat title>`, from the chat's `projectID` and `title` in the workspace; body the event's `detail`; the default notification sound. An event of a chat the workspace does not know is ignored.
+- It is not posted while HephaestusV2 is the active app and its key window shows the chat: a main window whose content (the Chats section, or the Chats tab of a ticket or of a bundle) or visible inspector shows the chat, or a chat window of the chat. Otherwise it is posted, as a banner also while the app is active.
+- Each chat has at most one notification on this Mac: its identifier is `<device id>/<chat id>`, so a new notification of the chat replaces the previous one. The Mac removes it when a view of this Mac opens the chat (in a main window's content or inspector, or in a chat window), and when a window that shows the chat becomes key.
+- Clicking a notification brings HephaestusV2 to the front and navigates a main window to the chat (`NavigationTarget` `chat`), as the chats popover does; the window is chosen as [Choosing the window](#choosing-the-window) specifies ([Navigation](#navigation)).
+- At launch, when it has not asked yet (authorization status not determined), the app asks macOS for the permission to post notifications with alerts and sounds. System Settings › Notifications changes the answer afterwards.
+- A process started with `HEPHAESTUS_DATA_DIR` neither asks for that permission nor posts notifications, since it shares the installed app's bundle id ([Environment overrides](architecture.md#environment-overrides)).
+
+The notification identifier and the authorization options are Default chosen at design time.
+
 ### Weekly usage
 
 The Weekly usage item, in main windows and chat windows, shows the plan usage of the window's workspace (`planUsage`, [DeviceWorkspace](#deviceworkspace)): the newest weekly usage of the Claude account known to the connected devices ([Plan usage](engine-api.md#plan-usage), [Plan usage sharing](remote.md#plan-usage-sharing)). The 5-hour window is not shown anywhere.
@@ -470,16 +483,17 @@ The Settings window (⌘,) always shows and changes This Mac, whichever device t
 
 Controls apply immediately: toggles and pop-up buttons when changed, text and number fields on Return or when they lose the focus. A value that fails validation shows a red message under the field and is not applied. A change of a `settings.yml` key calls `settings.update` with that key only ([Engine API](engine-api.md)); every client then receives `settings.updated`. Default chosen at design time.
 
-| Tab     | SF Symbol                                 | Content                           |
-| ------- | ----------------------------------------- | --------------------------------- |
-| General | `gearshape`                               | [General](#general)               |
-| Devices | `laptopcomputer`                          | [Devices](#devices)               |
-| MCP     | `point.3.connected.trianglepath.dotted`   | [MCP](#mcp)                       |
-| Skills  | `wand.and.stars`                          | [Skills library](#skills-library) |
-| Updates | `arrow.down.circle`                       | [Updates](#updates)               |
-| Editor  | `chevron.left.forwardslash.chevron.right` | [Editor](#editor)                 |
+| Tab           | SF Symbol                                 | Content                           |
+| ------------- | ----------------------------------------- | --------------------------------- |
+| General       | `gearshape`                               | [General](#general)               |
+| Devices       | `laptopcomputer`                          | [Devices](#devices)               |
+| Notifications | `bell.badge`                              | [Notifications](#notifications)   |
+| MCP           | `point.3.connected.trianglepath.dotted`   | [MCP](#mcp)                       |
+| Skills        | `wand.and.stars`                          | [Skills library](#skills-library) |
+| Updates       | `arrow.down.circle`                       | [Updates](#updates)               |
+| Editor        | `chevron.left.forwardslash.chevron.right` | [Editor](#editor)                 |
 
-The tab symbols are design-time choices. Default chosen at design time.
+The tab symbols are design-time choices, except `bell.badge`, which the user chose. Default chosen at design time.
 
 ### General
 
@@ -512,6 +526,16 @@ The tab symbols are design-time choices. Default chosen at design time.
 | Remove…     | `Remove “<device name>”?`      | `This Mac forgets the device and its pairing code. Windows showing <device name> switch to This Mac.` | `Remove` (destructive), `Cancel` (default)     |
 
 The Copy feedback, the alerts, the server status line and the override note are design-time choices. Default chosen at design time.
+
+### Notifications
+
+The three toggles are on by default. They are stored in This Mac's `settings.yml` and control only the notifications This Mac posts, for the chats of every device ([Status bar](#status-bar), [Chats › Notifications](chats.md#notifications)).
+
+| Control                              | Kind   | Setting           | Behaviour                                                                |
+| ------------------------------------ | ------ | ----------------- | ------------------------------------------------------------------------ |
+| Notify when a chat needs you         | toggle | `notifyNeedsYou`  | Off: This Mac posts no "needs you" notification.                         |
+| Notify when Claude finishes replying | toggle | `notifyFinished`  | Off: This Mac posts no "finished" notification.                          |
+| AI-generated summary                 | toggle | `notifyAISummary` | Off: This Mac posts each notification at once, with the fallback detail. |
 
 ### MCP
 
@@ -593,8 +617,9 @@ Responsibilities:
 3. Close a remote workspace and its connection as soon as no main window and no chat window shows its device.
 4. Keep `devices` current from the paired devices service and Bonjour discovery ([Online status](remote.md#online-status)).
 5. Route `ui.open` events to a window ([Choosing the window](#choosing-the-window)).
-6. Share the newest plan usage between the open workspaces ([Plan usage sharing](remote.md#plan-usage-sharing)).
-7. Run the [quit checks](#unsaved-changes-and-quitting), then the [shutdown](architecture.md#shutdown).
+6. Ask for the permission to post notifications at launch, post the chat notifications, replace and remove them, and handle their click ([Status bar](#status-bar)).
+7. Share the newest plan usage between the open workspaces ([Plan usage sharing](remote.md#plan-usage-sharing)).
+8. Run the [quit checks](#unsaved-changes-and-quitting), then the [shutdown](architecture.md#shutdown).
 
 ### DeviceWorkspace
 
@@ -661,6 +686,7 @@ Loading every project's chat metadata and keeping loaded data are design-time ch
 | `claude.updated`    | Replaces `claudeStatus` and `models`.                                                                                                                         |
 | `planUsage.updated` | Replaces `planUsage`; `AppModel` then shares it ([Plan usage sharing](remote.md#plan-usage-sharing)).                                                         |
 | `ui.open`           | [Choosing the window](#choosing-the-window).                                                                                                                  |
+| `chat.notification` | No change; `AppModel` posts the notification ([Status bar](#status-bar)).                                                                                     |
 
 An event of a project that is not loaded changes only device-level data and chat metadata. An event that is not listed here is handled as the document that defines it specifies.
 
@@ -733,7 +759,7 @@ Everything else comes from the engine. A process started with `HEPHAESTUS_DATA_D
 
 ## Navigation
 
-A `NavigationTarget` ([NavigationTarget](engine-api.md#navigationtarget)) names something to show. Search results, links between docs and tickets, the status bar's chats popover, links and ids clicked in chat views and chat windows (ticket and bundle ids of transcripts and pinned cards included, [Chats](chats.md#links-images-and-files)), ticket and bundle ids clicked in ticket descriptions and comments ([Tickets](tickets.md#ticket-detail)), `ui.open` events (sent when Claude calls `open_in_app`, [open_in_app](mcp.md#open_in_app)), Send in the Feedback sheet ([Feedback sheet](feedback.md#feedback-sheet)) and the debug tool `debug_navigate` all call `WindowState.navigate(to:)` on a main window. It behaves the same on This Mac and on remote devices.
+A `NavigationTarget` ([NavigationTarget](engine-api.md#navigationtarget)) names something to show. Search results, links between docs and tickets, the status bar's chats popover, links and ids clicked in chat views and chat windows (ticket and bundle ids of transcripts and pinned cards included, [Chats](chats.md#links-images-and-files)), ticket and bundle ids clicked in ticket descriptions and comments ([Tickets](tickets.md#ticket-detail)), `ui.open` events (sent when Claude calls `open_in_app`, [open_in_app](mcp.md#open_in_app)), Send in the Feedback sheet ([Feedback sheet](feedback.md#feedback-sheet)), a click on a chat notification ([Status bar](#status-bar)) and the debug tool `debug_navigate` all call `WindowState.navigate(to:)` on a main window. It behaves the same on This Mac and on remote devices.
 
 ### Resolving a target
 
@@ -764,6 +790,7 @@ Keeping the section for `project` targets, `pendingTarget` and the not-found tex
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `ui.open` event                                                     | Handled only when its `deviceID` is absent or equals `localDeviceID` (Brief §4.2). The key window when it is a main window showing the workspace's device; otherwise the most recently key main window showing that device; otherwise a new main window opened on that device.                                                                                                                                                                   |
 | Search result                                                       | The window whose search panel shows it ([Navigation](search.md#navigation)).                                                                                                                                                                                                                                                                                                                                                                     |
+| Chat notification click                                             | The key window when it is a main window showing the chat's device; otherwise the most recently key main window showing that device; otherwise a new main window opened on that device. The app is activated, and the window is ordered front and made key.                                                                                                                                                                                       |
 | Status bar chats popover                                            | The window of the status bar.                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | Chat window: a link or id of its transcript, pinned cards or header | The most recently key main window showing the chat's device, ordered front and made key; otherwise a new main window opened on that device. The chat window stays open.                                                                                                                                                                                                                                                                          |
 | Feedback sheet: Send                                                | For the `chat{chatID}` target of the new feedback chat ([Feedback sheet](feedback.md#feedback-sheet)): the main window the feedback was captured from; for feedback captured from a chat window, Settings, About or any other window, the most recently key main window showing the receiving device, otherwise a new main window opened on that device. The window is ordered front and made key; the window the feedback came from stays open. |
@@ -789,3 +816,4 @@ A window chosen for a `ui.open` event is ordered front; it becomes key only when
 - R116: An update restart waits until all chats are done and Claude is not working.
 - R118: Ticket and bundle ids named in chats, ticket descriptions and comments are links that open the ticket or the bundle.
 - R125: The chat lists have a filter button that hides closed chats: the chats closed by Claude and the chats whose ticket is done.
+- R128: A macOS notification, titled with the project identifier and the chat title and detailed by a Haiku summary, tells the user when a chat needs them or when Claude has finished replying; each Mac turns each kind and the summary off in Settings.

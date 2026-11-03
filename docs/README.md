@@ -23,31 +23,31 @@ Every change starts in these docs; the code is generated or updated to match the
 
 ## Files
 
-| File                                               | Content                                                                                                                                              |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [README.md](README.md)                             | This index: what the app is, the docs-first rule, the reading order and the conventions.                                                             |
-| [requirements.md](requirements.md)                 | The original request verbatim, its numbered requirements with the sections that specify them, the interpretations chosen and the gaps.               |
-| [architecture.md](architecture.md)                 | Engine and client split, modules, repository layout, concurrency, device data directory, environment overrides, processes and security.              |
-| [ui.md](ui.md)                                     | Windows, toolbar, `Device ▸ Project ▸ Sub project` selector, sidebar, inspector, status bar, every menu and shortcut, Settings window and UI state.  |
-| [projects.md](projects.md)                         | Projects and sub projects: identifiers, creating, opening and removing, selector rules, project settings, run commands and console.                  |
-| [dashboard.md](dashboard.md)                       | The Dashboard section: the cards that summarise the active project, their sources and their live updates.                                            |
-| [tickets.md](tickets.md)                           | Tickets and bundles: fields, description template, status rules, naming, comments, attachments, image viewer, Implement and Implement All.           |
-| [workflow.md](workflow.md)                         | The rules Claude follows: never invent, labelled questions, writing tickets, status, docs first, commits, pushing, bundles and the self-update loop. |
-| [chats.md](chats.md)                               | Claude CLI processes and flags, output mapping, permissions, questions, chat settings, transcript view, Haiku naming and the text of every prompt.   |
-| [mcp.md](mcp.md)                                   | The MCP server: transport, authentication, every tool with its schema, results and errors, external use and debug tools.                             |
-| [web-tabs.md](web-tabs.md)                         | The integrated browser: tab strip, address bar, navigation, locked tabs, popups, downloads and website data.                                         |
-| [code-editor.md](code-editor.md)                   | File tree, editor tabs, the editor, saving, changes on disk and the syntax highlighting rules for Go, Swift and the basic languages.                 |
-| [documentation-viewer.md](documentation-viewer.md) | The Docs section with its Preview, Edit and Split modes, and the shared Markdown renderer.                                                           |
-| [costs.md](costs.md)                               | The cost of each chat, the project totals with sub projects, the costs of deleted chats, the Costs section and the status bar item.                  |
-| [search.md](search.md)                             | Search scopes, matching, ranking, sources, snippets and the search panel.                                                                            |
-| [skills.md](skills.md)                             | The skills library, the SKILL.md format, per-project enablement through a generated plugin and the Skills section.                                   |
-| [feedback.md](feedback.md)                         | The ladybug, the in-process screenshot, the feedback sheet and the feedback chat that creates a ticket.                                              |
-| [remote.md](remote.md)                             | Remote devices: discovery, pairing, handshake and encryption, messages, reconnection and the localhost rewrite.                                      |
-| [data-model.md](data-model.md)                     | Exact formats of the project, ticket, bundle, chat, device and skill files, with validation, id allocation and loading.                              |
-| [engine-api.md](engine-api.md)                     | Every engine method and event with params, results, errors and actor rules, the API types and the Swift shape.                                       |
-| [updater.md](updater.md)                           | The Updater: release feed, check schedule, download and verification, install and restart, IPC, About window and update banner.                      |
-| [ci.md](ci.md)                                     | GitHub workflows, versioning, app bundle, signing, release assets, checks, docs conformance tests and make targets.                                  |
-| [development.md](development.md)                   | Building, running a second isolated instance, automated UI checks, tests, fixtures and contribution rules.                                           |
+| File                                               | Content                                                                                                                                                           |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [README.md](README.md)                             | This index: what the app is, the docs-first rule, the reading order and the conventions.                                                                          |
+| [requirements.md](requirements.md)                 | The original request verbatim, its numbered requirements with the sections that specify them, the interpretations chosen and the gaps.                            |
+| [architecture.md](architecture.md)                 | Engine and client split, modules, repository layout, concurrency, device data directory, environment overrides, processes and security.                           |
+| [ui.md](ui.md)                                     | Windows, toolbar, `Device ▸ Project ▸ Sub project` selector, sidebar, inspector, status bar, every menu and shortcut, Settings window and UI state.               |
+| [projects.md](projects.md)                         | Projects and sub projects: identifiers, creating, opening and removing, selector rules, project settings, run commands and console.                               |
+| [dashboard.md](dashboard.md)                       | The Dashboard section: the cards that summarise the active project, their sources and their live updates.                                                         |
+| [tickets.md](tickets.md)                           | Tickets and bundles: fields, description template, status rules, naming, comments, attachments, image viewer, Implement and Implement All.                        |
+| [workflow.md](workflow.md)                         | The rules Claude follows: never invent, labelled questions, writing tickets, status, docs first, commits, pushing, bundles and the self-update loop.              |
+| [chats.md](chats.md)                               | Claude CLI processes and flags, output mapping, permissions, questions, chat settings, transcript view, Haiku naming, notifications and the text of every prompt. |
+| [mcp.md](mcp.md)                                   | The MCP server: transport, authentication, every tool with its schema, results and errors, external use and debug tools.                                          |
+| [web-tabs.md](web-tabs.md)                         | The integrated browser: tab strip, address bar, navigation, locked tabs, popups, downloads and website data.                                                      |
+| [code-editor.md](code-editor.md)                   | File tree, editor tabs, the editor, saving, changes on disk and the syntax highlighting rules for Go, Swift and the basic languages.                              |
+| [documentation-viewer.md](documentation-viewer.md) | The Docs section with its Preview, Edit and Split modes, and the shared Markdown renderer.                                                                        |
+| [costs.md](costs.md)                               | The cost of each chat, the project totals with sub projects, the costs of deleted chats, the Costs section and the status bar item.                               |
+| [search.md](search.md)                             | Search scopes, matching, ranking, sources, snippets and the search panel.                                                                                         |
+| [skills.md](skills.md)                             | The skills library, the SKILL.md format, per-project enablement through a generated plugin and the Skills section.                                                |
+| [feedback.md](feedback.md)                         | The ladybug, the in-process screenshot, the feedback sheet and the feedback chat that creates a ticket.                                                           |
+| [remote.md](remote.md)                             | Remote devices: discovery, pairing, handshake and encryption, messages, reconnection and the localhost rewrite.                                                   |
+| [data-model.md](data-model.md)                     | Exact formats of the project, ticket, bundle, chat, device and skill files, with validation, id allocation and loading.                                           |
+| [engine-api.md](engine-api.md)                     | Every engine method and event with params, results, errors and actor rules, the API types and the Swift shape.                                                    |
+| [updater.md](updater.md)                           | The Updater: release feed, check schedule, download and verification, install and restart, IPC, About window and update banner.                                   |
+| [ci.md](ci.md)                                     | GitHub workflows, versioning, app bundle, signing, release assets, checks, docs conformance tests and make targets.                                               |
+| [development.md](development.md)                   | Building, running a second isolated instance, automated UI checks, tests, fixtures and contribution rules.                                                        |
 
 ## Conventions
 

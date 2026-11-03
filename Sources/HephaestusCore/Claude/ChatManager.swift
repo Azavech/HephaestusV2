@@ -51,6 +51,10 @@ final class ChatManager {
     var reportedStates: [ChatID: ChatState] = [:]
     /// The last `backgroundWork` reported by `chat.updated`, per chat.
     var reportedBackgroundWork: [ChatID: Bool] = [:]
+    /// The number of the latest notification event of each chat; a summary of an older one is
+    /// dropped (docs/chats.md › Notification events).
+    var latestNotifications: [ChatID: Int] = [:]
+    var notificationCount = 0
     var timings = ChatTimings()
     let transcripts = JSONLinesWriter()
     var nextGeneration = 0

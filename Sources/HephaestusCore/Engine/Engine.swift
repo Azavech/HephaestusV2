@@ -56,6 +56,9 @@ public actor Engine {
     let chats = ChatManager()
     /// Haiku naming (Claude/TitleNaming.swift); tests replace it before `start()`.
     var titleNamer: any TitleNamer
+    /// The summary call of chat notifications (Claude/NotificationSummary.swift); tests replace it
+    /// before `start()`.
+    var notificationSummarizer: any NotificationSummarizer
     /// The skills library (Skills/SkillsLibrary.swift).
     let skillsLibrary = SkillsLibrary()
     /// Generated skills plugin folders (Skills/SkillsPlugin.swift).
@@ -120,6 +123,7 @@ public actor Engine {
         self.planUsage = files.planUsage
         self.domain = DomainState(registry: files.registry)
         self.titleNamer = HaikuTitleNamer()
+        self.notificationSummarizer = HaikuNotificationSummarizer()
         self.skillsPlugins = SkillsPluginGenerator()
         self.tokens = tokens
         self.mcpServer = MCPServer(tokens: tokens, debugTools: configuration.debugTools, appVersion: configuration.appVersion, log: log)

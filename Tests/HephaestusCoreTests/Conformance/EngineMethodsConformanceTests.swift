@@ -80,7 +80,7 @@ struct EngineMethodsConformanceTests {
             $0.header.first == "Event" && $0.header.count > 1 && $0.header[1] == "Swift type"
         })
         let documented = table.rows.map { ($0[0], $0[1]) }
-        #expect(documented.count == 21)
+        #expect(documented.count == 22)
         #expect(EngineEvents.all.map { $0.name } == documented.map(\.0))
         #expect(EngineEvents.all.map { String(describing: $0) } == documented.map(\.1))
     }

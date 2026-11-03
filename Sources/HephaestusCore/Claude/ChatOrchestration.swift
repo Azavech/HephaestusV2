@@ -46,17 +46,22 @@ extension Engine {
     static let turnStates: Set<ChatState> = [.starting, .running, .waitingPermission]
 
     /// Records the state reported by `chat.updated`. A turn that starts clears the turn's report;
-    /// a turn of a chat with an orchestrator that ends in `idle` or `error` sends the report to
-    /// the orchestrator chat (docs/chats.md › Orchestrated ticket chats).
+    /// a change from a state already reported can post a notification (docs/chats.md ›
+    /// Notifications); a turn of a chat with an orchestrator that ends in `idle` or `error` sends
+    /// the report to the orchestrator chat (docs/chats.md › Orchestrated ticket chats).
     func recordReportedState(_ meta: ChatMeta) {
         let previous = chats.reportedStates[meta.id]
         chats.reportedStates[meta.id] = meta.state
         chats.reportedBackgroundWork[meta.id] = meta.backgroundWork
         let wasInTurn = previous.map { Engine.turnStates.contains($0) } ?? false
-        if !wasInTurn, Engine.turnStates.contains(meta.state) {
+        let startsTurn = !wasInTurn && Engine.turnStates.contains(meta.state)
+        if startsTurn {
             chats.runtimes[meta.id]?.turnReport = TurnReport()
-            return
         }
+        if let previous {
+            postChatNotification(meta, previous: previous)
+        }
+        if startsTurn { return }
         guard wasInTurn, meta.state == .idle || meta.state == .error, let orchestratorID = meta.orchestratorChatID,
               let ticketID = meta.ticketID
         else { return }

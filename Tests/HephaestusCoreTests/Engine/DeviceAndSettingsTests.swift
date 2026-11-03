@@ -70,7 +70,8 @@ struct DeviceAndSettingsTests {
             #expect(json == (try jsonValue("""
                 {"autoUpdate": true, "claudePath": null,
                  "defaultChatSettings": {"effort": "high", "model": "default", "permissionMode": "manual", "ultracode": false},
-                 "feedbackProjectID": null, "formatGoOnSave": true, "formatSwiftOnSave": true, "mcpPort": 47830, "schema": 1,
+                 "feedbackProjectID": null, "formatGoOnSave": true, "formatSwiftOnSave": true, "mcpPort": 47830,
+                 "notifyAISummary": true, "notifyFinished": true, "notifyNeedsYou": true, "schema": 1,
                  "skillsLibraryPath": null, "syncEnabled": true, "syncPort": 47821, "updateCheckIntervalMinutes": 30}
                 """)))
         }

@@ -330,7 +330,10 @@ extension Engine {
             autoUpdate: stored.autoUpdate,
             updateCheckIntervalMinutes: stored.updateCheckIntervalMinutes,
             formatGoOnSave: stored.formatGoOnSave,
-            formatSwiftOnSave: stored.formatSwiftOnSave
+            formatSwiftOnSave: stored.formatSwiftOnSave,
+            notifyNeedsYou: stored.notifyNeedsYou,
+            notifyFinished: stored.notifyFinished,
+            notifyAISummary: stored.notifyAISummary
         )
         do {
             _ = try await updateSettings(params, .system)

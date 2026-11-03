@@ -70,6 +70,8 @@ public final class AppModel {
     @ObservationIgnored let windowRegistry = WindowRegistry()
     @ObservationIgnored let updateController: UpdateController
     @ObservationIgnored let feedbackController: FeedbackController
+    /// The macOS notifications of chats (docs/ui.md › Status bar).
+    @ObservationIgnored let chatNotifier: ChatNotifier
     @ObservationIgnored var debugUI: AppDebugUI?
     /// Savers run after the quit checks, at most 5 seconds: the changed ticket description editors
     /// (docs/ui.md › Unsaved changes and quitting). Their owners add and remove them.
@@ -138,9 +140,11 @@ public final class AppModel {
         isRestartLaunch = restartWindows != nil
         updateController = UpdateController(environment: environment, appVersion: appVersion)
         feedbackController = FeedbackController()
+        chatNotifier = ChatNotifier(enabled: environment.dataDirectory == nil)
         pairedDevices = engine.pairedDevices.devices
         updateController.app = self
         feedbackController.app = self
+        chatNotifier.app = self
         observe(local)
         observeLocalServices()
         observeKeyWindows()
@@ -517,6 +521,8 @@ public final class AppModel {
             updateWaitingChats()
         case .chatUpdated:
             updateWaitingChats()
+        case .chatNotification(let payload):
+            chatNotifier.handle(payload, from: workspace)
         case .ticketDeleted(let payload):
             for state in windows.values where state.deviceID == deviceID {
                 state.updateViewState(of: payload.projectID) { $0.selectedTicketIDs.remove(payload.ticketID) }
@@ -558,7 +564,21 @@ public final class AppModel {
     /// device; otherwise a new main window on that device. The window is ordered front and becomes
     /// key only when the app is already active.
     private func route(_ target: NavigationTarget, from workspace: DeviceWorkspace) {
-        let deviceID = workspace.deviceID
+        route(target, deviceID: workspace.deviceID, makesKey: false)
+    }
+
+    /// docs/ui.md › Choosing the window, chat notification row: the app is activated, and the
+    /// window chosen as for `ui.open` is ordered front and made key.
+    func openNotifiedChat(_ chatID: ChatID, deviceID: String) {
+        guard workspace(for: deviceID) != nil else { return }
+        NSApp.activate()
+        route(.chat(chatID: chatID), deviceID: deviceID, makesKey: true)
+    }
+
+    /// The key main window showing the device, else the most recently key one, else a new main
+    /// window on the device; `makesKey` makes the chosen window key even before the app is
+    /// active.
+    private func route(_ target: NavigationTarget, deviceID: String, makesKey: Bool) {
         let keyMain = windowRegistry.mainID(of: NSApp.keyWindow).flatMap { windows[$0] }
         let chosen = (keyMain?.deviceID == deviceID ? keyMain : nil)
             ?? mainWindowsByKeyOrder.first { $0.deviceID == deviceID }
@@ -569,7 +589,11 @@ public final class AppModel {
             openMainWindow(state)
             return
         }
-        bringToFront(chosen)
+        if makesKey {
+            windowRegistry.window(forMain: chosen.id)?.makeKeyAndOrderFront(nil)
+        } else {
+            bringToFront(chosen)
+        }
         Task {
             await chosen.navigate(to: target)
         }

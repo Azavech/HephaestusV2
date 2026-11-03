@@ -133,6 +133,7 @@ extension Engine {
     /// incomplete question sets (docs/data-model.md › Loading, step 4).
     func startClaudeBackgroundTasks() async {
         (titleNamer as? HaikuTitleNamer)?.attach(to: self)
+        (notificationSummarizer as? HaikuNotificationSummarizer)?.attach(to: self)
         scanChatTranscriptsOfLoadedProjects()
         claudeCLI.detectionGeneration += 1
         let generation = claudeCLI.detectionGeneration
@@ -432,13 +433,14 @@ extension Engine {
 
     // MARK: Shutdown
 
-    /// docs/architecture.md › Shutdown, step 1 for the models probe, the naming calls and the
+    /// docs/architecture.md › Shutdown, step 1 for the models probe, the naming and summary calls and the
     /// CLI lookup: SIGTERM, SIGKILL 3 s later; returns once they have ended.
     func stopClaudeHelperProcesses() async {
         claudeCLI.stopped = true
         claudeCLI.detectionTask?.cancel()
         claudeCLI.backgroundTasks.forEach { $0.cancel() }
         (titleNamer as? HaikuTitleNamer)?.runtime.stop()
+        (notificationSummarizer as? HaikuNotificationSummarizer)?.runtime.stop()
         let environmentWaiters = claudeCLI.environmentWaiters
         claudeCLI.environmentWaiters = []
         environmentWaiters.forEach { $0.resume() }

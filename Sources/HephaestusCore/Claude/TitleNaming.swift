@@ -181,10 +181,22 @@ final class HaikuNamingRuntime: @unchecked Sendable {
     }
 
     func title(for subject: NamingSubject) async -> String? {
-        guard let engine = activeEngine, let context = await engine.namingContext() else { return nil }
-        let kind = HaikuTitleNamer.kind(of: subject)
-        let argv = ClaudeCommandLine.naming(cliPath: context.path, prompt: Prompts.text(HaikuTitleNamer.prompt(for: subject)),
-                                            input: HaikuTitleNamer.input(for: subject))
+        let what = "naming of a \(HaikuTitleNamer.kind(of: subject))"
+        guard let output = await run(prompt: HaikuTitleNamer.prompt(for: subject), input: HaikuTitleNamer.input(for: subject), what: what)
+        else { return nil }
+        let outcome = HaikuTitleNamer.title(fromOutput: output.standardOutput, maximumLength: HaikuTitleNamer.maximumLength(for: subject))
+        if let failure = outcome.failure {
+            output.log.warn(.claude, "\(what) failed: \(failure)")
+        }
+        return outcome.title
+    }
+
+    /// One `claude -p --model haiku` call with `prompt` and `input`, queued behind the calls of
+    /// this runtime (docs/chats.md › Haiku naming › Command): stdout of a call that exited with
+    /// status 0, or nil after a failure or a timeout, written to `engine.log` as `<what> …`.
+    func run(prompt: Prompts.Name, input: String, what: String) async -> (standardOutput: Data, log: LogSink)? {
+        guard let engine = activeEngine, let context = await engine.namingContext(what) else { return nil }
+        let argv = ClaudeCommandLine.naming(cliPath: context.path, prompt: Prompts.text(prompt), input: input)
         let request = ChildProcessRequest(executable: argv[0], arguments: Array(argv.dropFirst()), environment: context.environment,
                                           currentDirectory: context.workingDirectory)
         await queue.acquire()
@@ -196,22 +208,18 @@ final class HaikuNamingRuntime: @unchecked Sendable {
                                                killGrace: killGrace)
         await queue.release()
         if result.timedOut {
-            context.log.warn(.claude, "naming of a \(kind) timed out")
+            context.log.warn(.claude, "\(what) timed out")
             return nil
         }
         if let spawnError = result.spawnError {
-            context.log.warn(.claude, "naming of a \(kind) could not start: \(spawnError)")
+            context.log.warn(.claude, "\(what) could not start: \(spawnError)")
             return nil
         }
         guard result.termination == .exited(0) else {
-            context.log.warn(.claude, "naming of a \(kind) failed: \(result.termination.map { "\($0)" } ?? "no exit status")")
+            context.log.warn(.claude, "\(what) failed: \(result.termination.map { "\($0)" } ?? "no exit status")")
             return nil
         }
-        let outcome = HaikuTitleNamer.title(fromOutput: result.standardOutput, maximumLength: HaikuTitleNamer.maximumLength(for: subject))
-        if let failure = outcome.failure {
-            context.log.warn(.claude, "naming of a \(kind) failed: \(failure)")
-        }
-        return outcome.title
+        return (result.standardOutput, context.log)
     }
 }
 
@@ -259,17 +267,18 @@ struct NamingContext: Sendable {
 }
 
 extension Engine {
-    /// The CLI path, the Claude environment and `Runtime/claude-cwd/` for a naming call; nil
-    /// while the CLI is unavailable (after waiting up to 20 s while it is being checked), so that
-    /// the provisional title stays (docs/chats.md › Version and status).
-    func namingContext() async -> NamingContext? {
+    /// The CLI path, the Claude environment and `Runtime/claude-cwd/` for a naming or summary call;
+    /// nil while the CLI is unavailable (after waiting up to 20 s while it is being checked), so
+    /// that the provisional title or the fallback detail stays (docs/chats.md › Version and
+    /// status).
+    func namingContext(_ what: String) async -> NamingContext? {
         guard !claudeCLI.stopped else { return nil }
         do {
             let context = try await requireClaudeCLI()
             return NamingContext(path: context.path, environment: context.environment, workingDirectory: claudeWorkingDirectory().path,
                                  launcher: configuration.claudeLauncher, registry: claudeCLI.helpers, log: log)
         } catch {
-            log.info(.claude, "naming skipped: the Claude CLI is not available")
+            log.info(.claude, "\(what) skipped: the Claude CLI is not available")
             return nil
         }
     }

@@ -16,6 +16,13 @@ public struct HostSettings: Codable, Sendable, Hashable {
     public var updateCheckIntervalMinutes: Int
     public var formatGoOnSave: Bool
     public var formatSwiftOnSave: Bool
+    /// This Mac posts a notification when a chat needs the user (docs/ui.md › Notifications).
+    public var notifyNeedsYou: Bool
+    /// This Mac posts a notification when Claude finishes replying.
+    public var notifyFinished: Bool
+    /// This Mac posts the notifications with Haiku's summary; false posts them at once with the
+    /// fallback detail (docs/chats.md › Notifications).
+    public var notifyAISummary: Bool
     public var unknownKeys: [String: JSONValue]
 
     public static let defaultMCPPort = 47820
@@ -25,6 +32,7 @@ public struct HostSettings: Codable, Sendable, Hashable {
                 feedbackProjectID: ProjectID? = nil, mcpPort: Int = HostSettings.defaultMCPPort, syncEnabled: Bool = true,
                 syncPort: Int = HostSettings.defaultSyncPort, skillsLibraryPath: String? = nil, autoUpdate: Bool = true,
                 updateCheckIntervalMinutes: Int = 30, formatGoOnSave: Bool = true, formatSwiftOnSave: Bool = false,
+                notifyNeedsYou: Bool = true, notifyFinished: Bool = true, notifyAISummary: Bool = true,
                 unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
         self.claudePath = claudePath
@@ -38,12 +46,16 @@ public struct HostSettings: Codable, Sendable, Hashable {
         self.updateCheckIntervalMinutes = updateCheckIntervalMinutes
         self.formatGoOnSave = formatGoOnSave
         self.formatSwiftOnSave = formatSwiftOnSave
+        self.notifyNeedsYou = notifyNeedsYou
+        self.notifyFinished = notifyFinished
+        self.notifyAISummary = notifyAISummary
         self.unknownKeys = unknownKeys
     }
 
     static let knownKeys: Set<String> = [
         "schema", "claudePath", "defaultChatSettings", "feedbackProjectID", "mcpPort", "syncEnabled", "syncPort",
         "skillsLibraryPath", "autoUpdate", "updateCheckIntervalMinutes", "formatGoOnSave", "formatSwiftOnSave",
+        "notifyNeedsYou", "notifyFinished", "notifyAISummary",
     ]
 
     public init(from decoder: Decoder) throws {
@@ -63,6 +75,9 @@ public struct HostSettings: Codable, Sendable, Hashable {
         updateCheckIntervalMinutes = try c.value("updateCheckIntervalMinutes", default: 30)
         formatGoOnSave = try c.value("formatGoOnSave", default: true)
         formatSwiftOnSave = try c.value("formatSwiftOnSave", default: false)
+        notifyNeedsYou = try c.value("notifyNeedsYou", default: true)
+        notifyFinished = try c.value("notifyFinished", default: true)
+        notifyAISummary = try c.value("notifyAISummary", default: true)
         unknownKeys = try c.unknownKeys(known: Self.knownKeys)
     }
 
@@ -80,6 +95,9 @@ public struct HostSettings: Codable, Sendable, Hashable {
         try c.encode(updateCheckIntervalMinutes, "updateCheckIntervalMinutes")
         try c.encode(formatGoOnSave, "formatGoOnSave")
         try c.encode(formatSwiftOnSave, "formatSwiftOnSave")
+        try c.encode(notifyNeedsYou, "notifyNeedsYou")
+        try c.encode(notifyFinished, "notifyFinished")
+        try c.encode(notifyAISummary, "notifyAISummary")
         try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
     }
 }

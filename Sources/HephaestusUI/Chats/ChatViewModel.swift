@@ -204,6 +204,7 @@ final class ChatViewModel {
 
     func appear(app: AppModel, focusComposer: Bool) {
         self.app = app
+        app.chatNotifier.chatViewOpened(self)
         if let chatID, !opened {
             opened = true
             ChatTranscriptStore.shared.open(chatID, in: workspace)
@@ -225,6 +226,7 @@ final class ChatViewModel {
 
     func disappear() {
         ChatDrafts.unregister(self)
+        app?.chatNotifier.chatViewClosed(self)
         if let chatID, opened {
             opened = false
             ChatTranscriptStore.shared.close(chatID, in: workspace)

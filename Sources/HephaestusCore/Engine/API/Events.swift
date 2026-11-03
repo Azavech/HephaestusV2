@@ -254,6 +254,53 @@ public enum UIOpenEvent: EngineEvent {
     }
 }
 
+/// `chat.notification`: a chat needs the user or a turn finished (docs/chats.md › Notifications).
+/// Emitted once at once (`immediate`, the fallback detail), then once after the summary call
+/// (`summary`, Haiku's summary or the fallback detail).
+public enum ChatNotificationEvent: EngineEvent {
+    public static let name = "chat.notification"
+    public struct Payload: Codable, Sendable, Hashable {
+        /// The event of the chat.
+        public enum Kind: String, Codable, Sendable, Hashable, CaseIterable {
+            /// The chat entered `waitingPermission` or `waitingAnswers`.
+            case needsYou
+            /// A turn ended in `idle`.
+            case finished
+
+            public init(from decoder: Decoder) throws {
+                self = try APIEnumCoding.decode(decoder)
+            }
+        }
+
+        /// When the event is emitted.
+        public enum Stage: String, Codable, Sendable, Hashable, CaseIterable {
+            /// At the event, with the fallback detail.
+            case immediate
+            /// When the summary call ends, with Haiku's summary or the fallback detail.
+            case summary
+
+            public init(from decoder: Decoder) throws {
+                self = try APIEnumCoding.decode(decoder)
+            }
+        }
+
+        public var chatID: ChatID
+        public var projectID: ProjectID
+        public var kind: Kind
+        public var stage: Stage
+        /// The notification's body.
+        public var detail: String
+
+        public init(chatID: ChatID, projectID: ProjectID, kind: Kind, stage: Stage, detail: String) {
+            self.chatID = chatID
+            self.projectID = projectID
+            self.kind = kind
+            self.stage = stage
+            self.detail = detail
+        }
+    }
+}
+
 /// Every event type of docs/engine-api.md › Event list, in the order of the list.
 public enum EngineEvents {
     public static let all: [any EngineEvent.Type] = [
@@ -263,6 +310,7 @@ public enum EngineEvents {
         FilesChangedEvent.self, WebTabsUpdatedEvent.self, SkillsChangedEvent.self,
         RunStartedEvent.self, RunOutputEvent.self, RunFinishedEvent.self,
         SettingsUpdatedEvent.self, ClaudeUpdatedEvent.self, PlanUsageUpdatedEvent.self, UIOpenEvent.self,
+        ChatNotificationEvent.self,
     ]
 }
 
@@ -291,6 +339,7 @@ public enum DecodedEngineEvent: Sendable, Hashable {
     case claudeUpdated(ClaudeUpdatedEvent.Payload)
     case planUsageUpdated(PlanUsage)
     case uiOpen(UIOpenEvent.Payload)
+    case chatNotification(ChatNotificationEvent.Payload)
     case unknown(name: String)
 }
 
@@ -320,6 +369,7 @@ extension EngineEventEnvelope {
         case ClaudeUpdatedEvent.name: return .claudeUpdated(try payload(ClaudeUpdatedEvent.self))
         case PlanUsageUpdatedEvent.name: return .planUsageUpdated(try payload(PlanUsageUpdatedEvent.self))
         case UIOpenEvent.name: return .uiOpen(try payload(UIOpenEvent.self))
+        case ChatNotificationEvent.name: return .chatNotification(try payload(ChatNotificationEvent.self))
         default: return .unknown(name: name)
         }
     }

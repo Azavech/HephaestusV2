@@ -11,6 +11,7 @@ enum Prompts {
         case namingTicket = "naming-ticket"
         case namingBundle = "naming-bundle"
         case namingChat = "naming-chat"
+        case notificationSummary = "notification-summary"
     }
 
     private static let cache = PromptCache()

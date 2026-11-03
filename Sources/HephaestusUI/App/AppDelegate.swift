@@ -1,5 +1,5 @@
 // OWNER: ui-shell — the application delegate: window tabbing, placement and activation policy,
-// SIGTERM and SIGINT, quitting, startup step 9, and the Edit ▸ Find items sent on to the views
+// SIGTERM and SIGINT, quitting, startup steps 9 and 10, and the Edit ▸ Find items sent on to the views
 // that implement only `performTextFinderAction:` (docs/ui.md › Windows, › Menus and keyboard
 // shortcuts; docs/architecture.md › Window placement, › Startup, › Shutdown).
 import AppKit
@@ -39,6 +39,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValid
         // Startup step 9: the Updater, unless a condition of docs/updater.md › Starting the
         // Updater holds.
         app?.updateController.start()
+        // Startup step 10: the permission to post notifications (docs/ui.md › Status bar).
+        app?.chatNotifier.requestAuthorizationIfNeeded()
     }
 
     public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

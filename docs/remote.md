@@ -486,6 +486,9 @@ Server to client, the first binary frame (s2c counter 0).
       "formatGoOnSave": true,
       "formatSwiftOnSave": false,
       "mcpPort": 47820,
+      "notifyAISummary": true,
+      "notifyFinished": true,
+      "notifyNeedsYou": true,
       "schema": 1,
       "skillsLibraryPath": null,
       "syncEnabled": true,
@@ -813,7 +816,7 @@ The server keeps no event history. A session starts from the snapshot of its `we
 | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | State  | `projects.changed`, `project.updated`, `project.removed`, `ticket.updated`, `ticket.deleted`, `bundle.updated`, `bundle.deleted`, `chat.updated`, `chat.deleted`, `chat.item`, `files.changed`, `webTabs.updated`, `skills.changed`, `run.started`, `run.finished`, `settings.updated`, `claude.updated`, `planUsage.updated` | Same result: each carries the complete new value of what it names, a deletion, or (`files.changed`) a reload request. |
 | Stream | `chat.delta`, `run.output`                                                                                                                                                                                                                                                                                                    | Appends twice: applied once, on arrival.                                                                              |
-| Action | `ui.open`                                                                                                                                                                                                                                                                                                                     | Acts twice: applied once, on arrival.                                                                                 |
+| Action | `ui.open`, `chat.notification`                                                                                                                                                                                                                                                                                                | Acts twice: applied once, on arrival.                                                                                 |
 
 ### Seeding calls and the replay rule
 

@@ -29,11 +29,16 @@ public enum SettingsUpdate: EngineMethod {
         public var updateCheckIntervalMinutes: Int?
         public var formatGoOnSave: Bool?
         public var formatSwiftOnSave: Bool?
+        /// The notifications This Mac posts (docs/ui.md › Notifications).
+        public var notifyNeedsYou: Bool?
+        public var notifyFinished: Bool?
+        public var notifyAISummary: Bool?
 
         public init(claudePath: Patch<String> = .keep, defaultChatSettings: ChatSettings? = nil,
                     feedbackProjectID: Patch<ProjectID> = .keep, mcpPort: Int? = nil, syncEnabled: Bool? = nil,
                     syncPort: Int? = nil, skillsLibraryPath: Patch<String> = .keep, autoUpdate: Bool? = nil,
-                    updateCheckIntervalMinutes: Int? = nil, formatGoOnSave: Bool? = nil, formatSwiftOnSave: Bool? = nil) {
+                    updateCheckIntervalMinutes: Int? = nil, formatGoOnSave: Bool? = nil, formatSwiftOnSave: Bool? = nil,
+                    notifyNeedsYou: Bool? = nil, notifyFinished: Bool? = nil, notifyAISummary: Bool? = nil) {
             self.claudePath = claudePath
             self.defaultChatSettings = defaultChatSettings
             self.feedbackProjectID = feedbackProjectID
@@ -45,6 +50,9 @@ public enum SettingsUpdate: EngineMethod {
             self.updateCheckIntervalMinutes = updateCheckIntervalMinutes
             self.formatGoOnSave = formatGoOnSave
             self.formatSwiftOnSave = formatSwiftOnSave
+            self.notifyNeedsYou = notifyNeedsYou
+            self.notifyFinished = notifyFinished
+            self.notifyAISummary = notifyAISummary
         }
 
         /// `settings` with every present param applied.
@@ -61,6 +69,9 @@ public enum SettingsUpdate: EngineMethod {
             if let updateCheckIntervalMinutes { result.updateCheckIntervalMinutes = updateCheckIntervalMinutes }
             if let formatGoOnSave { result.formatGoOnSave = formatGoOnSave }
             if let formatSwiftOnSave { result.formatSwiftOnSave = formatSwiftOnSave }
+            if let notifyNeedsYou { result.notifyNeedsYou = notifyNeedsYou }
+            if let notifyFinished { result.notifyFinished = notifyFinished }
+            if let notifyAISummary { result.notifyAISummary = notifyAISummary }
             return result
         }
     }
