@@ -50,14 +50,21 @@ extension WindowState {
         return workspace?.runs(of: projectID).filter(\.isRunning) ?? []
     }
 
+    /// The running runs of the active project in its root; the runs of orchestrated ticket chats
+    /// in their worktrees are left out (docs/projects.md › Run commands).
+    var rootRunningRuns: [RunState] {
+        runningRuns.filter { $0.info.worktree == nil }
+    }
+
     /// Run, Build or Test: `projects.run` with `wait` false, then the console drawer of this window
-    /// shows the new run. When a run of the same kind is running, it is stopped first and the new
-    /// run starts after its `run.finished` (docs/projects.md › Run commands).
+    /// shows the new run. When a run of the same kind is running in the project root, it is
+    /// stopped first and the new run starts after its `run.finished`; a run in a worktree keeps
+    /// running (docs/projects.md › Run commands).
     func startRun(_ kind: RunKind) {
         guard let projectID, let workspace, command(kind) != nil else { return }
         Task {
             do {
-                if let previous = runningRuns.first(where: { $0.info.kind == kind }) {
+                if let previous = rootRunningRuns.first(where: { $0.info.kind == kind }) {
                     let events = workspace.events()
                     _ = try await workspace.call(ProjectsStopRun.self, ProjectsStopRun.Params(runID: previous.info.runID))
                     if workspace.runs[previous.id]?.isRunning == true {
@@ -75,10 +82,10 @@ extension WindowState {
         }
     }
 
-    /// Stop (⌘.): `projects.stopRun` for every running run of the active project.
+    /// Stop (⌘.): `projects.stopRun` for every running run of the active project in its root.
     func stopRuns() {
         guard let workspace else { return }
-        let runs = runningRuns
+        let runs = rootRunningRuns
         Task {
             for run in runs {
                 do {

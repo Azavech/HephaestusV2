@@ -134,6 +134,7 @@ struct PromptAndNamingTests {
     func everyPromptRenders() {
         let values = [
             "projectName": "Hephaestus V2", "projectID": "HEPH", "projectRoot": "/Users/example/Developer/HephaestusV2",
+            "workingDirectory": "It is your working directory.",
             "deviceName": "Studio", "docsPath": "docs", "projectCommands": "- build: make build", "ticketID": "HEPH-12",
             "ticketTitle": "Locked web tabs close with Command-W", "ticket": "ID: HEPH-12", "bundleID": "HEPH-B2",
             "bundleTitle": "Web tab polish", "bundleTicketIDs": "HEPH-12, HEPH-13", "bundle": "ID: HEPH-B2", "feedbackContext": "- App: X",
@@ -147,29 +148,42 @@ struct PromptAndNamingTests {
         }
         let prompt = Prompts.systemPrompt(kind: .ticket, values: values)
         #expect(prompt.hasPrefix("You are Claude, working inside HephaestusV2"))
+        #expect(prompt.contains("The project's root folder is /Users/example/Developer/HephaestusV2 on the device Studio. It is your working directory. "))
         #expect(prompt.contains("\n\n# This chat\n\nThis is the chat of ticket HEPH-12"))
     }
 
-    @Test("Bundle orchestration: the orchestrator starts one ticket chat at a time, asks retry, skip or stop, pushes once, never sets done; ticket chats commit without pushing")
+    @Test("Bundle orchestration: the orchestrator starts every ticket that waits for nothing at once, merges by rebase and fast-forward, asks retry, skip or stop, builds, tests and pushes once, never sets done; ticket chats commit on their branch without pushing")
     func bundleOrchestrationPrompts() {
         let common = Prompts.text(.common)
         let section = String(common[common.range(of: "# Implementing a bundle")!.lowerBound..<common.range(of: "# Project and feedback chats")!.lowerBound])
-        #expect(section.contains("Take the tickets in bundle order and skip those whose status is done."))
-        #expect(section.contains("call implement_ticket with its id, then end your turn"))
-        #expect(section.contains("Start the next ticket's chat only after the previous one has reported back: one ticket chat runs at a time."))
-        #expect(section.contains("ask the user with ask_questions whether to retry the ticket, skip it or stop the bundle"))
+        #expect(section.contains("A ticket waits for the tickets of this bundle that it declares a Depends on link to and that are not done; "
+            + "Related links and tickets outside the bundle never make it wait."))
+        #expect(section.contains("Call implement_ticket for every ticket that waits for nothing, all in the same turn, then end your turn."))
+        #expect(section.contains("Merge a branch into main by rebasing it onto main in its worktree (git -C <worktree> rebase <main>), "
+            + "then fast-forwarding main to it in the project root (git merge --ff-only <branch>)"))
+        #expect(section.contains("ask the user with ask_questions whether to retry the ticket, skip it or stop the bundle; the other ticket chats keep running."))
+        #expect(section.contains("Skip every ticket of the bundle that depends on it too"))
+        #expect(section.contains("start no other ticket chat and let the running ones finish; merge nothing, do not push, and keep every branch and worktree."))
+        #expect(section.contains("Then build and test main once"))
+        #expect(section.contains("change the first line of each ticket's completion comment so that it names the hash of the ticket's commit on main."))
+        #expect(section.contains("you commit on your branch without pushing"))
+        #expect(!section.contains("one ticket chat runs at a time"))
         #expect(section.contains("Never set a ticket to done."))
-        #expect(section.contains("After every ticket has been implemented or skipped, push once"))
-        #expect(section.contains("Your final reply lists each ticket with its commit hash, or with skipped and the reason."))
-        #expect(section.contains("except that you commit without pushing"))
+        #expect(section.contains("After every ticket has reported back or been skipped, merge the branches not merged yet, in bundle order."))
+        #expect(section.contains("When the build or the tests fail, do not push and ask the user with ask_questions how to proceed. Otherwise push once"))
+        #expect(section.contains("Your final reply lists each ticket with the hash of its commit on main, or with skipped and the reason, "
+            + "and names the conflicts you resolved."))
+        #expect(section.contains("when the project has no remote, do not push. Then remove the worktree and the branch of each merged ticket"))
         #expect(section.contains("\" (not pushed: the bundle chat pushes at the end)\""))
         #expect(!section.contains("with its own commit, push, completion comment"))
         let ticket = Prompts.render(Prompts.text(.implementBundleTicket), ["ticketID": "HEPH-12", "ticketTitle": "Fix tabs", "bundleID": "HEPH-B2"])
         #expect(ticket.hasPrefix("Implement ticket HEPH-12: Fix tabs\n\nThe chat of bundle HEPH-B2 started this chat"))
-        #expect(ticket.contains("Do not push: the bundle chat pushes once at the end."))
+        #expect(ticket.contains("Do not push: the bundle chat merges your branch and pushes once at the end."))
+        #expect(ticket.contains("commit on your branch with a message"))
         let bundle = Prompts.text(.implementBundle)
-        #expect(bundle.contains("start one ticket chat per ticket with implement_ticket, one at a time"))
-        #expect(bundle.contains("After the last ticket, push once."))
+        #expect(bundle.contains("in this turn start with implement_ticket a ticket chat for every ticket that waits for no other ticket of the bundle"))
+        #expect(bundle.contains("After the last report, merge the remaining branches in this order, build and test main, push once, then remove the merged tickets' worktrees and branches."))
+        #expect(!bundle.contains("one at a time"))
         #expect(Prompts.text(.implementTicket).contains(", push, post the completion comment"))
     }
 
@@ -196,7 +210,7 @@ struct PromptAndNamingTests {
 
         // Each ticket chat of a bundle follows "Implementing a ticket" completely.
         let bundle = try section("# Implementing a bundle", "# Project and feedback chats")
-        #expect(bundle.contains("Follow \"Implementing a ticket\" completely, except that you commit without pushing"))
+        #expect(bundle.contains("Follow \"Implementing a ticket\" completely, except that you commit on your branch without pushing"))
         let messages = [
             Prompts.render(Prompts.text(.implementTicket), ["ticketID": "HEPH-12", "ticketTitle": "Fix tabs"]),
             Prompts.render(Prompts.text(.implementBundleTicket), ["ticketID": "HEPH-12", "ticketTitle": "Fix tabs", "bundleID": "HEPH-B2"]),

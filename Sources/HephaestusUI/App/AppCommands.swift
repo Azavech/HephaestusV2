@@ -320,7 +320,7 @@ private struct ProjectCommands: View {
             window?.stopRuns()
         }
         .keyboardShortcut(".", modifiers: .command)
-        .disabled(window?.runningRuns.isEmpty ?? true)
+        .disabled(window?.rootRunningRuns.isEmpty ?? true)
         Button("Clear Console") {
             if let window, let run = window.consoleRun {
                 window.workspace?.runs[run.id]?.clear()

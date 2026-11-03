@@ -571,6 +571,8 @@ struct ChatInteractionTests {
         let launcher = FakeClaudeLauncher()
         launcher.chatScript = FakeClaudeLauncher.silentChat()
         try await withChatEngine(launcher: launcher) { bed in
+            // An orchestrated ticket chat needs a git repository for its branch and worktree.
+            _ = try await ChatWorktreeTests.gitRepository(bed)
             try await bed.writeTicket(Ticket(id: "DEMO-1", title: "One", created: ISODate.now(), description: "Problem"))
             try await bed.writeTicket(Ticket(id: "DEMO-2", title: "Two", created: ISODate.now(), description: "Problem"))
             try await bed.writeBundle(TicketBundle(id: "DEMO-B1", title: "Polish", created: ISODate.now(), ticketIDs: ["DEMO-1"]))
@@ -601,6 +603,8 @@ struct ChatInteractionTests {
         let launcher = FakeClaudeLauncher()
         launcher.chatScript = FakeClaudeLauncher.silentChat()
         try await withChatEngine(launcher: launcher) { bed in
+            // An orchestrated ticket chat needs a git repository for its branch and worktree.
+            _ = try await ChatWorktreeTests.gitRepository(bed)
             try await bed.writeTicket(Ticket(id: "DEMO-1", title: "One", created: ISODate.now(), description: "Problem"))
             try await bed.writeTicket(Ticket(id: "DEMO-2", title: "Two", created: ISODate.now(), description: "Problem"))
             try await bed.writeBundle(TicketBundle(id: "DEMO-B1", title: "Polish", created: ISODate.now(), ticketIDs: ["DEMO-1"]))

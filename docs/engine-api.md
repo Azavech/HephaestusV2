@@ -419,7 +419,7 @@ Events: project.removed for the project and for each descendant (depth-first ord
 
 Swift type `ProjectsRun` · actors: user, claude · result: [RunResult](#runresult)
 
-Runs one of the project's commands. Execution (shell, environment, working directory, console) is described in [Projects](projects.md).
+Runs one of the project's commands. Execution (shell, environment, working directory, console) is described in [Projects](projects.md). The run's working directory is the project root, except for a claude actor whose chat is an orchestrated ticket chat that works in its worktree: the run then runs in that worktree, and its RunInfo has `worktree` ([Orchestrated ticket chats](chats.md#working-directory)).
 
 | Param          | Type      | Required | Description                                                                                                                                                                              |
 | -------------- | --------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -429,7 +429,7 @@ Runs one of the project's commands. Execution (shell, environment, working direc
 | timeoutSeconds | Int       | no       | 1–1,800, default 600; used only when `wait` is true.                                                                                                                                     |
 
 - Standard output and standard error are merged. The engine emits run.started, then run.output with the new output at most every 100 ms, then run.finished.
-- One run per project and kind at a time. Default chosen at design time.
+- One run per working directory and kind at a time: runs in the project root and in the worktrees of the project run side by side.
 - `wait` false: the result has no `exitCode` and `outputTail` is `""`.
 - `wait` true: the result comes when the run ends (`exitCode` set, `outputTail` the last 200 lines, at most 20,000 characters) or when `timeoutSeconds` elapse (no `exitCode`, `outputTail` of the output so far). The timeout ends the wait, not the run: the run continues until it ends or is stopped. Default chosen at design time.
 - The exit code is the process's exit status, or 128 + the signal number when a signal terminated it. Default chosen at design time.
@@ -439,7 +439,7 @@ Runs one of the project's commands. Execution (shell, environment, working direc
 | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | notFound | No loaded project has this identifier.                                                                                        |
 | invalid  | projectID is malformed; the project has no command for kind (`HEPH has no test command.`); timeoutSeconds is outside 1–1,800. |
-| conflict | A run of the same kind is running in this project (`A build of HEPH is already running.`).                                    |
+| conflict | A run of the same kind is running in this project in the same working directory (`A build of HEPH is already running.`).      |
 | internal | The process cannot be started.                                                                                                |
 
 Events: run.started (origin: the caller), run.output (zero or more), run.finished.
@@ -1182,15 +1182,15 @@ Swift type `ChatsImplementTicket` · actors: user, claude · result: [ChatMeta](
 
 Creates a chat of kind ticket in the ticket's project, linked to the ticket, then sends the message of the prompt `implement-ticket.md` as its first user message, with `sender` the name of the actor's device, or `Claude` for a claude actor ([Data model](data-model.md#user-item)) ([Chats](chats.md#implement-and-feedback-chats)). The engine does not change the ticket's status: Claude sets `in_progress` itself ([Workflow](workflow.md#implementation-workflow)). Implement sends the settings chosen in the [Implement sheet](tickets.md#implement-sheet).
 
-When the actor is claude with the chatID of a chat of kind bundle whose bundle lists the ticket, the new chat is an orchestrated ticket chat: its `orchestrator` is that calling chat, its `settings` are that chat's `settings` at the time of the call, and its first user message is the message of the prompt `implement-bundle-ticket.md`, rendered with the calling chat's bundle ([Chats](chats.md#orchestrated-ticket-chats)). When one of the chat's turns ends, the engine sends that chat a message about it.
+When the actor is claude with the chatID of a chat of kind bundle whose bundle lists the ticket, the new chat is an orchestrated ticket chat: its `orchestrator` is that calling chat, its `settings` are that chat's `settings` at the time of the call, and its first user message is the message of the prompt `implement-bundle-ticket.md`, rendered with the calling chat's bundle ([Chats](chats.md#orchestrated-ticket-chats)). When one of the chat's turns ends, the engine sends that chat a message about it. Before it creates the chat, the engine creates its branch `<bundle id>/<ticket id>` from the project root's current branch, checked out in the worktree `<data dir>/Worktrees/<project id>/<ticket id>`, after removing those an earlier chat of the ticket left, and the chat works in that worktree ([Branch and worktree](chats.md#branch-and-worktree)).
 
-| Error       | When                                                                                     |
-| ----------- | ---------------------------------------------------------------------------------------- |
-| invalid     | ticketID is malformed; settings invalid.                                                 |
-| notFound    | No such ticket.                                                                          |
-| conflict    | The ticket is done (`HEPH-12 is done; set it to To Do or In Progress to implement it.`). |
-| forbidden   | The actor is claude and settings is present (`Claude cannot choose chat settings.`).     |
-| unavailable | The Claude CLI is not available.                                                         |
+| Error       | When                                                                                                                                                                                                                                                           |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid     | ticketID is malformed; settings invalid.                                                                                                                                                                                                                       |
+| notFound    | No such ticket.                                                                                                                                                                                                                                                |
+| conflict    | The ticket is done (`HEPH-12 is done; set it to To Do or In Progress to implement it.`).                                                                                                                                                                       |
+| forbidden   | The actor is claude and settings is present (`Claude cannot choose chat settings.`).                                                                                                                                                                           |
+| unavailable | The Claude CLI is not available; the branch and worktree of an orchestrated ticket chat cannot be created (`Cannot create the branch and worktree of HEPH-12: git is not available`, [Branch and worktree](chats.md#branch-and-worktree)); no chat is created. |
 
 Events: chat.updated, ticket.updated, then the events of `chats.send`.
 
@@ -2184,13 +2184,14 @@ String enum: `build`, `run`, `test`. Each selects the project command of the sam
 
 ### RunInfo
 
-| Field     | Type      | Required | Description                 |
-| --------- | --------- | -------- | --------------------------- |
-| runID     | UUID      | yes      | Id of the run.              |
-| projectID | ProjectID | yes      | Project of the run.         |
-| kind      | RunKind   | yes      | Command kind.               |
-| command   | String    | yes      | The command line that runs. |
-| started   | Date      | yes      | Start time.                 |
+| Field     | Type      | Required | Description                                                                                                                       |
+| --------- | --------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| runID     | UUID      | yes      | Id of the run.                                                                                                                    |
+| projectID | ProjectID | yes      | Project of the run.                                                                                                               |
+| kind      | RunKind   | yes      | Command kind.                                                                                                                     |
+| command   | String    | yes      | The command line that runs.                                                                                                       |
+| started   | Date      | yes      | Start time.                                                                                                                       |
+| worktree  | String    | no       | Absolute path of the folder of the worktree the run runs in ([projects.run](#projectsrun)); absent for a run in the project root. |
 
 ### RunResult
 

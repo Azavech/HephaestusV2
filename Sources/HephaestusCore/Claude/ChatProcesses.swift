@@ -109,7 +109,9 @@ extension Engine {
         if case .failed(let message) = mcpState {
             addSystemItem("Hephaestus MCP server unavailable: \(message)", level: .warning, chatID: chatID)
         }
-        let systemPrompt = chatSystemPrompt(meta: meta, project: project, root: root, items: items)
+        // An orchestrated ticket chat works in its worktree (docs/chats.md › Working directory).
+        let workingDirectory = chatWorkingDirectory(meta, root: root)
+        let systemPrompt = chatSystemPrompt(meta: meta, project: project, root: root, workingDirectory: workingDirectory, items: items)
         let argv = ClaudeCommandLine.chat(cliPath: context.path, chatID: chatID, sessionStarted: meta.sessionStarted, settings: meta.settings,
                                           mcpPort: port, mcpConfigPath: configURL.path, systemPrompt: systemPrompt,
                                           pluginDirectory: pluginDirectory)
@@ -119,7 +121,7 @@ extension Engine {
         var environment = context.environment
         environment[LinkedItemsHook.tokenVariable] = hookToken
         let request = ChildProcessRequest(executable: argv[0], arguments: Array(argv.dropFirst()), environment: environment,
-                                          currentDirectory: root.path)
+                                          currentDirectory: workingDirectory.url.path)
         let handle: any ClaudeProcess
         do {
             handle = try configuration.claudeLauncher.start(request)
@@ -599,7 +601,8 @@ extension Engine {
     /// device that changed the mode.
     private func approvePendingPermissions(allowedBy mode: PermissionMode, chatID: ChatID, process: ChatProcess, origin: Actor) {
         guard !process.exited, let meta = domain.chat(chatID), meta.settings.permissionMode == mode else { return }
-        let root = domain.projectRoot(meta.projectID)
+        // Accept Edits approves the edits inside the chat's working directory.
+        let root = domain.projectRoot(meta.projectID).map { chatWorkingDirectory(meta, root: $0).url }
         let name = senderName(origin)
         var approved = false
         for requestID in process.permissionOrder {
@@ -617,8 +620,8 @@ extension Engine {
     static let fileEditTools = ["Edit": "file_path", "Write": "file_path", "NotebookEdit": "notebook_path"]
 
     /// Whether a pending request would not have been asked under `mode` (docs/chats.md › Changing
-    /// settings): every request for Allow All; for Accept Edits, a file edit inside the project
-    /// root, symbolic links resolved; none for the other modes.
+    /// settings): every request for Allow All; for Accept Edits, a file edit inside the chat's
+    /// working directory (`projectRoot`), symbolic links resolved; none for the other modes.
     static func permissionMode(_ mode: PermissionMode, allows item: PermissionRequestItem, projectRoot: URL?) -> Bool {
         switch mode {
         case .bypassPermissions:

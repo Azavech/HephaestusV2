@@ -167,6 +167,12 @@ extension Engine {
         _ = try checkTicket()
         _ = try await requireClaudeCLI()
         let sender = senderName(actor)
+        // An orchestrated ticket chat works on its own branch in its own worktree, created before
+        // the chat (docs/chats.md › Branch and worktree).
+        if let orchestrator = orchestratorChat(of: ticketID, actor), let projectID = try checkTicket().projectID,
+           let root = domain.projectRoot(projectID) {
+            try await prepareWorktree(projectID: projectID, root: root, bundleID: orchestrator.bundleID, ticketID: ticketID)
+        }
         let ticket = try checkTicket()
         guard let projectID = ticket.projectID, let project = domain.project(projectID) else { throw EngineError.notFound("Ticket", ticketID) }
         let orchestrator = orchestratorChat(of: ticketID, actor)

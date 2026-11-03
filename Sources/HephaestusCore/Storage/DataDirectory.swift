@@ -51,6 +51,13 @@ public struct DataDirectory: Sendable, Hashable {
     }
     /// `Runtime/screenshots/`: PNG files of `debug_screenshot`.
     public var screenshotsFolder: URL { runtimeFolder.appendingPathComponent("screenshots", isDirectory: true) }
+    /// `Worktrees/`: the git worktrees of the orchestrated ticket chats.
+    public var worktreesFolder: URL { url.appendingPathComponent("Worktrees", isDirectory: true) }
+    /// `Worktrees/<projectID>/<ticketID>/`: the git worktree of an orchestrated ticket chat
+    /// (docs/chats.md › Branch and worktree).
+    public func worktree(projectID: ProjectID, ticketID: TicketID) -> URL {
+        worktreesFolder.appendingPathComponent(projectID, isDirectory: true).appendingPathComponent(ticketID, isDirectory: true)
+    }
     /// `Logs/`
     public var logsFolder: URL { url.appendingPathComponent("Logs", isDirectory: true) }
     /// `Logs/engine.log`

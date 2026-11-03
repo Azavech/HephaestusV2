@@ -58,6 +58,9 @@ final class ChatManager {
     var timings = ChatTimings()
     let transcripts = JSONLinesWriter()
     var nextGeneration = 0
+    /// The last preparation of an orchestrated ticket chat's branch and worktree; the next one
+    /// waits for it (docs/chats.md › Branch and worktree).
+    var worktreePreparation: Task<Void, Never>?
     /// True once the app quits: nothing launches any more.
     var stopped = false
 

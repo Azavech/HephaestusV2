@@ -18,7 +18,7 @@ struct MainToolbar: ToolbarContent {
                 Label("Stop", systemImage: "stop.fill")
             }
             .help("Stop (⌘.)")
-            .disabled(state.runningRuns.isEmpty)
+            .disabled(state.rootRunningRuns.isEmpty)
         }
         ToolbarItem(placement: .principal) {
             BreadcrumbSelector(window: state, workspace: workspace)

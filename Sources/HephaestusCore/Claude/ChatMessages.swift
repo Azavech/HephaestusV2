@@ -146,11 +146,13 @@ extension Engine {
 
     /// The value of `--append-system-prompt` for a launch (docs/chats.md › Composition and
     /// rendering): rendered at every launch with the current project, ticket and bundle data.
-    func chatSystemPrompt(meta: ChatMeta, project: Project, root: URL, items: [ChatItem]) -> String {
+    func chatSystemPrompt(meta: ChatMeta, project: Project, root: URL, workingDirectory: ChatWorkingDirectory,
+                          items: [ChatItem]) -> String {
         var values: [String: String] = [
             "projectName": project.name,
             "projectID": project.id,
             "projectRoot": root.path,
+            "workingDirectory": workingDirectory.promptSentence,
             "deviceName": deviceInfo.name,
             "docsPath": project.docsPath,
             "projectCommands": Prompts.projectCommands(project.commands),

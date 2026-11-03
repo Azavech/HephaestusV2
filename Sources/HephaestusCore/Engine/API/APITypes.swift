@@ -159,13 +159,17 @@ public struct RunInfo: Codable, Sendable, Hashable {
     /// The command line that runs.
     public var command: String
     public var started: Date
+    /// The folder of the worktree the run runs in; absent for a run in the project root
+    /// (docs/engine-api.md › projects.run).
+    public var worktree: String?
 
-    public init(runID: UUID, projectID: ProjectID, kind: RunKind, command: String, started: Date) {
+    public init(runID: UUID, projectID: ProjectID, kind: RunKind, command: String, started: Date, worktree: String? = nil) {
         self.runID = runID
         self.projectID = projectID
         self.kind = kind
         self.command = command
         self.started = started
+        self.worktree = worktree
     }
 }
 

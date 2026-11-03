@@ -34,9 +34,10 @@ final class ProjectRunner {
         runs.values.map(\.info).sorted { $0.started != $1.started ? $0.started < $1.started : $0.runID.uuidString < $1.runID.uuidString }
     }
 
-    /// The running run of a project and kind.
-    func running(projectID: ProjectID, kind: RunKind) -> Run? {
-        runs.values.first { $0.info.projectID == projectID && $0.info.kind == kind }
+    /// The running run of a project and kind in a working directory: the project root when
+    /// `worktree` is nil, else that folder of a worktree.
+    func running(projectID: ProjectID, kind: RunKind, worktree: String? = nil) -> Run? {
+        runs.values.first { $0.info.projectID == projectID && $0.info.kind == kind && $0.info.worktree == worktree }
     }
 
     /// At most one run.output event per run every 100 ms.
@@ -69,10 +70,14 @@ extension Engine {
         if let timeout = params.timeoutSeconds, !ProjectRunner.timeoutRange.contains(timeout) {
             throw EngineError.invalid("timeoutSeconds", "use 1 to 1800 seconds")
         }
-        guard runs.running(projectID: projectID, kind: params.kind) == nil else {
+        // A chat that works in its worktree runs there; one run per working directory and kind.
+        let directory = runWorkingDirectory(projectID: projectID, actor: actor)
+        let worktree = directory.worktree == nil ? nil : directory.url.path
+        guard runs.running(projectID: projectID, kind: params.kind, worktree: worktree) == nil else {
             throw EngineError(.conflict, "A \(params.kind.rawValue) of \(projectID) is already running.")
         }
-        let run = try startRun(projectID: projectID, kind: params.kind, command: command, environment: environment)
+        let run = try startRun(projectID: projectID, kind: params.kind, command: command, environment: environment,
+                               directory: directory.url.path, worktree: worktree)
         emit(RunStartedEvent.self, run.info, origin: actor)
         guard params.wait else {
             return RunResult(run: run.info)
@@ -136,16 +141,17 @@ extension Engine {
 
     // MARK: Process and output
 
-    /// Starts `/bin/zsh -c <command>` in the project root, with the login-shell environment
+    /// Starts `/bin/zsh -c <command>` in `directory`, the project root or a folder of a worktree
+    /// (`worktree`), with the login-shell environment
     /// without `HEPHAESTUS_*`, standard input on `/dev/null`, standard output and standard error
     /// merged into one pipe, as the leader of a new process group (docs/projects.md › Run
     /// commands).
-    private func startRun(projectID: ProjectID, kind: RunKind, command: String,
-                          environment: [String: String]) throws -> ProjectRunner.Run {
+    private func startRun(projectID: ProjectID, kind: RunKind, command: String, environment: [String: String], directory: String,
+                          worktree: String?) throws -> ProjectRunner.Run {
         // Standard error is opened on `/dev/fd/1` after standard output became the pipe, so
         // both write into the same pipe in the order the process writes.
         let request = ChildProcessRequest(executable: "/bin/zsh", arguments: ["-c", command],
-                                          environment: environment, currentDirectory: loaded(projectID).rootPath,
+                                          environment: environment, currentDirectory: directory,
                                           standardInput: .null, standardOutput: .pipe, standardError: .appendToFile("/dev/fd/1"))
         let process: ChildProcess
         do {
@@ -154,10 +160,10 @@ extension Engine {
             log.error(.engine, "the \(kind.rawValue) of \(projectID) cannot start: \(error)")
             throw EngineError.internalError(error)
         }
-        let info = RunInfo(runID: UUID(), projectID: projectID, kind: kind, command: command, started: Date())
+        let info = RunInfo(runID: UUID(), projectID: projectID, kind: kind, command: command, started: Date(), worktree: worktree)
         let run = ProjectRunner.Run(info: info, process: process)
         runs.runs[info.runID] = run
-        log.info(.engine, "\(kind.rawValue) of \(projectID) started (run \(info.runID.uuidString), pid \(process.pid))")
+        log.info(.engine, "\(kind.rawValue) of \(projectID) started in \(directory) (run \(info.runID.uuidString), pid \(process.pid))")
 
         let reader = RunOutputReader(process.standardOutput!)
         let runID = info.runID

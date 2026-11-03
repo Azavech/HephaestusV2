@@ -643,16 +643,17 @@ Input schema:
 
 - **Engine call:** projects.run with `projectID`, `kind`, `wait` (the argument, or `kind != run` when it is omitted) and `timeoutSeconds` when given; projects.run applies its default of 600 seconds otherwise.
 - The maximum of 1700 seconds, below the engine's 1800, makes the answer arrive before the Claude CLI's `MCP_TOOL_TIMEOUT` of 1800 seconds ([Chats](chats.md)). Default chosen at design time.
+- Called from an orchestrated ticket chat that works in its worktree, the command runs in that worktree, and `RunInfo.worktree` names it; from every other caller it runs in the project root ([Orchestrated ticket chats](chats.md#working-directory), [Engine API](engine-api.md#projectsrun)).
 - The run is the same as one started from the toolbar: every client receives `run.started`, `run.output` and `run.finished` and shows the output in its console ([Projects](projects.md)).
 - **Result:** the `RunResult` `{run, exitCode?, outputTail}`; `exitCode` is absent when the command had not exited when the call returned ([Engine API](engine-api.md#projectsrun)).
 - **Errors:**
   - `invalid`: `timeoutSeconds` outside 1 to 1700 ([argument validation](#argument-validation)).
-  - Those of projects.run ([Engine API](engine-api.md#projectsrun)): unknown project (`notFound`), no command for `kind` (`invalid`), a run of the same kind already running (`conflict`), process start failure (`internal`).
+  - Those of projects.run ([Engine API](engine-api.md#projectsrun)): unknown project (`notFound`), no command for `kind` (`invalid`), a run of the same kind already running in the same working directory (`conflict`), process start failure (`internal`).
 
 Description:
 
 ```text
-Run a project's build, run or test command in its root folder, as the app's Build, Run and Test actions do; the output also appears in the app's console. With wait (default: true for build and test, false for run) the call returns when the command exits or when timeoutSeconds (default 600) have passed, with the exit code and the end of the output; the timeout ends the wait, not the run.
+Run a project's build, run or test command in its root folder, or in your git worktree when your chat works in one, as the app's Build, Run and Test actions do; the output also appears in the app's console. With wait (default: true for build and test, false for run) the call returns when the command exits or when timeoutSeconds (default 600) have passed, with the exit code and the end of the output; the timeout ends the wait, not the run.
 ```
 
 Input schema:
@@ -1122,14 +1123,14 @@ Input schema:
 
 - **Engine call:** chats.implementTicket with `ticketID`. `settings` is never sent, so the chat uses the project's `chatDefaults`, else the host's `defaultChatSettings`; an orchestrated ticket chat takes the calling bundle chat's settings instead.
 - The new chat runs in its own Claude process with its own chat token; the calling chat goes on. No window changes its selection ([Tickets](tickets.md#ticket-chats-and-implement)); `open_in_app` with kind `chat` shows the new chat.
-- Called from a bundle chat for a ticket of that chat's bundle, the new chat is an orchestrated ticket chat linked to the calling chat: it takes the calling chat's settings, commits without pushing, and the engine sends the calling chat a message each time one of its turns ends without waiting for answers ([Chats](chats.md#orchestrated-ticket-chats)).
+- Called from a bundle chat for a ticket of that chat's bundle, the new chat is an orchestrated ticket chat linked to the calling chat. The engine first creates the branch `<bundle id>/<ticket id>` from the project root's current branch, checked out in the worktree `<data dir>/Worktrees/<project id>/<ticket id>`, after removing those that an earlier chat of the ticket left ([Branch and worktree](chats.md#branch-and-worktree)). The new chat works in that worktree, takes the calling chat's settings, commits on its branch without pushing, and the engine sends the calling chat a message each time one of its turns ends without waiting for answers ([Chats](chats.md#orchestrated-ticket-chats)).
 - **Result:** the `ChatMeta` of the new chat.
-- **Errors:** Those of chats.implementTicket ([Engine API](engine-api.md#chatsimplementticket)): no such ticket (`notFound`), a `done` ticket (`conflict`, `<ID> is done; set it to To Do or In Progress to implement it.`), Claude CLI not available (`unavailable`).
+- **Errors:** Those of chats.implementTicket ([Engine API](engine-api.md#chatsimplementticket)): no such ticket (`notFound`), a `done` ticket (`conflict`, `<ID> is done; set it to To Do or In Progress to implement it.`), Claude CLI not available (`unavailable`), the branch and worktree of an orchestrated ticket chat cannot be created (`unavailable`, `Cannot create the branch and worktree of <ID>: <reason>`).
 
 Description:
 
 ```text
-Start a new ticket chat that implements the ticket, as the user's Implement button does: a separate Claude session works on it with the project's default chat settings. Called from a bundle chat for a ticket of its bundle, the new chat takes the bundle chat's settings, commits without pushing and reports each of its turns back to the bundle chat. Returns the new chat.
+Start a new ticket chat that implements the ticket, as the user's Implement button does: a separate Claude session works on it with the project's default chat settings. Called from a bundle chat for a ticket of its bundle, the new chat takes the bundle chat's settings, works on the new branch <bundle id>/<ticket id> in its own git worktree, commits there without pushing and reports each of its turns back to the bundle chat. Returns the new chat.
 ```
 
 Input schema:
@@ -1354,7 +1355,7 @@ Input schema:
 Description:
 
 ```text
-Start a new bundle chat that implements every ticket of the bundle in order, as the user's Implement All button does: it starts one ticket chat per ticket, one commit per ticket, and pushes once at the end. Returns the new chat.
+Start a new bundle chat that implements every ticket of the bundle, as the user's Implement All button does: it starts at once a ticket chat on its own branch for every ticket that waits for no other ticket, merges the branches with one commit per ticket, and pushes once at the end. Returns the new chat.
 ```
 
 Input schema:
