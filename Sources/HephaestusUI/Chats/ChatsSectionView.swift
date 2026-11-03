@@ -3,7 +3,8 @@ import AppKit
 import HephaestusCore
 import SwiftUI
 
-/// The chats of the active project grouped by kind, and the selected chat's view (`ProjectViewState.selectedChatID`).
+/// The chats of the active project grouped by kind, and the selected chat's view, or `<n> Chats
+/// Selected` with Close while several are selected (`ProjectViewState.selectedChatIDs`).
 struct ChatsSectionView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -33,13 +34,45 @@ struct ChatsSectionView: View {
         }
     }
 
-    private var selectedChatID: String? {
-        window.projectStates[ProjectKey(deviceID: workspace.deviceID, projectID: projectID)]?.selectedChatID
+    /// Chats in the order of the list: by kind in the order Project, Ticket, Bundle, Feedback, each
+    /// newest `updated` first.
+    static func inListOrder(_ chats: [ChatMeta]) -> [ChatMeta] {
+        chats.sorted { a, b in
+            let kindA = ChatKind.allCases.firstIndex(of: a.kind) ?? 0
+            let kindB = ChatKind.allCases.firstIndex(of: b.kind) ?? 0
+            if kindA != kindB { return kindA < kindB }
+            if a.updated != b.updated { return a.updated > b.updated }
+            return a.id.uuidString < b.id.uuidString
+        }
+    }
+
+    /// A selection made in the list holds only the chats it lists (docs/chats.md › Where chats
+    /// appear).
+    static func listSelection(_ ids: Set<String>, listed: [ChatMeta]) -> Set<String> {
+        ids.intersection(listed.map(\.id.uuidString))
+    }
+
+    /// The chats a context menu acts on: the listed chats among the menu's ids, in list order.
+    static func menuChats(_ ids: Set<String>, listed: [ChatMeta]) -> [ChatMeta] {
+        inListOrder(listed.filter { ids.contains($0.id.uuidString) })
+    }
+
+    private var selection: Set<String> {
+        window.projectStates[ProjectKey(deviceID: workspace.deviceID, projectID: projectID)]?.selectedChatIDs ?? []
+    }
+
+    /// The selection the list shows: none while a draft is shown.
+    private var listedSelection: Set<String> {
+        draft == nil ? selection : []
+    }
+
+    private var listedChats: [ChatMeta] {
+        groups.flatMap(\.chats)
     }
 
     var body: some View {
         Group {
-            if workspace.chats(of: projectID).isEmpty, draft == nil, selectedChatID == nil {
+            if workspace.chats(of: projectID).isEmpty, draft == nil, selection.isEmpty {
                 VStack(spacing: 12) {
                     Text("No chats yet")
                         .font(.title3)
@@ -59,9 +92,9 @@ struct ChatsSectionView: View {
         .background(ChatWindowReader(reference: windowReference))
         .task(id: ObjectIdentifier(workspace)) {
             for await event in workspace.events() {
-                if case .chatDeleted(let payload) = event.event, payload.chatID.uuidString == selectedChatID {
-                    // A deleted selected chat clears the selection (docs/chats.md › Where chats appear).
-                    window.updateViewState(of: projectID) { $0.selectedChatID = nil }
+                if case .chatDeleted(let payload) = event.event, selection.contains(payload.chatID.uuidString) {
+                    // A deleted chat leaves the selection (docs/chats.md › Where chats appear).
+                    window.updateViewState(of: projectID) { $0.selectedChatIDs.remove(payload.chatID.uuidString) }
                 }
             }
         }
@@ -98,37 +131,72 @@ struct ChatsSectionView: View {
     }
 
     private var chatList: some View {
-        List(selection: Binding(get: { draft == nil ? selectedChatID : nil }, set: select)) {
+        // Click, ⌘-click and ⇧-click; ⌘A selects every listed chat (docs/chats.md › Where chats
+        // appear).
+        List(selection: Binding(get: { listedSelection }, set: select)) {
             ForEach(groups, id: \.kind) { group in
                 // Titled with the kind's name, as the kind chip (docs/chats.md › Where chats appear).
                 Section(ChatFormat.kindTitle(group.kind)) {
                     ForEach(group.chats) { meta in
                         row(meta)
                             .tag(meta.id.uuidString)
-                            .contextMenu {
-                                Button("Open in New Window") {
-                                    app.openChatWindow(ChatWindowValue(deviceID: workspace.deviceID, chatID: meta.id.uuidString))
-                                }
-                                Button("Rename…") {
-                                    startRename(meta)
-                                }
-                                Button("Delete…") {
-                                    ChatActions.confirmDelete(meta, workspace: workspace, window: windowReference.window, app: app)
-                                }
-                            }
                     }
                 }
             }
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
+        .contextMenu(forSelectionType: String.self) { ids in
+            contextMenu(ids)
+        }
         .onKeyPress(keys: [.delete], phases: .down) { press in
-            // A selected chat whose row the filter hides is not deleted from the list.
-            guard press.modifiers.subtracting(.command).isEmpty, renamingChatID == nil,
-                  let chatID = selectedChatID, let meta = workspace.chats[chatID],
-                  groups.contains(where: { $0.chats.contains { $0.id == meta.id } }) else { return .ignored }
+            // Delete… of a single selected chat; a selected chat whose row the filter hides is not
+            // deleted from the list.
+            guard press.modifiers.subtracting(.command).isEmpty, renamingChatID == nil, selection.count == 1,
+                  let chatID = selection.first, let meta = listedChats.first(where: { $0.id.uuidString == chatID })
+            else { return .ignored }
             ChatActions.confirmDelete(meta, workspace: workspace, window: windowReference.window, app: app)
             return .handled
+        }
+    }
+
+    /// The context menu of the selected rows; right-clicking a row that is not selected selects it
+    /// first. With several chats, Close is the only enabled item (docs/chats.md › Where chats
+    /// appear).
+    @ViewBuilder
+    private func contextMenu(_ ids: Set<String>) -> some View {
+        let chats = Self.menuChats(ids, listed: listedChats)
+        if !chats.isEmpty {
+            let _ = selectClickedRow(ids)
+            let single = chats.count == 1 ? chats.first : nil
+            Button("Open in New Window") {
+                if let single {
+                    app.openChatWindow(ChatWindowValue(deviceID: workspace.deviceID, chatID: single.id.uuidString))
+                }
+            }
+            .disabled(single == nil)
+            Button("Rename…") {
+                if let single { startRename(single) }
+            }
+            .disabled(single == nil)
+            Button("Close") {
+                ChatActions.confirmClose(chats, workspace: workspace, window: windowReference.window, app: app)
+            }
+            .disabled(!ChatActions.canClose(chats))
+            Button("Delete…") {
+                if let single {
+                    ChatActions.confirmDelete(single, workspace: workspace, window: windowReference.window, app: app)
+                }
+            }
+            .disabled(single == nil)
+        }
+    }
+
+    /// Selects the right-clicked row when it is not selected, once the menu opens.
+    private func selectClickedRow(_ ids: Set<String>) {
+        guard !ids.isSubset(of: listedSelection) else { return }
+        DispatchQueue.main.async {
+            select(ids)
         }
     }
 
@@ -192,10 +260,13 @@ struct ChatsSectionView: View {
         }
     }
 
-    private func select(_ chatID: String?) {
-        guard let chatID else { return }
+    /// A selection made in the list; an empty one keeps the current selection, so that the area
+    /// beside the list stays.
+    private func select(_ ids: Set<String>) {
+        let ids = Self.listSelection(ids, listed: listedChats)
+        guard !ids.isEmpty else { return }
         draft = nil
-        window.updateViewState(of: projectID) { $0.selectedChatID = chatID }
+        window.updateViewState(of: projectID) { $0.selectedChatIDs = ids }
     }
 
     /// Rename… of a row edits its title in place, as the chat view's title: Return renames, Escape
@@ -212,10 +283,12 @@ struct ChatsSectionView: View {
     private var detail: some View {
         if let draft {
             ChatView(draft: draft, workspace: workspace) { meta in
-                window.updateViewState(of: projectID) { $0.selectedChatID = meta.id.uuidString }
+                window.updateViewState(of: projectID) { $0.selectedChatIDs = [meta.id.uuidString] }
                 self.draft = nil
             }
-        } else if let chatID = selectedChatID {
+        } else if selection.count > 1 {
+            severalSelected
+        } else if let chatID = selection.first {
             // A chat whose metadata is not known yet (just created, or named by a navigation) is
             // loaded with `chats.get`, which shows the not-found text when it does not exist.
             if UUID(uuidString: chatID) != nil {
@@ -227,5 +300,22 @@ struct ChatsSectionView: View {
             // Empty while no chat is selected (docs/chats.md › Where chats appear).
             Color(nsColor: .windowBackgroundColor)
         }
+    }
+
+    /// `<n> Chats Selected` and Close, which closes the selected chats (docs/chats.md › Where chats
+    /// appear).
+    private var severalSelected: some View {
+        let chats = Self.inListOrder(selection.compactMap { workspace.chats[$0] })
+        return VStack(spacing: 12) {
+            Text("\(selection.count) Chats Selected")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+            Button("Close") {
+                ChatActions.confirmClose(chats, workspace: workspace, window: windowReference.window, app: app)
+            }
+            .disabled(!ChatActions.canClose(chats))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 }

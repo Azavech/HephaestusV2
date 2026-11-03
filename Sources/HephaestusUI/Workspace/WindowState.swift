@@ -204,8 +204,8 @@ struct ProjectViewState {
     /// Selected tickets; a single selected ticket shows its detail.
     var selectedTicketIDs: Set<String> = []
     var selectedBundleID: String?
-    /// Chat shown in the Chats section.
-    var selectedChatID: String?
+    /// Selected chats of the Chats section; a single selected chat shows its view beside the list.
+    var selectedChatIDs: Set<String> = []
     /// Project chat shown in the inspector; nil shows the most recently updated project chat, or a
     /// draft when the project has none.
     var inspectorChatID: String?
@@ -274,10 +274,12 @@ struct ProjectViewState {
 
 extension ProjectViewState: @MainActor Codable {
     enum CodingKeys: String, CodingKey {
-        case selectedTicketIDs, selectedBundleID, selectedChatID, inspectorChatID, inspectorShowsDraft, unlinkedItems, editorTabs,
+        case selectedTicketIDs, selectedBundleID, selectedChatIDs, inspectorChatID, inspectorShowsDraft, unlinkedItems, editorTabs,
              selectedEditorPath, selectedDocPath, docMode, selectedWebTabID, selectedSkillName, consoleRunID,
              expandedCodeFolders, selectedTreePath, expandedDocFolders, ticketList, ticketTab, bundleList, bundleTab,
              chatsTabSelection, chatsTabDrafts, hidesClosedChats, commentDrafts
+        /// The single selected chat of a state persisted before `selectedChatIDs`; decoded only.
+        case selectedChatID
     }
 
     @MainActor
@@ -285,7 +287,11 @@ extension ProjectViewState: @MainActor Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         selectedTicketIDs = Set(try c.decodeIfPresent([String].self, forKey: .selectedTicketIDs) ?? [])
         selectedBundleID = try c.decodeIfPresent(String.self, forKey: .selectedBundleID)
-        selectedChatID = try c.decodeIfPresent(String.self, forKey: .selectedChatID)
+        if let ids = try c.decodeIfPresent([String].self, forKey: .selectedChatIDs) {
+            selectedChatIDs = Set(ids)
+        } else if let legacy = try c.decodeIfPresent(String.self, forKey: .selectedChatID) {
+            selectedChatIDs = [legacy]
+        }
         inspectorChatID = try c.decodeIfPresent(String.self, forKey: .inspectorChatID)
         inspectorShowsDraft = try c.decodeIfPresent(Bool.self, forKey: .inspectorShowsDraft) ?? false
         unlinkedItems = Set(try c.decodeIfPresent([String].self, forKey: .unlinkedItems) ?? [])
@@ -315,7 +321,7 @@ extension ProjectViewState: @MainActor Codable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(selectedTicketIDs.sorted(), forKey: .selectedTicketIDs)
         try c.encodeIfPresent(selectedBundleID, forKey: .selectedBundleID)
-        try c.encodeIfPresent(selectedChatID, forKey: .selectedChatID)
+        try c.encode(selectedChatIDs.sorted(), forKey: .selectedChatIDs)
         try c.encodeIfPresent(inspectorChatID, forKey: .inspectorChatID)
         try c.encode(inspectorShowsDraft, forKey: .inspectorShowsDraft)
         try c.encode(editorTabs, forKey: .editorTabs)

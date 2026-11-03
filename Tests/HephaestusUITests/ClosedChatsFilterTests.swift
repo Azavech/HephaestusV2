@@ -174,23 +174,23 @@ struct ClosedChatsFilterTests {
         window.projectID = "DEMO"
         window.updateViewState(of: "DEMO") {
             $0.hidesClosedChats = false
-            $0.selectedChatID = "chat"
+            $0.selectedChatIDs = ["chat"]
         }
         window.updateViewState(of: "OTHER") {
             $0.hidesClosedChats = false
-            $0.selectedChatID = "other chat"
+            $0.selectedChatIDs = ["other chat"]
         }
-        window.updateViewState(of: "THIRD") { $0.selectedChatID = "third chat" }
+        window.updateViewState(of: "THIRD") { $0.selectedChatIDs = ["third chat"] }
 
         let json = try #require(window.persistedJSON)
         let restored = try #require(WindowState.restored(fromJSON: json))
         let demo = try #require(restored.projectStates[ProjectKey(deviceID: "device", projectID: "DEMO")])
         #expect(!demo.hidesClosedChats)
-        #expect(demo.selectedChatID == "chat")
+        #expect(demo.selectedChatIDs == ["chat"])
         // The other projects keep only the filter.
         let other = try #require(restored.projectStates[ProjectKey(deviceID: "device", projectID: "OTHER")])
         #expect(!other.hidesClosedChats)
-        #expect(other.selectedChatID == nil)
+        #expect(other.selectedChatIDs.isEmpty)
         let third = try #require(restored.projectStates[ProjectKey(deviceID: "device", projectID: "THIRD")])
         #expect(third.hidesClosedChats)
         #expect(!json.contains("other chat"))

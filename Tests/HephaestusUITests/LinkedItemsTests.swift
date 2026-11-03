@@ -42,7 +42,7 @@ struct LinkedItemsTests {
         var state = ProjectViewState()
         state.selectedTicketIDs = ["DEMO-10", "DEMO-2"]
         state.selectedBundleID = "DEMO-B1"
-        state.selectedChatID = chatID.uuidString
+        state.selectedChatIDs = [chatID.uuidString]
         state.selectedEditorPath = "Sources/App/Main.swift"
         state.selectedDocPath = "docs/chats.md"
         state.selectedWebTabID = tabID.uuidString

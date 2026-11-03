@@ -75,7 +75,8 @@ struct LinkedItem: Hashable, Identifiable {
 
 extension ProjectViewState {
     /// The items open in the centre column while `section` is shown (docs/ui.md › Inspector):
-    /// every selected ticket in ticket number order, or the section's selected item.
+    /// every selected ticket in ticket number order, every selected chat (put in list order by
+    /// `LinkedItems.linked`), or the section's selected item.
     func openItems(in section: ProjectSection) -> [LinkedItemRef] {
         switch section {
         case .tickets:
@@ -85,7 +86,7 @@ extension ProjectViewState {
         case .bundles:
             return selectedBundleID.map { [LinkedItemRef(kind: .bundle, id: $0)] } ?? []
         case .chats:
-            return selectedChatID.map { [LinkedItemRef(kind: .chat, id: $0)] } ?? []
+            return selectedChatIDs.sorted().map { LinkedItemRef(kind: .chat, id: $0) }
         case .code:
             return selectedEditorPath.map { [LinkedItemRef(kind: .code, id: $0)] } ?? []
         case .docs:
@@ -112,12 +113,15 @@ extension ProjectViewState {
 enum LinkedItems {
     /// The linked items of a project's view state: its open items that the user did not unlink,
     /// resolved from the workspace's data; a ticket, bundle, chat or web tab it does not hold is
-    /// left out.
+    /// left out. Chats come in the order of the Chats section's list.
     static func linked(state: ProjectViewState, section: ProjectSection, tickets: [String: Ticket],
                        bundles: [String: TicketBundle], chats: [String: ChatMeta], webTabs: [WebTab]) -> [LinkedItem] {
-        state.openItems(in: section)
+        let items = state.openItems(in: section)
             .filter { !state.unlinkedItems.contains($0.key) }
             .compactMap { resolve($0, tickets: tickets, bundles: bundles, chats: chats, webTabs: webTabs) }
+        guard section == .chats else { return items }
+        let order = ChatsSectionView.inListOrder(items.compactMap { chats[$0.ref.id] }).map(\.id.uuidString)
+        return items.sorted { (order.firstIndex(of: $0.ref.id) ?? 0) < (order.firstIndex(of: $1.ref.id) ?? 0) }
     }
 
     /// The chip and line of one open item (docs/chats.md › Linked items).

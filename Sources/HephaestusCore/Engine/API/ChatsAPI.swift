@@ -131,12 +131,13 @@ public enum ChatsDelete: EngineMethod {
     public typealias Result = Empty
 }
 
-/// `chats.close`: closes the calling chat when its turn ends, or another chat of its project at
-/// once (docs/chats.md › Closing a chat). Actors: claude with a chat token.
+/// `chats.close`: closes a chat when its turn ends, or at once without a turn in progress; Claude
+/// closes another chat of its project at once (docs/chats.md › Closing a chat). Actors: user, any
+/// chat; claude with a chat token, its own chat or another chat of its project.
 public enum ChatsClose: EngineMethod {
     public static let name = "chats.close"
     public struct Params: Codable, Sendable, Hashable {
-        /// The actor's chat, or another chat of its project.
+        /// For a claude actor, the actor's chat or another chat of its project.
         public var chatID: ChatID
 
         public init(chatID: ChatID) {

@@ -185,7 +185,46 @@ struct ChatClosingTests {
         }
     }
 
-    @Test("chats.close: Claude with a chat token, for the chats of its chat's project; chats.reopen: the user only")
+    @Test("The user closes any chat with chats.close: at once without a turn in progress, when the turn ends during one")
+    func userCloses() async throws {
+        let launcher = FakeClaudeLauncher()
+        launcher.chatScript = Self.scriptedChat()
+        try await withChatEngine(launcher: launcher) { bed in
+            // A chat without a turn in progress closes at once and its process ends.
+            let idle = try await bed.createChat(message: "One")
+            let idleProcess = try #require(await bed.launcher.chatProcess())
+            let idleUUID = try await Self.openTurn(idleProcess, text: "One")
+            Self.finishTurn(idleProcess, uuid: idleUUID, messageID: "msg_1", reply: "Done.")
+            #expect(await bed.waitForState(idle.id, .idle))
+            _ = try await bed.connection.call(ChatsClose.self, .init(chatID: idle.id))
+            #expect(try await Self.meta(bed, idle.id).closed)
+            #expect(try Self.closedOnDisk(bed, idle.id))
+            #expect(await bed.events.wait(for: "chat.updated") { $0.chatMeta?.id == idle.id && $0.chatMeta?.closed == true } != nil)
+            _ = await idleProcess.waitForExit()
+            #expect(idleProcess.isInputClosed)
+
+            // A chat with a turn in progress closes when that turn ends.
+            let running = try await bed.createChat(message: "Two")
+            let runningProcess = try #require(await bed.launcher.chatProcess(1))
+            let uuid = try await Self.openTurn(runningProcess, text: "Two")
+            #expect(await bed.waitForState(running.id, .running))
+            _ = try await bed.connection.call(ChatsClose.self, .init(chatID: running.id))
+            #expect(try await !Self.meta(bed, running.id).closed)
+            #expect(!runningProcess.isInputClosed)
+            Self.finishTurn(runningProcess, uuid: uuid, messageID: "msg_2", reply: "Finished.")
+            #expect(await bed.events.wait(for: "chat.updated") { $0.chatMeta?.id == running.id && $0.chatMeta?.closed == true } != nil)
+            #expect(try Self.closedOnDisk(bed, running.id))
+            _ = await runningProcess.waitForExit()
+            #expect(runningProcess.isInputClosed)
+
+            // A chat that is already closed is left unchanged.
+            let updated = try await Self.meta(bed, idle.id).updated
+            _ = try await bed.connection.call(ChatsClose.self, .init(chatID: idle.id))
+            #expect(try await Self.meta(bed, idle.id).updated == updated)
+        }
+    }
+
+    @Test("chats.close: the user, or Claude with a chat token for the chats of its chat's project; chats.reopen: the user only")
     func actors() async throws {
         try await withChatEngine { bed in
             let chat = try await bed.createChat()
@@ -197,9 +236,6 @@ struct ChatClosingTests {
                 try await bed.engine.call(ChatsClose.self, .init(chatID: chat.id), actor: .claude(chatID: Actor.externalChatID))
             } == EngineError(.forbidden, "Only the chat's own Claude can close its chat."))
             #expect(await engineError {
-                try await bed.connection.call(ChatsClose.self, .init(chatID: chat.id))
-            }?.code == .forbidden)
-            #expect(await engineError {
                 try await bed.engine.call(ChatsReopen.self, .init(chatID: chat.id), actor: .claude(chatID: chat.id.uuidString))
             }?.code == .forbidden)
             let unknown = UUID()
@@ -207,6 +243,7 @@ struct ChatClosingTests {
                 try await bed.engine.call(ChatsClose.self, .init(chatID: unknown), actor: .claude(chatID: unknown.uuidString))
             }?.code == .notFound)
             #expect(await engineError { try await bed.connection.call(ChatsReopen.self, .init(chatID: unknown)) }?.code == .notFound)
+            #expect(await engineError { try await bed.connection.call(ChatsClose.self, .init(chatID: unknown)) }?.code == .notFound)
             #expect(try await !Self.meta(bed, chat.id).closed)
         }
     }

@@ -274,6 +274,8 @@ struct LinkedChatsView: View {
                             DispatchQueue.main.async { renameFocused = true }
                         }
                         .disabled(!window.isConnected)
+                        Button("Close") { close(meta) }
+                            .disabled(!window.isConnected || !ChatActions.canClose([meta]))
                         Divider()
                         Button("Delete…") { delete(meta) }
                             .disabled(!window.isConnected)
@@ -366,6 +368,12 @@ struct LinkedChatsView: View {
                 window.alert = .failure("Rename", error)
             }
         }
+    }
+
+    /// Close: `Close the chat “<title>”?`, then `chats.close` (docs/chats.md › Closing a chat).
+    private func close(_ meta: ChatMeta) {
+        guard let app = window.app else { return }
+        ChatActions.confirmClose([meta], workspace: workspace, window: TicketActions.nsWindow(window), app: app)
     }
 
     /// Delete…: `Delete the chat “<title>”?` with `Its transcript and attachments are moved to the

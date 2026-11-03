@@ -227,7 +227,7 @@ final class ChatViewModel {
     }
 
     /// The chat is closed: `This conversation is over` replaces the composer and the More menu
-    /// offers Reopen (docs/chats.md › Closing a chat).
+    /// offers Reopen in place of Close (docs/chats.md › Closing a chat).
     var isClosed: Bool {
         meta?.closed ?? false
     }
@@ -1209,6 +1209,12 @@ final class ChatViewModel {
         }
     }
 
+    /// Close in the More menu: the confirmation, then `chats.close`.
+    func confirmClose() {
+        guard let meta, let app else { return }
+        ChatActions.confirmClose([meta], workspace: workspace, window: window, app: app)
+    }
+
     func confirmDelete() {
         guard let meta, let app else { return }
         ChatActions.confirmDelete(meta, workspace: workspace, window: window, app: app)
@@ -1299,6 +1305,44 @@ enum ChatActions {
                     _ = try await workspace.call(ChatsDelete.self, ChatsDelete.Params(chatID: meta.id))
                 } catch {
                     ChatAlerts.failure("Delete", error, in: window, app: app)
+                }
+            }
+        }
+    }
+
+    /// Close is enabled when at least one of the chats it acts on has `closed` false
+    /// (docs/chats.md › Closing a chat).
+    static func canClose(_ chats: [ChatMeta]) -> Bool {
+        chats.contains { !$0.closed }
+    }
+
+    /// `Close the chat “<title>”?` for one chat, `Close <n> chats?` for several.
+    static func closeQuestion(_ chats: [ChatMeta]) -> String {
+        if chats.count == 1, let meta = chats.first {
+            return "Close the chat “\(meta.title)”?"
+        }
+        return "Close \(chats.count) chats?"
+    }
+
+    /// Close asks `closeQuestion` with the buttons Close and Cancel, then calls `chats.close` for
+    /// each chat whose `closed` is false, in the given order; the first failure shows `Close
+    /// failed` and the chats after it are not closed.
+    static func confirmClose(_ chats: [ChatMeta], workspace: DeviceWorkspace, window: NSWindow?, app: AppModel) {
+        guard canClose(chats) else { return }
+        let alert = NSAlert()
+        alert.messageText = closeQuestion(chats)
+        alert.addButton(withTitle: "Close")
+        alert.addButton(withTitle: "Cancel").keyEquivalent = "\u{1b}"
+        ChatAlerts.present(alert, in: window) { response in
+            guard response == .alertFirstButtonReturn else { return }
+            Task { @MainActor in
+                for meta in chats where !(workspace.chats[meta.id.uuidString] ?? meta).closed {
+                    do {
+                        _ = try await workspace.call(ChatsClose.self, ChatsClose.Params(chatID: meta.id))
+                    } catch {
+                        ChatAlerts.failure("Close", error, in: window, app: app)
+                        return
+                    }
                 }
             }
         }

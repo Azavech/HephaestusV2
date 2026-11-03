@@ -28,7 +28,7 @@ extension Engine {
         register(ChatsDelete.self, actors: [.user]) { [unowned self] params, actor in
             try await self.chatsDelete(params, actor)
         }
-        register(ChatsClose.self, actors: [.claude]) { [unowned self] params, actor in
+        register(ChatsClose.self, actors: [.user, .claude]) { [unowned self] params, actor in
             try await self.chatsClose(params, actor)
         }
         register(ChatsReopen.self, actors: [.user]) { [unowned self] params, actor in
@@ -412,9 +412,10 @@ extension Engine {
 
     // MARK: Closing
 
-    /// `chats.close` (docs/engine-api.md › chats.close, docs/chats.md › Closing a chat): the
-    /// actor's own chat closes when its turn ends, or at once without a turn in progress; another
-    /// chat of its project closes at once, and is refused while a turn is in progress in it.
+    /// `chats.close` (docs/engine-api.md › chats.close, docs/chats.md › Closing a chat): a chat
+    /// closed by the user, or Claude's own chat, closes when its turn ends, or at once without a
+    /// turn in progress; another chat of Claude's project closes at once, and is refused while a
+    /// turn is in progress in it.
     func chatsClose(_ params: ChatsClose.Params, _ actor: Actor) async throws -> Empty {
         if actor.kind == .claude, actor.chat == nil { throw ActorRules.ownChatCloseOnly }
         let meta = try requireChat(params.chatID)

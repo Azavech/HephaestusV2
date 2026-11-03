@@ -121,19 +121,19 @@ The client fills the [FeedbackContext](engine-api.md#feedbackcontext) from the c
 | `section`        | main window with an active project: its section; chat window: `chats`; absent for other windows                                                      |
 | `item`           | the selected item, table below; absent when nothing is selected and for Settings, About and other windows                                            |
 
-| Section or window | `item`                                                                       |
-| ----------------- | ---------------------------------------------------------------------------- |
-| `dashboard`       | absent                                                                       |
-| `tickets`         | id of the selected ticket, the first in list order when several are selected |
-| `bundles`         | id of the selected bundle                                                    |
-| `chats`           | title of the selected chat                                                   |
-| `code`            | path of the active editor tab followed by `:<line>`, the line of the cursor  |
-| `docs`            | path of the open doc                                                         |
-| `web`             | URL of the selected web tab                                                  |
-| `skills`          | name of the selected skill                                                   |
-| `costs`           | absent                                                                       |
-| `settings`        | absent                                                                       |
-| chat window       | title of the window's chat                                                   |
+| Section or window | `item`                                                                        |
+| ----------------- | ----------------------------------------------------------------------------- |
+| `dashboard`       | absent                                                                        |
+| `tickets`         | id of the selected ticket, the first in list order when several are selected  |
+| `bundles`         | id of the selected bundle                                                     |
+| `chats`           | title of the selected chat, the first in list order when several are selected |
+| `code`            | path of the active editor tab followed by `:<line>`, the line of the cursor   |
+| `docs`            | path of the open doc                                                          |
+| `web`             | URL of the selected web tab                                                   |
+| `skills`          | name of the selected skill                                                    |
+| `costs`           | absent                                                                        |
+| `settings`        | absent                                                                        |
+| chat window       | title of the window's chat                                                    |
 
 A chat window counts as the `chats` section of its project. Default chosen at design time.
 

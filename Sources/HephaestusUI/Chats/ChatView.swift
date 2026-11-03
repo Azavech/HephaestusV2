@@ -445,8 +445,8 @@ struct ChatClosedLine: View {
 // MARK: - Header
 
 /// The title (double-click edits it in place: Return renames, Escape cancels), the kind chip with
-/// the linked ticket or bundle id, Open in New Window and the More menu with Reopen while the chat
-/// is closed, Rename… and Delete….
+/// the linked ticket or bundle id, Open in New Window and the More menu with Close while the chat
+/// is open or Reopen while it is closed, Rename… and Delete….
 struct ChatHeader: View {
     @Bindable var model: ChatViewModel
     let isInChatWindow: Bool
@@ -502,6 +502,10 @@ struct ChatHeader: View {
                     if model.isClosed {
                         Button("Reopen") {
                             model.reopen()
+                        }
+                    } else {
+                        Button("Close") {
+                            model.confirmClose()
                         }
                     }
                     Button("Rename…") {

@@ -196,7 +196,7 @@ final class FeedbackController {
         case .bundles:
             return view.selectedBundleID
         case .chats:
-            return view.selectedChatID.flatMap { workspace.chats[$0]?.title }
+            return ChatsSectionView.inListOrder(view.selectedChatIDs.compactMap { workspace.chats[$0] }).first?.title
         case .code:
             guard let path = view.selectedEditorPath else { return nil }
             guard let tab = view.editorTabs.first(where: { $0.path == path }) else { return path }

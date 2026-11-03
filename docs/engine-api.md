@@ -114,7 +114,7 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | MCP request with the external token    | claude, chatID `external`                       |
 | Engine-internal work and tests         | system                                          |
 
-- **user** may call every method except `chats.postQuestions`, `chats.postSymbol`, `chats.postColor`, `chats.postSound`, `chats.postShortcut`, `chats.postFont`, `chats.postAnimation` and `chats.close`. Local and remote users have the same rights.
+- **user** may call every method except `chats.postQuestions`, `chats.postSymbol`, `chats.postColor`, `chats.postSound`, `chats.postShortcut`, `chats.postFont` and `chats.postAnimation`. Local and remote users have the same rights.
 - **claude** may call only the 50 methods that MCP tools map to (the Actors column says "claude"), with the rules below. Any other method fails with `forbidden` before its params are decoded.
 - **system** may call every method, without restrictions.
 
@@ -223,7 +223,7 @@ The first column lists every engine method; it is the list the docs conformance 
 | `chats.updateSettings`     | ChatsUpdateSettings     | chatID, settings                                           | ChatMeta         | user         |
 | `chats.rename`             | ChatsRename             | chatID, title                                              | ChatMeta         | user, claude |
 | `chats.delete`             | ChatsDelete             | chatID                                                     | Empty            | user         |
-| `chats.close`              | ChatsClose              | chatID                                                     | Empty            | claude       |
+| `chats.close`              | ChatsClose              | chatID                                                     | Empty            | user, claude |
 | `chats.reopen`             | ChatsReopen             | chatID                                                     | ChatMeta         | user         |
 | `chats.answerPermission`   | ChatsAnswerPermission   | chatID, requestID, decision, message?                      | Empty            | user         |
 | `chats.postQuestions`      | ChatsPostQuestions      | chatID, questions                                          | QuestionSet      | claude       |
@@ -1040,16 +1040,16 @@ Events: project.updated when an entry was appended to `deletedChats`, ticket.upd
 
 ### chats.close
 
-Swift type `ChatsClose` · actors: claude (with a chat token, for the chats of its chat's project) · result: [Empty](#empty)
+Swift type `ChatsClose` · actors: user (any chat), claude (with a chat token, for the chats of its chat's project) · result: [Empty](#empty)
 
-Called by the MCP tool `close_chat`: once with the calling chat's id, taken from its token, or once per id of its `chatIDs` ([MCP server](mcp.md#close_chat)).
+Called by the MCP tool `close_chat`: once with the calling chat's id, taken from its token, or once per id of its `chatIDs` ([MCP server](mcp.md#close_chat)). Called by Close in the app, for any chat ([Chats](chats.md#closing-a-chat)).
 
-| Param  | Type   | Required | Description                                                |
-| ------ | ------ | -------- | ---------------------------------------------------------- |
-| chatID | ChatID | yes      | Chat id: the actor's chat, or another chat of its project. |
+| Param  | Type   | Required | Description                                                                   |
+| ------ | ------ | -------- | ----------------------------------------------------------------------------- |
+| chatID | ChatID | yes      | Chat id; for a claude actor, the actor's chat or another chat of its project. |
 
-- The actor's own chat: during a turn, marks the chat to close when that turn ends: the engine then sets `closed` to true in the chat's metadata file and ends its Claude process, unless the turn is stopped with Stop, ends in error or ends because the process exited ([Chats](chats.md#closing-a-chat)). Without a turn in progress, the chat closes at once.
-- Another chat of the project of the actor's chat: closes at once when no turn is in progress in it, that is when its state is neither starting, running nor waitingPermission ([Chats](chats.md#chat-states)). A chat with a turn in progress is refused with `conflict` and stays open. Default chosen at design time.
+- A chat closed by the user, or the actor's own chat for Claude: during a turn, marks the chat to close when that turn ends: the engine then sets `closed` to true in the chat's metadata file and ends its Claude process, unless the turn is stopped with Stop, ends in error or ends because the process exited ([Chats](chats.md#closing-a-chat)). Without a turn in progress, the chat closes at once.
+- For Claude, another chat of the project of the actor's chat: closes at once when no turn is in progress in it, that is when its state is neither starting, running nor waitingPermission ([Chats](chats.md#chat-states)). A chat with a turn in progress is refused with `conflict` and stays open. Default chosen at design time.
 - A chat that is already closed is left unchanged, whoever's it is.
 
 The checks run in this order: the external token, the chat's existence, the project, the closed state, the turn in progress.
@@ -1059,11 +1059,11 @@ The checks run in this order: the external token, the chat's existence, the proj
 | invalid   | chatID is not a UUID.                                                                                                                                                                           |
 | notFound  | No such chat.                                                                                                                                                                                   |
 | forbidden | The actor holds the external token (`Only the chat's own Claude can close its chat.`); the chat belongs to another project than the actor's chat (`Chat <chatID> belongs to another project.`). |
-| conflict  | The chat is not the actor's chat and a turn is in progress in it (`Chat <chatID> has a turn in progress.`).                                                                                     |
+| conflict  | The actor is claude, the chat is not the actor's chat, and a turn is in progress in it (`Chat <chatID> has a turn in progress.`).                                                               |
 
 `<chatID>` is the id in uppercase. The messages: Default chosen at design time.
 
-Events: none during a turn of the actor's own chat; chat.updated when a chat closes.
+Events: none while a close waits for the end of a turn; chat.updated when a chat closes.
 
 ### chats.reopen
 
@@ -3376,3 +3376,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R135: Claude asks the user to choose a font with `ask_font` and a sample text: the suggestions are drawn in their fonts, every font of the Mac and of the project can be searched, the user picks one, sets its weight and size and sees the sample in it, answers another way or skips.
 - R136: In a Swift application project, Claude asks the user to choose a SwiftUI animation with `ask_animation`: each suggestion plays in a lane, the user compares them, sets a preset and its parameters in a Custom row, picks one, answers another way or skips.
 - R137: Claude closes other chats of the project when the user asks it to, never on its own; a chat with a turn in progress is not closed.
+- R138: The user closes one chat, or several selected chats of the Chats section, after a confirmation.

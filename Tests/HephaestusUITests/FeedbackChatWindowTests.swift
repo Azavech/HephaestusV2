@@ -83,7 +83,7 @@ struct FeedbackChatWindowTests {
             #expect(app.localWorkspace.chats[meta.id.uuidString]?.projectID == "DEMO")
             let target = NavigationTarget.chat(chatID: meta.id)
             let navigated = captured.pendingTarget == target
-                || captured.projectStates.values.contains { $0.selectedChatID == meta.id.uuidString }
+                || captured.projectStates.values.contains { $0.selectedChatIDs == [meta.id.uuidString] }
             #expect(navigated)
             #expect(other.pendingTarget == nil)
         }
