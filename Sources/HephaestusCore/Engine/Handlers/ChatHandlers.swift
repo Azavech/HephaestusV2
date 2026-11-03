@@ -412,12 +412,20 @@ extension Engine {
 
     // MARK: Closing
 
-    /// `chats.close` (docs/chats.md › Closing a chat): during a turn the chat closes when the turn
-    /// ends; without a turn in progress it closes at once.
+    /// `chats.close` (docs/engine-api.md › chats.close, docs/chats.md › Closing a chat): the
+    /// actor's own chat closes when its turn ends, or at once without a turn in progress; another
+    /// chat of its project closes at once, and is refused while a turn is in progress in it.
     func chatsClose(_ params: ChatsClose.Params, _ actor: Actor) async throws -> Empty {
-        try ActorRules.requireOwnChat(params.chatID, actor, refusal: ActorRules.ownChatCloseOnly)
+        if actor.kind == .claude, actor.chat == nil { throw ActorRules.ownChatCloseOnly }
         let meta = try requireChat(params.chatID)
+        let other = actor.kind == .claude && actor.chat != params.chatID
+        if other, actor.chat.flatMap({ chatMeta($0) })?.projectID != meta.projectID {
+            throw ActorRules.otherProjectChat(params.chatID)
+        }
         guard !meta.closed else { return Empty() }
+        if other, let runtime = chats.runtimes[params.chatID], runtime.starting || runtime.turnInProgress {
+            throw ActorRules.turnInProgress(params.chatID)
+        }
         closeChat(params.chatID, origin: actor)
         return Empty()
     }

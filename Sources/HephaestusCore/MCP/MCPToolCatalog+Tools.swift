@@ -1107,12 +1107,18 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "close_chat",
             description: #"""
-            Close the chat you run in. You can still finish your reply: when your turn ends, HephaestusV2 ends your session and the chat shows "This conversation is over" until the user reopens it. Call it when the user asks you to close the chat, or when the work of the chat is finished. Only available in chats started by HephaestusV2.
+            Close the chat you run in, or with chatIDs chats of your project. Without chatIDs it closes the chat you run in: you can still finish your reply; when your turn ends, HephaestusV2 ends your session and the chat shows "This conversation is over" until the user reopens it. Call it when the user asks you to close the chat, or when the work of the chat is finished. chatIDs lists chats of your project to close at once; your own chat's id in it closes your chat as without chatIDs. Close another chat only when the user asked you to close it, never on your own. A listed chat whose turn is in progress, a chat of another project and an unknown id are not closed: the result lists each one in refused, with the reason. Only available in chats started by HephaestusV2.
             """#,
             inputSchema: schema(#"""
             {
               "type": "object",
-              "properties": {},
+              "properties": {
+                "chatIDs": {
+                  "type": "array",
+                  "description": "Ids of chats of your project to close (UUIDs). Omit it to close the chat you run in.",
+                  "items": {"type": "string"}
+                }
+              },
               "additionalProperties": false
             }
             """#),

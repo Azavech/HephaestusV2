@@ -8,12 +8,12 @@ HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server th
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Component         | `MCPServer` in `Sources/HephaestusCore/MCP/`, owned by the engine ([Architecture](architecture.md))                                                      |
 | Address           | `127.0.0.1` only, TCP port `mcpPort` (default 47820); `HEPHAESTUS_MCP_PORT` replaces it when set ([Architecture](architecture.md#environment-overrides)) |
-| Endpoint          | `/mcp`; `/hooks/user-prompt-submit` for the linked items hook of the chat processes ([User prompt hook](#user-prompt-hook))                              |
+| Endpoint          | `/mcp`; hook paths `/hooks/user-prompt-submit`, `/hooks/pre-tool-use` ([User prompt hook](#user-prompt-hook), [Pre-tool-use hook](#pre-tool-use-hook))   |
 | Transport         | MCP Streamable HTTP, limited to POST requests answered with `application/json`: no SSE stream, no sessions                                               |
 | Protocol versions | `2025-06-18` and `2025-03-26`, negotiated in `initialize` ([Protocol version](#protocol-version))                                                        |
 | JSON-RPC methods  | `initialize`, `ping`, `tools/list`, `tools/call`; every notification is accepted and ignored                                                             |
 | Server name       | `hephaestus`, in `serverInfo` and as the server's key in Claude's MCP configuration, so Claude names the tools `mcp__hephaestus__<tool>`                 |
-| Authentication    | `Authorization: Bearer <token>` with a chat token or the external token on `/mcp`, with a hook token on `/hooks/user-prompt-submit`                      |
+| Authentication    | `Authorization: Bearer <token>` with a chat token or the external token on `/mcp`, with a hook token on the hook paths                                   |
 | Tools             | The 50 tools of the [tool catalogue](#tool-catalogue), plus 4 [debug tools](#debug-tools) when `HEPHAESTUS_DEBUG_TOOLS=1`                                |
 
 Every tool call runs an engine method ([Engine API](engine-api.md)) with the actor `claude`. The engine validates it exactly as it validates a call from the UI or from a remote device and emits the same events, so every client, local or remote, shows the change live.
@@ -23,6 +23,7 @@ Every tool call runs an engine method ([Engine API](engine-api.md)) with the act
 | Claude process of a chat                     | `--mcp-config` file written by the engine at each launch ([Chats](chats.md))                     | The chat token of that launch | `claude` with the chat's id     |
 | Terminal Claude session on the main device   | `claude mcp add` command copied from Settings > MCP ([External use](#external-use))              | The external token            | `claude` with chatID `external` |
 | Linked items hook of a chat's Claude process | `UserPromptSubmit` hook of the `--settings` of each launch ([Chats](chats.md#linked-items-hook)) | The hook token of that launch | none                            |
+| Close chat hook of a chat's Claude process   | `PreToolUse` hook of the `--settings` of each launch ([Chats](chats.md#close-chat-hook))         | The hook token of that launch | none                            |
 
 Remote devices never call the MCP server: Claude processes run on the main device only and the server listens on the loopback interface ([Remote devices](remote.md)).
 
@@ -46,13 +47,13 @@ The server reads each request and applies these steps in order; the first step t
 
 1. **Head.** Empty lines before the request line are skipped, as RFC 9112 › 2.2 recommends, for clients that end a body with an extra CRLF. The request line and the header fields, up to the first empty line, must parse as HTTP/1.1 or HTTP/1.0: a request line `<method> <target> HTTP/1.1` or `HTTP/1.0`, header fields `<name>: <value>`, at most one `Content-Length` made of digits, and no `Transfer-Encoding` other than `chunked`. Otherwise the answer is 400. A head longer than 65 536 bytes gets 413. Default chosen at design time.
 2. **Origin.** A request carrying an `Origin` header, whatever its value, gets 403. Default chosen at design time.
-3. **Path.** The path of the request target, without its query string, must be `/mcp` or `/hooks/user-prompt-submit`; any other path gets 404.
+3. **Path.** The path of the request target, without its query string, must be `/mcp`, `/hooks/user-prompt-submit` or `/hooks/pre-tool-use`; any other path gets 404.
 4. **Method.** Only POST is handled; every other method, GET and DELETE included, gets 405 with `Allow: POST`.
-5. **Authorization.** A missing, malformed or unknown bearer token gets 401, and so does a token of the wrong kind for the path: a hook token on `/mcp`, a chat token or the external token on `/hooks/user-prompt-submit` ([Authentication](#authentication)).
+5. **Authorization.** A missing, malformed or unknown bearer token gets 401, and so does a token of the wrong kind for the path: a hook token on `/mcp`, a chat token or the external token on a hook path, `/hooks/user-prompt-submit` or `/hooks/pre-tool-use` ([Authentication](#authentication)).
 6. **Declared size.** A `Content-Length` above 4 194 304 bytes gets 413 without the body being read. Default chosen at design time.
 7. **Continue.** When the request carries `Expect: 100-continue`, the server sends the interim response `HTTP/1.1 100 Continue`. Default chosen at design time.
 8. **Body.** The body is the `Content-Length` bytes, or the decoded chunks when `Transfer-Encoding: chunked` is present, which takes precedence over `Content-Length`; chunk extensions and trailer fields are ignored. A request with neither header has an empty body. A chunked body growing beyond 4 194 304 bytes gets 413 and a malformed chunk gets 400; a chunk-size line or a trailer section longer than 65 536 bytes, the head limit, is malformed. Default chosen at design time.
-9. **JSON-RPC.** On `/hooks/user-prompt-submit`, the body is answered with 200 as [User prompt hook](#user-prompt-hook) states. On `/mcp`, the body is handled as described in [JSON-RPC](#json-rpc) and answered with 200 or 202, or with 400 when the request's `MCP-Protocol-Version` header names a version it may not use ([Protocol version](#protocol-version)).
+9. **JSON-RPC.** On `/hooks/user-prompt-submit` and `/hooks/pre-tool-use`, the body is answered with 200 as [User prompt hook](#user-prompt-hook) and [Pre-tool-use hook](#pre-tool-use-hook) state. On `/mcp`, the body is handled as described in [JSON-RPC](#json-rpc) and answered with 200 or 202, or with 400 when the request's `MCP-Protocol-Version` header names a version it may not use ([Protocol version](#protocol-version)).
 
 Every rejection (400, 401, 403, 404, 405, 413) carries `Connection: close` and the server closes the connection after sending it. Default chosen at design time.
 
@@ -62,13 +63,13 @@ The Claude CLI sends `GET /mcp` after `initialize` to open an SSE stream, which 
 
 | Status                 | Sent when                                                                                                                                            | Body                                                                                        |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| 200 OK                 | A JSON-RPC request was handled, or the body is not a valid JSON-RPC message; JSON-RPC errors included. A request to `/hooks/user-prompt-submit`      | JSON-RPC response (`application/json`); the hook answer on `/hooks/user-prompt-submit`      |
+| 200 OK                 | A JSON-RPC request was handled, or the body is not a valid JSON-RPC message; JSON-RPC errors included. A request to a hook path                      | JSON-RPC response (`application/json`); the hook answer on a hook path                      |
 | 202 Accepted           | The body is a JSON-RPC notification or a JSON-RPC response                                                                                           | None                                                                                        |
 | 400 Bad Request        | Malformed request head or chunked body                                                                                                               | `Bad Request: malformed HTTP request.`                                                      |
 | 400 Bad Request        | A request for `ping`, `tools/list` or `tools/call` whose `MCP-Protocol-Version` names an unsupported version ([Protocol version](#protocol-version)) | `Bad Request: unsupported MCP-Protocol-Version <value>; supported: 2025-06-18, 2025-03-26.` |
 | 401 Unauthorized       | Missing, malformed or unknown bearer token                                                                                                           | `Unauthorized: missing or invalid bearer token.`                                            |
 | 403 Forbidden          | The request carries an `Origin` header                                                                                                               | `Forbidden: requests with an Origin header are refused.`                                    |
-| 404 Not Found          | The path is neither `/mcp` nor `/hooks/user-prompt-submit`                                                                                           | `Not Found: the MCP endpoint is /mcp.`                                                      |
+| 404 Not Found          | The path is not `/mcp`, `/hooks/user-prompt-submit` or `/hooks/pre-tool-use`                                                                         | `Not Found: the MCP endpoint is /mcp.`                                                      |
 | 405 Method Not Allowed | The method is not POST                                                                                                                               | `Method Not Allowed: use POST.`                                                             |
 | 413 Content Too Large  | The request head exceeds 65 536 bytes                                                                                                                | `Content Too Large: the request head exceeds 65536 bytes.`                                  |
 | 413 Content Too Large  | The body exceeds 4 194 304 bytes                                                                                                                     | `Content Too Large: the request body exceeds 4194304 bytes.`                                |
@@ -116,7 +117,7 @@ The server never sends `Mcp-Session-Id` or any `Access-Control-*` header.
 ## Authentication
 
 - Every POST to `/mcp` carries `Authorization: Bearer <token>`. The scheme name matches case-insensitively, one or more spaces separate it from the token, and the token is compared in constant time with the live chat tokens and the external token.
-- Every POST to `/hooks/user-prompt-submit` carries a hook token in the same form, compared in constant time with the live hook tokens. A hook token is not accepted on `/mcp`, and a chat token or the external token is not accepted on `/hooks/user-prompt-submit`. Default chosen at design time.
+- Every POST to a hook path, `/hooks/user-prompt-submit` or `/hooks/pre-tool-use`, carries a hook token in the same form, compared in constant time with the live hook tokens. A hook token is not accepted on `/mcp`, and a chat token or the external token is not accepted on a hook path. Default chosen at design time.
 - A missing header, several `Authorization` fields, another scheme, an empty token or an unknown token gets 401 with `WWW-Authenticate: Bearer realm="hephaestus"`. Default chosen at design time. The server offers no OAuth: discovery requests to other paths get 404.
 - A token is 64 lowercase hexadecimal characters encoding 32 bytes from `SecRandomCopyBytes` ([Data model](data-model.md#secrets-file)).
 
@@ -124,13 +125,13 @@ The server never sends `Mcp-Session-Id` or any `Access-Control-*` header.
 | -------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | Chat token     | Each time the engine launches the chat's Claude process                             | Engine memory and the chat's MCP config file `Runtime/mcp/<chatID>.json`, file mode 0600, deleted when the process exits ([Chats](chats.md#mcp-configuration-file)) | That process exits, whatever the reason: idle termination, interruption, crash, chat deletion or app quit | `claude` with the chat's id                                                                         |
 | External token | At launch when `secrets.json` holds none ([Data model](data-model.md#secrets-file)) | `mcpExternalToken` in `secrets.json`, file mode 0600                                                                                                                | Regenerate in Settings > MCP                                                                              | `claude` with chatID `external`                                                                     |
-| Hook token     | Each time the engine launches the chat's Claude process, with its chat token        | Engine memory and the environment variable `HEPHAESTUS_HOOK_TOKEN` of that process ([Chats](chats.md#linked-items-hook))                                            | That process exits, whatever the reason                                                                   | none: it only gives the linked items of its chat's messages ([User prompt hook](#user-prompt-hook)) |
+| Hook token     | Each time the engine launches the chat's Claude process, with its chat token        | Engine memory and the environment variable `HEPHAESTUS_HOOK_TOKEN` of that process ([Chats](chats.md#linked-items-hook))                                            | That process exits, whatever the reason                                                                   | none: it only gives its chat's linked items and `close_chat` decisions ([hooks](#user-prompt-hook)) |
 
 The chat tokens and the hook tokens are created, kept and revoked as this table states. Default chosen at design time.
 
 - A relaunch of a chat's process issues a new token. Sub-agents of the chat run in the same process and use the same token.
 - The external token is read and regenerated only through the external MCP token service of the windows of this Mac; no engine method or MCP tool exposes it ([Architecture](architecture.md#local-only-services)). Regenerate (Settings > MCP, [UI](ui.md)) replaces it at once: requests with the old token get 401, and terminal sessions must add the server again ([External use](#external-use)). When `secrets.json` cannot be written, the old token stays valid and Settings shows the alert `Regenerate failed` with the storage error's message. Default chosen at design time.
-- A chat token identifies the calling chat: `ask_questions` posts its questions to that chat, `ask_symbol` its symbol request, `ask_color` its color request, `ask_sound` its sound request, `ask_shortcut` its shortcut request, `ask_font` its font request, `ask_animation` its animation request, `close_chat` closes that chat, and `open_in_app` reaches that chat's driving device.
+- A chat token identifies the calling chat: `ask_questions` posts its questions to that chat, `ask_symbol` its symbol request, `ask_color` its color request, `ask_sound` its sound request, `ask_shortcut` its shortcut request, `ask_font` its font request, `ask_animation` its animation request, `close_chat` closes that chat or chats of its project, and `open_in_app` reaches that chat's driving device.
 - Tokens are never logged.
 
 ## User prompt hook
@@ -148,6 +149,23 @@ The Claude process of a chat sends `POST /hooks/user-prompt-submit` before Claud
 ```
 
 - Otherwise the answer is 200 with the body `{}`, which adds no context: the message has no linked item, no message matches, or the body is not a JSON object with a string `prompt`. Default chosen at design time.
+- The request runs no engine method, emits no event and is not logged, unless it is rejected ([Logging](#logging)).
+
+## Pre-tool-use hook
+
+The Claude process of a chat sends `POST /hooks/pre-tool-use` before each call of `close_chat`, through the `PreToolUse` hook of its `--settings`, whose matcher limits it to that tool ([Chats](chats.md#close-chat-hook)). The request goes through steps 1 to 8 of [Request handling](#request-handling) with a hook token. Its body is the hook input of the Claude CLI, a JSON object whose `tool_name` is the tool's name and `tool_input` the call's arguments, for example:
+
+```json
+{"session_id":"3f2504e0-4f89-11d3-9a0c-0305e82c3301","transcript_path":"/Users/example/.claude/projects/-Users-example-Developer-HephaestusV2/3f2504e0-4f89-11d3-9a0c-0305e82c3301.jsonl","cwd":"/Users/example/Developer/HephaestusV2","permission_mode":"default","hook_event_name":"PreToolUse","tool_name":"mcp__hephaestus__close_chat","tool_input":{},"tool_use_id":"toolu_01A2B3C4D5E6F7G8H9J0K1L2"}
+```
+
+- When `tool_name` is `mcp__hephaestus__close_chat` and `tool_input` is an object that names no other chat than the token's chat, its `chatIDs` being absent, `null`, or an array whose elements are all strings equal to the token's chat id ignoring case, the answer is 200 with `application/json` and the decision `allow`, so the call runs without a permission prompt in every permission mode:
+
+```json
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}
+```
+
+- Otherwise the answer is 200 with the body `{}`, which makes no decision: the call follows the chat's permission mode, as a tool that is not pre-approved does ([Chats](chats.md#command-line)). This covers a `chatIDs` that names another chat or holds an element that is not a string, another tool, and a body that is not a JSON object. Default chosen at design time.
 - The request runs no engine method, emits no event and is not logged, unless it is rejected ([Logging](#logging)).
 
 ## JSON-RPC
@@ -391,16 +409,17 @@ A chat token runs every engine call as the actor `claude` with the chat's id, th
 | Claude asks for a sound only in a project of type Swift application                                    | chats.postSound ([Projects](projects.md#project-types))                                                                                                                                                                                | `forbidden`            |
 | Shortcut requests are posted only in Swift application projects                                        | `ask_shortcut`, chats.postShortcut ([Workflow](workflow.md#shortcut-requests))                                                                                                                                                         | `forbidden`            |
 | Animation requests are posted only in Swift application projects                                       | `ask_animation`, chats.postAnimation ([Workflow](workflow.md#animation-requests))                                                                                                                                                      | `forbidden`            |
-| Only the chat's own Claude closes its chat                                                             | `close_chat`, chats.close                                                                                                                                                                                                              | `forbidden`            |
+| Claude closes only chats of the calling chat's project; the external token closes no chat              | `close_chat`, chats.close; `close_chat` with `chatIDs` reports the refused chats in its result ([close_chat](#close_chat))                                                                                                             | `forbidden`            |
+| Claude never closes another chat while a turn is in progress in it                                     | chats.close; `close_chat` with `chatIDs` reports the refused chats in its result ([close_chat](#close_chat))                                                                                                                           | `conflict`             |
 | A feedback chat is linked to the ticket it creates                                                     | tickets.create ([Feedback](feedback.md#resulting-ticket))                                                                                                                                                                              | —                      |
 | Claude never unlocks a web tab, so it never closes a locked tab                                        | webTabs.update, webTabs.close ([Engine API](engine-api.md#rules-for-claude))                                                                                                                                                           | `forbidden`            |
 | A chat never removes the project it belongs to                                                         | projects.remove ([Engine API](engine-api.md#rules-for-claude))                                                                                                                                                                         | `forbidden`            |
 
-The tools are not limited to the calling chat's project: a chat may read and change every project of the device. Default chosen at design time. The MCP server asks the user nothing itself; the Claude CLI asks before tool calls according to the chat's permission mode and the app shows those requests ([Chats](chats.md)). The workflow Claude follows with these tools is in [Workflow](workflow.md).
+The tools are not limited to the calling chat's project: a chat may read and change every project of the device. Default chosen at design time. Only `close_chat` is: it closes chats of the calling chat's project only ([close_chat](#close_chat)). The MCP server asks the user nothing itself; the Claude CLI asks before tool calls according to the chat's permission mode and the app shows those requests ([Chats](chats.md)). The workflow Claude follows with these tools is in [Workflow](workflow.md).
 
 ## Tool catalogue
 
-The table lists every tool in the order of `tools/list`. "Required inputs" holds the names in the tool's `inputSchema.required` and "Optional inputs" its other top-level properties; `—` means none. The result types are defined in [Engine API](engine-api.md#api-types) and [Data model](data-model.md); `{}` is an empty result and `text` the plain text of [ask_questions](#ask_questions), [ask_symbol](#ask_symbol), [ask_color](#ask_color), [ask_sound](#ask_sound), [ask_shortcut](#ask_shortcut) and [ask_font](#ask_font). The [conformance test](#conformance) reads this table.
+The table lists every tool in the order of `tools/list`. "Required inputs" holds the names in the tool's `inputSchema.required` and "Optional inputs" its other top-level properties; `—` means none. The result types are defined in [Engine API](engine-api.md#api-types) and [Data model](data-model.md); `{}` is an empty result, `text` the plain text of [ask_questions](#ask_questions), [ask_symbol](#ask_symbol), [ask_color](#ask_color), [ask_sound](#ask_sound), [ask_shortcut](#ask_shortcut) and [ask_font](#ask_font), and `{refused}` the result of [close_chat](#close_chat): `{}` without `chatIDs`, the object that lists the refused chats with it. The [conformance test](#conformance) reads this table.
 
 | Tool                | Required inputs                                    | Optional inputs                  | Engine method            | Result           |
 | ------------------- | -------------------------------------------------- | -------------------------------- | ------------------------ | ---------------- |
@@ -439,7 +458,7 @@ The table lists every tool in the order of `tools/list`. "Required inputs" holds
 | `list_chats`        | `projectID`                                        | —                                | chats.list               | [ChatMeta]       |
 | `get_chat`          | `chatID`                                           | —                                | chats.get                | ChatTranscript   |
 | `rename_chat`       | `chatID`, `title`                                  | —                                | chats.rename             | ChatMeta         |
-| `close_chat`        | —                                                  | —                                | chats.close              | `{}`             |
+| `close_chat`        | —                                                  | `chatIDs`                        | chats.close              | `{refused}`      |
 | `search`            | `query`                                            | `scopes`, `projectID`            | search.query             | [SearchResult]   |
 | `list_docs`         | `projectID`                                        | —                                | docs.list                | [DocEntry]       |
 | `list_web_tabs`     | `projectID`                                        | —                                | webTabs.list             | [WebTab]         |
@@ -1994,18 +2013,30 @@ Input schema:
 
 ### close_chat
 
-- **Engine call:** chats.close with `chatID` = the calling chat ([Engine API](engine-api.md#chatsclose)). The chat closes when the current turn ends, so Claude can still finish its reply; Stop or an error in that turn cancels the close ([Chats](chats.md#closing-a-chat)).
+- **Engine call:** without `chatIDs`, chats.close with `chatID` = the calling chat ([Engine API](engine-api.md#chatsclose)). The chat closes when the current turn ends, so Claude can still finish its reply; Stop or an error in that turn cancels the close ([Chats](chats.md#closing-a-chat)).
+- **With `chatIDs`:** chats.close once per element, in list order, with that element as `chatID`. The calling chat's own id closes it as without `chatIDs`, when the current turn ends. Every other chat of the calling chat's project closes at once, unless a turn is in progress in it; a chat that is already closed stays unchanged. A refusal of one chat does not stop the others. An element that is not a UUID is not sent: it is refused as an unknown chat, with `Chat <element> not found.` Default chosen at design time.
+- **Rule:** Claude closes another chat only when the user asked it to close that chat, never on its own ([Workflow](workflow.md#project-and-feedback-chats)); the server cannot check it, the prompt carries it.
 - **Availability:** chat tokens only. With the external token the call fails before argument validation with `Only the chat's own Claude can close its chat.`, the message of chats.close for that case. The tool is listed for every token. Default chosen at design time.
-- **Permission:** pre-approved, so it runs without a permission prompt in every permission mode ([Chats](chats.md#command-line)).
-- **Result:** `{}`.
+- **Permission:** a call whose `chatIDs` is absent or names no other chat than the calling chat runs without a permission prompt in every permission mode. A call whose `chatIDs` names another chat follows the chat's permission mode, as the tools that are not pre-approved do: in Ask Every Time the user approves it ([Chats](chats.md#close-chat-hook)).
+- **Result:** `{}` without `chatIDs`. With `chatIDs`, `{refused}`: an object whose `refused` array holds one element per element of `chatIDs` that chats.close refused, in list order, with `chatID`, the element as given, and `reason`, the message of the refusal; `refused` is empty when every listed chat closed, was already closed, or is the calling chat. Default chosen at design time.
+
+```json
+{"refused":[{"chatID":"9B2D6C1E-0F4A-4E8B-A1C2-3D4E5F607182","reason":"Chat 9B2D6C1E-0F4A-4E8B-A1C2-3D4E5F607182 has a turn in progress."}]}
+```
+
+- **Refused chats**, reported in `refused` and not as an error ([Engine API](engine-api.md#chatsclose)):
+  - A chat with a turn in progress (`Chat <chatID> has a turn in progress.`).
+  - A chat of another project (`Chat <chatID> belongs to another project.`).
+  - An unknown chat, or an element that is not a UUID (`Chat <chatID> not found.`).
+  - Any other failure of chats.close, with its message.
 - **Errors:**
   - The external token (`forbidden`, message above).
-  - The chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatsclose)).
+  - Without `chatIDs`, the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatsclose)).
 
 Description:
 
 ```text
-Close the chat you run in. You can still finish your reply: when your turn ends, HephaestusV2 ends your session and the chat shows "This conversation is over" until the user reopens it. Call it when the user asks you to close the chat, or when the work of the chat is finished. Only available in chats started by HephaestusV2.
+Close the chat you run in, or with chatIDs chats of your project. Without chatIDs it closes the chat you run in: you can still finish your reply; when your turn ends, HephaestusV2 ends your session and the chat shows "This conversation is over" until the user reopens it. Call it when the user asks you to close the chat, or when the work of the chat is finished. chatIDs lists chats of your project to close at once; your own chat's id in it closes your chat as without chatIDs. Close another chat only when the user asked you to close it, never on your own. A listed chat whose turn is in progress, a chat of another project and an unknown id are not closed: the result lists each one in refused, with the reason. Only available in chats started by HephaestusV2.
 ```
 
 Input schema:
@@ -2013,7 +2044,13 @@ Input schema:
 ```json
 {
   "type": "object",
-  "properties": {},
+  "properties": {
+    "chatIDs": {
+      "type": "array",
+      "description": "Ids of chats of your project to close (UUIDs). Omit it to close the chat you run in.",
+      "items": {"type": "string"}
+    }
+  },
   "additionalProperties": false
 }
 ```
@@ -2807,7 +2844,7 @@ The server writes these messages to `Logs/engine.log` with the component `mcp`, 
 ## Security
 
 - The server listens on `127.0.0.1` only: other machines, remote devices included, cannot reach it.
-- Every request needs a 256-bit bearer token, compared in constant time. Chat tokens and hook tokens live as long as their Claude process; the files holding tokens have mode 0600; tokens are never logged. A hook token is also in the environment of its Claude process, where the commands Claude runs can read it; it only gives the linked items of its chat's messages.
+- Every request needs a 256-bit bearer token, compared in constant time. Chat tokens and hook tokens live as long as their Claude process; the files holding tokens have mode 0600; tokens are never logged. A hook token is also in the environment of its Claude process, where the commands Claude runs can read it; it only gives the linked items of its chat's messages and the answers of the [pre-tool-use hook](#pre-tool-use-hook), which approve nothing for the command that asks: only the hook call of the Claude CLI decides a permission.
 - Requests carrying an `Origin` header are refused with 403 and no CORS header is ever sent, so web pages, those of the app's own web tabs included, cannot call the server.
 - The [actor rules](#actor-rules) hold whatever the token: Claude never changes the status of a `done` ticket.
 - The debug tools exist only when debug tools are enabled; then every holder of a token of that process can capture its windows and click in them.
@@ -3041,3 +3078,4 @@ Unauthorized: missing or invalid bearer token.
 - R134: In a Swift application project, Claude asks the user to choose a keyboard shortcut with `ask_shortcut`: suggestions show as key caps, the user can record another combination and sees when macOS or the app already uses the selected one, then picks one, answers another way or skips.
 - R135: Claude asks the user to choose a font with `ask_font` and a sample text: the suggestions are drawn in their fonts, every font of the Mac and of the project can be searched, the user picks one, sets its weight and size and sees the sample in it, answers another way or skips.
 - R136: In a Swift application project, Claude asks the user to choose a SwiftUI animation with `ask_animation`: each suggestion plays in a lane, the user compares them, sets a preset and its parameters in a Custom row, picks one, answers another way or skips.
+- R137: Claude closes other chats of the project when the user asks it to, never on its own; a chat with a turn in progress is not closed.

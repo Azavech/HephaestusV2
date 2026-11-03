@@ -203,8 +203,11 @@ struct MCPToolHandlers: Sendable {
 
         case .closeChat:
             // Step 2 made sure the token is a chat token.
-            let chatID = actor.chat?.uuidString.uppercased() ?? ""
-            return try await engineText(tool, params: .object(["chatID": .string(chatID)]), actor: actor)
+            guard case .array(let chatIDs)? = args["chatIDs"] else {
+                let chatID = actor.chat?.uuidString.uppercased() ?? ""
+                return try await engineText(tool, params: .object(["chatID": .string(chatID)]), actor: actor)
+            }
+            return try Self.json(CloseChatResult(refused: await closeChats(chatIDs.map { $0.stringValue ?? "" }, tool, actor: actor)))
 
         case .openInApp:
             let target = args["target"]?.objectValue ?? [:]
@@ -214,6 +217,25 @@ struct MCPToolHandlers: Sendable {
         case .debugUI:
             return try await debugTool(tool, args: args)
         }
+    }
+
+    /// `close_chat` with `chatIDs` (docs/mcp.md › close_chat): chats.close once per element, in
+    /// list order; each refusal is kept with its message and does not stop the others. An element
+    /// that is not a UUID is refused as an unknown chat without an engine call.
+    private func closeChats(_ chatIDs: [String], _ tool: MCPToolDefinition, actor: Actor) async throws -> [CloseChatResult.Refusal] {
+        var refused: [CloseChatResult.Refusal] = []
+        for chatID in chatIDs {
+            guard let uuid = UUID(uuidString: chatID) else {
+                refused.append(.init(chatID: chatID, reason: EngineError.notFound("Chat", chatID).message))
+                continue
+            }
+            do {
+                _ = try await engineText(tool, params: .object(["chatID": .string(uuid.uuidString)]), actor: actor)
+            } catch let error as EngineError {
+                refused.append(.init(chatID: chatID, reason: error.message))
+            }
+        }
+        return refused
     }
 
     /// Step 6 and 7: `Engine.dispatch` with the token's actor; the result text is its JSON.
@@ -386,4 +408,17 @@ struct MCPToolHandlers: Sendable {
         }
         return "application/octet-stream"
     }
+}
+
+/// The result of `close_chat` with `chatIDs` (docs/mcp.md › close_chat): the refused chats, in
+/// list order.
+struct CloseChatResult: Codable, Sendable, Hashable {
+    struct Refusal: Codable, Sendable, Hashable {
+        /// The element of `chatIDs` as given.
+        var chatID: String
+        /// The message of the refusal.
+        var reason: String
+    }
+
+    var refused: [Refusal]
 }

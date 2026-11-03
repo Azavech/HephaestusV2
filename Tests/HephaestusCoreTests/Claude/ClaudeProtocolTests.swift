@@ -74,12 +74,12 @@ struct ClaudeProtocolTests {
             "--permission-prompt-tool", "stdio",
             "--mcp-config", "/Users/example/Library/Application Support/HephaestusV2/Runtime/mcp/3F2504E0-4F89-11D3-9A0C-0305E82C3301.json",
             "--allowedTools",
-            "mcp__hephaestus__ask_questions,mcp__hephaestus__ask_symbol,mcp__hephaestus__ask_color,mcp__hephaestus__ask_sound,mcp__hephaestus__ask_shortcut,mcp__hephaestus__ask_font,mcp__hephaestus__ask_animation,mcp__hephaestus__close_chat,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__create_ticket,mcp__hephaestus__update_ticket,mcp__hephaestus__set_ticket_status,mcp__hephaestus__add_comment,mcp__hephaestus__update_comment,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__create_bundle,mcp__hephaestus__update_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat",
+            "mcp__hephaestus__ask_questions,mcp__hephaestus__ask_symbol,mcp__hephaestus__ask_color,mcp__hephaestus__ask_sound,mcp__hephaestus__ask_shortcut,mcp__hephaestus__ask_font,mcp__hephaestus__ask_animation,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__create_ticket,mcp__hephaestus__update_ticket,mcp__hephaestus__set_ticket_status,mcp__hephaestus__add_comment,mcp__hephaestus__update_comment,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__create_bundle,mcp__hephaestus__update_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat",
             "--disallowedTools", "AskUserQuestion",
             "--append-system-prompt", "You are Claude, working inside HephaestusV2, …",
             "--plugin-dir", "/Users/example/Library/Application Support/HephaestusV2/Runtime/plugins/HEPH",
             "--settings",
-            #"{"ultracode":true,"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"http","url":"http://127.0.0.1:47820/hooks/user-prompt-submit","headers":{"Authorization":"Bearer $HEPHAESTUS_HOOK_TOKEN"},"allowedEnvVars":["HEPHAESTUS_HOOK_TOKEN"],"timeout":10}]}]}}"#,
+            #"{"ultracode":true,"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"http","url":"http://127.0.0.1:47820/hooks/user-prompt-submit","headers":{"Authorization":"Bearer $HEPHAESTUS_HOOK_TOKEN"},"allowedEnvVars":["HEPHAESTUS_HOOK_TOKEN"],"timeout":10}]}],"PreToolUse":[{"matcher":"mcp__hephaestus__close_chat","hooks":[{"type":"http","url":"http://127.0.0.1:47820/hooks/pre-tool-use","headers":{"Authorization":"Bearer $HEPHAESTUS_HOOK_TOKEN"},"allowedEnvVars":["HEPHAESTUS_HOOK_TOKEN"],"timeout":10}]}]}}"#,
         ])
     }
 
@@ -93,7 +93,7 @@ struct ClaudeProtocolTests {
         #expect(!argv.contains("--plugin-dir"))
         #expect(Array(argv.suffix(4)) == [
             "--append-system-prompt", "P", "--settings",
-            #"{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"http","url":"http://127.0.0.1:50123/hooks/user-prompt-submit","headers":{"Authorization":"Bearer $HEPHAESTUS_HOOK_TOKEN"},"allowedEnvVars":["HEPHAESTUS_HOOK_TOKEN"],"timeout":10}]}]}}"#,
+            #"{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"http","url":"http://127.0.0.1:50123/hooks/user-prompt-submit","headers":{"Authorization":"Bearer $HEPHAESTUS_HOOK_TOKEN"},"allowedEnvVars":["HEPHAESTUS_HOOK_TOKEN"],"timeout":10}]}],"PreToolUse":[{"matcher":"mcp__hephaestus__close_chat","hooks":[{"type":"http","url":"http://127.0.0.1:50123/hooks/pre-tool-use","headers":{"Authorization":"Bearer $HEPHAESTUS_HOOK_TOKEN"},"allowedEnvVars":["HEPHAESTUS_HOOK_TOKEN"],"timeout":10}]}]}}"#,
         ])
     }
 
@@ -106,7 +106,22 @@ struct ClaudeProtocolTests {
             #expect(object["ultracode"] == (ultracode ? .bool(true) : nil))
             #expect(text.hasPrefix(ultracode ? #"{"ultracode":true,"hooks":"# : #"{"hooks":"#))
             #expect(object["hooks"]?.objectValue?["UserPromptSubmit"] != nil)
+            #expect(object["hooks"]?.objectValue?["PreToolUse"]?.arrayValue?.first?.objectValue?["matcher"]
+                == .string("mcp__hephaestus__close_chat"))
         }
+    }
+
+    @Test("close_chat is not pre-approved by --allowedTools: the close chat hook approves a call that names no other chat")
+    func closeChatPermission() throws {
+        let tools = ClaudeCommandLine.preApprovedTools.split(separator: ",").map(String.init)
+        #expect(!tools.contains("mcp__hephaestus__close_chat"))
+        #expect(tools.contains("mcp__hephaestus__ask_questions"))
+        let settings = try JSONDecoder().decode(JSONValue.self, from: Data(ClaudeCommandLine.chatSettings(ultracode: false, mcpPort: 47820).utf8))
+        let entry = try #require(settings.objectValue?["hooks"]?.objectValue?["PreToolUse"]?.arrayValue?.first?.objectValue)
+        #expect(entry["matcher"] == .string(CloseChatHook.toolName))
+        let hook = try #require(entry["hooks"]?.arrayValue?.first?.objectValue)
+        #expect(hook["url"] == .string("http://127.0.0.1:47820/hooks/pre-tool-use"))
+        #expect(hook["headers"] == .object(["Authorization": .string("Bearer $HEPHAESTUS_HOOK_TOKEN")]))
     }
 
     @Test("The naming command of docs/chats.md › Haiku naming › Command")

@@ -247,11 +247,11 @@ struct PromptAndNamingTests {
         #expect(tool.description.contains("counts as passed once a release built by CI contains the ticket's commit."))
     }
 
-    @Test("The common prompt lists close_chat and says when to call it")
+    @Test("The common prompt lists close_chat and says when to call it, for other chats only when the user asks")
     func closeChatPrompt() throws {
         let common = Prompts.text(.common)
-        #expect(common.contains("- Chats: list_chats, get_chat (a chat and its transcript, for example another chat of the same ticket), rename_chat, close_chat (closes the chat you run in)."))
-        let lower = try #require(common.range(of: "# Closing the chat")).lowerBound
+        #expect(common.contains("- Chats: list_chats, get_chat (a chat and its transcript, for example another chat of the same ticket), rename_chat, close_chat (closes the chat you run in, or chats of the project that the user asks you to close)."))
+        let lower = try #require(common.range(of: "# Closing chats")).lowerBound
         let upper = try #require(common.range(of: "# When the project is HephaestusV2")).lowerBound
         let section = String(common[lower..<upper])
         #expect(section.contains("After the call, finish your reply: when your turn ends, HephaestusV2 ends your session"))
@@ -260,6 +260,9 @@ struct PromptAndNamingTests {
         #expect(section.contains("- in a bundle chat, once every ticket has been implemented or skipped and you have pushed;"))
         #expect(section.contains("- in a feedback chat, once you have created its ticket."))
         #expect(section.contains("Close a project chat only when the user asks for it."))
+        #expect(section.contains("To close other chats of the project, call close_chat with chatIDs"))
+        #expect(section.contains("Close another chat only when the user asks you to close it, never on your own."))
+        #expect(section.contains("Tell the user which chats were not closed and why."))
     }
 
     @Test("The rendered common prompt tells Claude to write an SF Symbol as ![](sf:<name>)")

@@ -291,10 +291,12 @@ private final class OnceFlag: @unchecked Sendable {
 typealias MCPHookCall = @Sendable (_ chatID: ChatID, _ body: Data) async -> Data
 
 /// Who a request admitted by steps 2 to 6 is for: the MCP endpoint with the actor of a chat token
-/// or the external token, or the linked items hook with the chat of a hook token.
+/// or the external token, or the linked items hook or the close chat hook with the chat of a hook
+/// token.
 enum MCPRoute: Sendable, Equatable {
     case mcp(Actor)
     case hook(ChatID)
+    case closeChatHook(ChatID)
 }
 
 /// The steps of docs/mcp.md › Request handling that follow the head, and the JSON-RPC methods.
@@ -307,18 +309,18 @@ struct MCPRequestHandler: Sendable {
     var hookCall: MCPHookCall
 
     /// Steps 2 to 6: Origin, path, method, authorization, declared size. The route of the bearer
-    /// token, or the rejection: `/mcp` takes a chat token or the external token,
-    /// `/hooks/user-prompt-submit` a hook token. The protocol version is checked with the JSON-RPC
-    /// method (docs/mcp.md › Protocol version).
+    /// token, or the rejection: `/mcp` takes a chat token or the external token, the hook paths
+    /// `/hooks/user-prompt-submit` and `/hooks/pre-tool-use` a hook token. The protocol version is
+    /// checked with the JSON-RPC method (docs/mcp.md › Protocol version).
     func admit(_ head: HTTPRequestHead) async -> Result<MCPRoute, HTTPRejection> {
         if !head.values("Origin").isEmpty { return .failure(.origin) }
-        let isHook = head.path == LinkedItemsHook.path
+        let isHook = [LinkedItemsHook.path, CloseChatHook.path].contains(head.path)
         if head.path != "/mcp", !isHook { return .failure(.notFound) }
         if head.method != "POST" { return .failure(.methodNotAllowed) }
         let route: MCPRoute
         if isHook {
             guard let token = bearerToken(head), let chatID = await tokens.chatID(forHookToken: token) else { return .failure(.unauthorized) }
-            route = .hook(chatID)
+            route = head.path == CloseChatHook.path ? .closeChatHook(chatID) : .hook(chatID)
         } else {
             guard let token = bearerToken(head), let actor = await tokens.actor(forToken: token) else { return .failure(.unauthorized) }
             route = .mcp(actor)
@@ -341,8 +343,8 @@ struct MCPRequestHandler: Sendable {
         return String(token)
     }
 
-    /// Step 9: the answer to a body: on the hook path, the hook answer (docs/mcp.md › User prompt
-    /// hook); on `/mcp`, a JSON-RPC response object, 202 for a notification or a response from the
+    /// Step 9: the answer to a body: on a hook path, the hook answer (docs/mcp.md › User prompt
+    /// hook, › Pre-tool-use hook); on `/mcp`, a JSON-RPC response object, 202 for a notification or a response from the
     /// client (docs/mcp.md › Message classification), or the 400 of an unsupported protocol
     /// version (docs/mcp.md › Protocol version).
     func respond(to body: Data, head: HTTPRequestHead, route: MCPRoute) async -> MCPAnswer {
@@ -350,6 +352,8 @@ struct MCPRequestHandler: Sendable {
         switch route {
         case .hook(let chatID):
             return .hook(await hookCall(chatID, body))
+        case .closeChatHook(let chatID):
+            return .hook(CloseChatHook.answer(chatID: chatID, body: body))
         case .mcp(let routeActor):
             actor = routeActor
         }
@@ -449,7 +453,7 @@ struct MCPRequestHandler: Sendable {
 enum MCPAnswer: Sendable {
     /// 200 with a JSON-RPC response.
     case json(JSONValue)
-    /// 200 with the answer of the linked items hook (docs/mcp.md › User prompt hook).
+    /// 200 with the answer of a hook (docs/mcp.md › User prompt hook, › Pre-tool-use hook).
     case hook(Data)
     /// 202 for a notification or a response from the client.
     case accepted

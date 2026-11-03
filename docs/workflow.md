@@ -559,6 +559,7 @@ The format of this comment is a default. Default chosen at design time.
 - In a feedback chat ([Feedback](feedback.md)), Claude works out what the feedback means from the comment, the screenshot and the context, asking questions when it is unclear. It then calls `create_ticket` in the feedback project with the template and the screenshot path as an attachment, and summarizes the ticket.
 - Claude implements the new ticket in the feedback chat only when the user asks, and then follows the implementation workflow. Default chosen at design time.
 - Claude closes the chat it runs in with `close_chat` when the user asks for it, and when the work of the chat is finished: in a ticket chat once it has set the ticket to `done`, in a bundle chat once every ticket has been implemented or skipped and the push is done, in a feedback chat once it has created the ticket. It closes a project chat only when the user asks. After the call it finishes its reply; the chat closes when the turn ends, and the user can reopen it ([Chats](chats.md#closing-a-chat)).
+- Claude closes other chats of the project, with the `chatIDs` of `close_chat`, only when the user asks it to close them, never on its own. The listed chats close at once, except a chat whose turn is in progress, which stays open; the result lists each refused chat with the reason, and Claude tells the user which chats were not closed and why. Such a call follows the chat's permission mode, so in Ask Every Time the user approves it first ([Chats](chats.md#closing-a-chat), [MCP](mcp.md#close_chat)).
 
 ## SF Symbols
 
@@ -624,7 +625,8 @@ When the project is HephaestusV2 itself (the registered project whose git remote
 | Animation requests have 2 to 10 distinct SwiftUI animation expressions with parameters in range, one recommended          | `chats.postAnimation`                  | `invalid`             |
 | An animation request is refused while a question set, symbol, color, sound, shortcut, font or animation request waits     | `chats.postAnimation`                  | `conflict`            |
 | `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font` and `ask_animation` need a chat token | MCP server                             | see [MCP](mcp.md)     |
-| `close_chat` needs a chat token and closes only the calling chat                                                          | MCP server, `chats.close`              | see [MCP](mcp.md)     |
+| `close_chat` needs a chat token and closes only chats of the calling chat's project                                       | MCP server, `chats.close`              | see [MCP](mcp.md)     |
+| `close_chat` never closes another chat while a turn is in progress in it                                                  | `chats.close`                          | see [MCP](mcp.md)     |
 | Links join two tickets of the same project, once per pair, without a Depends on cycle                                     | `tickets.create`, `tickets.update`     | `invalid`, `notFound` |
 | A `done` ticket is not implemented                                                                                        | `chats.implementTicket`                | `conflict`            |
 | A bundle is implemented only when one of its tickets is not `done`                                                        | `chats.implementBundle`                | `conflict`            |
@@ -758,3 +760,4 @@ Notes
 - R134: In a Swift application project, Claude asks the user to choose a keyboard shortcut with `ask_shortcut`: suggestions show as key caps, the user can record another combination and sees when macOS or the app already uses the selected one, then picks one, answers another way or skips.
 - R135: Claude asks the user to choose a font with `ask_font` and a sample text: the suggestions are drawn in their fonts, every font of the Mac and of the project can be searched, the user picks one, sets its weight and size and sees the sample in it, answers another way or skips.
 - R136: In a Swift application project, Claude asks the user to choose a SwiftUI animation with `ask_animation`: each suggestion plays in a lane, the user compares them, sets a preset and its parameters in a Custom row, picks one, answers another way or skips.
+- R137: Claude closes other chats of the project when the user asks it to, never on its own; a chat with a turn in progress is not closed.

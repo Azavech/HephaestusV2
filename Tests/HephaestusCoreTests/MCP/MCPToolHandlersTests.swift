@@ -346,6 +346,41 @@ struct MCPToolHandlersTests {
         #expect(call.method == "chats.close")
         #expect(call.params == .object(["chatID": .string(Self.chatID.uuidString)]))
         #expect(call.actor == Self.chat)
+        // chatIDs null counts as absent.
+        #expect(try await Self.call(handlers, "close_chat", #"{"chatIDs":null}"#) == .success("{}"))
+        #expect(engine.calls.count == 2)
+    }
+
+    @Test("close_chat with chatIDs: its schema, one chats.close per element in order, and the refused chats as the result")
+    func closeChatIDs() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        let tool = try #require(MCPToolCatalog.tool(named: "close_chat", debugTools: false))
+        #expect(tool.inputSchema.objectValue?["properties"]?.objectValue?["chatIDs"]?.objectValue?["type"] == .string("array"))
+        #expect(tool.inputSchema.objectValue?["required"] == nil)
+        #expect(try await Self.call(handlers, "close_chat", #"{"chatIDs":"x"}"#) == .failure(MCPToolError(code: .invalid, message: "chatIDs: must be an array.")))
+        #expect(try await Self.call(handlers, "close_chat", #"{"chatIDs":[1]}"#) == .failure(MCPToolError(code: .invalid, message: "chatIDs[0]: must be a string.")))
+        #expect(try await Self.call(handlers, "close_chat", #"{"chatIDs":[]}"#, actor: Self.external)
+            == .failure(MCPToolError(code: .forbidden, message: "Only the chat's own Claude can close its chat.")))
+        #expect(engine.calls.isEmpty)
+
+        // Every chat closes: nothing is refused.
+        let first = UUID()
+        let second = UUID()
+        let arguments = #"{"chatIDs":["\#(first.uuidString.lowercased())","\#(second.uuidString)"]}"#
+        #expect(try await Self.call(handlers, "close_chat", arguments) == .success(#"{"refused":[]}"#))
+        #expect(engine.calls.map(\.method) == ["chats.close", "chats.close"])
+        #expect(engine.calls.map(\.params) == [.object(["chatID": .string(first.uuidString)]), .object(["chatID": .string(second.uuidString)])])
+        #expect(engine.calls.allSatisfy { $0.actor == Self.chat })
+
+        // Each refusal is reported with the element as given and the engine's message; a value
+        // that is not a UUID is refused without an engine call.
+        engine.answer("chats.close", .failure(EngineError(.conflict, "Chat \(second.uuidString) has a turn in progress.")))
+        let mixed = #"{"chatIDs":["nope","\#(second.uuidString.lowercased())"]}"#
+        let reason = "Chat \(second.uuidString) has a turn in progress."
+        #expect(try await Self.call(handlers, "close_chat", mixed)
+            == .success(#"{"refused":[{"chatID":"nope","reason":"Chat nope not found."},{"chatID":"\#(second.uuidString.lowercased())","reason":"\#(reason)"}]}"#))
+        #expect(engine.calls.count == 3)
     }
 
     @Test("Target kinds: required properties in the table's order, then unused ones in schema order", arguments: [

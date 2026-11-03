@@ -22,9 +22,9 @@ public actor MCPTokenStore {
         return token
     }
 
-    /// A new hook token for a launch of the chat's Claude process, accepted only on the path of
-    /// the linked items hook; it replaces the chat's previous hook token, which stops working at
-    /// once (docs/chats.md › Linked items hook).
+    /// A new hook token for a launch of the chat's Claude process, accepted only on the paths of
+    /// the linked items hook and the close chat hook; it replaces the chat's previous hook token,
+    /// which stops working at once (docs/chats.md › Linked items hook, › Close chat hook).
     public func issueHookToken(chatID: ChatID) -> String {
         let token = RandomIDs.externalToken()
         hookTokens[chatID] = token

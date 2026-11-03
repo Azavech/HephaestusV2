@@ -185,17 +185,17 @@ struct ChatClosingTests {
         }
     }
 
-    @Test("chats.close: only the chat's own Claude; chats.reopen: the user only")
+    @Test("chats.close: Claude with a chat token, for the chats of its chat's project; chats.reopen: the user only")
     func actors() async throws {
         try await withChatEngine { bed in
             let chat = try await bed.createChat()
-            let refused = EngineError(.forbidden, "Only the chat's own Claude can close its chat.")
+            // A chat token of no chat of this project.
             #expect(await engineError {
                 try await bed.engine.call(ChatsClose.self, .init(chatID: chat.id), actor: .claude(chatID: UUID().uuidString))
-            } == refused)
+            } == EngineError(.forbidden, "Chat \(chat.id.uuidString) belongs to another project."))
             #expect(await engineError {
                 try await bed.engine.call(ChatsClose.self, .init(chatID: chat.id), actor: .claude(chatID: Actor.externalChatID))
-            } == refused)
+            } == EngineError(.forbidden, "Only the chat's own Claude can close its chat."))
             #expect(await engineError {
                 try await bed.connection.call(ChatsClose.self, .init(chatID: chat.id))
             }?.code == .forbidden)
@@ -208,6 +208,136 @@ struct ChatClosingTests {
             }?.code == .notFound)
             #expect(await engineError { try await bed.connection.call(ChatsReopen.self, .init(chatID: unknown)) }?.code == .notFound)
             #expect(try await !Self.meta(bed, chat.id).closed)
+        }
+    }
+
+    // MARK: Closing other chats
+
+    /// The chat token of a chat's live process, read from its MCP configuration file.
+    static func token(_ bed: ChatTestBed, _ chatID: ChatID) throws -> String {
+        let config = try String(contentsOf: bed.dataDirectory.mcpConfigFile(chatID: chatID), encoding: .utf8)
+        return String(config.split(separator: " ").last!.prefix(64))
+    }
+
+    /// `close_chat` with `chatIDs`, called through the MCP server with the chat token of `chatID`.
+    static func closeChats(_ bed: ChatTestBed, from chatID: ChatID, _ chatIDs: [String]) async throws -> (text: String, isError: Bool) {
+        let port = try #require(await bed.engine.mcpServer.port)
+        let list = chatIDs.map { "\"\($0)\"" }.joined(separator: ",")
+        let reply = try await MCPHTTP.post(port: port, token: try token(bed, chatID), MCPHTTP.toolCall("close_chat", #"{"chatIDs":[\#(list)]}"#))
+        return try MCPHTTP.toolResult(reply)
+    }
+
+    @Test("close_chat with chatIDs closes the listed chats of the project at once; the calling chat's own id closes it when its turn ends")
+    func closeOtherChats() async throws {
+        let launcher = FakeClaudeLauncher()
+        launcher.chatScript = Self.scriptedChat()
+        try await withChatEngine(launcher: launcher) { bed in
+            let caller = try await bed.createChat(message: "Close the old chats")
+            let callerProcess = try #require(await bed.launcher.chatProcess())
+            let callerTurn = try await Self.openTurn(callerProcess, text: "Close the old chats")
+            #expect(await bed.waitForState(caller.id, .running))
+
+            // An idle chat without a process, and an idle chat whose process is alive.
+            let idle = try await bed.createChat()
+            let live = try await bed.createChat(message: "Two")
+            let liveProcess = try #require(await bed.launcher.chatProcess(1))
+            let liveTurn = try await Self.openTurn(liveProcess, text: "Two")
+            Self.finishTurn(liveProcess, uuid: liveTurn, messageID: "msg_2", reply: "Done.")
+            #expect(await bed.waitForState(live.id, .idle))
+
+            let ids = [idle.id.uuidString, live.id.uuidString.lowercased(), caller.id.uuidString]
+            let result = try await Self.closeChats(bed, from: caller.id, ids)
+            #expect(result.text == #"{"refused":[]}"#)
+            #expect(!result.isError)
+
+            // The other chats closed at once; the live process ends as for idle termination.
+            #expect(try await Self.meta(bed, idle.id).closed)
+            #expect(try Self.closedOnDisk(bed, idle.id))
+            #expect(try await Self.meta(bed, live.id).closed)
+            #expect(try Self.closedOnDisk(bed, live.id))
+            #expect(await liveProcess.waitForExit() == .exited(0))
+            #expect(liveProcess.isInputClosed)
+
+            // The calling chat closes when its turn ends.
+            #expect(try await !Self.meta(bed, caller.id).closed)
+            #expect(!callerProcess.isInputClosed)
+            Self.finishTurn(callerProcess, uuid: callerTurn, messageID: "msg_1", reply: "Closed them.")
+            #expect(await bed.events.wait(for: "chat.updated") { $0.chatMeta?.id == caller.id && $0.chatMeta?.closed == true } != nil)
+            #expect(await callerProcess.waitForExit() == .exited(0))
+        }
+    }
+
+    @Test("A listed chat with a turn in progress is refused and stays open while the other listed chats close")
+    func refuseTurnInProgress() async throws {
+        let launcher = FakeClaudeLauncher()
+        launcher.chatScript = Self.scriptedChat()
+        try await withChatEngine(launcher: launcher) { bed in
+            let caller = try await bed.createChat(message: "Close them")
+            let callerProcess = try #require(await bed.launcher.chatProcess())
+            _ = try await Self.openTurn(callerProcess, text: "Close them")
+            #expect(await bed.waitForState(caller.id, .running))
+            let busy = try await bed.createChat(message: "Busy")
+            let busyProcess = try #require(await bed.launcher.chatProcess(1))
+            let busyTurn = try await Self.openTurn(busyProcess, text: "Busy")
+            #expect(await bed.waitForState(busy.id, .running))
+            let idle = try await bed.createChat()
+
+            let result = try await Self.closeChats(bed, from: caller.id, [busy.id.uuidString, idle.id.uuidString])
+            #expect(!result.isError)
+            #expect(try jsonValue(result.text) == .object(["refused": .array([.object([
+                "chatID": .string(busy.id.uuidString), "reason": .string("Chat \(busy.id.uuidString) has a turn in progress."),
+            ])])]))
+            #expect(try await Self.meta(bed, idle.id).closed)
+            #expect(try await !Self.meta(bed, busy.id).closed)
+            #expect(await bed.state(busy.id) == .running)
+            #expect(!busyProcess.isInputClosed)
+
+            // The refusal leaves nothing behind: the busy chat stays open after its turn.
+            Self.finishTurn(busyProcess, uuid: busyTurn, messageID: "msg_2", reply: "Still here.")
+            #expect(await bed.waitForState(busy.id, .idle))
+            #expect(try await !Self.meta(bed, busy.id).closed)
+            #expect(!busyProcess.isInputClosed)
+
+            // chats.close refuses it with conflict, the engine rule behind the result.
+            try await bed.send(busy.id, "Again")
+            #expect(await engineError {
+                try await bed.engine.call(ChatsClose.self, .init(chatID: busy.id), actor: .claude(chatID: caller.id.uuidString))
+            } == EngineError(.conflict, "Chat \(busy.id.uuidString) has a turn in progress."))
+        }
+    }
+
+    @Test("A chat of another project, an unknown id and a value that is not a UUID are refused; a closed chat stays unchanged")
+    func refuseOtherProjectAndUnknown() async throws {
+        let launcher = FakeClaudeLauncher()
+        launcher.chatScript = Self.scriptedChat()
+        let prepare: (ProjectFolder, DataDirectory) throws -> Void = { folder, data in
+            let other = ProjectFolder(root: folder.root.deletingLastPathComponent().appendingPathComponent("Other", isDirectory: true))
+            try FileManager.default.createDirectory(at: other.root, withIntermediateDirectories: true)
+            try ProjectFileStore.write(Project(id: "OTHR", name: "Other", created: ISODate.date(from: "2026-10-31T12:00:00Z")!), to: other)
+            try DeviceFileStore.write(Registry(projects: [folder.root.path, other.root.path]), to: data)
+        }
+        try await withChatEngine(launcher: launcher, prepare: prepare) { bed in
+            let caller = try await bed.createChat(message: "Close them")
+            let callerProcess = try #require(await bed.launcher.chatProcess())
+            _ = try await Self.openTurn(callerProcess, text: "Close them")
+            #expect(await bed.waitForState(caller.id, .running))
+            let other = try await bed.connection.call(ChatsCreate.self, .init(projectID: "OTHR", kind: .project))
+            let closed = try await bed.createChat()
+            _ = try await bed.engine.call(ChatsClose.self, .init(chatID: closed.id), actor: .claude(chatID: caller.id.uuidString))
+            let closedMeta = try await Self.meta(bed, closed.id)
+            #expect(closedMeta.closed)
+            let unknown = UUID()
+
+            let ids = [other.id.uuidString, unknown.uuidString, "not-a-chat", closed.id.uuidString]
+            let result = try await Self.closeChats(bed, from: caller.id, ids)
+            #expect(!result.isError)
+            #expect(try jsonValue(result.text) == .object(["refused": .array([
+                .object(["chatID": .string(other.id.uuidString), "reason": .string("Chat \(other.id.uuidString) belongs to another project.")]),
+                .object(["chatID": .string(unknown.uuidString), "reason": .string("Chat \(unknown.uuidString) not found.")]),
+                .object(["chatID": .string("not-a-chat"), "reason": .string("Chat not-a-chat not found.")]),
+            ])]))
+            #expect(try await !Self.meta(bed, other.id).closed)
+            #expect(try await Self.meta(bed, closed.id).updated == closedMeta.updated)
         }
     }
 }

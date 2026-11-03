@@ -132,7 +132,9 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | chats.postSound                                                                                                                  | The chat's project must have the type `swiftApplication` (`ask_sound is only available in Swift application projects.`) ([Projects](projects.md#project-types)).                       | forbidden |
 | chats.postShortcut                                                                                                               | The chat's project must have the type `swiftApplication` (`ask_shortcut is available only in Swift application projects.`) ([Projects](projects.md#project-types)).                    | forbidden |
 | chats.postAnimation                                                                                                              | The chat's project must have the type `swiftApplication` (`ask_animation is available only in Swift application projects.`) ([Projects](projects.md#project-types)).                   | forbidden |
-| chats.close                                                                                                                      | Only the chat's own Claude may call it: the actor's chatID must equal the `chatID` param; the external token is refused (`Only the chat's own Claude can close its chat.`).            | forbidden |
+| chats.close                                                                                                                      | The external token is refused (`Only the chat's own Claude can close its chat.`).                                                                                                      | forbidden |
+| chats.close                                                                                                                      | A chat other than the actor's own must belong to its project (`Chat <chatID> belongs to another project.`).                                                                            | forbidden |
+| chats.close                                                                                                                      | A chat other than the actor's own must have no turn in progress (`Chat <chatID> has a turn in progress.`).                                                                             | conflict  |
 | ui.open                                                                                                                          | `deviceID` is ignored; the event targets the chat's driving device ([ui.open](#uiopen)).                                                                                               | none      |
 | webTabs.update                                                                                                                   | `locked` false is refused (`Only the user can unlock a tab.`): only the user unlocks a tab, so Claude never closes a locked tab.                                                       | forbidden |
 | projects.remove                                                                                                                  | The project that holds the calling chat, or one of its ancestors, is refused (`A chat cannot remove the project it belongs to.`): removing it would end the chat's own Claude process. | forbidden |
@@ -1038,23 +1040,30 @@ Events: project.updated when an entry was appended to `deletedChats`, ticket.upd
 
 ### chats.close
 
-Swift type `ChatsClose` · actors: claude (the chat's own Claude only) · result: [Empty](#empty)
+Swift type `ChatsClose` · actors: claude (with a chat token, for the chats of its chat's project) · result: [Empty](#empty)
 
-Called by the MCP tool `close_chat`, which fills `chatID` from its token ([MCP server](mcp.md#close_chat)).
+Called by the MCP tool `close_chat`: once with the calling chat's id, taken from its token, or once per id of its `chatIDs` ([MCP server](mcp.md#close_chat)).
 
-| Param  | Type   | Required | Description                          |
-| ------ | ------ | -------- | ------------------------------------ |
-| chatID | ChatID | yes      | Chat id; must be the actor's chatID. |
+| Param  | Type   | Required | Description                                                |
+| ------ | ------ | -------- | ---------------------------------------------------------- |
+| chatID | ChatID | yes      | Chat id: the actor's chat, or another chat of its project. |
 
-During a turn, marks the chat to close when that turn ends: the engine then sets `closed` to true in the chat's metadata file and ends its Claude process, unless the turn is stopped with Stop, ends in error or ends because the process exited ([Chats](chats.md#closing-a-chat)). Without a turn in progress, the chat closes at once. A chat that is already closed is left unchanged.
+- The actor's own chat: during a turn, marks the chat to close when that turn ends: the engine then sets `closed` to true in the chat's metadata file and ends its Claude process, unless the turn is stopped with Stop, ends in error or ends because the process exited ([Chats](chats.md#closing-a-chat)). Without a turn in progress, the chat closes at once.
+- Another chat of the project of the actor's chat: closes at once when no turn is in progress in it, that is when its state is neither starting, running nor waitingPermission ([Chats](chats.md#chat-states)). A chat with a turn in progress is refused with `conflict` and stays open. Default chosen at design time.
+- A chat that is already closed is left unchanged, whoever's it is.
 
-| Error     | When                                                                                    |
-| --------- | --------------------------------------------------------------------------------------- |
-| invalid   | chatID is not a UUID.                                                                   |
-| notFound  | No such chat.                                                                           |
-| forbidden | The actor is not this chat's Claude (`Only the chat's own Claude can close its chat.`). |
+The checks run in this order: the external token, the chat's existence, the project, the closed state, the turn in progress.
 
-Events: none during a turn; chat.updated when the chat closes.
+| Error     | When                                                                                                                                                                                            |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid   | chatID is not a UUID.                                                                                                                                                                           |
+| notFound  | No such chat.                                                                                                                                                                                   |
+| forbidden | The actor holds the external token (`Only the chat's own Claude can close its chat.`); the chat belongs to another project than the actor's chat (`Chat <chatID> belongs to another project.`). |
+| conflict  | The chat is not the actor's chat and a turn is in progress in it (`Chat <chatID> has a turn in progress.`).                                                                                     |
+
+`<chatID>` is the id in uppercase. The messages: Default chosen at design time.
+
+Events: none during a turn of the actor's own chat; chat.updated when a chat closes.
 
 ### chats.reopen
 
@@ -3366,3 +3375,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R134: In a Swift application project, Claude asks the user to choose a keyboard shortcut with `ask_shortcut`: suggestions show as key caps, the user can record another combination and sees when macOS or the app already uses the selected one, then picks one, answers another way or skips.
 - R135: Claude asks the user to choose a font with `ask_font` and a sample text: the suggestions are drawn in their fonts, every font of the Mac and of the project can be searched, the user picks one, sets its weight and size and sees the sample in it, answers another way or skips.
 - R136: In a Swift application project, Claude asks the user to choose a SwiftUI animation with `ask_animation`: each suggestion plays in a lane, the user compares them, sets a preset and its parameters in a Custom row, picks one, answers another way or skips.
+- R137: Claude closes other chats of the project when the user asks it to, never on its own; a chat with a turn in progress is not closed.

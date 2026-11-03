@@ -63,7 +63,8 @@ public enum MCPToolHandling: String, Sendable, Hashable, CaseIterable {
     case askFont
     /// `ask_animation`: chat tokens only, `chatID` from the token, plain-text result.
     case askAnimation
-    /// `close_chat`: chat tokens only, `chatID` from the token.
+    /// `close_chat`: chat tokens only; without `chatIDs`, `chatID` from the token, otherwise one
+    /// engine call per listed chat and the refused chats as the result.
     case closeChat
     /// `open_in_app`: the target rules of docs/mcp.md › Target kinds.
     case openInApp

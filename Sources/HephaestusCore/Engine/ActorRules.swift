@@ -35,12 +35,12 @@ enum ActorRules {
         throw EngineError(.forbidden, "sourcePath is accepted from Claude only.")
     }
 
-    /// chats.postQuestions, and chats.close with `refusal` ownChatCloseOnly: only the chat's own
-    /// Claude; the external token is refused.
-    static func requireOwnChat(_ chatID: ChatID, _ actor: Actor, refusal: EngineError = ownChatOnly) throws {
+    /// chats.postQuestions and the other requests to the user: only the chat's own Claude; the
+    /// external token is refused.
+    static func requireOwnChat(_ chatID: ChatID, _ actor: Actor) throws {
         guard actor.kind != .system else { return }
         guard actor.chat == chatID else {
-            throw refusal
+            throw ownChatOnly
         }
     }
 
@@ -49,6 +49,18 @@ enum ActorRules {
 
     /// The message of chats.close and of `close_chat` with the external token.
     static let ownChatCloseOnly = EngineError(.forbidden, "Only the chat's own Claude can close its chat.")
+
+    /// chats.close: a chat other than the actor's own must belong to the project of the actor's
+    /// chat (docs/engine-api.md › chats.close).
+    static func otherProjectChat(_ chatID: ChatID) -> EngineError {
+        EngineError(.forbidden, "Chat \(chatID.uuidString) belongs to another project.")
+    }
+
+    /// chats.close: a chat other than the actor's own must have no turn in progress
+    /// (docs/engine-api.md › chats.close).
+    static func turnInProgress(_ chatID: ChatID) -> EngineError {
+        EngineError(.conflict, "Chat \(chatID.uuidString) has a turn in progress.")
+    }
 
     /// tickets.setStatus: claude never changes the status of a `done` ticket.
     static func requireNotDoneTicket(_ ticket: Ticket, _ actor: Actor) throws {
