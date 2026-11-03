@@ -433,4 +433,39 @@ public enum ModelRules {
             }
         }
     }
+
+    /// The rules of a font request (docs/workflow.md › Font requests), in their order, on the
+    /// trimmed sample, suggestions and recommended font; `isFont` tells whether a font of the
+    /// notation is in the font catalogue of the main device.
+    public static func fontRequest(question: String, sample: String, suggestions: [String], recommended: String,
+                                   isFont: (FontNotation) -> Bool) throws {
+        guard !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ValidationError(field: "question", message: "ask_font needs a question.")
+        }
+        guard !sample.isEmpty else {
+            throw ValidationError(field: "sample", message: "ask_font needs a sample text.")
+        }
+        guard (2...10).contains(suggestions.count) else {
+            throw ValidationError(field: "suggestions", message: "ask_font needs 2 to 10 suggestions.")
+        }
+        guard !suggestions.contains(where: \.isEmpty), Set(suggestions).count == suggestions.count else {
+            throw ValidationError(field: "suggestions", message: "ask_font has an empty or repeated suggestion.")
+        }
+        for suggestion in suggestions {
+            switch FontNotation.parse(suggestion) {
+            case .failure(.notation):
+                throw ValidationError(field: "suggestions", message: "\(suggestion) is not a font: write a text style such as "
+                    + ".headline, or <family>/<weight>/<size> such as System Rounded/Semibold/17.")
+            case .failure(.size):
+                throw ValidationError(field: "suggestions", message: "\(suggestion): the size must be 1 to 999 pt, with at most one decimal.")
+            case .success(let font):
+                guard isFont(font) else {
+                    throw ValidationError(field: "suggestions", message: "\(suggestion) is not a font of this Mac.")
+                }
+            }
+        }
+        guard suggestions.contains(recommended) else {
+            throw ValidationError(field: "recommended", message: "ask_font: the recommended font must be one of the suggestions.")
+        }
+    }
 }

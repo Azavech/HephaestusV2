@@ -8,9 +8,9 @@ import UniformTypeIdentifiers
 /// `DeviceWorkspace.transcripts`.
 ///
 /// From top to bottom: the header, the transcript, the pinned permission card, the pinned
-/// questions card, symbol card, color card, sound card or shortcut card, the status line and the
-/// composer. The header shows in the Chats section, the ticket and bundle Chats tabs and chat
-/// windows; the inspector shows its picker instead.
+/// questions card, symbol card, color card, sound card, shortcut card or font card, the status line
+/// and the composer. The header shows in the Chats section, the ticket and bundle Chats tabs and
+/// chat windows; the inspector shows its picker instead.
 struct ChatView: View {
     /// The chat id, an uppercase UUID string; nil for a draft.
     let chatID: String?
@@ -186,14 +186,15 @@ private struct ChatViewContent: View {
         }
     }
 
-    /// The question set, symbol request, color request, sound request or shortcut request of the
-    /// chat once its transcript is loaded; nil while it is not.
+    /// The question set, symbol request, color request, sound request, shortcut request or font
+    /// request of the chat once its transcript is loaded; nil while it is not.
     private var shownQuestionSet: ShownQuestionSet? {
         guard let chatID = model.chatID, let state = workspace.transcripts[chatID] else { return nil }
         return ShownQuestionSet(setID: state.incompleteQuestionSet?.questionSetID ?? state.waitingSymbolRequest?.requestID
                                 ?? state.waitingColorRequest?.requestID
                                 ?? state.waitingSoundRequest?.requestID
-                                ?? state.waitingShortcutRequest?.requestID)
+                                ?? state.waitingShortcutRequest?.requestID
+                                ?? state.waitingFontRequest?.requestID)
     }
 
     // MARK: Transcript
@@ -228,8 +229,8 @@ private struct ChatViewContent: View {
 
     // MARK: Pinned cards
 
-    /// The permission card, then the questions card, the symbol card, the color card, the sound card
-    /// or the shortcut card; together at most half of
+    /// The permission card, then the questions card, the symbol card, the color card, the sound card,
+    /// the shortcut card or the font card; together at most half of
     /// the view's height, scrolling inside only when they are taller than that, without bounce
     /// while they fit, their code blocks and tables always scrolling horizontally.
     @ViewBuilder
@@ -242,8 +243,9 @@ private struct ChatViewContent: View {
         let colorRequest = state?.waitingColorRequest
         let soundRequest = state?.waitingSoundRequest
         let shortcutRequest = state?.waitingShortcutRequest
+        let fontRequest = state?.waitingFontRequest
         if !pending.isEmpty || question != nil || symbolRequest != nil || colorRequest != nil || soundRequest != nil
-            || shortcutRequest != nil {
+            || shortcutRequest != nil || fontRequest != nil {
             ScrollView(.vertical) {
                 VStack(spacing: 8) {
                     if let request = pending.first {
@@ -301,6 +303,17 @@ private struct ChatViewContent: View {
                         } else {
                             ShortcutCard(model: model, request: shortcutRequest) {
                                 app.setQuestionsCardMinimized(true, chatID: chatID, setID: shortcutRequest.requestID)
+                            }
+                        }
+                    }
+                    if let chatID = model.chatID, let fontRequest {
+                        if app.isQuestionsCardMinimized(chatID: chatID, setID: fontRequest.requestID) {
+                            QuestionsCollapsedBar(text: "Font") {
+                                app.setQuestionsCardMinimized(false, chatID: chatID, setID: fontRequest.requestID)
+                            }
+                        } else {
+                            FontCard(model: model, request: fontRequest) {
+                                app.setQuestionsCardMinimized(true, chatID: chatID, setID: fontRequest.requestID)
                             }
                         }
                     }

@@ -965,6 +965,43 @@ extension MCPToolCatalog {
             handling: .askShortcut
         ),
         MCPToolDefinition(
+            name: "ask_font",
+            description: #"""
+            Ask the user to choose one font, instead of listing font names in ask_questions. Give the question, a sample text taken from where the font will be used, 2 to 10 suggested fonts and the recommended one. A font is a Dynamic Type text style such as .headline, or <family>/<weight>/<size> such as System Rounded/Semibold/17: the family is System, System Rounded, System Serif, System Monospaced, a font family installed on the Mac or the family of a font file of the project, the weight one of the family's weights, the size 1 to 999 points with at most one decimal. The app shows the suggestions drawn in their fonts, the recommended one preselected, weight and size controls, the sample drawn in the selected font and a search over every font of the Mac and of the project; the user can also answer in their own words or skip. This tool returns immediately: end your turn after calling it. The answer arrives in the next user message: "Font: ![](font:<font>)" for a chosen font, "Font: <answer>" for an answer in the user's own words, or "Font: Skipped". Only available in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "question": {
+                  "type": "string",
+                  "description": "The question."
+                },
+                "sample": {
+                  "type": "string",
+                  "description": "The sample text the app draws in the selected font, taken from where the font will be used."
+                },
+                "suggestions": {
+                  "type": "array",
+                  "description": "2 to 10 distinct fonts: a text style such as .headline, or <family>/<weight>/<size> such as System Rounded/Semibold/17.",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "recommended": {
+                  "type": "string",
+                  "description": "The recommended font: one of the suggestions, copied exactly."
+                }
+              },
+              "required": ["question", "sample", "suggestions", "recommended"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "chats.postFont",
+            handling: .askFont
+        ),
+        MCPToolDefinition(
             name: "list_chats",
             description: #"""
             List a project's chats of every kind (project, ticket, bundle, feedback), most recently updated first, with their title, kind, linked ticket or bundle, settings and state.

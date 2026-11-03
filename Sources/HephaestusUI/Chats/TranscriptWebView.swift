@@ -109,6 +109,8 @@ final class TranscriptController {
         configuration.setURLSchemeHandler(schemeHandler, forURLScheme: ResourceSchemeHandler.fileScheme)
         configuration.setURLSchemeHandler(schemeHandler, forURLScheme: ResourceSchemeHandler.attachmentScheme)
         configuration.setURLSchemeHandler(SymbolSchemeHandler(), forURLScheme: SymbolSchemeHandler.scheme)
+        configuration.setURLSchemeHandler(FontSchemeHandler(connection: connection, projectID: projectID()),
+                                          forURLScheme: FontSchemeHandler.scheme)
         configuration.userContentController.add(TranscriptMessageProxy(controller: self), name: Self.messageHandlerName)
         if transparent {
             configuration.userContentController.addUserScript(WKUserScript(

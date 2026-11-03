@@ -157,6 +157,11 @@ extension Engine {
         "Shortcut: \(answer)"
     }
 
+    /// docs/chats.md › Answering a font request: `Font: <answer>`.
+    static func fontMessage(_ answer: String) -> String {
+        "Font: \(answer)"
+    }
+
     // MARK: System prompt
 
     /// The value of `--append-system-prompt` for a launch (docs/chats.md › Composition and

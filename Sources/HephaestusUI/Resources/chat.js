@@ -67,6 +67,31 @@
       swatches[k].style.setProperty("--md-color-light", swatches[k].getAttribute("data-light"));
       swatches[k].style.setProperty("--md-color-dark", swatches[k].getAttribute("data-dark"));
     }
+    // Font markers: the label in the family and weight of the marker, or in the face loaded from
+    // its `data-font-face` URL (docs/chats.md › Links, images and files).
+    var fonts = element.querySelectorAll(".md-font[data-font-family]");
+    for (var m = 0; m < fonts.length; m++) {
+      var family = fonts[m].getAttribute("data-font-family");
+      var source = fonts[m].getAttribute("data-font-face");
+      fonts[m].style.fontFamily = source ? '"' + fontFaceName(source) + '", ' + family : family;
+      fonts[m].style.fontWeight = fonts[m].getAttribute("data-font-weight") || "400";
+    }
+  }
+
+  /// The page's font names of the faces loaded so far, by URL.
+  var fontFaces = new Map();
+
+  /// The name of the face of a `hephaestus-font` URL, added to the page's fonts the first time.
+  function fontFaceName(source) {
+    var name = fontFaces.get(source);
+    if (!name) {
+      name = "hephaestus-face-" + (fontFaces.size + 1);
+      fontFaces.set(source, name);
+      var face = new FontFace(name, 'url("' + source + '")');
+      document.fonts.add(face);
+      face.load().catch(function () {});
+    }
+    return name;
   }
 
   // MARK: Page structure

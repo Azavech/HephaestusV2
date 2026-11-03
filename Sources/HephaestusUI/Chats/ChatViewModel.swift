@@ -1,7 +1,7 @@
 // OWNER: ui-chats — the state and actions of one chat view: the chat or draft it shows, the
 // composer, the pinned cards and their keys, the header (docs/chats.md › Chat view, › Composer,
 // › Pinned permission card, › Pinned questions card, › Pinned symbol card, › Pinned color card,
-// › Pinned sound card, › Pinned shortcut card, › Draft chats).
+// › Pinned sound card, › Pinned shortcut card, › Pinned font card, › Draft chats).
 import AppKit
 import HephaestusCore
 import Observation
@@ -47,6 +47,15 @@ enum SoundChoice: Hashable {
 enum ShortcutChoice: Hashable {
     case suggestion(String)
     case recorder
+    case other
+}
+
+/// The choice of the font card: a suggestion, a family or a text style of the search results, or
+/// `Answer another way`.
+enum FontChoice: Hashable {
+    case suggestion(String)
+    case family(String)
+    case textStyle(FontTextStyle)
     case other
 }
 
@@ -131,6 +140,24 @@ final class ChatViewModel {
     var isRecordingShortcut = false
     var shortcutOther = ""
     var isSubmittingShortcut = false
+    /// The font request the font card shows, with its selection, `Weight` and `Size`, field and
+    /// search (docs/chats.md › Pinned font card).
+    var fontRequestID: UUID?
+    var fontChoice: FontChoice = .other
+    var fontWeight = "Regular"
+    /// The value of `fontWeight` in the family it was chosen in (docs/chats.md › Nearest weight).
+    var fontWeightValue: Double = 0
+    var fontSize = "17"
+    var fontOther = ""
+    var fontSearch = ""
+    /// The search results of `fontSearch` (docs/chats.md › Font search).
+    var fontResults: [FontCatalog.SearchResult] = []
+    /// The catalogue the card searches: the families installed on this Mac and the project's.
+    var fontCatalog = FontCatalog(installed: [], project: [])
+    /// Changes when faces of project families are loaded, so that their rows draw again.
+    var fontFacesRevision = 0
+    var isSubmittingFont = false
+    @ObservationIgnored var projectFonts: ProjectFonts?
 
     // MARK: Header
 
@@ -898,8 +925,9 @@ final class ChatViewModel {
     /// While the shortcut card's recorder field records, every key press of the window goes to
     /// it. Otherwise ⌘Return, ⌥⌘Return and ⇧⌘Return answer the permission card once its request
     /// has been shown for 1 second; ⌘Return submits the questions card, the symbol card, the color
-    /// card, the sound card or the shortcut card when no permission card is shown and the card is
-    /// not minimized. Both act only while the focus is in this chat view outside its composer.
+    /// card, the sound card, the shortcut card or the font card when no permission card is shown
+    /// and the card is not minimized. Both act only while the focus is in this chat view outside
+    /// its composer.
     func handleKey(_ event: NSEvent) -> Bool {
         guard let window, event.window === window else { return false }
         if isRecordingShortcut {
@@ -947,6 +975,11 @@ final class ChatViewModel {
         if flags == [.command], let request = state.waitingShortcutRequest, let chatID,
            app?.isQuestionsCardMinimized(chatID: chatID, setID: request.requestID) != true {
             submitShortcut()
+            return true
+        }
+        if flags == [.command], let request = state.waitingFontRequest, let chatID,
+           app?.isQuestionsCardMinimized(chatID: chatID, setID: request.requestID) != true {
+            submitFont()
             return true
         }
         return false

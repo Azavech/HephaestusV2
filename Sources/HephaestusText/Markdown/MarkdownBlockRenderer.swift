@@ -63,14 +63,14 @@ enum CodeBlockLanguage {
 struct MarkdownConverter {
     let options: MarkdownRenderOptions
     private var anchors = HeadingAnchors()
-    /// The parsed text, kept only when SF Symbol, color or shortcut markers are read: a marker that
-    /// is not drawn shows its source as written.
+    /// The parsed text, kept only when SF Symbol, color, shortcut or font markers are read: a marker
+    /// that is not drawn shows its source as written.
     private let sourceLines: MarkdownSourceLines?
 
     init(options: MarkdownRenderOptions, source: String) {
         self.options = options
         self.sourceLines = options.isSymbolAvailable == nil && options.colorSwatch == nil && options.shortcutKeys == nil
-            ? nil : MarkdownSourceLines(source)
+            && options.fontMarker == nil ? nil : MarkdownSourceLines(source)
     }
 
     mutating func blocks<S: Sequence>(_ children: S) -> [MarkdownBlock] where S.Element == Markup {
@@ -173,6 +173,17 @@ struct MarkdownConverter {
                 }
             }
         }
+        func appendFontsAndText(_ text: String) {
+            // A font marker whose family holds a space is text for CommonMark
+            // (docs/documentation-viewer.md › Font markers).
+            guard let fontMarker = options.fontMarker else { return appendText(text) }
+            for piece in MarkdownSymbolMarkers.fontPieces(in: text) {
+                switch piece {
+                case .text(let text): appendText(text)
+                case .marker(let font, let source): result.append(fontMarker(font).map { .font($0) } ?? .text(source))
+                }
+            }
+        }
         func flush() {
             guard !pendingText.isEmpty else { return }
             if inLink {
@@ -182,12 +193,12 @@ struct MarkdownConverter {
                 // (docs/documentation-viewer.md › Sound markers).
                 for piece in MarkdownSymbolMarkers.soundPieces(in: pendingText) {
                     switch piece {
-                    case .text(let text): appendText(text)
+                    case .text(let text): appendFontsAndText(text)
                     case .sound(let name): result.append(.sound(name))
                     }
                 }
             } else {
-                appendText(pendingText)
+                appendFontsAndText(pendingText)
             }
             pendingText = ""
         }
@@ -237,6 +248,10 @@ struct MarkdownConverter {
                 if let shortcutKeys = options.shortcutKeys,
                    let shortcut = MarkdownSymbolMarkers.shortcut(ofSource: image.source ?? "") {
                     result.append(shortcutKeys(shortcut).map { .shortcut($0) } ?? sourceText(image))
+                    continue
+                }
+                if let fontMarker = options.fontMarker, let font = MarkdownSymbolMarkers.font(ofSource: image.source ?? "") {
+                    result.append(fontMarker(font).map { .font($0) } ?? sourceText(image))
                     continue
                 }
                 let source = MarkdownLinks.imageSource(image.source ?? "", options: options)

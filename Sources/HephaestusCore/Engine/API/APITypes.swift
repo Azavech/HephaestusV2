@@ -684,6 +684,94 @@ public struct ShortcutRequest: Codable, Sendable, Hashable {
     }
 }
 
+/// A font request posted by `chats.postFont` (docs/engine-api.md › FontRequest).
+public struct FontRequest: Codable, Sendable, Hashable {
+    public var requestID: UUID
+    public var chatID: ChatID
+    public var question: String
+    /// The sample text drawn in the selected font.
+    public var sample: String
+    /// 2 to 10 fonts of the font notation, in the order Claude gave them.
+    public var suggestions: [String]
+    public var recommended: String
+    /// nil until the user answers; encoded as `null`.
+    public var answer: String?
+
+    public init(requestID: UUID, chatID: ChatID, question: String, sample: String, suggestions: [String], recommended: String,
+                answer: String? = nil) {
+        self.requestID = requestID
+        self.chatID = chatID
+        self.question = question
+        self.sample = sample
+        self.suggestions = suggestions
+        self.recommended = recommended
+        self.answer = answer
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case requestID, chatID, question, sample, suggestions, recommended, answer
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(requestID, forKey: .requestID)
+        try c.encode(chatID, forKey: .chatID)
+        try c.encode(question, forKey: .question)
+        try c.encode(sample, forKey: .sample)
+        try c.encode(suggestions, forKey: .suggestions)
+        try c.encode(recommended, forKey: .recommended)
+        try c.encode(answer, forKey: .answer)
+    }
+}
+
+/// A font family of the font catalogue (docs/engine-api.md › FontFamily).
+public struct FontFamily: Codable, Sendable, Hashable {
+    /// The `<family>` of the font notation.
+    public var name: String
+    /// The family's faces, in the order of the font catalogue.
+    public var faces: [FontFace]
+
+    public init(name: String, faces: [FontFace]) {
+        self.name = name
+        self.faces = faces
+    }
+}
+
+/// A face of a font family: one weight of the `Weight` menu (docs/engine-api.md › FontFamily).
+public struct FontFace: Codable, Sendable, Hashable {
+    /// The style name, the `<weight>` of the font notation, such as `Demi Bold`.
+    public var name: String
+    /// The CoreText weight trait, from -1 to 1.
+    public var weight: Double
+    public var italic: Bool
+    /// The PostScript name, which picks the font out of a collection; empty for a weight of a
+    /// system design.
+    public var postScriptName: String
+    /// Project path of the font file; nil for a face installed on the Mac.
+    public var path: String?
+
+    public init(name: String, weight: Double, italic: Bool, postScriptName: String, path: String?) {
+        self.name = name
+        self.weight = weight
+        self.italic = italic
+        self.postScriptName = postScriptName
+        self.path = path
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, weight, italic, postScriptName, path
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(name, forKey: .name)
+        try c.encode(weight, forKey: .weight)
+        try c.encode(italic, forKey: .italic)
+        try c.encode(postScriptName, forKey: .postScriptName)
+        try c.encode(path, forKey: .path)
+    }
+}
+
 /// Where a feedback was taken (docs/engine-api.md › FeedbackContext).
 public struct FeedbackContext: Codable, Sendable, Hashable {
     public var appVersion: String

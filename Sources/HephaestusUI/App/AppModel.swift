@@ -43,10 +43,10 @@ public final class AppModel {
     private(set) var chatWindows: Set<ChatWindowValue> = []
     /// Last active project per device, persisted in `UserDefaults`.
     private(set) var lastProjectIDByDevice: [String: String]
-    /// Minimized questions, symbol, color, sound and shortcut cards: chat id → id of the minimized
-    /// question set, symbol request, color request, sound request or shortcut request, persisted in
-    /// `UserDefaults` (docs/chats.md › Pinned questions card, › Pinned symbol card, › Pinned color
-    /// card, › Pinned sound card, › Pinned shortcut card).
+    /// Minimized questions, symbol, color, sound, shortcut and font cards: chat id → id of the
+    /// minimized question set, symbol request, color request, sound request, shortcut request or font
+    /// request, persisted in `UserDefaults` (docs/chats.md › Pinned questions card, › Pinned symbol
+    /// card, › Pinned color card, › Pinned sound card, › Pinned shortcut card, › Pinned font card).
     private(set) var minimizedQuestionSets: [String: String]
     /// The last status received from the Updater.
     var updaterStatus = UpdaterStatus.initial
@@ -227,21 +227,21 @@ public final class AppModel {
         }
     }
 
-    /// Whether the questions card, the symbol card, the color card, the sound card or the shortcut
-    /// card of a chat is minimized for this question set, symbol request, color request, sound
-    /// request or shortcut request.
+    /// Whether the questions card, the symbol card, the color card, the sound card, the shortcut
+    /// card or the font card of a chat is minimized for this question set, symbol request, color
+    /// request, sound request, shortcut request or font request.
     func isQuestionsCardMinimized(chatID: String, setID: UUID) -> Bool {
         minimizedQuestionSets[chatID] == setID.uuidString
     }
 
-    /// The minimize button and the collapsed bar of the questions, symbol, color, sound and shortcut
-    /// cards.
+    /// The minimize button and the collapsed bar of the questions, symbol, color, sound, shortcut and
+    /// font cards.
     func setQuestionsCardMinimized(_ minimized: Bool, chatID: String, setID: UUID) {
         updateMinimizedQuestionSet(chatID, minimized ? setID.uuidString : nil)
     }
 
     /// Removes the entry of a chat whose card shows another question set, symbol request, color
-    /// request, sound request or shortcut request, or none.
+    /// request, sound request, shortcut request or font request, or none.
     func forgetMinimizedQuestionSet(chatID: String, shownSetID: UUID?) {
         guard let stored = minimizedQuestionSets[chatID], stored != shownSetID?.uuidString else { return }
         updateMinimizedQuestionSet(chatID, nil)

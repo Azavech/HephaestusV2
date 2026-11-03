@@ -333,6 +333,10 @@ struct ModelCodingTests {
             .shortcut(ShortcutItem(id: "sc", created: created, requestID: UUID(), question: "Which?", suggestions: ["⇧⌘K", "⌘K"],
                                    recommended: "⇧⌘K", inUse: [ShortcutInUse(shortcut: "⌘N", command: "New Ticket")],
                                    answer: "![](shortcut:⌘K)")),
+            .font(FontItem(id: "fo", created: created, requestID: UUID(), question: "Which?", sample: "Title",
+                           suggestions: [".headline", "System/Bold/17"], recommended: ".headline")),
+            .font(FontItem(id: "fa", created: created, requestID: UUID(), question: "Which?", sample: "Title",
+                           suggestions: [".headline", "System/Bold/17"], recommended: ".headline", answer: "![](font:System/Bold/17)")),
             .system(SystemItem(id: "s", created: created, text: "Session started", level: .warning)),
             .result(ResultItem(id: "r", created: created, durationMs: 10, costUSD: 0.5)),
         ]
@@ -344,7 +348,7 @@ struct ModelCodingTests {
             let object = try JSONDecoder().decode(JSONValue.self, from: data).objectValue?["item"]?.objectValue
             #expect(object?["type"] == .string(item.type.rawValue))
         }
-        #expect(items.map(\.id) == ["u", "a", "t", "tu", "tr", "p", "q", "sy", "sa", "co", "cp", "so", "sc", "s", "r"])
+        #expect(items.map(\.id) == ["u", "a", "t", "tu", "tr", "p", "q", "sy", "sa", "co", "cp", "so", "sc", "fo", "fa", "s", "r"])
     }
 
     @Test("The symbol item of docs/data-model.md › Symbol item: answer null until the user answers")
@@ -412,6 +416,27 @@ struct ModelCodingTests {
         let encoded = try JSONDecoder().decode(JSONValue.self, from: StorageJSON.lineEncoder().encode(ChatItem.shortcut(request)))
         #expect(encoded.objectValue?["answer"] == .null)
         #expect(encoded.objectValue?["inUse"] == [["shortcut": "⌘N", "command": "New Ticket"]])
+    }
+
+    @Test("The font item of docs/data-model.md › Font item: answer null until the user answers")
+    func fontItem() throws {
+        let doc = try Repository.doc("data-model.md")
+        let section = try #require(doc.range(of: "### Font item")).upperBound
+        let start = try #require(doc.range(of: "```json\n", range: section..<doc.endIndex)).upperBound
+        let end = try #require(doc.range(of: "\n```", range: start..<doc.endIndex)).lowerBound
+        let item = try StorageJSON.decoder().decode(ChatItem.self, from: Data(doc[start..<end].utf8))
+        guard case .font(var request) = item else {
+            Issue.record("not a font item")
+            return
+        }
+        #expect(request.answer == "![](font:Avenir Next/Demi Bold/15)")
+        #expect(request.sample == "Replace the status filter with a Filter by Status menu")
+        #expect(request.suggestions == ["System Rounded/Semibold/17", "Avenir Next/Demi Bold/15", ".headline"])
+        #expect(request.recommended == "System Rounded/Semibold/17")
+        request.answer = nil
+        let encoded = try JSONDecoder().decode(JSONValue.self, from: StorageJSON.lineEncoder().encode(ChatItem.font(request)))
+        #expect(encoded.objectValue?["answer"] == .null)
+        #expect(encoded.objectValue?["type"] == .string("font"))
     }
 
     @Test("MCP tool names are split after mcp__ at the first __")

@@ -225,8 +225,9 @@ private enum MarkdownInlineSegments {
 }
 
 /// Inlines as a `Text`: emphasis, strong, code, strikethrough and links as attributes of the text,
-/// and each SF Symbol as its image followed by a space and its name
-/// (docs/documentation-viewer.md › SF Symbol markers).
+/// each SF Symbol as its image followed by a space and its name
+/// (docs/documentation-viewer.md › SF Symbol markers), and each font marker as its label in its
+/// font at the size of Markdown text (docs/chats.md › Links, images and files).
 enum MarkdownAttributed {
     static func text(_ inlines: [MarkdownInline]) -> Text {
         var builder = Builder()
@@ -278,6 +279,12 @@ enum MarkdownAttributed {
                 case .shortcut(let caps):
                     // A shortcut marker: its key caps as text.
                     current.append(MarkdownAttributed.run(caps.joined(), intent: intent, link: link))
+                case .font(let marker):
+                    var run = MarkdownAttributed.run(marker.label, intent: intent, link: link)
+                    if let font = FontNotation(marker.font) {
+                        run.font = FontFaces.markerFont(font, size: markdownBaseSize)
+                    }
+                    current.append(run)
                 case .itemID(let id, let code):
                     // A ticket or bundle id: a link like the others of the text.
                     current.append(MarkdownAttributed.run(id, intent: code ? intent.union(.code) : intent,
@@ -565,6 +572,8 @@ enum MarkdownBlockCache {
         var readsSoundMarkers: Bool
         /// Shortcut markers are read; every caller that reads them uses the same notation.
         var readsShortcuts: Bool
+        /// Font markers are read; every caller that reads them accepts the same fonts.
+        var readsFonts: Bool
         var projectIdentifiers: Set<String>
     }
 
@@ -575,6 +584,7 @@ enum MarkdownBlockCache {
                       stripFrontMatter: options.stripFrontMatter, readsSymbols: options.isSymbolAvailable != nil,
                       readsColors: options.colorSwatch != nil,
                       readsSoundMarkers: options.readsSoundMarkers, readsShortcuts: options.shortcutKeys != nil,
+                      readsFonts: options.fontMarker != nil,
                       projectIdentifiers: options.projectIdentifiers)
         if let blocks = entries[key] {
             return blocks

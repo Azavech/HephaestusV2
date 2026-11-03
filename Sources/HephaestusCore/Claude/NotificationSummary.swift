@@ -16,6 +16,8 @@ public enum NotificationSubject: Sendable, Hashable {
     case sound(question: String)
     /// A chat waiting for answers: the question of the shortcut request without answer.
     case shortcut(question: String)
+    /// A chat waiting for answers: the question of the font request without answer.
+    case font(question: String)
 }
 
 /// Writes the detail of a chat notification (docs/chats.md › Notifications). A nil answer gives
@@ -85,6 +87,9 @@ public struct HaikuNotificationSummarizer: NotificationSummarizer {
             body = question
         case .shortcut(let question):
             label = "Shortcut request:"
+            body = question
+        case .font(let question):
+            label = "Font request:"
             body = question
         }
         return label + "\n" + String(body.prefix(HaikuTitleNamer.inputLimit))

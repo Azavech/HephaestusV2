@@ -89,6 +89,8 @@ enum TranscriptRenderer {
             return TranscriptFragment(id: request.id, type: "sound", html: soundHTML(request, context: context))
         case .shortcut(let request):
             return TranscriptFragment(id: request.id, type: "shortcut", html: shortcutHTML(request, context: context))
+        case .font(let request):
+            return TranscriptFragment(id: request.id, type: "font", html: fontHTML(request, context: context))
         case .system(let system):
             return TranscriptFragment(id: system.id, type: "system",
                                       html: "<div class=\"system-line level-\(system.level.rawValue)\">\(escape(system.text))</div>")
@@ -398,6 +400,26 @@ enum TranscriptRenderer {
         "<span class=\"md-shortcut\">" + caps.map { "<kbd>\(escape($0))</kbd>" }.joined() + "</span>"
     }
 
+    /// The `Font` card: the question, one line per suggestion drawn as its font marker, the
+    /// recommended one followed by `(recommended)`, then the answer or `Not answered yet`.
+    private static func fontHTML(_ request: FontItem, context: TranscriptRenderContext) -> String {
+        var html = "<div class=\"questions-card\"><div class=\"questions-title\">Font</div><div class=\"question\">"
+            + "<div class=\"question-text\">" + markdown(request.question, context: context) + "</div><ul class=\"options\">"
+        for font in request.suggestions {
+            let line = "![](font:\(font))" + (font == request.recommended ? " (recommended)" : "")
+            // Suggestion lines show ids as text (docs/chats.md › Item rendering).
+            html += "<li>\(MarkdownSymbolMarkers.html(line, isSymbolAvailable: SFSymbols.isAvailable, fontMarker: FontMarkers.marker))</li>"
+        }
+        html += "</ul>"
+        if let answer = request.answer {
+            html += "<div class=\"answer\">\(symbolText("Answer: " + answer, context: context))</div>"
+        } else {
+            html += "<div class=\"answer pending\">Not answered yet</div>"
+        }
+        return html + "</div></div>"
+    }
+
+
     /// A thumbnail of a stored image, at most 240 × 240 pt; a click opens the image viewer.
     private static func imageHTML(_ attachment: Attachment, title: String) -> String {
         "<img class=\"thumb\" src=\"\(escape(attachmentURL(path: attachment.path)))\" alt=\"\(escape(attachment.name))\""
@@ -407,23 +429,24 @@ enum TranscriptRenderer {
     // MARK: Helpers
 
     /// Markdown inside an element of the class `md` (docs/documentation-viewer.md › Styling), with
-    /// the SF Symbols and the colors of this Mac, the sound markers, shortcut markers as key caps and
-    /// the ids of the device's projects as links (docs/chats.md › Links, images and files).
+    /// the SF Symbols and the colors of this Mac, the sound markers, shortcut markers as key caps,
+    /// font markers in their font and the ids of the device's projects as links (docs/chats.md ›
+    /// Links, images and files).
     static func markdown(_ text: String, context: TranscriptRenderContext) -> String {
         let options = MarkdownRenderOptions(baseDirectory: "", projectRootPath: context.projectRootPath, stripFrontMatter: false,
                                             isSymbolAvailable: SFSymbols.isAvailable, colorSwatch: ColorSwatches.swatch,
                                             readsSoundMarkers: true, shortcutKeys: { KeyShortcut.keyCaps(of: $0) },
-                                            projectIdentifiers: context.projectIdentifiers)
+                                            fontMarker: FontMarkers.marker, projectIdentifiers: context.projectIdentifiers)
         return "<div class=\"md\">" + MarkdownHTMLRenderer.render(text, options: options) + "</div>"
     }
 
     /// Plain text, escaped, in which each SF Symbol marker of this Mac, each color marker, each
-    /// sound marker and each shortcut marker is drawn (docs/documentation-viewer.md › SF Symbol
-    /// markers, › Color markers, › Sound markers, › Shortcut markers) and each id of the device's
-    /// projects is a link.
+    /// sound marker, each shortcut marker and each font marker is drawn
+    /// (docs/documentation-viewer.md › SF Symbol markers, › Color markers, › Sound markers,
+    /// › Shortcut markers, › Font markers) and each id of the device's projects is a link.
     static func symbolText(_ text: String, context: TranscriptRenderContext) -> String {
         MarkdownSymbolMarkers.html(text, isSymbolAvailable: SFSymbols.isAvailable, colorSwatch: ColorSwatches.swatch,
-                                   readsSoundMarkers: true, shortcutKeys: KeyShortcut.keyCaps(of:),
+                                   readsSoundMarkers: true, shortcutKeys: KeyShortcut.keyCaps(of:), fontMarker: FontMarkers.marker,
                                    projectIdentifiers: context.projectIdentifiers)
     }
 

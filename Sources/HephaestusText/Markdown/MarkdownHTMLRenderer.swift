@@ -299,6 +299,15 @@ struct HTMLWriter {
             output += "<span class=\"md-shortcut\">"
             output += keyCaps.map { "<kbd>\(Self.escaped($0))</kbd>" }.joined()
             output += "</span>"
+        case .font(let marker):
+            // A font marker: the page draws the label in the font of the `data-font-…` values
+            // (docs/documentation-viewer.md › Font markers).
+            output += "<span class=\"md-font\" data-font-family=\"\(Self.escaped(marker.cssFamily))\""
+            output += " data-font-weight=\"\(marker.cssWeight)\""
+            if let faceURL = marker.faceURL {
+                output += " data-font-face=\"\(Self.escaped(faceURL))\""
+            }
+            output += ">\(Self.escaped(marker.label))</span>"
         case .itemID(let id, let code):
             // A ticket or bundle id (docs/documentation-viewer.md › Ticket and bundle ids).
             output += "<a class=\"md-id\" href=\"\(Self.escaped(MarkdownItemIDs.href(for: id)))\">"

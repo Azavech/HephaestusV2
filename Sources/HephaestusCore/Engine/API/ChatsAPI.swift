@@ -396,6 +396,51 @@ public enum ChatsAnswerShortcut: EngineMethod {
     public typealias Result = Empty
 }
 
+/// `chats.postFont`: called by the MCP tool `ask_font`. Actors: claude (the chat's own Claude
+/// only).
+public enum ChatsPostFont: EngineMethod {
+    public static let name = "chats.postFont"
+    public struct Params: Codable, Sendable, Hashable {
+        /// Must be the actor's chatID.
+        public var chatID: ChatID
+        /// Markdown text, not empty after trimming.
+        public var question: String
+        /// Plain text drawn in the selected font, not empty after trimming.
+        public var sample: String
+        /// 2 to 10 distinct fonts of the font notation and of the main device's font catalogue.
+        public var suggestions: [String]
+        /// One of the suggestions.
+        public var recommended: String
+
+        public init(chatID: ChatID, question: String, sample: String, suggestions: [String], recommended: String) {
+            self.chatID = chatID
+            self.question = question
+            self.sample = sample
+            self.suggestions = suggestions
+            self.recommended = recommended
+        }
+    }
+    public typealias Result = FontRequest
+}
+
+/// `chats.answerFont`. Actors: user.
+public enum ChatsAnswerFont: EngineMethod {
+    public static let name = "chats.answerFont"
+    public struct Params: Codable, Sendable, Hashable {
+        public var chatID: ChatID
+        public var requestID: UUID
+        /// `![](font:<font>)` for a chosen font, free text, or `Skipped`; trimmed; not empty.
+        public var answer: String
+
+        public init(chatID: ChatID, requestID: UUID, answer: String) {
+            self.chatID = chatID
+            self.requestID = requestID
+            self.answer = answer
+        }
+    }
+    public typealias Result = Empty
+}
+
 /// `chats.implementTicket`. Actors: user, claude.
 public enum ChatsImplementTicket: EngineMethod {
     public static let name = "chats.implementTicket"

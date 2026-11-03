@@ -109,3 +109,17 @@ public enum FilesTrash: EngineMethod {
     }
     public typealias Result = Empty
 }
+
+/// `files.fonts`: the families of the project's font files (docs/engine-api.md › files.fonts).
+/// Actors: user.
+public enum FilesFonts: EngineMethod {
+    public static let name = "files.fonts"
+    public struct Params: Codable, Sendable, Hashable {
+        public var projectID: ProjectID
+
+        public init(projectID: ProjectID) {
+            self.projectID = projectID
+        }
+    }
+    public typealias Result = [FontFamily]
+}

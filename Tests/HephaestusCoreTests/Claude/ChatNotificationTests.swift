@@ -274,6 +274,7 @@ struct ChatNotificationTests {
         #expect(HaikuNotificationSummarizer.input(for: .symbol(question: "Which icon?")) == "Symbol request:\nWhich icon?")
         #expect(HaikuNotificationSummarizer.input(for: .color(question: "Which tint?")) == "Color request:\nWhich tint?")
         #expect(HaikuNotificationSummarizer.input(for: .shortcut(question: "Which shortcut?")) == "Shortcut request:\nWhich shortcut?")
+        #expect(HaikuNotificationSummarizer.input(for: .font(question: "Which font?")) == "Font request:\nWhich font?")
         #expect(HaikuNotificationSummarizer.input(for: .reply(String(repeating: "x", count: 5_000))).count == "Claude's reply:\n".count + 4_000)
     }
 

@@ -83,6 +83,7 @@ struct QuestionsCard: View {
                     context.options.isSymbolAvailable = SFSymbols.isAvailable
                     context.options.colorSwatch = ColorSwatches.swatch
                     context.options.readsSoundMarkers = true
+                    context.options.fontMarker = FontMarkers.marker
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
@@ -162,10 +163,11 @@ struct QuestionsCard: View {
     }
 
     /// Plain text in which each SF Symbol marker of this Mac shows the symbol's image followed by a
-    /// space and its name, and each color marker a swatch followed by a space and the color.
+    /// space and its name, each color marker a swatch followed by a space and the color, and each
+    /// font marker its label in its font.
     private func symbolText(_ text: String) -> Text {
         MarkdownAttributed.text(MarkdownSymbolMarkers.inlines(in: text, isSymbolAvailable: SFSymbols.isAvailable,
-                                                              colorSwatch: ColorSwatches.swatch))
+                                                              colorSwatch: ColorSwatches.swatch, fontMarker: FontMarkers.marker))
     }
 
     /// `Answer another way` with a multi-line field of 1 to 6 visible lines; a click on its line

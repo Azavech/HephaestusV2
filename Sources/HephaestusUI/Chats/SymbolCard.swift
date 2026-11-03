@@ -57,6 +57,7 @@ struct SymbolCard: View {
                     context.options.isSymbolAvailable = SFSymbols.isAvailable
                     context.options.colorSwatch = ColorSwatches.swatch
                     context.options.readsSoundMarkers = true
+                    context.options.fontMarker = FontMarkers.marker
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)

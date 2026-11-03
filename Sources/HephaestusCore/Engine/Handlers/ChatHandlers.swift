@@ -67,6 +67,12 @@ extension Engine {
         register(ChatsAnswerShortcut.self, actors: [.user]) { [unowned self] params, actor in
             try await self.chatsAnswerShortcut(params, actor)
         }
+        register(ChatsPostFont.self, actors: [.claude]) { [unowned self] params, actor in
+            try await self.chatsPostFont(params, actor)
+        }
+        register(ChatsAnswerFont.self, actors: [.user]) { [unowned self] params, actor in
+            try await self.chatsAnswerFont(params, actor)
+        }
         register(ChatsImplementTicket.self, actors: [.user, .claude]) { [unowned self] params, actor in
             try await self.chatsImplementTicket(params, actor)
         }
@@ -382,6 +388,7 @@ extension Engine {
         chats.openColorRequests[chatID] = nil
         chats.openSoundRequests[chatID] = nil
         chats.openShortcutRequests[chatID] = nil
+        chats.openFontRequests[chatID] = nil
         chats.drivingDevices[chatID] = nil
         chats.scannedChats.remove(chatID)
         chats.hasTextMessage[chatID] = nil
@@ -497,9 +504,9 @@ extension Engine {
     }
 
     /// A chat has at most one waiting request: a question set that is not completed, or a symbol
-    /// request, a color request, a sound request or a shortcut request without answer
-    /// (docs/chats.md › Posting questions, › Posting a symbol request, › Posting a color request,
-    /// › Posting a sound request, › Posting a shortcut request).
+    /// request, a color request, a sound request, a shortcut request or a font request without
+    /// answer (docs/chats.md › Posting questions, › Posting a symbol request, › Posting a color
+    /// request, › Posting a sound request, › Posting a shortcut request, › Posting a font request).
     func requireNoWaitingRequest(_ chatID: ChatID) throws {
         guard chats.openQuestionSets[chatID] == nil else {
             throw EngineError(.conflict, "Questions are already waiting for answers in this chat.")
@@ -515,6 +522,9 @@ extension Engine {
         }
         guard chats.openShortcutRequests[chatID] == nil else {
             throw EngineError(.conflict, "A shortcut request is already waiting for an answer in this chat.")
+        }
+        guard chats.openFontRequests[chatID] == nil else {
+            throw EngineError(.conflict, "A font request is already waiting for an answer in this chat.")
         }
     }
 
@@ -712,6 +722,70 @@ extension Engine {
             return request
         }
         throw EngineError.notFound("Sound request", requestID.uuidString)
+    }
+
+    /// `chats.postFont` (docs/chats.md › Posting a font request): the rules are checked against the
+    /// font catalogue of this device for the chat's project.
+    func chatsPostFont(_ params: ChatsPostFont.Params, _ actor: Actor) async throws -> FontRequest {
+        try ActorRules.requireOwnChat(params.chatID, actor)
+        let sample = ModelRules.normalizedLineBreaks(params.sample.trimmingCharacters(in: .whitespacesAndNewlines))
+        let suggestions = params.suggestions.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let recommended = params.recommended.trimmingCharacters(in: .whitespacesAndNewlines)
+        let meta = try requireChat(params.chatID)
+        let project = await projectFontFamilies(meta.projectID)
+        let catalog = FontCatalog(installed: FontCatalog.installed, project: project)
+        try Engine.validated {
+            try ModelRules.fontRequest(question: params.question, sample: sample, suggestions: suggestions,
+                                       recommended: recommended, isFont: catalog.contains)
+        }
+        _ = try requireChat(params.chatID)
+        try ensureChatScanned(params.chatID)
+        try requireNoWaitingRequest(params.chatID)
+        let requestID = UUID()
+        let question = ModelRules.normalizedLineBreaks(params.question)
+        let item = FontItem(id: requestID.uuidString, created: ISODate.now(), requestID: requestID, question: question,
+                            sample: sample, suggestions: suggestions, recommended: recommended)
+        try appendChatItem(.font(item), chatID: params.chatID, origin: actor)
+        chats.openFontRequests[params.chatID] = item
+        emitChatUpdated(params.chatID, origin: actor)
+        return FontRequest(requestID: requestID, chatID: params.chatID, question: question, sample: sample,
+                           suggestions: suggestions, recommended: recommended)
+    }
+
+    /// `chats.answerFont` (docs/chats.md › Answering a font request).
+    func chatsAnswerFont(_ params: ChatsAnswerFont.Params, _ actor: Actor) async throws -> Empty {
+        let chatID = params.chatID
+        let answer = ModelRules.normalizedLineBreaks(params.answer.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard (1...10_000).contains(answer.count) else {
+            throw EngineError.invalid("answer", "use 1 to 10,000 characters")
+        }
+        func check() throws -> FontItem {
+            _ = try requireChat(chatID)
+            try ensureChatScanned(chatID)
+            return try fontRequest(params.requestID, chatID: chatID)
+        }
+        _ = try check()
+        _ = try await requireClaudeCLI()
+        let sender = senderName(actor)
+        var request = try check()
+        recordDrivingDevice(chatID, actor)
+        request.answer = answer
+        try appendChatItem(.font(request), chatID: chatID, op: .update, origin: actor)
+        chats.openFontRequests[chatID] = nil
+        try sendChatMessage(chatID, text: Engine.fontMessage(answer), attachments: [], sender: sender, origin: actor)
+        return Empty()
+    }
+
+    /// The font request `requestID` of a chat without answer: the open one, or one of the
+    /// transcript; `conflict` when it has an answer, `notFound` when the chat has none with this id.
+    private func fontRequest(_ requestID: UUID, chatID: ChatID) throws -> FontItem {
+        if let open = chats.openFontRequests[chatID], open.requestID == requestID { return open }
+        for item in try loadTranscript(chatID) {
+            guard case .font(let request) = item, request.requestID == requestID else { continue }
+            if request.answer != nil { throw EngineError(.conflict, "This font request was already answered.") }
+            return request
+        }
+        throw EngineError.notFound("Font request", requestID.uuidString)
     }
 
     /// The question set `questionSetID` of a chat: the open one, or one of the transcript;

@@ -22,6 +22,28 @@ extension Engine {
         register(FilesTrash.self, actors: [.user]) { [unowned self] params, actor in
             try await self.filesTrash(params, actor)
         }
+        register(FilesFonts.self, actors: [.user]) { [unowned self] params, _ in
+            try await self.filesFonts(params)
+        }
+    }
+
+    /// docs/engine-api.md › files.fonts: the families of the project's font files.
+    func filesFonts(_ params: FilesFonts.Params) async throws -> [FontFamily] {
+        let projectID = try fileProjectID(params.projectID)
+        _ = try fileProjectRoot(projectID)
+        return await projectFontFamilies(projectID)
+    }
+
+    /// The families of the files of the project's code search file list whose name ends in
+    /// `.ttf`, `.otf` or `.ttc` (docs/chats.md › Font catalogue), read off the engine's actor.
+    func projectFontFamilies(_ projectID: ProjectID) async -> [FontFamily] {
+        guard let project = domain.project(projectID), let root = domain.projectRoot(projectID) else { return [] }
+        // Until the tools lookup has found git, the file list walks the folder (docs/search.md › File list).
+        let git = files.tools.git.map { SearchGit(executable: $0, environment: files.tools.environment) }
+        let list = await CodeSearch.fileList(SearchProjectData(project: project, root: root), git: git)
+        let fonts = list.filter { FontCatalog.fontFileExtensions.contains(($0.path as NSString).pathExtension.lowercased()) }
+            .map { (path: $0.path, url: $0.url) }
+        return await Task.detached { FontCatalog.projectFamilies(files: fonts) }.value
     }
 
     /// docs/engine-api.md › files.list: the direct children of a directory except `.git` and

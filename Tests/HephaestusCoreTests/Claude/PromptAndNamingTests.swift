@@ -281,17 +281,18 @@ struct PromptAndNamingTests {
         let common = Prompts.text(.common)
         #expect(common.contains("- Questions to the user: ask_questions, ask_symbol (asks the user to choose an SF Symbol), "
             + "ask_color (asks the user to choose a color), ask_sound (asks the user to choose a sound, in a Swift application "
-            + "project), ask_shortcut (asks the user to choose a keyboard shortcut, in a Swift application project).\n"))
+            + "project), ask_shortcut (asks the user to choose a keyboard shortcut, in a Swift application project), ask_font "
+            + "(asks the user to choose a font).\n"))
         #expect(common.contains("- Never call ask_questions while earlier questions, a symbol request, a color request, a sound "
-            + "request or a shortcut request of this chat still wait for their answers.\n"))
+            + "request, a shortcut request or a font request of this chat still wait for their answers.\n"))
         let lower = try #require(common.range(of: "# SF Symbols")).lowerBound
         let upper = try #require(common.range(of: "# Colors")).lowerBound
         let section = String(common[lower..<upper])
         #expect(section.contains("When you need the user to choose an SF Symbol, ask with ask_symbol, never with symbol names as options of ask_questions"))
         #expect(section.contains("After ask_symbol returns, end your turn"))
         #expect(section.contains("Symbol: ![](sf:<name>) for a chosen symbol, Symbol: <answer> for an answer in the user's own words, or Symbol: Skipped"))
-        #expect(section.contains("Never call ask_symbol while questions, a symbol request, a color request, a sound request or a "
-            + "shortcut request of this chat still wait for their answers."))
+        #expect(section.contains("Never call ask_symbol while questions, a symbol request, a color request, a sound request, a "
+            + "shortcut request or a font request of this chat still wait for their answers."))
     }
 
     @Test("The common prompt tells Claude to write colors as ![](color:<color>) and to ask for colors with ask_color")
@@ -309,8 +310,8 @@ struct PromptAndNamingTests {
         #expect(section.contains("After ask_color returns, end your turn"))
         #expect(section.contains("Color: ![](color:<color>) for one color, Color: Light ![](color:<color>), Dark ![](color:<color>) for a "
             + "light and dark pair, Color: <answer> for an answer in the user's own words, or Color: Skipped"))
-        #expect(section.contains("Never call ask_color while questions, a symbol request, a color request, a sound request or a "
-            + "shortcut request of this chat still wait for their answers."))
+        #expect(section.contains("Never call ask_color while questions, a symbol request, a color request, a sound request, a "
+            + "shortcut request or a font request of this chat still wait for their answers."))
         for kind in [ChatKind.project, .ticket, .bundle, .feedback] {
             #expect(Prompts.systemPrompt(kind: kind, values: values).contains(section), "\(kind)")
         }
@@ -330,16 +331,17 @@ struct PromptAndNamingTests {
         #expect(section.contains("After ask_sound returns, end your turn"))
         #expect(section.contains("Sound: ![](sound:<name>) for a chosen sound, Sound: <answer> for an answer in the user's own words, or "
             + "Sound: Skipped"))
-        #expect(section.contains("Never call ask_sound while questions, a symbol request, a color request, a sound request or a "
-            + "shortcut request of this chat still wait for their answers."))
-        #expect(ClaudeCommandLine.preApprovedTools.contains("mcp__hephaestus__ask_color,mcp__hephaestus__ask_sound,mcp__hephaestus__ask_shortcut,"))
+        #expect(section.contains("Never call ask_sound while questions, a symbol request, a color request, a sound request, a "
+            + "shortcut request or a font request of this chat still wait for their answers."))
+        #expect(ClaudeCommandLine.preApprovedTools.contains("mcp__hephaestus__ask_color,mcp__hephaestus__ask_sound,mcp__hephaestus__ask_shortcut,"
+            + "mcp__hephaestus__ask_font,"))
     }
 
     @Test("The common prompt tells Claude to use ask_shortcut in a Swift application project, with the app's shortcuts in inUse")
     func askShortcutPrompt() throws {
         let common = Prompts.text(.common)
         let lower = try #require(common.range(of: "# Keyboard shortcuts\n")).lowerBound
-        let upper = try #require(common.range(of: "# When the project is HephaestusV2")).lowerBound
+        let upper = try #require(common.range(of: "# Fonts")).lowerBound
         let section = String(common[lower..<upper])
         #expect(section.contains("When the project's type is Swift application (get_project gives it) and you need the user to choose a "
             + "keyboard shortcut, ask with ask_shortcut, never with shortcuts as options of ask_questions"))
@@ -348,8 +350,28 @@ struct PromptAndNamingTests {
         #expect(section.contains("After ask_shortcut returns, end your turn"))
         #expect(section.contains("Shortcut: ![](shortcut:<shortcut>) for a chosen or recorded shortcut, Shortcut: <answer> for an answer "
             + "in the user's own words, or Shortcut: Skipped; handle Skipped as for a skipped question."))
-        #expect(section.contains("Never call ask_shortcut while questions, a symbol request, a color request, a sound request or a "
-            + "shortcut request of this chat still wait for their answers."))
+        #expect(section.contains("Never call ask_shortcut while questions, a symbol request, a color request, a sound request, a "
+            + "shortcut request or a font request of this chat still wait for their answers."))
+    }
+
+    @Test("The common prompt lists ask_font and tells Claude to use it, with a sample text, to have the user choose a font")
+    func askFontPrompt() throws {
+        let common = Prompts.text(.common)
+        let lower = try #require(common.range(of: "# Fonts")).lowerBound
+        let upper = try #require(common.range(of: "# When the project is HephaestusV2")).lowerBound
+        let section = String(common[lower..<upper])
+        #expect(section.contains("When you need the user to choose a font, ask with ask_font, never with font names as options of ask_questions"))
+        #expect(section.contains("a sample text taken from where the font will be used"))
+        #expect(section.contains("Write a font as a Dynamic Type text style, for example .headline, or as <family>/<weight>/<size>, for example System Rounded/Semibold/17"))
+        #expect(section.contains("After ask_font returns, end your turn"))
+        #expect(section.contains("Font: ![](font:<font>) for a chosen font, Font: <answer> for an answer in the user's own words, or Font: Skipped"))
+        #expect(section.contains("Never call ask_font while questions, a symbol request, a color request, a sound request, a shortcut "
+            + "request or a font request of this chat still wait for their answers."))
+        for kind in [ChatKind.project, .ticket, .bundle, .feedback] {
+            let values = ["projectName": "App", "projectID": "APP", "projectRoot": "/Users/example/App", "workingDirectory": "",
+                          "deviceName": "Studio", "docsPath": "docs", "projectCommands": "- build: make build"]
+            #expect(Prompts.systemPrompt(kind: kind, values: values).contains("ask with ask_font"), "\(kind)")
+        }
     }
 
     @Test("Naming inputs: the label line, then the text cut at 4,000 characters")

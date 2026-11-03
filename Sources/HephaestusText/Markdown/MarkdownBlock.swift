@@ -61,6 +61,7 @@ public indirect enum MarkdownInline: Sendable, Equatable {
     case color(String, swatch: MarkdownColorSwatch) // a color marker of an accepted color: the color as written and its swatch
     case sound(String)                   // a sound marker: the sound's name
     case shortcut([String])              // a shortcut marker of an accepted shortcut: its key caps
+    case font(MarkdownFontMarker)        // a font marker of a font that `fontMarker` accepted
     case itemID(String, code: Bool)      // a ticket or bundle id of a project of the device; code: written as a code span
     case softBreak
     case lineBreak
@@ -70,4 +71,27 @@ public enum MarkdownImageSource: Sendable, Equatable {
     case remote(String)                  // http or https URL
     case projectFile(String)             // project path, read with files.read
     case blocked
+}
+
+/// A font marker the caller accepts: what it shows and how the HTML output draws it
+/// (docs/documentation-viewer.md › Font markers).
+public struct MarkdownFontMarker: Sendable, Hashable {
+    /// The font, as written after `font:`.
+    public var font: String
+    /// The text shown in place of the marker, such as `System Rounded · Semibold · 17 pt`.
+    public var label: String
+    /// The CSS font family of the HTML output, such as `ui-rounded`.
+    public var cssFamily: String
+    /// The CSS font weight of the HTML output, from 100 to 900.
+    public var cssWeight: Int
+    /// The URL of the face the page loads to draw the label; nil when `cssFamily` draws it.
+    public var faceURL: String?
+
+    public init(font: String, label: String, cssFamily: String, cssWeight: Int, faceURL: String? = nil) {
+        self.font = font
+        self.label = label
+        self.cssFamily = cssFamily
+        self.cssWeight = cssWeight
+        self.faceURL = faceURL
+    }
 }
