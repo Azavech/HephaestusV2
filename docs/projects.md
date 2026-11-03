@@ -72,36 +72,38 @@ While the user has not edited the identifier field, the New Project and New Sub 
 
 The entry points are enabled while the window's device is connected ([Menus and keyboard shortcuts](ui.md#menus-and-keyboard-shortcuts)).
 
-| Field          | Control                                                                | Initial value                                                                                                                 | Rule                                                                                                                         |
-| -------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Name           | text field                                                             | empty; with `Create Project Here…`, the folder's name                                                                         | single line, 1 to 100 characters after trimming; message `Enter a name of 1 to 100 characters.`                              |
-| Identifier     | text field, shown in uppercase, SF Mono                                | the suggestion from the name                                                                                                  | [Identifier rules](#identifier-rules)                                                                                        |
-| Project type   | menu of the [project types](#project-types)                            | `None`                                                                                                                        | —                                                                                                                            |
-| Folder         | segmented control `New Folder` / `Existing Folder`                     | `New Folder`; `Existing Folder` with `Create Project Here…`                                                                   | —                                                                                                                            |
-| Parent folder  | New Folder mode: read-only path in SF Mono and a `Choose…` button      | the folder that contains the root of the active project's top-level project; with no active project, the device's home folder | an existing folder                                                                                                           |
-| Folder name    | New Folder mode: text field                                            | the name with `/` and `:` replaced by `-`, trimmed, without leading `.`; it follows the name until the user edits it          | 1 to 255 UTF-8 bytes, no `/`, not starting with `.`; message `Enter a folder name without “/” that does not start with “.”.` |
-| Folder         | Existing Folder mode: read-only path in SF Mono and a `Choose…` button | none, or the folder of `Create Project Here…`                                                                                 | an existing folder; message `Choose a folder.` while empty                                                                   |
-| Project folder | read-only text                                                         | the resulting root path: parent folder + `/` + folder name, or the existing folder                                            | —                                                                                                                            |
+| Field          | Control                                                                                                                                | Initial value                                                                                                                 | Rule                                                                                                                         |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Name           | text field                                                                                                                             | empty; with `Create Project Here…`, the folder's name                                                                         | single line, 1 to 100 characters after trimming; message `Enter a name of 1 to 100 characters.`                              |
+| Identifier     | text field, shown in uppercase, SF Mono                                                                                                | the suggestion from the name                                                                                                  | [Identifier rules](#identifier-rules)                                                                                        |
+| Project type   | menu of the [project types](#project-types)                                                                                            | `None`                                                                                                                        | —                                                                                                                            |
+| Parent project | pop-up button: `None`, a separator, then every project of the window's device in `projects.list` order, sub projects indented by depth | `None`                                                                                                                        | `None` makes a top-level project; with a project selected, the folder rules of [Sub projects](#sub-projects) apply           |
+| Folder         | segmented control `New Folder` / `Existing Folder`                                                                                     | `New Folder`; `Existing Folder` with `Create Project Here…`                                                                   | —                                                                                                                            |
+| Parent folder  | New Folder mode: read-only path in SF Mono and a `Choose…` button                                                                      | the folder that contains the root of the active project's top-level project; with no active project, the device's home folder | an existing folder                                                                                                           |
+| Folder name    | New Folder mode: text field                                                                                                            | the name with `/` and `:` replaced by `-`, trimmed, without leading `.`; it follows the name until the user edits it          | 1 to 255 UTF-8 bytes, no `/`, not starting with `.`; message `Enter a folder name without “/” that does not start with “.”.` |
+| Folder         | Existing Folder mode: read-only path in SF Mono and a `Choose…` button                                                                 | none, or the folder of `Create Project Here…`                                                                                 | an existing folder; message `Choose a folder.` while empty                                                                   |
+| Project folder | read-only text                                                                                                                         | the resulting root path: parent folder + `/` + folder name, or the existing folder                                            | —                                                                                                                            |
 
 - `Choose…` opens a folder picker. On This Mac it is an `NSOpenPanel` presented as a sheet of the window: folders only, one selection, folder creation allowed, prompt `Choose`. On a remote device it is the [Choose Folder sheet](#picking-a-folder-on-a-remote-device).
 - The device's home folder is the user's home folder on This Mac, and on a remote device the `path` that `fs.browse` returns when called without a path ([fs.browse](engine-api.md#fsbrowse)).
-- When the project folder is inside the root of a loaded project, the New Project sheet shows the note `This folder is inside “<project name>”: the new project becomes its sub project.`, computed from the `rootPath` of the loaded projects. The New Sub Project sheet names its parent in its `Parent project` field and shows no note.
+- Choosing a project in `Parent project` sets the parent folder to that project's root ([Sub projects](#sub-projects)). Choosing `None` again leaves the parent folder and the folder as they are.
+- When the project folder is inside the root of a loaded project and `Parent project` is `None`, the New Project sheet shows the note `This folder is inside “<project name>”: the new project becomes its sub project.`, computed from the `rootPath` of the loaded projects. While a parent is selected the sheet shows no note: the `Parent project` field names the parent. The New Sub Project sheet never shows the note.
 - Buttons: `Cancel` and `Create` (default button). Create is enabled when every field is valid.
 
 The New Folder and Existing Folder modes, the initial values, the folder name rules and the inside-a-project note are design-time choices. Default chosen at design time.
 
 Create calls `projects.create` with:
 
-| Param             | Value                                                                             |
-| ----------------- | --------------------------------------------------------------------------------- |
-| `rootPath`        | the project folder shown in the sheet                                             |
-| `name`            | the trimmed name                                                                  |
-| `identifier`      | the identifier as typed; the engine uppercases it                                 |
-| `type`            | the chosen project type                                                           |
-| `parentID`        | absent in the New Project sheet; the selected parent in the New Sub Project sheet |
-| `createDirectory` | `true` in New Folder mode, `false` in Existing Folder mode                        |
+| Param             | Value                                                       |
+| ----------------- | ----------------------------------------------------------- |
+| `rootPath`        | the project folder shown in the sheet                       |
+| `name`            | the trimmed name                                            |
+| `identifier`      | the identifier as typed; the engine uppercases it           |
+| `type`            | the chosen project type                                     |
+| `parentID`        | the selected parent; absent when `Parent project` is `None` |
+| `createDirectory` | `true` in New Folder mode, `false` in Existing Folder mode  |
 
-The engine validates, creates the folder when needed (an existing folder is used as it is), writes `.hephaestus/project.yml` and `.hephaestus/.gitignore`, and registers the project: in `registry.yml`, or in the `subprojects` of its parent when the folder is inside a loaded project ([projects.create](engine-api.md#projectscreate)). It does not create the docs folder, does not run `git init` and leaves untouched the registered projects that lie inside the new folder.
+The engine validates, creates the folder when needed (an existing folder is used as it is), writes `.hephaestus/project.yml` and `.hephaestus/.gitignore`, and registers the project: in the `subprojects` of the selected parent; without one, in the `subprojects` of the innermost loaded project that contains the folder, or in `registry.yml` when there is none ([projects.create](engine-api.md#projectscreate)). It does not create the docs folder, does not run `git init` and leaves untouched the registered projects that lie inside the new folder.
 
 - On success the sheet closes and the window activates the new project (`WindowState.projectID`, [WindowState](ui.md#windowstate)). The section does not change.
 - On failure the engine's message shows in red under the fields and the sheet stays open. When the folder already contains a project (`conflict`, `<rootPath> already contains a project; open it instead.`), an `Open It` button follows the message: it calls `projects.open` with the same path, closes the sheet on success and activates the opened project. Default chosen at design time.
@@ -154,15 +156,16 @@ The panel texts and the `No project` alert are design-time choices. Default chos
 
 A sub project is a normal project whose folder is strictly inside its parent's folder and whose path, relative to the parent's root, is listed in the parent's `subprojects`. Sub projects may nest.
 
-- New Sub Project… opens the New Sub Project sheet: the fields of the [New Project sheet](#creating-a-project), titled `New Sub Project`, with one more field, `Parent project`, a pop-up button listing the active project's top-level project and all its descendants in `projects.list` order, indented by depth, initially the window's active project.
-- In New Folder mode the parent folder starts at the parent project's root and must be that root or a folder inside it; choosing another parent sets the parent folder to that parent's root. In Existing Folder mode the folder must be strictly inside the parent project's root. Otherwise the sheet shows `Choose a folder inside “<parent name>”.` and Create stays disabled.
+- The New Project sheet chooses a parent in its `Parent project` field, which lists every project of the window's device ([Creating a project](#creating-a-project)).
+- New Sub Project… opens the New Sub Project sheet: the fields of the [New Project sheet](#creating-a-project), titled `New Sub Project`, whose `Parent project` field is its first row and lists, without `None`, the active project's top-level project and all its descendants in `projects.list` order, indented by depth, initially the window's active project. Its parent folder starts at that project's root.
+- In both sheets, while a parent is selected: in New Folder mode the parent folder must be the parent project's root or a folder inside it, and choosing another parent sets the parent folder to that parent's root; in Existing Folder mode the folder must be strictly inside the parent project's root. Otherwise the sheet shows `Choose a folder inside “<parent name>”.` and Create stays disabled.
 - Create calls `projects.create` with `parentID` = the selected parent; the engine appends the folder's relative path to that parent's `subprojects`.
 - Opening a project folder that lies inside a loaded project also makes it a sub project ([Opening an existing project](#opening-an-existing-project)).
 - A sub project has its own identifier, tickets, bundles, chats, web tabs, enabled skills, commands and docs folder. The sections of a parent show only the parent's own items; the parent's Code section shows a sub project's folder as an ordinary folder ([Code editor](code-editor.md)). Search's `This project` uses the window's active project ([Project filter](search.md#project-filter)).
 - An entry of `subprojects` whose folder or `project.yml` is missing or invalid stays in the file and is skipped while loading ([Sub project entries](data-model.md#sub-project-entries)).
 - A sub project is removed like any project ([Removing a project](#removing-a-project)): its entry leaves its parent's `subprojects`.
 
-The parent picker and the folder constraints of the sheet are design-time choices. Default chosen at design time.
+The New Sub Project sheet's parent picker and the folder constraints are design-time choices. Default chosen at design time.
 
 ## Removing a project
 
@@ -317,3 +320,4 @@ The elements, texts, limits and processing rules of the console are design-time 
 - R18: The identifier is 2 to 8 letters that represent the project.
 - R19: The user sets the identifier when the project is created.
 - R104: A project has a type: None, Go service or Swift application.
+- R129: The New Project sheet chooses a parent project, so that a sub project can be created from it.

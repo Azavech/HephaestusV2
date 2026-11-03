@@ -95,6 +95,46 @@ enum ProjectRules {
         (standardized(path) as NSString).lastPathComponent
     }
 
+    // MARK: Parent project
+
+    /// The New Project sheet's `Parent project` pop-up: `None` (tag `""`), a separator, then
+    /// every project in `projects.list` order, indented by depth (docs/projects.md › Creating a
+    /// project).
+    static func parentItems(projects: [ProjectSummary]) -> [IndentedPopUpButton.Item] {
+        let parents = Dictionary(projects.map { ($0.id, $0.parentID) }, uniquingKeysWith: { first, _ in first })
+        func depth(of project: ProjectSummary) -> Int {
+            var depth = 0
+            var parentID = project.parentID
+            while let current = parentID, depth < projects.count {
+                depth += 1
+                parentID = parents[current] ?? nil
+            }
+            return depth
+        }
+        return [IndentedPopUpButton.Item(tag: "", title: "None"), .separator()]
+            + projects.map { IndentedPopUpButton.Item(tag: $0.id, title: $0.name, indentation: depth(of: $0)) }
+    }
+
+    /// `Choose a folder inside “<parent name>”.` while the folder breaks the sub project
+    /// constraint: in New Folder mode the parent folder is the parent's root or inside it; in
+    /// Existing Folder mode the folder is strictly inside the parent's root (docs/projects.md ›
+    /// Sub projects). An empty folder field gives no message.
+    static func parentFolderMessage(parent: ProjectSummary, newFolder: Bool, parentFolder: String, chosenFolder: String) -> String? {
+        if newFolder {
+            guard !parentFolder.isEmpty, !isInside(parentFolder, root: parent.rootPath, strictly: false) else { return nil }
+        } else {
+            guard !chosenFolder.isEmpty, !isInside(chosenFolder, root: parent.rootPath, strictly: true) else { return nil }
+        }
+        return "Choose a folder inside “\(parent.name)”."
+    }
+
+    /// The note of a project folder inside a loaded project, shown while no parent is selected
+    /// (docs/projects.md › Creating a project).
+    static func insideNote(projectFolder: String, projects: [ProjectSummary]) -> String? {
+        guard !projectFolder.isEmpty, let owner = innermostProject(containing: projectFolder, in: projects) else { return nil }
+        return "This folder is inside “\(owner.name)”: the new project becomes its sub project."
+    }
+
     private static func standardized(_ path: String) -> String {
         guard path.count > 1, path.hasSuffix("/") else { return path }
         return String(path.dropLast())

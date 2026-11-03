@@ -6,7 +6,8 @@ import SwiftUI
 struct NewProjectSheet: View {
     let window: WindowState
     let workspace: DeviceWorkspace
-    /// The parent preselected by New Sub Project…; nil for New Project.
+    /// The parent preselected by New Sub Project…; nil for New Project, whose `Parent project`
+    /// starts at `None`.
     let parentID: String?
     /// The folder of `Create Project Here…`: the sheet opens in Existing Folder mode with it.
     var existingFolder: String?
@@ -32,6 +33,7 @@ struct NewProjectSheet: View {
     @State private var folderName = ""
     @State private var folderNameEdited = false
     @State private var chosenFolder = ""
+    /// The selected parent; nil for `None`.
     @State private var selectedParentID: String?
     @State private var failure: String?
     @State private var offersOpen = false
@@ -48,13 +50,7 @@ struct NewProjectSheet: View {
                 .font(.headline)
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 10) {
                 if isSubProject {
-                    GridRow {
-                        label("Parent project")
-                        IndentedPopUpButton(items: parentItems, selection: selectedParentID ?? "") { id in
-                            selectParent(id)
-                        }
-                        .fixedSize()
-                    }
+                    parentRow
                 }
                 GridRow {
                     label("Name")
@@ -77,6 +73,9 @@ struct NewProjectSheet: View {
                 GridRow {
                     label("Project type")
                     ProjectTypeMenu(selection: $type)
+                }
+                if !isSubProject {
+                    parentRow
                 }
                 GridRow {
                     label("Folder")
@@ -227,56 +226,63 @@ struct NewProjectSheet: View {
         }
     }
 
-    // MARK: Parent project (New Sub Project)
+    // MARK: Parent project
+
+    /// The `Parent project` pop-up: the first row of the New Sub Project sheet, after Project type
+    /// in the New Project sheet.
+    private var parentRow: some View {
+        GridRow {
+            label("Parent project")
+            IndentedPopUpButton(items: parentItems, selection: selectedParentID ?? "") { id in
+                selectParent(id)
+            }
+            .fixedSize()
+        }
+    }
 
     private var selectedParent: ProjectSummary? {
         selectedParentID.flatMap { workspace.project($0) }
     }
 
-    /// The active project's top-level project and all its descendants, indented by depth.
+    /// New Sub Project: the active project's top-level project and all its descendants, indented
+    /// by depth. New Project: `None`, a separator, then every project of the device.
     private var parentItems: [IndentedPopUpButton.Item] {
-        guard let parentID, let top = workspace.topLevelProject(of: parentID) else { return [] }
+        guard let parentID else { return ProjectRules.parentItems(projects: workspace.projects) }
+        guard let top = workspace.topLevelProject(of: parentID) else { return [] }
         return [IndentedPopUpButton.Item(tag: top.id, title: top.name)]
             + workspace.descendants(of: top.id).map { IndentedPopUpButton.Item(tag: $0.project.id, title: $0.project.name, indentation: $0.depth) }
     }
 
-    /// In New Folder mode the parent folder starts at the parent project's root, and choosing
-    /// another parent moves it to that parent's root (docs/projects.md › Sub projects).
-    private func selectParent(_ id: String) {
+    /// Choosing a parent moves the parent folder to that parent's root; choosing `None` leaves the
+    /// folders as they are (docs/projects.md › Creating a project, › Sub projects).
+    private func selectParent(_ tag: String) {
+        let id = tag.isEmpty ? nil : tag
         guard id != selectedParentID else { return }
         selectedParentID = id
-        if let root = workspace.project(id)?.rootPath {
+        if let id, let root = workspace.project(id)?.rootPath {
             parentFolder = root
         }
     }
 
-    /// `Choose a folder inside “<parent name>”.` while the folder breaks the sub project
-    /// constraint: in New Folder mode the parent folder is the parent's root or inside it; in
-    /// Existing Folder mode the folder is strictly inside the parent's root.
     private var parentConstraintMessage: String? {
         guard let parent = selectedParent else { return nil }
-        switch mode {
-        case .newFolder:
-            guard !parentFolder.isEmpty, !ProjectRules.isInside(parentFolder, root: parent.rootPath, strictly: false) else { return nil }
-        case .existingFolder:
-            guard !chosenFolder.isEmpty, !ProjectRules.isInside(chosenFolder, root: parent.rootPath, strictly: true) else { return nil }
-        }
-        return "Choose a folder inside “\(parent.name)”."
+        return ProjectRules.parentFolderMessage(parent: parent, newFolder: mode == .newFolder,
+                                                parentFolder: parentFolder, chosenFolder: chosenFolder)
     }
 
-    /// The note of a project folder inside a loaded project; the New Sub Project sheet shows none
-    /// (docs/projects.md › Creating a project).
+    /// The note of a project folder inside a loaded project, while `Parent project` is `None`; the
+    /// New Sub Project sheet shows none (docs/projects.md › Creating a project).
     private var insideNote: String? {
-        guard !isSubProject, !projectFolder.isEmpty,
-              let owner = ProjectRules.innermostProject(containing: projectFolder, in: workspace.projects) else { return nil }
-        return "This folder is inside “\(owner.name)”: the new project becomes its sub project."
+        guard !isSubProject, selectedParentID == nil else { return nil }
+        return ProjectRules.insideNote(projectFolder: projectFolder, projects: workspace.projects)
     }
 
     // MARK: Validity
 
     private var canCreate: Bool {
         guard ProjectRules.nameMessage(name) == nil, identifierMessage == nil, parentConstraintMessage == nil else { return false }
-        if isSubProject, selectedParent == nil { return false }
+        // A selected parent that is no longer loaded.
+        if selectedParentID != nil, selectedParent == nil { return false }
         switch mode {
         case .newFolder:
             return !parentFolder.isEmpty && ProjectRules.folderNameMessage(folderName) == nil
