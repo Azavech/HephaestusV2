@@ -61,14 +61,23 @@ final class ChatNotifier: NSObject {
 
     // MARK: Permission
 
+    /// The options of the permission request: alerts, sounds and the Dock badge.
+    nonisolated static let authorizationOptions: UNAuthorizationOptions = [.alert, .sound, .badge]
+
+    /// Whether the app asks for the permission: it has not asked yet, or its earlier request did
+    /// not include badges.
+    nonisolated static func requestsAuthorization(status: UNAuthorizationStatus, badgeSetting: UNNotificationSetting) -> Bool {
+        status == .notDetermined || badgeSetting == .notSupported
+    }
+
     /// Startup step 10: asks macOS for the permission to post notifications when it has not
-    /// asked yet.
+    /// asked yet or when its earlier request did not include badges.
     func requestAuthorizationIfNeeded() {
         guard let center else { return }
         let log = app?.engine.log
         center.getNotificationSettings { settings in
-            guard settings.authorizationStatus == .notDetermined else { return }
-            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, error in
+            guard Self.requestsAuthorization(status: settings.authorizationStatus, badgeSetting: settings.badgeSetting) else { return }
+            UNUserNotificationCenter.current().requestAuthorization(options: Self.authorizationOptions) { _, error in
                 if let error {
                     log?.warn(.ui, "notification permission request failed: \(error.localizedDescription)")
                 }

@@ -215,7 +215,7 @@ The device state follows the workspace's connection: its `state`, whether a retr
 
 The chats popover lists the chats counted by the Running chats and Waiting chats items, waiting chats first, then running chats, each group most recently updated first. Each row shows the state indicator, the chat's title, its project's identifier and a state label: `Starting`, `Running`, `Waiting for permission` or `Waiting for answers`. Clicking a row closes the popover and navigates the window to the chat (`NavigationTarget` `chat`, [Navigation](#navigation)). Default chosen at design time. An idle chat counted for its background work shows the state label `Running in background`, with the spinner of a running chat as its state indicator; the spinner is Default chosen at design time.
 
-While chats of any open workspace are in state `waitingPermission` or `waitingAnswers`, the Dock icon shows their number as its badge (`NSApp.dockTile.badgeLabel`, cleared at 0). When a chat enters one of these states while HephaestusV2 is not the active app, the app calls `NSApp.requestUserAttention(.informationalRequest)` once for it. Default chosen at design time.
+While chats of any open workspace are in state `waitingPermission` or `waitingAnswers`, the Dock icon shows their number as its badge (`NSApp.dockTile.badgeLabel`, cleared at 0). When a chat enters one of these states while HephaestusV2 is not the active app, the app calls `NSApp.requestUserAttention(.informationalRequest)` once for it. The Dock badge and the chats it counts come from the user; the `requestUserAttention` call is Default chosen at design time.
 
 A `chat.notification` event ([Chats › Notifications](chats.md#notifications)) of an open workspace becomes a macOS notification of this Mac, which `AppModel` posts with UserNotifications. The Dock badge and the single `requestUserAttention` above do not change.
 
@@ -225,10 +225,10 @@ A `chat.notification` event ([Chats › Notifications](chats.md#notifications)) 
 - It is not posted while HephaestusV2 is the active app and its key window shows the chat: a main window whose content (the Chats section, or the Chats tab of a ticket or of a bundle) or visible inspector shows the chat, or a chat window of the chat. Otherwise it is posted, as a banner also while the app is active.
 - Each chat has at most one notification on this Mac: its identifier is `<device id>/<chat id>`, so a new notification of the chat replaces the previous one. The Mac removes it when a view of this Mac opens the chat (in a main window's content or inspector, or in a chat window), and when a window that shows the chat becomes key.
 - Clicking a notification brings HephaestusV2 to the front and navigates a main window to the chat (`NavigationTarget` `chat`), as the chats popover does; the window is chosen as [Choosing the window](#choosing-the-window) specifies ([Navigation](#navigation)).
-- At launch, when it has not asked yet (authorization status not determined), the app asks macOS for the permission to post notifications with alerts and sounds. System Settings › Notifications changes the answer afterwards.
+- At launch, the app asks macOS for the permission to post notifications with alerts, sounds and badges when it has not asked yet (authorization status not determined), and also when its earlier request did not include badges (badge setting not supported), so that an install that has already answered also gets the badge option. System Settings › Notifications then lists the badge option for HephaestusV2, and changes the answers afterwards.
 - A process started with `HEPHAESTUS_DATA_DIR` neither asks for that permission nor posts notifications, since it shares the installed app's bundle id ([Environment overrides](architecture.md#environment-overrides)).
 
-The notification identifier and the authorization options are Default chosen at design time.
+The badge option comes from the user. The notification identifier, the alert and sound options and the request when the badge setting is not supported are Default chosen at design time.
 
 ### Weekly usage
 
@@ -844,3 +844,4 @@ A window chosen for a `ui.open` event is ordered front; it becomes key only when
 - R133: In a Swift application project, Claude asks the user to choose a sound with `ask_sound`: the card lists the suggestions and searches the macOS sounds, the installed Simulator runtimes' sounds and the project's sound files; selecting one plays it; the user picks one, answers another way or skips.
 - R134: In a Swift application project, Claude asks the user to choose a keyboard shortcut with `ask_shortcut`: suggestions show as key caps, the user can record another combination and sees when macOS or the app already uses the selected one, then picks one, answers another way or skips.
 - R138: The user closes one chat, or several selected chats of the Chats section, after a confirmation.
+- R147: The Dock icon of HephaestusV2 shows as its badge the number of chats waiting for answers or permission.

@@ -421,7 +421,7 @@ The sync server listens on all interfaces so that other Macs on the network reac
 7. Start the background tasks: login-shell environment capture, then the lookup of the tools ([Child processes](#child-processes)) and Claude CLI detection, which emits `claude.updated` when done, then the models probe ([Models](chats.md#models)).
 8. `AppModel` creates the local `DeviceWorkspace`, installs the `MCPDebugUI` implementation when debug tools are enabled, and opens the first window ([Window placement](#window-placement)).
 9. `AppModel` starts the Updater unless one of the five conditions of [Starting the Updater](updater.md#starting-the-updater) holds: a development build, `HEPHAESTUS_DISABLE_UPDATER=1`, a bundle or bundle folder that is not writable, no valid release repository, or no executable Updater in the bundle.
-10. `AppModel` asks macOS for the permission to post notifications when it has not asked yet, unless `HEPHAESTUS_DATA_DIR` is set ([UI › Status bar](ui.md#status-bar)).
+10. `AppModel` asks macOS for the permission to post notifications with alerts, sounds and badges when it has not asked yet (authorization status not determined) or when its earlier request did not include badges (badge setting not supported), unless `HEPHAESTUS_DATA_DIR` is set ([UI › Status bar](ui.md#status-bar)).
 
 The steps run in this order. Default chosen at design time.
 
@@ -506,3 +506,4 @@ Search results, `ui.open` events and `debug_navigate` all end in `WindowState.na
 - R54: This request is turned into documentation in the repository's `docs` folder.
 - R128: A macOS notification, titled with the project identifier and the chat title and detailed by a Haiku summary, tells the user when a chat needs them or when Claude has finished replying; each Mac turns each kind and the summary off in Settings.
 - R134: In a Swift application project, Claude asks the user to choose a keyboard shortcut with `ask_shortcut`: suggestions show as key caps, the user can record another combination and sees when macOS or the app already uses the selected one, then picks one, answers another way or skips.
+- R147: The Dock icon of HephaestusV2 shows as its badge the number of chats waiting for answers or permission.
