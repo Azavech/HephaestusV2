@@ -166,7 +166,8 @@ private struct ProjectColumns: View {
         HSplitView {
             if state.sidebarVisible {
                 SidebarView(window: state, workspace: workspace, project: project)
-                    .frame(minWidth: 160, idealWidth: 200, maxWidth: 280, maxHeight: .infinity)
+                    .frame(minWidth: PaneWidths.Coordinator.minimumSidebarWidth, idealWidth: 200, maxWidth: 280,
+                           maxHeight: .infinity)
                     .background(SidebarCollapseByDragging(state: state))
             }
             CentreColumn(state: state, workspace: workspace, project: project)
@@ -292,6 +293,8 @@ private struct PaneWidths: NSViewRepresentable {
     @MainActor
     final class Coordinator {
         static let defaultSidebarWidth: CGFloat = 200
+        /// Wider than the toolbar's Run and Stop, and wide enough for Project Settings on one line.
+        static let minimumSidebarWidth: CGFloat = 190
 
         weak var state: WindowState?
         private weak var probe: NSView?
@@ -388,7 +391,7 @@ private struct PaneWidths: NSViewRepresentable {
         /// A divider dragged by the user: the new widths are kept, `inspectorWidth` persisted.
         private func resized(byUser: Bool) {
             guard byUser, !isApplying, let state, let panes = panes() else { return }
-            if let sidebar = panes.sidebar, sidebar.frame.width >= 160 {
+            if let sidebar = panes.sidebar, sidebar.frame.width >= Coordinator.minimumSidebarWidth {
                 sidebarWidth = sidebar.frame.width
             }
             if let inspector = panes.inspector, inspector.frame.width >= 300 {

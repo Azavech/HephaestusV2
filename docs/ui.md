@@ -63,13 +63,15 @@ The scene ids, the window titles and subtitles, the window sizes and the restora
 | Region         | Position                        | Size (points)                   | Content                                                               | Specified in                      |
 | -------------- | ------------------------------- | ------------------------------- | --------------------------------------------------------------------- | --------------------------------- |
 | Toolbar        | top, unified with the title bar | system height                   | Run, Stop, breadcrumb selector, Search, New Chat, Project Chat toggle | [Toolbar](#toolbar)               |
-| Sidebar        | left column                     | width 160 to 280, default 200   | the ten sections and the project footer                               | [Sidebar](#sidebar)               |
+| Sidebar        | left column                     | width 190 to 280, default 200   | the ten sections and the project footer                               | [Sidebar](#sidebar)               |
 | Content        | centre column                   | minimum width 540               | the selected section of the active project                            | the section's document            |
 | Console drawer | bottom of the centre column     | height default 220, minimum 120 | output of the active project's runs                                   | [Console drawer](#console-drawer) |
 | Inspector      | right column                    | width 300 to 600, default 380   | the project chat panel                                                | [Inspector](#inspector)           |
 | Status bar     | bottom, full window width       | height 26                       | device state, remotes, MCP port, chats, run, ladybug                  | [Status bar](#status-bar)         |
 
 The sizes are design-time values, except the 26-point status bar (Brief §9.1). Default chosen at design time.
+
+At its minimum width of 190 points, the sidebar is wider than the toolbar's leading items (Run, Stop), which end inside its width, and it holds the Project Settings row on one line.
 
 A main window opens with the sidebar at its default width and the inspector at `inspectorWidth` ([WindowState](#windowstate)), 380 in a new window. A pane shown again takes its width back: the inspector `inspectorWidth`, the sidebar its last width in this window, 200 at first. Only a divider dragged by the user changes these widths; the inspector's new width is then stored in `inspectorWidth`, while the sidebar's width is not persisted. Default chosen at design time.
 
@@ -132,6 +134,7 @@ The segment icons, the dot in the Device title, the 240-point truncation and the
 - When the active project's [type](projects.md#project-types) is `goService`, a second category heading, `Go Service`, follows the Project category. It has no rows yet. For the types `none` and `swiftApplication`, only the Project category is shown.
 - A category heading is a plain line of text in a small semibold font and the secondary colour, above its rows; it cannot be collapsed and cannot be selected.
 - The categories follow the active project's `type` in the workspace's `projects`: changing the type, which emits `project.updated` and `projects.changed` ([projects.update](engine-api.md#projectsupdate)), or switching to a project of another type adds or removes the Go Service heading at once, on This Mac and on remote devices. The `settings` row is pinned to the bottom of the sidebar, outside the categories, under the free space below them and directly above the footer; it is selected like the other rows.
+- The row titles, Project Settings included, stay on one line at every sidebar width.
 - The sidebar footer shows the active project's identifier.
 - View ▸ Hide Sidebar (⌃⌘S) or dragging the divider to the window edge collapses the sidebar; its visibility persists per window.
 
