@@ -256,4 +256,43 @@ struct WriteRuleTests {
             #expect(throws: ValidationError(field: "questions", message: message)) { try ModelRules.questions(questions) }
         }
     }
+
+    @Test("Rules of kind, recommended, minChoices and maxChoices (docs/workflow.md › Validation)")
+    func multipleChoiceRules() throws {
+        let options = ["x", "y", "z"].map { QuestionOption(label: $0) }
+        func question(_ kind: QuestionKind, _ recommended: [String], min: Int? = nil, max: Int? = nil) -> Question {
+            Question(label: "A", question: "Q?", kind: kind, options: options, recommended: recommended, minChoices: min, maxChoices: max)
+        }
+        // Accepted: a list of one label in a single question, several labels within the bounds.
+        try ModelRules.questions([question(.single, ["y"])])
+        try ModelRules.questions([question(.multiple, ["x"])])
+        try ModelRules.questions([question(.multiple, ["x", "z"], min: 2, max: 2)])
+        try ModelRules.questions([question(.multiple, ["x", "y", "z"], min: 1)])
+        let cases: [(Question, String)] = [
+            (question(.single, ["x"], max: 2), "Question A: minChoices and maxChoices need kind \"multiple\"."),
+            (question(.single, ["x"], min: 1), "Question A: minChoices and maxChoices need kind \"multiple\"."),
+            (question(.single, ["x", "y"]), "Question A: the recommended answer must be one of its option labels."),
+            (question(.single, []), "Question A: the recommended answer must be one of its option labels."),
+            (question(.multiple, []), "Question A: the recommended answers must be distinct option labels, at least one."),
+            (question(.multiple, ["x", "x"]), "Question A: the recommended answers must be distinct option labels, at least one."),
+            (question(.multiple, ["x", "w"]), "Question A: the recommended answers must be distinct option labels, at least one."),
+            (question(.multiple, ["x"], min: 0), "Question A: minChoices and maxChoices must be at least 1."),
+            (question(.multiple, ["x"], max: 0), "Question A: minChoices and maxChoices must be at least 1."),
+            (question(.multiple, ["x"], min: 3, max: 2), "Question A: minChoices must be at most maxChoices."),
+            (question(.multiple, ["x"], min: 2, max: 1), "Question A: minChoices must be at most maxChoices."),
+            (question(.multiple, ["x", "y", "z"], max: 2), "Question A recommends more options than maxChoices."),
+        ]
+        for (question, message) in cases {
+            #expect(throws: ValidationError(field: "questions", message: message)) { try ModelRules.questions([question]) }
+        }
+    }
+
+    @Test("The answer of a multiple question: one line \"- <choice>\" per choice")
+    func multipleAnswers() {
+        #expect(ModelRules.multipleAnswer(["Option 1", "My own text"]) == "- Option 1\n- My own text")
+        #expect(ModelRules.multipleChoices(in: "- Option 1\n- My own text") == ["Option 1", "My own text"])
+        #expect(ModelRules.multipleChoices(in: "Option 1") == nil)
+        #expect(ModelRules.multipleChoices(in: "- Option 1\n-   ") == nil)
+        #expect(ModelRules.multipleChoices(in: "- Option 1\n\n- Option 2") == nil)
+    }
 }

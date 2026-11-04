@@ -79,6 +79,12 @@ struct QuestionKey: Hashable {
     var label: String
 }
 
+/// A one-line field of `Answer another way` of a `multiple` question.
+struct QuestionField: Identifiable, Hashable {
+    var id = UUID()
+    var text: String
+}
+
 @MainActor @Observable
 final class ChatViewModel {
     let workspace: DeviceWorkspace
@@ -122,6 +128,10 @@ final class ChatViewModel {
     var questionKey: QuestionKey?
     var questionChoice: QuestionChoice = .other
     var questionOther = ""
+    /// The checked options of a `multiple` question.
+    var questionChecked: Set<String> = []
+    /// The fields of `Answer another way` of a `multiple` question; the last one is empty.
+    var questionFields = [QuestionField(text: "")]
     var isSubmittingAnswer = false
     /// The symbol request the symbol card shows, with its selection, field and search.
     var symbolRequestID: UUID?
@@ -520,7 +530,33 @@ final class ChatViewModel {
     /// stored answer, else the recommended option with an empty field.
     func questionShown(_ set: QuestionsItem, _ question: Question) {
         questionKey = QuestionKey(setID: set.questionSetID, label: question.label)
-        (questionChoice, questionOther) = QuestionNavigation.selection(question, answer: set.answers[question.label])
+        let answer = set.answers[question.label]
+        if question.kind == .multiple {
+            let (checked, texts) = QuestionNavigation.multipleSelection(question, answer: answer)
+            questionChecked = checked
+            questionFields = texts.map { QuestionField(text: $0) }
+        } else {
+            (questionChoice, questionOther) = QuestionNavigation.selection(question, answer: answer)
+        }
+    }
+
+    /// A click on an option row of a `multiple` question: checks or unchecks the option.
+    func toggleQuestionOption(_ label: String) {
+        if questionChecked.contains(label) {
+            questionChecked.remove(label)
+        } else {
+            questionChecked.insert(label)
+        }
+    }
+
+    /// The question the card displays now, if a set waits for answers.
+    private var currentQuestion: Question? {
+        transcriptState?.incompleteQuestionSet.flatMap { displayedQuestion($0) }
+    }
+
+    /// The choices of the displayed `multiple` question: the checked options, then the fields.
+    private func multipleChoices(_ question: Question) -> [String] {
+        QuestionNavigation.multipleChoices(question, checked: questionChecked, texts: questionFields.map(\.text))
     }
 
     /// The previous or next arrow: the neighbouring question of the set, in label order.
@@ -530,15 +566,24 @@ final class ChatViewModel {
     }
 
     /// The answer the card submits: the selected option's label, or the field's text.
+    /// For a `multiple` question, one line `- <choice>` per choice.
     var questionAnswer: String {
+        if let question = currentQuestion, question.kind == .multiple {
+            return ModelRules.multipleAnswer(multipleChoices(question))
+        }
         switch questionChoice {
         case .option(let label): return label
         case .other: return questionOther.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
 
+    /// A `multiple` question needs a number of choices between its minimum and its maximum.
     var canSubmitAnswer: Bool {
-        !questionAnswer.isEmpty && !isSubmittingAnswer
+        guard !isSubmittingAnswer else { return false }
+        if let question = currentQuestion, question.kind == .multiple {
+            return QuestionNavigation.acceptsChoiceCount(question, multipleChoices(question).count)
+        }
+        return !questionAnswer.isEmpty
     }
 
     /// Submit: `chats.answerQuestion` for the displayed question with the selected answer.

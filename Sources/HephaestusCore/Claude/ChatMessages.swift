@@ -134,9 +134,16 @@ extension Engine {
         return lines.joined(separator: "\n")
     }
 
-    /// docs/chats.md › Answering: `Answers:`, then `<label>: <answer>` per question in label order.
+    /// docs/chats.md › Answering: `Answers:`, then `<label>: <answer>` per question in label order;
+    /// an answered `multiple` question reads `<label>:` followed by its lines `- <choice>`.
     static func answersMessage(_ set: QuestionsItem) -> String {
-        (["Answers:"] + set.questions.map { "\($0.label): \(set.answers[$0.label] ?? "")" }).joined(separator: "\n")
+        (["Answers:"] + set.questions.map { question in
+            let answer = set.answers[question.label] ?? ""
+            if question.kind == .multiple, answer != ModelRules.skippedAnswer {
+                return "\(question.label):\n\(answer)"
+            }
+            return "\(question.label): \(answer)"
+        }).joined(separator: "\n")
     }
 
     /// docs/chats.md › Answering a symbol request: `Symbol: <answer>`.

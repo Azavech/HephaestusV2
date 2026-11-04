@@ -1150,12 +1150,12 @@ Swift type `ChatsPostQuestions` · actors: claude (the chat's own Claude only) �
 
 Called by the MCP tool `ask_questions`, which fills `chatID` from its token. The questions protocol is in [Workflow](workflow.md#questions-protocol) and its UI in [Chats](chats.md#questions).
 
-| Param     | Type       | Required | Description                                                                                                                                                                                                                                                                                                                                             |
-| --------- | ---------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| chatID    | ChatID     | yes      | Chat id; must be the actor's chatID.                                                                                                                                                                                                                                                                                                                    |
-| questions | [Question] | yes      | 1–26 questions labelled `A`, `B`, `C` and so on, in order; each has non-empty text, 2 to 10 options whose labels are non-empty single lines of at most 200 characters, distinct ignoring case, and `recommended` equal to the label of one of its options ([Data model](data-model.md#questions-item), messages in [Workflow](workflow.md#validation)). |
+| Param     | Type       | Required | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| --------- | ---------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| chatID    | ChatID     | yes      | Chat id; must be the actor's chatID.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| questions | [Question] | yes      | 1–26 questions labelled `A`, `B`, `C` and so on, in order; each has non-empty text, a `kind`, `single` when absent, 2 to 10 options whose labels are non-empty single lines of at most 200 characters, distinct ignoring case, and `recommended`: one label or a list of labels. A `single` question recommends exactly one of its options; a `multiple` question recommends one or more distinct options, at most `maxChoices`, and only it has `minChoices` and `maxChoices`, each at least 1, `minChoices` at most `maxChoices` ([Data model](data-model.md#questions-item), messages in [Workflow](workflow.md#validation)). |
 
-Moves each question's recommended option to the first place of its `options`, the other options keeping their relative order ([Chats](chats.md#posting-questions)), then creates a question set (new UUID, no answers, not completed) and adds a `questions` item. The stored item and the returned QuestionSet have the options in this order. When the turn ends, the chat's state becomes `waitingAnswers`.
+Moves each question's recommended options to the first places of its `options`, in their order among the options, the other options keeping their relative order, and stores `recommended` as one label in a `single` question and as a list in a `multiple` one ([Chats](chats.md#posting-questions)), then creates a question set (new UUID, no answers, not completed) and adds a `questions` item. The stored item and the returned QuestionSet have the options in this order. When the turn ends, the chat's state becomes `waitingAnswers`.
 
 | Error     | When                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1170,22 +1170,22 @@ Events: chat.item, chat.updated.
 
 Swift type `ChatsAnswerQuestion` · actors: user · result: [Empty](#empty)
 
-| Param         | Type   | Required | Description                                                 |
-| ------------- | ------ | -------- | ----------------------------------------------------------- |
-| chatID        | ChatID | yes      | Chat id.                                                    |
-| questionSetID | UUID   | yes      | Question set id.                                            |
-| label         | String | yes      | Label of a question of the set.                             |
-| answer        | String | yes      | The chosen option's label or free text; trimmed; not empty. |
+| Param         | Type   | Required | Description                                                                                                                            |
+| ------------- | ------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| chatID        | ChatID | yes      | Chat id.                                                                                                                               |
+| questionSetID | UUID   | yes      | Question set id.                                                                                                                       |
+| label         | String | yes      | Label of a question of the set.                                                                                                        |
+| answer        | String | yes      | The chosen option's label or free text; trimmed; not empty. For a `multiple` question, one line `- <choice>` per choice, or `Skipped`. |
 
-- `label` is the label of any question of the set: the questions are answered in any order, and an answer to a question that already has one replaces it ([Chats](chats.md#answering)). Another label fails with `invalid` (`label: no question of the set has this label.`); this message is a default chosen at design time. `answer` is trimmed and has 1 to 10,000 characters; the answer `Skipped` marks a skipped question.
-- When every question of the set has an answer, skipped questions included, the set becomes completed and the engine sends one user message, by the rules of `chats.send`, with `sender` the name of the actor's device: `Answers:` followed by one line `<label>: <answer>` per question in label order, lines separated by `\n`. During a turn it is written to the Claude process at once and the CLI runs it after that turn, as for `chats.send` ([Chats](chats.md#answering)).
+- `label` is the label of any question of the set: the questions are answered in any order, and an answer to a question that already has one replaces it ([Chats](chats.md#answering)). Another label fails with `invalid` (`label: no question of the set has this label.`); this message is a default chosen at design time. `answer` is trimmed and has 1 to 10,000 characters; the answer `Skipped` marks a skipped question. For a `multiple` question, `answer` is `Skipped` or one line `- <choice>` per choice, lines separated by `\n`, each choice not empty after trimming, the checked option labels in option order then the user's own texts; its number of lines is at least `minChoices`, 1 when absent, and at most `maxChoices` when present ([Chats](chats.md#answering)).
+- When every question of the set has an answer, skipped questions included, the set becomes completed and the engine sends one user message, by the rules of `chats.send`, with `sender` the name of the actor's device: `Answers:` followed by one line `<label>: <answer>` per question in label order, lines separated by `\n`; an answered `multiple` question reads `<label>:` followed by its lines `- <choice>`. During a turn it is written to the Claude process at once and the CLI runs it after that turn, as for `chats.send` ([Chats](chats.md#answering)).
 
-| Error       | When                                                                                                                                                                                                                               |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| invalid     | chatID or questionSetID is not a UUID; label is not a label of the set (`label: no question of the set has this label.`); answer is empty or longer than 10,000 characters after trimming (`answer: use 1 to 10,000 characters.`). |
-| notFound    | No such chat; no question set with this id in it.                                                                                                                                                                                  |
-| conflict    | The set is already completed (`These questions were already answered.`).                                                                                                                                                           |
-| unavailable | The answer completes the set and the Claude CLI is not available; nothing is stored.                                                                                                                                               |
+| Error       | When                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid     | chatID or questionSetID is not a UUID; label is not a label of the set (`label: no question of the set has this label.`); answer is empty or longer than 10,000 characters after trimming (`answer: use 1 to 10,000 characters.`); the answer of a `multiple` question is neither `Skipped` nor lines `- <choice>` (`answer: write one line "- <choice>" per choice, or Skipped.`), or has fewer lines than `minChoices` or more than `maxChoices` (`answer: the number of choices must be between minChoices and maxChoices.`). |
+| notFound    | No such chat; no question set with this id in it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| conflict    | The set is already completed (`These questions were already answered.`).                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| unavailable | The answer completes the set and the Claude CLI is not available; nothing is stored.                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 Events: chat.item (the `questions` item); when the set is completed, chat.item (the user message) and chat.updated.
 
@@ -2969,7 +2969,10 @@ String enum, the `state` of a ChatMeta in the API. Declared in `API/APITypes.swi
   "questionSetID": "5B8E0C3A-6D1F-4A2B-9C7E-1F2A3B4C5D6E",
   "questions": [
     {
+      "kind": "single",
       "label": "A",
+      "maxChoices": null,
+      "minChoices": null,
       "options": [
         {"description": "One file, no server.", "label": "SQLite"},
         {"description": null, "label": "YAML files"}
@@ -2978,13 +2981,17 @@ String enum, the `state` of a ChatMeta in the API. Declared in `API/APITypes.swi
       "recommended": "SQLite"
     },
     {
+      "kind": "multiple",
       "label": "B",
+      "maxChoices": 2,
+      "minChoices": null,
       "options": [
-        {"description": null, "label": "1 day"},
-        {"description": null, "label": "1 hour"}
+        {"description": null, "label": "Chat transcripts"},
+        {"description": null, "label": "Search results"},
+        {"description": null, "label": "Plan usage"}
       ],
-      "question": "How long should cache entries live?",
-      "recommended": "1 day"
+      "question": "What should the cache keep?",
+      "recommended": ["Chat transcripts", "Search results"]
     }
   ]
 }
@@ -3525,3 +3532,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R141: A ticket's history also records each link added or removed and each change of its description, with its author and date.
 - R145: A chat started to implement a ticket asks the user no question until the user writes in it: it makes the choices itself, marks them in the docs and lists them, with the decisions it took, in its completion comment; the engine refuses its questions.
 - R150: Claude shows the user images in the chat with `show_image`: PNG, JPEG, GIF and WebP files are copied into the chat and shown, with an optional caption, at the place of the call, without a permission prompt, in local and remote windows; clicking one opens the image viewer.
+- R151: Claude can ask multiple-choice questions: the user checks options within the minimum and maximum Claude sets and adds own answers.

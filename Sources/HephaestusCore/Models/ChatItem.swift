@@ -463,32 +463,78 @@ public struct Question: Codable, Sendable, Hashable {
     public var label: String
     /// Non-empty Markdown text.
     public var question: String
+    /// `single` when the key is absent.
+    public var kind: QuestionKind
     public var options: [QuestionOption]
-    /// The `label` of exactly one option.
-    public var recommended: String
+    /// The labels of the recommended options: exactly one in a `single` question, written as a
+    /// string; one or more in a `multiple` question, written as a list.
+    public var recommended: [String]
+    /// Only in a `multiple` question; nil means 1.
+    public var minChoices: Int?
+    /// Only in a `multiple` question; nil means no maximum.
+    public var maxChoices: Int?
 
+    /// A `single` question.
     public init(label: String, question: String, options: [QuestionOption], recommended: String) {
+        self.init(label: label, question: question, kind: .single, options: options, recommended: [recommended])
+    }
+
+    public init(label: String, question: String, kind: QuestionKind, options: [QuestionOption], recommended: [String],
+                minChoices: Int? = nil, maxChoices: Int? = nil) {
         self.label = label
         self.question = question
+        self.kind = kind
         self.options = options
         self.recommended = recommended
+        self.minChoices = minChoices
+        self.maxChoices = maxChoices
     }
+
+    /// The fewest choices of a `multiple` question.
+    public var fewestChoices: Int { minChoices ?? 1 }
 
     public init(from decoder: Decoder) throws {
         let c = try ModelDecodingContainer(decoder)
         label = try c.required("label")
         question = try c.required("question")
+        kind = try c.value("kind", default: .single)
         options = try c.required("options")
-        recommended = try c.required("recommended")
+        // One label or a list of labels, in either kind (docs/mcp.md › ask_questions).
+        if let one = try? c.required("recommended", String.self) {
+            recommended = [one]
+        } else {
+            do {
+                recommended = try c.required("recommended", [String].self)
+            } catch DecodingError.typeMismatch {
+                throw c.invalid("recommended", "must be a string or a list of strings")
+            }
+        }
+        minChoices = try c.optional("minChoices")
+        maxChoices = try c.optional("maxChoices")
     }
 
     public func encode(to encoder: Encoder) throws {
         var c = ModelEncodingContainer(encoder)
         try c.encode(label, "label")
         try c.encode(question, "question")
+        try c.encode(kind, "kind")
         try c.encode(options, "options")
-        try c.encode(recommended, "recommended")
+        if kind == .single, recommended.count == 1 {
+            try c.encode(recommended[0], "recommended")
+        } else {
+            try c.encode(recommended, "recommended")
+        }
+        try c.encodeOptional(minChoices, "minChoices")
+        try c.encodeOptional(maxChoices, "maxChoices")
     }
+}
+
+/// The kind of a question (docs/data-model.md › Questions item).
+public enum QuestionKind: String, Codable, Sendable, Hashable, CaseIterable {
+    /// The user chooses one option.
+    case single
+    /// The user checks every option that applies and can add own answers.
+    case multiple
 }
 
 /// One option of a question.

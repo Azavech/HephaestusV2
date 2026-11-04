@@ -396,6 +396,29 @@ struct ModelCodingTests {
         #expect(encoded.objectValue?["type"] == "images")
     }
 
+    @Test("A question without kind is single, its recommended a string; a multiple one writes a list (docs/data-model.md › Questions item)")
+    func questionKinds() throws {
+        let old = #"{"label":"A","question":"Which?","options":[{"label":"x","description":null},{"label":"y","description":null}],"recommended":"x"}"#
+        let single = try StorageJSON.decoder().decode(Question.self, from: Data(old.utf8))
+        #expect(single.kind == .single && single.recommended == ["x"] && single.minChoices == nil && single.maxChoices == nil)
+        let encodedSingle = try JSONDecoder().decode(JSONValue.self, from: StorageJSON.lineEncoder().encode(single)).objectValue
+        #expect(encodedSingle?["kind"] == .string("single") && encodedSingle?["recommended"] == .string("x"))
+
+        let line = #"{"label":"A","question":"Which?","kind":"multiple","options":[{"label":"x"},{"label":"y"},{"label":"z"}],"recommended":["x","y"],"maxChoices":3}"#
+        let multiple = try StorageJSON.decoder().decode(Question.self, from: Data(line.utf8))
+        #expect(multiple.kind == .multiple && multiple.recommended == ["x", "y"] && multiple.minChoices == nil && multiple.maxChoices == 3)
+        let data = try StorageJSON.lineEncoder().encode(multiple)
+        #expect(try StorageJSON.decoder().decode(Question.self, from: data) == multiple)
+        let encoded = try JSONDecoder().decode(JSONValue.self, from: data).objectValue
+        #expect(encoded?["recommended"] == .array([.string("x"), .string("y")]) && encoded?["minChoices"] == .null)
+
+        // A lone label in a multiple question reads as a list of one label.
+        let lone = #"{"label":"A","question":"Which?","kind":"multiple","options":[{"label":"x"},{"label":"y"}],"recommended":"y"}"#
+        #expect(try StorageJSON.decoder().decode(Question.self, from: Data(lone.utf8)).recommended == ["y"])
+        let number = #"{"label":"A","question":"Which?","options":[{"label":"x"},{"label":"y"}],"recommended":1}"#
+        #expect(throws: DecodingError.self) { try StorageJSON.decoder().decode(Question.self, from: Data(number.utf8)) }
+    }
+
     @Test("The symbol item of docs/data-model.md › Symbol item: answer null until the user answers")
     func symbolItem() throws {
         let line = #"{"type":"symbol","id":"6C9D1E2F-3A4B-4C5D-8E6F-7A8B9C0D1E2F","created":"2026-11-01T14:20:01Z","requestID":"6C9D1E2F-3A4B-4C5D-8E6F-7A8B9C0D1E2F","question":"Which icon should the filter button use?","suggestions":["line.3.horizontal.decrease.circle","line.3.horizontal.decrease","slider.horizontal.3"],"recommended":"line.3.horizontal.decrease.circle","answer":"![](sf:line.3.horizontal.decrease.circle)"}"#

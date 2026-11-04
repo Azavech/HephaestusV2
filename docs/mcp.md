@@ -1412,7 +1412,7 @@ Input schema:
 
 ### ask_questions
 
-- **Engine call:** chats.postQuestions with `chatID` = the calling chat and `questions` as given ([Engine API](engine-api.md#chatspostquestions)). The engine stores and returns each question with its recommended option moved to the first place of `options`, the other options keeping their relative order.
+- **Engine call:** chats.postQuestions with `chatID` = the calling chat and `questions` as given ([Engine API](engine-api.md#chatspostquestions)). The engine stores and returns each question with its recommended options moved to the first places of `options`, in their order among the options, the other options keeping their relative order.
 - **Availability:** chat tokens only. With the external token the call fails before argument validation with `Only the chat's own Claude can ask questions.`, the message of chats.postQuestions for that case. The tool is listed for every token. Default chosen at design time.
 - **Result:** plain text, not JSON ([Text returned to Claude](#text-returned-to-claude)).
 - **Errors:**
@@ -1424,7 +1424,7 @@ Input schema:
 Description:
 
 ```text
-Ask the user about anything unknown instead of guessing. Give 1 to 26 questions labelled A, B, C… in order; each has the question, 2 to 10 options with distinct labels, and the label of the recommended option. The user can also answer in their own words. The app shows the questions one at a time. This tool returns immediately: end your turn after calling it. The answers arrive in the next user message: "Answers:" followed by one line "<label>: <answer>" per question. Only available in chats started by HephaestusV2.
+Ask the user about anything unknown instead of guessing. Give 1 to 26 questions labelled A, B, C… in order; each has the question, 2 to 10 options with distinct labels, and the label of the recommended option. When several options of a question can apply at once, give it kind "multiple": the user checks every option that applies, recommended is the list of the labels of the options you recommend, and minChoices and maxChoices bound the number of choices. The user can also answer in their own words. The app shows the questions one at a time. This tool returns immediately: end your turn after calling it. The answers arrive in the next user message: "Answers:" followed by one line "<label>: <answer>" per question; a multiple question reads "<label>:" followed by one line "- <choice>" per choice. Only available in chats started by HephaestusV2.
 ```
 
 Input schema:
@@ -1447,6 +1447,11 @@ Input schema:
             "type": "string",
             "description": "The question."
           },
+          "kind": {
+            "type": "string",
+            "enum": ["single", "multiple"],
+            "description": "single (when absent): the user chooses one option. multiple: the user checks every option that applies and can add own answers; use it when several options can apply at once."
+          },
           "options": {
             "type": "array",
             "description": "2 to 10 possible answers with distinct labels; the user can also answer another way.",
@@ -1467,8 +1472,17 @@ Input schema:
             }
           },
           "recommended": {
-            "type": "string",
-            "description": "The label of the recommended option, copied exactly."
+            "description": "single: the label of the recommended option, copied exactly. multiple: the list of the labels of the recommended options, copied exactly."
+          },
+          "minChoices": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "multiple only: the fewest choices the user makes, checked options and own answers together; 1 when absent."
+          },
+          "maxChoices": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "multiple only: the most choices the user makes, checked options and own answers together; no maximum when absent."
           }
         },
         "required": ["label", "question", "options", "recommended"],
@@ -1481,19 +1495,23 @@ Input schema:
 }
 ```
 
+`recommended` has no `type`, so the input schema accepts a string or a list there; chats.postQuestions reads a string as one label and a list of strings as labels ([Engine API](engine-api.md#chatspostquestions)).
+
 #### Question rules
 
 The input schema checks only the shape of `questions`. chats.postQuestions checks the rules below and refuses the whole set with `invalid` when one fails, so nothing is shown to the user; [Data model](data-model.md#questions-item) gives the length limits of the texts, and the messages are in [Workflow](workflow.md#validation).
 
-| Rule                | Detail                                                                                                                                               |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Number of questions | 1 to 26.                                                                                                                                             |
-| Labels              | Question n, counting from 1, has the n-th letter as label: A, B, C… in order, starting at A in every call, so labels are unique.                     |
-| Question text       | Not empty after trimming.                                                                                                                            |
-| Options             | 2 to 10 per question, each label not empty after trimming and one line of at most 200 characters, labels distinct within the question ignoring case. |
-| Recommended option  | `recommended` equals the label of one of the question's options.                                                                                     |
+| Rule                | Detail                                                                                                                                                                                                                                                                     |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Number of questions | 1 to 26.                                                                                                                                                                                                                                                                   |
+| Labels              | Question n, counting from 1, has the n-th letter as label: A, B, C… in order, starting at A in every call, so labels are unique.                                                                                                                                           |
+| Question text       | Not empty after trimming.                                                                                                                                                                                                                                                  |
+| Options             | 2 to 10 per question, each label not empty after trimming and one line of at most 200 characters, labels distinct within the question ignoring case.                                                                                                                       |
+| Kind                | `kind` is `single` or `multiple`; a question without `kind` is `single`.                                                                                                                                                                                                   |
+| Recommended option  | A `single` question: `recommended` is one label, or a list of one label, equal to the label of one of the question's options. A `multiple` question: `recommended` is one label or a list of at least one distinct label, each the label of one of the question's options. |
+| Number of choices   | `minChoices` and `maxChoices` only on a `multiple` question, each at least 1; `minChoices`, 1 when absent, at most `maxChoices`; at most `maxChoices` recommended labels. Without `maxChoices` there is no maximum.                                                        |
 
-As option labels are distinct and `recommended` equals one of them, every question has exactly one recommended option.
+As option labels are distinct, every `single` question has exactly one recommended option and every `multiple` question at least one.
 
 #### Text returned to Claude
 
@@ -1507,11 +1525,22 @@ Claude then ends its turn ([Workflow](workflow.md#asking)).
 
 #### Answers
 
-The app shows the questions one at a time, the recommended option listed first, marked `Recommended` and preselected, with a free-text field `Answer another way` and a Skip button ([Chats](chats.md#pinned-questions-card)). The user answers them one by one, in any order, and can change an answer until every question has one (chats.answerQuestion). When every question has an answer, the engine sends Claude one user message: `Answers:`, then one line `<label>: <answer>` per question in label order, `<answer>` being the label of the chosen option, the text the user typed, or `Skipped` for a skipped question ([Workflow](workflow.md#answers-message)). For example:
+The app shows the questions one at a time, the recommended option listed first, marked `Recommended` and preselected, with a free-text field `Answer another way` and a Skip button; a `multiple` question shows checkboxes, its recommended options listed first, marked and checked, and one-line fields for own answers ([Chats](chats.md#pinned-questions-card)). The user answers them one by one, in any order, and can change an answer until every question has one (chats.answerQuestion). When every question has an answer, the engine sends Claude one user message: `Answers:`, then one line `<label>: <answer>` per question in label order, `<answer>` being the label of the chosen option, the text the user typed, or `Skipped` for a skipped question ([Workflow](workflow.md#answers-message)). For example:
 
 ```text
 Answers:
 A: Use YAML files
+B: Skipped
+```
+
+An answered `multiple` question reads `<label>:` followed by one line `- <choice>` per choice: the labels of the checked options in option order, then the user's own texts. For example:
+
+```text
+Answers:
+A:
+- Status bar
+- About window
+- In the window title too
 B: Skipped
 ```
 
@@ -3152,3 +3181,4 @@ Unauthorized: missing or invalid bearer token.
 - R140: A comment that mentions `@Claude` gets an answer from Claude as a new comment, made by a one-shot call without a chat; typing `@` in the comment composer suggests Claude, mentions are highlighted, Claude may change the ticket's title, description, links and status, a row shows while Claude replies and offers Retry when it could not, and the answers count in the project's costs.
 - R145: A chat started to implement a ticket asks the user no question until the user writes in it: it makes the choices itself, marks them in the docs and lists them, with the decisions it took, in its completion comment; the engine refuses its questions.
 - R150: Claude shows the user images in the chat with `show_image`: PNG, JPEG, GIF and WebP files are copied into the chat and shown, with an optional caption, at the place of the call, without a permission prompt, in local and remote windows; clicking one opens the image viewer.
+- R151: Claude can ask multiple-choice questions: the user checks options within the minimum and maximum Claude sets and adds own answers.

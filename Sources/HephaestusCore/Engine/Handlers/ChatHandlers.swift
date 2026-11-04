@@ -499,14 +499,16 @@ extension Engine {
         try ActorRules.requireQuestionsAllowed(domain.chat(params.chatID), actor)
         try Engine.validated { try ModelRules.questions(params.questions) }
         let questions = params.questions.map { question in
-            let recommended = question.recommended.trimmingCharacters(in: .whitespacesAndNewlines)
+            let recommended = Set(question.recommended.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) })
             let options = question.options.map {
                 QuestionOption(label: $0.label.trimmingCharacters(in: .whitespacesAndNewlines), description: $0.description)
             }
-            // The recommended option goes first; the others keep their relative order.
-            let first = options.filter { $0.label == recommended }
-            return Question(label: question.label, question: ModelRules.normalizedLineBreaks(question.question),
-                            options: first + options.filter { $0.label != recommended }, recommended: recommended)
+            // The recommended options go first, in their order among the options; the others keep
+            // their relative order.
+            let first = options.filter { recommended.contains($0.label) }
+            return Question(label: question.label, question: ModelRules.normalizedLineBreaks(question.question), kind: question.kind,
+                            options: first + options.filter { !recommended.contains($0.label) }, recommended: first.map(\.label),
+                            minChoices: question.minChoices, maxChoices: question.maxChoices)
         }
         _ = try requireChat(params.chatID)
         try ensureChatScanned(params.chatID)
@@ -535,8 +537,16 @@ extension Engine {
                 throw EngineError(.conflict, "These questions were already answered.")
             }
             // Any label, in any order; an answer given again replaces the earlier one.
-            guard set.questions.contains(where: { $0.label == params.label }) else {
+            guard let question = set.questions.first(where: { $0.label == params.label }) else {
                 throw EngineError.invalid("label", "no question of the set has this label")
+            }
+            if question.kind == .multiple, answer != ModelRules.skippedAnswer {
+                guard let choices = ModelRules.multipleChoices(in: answer) else {
+                    throw EngineError.invalid("answer", "write one line \"- <choice>\" per choice, or Skipped")
+                }
+                guard choices.count >= question.fewestChoices, choices.count <= question.maxChoices ?? .max else {
+                    throw EngineError.invalid("answer", "the number of choices must be between minChoices and maxChoices")
+                }
             }
             let remaining = set.questions.filter { $0.label != params.label && set.answers[$0.label] == nil }
             return (set, remaining.isEmpty)

@@ -564,6 +564,17 @@ struct PromptAndNamingTests {
         #expect(Engine.answersMessage(set) == "Answers:\nA: Do nothing and beep\nB: two\nlines")
     }
 
+    @Test("A multiple answer reads <label>: then one line per checked option and per text; a skipped one reads <label>: Skipped")
+    func multipleAnswersMessage() {
+        let options = [QuestionOption(label: "Option 1"), QuestionOption(label: "Option 2")]
+        let set = QuestionsItem(id: "Q", created: Date(), questionSetID: UUID(), questions: [
+            Question(label: "A", question: "q", kind: .multiple, options: options, recommended: ["Option 1"]),
+            Question(label: "B", question: "q", kind: .multiple, options: options, recommended: ["Option 2"]),
+            Question(label: "C", question: "q", options: options, recommended: "Option 1"),
+        ], answers: ["A": "- Option 1\n- My own text", "B": "Skipped", "C": "Option 2"], completed: true)
+        #expect(Engine.answersMessage(set) == "Answers:\nA:\n- Option 1\n- My own text\nB: Skipped\nC: Option 2")
+    }
+
     @Test("At most 2 naming calls run at once; the others wait in first-in first-out order")
     func namingQueue() async {
         let queue = NamingQueue(limit: 2)

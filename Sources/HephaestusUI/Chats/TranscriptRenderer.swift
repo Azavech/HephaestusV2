@@ -333,13 +333,19 @@ enum TranscriptRenderer {
                 if let description = option.description, !description.isEmpty {
                     line += " — " + description
                 }
-                if option.label == question.recommended {
+                if question.recommended.contains(option.label) {
                     line += " (recommended)"
                 }
                 html += "<li>\(symbolText(line, context: context))</li>"
             }
             html += "</ul>"
-            if let answer = set.answers[question.label] {
+            if let answer = set.answers[question.label], question.kind == .multiple, answer != ModelRules.skippedAnswer {
+                // `Answer:` alone on its line, then one line `- <choice>` per choice.
+                html += "<div class=\"answer\">Answer:</div>"
+                for line in answer.components(separatedBy: "\n") {
+                    html += "<div class=\"answer\">\(symbolText(line, context: context))</div>"
+                }
+            } else if let answer = set.answers[question.label] {
                 html += "<div class=\"answer\">\(symbolText("Answer: " + answer, context: context))</div>"
             } else {
                 html += "<div class=\"answer pending\">Not answered yet</div>"

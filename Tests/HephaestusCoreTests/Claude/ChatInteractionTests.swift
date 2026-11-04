@@ -393,6 +393,42 @@ struct ChatInteractionTests {
         }
     }
 
+    @Test("Multiple-choice questions: recommended options first, answers checked against the bounds, then the Answers message")
+    func multipleChoiceQuestions() async throws {
+        try await withChatEngine { bed in
+            let chat = try await bed.createChat(message: "Plan")
+            #expect(await bed.waitForState(chat.id, .idle))
+            let multiple = Question(label: "A", question: "Where should the build number appear?", kind: .multiple,
+                                    options: [QuestionOption(label: "Status bar"), QuestionOption(label: "About window"),
+                                              QuestionOption(label: "Window title")],
+                                    recommended: ["Window title", "Status bar"], maxChoices: 3)
+            let single = Question(label: "B", question: "Which format?", options: [QuestionOption(label: "v0.4.0(57)"),
+                                                                                    QuestionOption(label: "57")],
+                                  recommended: "57")
+            let set = try await bed.engine.call(ChatsPostQuestions.self, .init(chatID: chat.id, questions: [multiple, single]),
+                                                actor: .claude(chatID: chat.id.uuidString))
+            #expect(set.questions[0].options.map(\.label) == ["Status bar", "Window title", "About window"])
+            #expect(set.questions[0].recommended == ["Status bar", "Window title"])
+            #expect(set.questions[0].kind == .multiple && set.questions[0].maxChoices == 3)
+            #expect(set.questions[1].kind == .single && set.questions[1].options.map(\.label) == ["57", "v0.4.0(57)"])
+            #expect(await bed.waitForState(chat.id, .waitingAnswers))
+            func answer(_ label: String, _ text: String) async throws {
+                _ = try await bed.connection.call(ChatsAnswerQuestion.self, .init(chatID: chat.id, questionSetID: set.questionSetID,
+                                                                                 label: label, answer: text))
+            }
+            #expect(await engineError { try await answer("A", "Status bar") }
+                == EngineError(.invalid, "answer: write one line \"- <choice>\" per choice, or Skipped."))
+            #expect(await engineError { try await answer("A", "- Status bar\n- About window\n- Window title\n- Dock") }
+                == EngineError(.invalid, "answer: the number of choices must be between minChoices and maxChoices."))
+            try await answer("A", "Skipped")
+            try await answer("A", "- Status bar\n- Window title\n- In the menu bar too")
+            try await answer("B", "v0.4.0(57)")
+            let process = try #require(await bed.launcher.chatProcess())
+            let line = await process.line { $0.contains("Answers:") }
+            #expect(line?.contains(#""text":"Answers:\nA:\n- Status bar\n- Window title\n- In the menu bar too\nB: v0.4.0(57)""#) == true)
+        }
+    }
+
     @Test("Questions: the recommended option is stored and returned first, the others in their order")
     func recommendedFirst() async throws {
         try await withChatEngine { bed in
@@ -407,7 +443,7 @@ struct ChatInteractionTests {
             let expected = [QuestionOption(label: "Rust", description: "Entry API."), QuestionOption(label: "Java"),
                             QuestionOption(label: "Go"), QuestionOption(label: "None")]
             #expect(set.questions[0].options == expected)
-            #expect(set.questions[0].recommended == "Rust")
+            #expect(set.questions[0].recommended == ["Rust"])
             let stored = try await bed.transcript(chat.id).compactMap { item -> QuestionsItem? in
                 if case .questions(let questions) = item { return questions }
                 return nil

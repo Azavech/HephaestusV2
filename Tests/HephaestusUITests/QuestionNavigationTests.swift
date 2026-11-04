@@ -56,6 +56,56 @@ struct QuestionNavigationTests {
         #expect(QuestionNavigation.selection(question, answer: "Only on Mondays") == (.other, "Only on Mondays"))
         #expect(QuestionNavigation.selection(question, answer: QuestionNavigation.skipped) == (.other, "Skipped"))
     }
+
+    func multiple(min: Int? = nil, max: Int? = nil) -> Question {
+        Question(label: "A", question: "Which?", kind: .multiple,
+                 options: ["Option 1", "Option 2", "Option 3"].map { QuestionOption(label: $0) },
+                 recommended: ["Option 1", "Option 2"], minChoices: min, maxChoices: max)
+    }
+
+    @Test("A multiple question reads Choose <min> to <max>, Choose <n> or Choose at least <min>")
+    func choiceCountText() {
+        #expect(QuestionNavigation.choiceCountText(multiple(max: 3)) == "Choose 1 to 3")
+        #expect(QuestionNavigation.choiceCountText(multiple(min: 2, max: 2)) == "Choose 2")
+        #expect(QuestionNavigation.choiceCountText(multiple()) == "Choose at least 1")
+        #expect(QuestionNavigation.choiceCountText(multiple(min: 2)) == "Choose at least 2")
+    }
+
+    @Test("A multiple question shows its recommended options checked, or its answer: options checked, other lines in fields")
+    func multipleSelection() {
+        let question = multiple(max: 3)
+        #expect(QuestionNavigation.multipleSelection(question, answer: nil) == (["Option 1", "Option 2"], [""]))
+        #expect(QuestionNavigation.multipleSelection(question, answer: "- Option 3\n- My own text\n- Another")
+            == (["Option 3"], ["My own text", "Another", ""]))
+        #expect(QuestionNavigation.multipleSelection(question, answer: QuestionNavigation.skipped) == ([], ["Skipped", ""]))
+    }
+
+    @Test("A field that gets text adds an empty field below it; a field emptied again is removed, except the last")
+    func editedFields() {
+        func edited(_ texts: [String]) -> [String] {
+            QuestionNavigation.editedFields(texts.map { QuestionField(text: $0) }).map(\.text)
+        }
+        #expect(edited([""]) == [""])
+        #expect(edited(["a"]) == ["a", ""])
+        #expect(edited(["a", "b"]) == ["a", "b", ""])
+        #expect(edited(["", ""]) == [""])
+        #expect(edited(["a", "", "c", ""]) == ["a", "c", ""])
+        let fields = [QuestionField(text: "a"), QuestionField(text: "")]
+        #expect(QuestionNavigation.editedFields(fields) == fields)
+    }
+
+    @Test("The choices are the checked options in option order, then the trimmed texts; Submit needs min to max of them")
+    func multipleChoices() {
+        let question = multiple(max: 3)
+        let choices = QuestionNavigation.multipleChoices(question, checked: ["Option 3", "Option 1"], texts: [" My own\ntext ", "  ", ""])
+        #expect(choices == ["Option 1", "Option 3", "My own text"])
+        #expect(ModelRules.multipleAnswer(choices) == "- Option 1\n- Option 3\n- My own text")
+        #expect(!QuestionNavigation.acceptsChoiceCount(question, 0))
+        #expect(QuestionNavigation.acceptsChoiceCount(question, 1) && QuestionNavigation.acceptsChoiceCount(question, 3))
+        #expect(!QuestionNavigation.acceptsChoiceCount(question, 4))
+        #expect(QuestionNavigation.acceptsChoiceCount(multiple(), 40))
+        #expect(!QuestionNavigation.acceptsChoiceCount(multiple(min: 2), 1))
+    }
 }
 
 /// docs/chats.md › Item rendering: the transcript's Questions card marks the question the pinned
@@ -90,5 +140,17 @@ struct TranscriptQuestionsMarkTests {
         #expect(!html(set(completed: true), displayed: QuestionKey(setID: setID, label: "B")).contains("➡️"))
         #expect(!html(set(), displayed: QuestionKey(setID: UUID(), label: "B")).contains("➡️"))
         #expect(!html(set(), displayed: nil).contains("➡️"))
+    }
+
+    @Test("A multiple question marks each recommended option and shows Answer: alone, then one line per choice")
+    func multipleAnswer() {
+        let question = Question(label: "A", question: "Which?", kind: .multiple,
+                                options: ["Option 1", "Option 2", "Option 3"].map { QuestionOption(label: $0) },
+                                recommended: ["Option 1", "Option 2"])
+        let item = QuestionsItem(id: setID.uuidString, created: Date(timeIntervalSince1970: 1_800_000_000), questionSetID: setID,
+                                 questions: [question], answers: ["A": "- Option 3\n- My own text"], completed: true)
+        let text = html(item, displayed: nil)
+        #expect(text.components(separatedBy: "(recommended)").count == 3)
+        #expect(text.contains("<div class=\"answer\">Answer:</div><div class=\"answer\">- Option 3</div><div class=\"answer\">- My own text</div>"))
     }
 }

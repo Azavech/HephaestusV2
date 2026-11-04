@@ -753,7 +753,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "ask_questions",
             description: #"""
-            Ask the user about anything unknown instead of guessing. Give 1 to 26 questions labelled A, B, C… in order; each has the question, 2 to 10 options with distinct labels, and the label of the recommended option. The user can also answer in their own words. The app shows the questions one at a time. This tool returns immediately: end your turn after calling it. The answers arrive in the next user message: "Answers:" followed by one line "<label>: <answer>" per question. Only available in chats started by HephaestusV2.
+            Ask the user about anything unknown instead of guessing. Give 1 to 26 questions labelled A, B, C… in order; each has the question, 2 to 10 options with distinct labels, and the label of the recommended option. When several options of a question can apply at once, give it kind "multiple": the user checks every option that applies, recommended is the list of the labels of the options you recommend, and minChoices and maxChoices bound the number of choices. The user can also answer in their own words. The app shows the questions one at a time. This tool returns immediately: end your turn after calling it. The answers arrive in the next user message: "Answers:" followed by one line "<label>: <answer>" per question; a multiple question reads "<label>:" followed by one line "- <choice>" per choice. Only available in chats started by HephaestusV2.
             """#,
             inputSchema: schema(#"""
             {
@@ -772,6 +772,11 @@ extension MCPToolCatalog {
                       "question": {
                         "type": "string",
                         "description": "The question."
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": ["single", "multiple"],
+                        "description": "single (when absent): the user chooses one option. multiple: the user checks every option that applies and can add own answers; use it when several options can apply at once."
                       },
                       "options": {
                         "type": "array",
@@ -793,8 +798,17 @@ extension MCPToolCatalog {
                         }
                       },
                       "recommended": {
-                        "type": "string",
-                        "description": "The label of the recommended option, copied exactly."
+                        "description": "single: the label of the recommended option, copied exactly. multiple: the list of the labels of the recommended options, copied exactly."
+                      },
+                      "minChoices": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "multiple only: the fewest choices the user makes, checked options and own answers together; 1 when absent."
+                      },
+                      "maxChoices": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "multiple only: the most choices the user makes, checked options and own answers together; no maximum when absent."
                       }
                     },
                     "required": ["label", "question", "options", "recommended"],

@@ -47,9 +47,65 @@ enum QuestionNavigation {
     /// `Answer another way` with the answer as its text; without an answer, the recommended option
     /// and an empty field.
     static func selection(_ question: Question, answer: String?) -> (QuestionChoice, String) {
-        guard let answer else { return (.option(question.recommended), "") }
+        guard let answer else { return (.option(question.recommended.first ?? ""), "") }
         if question.options.contains(where: { $0.label == answer }) { return (.option(answer), "") }
         return (.other, answer)
+    }
+
+    // MARK: Multiple-choice questions
+
+    /// The line under the question text of a `multiple` question: `Choose <min> to <max>`,
+    /// `Choose <n>` when both are equal, or `Choose at least <min>` without a maximum.
+    static func choiceCountText(_ question: Question) -> String {
+        let fewest = question.fewestChoices
+        guard let most = question.maxChoices else { return "Choose at least \(fewest)" }
+        return fewest == most ? "Choose \(fewest)" : "Choose \(fewest) to \(most)"
+    }
+
+    /// The selection of a displayed `multiple` question: without an answer, its recommended options
+    /// checked and one empty field; with one, each line without its leading `- `, the options whose
+    /// label equals a line checked and the other lines in fields, in order, then the empty field.
+    static func multipleSelection(_ question: Question, answer: String?) -> (checked: Set<String>, texts: [String]) {
+        guard let answer else { return (Set(question.recommended), [""]) }
+        let labels = Set(question.options.map(\.label))
+        var checked = Set<String>()
+        var texts: [String] = []
+        for line in answer.components(separatedBy: "\n") {
+            let text = line.hasPrefix("- ") ? String(line.dropFirst(2)) : line
+            if labels.contains(text) {
+                checked.insert(text)
+            } else {
+                texts.append(text)
+            }
+        }
+        return (checked, texts + [""])
+    }
+
+    /// The fields after an edit: a field emptied again is removed, except the last one, and a new
+    /// empty field follows the last one as soon as it gets text.
+    static func editedFields(_ fields: [QuestionField]) -> [QuestionField] {
+        var result = fields.enumerated().filter { index, field in !field.text.isEmpty || index == fields.count - 1 }.map(\.element)
+        if result.last.map({ !$0.text.isEmpty }) ?? true {
+            result.append(QuestionField(text: ""))
+        }
+        return result
+    }
+
+    /// The choices of a `multiple` question: the labels of the checked options in option order, then
+    /// the texts of the fields, trimmed, a line break becoming a space, in field order, without the
+    /// empty ones.
+    static func multipleChoices(_ question: Question, checked: Set<String>, texts: [String]) -> [String] {
+        let options = question.options.map(\.label).filter(checked.contains)
+        let own = texts
+            .map { $0.components(separatedBy: .newlines).joined(separator: " ").trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        return options + own
+    }
+
+    /// Submit is enabled while the number of choices is between `minChoices`, 1 when absent, and
+    /// `maxChoices`, without a maximum when absent.
+    static func acceptsChoiceCount(_ question: Question, _ count: Int) -> Bool {
+        count >= question.fewestChoices && count <= (question.maxChoices ?? .max)
     }
 }
 
@@ -60,6 +116,8 @@ struct QuestionsCard: View {
     let set: QuestionsItem
     let question: Question
     let minimize: () -> Void
+    /// The focused field of `Answer another way` of a `multiple` question.
+    @FocusState fileprivate var focusedField: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -87,11 +145,20 @@ struct QuestionsCard: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
+            if question.kind == .multiple {
+                Text(QuestionNavigation.choiceCountText(question))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(question.options, id: \.label) { option in
                     optionRow(option)
                 }
-                otherRow
+                if question.kind == .multiple {
+                    otherFields
+                } else {
+                    otherRow
+                }
             }
             HStack {
                 Spacer()
@@ -117,6 +184,14 @@ struct QuestionsCard: View {
                 model.questionChoice = .other
             }
         }
+        .onChange(of: model.questionFields) { _, fields in
+            let edited = QuestionNavigation.editedFields(fields)
+            guard edited != fields else { return }
+            model.questionFields = edited
+            if let focused = focusedField, !edited.contains(where: { $0.id == focused }) {
+                focusedField = edited.last?.id
+            }
+        }
     }
 
     /// The previous or next arrow; disabled at either end of the set.
@@ -134,32 +209,55 @@ struct QuestionsCard: View {
     }
 
     /// A radio button, then the label in bold and the description in secondary text; a click
-    /// anywhere in the row chooses the option, and its texts are not selectable.
+    /// anywhere in the row chooses the option, and its texts are not selectable. In a `multiple`
+    /// question the row is one button with a checkbox, so that a click anywhere in it checks or
+    /// unchecks the option exactly once.
+    @ViewBuilder
     private func optionRow(_ option: QuestionOption) -> some View {
-        let choice = QuestionChoice.option(option.label)
-        return HStack(alignment: .top, spacing: 8) {
-            RadioButton(selected: model.questionChoice == choice) {
+        if question.kind == .multiple {
+            let checked = model.questionChecked.contains(option.label)
+            Button {
+                model.toggleQuestionOption(option.label)
+            } label: {
+                HStack(alignment: .top, spacing: 8) {
+                    Checkbox(checked: checked)
+                    optionTexts(option)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(checked ? .isSelected : [])
+        } else {
+            let choice = QuestionChoice.option(option.label)
+            HStack(alignment: .top, spacing: 8) {
+                RadioButton(selected: model.questionChoice == choice) {
+                    model.questionChoice = choice
+                }
+                optionTexts(option)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
                 model.questionChoice = choice
             }
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    symbolText(option.label)
-                        .bold()
-                    if option.label == question.recommended {
-                        RecommendedTag()
-                    }
-                }
-                if let description = option.description, !description.isEmpty {
-                    symbolText(description)
-                        .foregroundStyle(.secondary)
+        }
+    }
+
+    /// The label of an option in bold, its `Recommended` tag, then its description in secondary text.
+    private func optionTexts(_ option: QuestionOption) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                symbolText(option.label)
+                    .bold()
+                if question.recommended.contains(option.label) {
+                    RecommendedTag()
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            if let description = option.description, !description.isEmpty {
+                symbolText(description)
+                    .foregroundStyle(.secondary)
+            }
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            model.questionChoice = choice
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Plain text in which each SF Symbol marker of this Mac shows the symbol's image followed by a
@@ -194,6 +292,25 @@ struct QuestionsCard: View {
     }
 }
 
+/// The label `Answer another way` of a `multiple` question, aligned with the option labels, then
+/// its one-line fields, one below the other, the last one empty.
+private extension QuestionsCard {
+    var otherFields: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Checkbox(checked: false)
+                .hidden()
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Answer another way")
+                ForEach($model.questionFields) { $field in
+                    TextField("", text: $field.text)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($focusedField, equals: field.id)
+                }
+            }
+        }
+    }
+}
+
 /// The `Recommended` tag of the questions card and the symbol card.
 struct RecommendedTag: View {
     var body: some View {
@@ -204,6 +321,18 @@ struct RecommendedTag: View {
             .padding(.vertical, 1)
             .background(Capsule().fill(Color.accentColor))
             .fixedSize()
+    }
+}
+
+/// The checkbox of an option row of a `multiple` question in the questions card; the row is the
+/// button.
+struct Checkbox: View {
+    let checked: Bool
+
+    var body: some View {
+        Image(systemName: checked ? "checkmark.square.fill" : "square")
+            .foregroundStyle(checked ? Color.accentColor : Color.secondary)
+            .padding(.top, 1)
     }
 }
 

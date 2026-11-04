@@ -315,11 +315,57 @@ public enum ModelRules {
                                           message: "Question \(label) has an option label longer than 200 characters or on several lines.")
                 }
             }
-            guard question.options.contains(where: { $0.label == question.recommended }) else {
-                throw ValidationError(field: "questions",
-                                      message: "Question \(label): the recommended answer must be one of its option labels.")
+            guard question.kind == .multiple || (question.minChoices == nil && question.maxChoices == nil) else {
+                throw ValidationError(field: "questions", message: "Question \(label): minChoices and maxChoices need kind \"multiple\".")
+            }
+            let labels = Set(question.options.map(\.label))
+            switch question.kind {
+            case .single:
+                guard question.recommended.count == 1, labels.contains(question.recommended[0]) else {
+                    throw ValidationError(field: "questions",
+                                          message: "Question \(label): the recommended answer must be one of its option labels.")
+                }
+            case .multiple:
+                guard !question.recommended.isEmpty, Set(question.recommended).count == question.recommended.count,
+                      question.recommended.allSatisfy(labels.contains) else {
+                    throw ValidationError(field: "questions",
+                                          message: "Question \(label): the recommended answers must be distinct option labels, at least one.")
+                }
+            }
+            guard (question.minChoices ?? 1) >= 1, (question.maxChoices ?? 1) >= 1 else {
+                throw ValidationError(field: "questions", message: "Question \(label): minChoices and maxChoices must be at least 1.")
+            }
+            if let maxChoices = question.maxChoices {
+                guard question.fewestChoices <= maxChoices else {
+                    throw ValidationError(field: "questions", message: "Question \(label): minChoices must be at most maxChoices.")
+                }
+                guard question.recommended.count <= maxChoices else {
+                    throw ValidationError(field: "questions", message: "Question \(label) recommends more options than maxChoices.")
+                }
             }
         }
+    }
+
+    /// The answer that Skip stores (docs/chats.md › Answering).
+    public static let skippedAnswer = "Skipped"
+
+    /// The choices of the answer of a `multiple` question (docs/chats.md › Answering): nil when
+    /// the answer is not lines `- <choice>` with a choice that is not empty after trimming.
+    /// `Skipped` has no choices and is checked by the caller.
+    public static func multipleChoices(in answer: String) -> [String]? {
+        var choices: [String] = []
+        for line in answer.components(separatedBy: "\n") {
+            guard line.hasPrefix("- ") else { return nil }
+            let choice = line.dropFirst(2).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !choice.isEmpty else { return nil }
+            choices.append(choice)
+        }
+        return choices
+    }
+
+    /// The answer of a `multiple` question: one line `- <choice>` per choice.
+    public static func multipleAnswer(_ choices: [String]) -> String {
+        choices.map { "- \($0)" }.joined(separator: "\n")
     }
 
     /// The rules of a symbol request (docs/workflow.md › Symbol requests), in their order, on the
