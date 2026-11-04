@@ -9,6 +9,8 @@ public actor MCPTokenStore {
     private let secrets: SecretsStore
     private var chatTokens: [ChatID: String] = [:]
     private var hookTokens: [ChatID: String] = [:]
+    /// The answer token of each running comment answer call, with the ticket it is limited to.
+    private var answerTokens: [UUID: (token: String, ticketID: TicketID)] = [:]
 
     public init(secrets: SecretsStore) {
         self.secrets = secrets
@@ -37,6 +39,30 @@ public actor MCPTokenStore {
         hookTokens[chatID] = nil
     }
 
+    /// A new token for a comment answer call, limited to the ticket of its comment
+    /// (docs/mcp.md › Authentication).
+    public func issueAnswerToken(answerID: UUID, ticketID: TicketID) -> String {
+        let token = RandomIDs.externalToken()
+        answerTokens[answerID] = (token, ticketID)
+        return token
+    }
+
+    /// Revokes the token of a comment answer call when the call ends, whatever the reason.
+    public func revokeAnswerToken(answerID: UUID) {
+        answerTokens[answerID] = nil
+    }
+
+    /// The ticket a live answer token is limited to; nil for any other token. Every answer token
+    /// is compared, each in constant time, whatever matches.
+    public func answerTicketID(forToken token: String) -> TicketID? {
+        let presented = Array(token.utf8)
+        var match: TicketID?
+        for (_, entry) in answerTokens where MCPTokenStore.constantTimeEqual(presented, Array(entry.token.utf8)) {
+            match = entry.ticketID
+        }
+        return match
+    }
+
     /// The external token, read through the external MCP token service of the windows of this
     /// Mac only.
     public var externalToken: String {
@@ -54,13 +80,17 @@ public actor MCPTokenStore {
     }
 
     /// The actor of a bearer token: `claude` with the chat's id for a live chat token, `claude`
-    /// with `external` for the external token, nil for any other token. Every known token is
+    /// with `answer` for a live answer token, `claude` with `external` for the external token, nil
+    /// for any other token. Every known token is
     /// compared, each in constant time, whatever matches.
     public func actor(forToken token: String) -> Actor? {
         let presented = Array(token.utf8)
         var match: Actor?
         for (chatID, chatToken) in chatTokens where MCPTokenStore.constantTimeEqual(presented, Array(chatToken.utf8)) {
             match = .claude(chatID: chatID.uuidString.uppercased())
+        }
+        for (_, entry) in answerTokens where MCPTokenStore.constantTimeEqual(presented, Array(entry.token.utf8)) {
+            match = .claude(chatID: Actor.answerChatID)
         }
         if MCPTokenStore.constantTimeEqual(presented, Array(externalToken.utf8)) {
             match = .claude(chatID: Actor.externalChatID)

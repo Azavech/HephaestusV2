@@ -54,6 +54,8 @@ public actor Engine {
     let claudeCLI = ClaudeCLI()
     /// Chat processes (Claude/ChatManager.swift).
     let chats = ChatManager()
+    /// Comment answers: their states and running calls (Claude/CommentAnswers.swift).
+    let commentAnswers = CommentAnswers()
     /// Haiku naming (Claude/TitleNaming.swift); tests replace it before `start()`.
     var titleNamer: any TitleNamer
     /// The summary call of chat notifications (Claude/NotificationSummary.swift); tests replace it

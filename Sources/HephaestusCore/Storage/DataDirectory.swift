@@ -49,6 +49,12 @@ public struct DataDirectory: Sendable, Hashable {
     public func mcpConfigFile(chatID: ChatID) -> URL {
         mcpConfigFolder.appendingPathComponent("\(chatID.uuidString).json")
     }
+
+    /// `Runtime/mcp/answer-<answer id>.json`, the MCP configuration of a comment answer call
+    /// (docs/chats.md › Answer command).
+    public func mcpAnswerConfigFile(answerID: UUID) -> URL {
+        mcpConfigFolder.appendingPathComponent("answer-\(answerID.uuidString).json")
+    }
     /// `Runtime/screenshots/`: PNG files of `debug_screenshot`.
     public var screenshotsFolder: URL { runtimeFolder.appendingPathComponent("screenshots", isDirectory: true) }
     /// `Worktrees/`: the git worktrees of the orchestrated ticket chats.

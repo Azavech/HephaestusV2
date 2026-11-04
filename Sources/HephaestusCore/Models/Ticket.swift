@@ -145,6 +145,18 @@ public enum Author: String, Codable, Sendable, Hashable, CaseIterable {
     case claude
 }
 
+/// The runtime state of a comment's answer (docs/tickets.md › Comment answers).
+public enum CommentAnswerState: String, Codable, Sendable, Hashable, CaseIterable {
+    /// A comment answer call runs for the comment: `Claude is replying…`.
+    case replying
+    /// The last call failed or was stopped by its timeout: `Claude could not reply.` with Retry.
+    case failed
+
+    public init(from decoder: Decoder) throws {
+        self = try APIEnumCoding.decode(decoder)
+    }
+}
+
 /// One element of the key `comments` of a ticket file.
 public struct Comment: Codable, Sendable, Hashable, Identifiable {
     public var id: UUID
@@ -155,20 +167,26 @@ public struct Comment: Codable, Sendable, Hashable, Identifiable {
     /// Markdown.
     public var text: String
     public var attachments: [Attachment]
+    /// Runtime only: the state of the comment answer of this comment, nil when no call runs and
+    /// none failed (docs/data-model.md › Comment). Never written to the file and ignored when read
+    /// from it; in the engine API only while set.
+    public var answer: CommentAnswerState?
     public var unknownKeys: [String: JSONValue]
 
     public init(id: UUID, author: Author, created: Date, updated: Date? = nil, text: String = "",
-                attachments: [Attachment] = [], unknownKeys: [String: JSONValue] = [:]) {
+                attachments: [Attachment] = [], answer: CommentAnswerState? = nil, unknownKeys: [String: JSONValue] = [:]) {
         self.id = id
         self.author = author
         self.created = created
         self.updated = updated
         self.text = text
         self.attachments = attachments
+        self.answer = answer
         self.unknownKeys = unknownKeys
     }
 
-    static let knownKeys: Set<String> = ["id", "author", "created", "updated", "text", "attachments"]
+    static let fileKeys: Set<String> = ["id", "author", "created", "updated", "text", "attachments"]
+    static let knownKeys = fileKeys.union(["answer"])
 
     public init(from decoder: Decoder) throws {
         let c = try ModelDecodingContainer(decoder)
@@ -178,6 +196,7 @@ public struct Comment: Codable, Sendable, Hashable, Identifiable {
         updated = try c.optionalDate("updated")
         text = try c.value("text", default: "")
         attachments = try c.value("attachments", default: [])
+        answer = c.isYAML ? nil : try c.optional("answer")
         unknownKeys = try c.unknownKeys(known: Self.knownKeys)
     }
 
@@ -189,6 +208,9 @@ public struct Comment: Codable, Sendable, Hashable, Identifiable {
         try c.encodeOptionalDate(updated, "updated")
         try c.encode(text, "text")
         try c.encode(attachments, "attachments")
+        if !c.isYAML, let answer {
+            try c.encode(answer, "answer")
+        }
         try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
     }
 

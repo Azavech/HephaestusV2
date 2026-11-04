@@ -494,13 +494,17 @@ final class UpdateController {
     }
 
     /// docs/updater.md › Restart rules: no working chat of This Mac's engine (in `starting`,
-    /// `running` or `waitingPermission`, or with background work running), and nothing unsaved in
+    /// `running` or `waitingPermission`, or with background work running) and no comment answer
+    /// call running (`commentAnswersRunning` of its projects), and nothing unsaved in
     /// any window of this app: editors, ticket description savers, comment drafts and changed
     /// description editors of ticket views, the composer text and attachments of existing and
     /// draft chats, and every sheet.
     var isAppIdle: Bool {
         guard let app else { return false }
         if app.localWorkspace.chats.values.contains(where: \.isWorking) {
+            return false
+        }
+        if app.localWorkspace.projects.contains(where: { $0.commentAnswersRunning > 0 }) {
             return false
         }
         for window in app.windows.values where window.sheet != nil || !window.unsavedEditors().isEmpty {

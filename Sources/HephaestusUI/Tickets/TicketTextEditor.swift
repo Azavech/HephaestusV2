@@ -3,6 +3,7 @@
 // pasted and dropped files, and growth up to a number of lines (docs/tickets.md › New Ticket sheet,
 // › Ticket detail, › Comments, › Keyboard shortcuts).
 import AppKit
+import HephaestusCore
 import SwiftUI
 
 /// A plain-text `NSTextView` editor. Return inserts a line break; ⌘Return calls `onCommandReturn`;
@@ -27,6 +28,11 @@ struct TicketTextEditor: NSViewRepresentable {
     var onPaste: ((NSPasteboard) -> Bool)?
     /// Files dropped on the editor; nil inserts nothing for file drops.
     var onDropFiles: (([URL]) -> Void)?
+    /// The completion of `@Claude` (docs/tickets.md › Mentioning Claude): called with true when
+    /// the mention list shows and false when it closes; nil, the editor completes nothing.
+    var onMentionList: ((Bool) -> Void)?
+    /// Incremented by the owner when the row of the mention list is clicked.
+    var mentionChoice = 0
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -100,6 +106,12 @@ struct TicketTextEditor: NSViewRepresentable {
         var parent: TicketTextEditor
         weak var textView: TicketNSTextView?
         private var lastFocusRequest = 0
+        private var lastMentionChoice = 0
+        /// The `@` and its letters before the insertion point while the mention list shows.
+        private(set) var mentionRange: NSRange?
+        /// The position of the `@` whose list Escape closed.
+        private var dismissedMention: Int?
+        private var mentionListShown = false
 
         init(_ parent: TicketTextEditor) {
             self.parent = parent
@@ -118,6 +130,10 @@ struct TicketTextEditor: NSViewRepresentable {
                 textView.textColor = .textColor
             }
             textView.placeholder = parent.placeholder
+            if parent.mentionChoice != lastMentionChoice {
+                lastMentionChoice = parent.mentionChoice
+                acceptMention()
+            }
             if parent.focusRequest != lastFocusRequest {
                 lastFocusRequest = parent.focusRequest
                 DispatchQueue.main.async { [weak textView] in
@@ -131,10 +147,61 @@ struct TicketTextEditor: NSViewRepresentable {
             guard let textView else { return }
             parent.text = textView.string
             textView.needsDisplay = true
+            updateMentionList()
+        }
+
+        func textViewDidChangeSelection(_ notification: Notification) {
+            updateMentionList()
         }
 
         func focusChanged(_ focused: Bool) {
             parent.onFocusChange?(focused)
+            // The window's first responder changes once the call returns.
+            DispatchQueue.main.async { [weak self] in self?.updateMentionList() }
+        }
+
+        // MARK: Mention completion
+
+        /// Shows the list while the `@` and the letters before the insertion point start
+        /// `@Claude`, unless Escape closed it for that `@`.
+        func updateMentionList() {
+            guard parent.onMentionList != nil, let textView else { return }
+            var range: NSRange?
+            let selection = textView.selectedRange()
+            if textView.window?.firstResponder === textView, selection.length == 0, !textView.hasMarkedText() {
+                let text = textView.string
+                if let caret = Range(NSRange(location: selection.location, length: 0), in: text)?.lowerBound,
+                   let found = CommentMentions.completionRange(in: text, caret: caret) {
+                    range = NSRange(found, in: text)
+                }
+            }
+            if range == nil || range?.location != dismissedMention {
+                dismissedMention = nil
+            }
+            mentionRange = range
+            setMentionList(range != nil && dismissedMention == nil)
+        }
+
+        private func setMentionList(_ shown: Bool) {
+            guard shown != mentionListShown else { return }
+            mentionListShown = shown
+            let report = parent.onMentionList
+            DispatchQueue.main.async { report?(shown) }
+        }
+
+        var isMentionListShown: Bool { mentionListShown }
+
+        /// Return, Tab or a click on the row: the `@` and its letters become `@Claude `.
+        func acceptMention() {
+            guard let textView, let range = mentionRange else { return }
+            textView.insertText(CommentMentions.completion, replacementRange: range)
+            updateMentionList()
+        }
+
+        /// Escape: the list closes for this `@`.
+        func dismissMention() {
+            dismissedMention = mentionRange?.location
+            setMentionList(false)
         }
     }
 }
@@ -190,6 +257,11 @@ final class TicketNSTextView: NSTextView {
 
     override func keyDown(with event: NSEvent) {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.numericPad, .function])
+        // Return or Tab while the mention list shows (docs/tickets.md › Mentioning Claude).
+        if let owner, owner.isMentionListShown, flags.isEmpty, isReturn(event) || event.keyCode == 48 {
+            owner.acceptMention()
+            return
+        }
         if isReturn(event), flags == .command {
             owner?.parent.onCommandReturn?()
             return
@@ -206,7 +278,12 @@ final class TicketNSTextView: NSTextView {
     }
 
     override func cancelOperation(_ sender: Any?) {
-        // Escape: Cancel in the ticket editors; nothing in the comment composer.
+        // Escape: Cancel in the ticket editors; in the comment composer, it closes the mention
+        // list or does nothing.
+        if let owner, owner.isMentionListShown {
+            owner.dismissMention()
+            return
+        }
         owner?.parent.onEscape?()
     }
 

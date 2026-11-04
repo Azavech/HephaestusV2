@@ -16,6 +16,12 @@ struct TicketHistoryUITests {
             == "In Progress → In Review")
         #expect(TicketHistoryText.change(TicketHistoryEntry(kind: .title, date: created, from: "Old", to: "New", author: .user))
             == "Renamed “Old” → “New”")
+        #expect(TicketHistoryText.change(TicketHistoryEntry(kind: .linkAdded, date: created, to: "related HEPH-20", author: .claude))
+            == "Added link Related HEPH-20")
+        #expect(TicketHistoryText.change(TicketHistoryEntry(kind: .linkRemoved, date: created, to: "dependsOn HEPH-15", author: .user))
+            == "Removed link Depends on HEPH-15")
+        #expect(TicketHistoryText.change(TicketHistoryEntry(kind: .description, date: created, to: "", author: .user))
+            == "Edited the description")
     }
 
     @Test("The author: You on the device, Claude in the chat while it is known, Claude (external), Automatic")
@@ -32,6 +38,7 @@ struct TicketHistoryUITests {
         #expect(author(.claude, chat: UUID().uuidString) == .init(prefix: "Claude"))
         #expect(author(.claude) == .init(prefix: "Claude"))
         #expect(author(.claude, chat: "external") == .init(prefix: "Claude (external)"))
+        #expect(author(.claude, chat: "answer") == .init(prefix: "Claude"))
         #expect(author(.automatic) == .init(prefix: "Automatic"))
 
         let line = TicketHistoryText.line(TicketHistoryEntry(kind: .status, date: created, from: "in_progress", to: "review",

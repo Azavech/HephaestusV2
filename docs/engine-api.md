@@ -106,13 +106,14 @@ The 20 MiB limits keep a base64-encoded file under the 32 MiB message size, so a
 
 Every call carries an [Actor](#actor). The transport assigns it; params never carry it.
 
-| Transport                              | Actor of the call                               |
-| -------------------------------------- | ----------------------------------------------- |
-| LocalEngineConnection                  | user, deviceID of this device                   |
-| Sync session of a paired remote device | user, deviceID sent by that device in its hello |
-| MCP request with a chat token          | claude, chatID of that chat                     |
-| MCP request with the external token    | claude, chatID `external`                       |
-| Engine-internal work and tests         | system                                          |
+| Transport                              | Actor of the call                                                     |
+| -------------------------------------- | --------------------------------------------------------------------- |
+| LocalEngineConnection                  | user, deviceID of this device                                         |
+| Sync session of a paired remote device | user, deviceID sent by that device in its hello                       |
+| MCP request with a chat token          | claude, chatID of that chat                                           |
+| MCP request with the external token    | claude, chatID `external`                                             |
+| MCP request with an answer token       | claude, chatID `answer` ([Comment answers](chats.md#comment-answers)) |
+| Engine-internal work and tests         | system                                                                |
 
 - **user** may call every method except `chats.postQuestions`, `chats.postSymbol`, `chats.postColor`, `chats.postSound`, `chats.postShortcut`, `chats.postFont` and `chats.postAnimation`. Local and remote users have the same rights.
 - **claude** may call only the 50 methods that MCP tools map to (the Actors column says "claude"), with the rules below. Any other method fails with `forbidden` before its params are decoded.
@@ -206,6 +207,7 @@ The first column lists every engine method; it is the list the docs conformance 
 | `tickets.addComment`       | TicketsAddComment       | ticketID, text, attachments?                               | Ticket           | user, claude |
 | `tickets.updateComment`    | TicketsUpdateComment    | ticketID, commentID, text                                  | Ticket           | user, claude |
 | `tickets.deleteComment`    | TicketsDeleteComment    | ticketID, commentID                                        | Ticket           | user, claude |
+| `tickets.retryAnswer`      | TicketsRetryAnswer      | ticketID, commentID                                        | Ticket           | user         |
 | `tickets.addAttachments`   | TicketsAddAttachments   | ticketID, attachments                                      | Ticket           | user         |
 | `tickets.removeAttachment` | TicketsRemoveAttachment | ticketID, attachmentID                                     | Ticket           | user, claude |
 | `attachments.read`         | AttachmentsRead         | projectID, path                                            | BinaryContent    | user         |
@@ -426,7 +428,7 @@ Unregisters the project and all its descendants. No file inside their folders is
 
 - A top-level project's root is removed from registry.yml.
 - A sub project's relative path is removed from its parent's `subprojects` (the parent's project.yml is rewritten).
-- The runs of the removed projects are stopped as by `projects.stopRun`, and the Claude processes of their chats are terminated as [Chats](chats.md#idle-termination-and-quitting) describes. Their identifiers become free. Default chosen at design time (runs stopped).
+- The runs of the removed projects are stopped as by `projects.stopRun`, the Claude processes of their chats are terminated as [Chats](chats.md#idle-termination-and-quitting) describes, and the comment answer calls of their tickets are stopped ([Comment answers](chats.md#comment-answers)). Their identifiers become free. Default chosen at design time (runs stopped).
 
 | Error     | When                                                                                                                                       |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -487,6 +489,8 @@ Events: run.finished when the process has ended.
 Ticket fields, identifiers, the description template, the status rules, titles and naming, attachments and every error message are in [Tickets and bundles](tickets.md); the ticket file format is in [Data model](data-model.md#ticket-file); the rules Claude follows while working on tickets are in [Workflow](workflow.md).
 
 Every Ticket that a method returns or that `ticket.updated` carries has the runtime key `inverseLinks`, which the engine computes from the `links` of the other tickets of the project ([Ticket links](tickets.md#ticket-links), [Data model](data-model.md#ticket-file)). When the `links` of a ticket change, through a method or in its file, the engine emits `ticket.updated` for that ticket, then `ticket.updated` for each other ticket whose `inverseLinks` changed, in ascending ticket number; their files are not written.
+
+Every comment of a Ticket that a method returns or that `ticket.updated` carries has the runtime key `answer` while the engine answers it or after its answer failed: `replying` while its [comment answer](chats.md#comment-answers) call runs, `failed` after the call failed or was stopped by its timeout; absent otherwise ([Comment](data-model.md#comment)). The key is engine memory, lost when the app quits. Each change of it emits `ticket.updated` for the ticket, whose file is not written: the start of a call with the event of the call that started it, a failure with the origin `system`, and the end of a successful call with the `ticket.updated` of the answer comment ([Comment answers](tickets.md#comment-answers)).
 
 A `ticketID` param, or a `ui.open` target, that names a ticket whose file exists but never loaded fails with `internal` (`Ticket file HEPH-12.yml cannot be read: <reason>.`) in every method, not only `tickets.get` ([Tickets and bundles](tickets.md#errors)). Default chosen at design time.
 
@@ -569,7 +573,7 @@ Swift type `TicketsUpdate` · actors: user, claude · result: [Ticket](data-mode
 
 Status, comments, attachments and chats change only through their own methods. A title set here is never replaced by a pending Haiku answer.
 
-A title other than the stored one, after trimming, adds a rename entry to the ticket's history, with the previous title, the new title and the actor of the call as its author, in the same write of the ticket file; the stored title adds none ([Ticket history](tickets.md#ticket-history)).
+A title other than the stored one, after trimming, adds a rename entry to the ticket's history, with the previous title, the new title and the actor of the call as its author, in the same write of the ticket file; the stored title adds none. A description other than the stored one adds a description edit entry, each declared link removed a link removed entry and each declared link added a link added entry, in the order of [Ticket history](tickets.md#ticket-history), in the same write.
 
 | Error    | When                                                                                                                                                                  |
 | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -616,7 +620,7 @@ Steps:
 2. Remove every link to the ticket from the `links` of every other ticket of the project.
 3. Move `ticket/<ticketID>.yml` and the folder `.hephaestus/attachments/<ticketID>/` to the Trash.
 
-The chats linked to the ticket are kept with their `ticket` unchanged; a running one continues. The ticket number is never reused ([Tickets and bundles](tickets.md#deleting)).
+The chats linked to the ticket are kept with their `ticket` unchanged; a running one continues. The comment answer calls running for its comments are stopped and post nothing; the costs of its comment answers stay in the project file ([Comment answers](costs.md#comment-answers)). The ticket number is never reused ([Tickets and bundles](tickets.md#deleting)).
 
 | Error       | When                                 |
 | ----------- | ------------------------------------ |
@@ -638,6 +642,8 @@ Swift type `TicketsAddComment` · actors: user, claude · result: [Ticket](data-
 
 Appends a comment with a new UUID `id`, `author` claude for a claude actor and user otherwise, `created` now, no `updated`, the text and the attachments ([Data model](data-model.md#comment)).
 
+When the actor is a user and the text mentions Claude ([Mentioning Claude](tickets.md#mentioning-claude)), the engine starts a [comment answer](chats.md#comment-answers) for the new comment: the returned ticket and its `ticket.updated` carry the comment with `answer` `replying`, and `projects.changed` follows with the new `commentAnswersRunning` of the project. A claude or system actor never starts one.
+
 | Error     | When                                                                                                                                            |
 | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | invalid   | ticketID is malformed; text is empty and there is no attachment (`A comment needs text or at least one attachment.`); an attachment is invalid. |
@@ -656,7 +662,7 @@ Swift type `TicketsUpdateComment` · actors: user, claude · result: [Ticket](da
 | commentID | UUID     | yes      | Comment id.                                                                  |
 | text      | String   | yes      | New text; may be empty after trimming only when the comment has attachments. |
 
-Sets the comment's `updated` to now. The attachments of a comment do not change. The user and Claude may edit any comment, whoever wrote it ([Tickets and bundles](tickets.md#comments)).
+Sets the comment's `updated` to now. The attachments of a comment do not change. The user and Claude may edit any comment, whoever wrote it ([Tickets and bundles](tickets.md#comments)). An edit never starts a comment answer, even when it adds a mention of Claude.
 
 | Error    | When                                                                                             |
 | -------- | ------------------------------------------------------------------------------------------------ |
@@ -674,7 +680,7 @@ Swift type `TicketsDeleteComment` · actors: user, claude · result: [Ticket](da
 | ticketID  | TicketID | yes      | Ticket id.  |
 | commentID | UUID     | yes      | Comment id. |
 
-Removes the comment and moves the files of its attachments to the Trash.
+Removes the comment and moves the files of its attachments to the Trash. A comment answer call running for the comment is stopped first; it posts nothing ([Comment answers](tickets.md#comment-answers)).
 
 | Error       | When                                            |
 | ----------- | ----------------------------------------------- |
@@ -683,6 +689,25 @@ Removes the comment and moves the files of its attachments to the Trash.
 | unavailable | A file cannot be moved to the Trash.            |
 
 Events: ticket.updated.
+
+### tickets.retryAnswer
+
+Swift type `TicketsRetryAnswer` · actors: user · result: [Ticket](data-model.md#ticket-file)
+
+| Param     | Type     | Required | Description                      |
+| --------- | -------- | -------- | -------------------------------- |
+| ticketID  | TicketID | yes      | Ticket id.                       |
+| commentID | UUID     | yes      | The comment whose answer failed. |
+
+Retry of the `Claude could not reply.` row ([Comment answers](tickets.md#comment-answers)): starts a new [comment answer](chats.md#comment-answers) call for the comment, on the ticket and the comment as they are now, whatever the comment's text. The comment's `answer` becomes `replying`.
+
+| Error    | When                                                                                    |
+| -------- | --------------------------------------------------------------------------------------- |
+| invalid  | ticketID is malformed; commentID is not a UUID.                                         |
+| notFound | No such ticket; no comment with this id in it.                                          |
+| conflict | The comment's `answer` is not `failed` (`Comment <id> has no failed answer to retry.`). |
+
+Events: ticket.updated, projects.changed.
 
 ### tickets.addAttachments
 
@@ -2220,37 +2245,37 @@ Events: ui.open.
 Every event travels as an [EngineEventEnvelope](#engineeventenvelope) `{name, origin, data}`:
 
 - `name` is the event name below.
-- `origin` is the [Actor](#actor) of the call that caused the event. Background work of the engine carries `system`: Haiku naming results, chat.notification, the output and exit of Claude processes (chat.item, chat.delta and chat.updated of a running chat, chat.agents and chat.agentItem of its workflows and agents), run output and exit (run.output, run.finished), changes made outside the engine, the `gitRemoteURL` reads (project.updated), and timers ([Architecture](architecture.md#callers-and-actors)).
+- `origin` is the [Actor](#actor) of the call that caused the event. Background work of the engine carries `system`: Haiku naming results, the failure of a comment answer and the cost it stores, chat.notification, the output and exit of Claude processes (chat.item, chat.delta and chat.updated of a running chat, chat.agents and chat.agentItem of its workflows and agents), run output and exit (run.output, run.finished), changes made outside the engine, the `gitRemoteURL` reads (project.updated), and timers ([Architecture](architecture.md#callers-and-actors)).
 - `data` is the payload below.
 
 ### Event list
 
-| Event             | Swift type            | Data                                                  | Emitted when                                                                                                                                                     |
-| ----------------- | --------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| projects.changed  | ProjectsChangedEvent  | [ProjectSummary]: the complete `projects.list` result | The result of `projects.list` changed: a project was created, opened, removed, renamed, loaded or unloaded, its sub projects changed, or a ticket count changed. |
-| project.updated   | ProjectUpdatedEvent   | ProjectDetail                                         | A project's project.yml was written or reloaded, or its `gitRemoteURL` changed ([ProjectDetail](#projectdetail)).                                                |
-| project.removed   | ProjectRemovedEvent   | {projectID}                                           | A project was unregistered or its project.yml disappeared.                                                                                                       |
-| ticket.updated    | TicketUpdatedEvent    | Ticket                                                | A ticket was created, changed or reloaded, or its `inverseLinks` changed.                                                                                        |
-| ticket.deleted    | TicketDeletedEvent    | {projectID, ticketID}                                 | A ticket was deleted or its file disappeared.                                                                                                                    |
-| bundle.updated    | BundleUpdatedEvent    | TicketBundle                                          | A bundle was created, changed or reloaded.                                                                                                                       |
-| bundle.deleted    | BundleDeletedEvent    | {projectID, bundleID}                                 | A bundle was deleted or its file disappeared.                                                                                                                    |
-| chat.updated      | ChatUpdatedEvent      | ChatMeta, with `projectID` and `state`                | A chat was created, or its metadata, state or `backgroundWork` changed.                                                                                          |
-| chat.deleted      | ChatDeletedEvent      | {projectID, chatID}                                   | A chat was deleted.                                                                                                                                              |
-| chat.item         | ChatItemEvent         | {chatID, item ChatItem}                               | A transcript item was added, or replaced (same `id`).                                                                                                            |
-| chat.delta        | ChatDeltaEvent        | {chatID, itemID, kind, append}                        | Claude streams text, thinking or tool input. Not persisted.                                                                                                      |
-| chat.agents       | ChatAgentsEvent       | ChatAgents                                            | A chat's workflows or agents changed: one was created or its state, title, phase, summary or run id changed ([Agents](chats.md#agents)).                         |
-| chat.agentItem    | ChatAgentItemEvent    | {chatID, agentID, item ChatItem}                      | An item was added to the transcript of one of a chat's agents ([Agents](chats.md#agents)).                                                                       |
-| files.changed     | FilesChangedEvent     | {projectID, paths [String]}                           | Files changed under a project root.                                                                                                                              |
-| webTabs.updated   | WebTabsUpdatedEvent   | {projectID, tabs [WebTab]}                            | A project's web tabs changed.                                                                                                                                    |
-| skills.changed    | SkillsChangedEvent    | [SkillSummary]: the complete `skills.list` result     | The skills library changed, including files inside a skill.                                                                                                      |
-| run.started       | RunStartedEvent       | RunInfo                                               | A run started; the origin is the actor that started it.                                                                                                          |
-| run.output        | RunOutputEvent        | {runID, projectID, text}                              | A run produced output.                                                                                                                                           |
-| run.finished      | RunFinishedEvent      | {runID, projectID, exitCode}                          | A run ended.                                                                                                                                                     |
-| settings.updated  | SettingsUpdatedEvent  | HostSettings                                          | Host settings changed.                                                                                                                                           |
-| claude.updated    | ClaudeUpdatedEvent    | {status ClaudeStatus, models [ClaudeModel]}           | The Claude CLI status or the model list changed.                                                                                                                 |
-| planUsage.updated | PlanUsageUpdatedEvent | PlanUsage                                             | The engine's plan usage was replaced ([Plan usage](#plan-usage)).                                                                                                |
-| ui.open           | UIOpenEvent           | {target NavigationTarget, deviceID?}                  | `ui.open` was called.                                                                                                                                            |
-| chat.notification | ChatNotificationEvent | {chatID, projectID, kind, stage, detail}              | A chat needs the user or a turn finished ([Chats › Notifications](chats.md#notifications)): once at once, then once after the summary call.                      |
+| Event             | Swift type            | Data                                                  | Emitted when                                                                                                                                                                                                   |
+| ----------------- | --------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| projects.changed  | ProjectsChangedEvent  | [ProjectSummary]: the complete `projects.list` result | The result of `projects.list` changed: a project was created, opened, removed, renamed, loaded or unloaded, its sub projects changed, a ticket count, a cost or the number of running comment answers changed. |
+| project.updated   | ProjectUpdatedEvent   | ProjectDetail                                         | A project's project.yml was written or reloaded, or its `gitRemoteURL` changed ([ProjectDetail](#projectdetail)).                                                                                              |
+| project.removed   | ProjectRemovedEvent   | {projectID}                                           | A project was unregistered or its project.yml disappeared.                                                                                                                                                     |
+| ticket.updated    | TicketUpdatedEvent    | Ticket                                                | A ticket was created, changed or reloaded, or its `inverseLinks` or the `answer` of one of its comments changed.                                                                                               |
+| ticket.deleted    | TicketDeletedEvent    | {projectID, ticketID}                                 | A ticket was deleted or its file disappeared.                                                                                                                                                                  |
+| bundle.updated    | BundleUpdatedEvent    | TicketBundle                                          | A bundle was created, changed or reloaded.                                                                                                                                                                     |
+| bundle.deleted    | BundleDeletedEvent    | {projectID, bundleID}                                 | A bundle was deleted or its file disappeared.                                                                                                                                                                  |
+| chat.updated      | ChatUpdatedEvent      | ChatMeta, with `projectID` and `state`                | A chat was created, or its metadata, state or `backgroundWork` changed.                                                                                                                                        |
+| chat.deleted      | ChatDeletedEvent      | {projectID, chatID}                                   | A chat was deleted.                                                                                                                                                                                            |
+| chat.item         | ChatItemEvent         | {chatID, item ChatItem}                               | A transcript item was added, or replaced (same `id`).                                                                                                                                                          |
+| chat.delta        | ChatDeltaEvent        | {chatID, itemID, kind, append}                        | Claude streams text, thinking or tool input. Not persisted.                                                                                                                                                    |
+| chat.agents       | ChatAgentsEvent       | ChatAgents                                            | A chat's workflows or agents changed: one was created or its state, title, phase, summary or run id changed ([Agents](chats.md#agents)).                                                                       |
+| chat.agentItem    | ChatAgentItemEvent    | {chatID, agentID, item ChatItem}                      | An item was added to the transcript of one of a chat's agents ([Agents](chats.md#agents)).                                                                                                                     |
+| files.changed     | FilesChangedEvent     | {projectID, paths [String]}                           | Files changed under a project root.                                                                                                                                                                            |
+| webTabs.updated   | WebTabsUpdatedEvent   | {projectID, tabs [WebTab]}                            | A project's web tabs changed.                                                                                                                                                                                  |
+| skills.changed    | SkillsChangedEvent    | [SkillSummary]: the complete `skills.list` result     | The skills library changed, including files inside a skill.                                                                                                                                                    |
+| run.started       | RunStartedEvent       | RunInfo                                               | A run started; the origin is the actor that started it.                                                                                                                                                        |
+| run.output        | RunOutputEvent        | {runID, projectID, text}                              | A run produced output.                                                                                                                                                                                         |
+| run.finished      | RunFinishedEvent      | {runID, projectID, exitCode}                          | A run ended.                                                                                                                                                                                                   |
+| settings.updated  | SettingsUpdatedEvent  | HostSettings                                          | Host settings changed.                                                                                                                                                                                         |
+| claude.updated    | ClaudeUpdatedEvent    | {status ClaudeStatus, models [ClaudeModel]}           | The Claude CLI status or the model list changed.                                                                                                                                                               |
+| planUsage.updated | PlanUsageUpdatedEvent | PlanUsage                                             | The engine's plan usage was replaced ([Plan usage](#plan-usage)).                                                                                                                                              |
+| ui.open           | UIOpenEvent           | {target NavigationTarget, deviceID?}                  | `ui.open` was called.                                                                                                                                                                                          |
+| chat.notification | ChatNotificationEvent | {chatID, projectID, kind, stage, detail}              | A chat needs the user or a turn finished ([Chats › Notifications](chats.md#notifications)): once at once, then once after the summary call.                                                                    |
 
 ### Event payloads
 
@@ -2316,19 +2341,20 @@ Types owned by this document. Persisted types are in [Data model](data-model.md)
 
 Who makes a call, and the `origin` of an event.
 
-| Field    | Type      | Required        | Description                                                                              |
-| -------- | --------- | --------------- | ---------------------------------------------------------------------------------------- |
-| actor    | ActorKind | yes             | `user`, `claude` or `system`.                                                            |
-| deviceID | String    | for user only   | Device of the user: this device for local windows, the remote device for remote windows. |
-| chatID   | String    | for claude only | Chat whose token made the call, or `external` for the external token.                    |
+| Field    | Type      | Required        | Description                                                                                                              |
+| -------- | --------- | --------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| actor    | ActorKind | yes             | `user`, `claude` or `system`.                                                                                            |
+| deviceID | String    | for user only   | Device of the user: this device for local windows, the remote device for remote windows.                                 |
+| chatID   | String    | for claude only | Chat whose token made the call, `external` for the external token, or `answer` for the answer token of a comment answer. |
 
-The actor of `tickets.create`, `tickets.update` and `tickets.setStatus` becomes the author of the entries these calls add to a ticket's history: `user` with the name of its device, `claude` with its chatID, and `automatic` for `system` ([Ticket history](tickets.md#ticket-history)).
+The actor of `tickets.create`, `tickets.update` and `tickets.setStatus` becomes the author of the entries these calls add to a ticket's history: `user` with the name of its device, `claude` with its chatID (`answer` for a comment answer), and `automatic` for `system` ([Ticket history](tickets.md#ticket-history)).
 
 ```json
 [
   {"actor": "user", "deviceID": "9F1C2A4E-0B7D-4E21-8C3A-5D6E7F809A1B"},
   {"actor": "claude", "chatID": "3F2504E0-4F89-11D3-9A0C-0305E82C3301"},
   {"actor": "claude", "chatID": "external"},
+  {"actor": "claude", "chatID": "answer"},
   {"actor": "system"}
 ]
 ```
@@ -2338,7 +2364,7 @@ public enum ActorKind: String, Codable, Sendable, Hashable { case user, claude, 
 
 public enum Actor: Codable, Sendable, Hashable {
     case user(deviceID: String)
-    case claude(chatID: String)     // a chat UUID or "external"
+    case claude(chatID: String)     // a chat UUID, "external" or "answer"
     case system
     public var kind: ActorKind { get }
 }
@@ -2473,6 +2499,7 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
       "id": "HEPH",
       "name": "Hephaestus V2",
       "rootPath": "/Users/example/Developer/HephaestusV2",
+      "commentAnswersRunning": 0,
       "costUSD": 18.4,
       "ownCostUSD": 16.25,
       "subprojectIDs": ["SITE"],
@@ -2484,6 +2511,7 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
       "name": "Website",
       "parentID": "HEPH",
       "rootPath": "/Users/example/Developer/HephaestusV2/site",
+      "commentAnswersRunning": 0,
       "costUSD": 2.15,
       "ownCostUSD": 2.15,
       "subprojectIDs": [],
@@ -2525,17 +2553,18 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
 
 ### ProjectSummary
 
-| Field         | Type         | Required | Description                                                                                         |
-| ------------- | ------------ | -------- | --------------------------------------------------------------------------------------------------- |
-| id            | ProjectID    | yes      | Project identifier.                                                                                 |
-| name          | String       | yes      | Display name.                                                                                       |
-| type          | ProjectType  | yes      | [Project type](data-model.md#project-type).                                                         |
-| rootPath      | String       | yes      | Standardized absolute path of the project folder on the main device.                                |
-| parentID      | ProjectID    | no       | Identifier of the parent; absent for a top-level project.                                           |
-| subprojectIDs | [ProjectID]  | yes      | Identifiers of the loaded direct sub projects, in the order of `subprojects`.                       |
-| ticketCounts  | TicketCounts | yes      | Number of tickets per status.                                                                       |
-| ownCostUSD    | Double       | yes      | Cost of the project's own chats and deleted chats ([Project totals](costs.md#project-totals)).      |
-| costUSD       | Double       | yes      | Own cost plus the own costs of every loaded descendant ([Project totals](costs.md#project-totals)). |
+| Field                 | Type         | Required | Description                                                                                                                                                                        |
+| --------------------- | ------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id                    | ProjectID    | yes      | Project identifier.                                                                                                                                                                |
+| name                  | String       | yes      | Display name.                                                                                                                                                                      |
+| type                  | ProjectType  | yes      | [Project type](data-model.md#project-type).                                                                                                                                        |
+| rootPath              | String       | yes      | Standardized absolute path of the project folder on the main device.                                                                                                               |
+| parentID              | ProjectID    | no       | Identifier of the parent; absent for a top-level project.                                                                                                                          |
+| subprojectIDs         | [ProjectID]  | yes      | Identifiers of the loaded direct sub projects, in the order of `subprojects`.                                                                                                      |
+| ticketCounts          | TicketCounts | yes      | Number of tickets per status.                                                                                                                                                      |
+| ownCostUSD            | Double       | yes      | Cost of the project's own chats, deleted chats and comment answers ([Project totals](costs.md#project-totals)).                                                                    |
+| costUSD               | Double       | yes      | Own cost plus the own costs of every loaded descendant ([Project totals](costs.md#project-totals)).                                                                                |
+| commentAnswersRunning | Int          | yes      | Number of [comment answer](chats.md#comment-answers) calls running for the project's tickets, its sub projects excluded; the [restart rules](updater.md#restart-rules) wait for 0. |
 
 ### TicketCounts
 
@@ -3450,3 +3479,5 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R136: In a Swift application project, Claude asks the user to choose a SwiftUI animation with `ask_animation`: each suggestion plays in a lane, the user compares them, sets a preset and its parameters in a Custom row, picks one, answers another way or skips.
 - R137: Claude closes other chats of the project when the user asks it to, never on its own; a chat with a turn in progress is not closed.
 - R138: The user closes one chat, or several selected chats of the Chats section, after a confirmation.
+- R140: A comment that mentions `@Claude` gets an answer from Claude as a new comment, made by a one-shot call without a chat; typing `@` in the comment composer suggests Claude, mentions are highlighted, Claude may change the ticket's title, description, links and status, a row shows while Claude replies and offers Retry when it could not, and the answers count in the project's costs.
+- R141: A ticket's history also records each link added or removed and each change of its description, with its author and date.

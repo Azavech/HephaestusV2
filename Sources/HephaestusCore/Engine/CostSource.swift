@@ -5,4 +5,6 @@ import Foundation
 public enum CostSource: String, CaseIterable, Sendable, Hashable {
     /// The project's Claude chats, deleted ones included.
     case claudeChats
+    /// The comment answers of the project's tickets, deleted tickets' included.
+    case commentAnswers
 }

@@ -20,13 +20,17 @@ public enum ActorKind: String, Codable, Sendable, Hashable, CaseIterable {
 public enum Actor: Codable, Sendable, Hashable {
     /// A window of this device or of a remote device, with that device's id.
     case user(deviceID: String)
-    /// The Claude process of a chat (its chat id, a UUID) or a terminal session (`external`).
+    /// The Claude process of a chat (its chat id, a UUID), a terminal session (`external`) or a
+    /// comment answer (`answer`).
     case claude(chatID: String)
     /// Engine background work and tests.
     case system
 
     /// The chat id of calls made with the external MCP token.
     public static let externalChatID = "external"
+    /// The chat id of calls made with the answer token of a comment answer
+    /// (docs/chats.md › Comment answers).
+    public static let answerChatID = "answer"
 
     public var kind: ActorKind {
         switch self {
@@ -48,8 +52,8 @@ public enum Actor: Codable, Sendable, Hashable {
         return nil
     }
 
-    /// The chat of a claude actor that holds a chat token; nil for the external token and for
-    /// the other actors.
+    /// The chat of a claude actor that holds a chat token; nil for the external token, an answer
+    /// token and the other actors.
     public var chat: ChatID? {
         guard case .claude(let chatID) = self, chatID != Actor.externalChatID else { return nil }
         return UUID(uuidString: chatID)

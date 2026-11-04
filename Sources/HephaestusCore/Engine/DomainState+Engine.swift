@@ -233,6 +233,7 @@ extension Engine {
         guard var summary = domain.summary(id) else { return nil }
         summary.ownCostUSD = ownCostUSD(id)
         summary.costUSD = domain.descendants(of: id).reduce(summary.ownCostUSD) { $0 + ownCostUSD($1) }
+        summary.commentAnswersRunning = commentAnswers.runningCount(projectID: id)
         return summary
     }
 
@@ -248,6 +249,9 @@ extension Engine {
             // Its chats, a chat without a cost counting 0, plus its deleted chats.
             let chatsCost = domain.chats(of: id).reduce(0) { $0 + (chats.costs[$1.id]?.costUSD ?? 0) }
             return chatsCost + (domain.project(id)?.deletedChatsCostUSD ?? 0)
+        case .commentAnswers:
+            // Its `commentAnswers` entries, those of deleted tickets included.
+            return domain.project(id)?.commentAnswersCostUSD ?? 0
         }
     }
 

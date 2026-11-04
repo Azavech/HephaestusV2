@@ -153,6 +153,22 @@ public enum TicketsDeleteComment: EngineMethod {
     public typealias Result = Ticket
 }
 
+/// `tickets.retryAnswer`. Actors: user. Retry of a comment whose answer failed
+/// (docs/engine-api.md › tickets.retryAnswer).
+public enum TicketsRetryAnswer: EngineMethod {
+    public static let name = "tickets.retryAnswer"
+    public struct Params: Codable, Sendable, Hashable {
+        public var ticketID: TicketID
+        public var commentID: UUID
+
+        public init(ticketID: TicketID, commentID: UUID) {
+            self.ticketID = ticketID
+            self.commentID = commentID
+        }
+    }
+    public typealias Result = Ticket
+}
+
 /// `tickets.addAttachments`. Actors: user.
 public enum TicketsAddAttachments: EngineMethod {
     public static let name = "tickets.addAttachments"

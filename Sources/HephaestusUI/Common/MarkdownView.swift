@@ -19,6 +19,9 @@ struct MarkdownContext {
     /// Called with the name of a sound marker whose play button was clicked
     /// (docs/documentation-viewer.md › Sound markers).
     var playSound: (@MainActor (String) -> Void)?
+    /// Draws the mentions of Claude outside links in the accent color, for ticket comments
+    /// (docs/tickets.md › Mentioning Claude).
+    var highlightsMentions = false
 
     /// A clicked link: an id link goes to `openID`, a sound marker's play button to `playSound`,
     /// any other link to `openLink`.
@@ -176,17 +179,19 @@ private struct MarkdownListView: View {
 private struct MarkdownInlinesView: View {
     let inlines: [MarkdownInline]
     let font: Font
+    @Environment(\.markdownContext) private var context
 
     var body: some View {
         let segments = MarkdownInlineSegments.split(inlines)
+        let mentions = context.highlightsMentions
         if segments.count == 1, case .text(let runs) = segments[0] {
-            MarkdownAttributed.text(runs).font(font)
+            MarkdownAttributed.text(runs, highlightsMentions: mentions).font(font)
         } else {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
                     switch segment {
                     case .text(let runs):
-                        MarkdownAttributed.text(runs).font(font)
+                        MarkdownAttributed.text(runs, highlightsMentions: mentions).font(font)
                     case .image(let source, let alt, let title):
                         MarkdownImageView(source: source, alt: alt, title: title)
                     }
@@ -229,8 +234,9 @@ private enum MarkdownInlineSegments {
 /// (docs/documentation-viewer.md › SF Symbol markers), and each font marker as its label in its
 /// font at the size of Markdown text (docs/chats.md › Links, images and files).
 enum MarkdownAttributed {
-    static func text(_ inlines: [MarkdownInline]) -> Text {
+    static func text(_ inlines: [MarkdownInline], highlightsMentions: Bool = false) -> Text {
         var builder = Builder()
+        builder.highlightsMentions = highlightsMentions
         builder.append(inlines, intent: [], link: nil)
         builder.flush()
         guard var result = builder.parts.first else { return Text(verbatim: "") }
@@ -244,10 +250,15 @@ enum MarkdownAttributed {
     private struct Builder {
         var parts: [Text] = []
         var current = AttributedString()
+        var highlightsMentions = false
+        /// The last character appended, for the whole-word rule of the mentions.
+        var previous: Character?
 
         mutating func append(_ inlines: [MarkdownInline], intent: InlinePresentationIntent, link: URL?) {
             for inline in inlines {
                 switch inline {
+                case .text(let text) where highlightsMentions && link == nil:
+                    appendMentions(text, intent: intent)
                 case .text(let text):
                     current.append(MarkdownAttributed.run(text, intent: intent, link: link))
                 case .code(let code):
@@ -301,7 +312,26 @@ enum MarkdownAttributed {
             }
         }
 
+        /// Text whose mentions of Claude are drawn in the accent color, without a link.
+        mutating func appendMentions(_ text: String, intent: InlinePresentationIntent) {
+            let before = current.characters.last ?? previous
+            var position = text.startIndex
+            for range in CommentMentions.ranges(in: text, after: before) {
+                if range.lowerBound > position {
+                    current.append(MarkdownAttributed.run(String(text[position..<range.lowerBound]), intent: intent, link: nil))
+                }
+                var mention = MarkdownAttributed.run(String(text[range]), intent: intent, link: nil)
+                mention.foregroundColor = .accentColor
+                current.append(mention)
+                position = range.upperBound
+            }
+            if position < text.endIndex {
+                current.append(MarkdownAttributed.run(String(text[position...]), intent: intent, link: nil))
+            }
+        }
+
         mutating func flush() {
+            previous = current.characters.last ?? previous
             guard !current.characters.isEmpty else { return }
             parts.append(Text(current))
             current = AttributedString()

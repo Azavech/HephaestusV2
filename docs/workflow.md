@@ -4,15 +4,17 @@ This is the operating manual Claude follows in every HephaestusV2 chat. Claude n
 
 ## Where the rules apply
 
-| Chat kind        | Started by                                                             | Prompt resources           | What this workflow adds                                                                                                                                                        |
-| ---------------- | ---------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `project`        | New Chat (⌥⌘N), the project chat panel or the Chats section            | `common.md`, `project.md`  | Free-form work; tickets are written with the template                                                                                                                          |
-| `ticket`         | Implement, New Chat in a ticket's Chats tab, `implement_ticket`        | `common.md`, `ticket.md`   | Implement runs the [implementation workflow](#implementation-workflow); a ticket chat started by a bundle chat commits on its own branch without pushing ([Bundles](#bundles)) |
-| `bundle`         | Implement All, New Chat in a bundle's Chats tab, `implement_bundle`    | `common.md`, `bundle.md`   | Implement All runs the [bundle workflow](#bundles): the chat orchestrates ticket chats that run in parallel, then merges their branches                                        |
-| `feedback`       | The ladybug ([Feedback](feedback.md))                                  | `common.md`, `feedback.md` | Clarify the feedback, then create its ticket                                                                                                                                   |
-| External session | A terminal Claude session using the external MCP token ([MCP](mcp.md)) | none                       | Only the [engine-enforced rules](#engine-enforced-rules); no `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font` or `ask_animation`            |
+| Chat kind        | Started by                                                                                                                                                   | Prompt resources           | What this workflow adds                                                                                                                                                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project`        | New Chat (⌥⌘N), the project chat panel or the Chats section                                                                                                  | `common.md`, `project.md`  | Free-form work; tickets are written with the template                                                                                                                                                                                 |
+| `ticket`         | Implement, New Chat in a ticket's Chats tab, `implement_ticket`                                                                                              | `common.md`, `ticket.md`   | Implement runs the [implementation workflow](#implementation-workflow); a ticket chat started by a bundle chat commits on its own branch without pushing ([Bundles](#bundles))                                                        |
+| `bundle`         | Implement All, New Chat in a bundle's Chats tab, `implement_bundle`                                                                                          | `common.md`, `bundle.md`   | Implement All runs the [bundle workflow](#bundles): the chat orchestrates ticket chats that run in parallel, then merges their branches                                                                                               |
+| `feedback`       | The ladybug ([Feedback](feedback.md))                                                                                                                        | `common.md`, `feedback.md` | Clarify the feedback, then create its ticket                                                                                                                                                                                          |
+| External session | A terminal Claude session using the external MCP token ([MCP](mcp.md))                                                                                       | none                       | Only the [engine-enforced rules](#engine-enforced-rules); no `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font` or `ask_animation`                                                                   |
+| Comment answer   | A new comment of the user that mentions `@Claude` ([Tickets](tickets.md#mentioning-claude)); a one-shot call, not a chat ([Chats](chats.md#comment-answers)) | `comment-answer.md`        | Answer the comment; change only the title, description, links and status of its ticket, never docs, code, other tickets, comments or attachments; questions go in the answer comment as [plain-text questions](#plain-text-questions) |
 
 - The prompt resources are in `Sources/HephaestusCore/Resources/prompts/`, and their full text is in [Chats](chats.md). `common.md` states every rule of this document in imperative form.
+- A comment answer gets `comment-answer.md` alone: the rules of this document that apply to it, [Never invent](#never-invent), the template of [Writing tickets](#writing-tickets), [Ticket status](#ticket-status) and [Plain-text questions](#plain-text-questions), are stated there, and it implements nothing, commits nothing and asks nothing with `ask_questions` ([Prompt: comment-answer](chats.md#prompt-comment-answer)).
 - Claude CLI also reads the project's own `CLAUDE.md` from the project root. The `CLAUDE.md` of the HephaestusV2 repository links to this document. Default chosen at design time.
 - An explicit instruction from the user in the chat replaces a step of this workflow, for example "do not push". The engine-enforced rules cannot be replaced: when an instruction conflicts with one of them, Claude tells the user that the user has to do it. Default chosen at design time.
 
@@ -85,7 +87,7 @@ B: <answer>
 
 ### Plain-text questions
 
-In an external session, where `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font` and `ask_animation` are not available, Claude writes the questions in its reply in this form and ends its turn; a symbol choice becomes a question whose options are the symbol names, a color choice a question whose options are the color values, a light and dark pair being written `Light <color>, Dark <color>`, a sound choice a question whose options are the sound names, a shortcut choice a question whose options are the shortcuts, a font choice a question whose options are the fonts, written in the [font notation](chats.md#font-notation), and an animation choice a question whose options are the animation expressions:
+In an external session and in a comment answer, where `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font` and `ask_animation` are not available, Claude writes the questions in its reply in this form and ends its turn; a symbol choice becomes a question whose options are the symbol names, a color choice a question whose options are the color values, a light and dark pair being written `Light <color>, Dark <color>`, a sound choice a question whose options are the sound names, a shortcut choice a question whose options are the shortcuts, a font choice a question whose options are the fonts, written in the [font notation](chats.md#font-notation), and an animation choice a question whose options are the animation expressions:
 
 ```text
 A: <question>
@@ -97,6 +99,8 @@ B: <question>
 ```
 
 The user answers with one `<label>: <answer>` line per question. Default chosen at design time.
+
+In a comment answer, the reply is Claude's answer comment, and the questions end it; the user answers with a new comment that mentions `@Claude`, holding the `<label>: <answer>` lines, which starts a new call ([Comment answers](tickets.md#comment-answers)). The rules of [Answers message](#answers-message) apply to those lines.
 
 ### Symbol requests
 
@@ -601,37 +605,38 @@ When the project is HephaestusV2 itself (the registered project whose git remote
 
 ## Engine-enforced rules
 
-| Rule                                                                                                                      | Checked by                             | Failure               |
-| ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- | --------------------- |
-| Descriptions written by Claude follow the template                                                                        | `tickets.create`, `tickets.update`     | `invalid`             |
-| New tickets start as `todo`                                                                                               | `tickets.create` (no status parameter) | none                  |
-| Tickets created without a title are named by Haiku                                                                        | `tickets.create`                       | none                  |
-| Claude never changes the status of a `done` ticket                                                                        | `tickets.setStatus`                    | `forbidden`           |
-| Questions are labelled in order, with 2 to 10 options and exactly one recommended                                         | `chats.postQuestions`                  | `invalid`             |
-| A chat has at most one waiting question set, symbol, color, sound, shortcut, font or animation request                    | `chats.postQuestions`                  | `conflict`            |
-| Symbol requests have 2 to 10 distinct SF Symbol names, one recommended                                                    | `chats.postSymbol`                     | `invalid`             |
-| A symbol request is refused while a question set, symbol, color, sound, shortcut, font or animation request waits         | `chats.postSymbol`                     | `conflict`            |
-| Color requests have 2 to 10 distinct hex colors or system color names, or pairs of them, one recommended                  | `chats.postColor`                      | `invalid`             |
-| A color request is refused while a question set, symbol, color, sound, shortcut, font or animation request waits          | `chats.postColor`                      | `conflict`            |
-| Sound requests are posted only in projects of type Swift application                                                      | `chats.postSound`                      | `forbidden`           |
-| Sound requests have 2 to 10 distinct names of the sound catalogue, one recommended                                        | `chats.postSound`                      | `invalid`             |
-| A sound request is refused while a question set, symbol, color, sound, shortcut, font or animation request waits          | `chats.postSound`                      | `conflict`            |
-| Shortcut requests are posted only in Swift application projects                                                           | `chats.postShortcut`                   | `forbidden`           |
-| Shortcut requests have 2 to 10 distinct shortcuts in menu notation, one recommended, and valid `inUse` entries            | `chats.postShortcut`                   | `invalid`             |
-| A shortcut request is refused while a question set, symbol, color, sound, shortcut, font or animation request waits       | `chats.postShortcut`                   | `conflict`            |
-| Font requests have a question, a sample and 2 to 10 distinct fonts of the font catalogue, one recommended                 | `chats.postFont`                       | `invalid`             |
-| A font request is refused while a question set, symbol, color, sound, shortcut, font or animation request waits           | `chats.postFont`                       | `conflict`            |
-| Animation requests are posted only in Swift application projects                                                          | `chats.postAnimation`                  | `forbidden`           |
-| Animation requests have 2 to 10 distinct SwiftUI animation expressions with parameters in range, one recommended          | `chats.postAnimation`                  | `invalid`             |
-| An animation request is refused while a question set, symbol, color, sound, shortcut, font or animation request waits     | `chats.postAnimation`                  | `conflict`            |
-| `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font` and `ask_animation` need a chat token | MCP server                             | see [MCP](mcp.md)     |
-| `close_chat` needs a chat token and closes only chats of the calling chat's project                                       | MCP server, `chats.close`              | see [MCP](mcp.md)     |
-| `close_chat` never closes another chat while a turn is in progress in it                                                  | `chats.close`                          | see [MCP](mcp.md)     |
-| Links join two tickets of the same project, once per pair, without a Depends on cycle                                     | `tickets.create`, `tickets.update`     | `invalid`, `notFound` |
-| A `done` ticket is not implemented                                                                                        | `chats.implementTicket`                | `conflict`            |
-| A bundle is implemented only when one of its tickets is not `done`                                                        | `chats.implementBundle`                | `conflict`            |
-| A bundle is implemented only when its status is `todo`                                                                    | `chats.implementBundle`                | `conflict`            |
-| Claude never sets a bundle to `done` and never changes a `done` bundle                                                    | `bundles.setStatus`                    | `forbidden`           |
+| Rule                                                                                                                      | Checked by                             | Failure                                    |
+| ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------ |
+| Descriptions written by Claude follow the template                                                                        | `tickets.create`, `tickets.update`     | `invalid`                                  |
+| New tickets start as `todo`                                                                                               | `tickets.create` (no status parameter) | none                                       |
+| Tickets created without a title are named by Haiku                                                                        | `tickets.create`                       | none                                       |
+| Claude never changes the status of a `done` ticket                                                                        | `tickets.setStatus`                    | `forbidden`                                |
+| Questions are labelled in order, with 2 to 10 options and exactly one recommended                                         | `chats.postQuestions`                  | `invalid`                                  |
+| A chat has at most one waiting question set, symbol, color, sound, shortcut, font or animation request                    | `chats.postQuestions`                  | `conflict`                                 |
+| Symbol requests have 2 to 10 distinct SF Symbol names, one recommended                                                    | `chats.postSymbol`                     | `invalid`                                  |
+| A symbol request is refused while a question set, symbol, color, sound, shortcut, font or animation request waits         | `chats.postSymbol`                     | `conflict`                                 |
+| Color requests have 2 to 10 distinct hex colors or system color names, or pairs of them, one recommended                  | `chats.postColor`                      | `invalid`                                  |
+| A color request is refused while a question set, symbol, color, sound, shortcut, font or animation request waits          | `chats.postColor`                      | `conflict`                                 |
+| Sound requests are posted only in projects of type Swift application                                                      | `chats.postSound`                      | `forbidden`                                |
+| Sound requests have 2 to 10 distinct names of the sound catalogue, one recommended                                        | `chats.postSound`                      | `invalid`                                  |
+| A sound request is refused while a question set, symbol, color, sound, shortcut, font or animation request waits          | `chats.postSound`                      | `conflict`                                 |
+| Shortcut requests are posted only in Swift application projects                                                           | `chats.postShortcut`                   | `forbidden`                                |
+| Shortcut requests have 2 to 10 distinct shortcuts in menu notation, one recommended, and valid `inUse` entries            | `chats.postShortcut`                   | `invalid`                                  |
+| A shortcut request is refused while a question set, symbol, color, sound, shortcut, font or animation request waits       | `chats.postShortcut`                   | `conflict`                                 |
+| Font requests have a question, a sample and 2 to 10 distinct fonts of the font catalogue, one recommended                 | `chats.postFont`                       | `invalid`                                  |
+| A font request is refused while a question set, symbol, color, sound, shortcut, font or animation request waits           | `chats.postFont`                       | `conflict`                                 |
+| Animation requests are posted only in Swift application projects                                                          | `chats.postAnimation`                  | `forbidden`                                |
+| Animation requests have 2 to 10 distinct SwiftUI animation expressions with parameters in range, one recommended          | `chats.postAnimation`                  | `invalid`                                  |
+| An animation request is refused while a question set, symbol, color, sound, shortcut, font or animation request waits     | `chats.postAnimation`                  | `conflict`                                 |
+| `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font` and `ask_animation` need a chat token | MCP server                             | see [MCP](mcp.md)                          |
+| `close_chat` needs a chat token and closes only chats of the calling chat's project                                       | MCP server, `chats.close`              | see [MCP](mcp.md)                          |
+| A comment answer uses only the read tools, `update_ticket` and `set_ticket_status`, and changes only its comment's ticket | MCP server                             | `forbidden`, see [MCP](mcp.md#actor-rules) |
+| `close_chat` never closes another chat while a turn is in progress in it                                                  | `chats.close`                          | see [MCP](mcp.md)                          |
+| Links join two tickets of the same project, once per pair, without a Depends on cycle                                     | `tickets.create`, `tickets.update`     | `invalid`, `notFound`                      |
+| A `done` ticket is not implemented                                                                                        | `chats.implementTicket`                | `conflict`                                 |
+| A bundle is implemented only when one of its tickets is not `done`                                                        | `chats.implementBundle`                | `conflict`                                 |
+| A bundle is implemented only when its status is `todo`                                                                    | `chats.implementBundle`                | `conflict`                                 |
+| Claude never sets a bundle to `done` and never changes a `done` bundle                                                    | `bundles.setStatus`                    | `forbidden`                                |
 
 The engine does not check the other rules (never invent, docs first, build and test, the tests that allow `done`, commits, pushing and the completion comment); only the prompts carry them. A ticket file that Claude edits with its own file tools reaches the engine as an external change with the actor `system` ([Data model](data-model.md#external-changes)); the template and status rules are not applied to it. Only the prompt rule `Never create, edit or delete files inside a .hephaestus folder yourself` prevents it. The error messages of the ticket rules are in [Errors](tickets.md#errors).
 
@@ -761,3 +766,4 @@ Notes
 - R135: Claude asks the user to choose a font with `ask_font` and a sample text: the suggestions are drawn in their fonts, every font of the Mac and of the project can be searched, the user picks one, sets its weight and size and sees the sample in it, answers another way or skips.
 - R136: In a Swift application project, Claude asks the user to choose a SwiftUI animation with `ask_animation`: each suggestion plays in a lane, the user compares them, sets a preset and its parameters in a Custom row, picks one, answers another way or skips.
 - R137: Claude closes other chats of the project when the user asks it to, never on its own; a chat with a turn in progress is not closed.
+- R140: A comment that mentions `@Claude` gets an answer from Claude as a new comment, made by a one-shot call without a chat; typing `@` in the comment composer suggests Claude, mentions are highlighted, Claude may change the ticket's title, description, links and status, a row shows while Claude replies and offers Retry when it could not, and the answers count in the project's costs.

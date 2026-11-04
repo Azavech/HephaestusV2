@@ -7,10 +7,13 @@ import SwiftUI
 struct CostBreakdown: Equatable {
     struct Line: Equatable, Identifiable {
         var source: CostSource
-        /// The chat id.
-        var id: UUID
+        /// The chat id, or `ticket-<ticket id>` for the comment answers of a ticket.
+        var id: String
+        /// What a click opens; nil for a deleted chat or ticket.
+        var target: NavigationTarget?
         var title: String
-        /// `Project`, `Ticket <id>`, `Bundle <id>`, `Feedback` or `Feedback <ticket id>`.
+        /// `Project`, `Ticket <id>`, `Bundle <id>`, `Feedback`, `Feedback <ticket id>` or
+        /// `Comment answers <ticket id>`.
         var kind: String
         /// Nil for a chat without a cost.
         var costUSD: Double?
@@ -39,9 +42,11 @@ struct CostBreakdown: Equatable {
     ///   - projects: the device's projects in `projects.list` order.
     ///   - chats: the chats of every project.
     ///   - deletedChats: the `deletedChats` of the loaded projects, by project id.
-    ///   - showDeleted: the `Show Deleted Chats` toggle.
+    ///   - commentAnswers: the `commentAnswers` of the loaded projects, by project id.
+    ///   - tickets: the tickets of the loaded projects, by project id and ticket id.
+    ///   - showDeleted: the `Show Deleted` toggle.
     init?(projectID: String, projects: [ProjectSummary], chats: [ChatMeta], deletedChats: [String: [DeletedChat]],
-          showDeleted: Bool) {
+          commentAnswers: [String: [CommentAnswerCost]] = [:], tickets: [String: [String: Ticket]] = [:], showDeleted: Bool) {
         guard let start = projects.firstIndex(where: { $0.id == projectID }) else { return nil }
         let root = projects[start]
         var depths: [String: Int] = [root.id: 0]
@@ -57,7 +62,7 @@ struct CostBreakdown: Equatable {
         groups = members.map { summary, depth in
             let lines = CostSource.allCases.flatMap { source in
                 Self.lines(source, chats: chatsByProject[summary.id] ?? [], deletedChats: deletedChats[summary.id] ?? [],
-                           showDeleted: showDeleted)
+                           commentAnswers: commentAnswers[summary.id] ?? [], tickets: tickets[summary.id], showDeleted: showDeleted)
             }
             return Group(project: summary, depth: depth, subtotalUSD: summary.ownCostUSD, lines: lines.sorted(by: Self.order),
                          loading: deletedChats[summary.id] == nil)
@@ -65,22 +70,43 @@ struct CostBreakdown: Equatable {
     }
 
     /// The lines of one cost source in a project's group (docs/costs.md › Cost sources).
-    static func lines(_ source: CostSource, chats: [ChatMeta], deletedChats: [DeletedChat], showDeleted: Bool) -> [Line] {
+    /// `tickets` is nil while the project's tickets are not loaded: no ticket counts as deleted.
+    static func lines(_ source: CostSource, chats: [ChatMeta], deletedChats: [DeletedChat],
+                      commentAnswers: [CommentAnswerCost] = [], tickets: [String: Ticket]? = nil, showDeleted: Bool) -> [Line] {
         switch source {
         case .claudeChats:
             var lines = chats.map { chat in
-                Line(source: source, id: chat.id, title: chat.title,
+                Line(source: source, id: chat.id.uuidString, target: .chat(chatID: chat.id), title: chat.title,
                      kind: kind(chat.kind, ticketID: chat.ticketID, bundleID: chat.bundleID),
                      costUSD: chat.costUSD, deleted: false, updated: chat.updated)
             }
             if showDeleted {
                 lines += deletedChats.map { chat in
-                    Line(source: source, id: chat.id, title: chat.title,
+                    Line(source: source, id: chat.id.uuidString, target: nil, title: chat.title,
                          kind: kind(chat.kind, ticketID: chat.ticketID, bundleID: chat.bundleID),
                          costUSD: chat.costUSD, deleted: true, updated: chat.deleted)
                 }
             }
             return lines
+        case .commentAnswers:
+            // One line per ticket: the sum of its entries, under its current title, or the title
+            // of its last entry once the ticket is deleted (docs/costs.md › Costs section).
+            var order: [TicketID] = []
+            var entries: [TicketID: [CommentAnswerCost]] = [:]
+            for entry in commentAnswers {
+                if entries[entry.ticketID] == nil { order.append(entry.ticketID) }
+                entries[entry.ticketID, default: []].append(entry)
+            }
+            return order.compactMap { ticketID -> Line? in
+                let ticketEntries = entries[ticketID] ?? []
+                let ticket = tickets?[ticketID]
+                let deleted = tickets != nil && ticket == nil
+                if deleted && !showDeleted { return nil }
+                return Line(source: source, id: "ticket-" + ticketID, target: deleted ? nil : .ticket(ticketID: ticketID),
+                            title: ticket?.title ?? ticketEntries.last?.title ?? ticketID, kind: "Comment answers " + ticketID,
+                            costUSD: ticketEntries.reduce(0) { $0 + $1.costUSD }, deleted: deleted,
+                            updated: ticketEntries.map(\.date).max() ?? .distantPast)
+            }
         }
     }
 
@@ -91,7 +117,7 @@ struct CostBreakdown: Equatable {
         case (_?, nil): return true
         case (nil, _?): return false
         default:
-            return a.updated != b.updated ? a.updated > b.updated : a.id.uuidString < b.id.uuidString
+            return a.updated != b.updated ? a.updated > b.updated : a.id < b.id
         }
     }
 
@@ -120,7 +146,9 @@ struct CostsSectionView: View {
 
     private var breakdown: CostBreakdown? {
         CostBreakdown(projectID: projectID, projects: workspace.projects, chats: Array(workspace.chats.values),
-                      deletedChats: workspace.details.mapValues(\.project.deletedChats), showDeleted: showDeleted)
+                      deletedChats: workspace.details.mapValues(\.project.deletedChats),
+                      commentAnswers: workspace.details.mapValues(\.project.commentAnswers),
+                      tickets: workspace.tickets.filter { workspace.loadedProjectIDs.contains($0.key) }, showDeleted: showDeleted)
     }
 
     var body: some View {
@@ -128,7 +156,7 @@ struct CostsSectionView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     header(breakdown)
-                    Toggle("Show Deleted Chats", isOn: $showDeleted)
+                    Toggle("Show Deleted", isOn: $showDeleted)
                         .toggleStyle(.checkbox)
                     ForEach(breakdown.groups) { group in
                         groupView(group)
@@ -187,9 +215,9 @@ struct CostsSectionView: View {
 
     private func lineView(_ line: CostBreakdown.Line) -> some View {
         Button {
-            guard !line.deleted else { return }
+            guard let target = line.target else { return }
             Task {
-                await window.navigate(to: .chat(chatID: line.id))
+                await window.navigate(to: target)
             }
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 8) {

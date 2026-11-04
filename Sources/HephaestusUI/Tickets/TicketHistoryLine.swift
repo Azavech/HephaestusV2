@@ -35,7 +35,8 @@ enum TicketTimeline {
 
 /// The text of a history entry: `<change> · <author> · <date>`.
 enum TicketHistoryText {
-    /// `Created as To Do`, `In Progress → In Review` or `Renamed “<old>” → “<new>”`.
+    /// `Created as To Do`, `In Progress → In Review`, `Renamed “<old>” → “<new>”`,
+    /// `Added link Related HEPH-20`, `Removed link Depends on HEPH-15` or `Edited the description`.
     static func change(_ entry: TicketHistoryEntry) -> String {
         switch entry.kind {
         case .created:
@@ -44,7 +45,19 @@ enum TicketHistoryText {
             return "\(statusLabel(entry.from ?? "")) → \(statusLabel(entry.to))"
         case .title:
             return "Renamed “\(entry.from ?? "")” → “\(entry.to)”"
+        case .linkAdded:
+            return "Added link \(linkLabel(entry))"
+        case .linkRemoved:
+            return "Removed link \(linkLabel(entry))"
+        case .description:
+            return "Edited the description"
         }
+    }
+
+    /// The link of a link entry with the UI label of its kind; `to` as written otherwise.
+    private static func linkLabel(_ entry: TicketHistoryEntry) -> String {
+        guard let link = entry.link else { return entry.to }
+        return "\(link.kind.label) \(link.ticketID)"
     }
 
     /// The author: its text, and the chat its title opens for `Claude in <chat title>`.

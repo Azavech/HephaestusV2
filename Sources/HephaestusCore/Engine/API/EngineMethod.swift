@@ -91,7 +91,7 @@ public enum EngineMethods {
         ProjectsList.self, ProjectsGet.self, ProjectsCreate.self, ProjectsOpen.self, ProjectsUpdate.self,
         ProjectsRemove.self, ProjectsRun.self, ProjectsStopRun.self,
         TicketsList.self, TicketsGet.self, TicketsCreate.self, TicketsUpdate.self, TicketsSetStatus.self,
-        TicketsDelete.self, TicketsAddComment.self, TicketsUpdateComment.self, TicketsDeleteComment.self,
+        TicketsDelete.self, TicketsAddComment.self, TicketsUpdateComment.self, TicketsDeleteComment.self, TicketsRetryAnswer.self,
         TicketsAddAttachments.self, TicketsRemoveAttachment.self,
         AttachmentsRead.self,
         BundlesList.self, BundlesGet.self, BundlesCreate.self, BundlesUpdate.self, BundlesSetStatus.self,

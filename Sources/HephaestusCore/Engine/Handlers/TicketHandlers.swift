@@ -30,6 +30,9 @@ extension Engine {
         register(TicketsDeleteComment.self, actors: [.user, .claude]) { [unowned self] params, actor in
             try await self.apiTicket(self.ticketsDeleteComment(params, actor))
         }
+        register(TicketsRetryAnswer.self, actors: [.user]) { [unowned self] params, actor in
+            try await self.apiTicket(self.ticketsRetryAnswer(params, actor))
+        }
         register(TicketsAddAttachments.self, actors: [.user]) { [unowned self] params, actor in
             try await self.apiTicket(self.ticketsAddAttachments(params, actor))
         }
@@ -153,8 +156,19 @@ extension Engine {
         }
         guard new != old else { return old }
         let now = ISODate.now()
+        // The rename, the description edit, the removed links, then the added links
+        // (docs/tickets.md › Ticket history).
         if new.title != old.title {
             new.history.append(historyEntry(.title, from: old.title, to: new.title, actor: actor, date: now))
+        }
+        if new.description != old.description {
+            new.history.append(historyEntry(.description, from: nil, to: "", actor: actor, date: now))
+        }
+        for link in old.links where !new.links.contains(where: { $0.kind == link.kind && $0.ticketID == link.ticketID }) {
+            new.history.append(historyEntry(.linkRemoved, from: nil, to: TicketHistoryEntry.linkValue(link), actor: actor, date: now))
+        }
+        for link in new.links where !old.links.contains(where: { $0.kind == link.kind && $0.ticketID == link.ticketID }) {
+            new.history.append(historyEntry(.linkAdded, from: nil, to: TicketHistoryEntry.linkValue(link), actor: actor, date: now))
         }
         new.updated = now
         try saveTicket(new)
@@ -203,6 +217,8 @@ extension Engine {
             try saveBundle(bundle)
             emit(BundleUpdatedEvent.self, bundle, origin: actor)
         }
+        // The comment answers of the ticket stop (docs/tickets.md › Comment answers).
+        stopCommentAnswers(of: ticket)
         // 2. Every ticket file declaring a link to it.
         try removeLinks(to: ticket.id, projectID: projectID, origin: actor)
         // 3. The ticket file and the folder attachments/<ticketID>/.
@@ -241,11 +257,21 @@ extension Engine {
             throw storageFailure(error)
         }
         let now = ISODate.now()
-        ticket.comments.append(Comment(id: UUID(), author: actor.kind == .claude ? .claude : .user, created: now, updated: nil,
-                                       text: ModelRules.normalizedLineBreaks(params.text), attachments: attachments))
+        let comment = Comment(id: UUID(), author: actor.kind == .claude ? .claude : .user, created: now, updated: nil,
+                              text: ModelRules.normalizedLineBreaks(params.text), attachments: attachments)
+        ticket.comments.append(comment)
         ticket.updated = now
         try saveTicket(ticket)
+        // A new comment of the user that mentions Claude starts an answer (docs/tickets.md ›
+        // Mentioning Claude); its `replying` state goes with this ticket.updated.
+        let answering = actor.kind == .user && CommentMentions.mentionsClaude(comment.text)
+        if answering {
+            startCommentAnswer(ticketID: ticket.id, projectID: ticket.projectID!, commentID: comment.id)
+        }
         emitTicketUpdated(ticket, origin: actor)
+        if answering {
+            emitProjectsChanged(origin: actor)
+        }
         return ticket
     }
 
@@ -274,6 +300,8 @@ extension Engine {
         guard let index = ticket.comments.firstIndex(where: { $0.id == params.commentID }) else {
             throw EngineError.notFound("Comment", params.commentID.uuidString)
         }
+        // Its comment answer stops first (docs/tickets.md › Comment answers).
+        stopCommentAnswer(commentID: params.commentID)
         let removed = ticket.comments.remove(at: index)
         ticket.updated = ISODate.now()
         try saveTicket(ticket)

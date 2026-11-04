@@ -60,10 +60,36 @@ struct CostBreakdownTests {
         #expect(shown.groups[0].lines[1].deleted && shown.groups[0].lines[1].kind == "Bundle DEMO-B1")
         // The subtotal includes the deleted chats whether they are shown or not.
         #expect(shown.groups[0].subtotalUSD == hidden.groups[0].subtotalUSD)
-        // Every line belongs to a cost source: Claude chats are the only one.
+        // Every line belongs to a cost source: here, Claude chats.
         #expect(shown.groups.flatMap(\.lines).allSatisfy { $0.source == .claudeChats })
         #expect(CostBreakdown.lines(.claudeChats, chats: chats.filter { $0.projectID == "DEMO" }, deletedChats: deleted["DEMO"]!,
                                     showDeleted: true).count == 5)
+    }
+
+    @Test("Comment answers: one line per ticket with the sum of its entries; a deleted ticket's line only with the toggle")
+    func commentAnswers() throws {
+        let chats = [chat("DEMO", "Dear", 1, kind: .ticket, ticketID: "DEMO-3"), chat("DEMO", "Cheap", 0.1)]
+        let answers = ["DEMO": [
+            CommentAnswerCost(ticketID: "DEMO-3", title: "Old title", costUSD: 0.25, date: created),
+            CommentAnswerCost(ticketID: "DEMO-9", title: "Gone ticket", costUSD: 0.5, date: created),
+            CommentAnswerCost(ticketID: "DEMO-3", title: "Old title", costUSD: 0.25, date: created.addingTimeInterval(5)),
+        ]]
+        let tickets = ["DEMO": ["DEMO-3": Ticket(id: "DEMO-3", title: "Fix the login crash", created: created)]]
+        let hidden = try #require(CostBreakdown(projectID: "DEMO", projects: projects, chats: chats, deletedChats: [:],
+                                                commentAnswers: answers, tickets: tickets, showDeleted: false))
+        #expect(hidden.groups[0].lines.map(\.title) == ["Dear", "Fix the login crash", "Cheap"])
+        let answerLine = hidden.groups[0].lines[1]
+        #expect(answerLine.kind == "Comment answers DEMO-3" && answerLine.costUSD == 0.5 && answerLine.source == .commentAnswers)
+        #expect(answerLine.target == .ticket(ticketID: "DEMO-3") && !answerLine.deleted)
+        #expect(hidden.groups[0].lines[0].target == .chat(chatID: chats[0].id))
+        let shown = try #require(CostBreakdown(projectID: "DEMO", projects: projects, chats: chats, deletedChats: [:],
+                                               commentAnswers: answers, tickets: tickets, showDeleted: true))
+        let gone = try #require(shown.groups[0].lines.first { $0.id == "ticket-DEMO-9" })
+        #expect(gone.deleted && gone.title == "Gone ticket" && gone.target == nil && gone.kind == "Comment answers DEMO-9")
+        // Without the project's tickets no ticket counts as deleted.
+        let unknown = CostBreakdown.lines(.commentAnswers, chats: [], deletedChats: [], commentAnswers: answers["DEMO"]!,
+                                          tickets: nil, showDeleted: false)
+        #expect(unknown.map(\.title) == ["Old title", "Gone ticket"] && unknown.allSatisfy { !$0.deleted })
     }
 
     @Test("Amounts: $0.00 for 0, < $0.01 below a cent, else two decimals")

@@ -49,6 +49,23 @@ enum ClaudeCommandLine {
         return ultracode ? #"{"ultracode":true,\#(hooks)}"# : "{\(hooks)}"
     }
 
+    /// The tools of a comment answer: the read-only file tools and the hephaestus tools that read
+    /// data, plus `update_ticket` and `set_ticket_status` (docs/chats.md › Answer command).
+    static let answerMCPTools = [
+        "list_projects", "get_project", "list_tickets", "get_ticket", "update_ticket", "set_ticket_status", "list_bundles",
+        "get_bundle", "search", "list_docs", "list_web_tabs", "list_skills", "get_skill", "list_chats", "get_chat",
+    ]
+    static let answerFileTools = "Read,Grep,Glob"
+    static let answerTools = ([answerFileTools] + answerMCPTools.map { "mcp__hephaestus__\($0)" }).joined(separator: ",")
+
+    /// The argv of a comment answer call (docs/chats.md › Answer command).
+    static func commentAnswer(cliPath: String, model: String, effort: String, mcpConfigPath: String, systemPrompt: String,
+                              input: String) -> [String] {
+        [cliPath, "-p", "--output-format", "json", "--no-session-persistence", "--model", model, "--effort", effort,
+         "--permission-mode", "dontAsk", "--tools", answerFileTools, "--allowedTools", answerTools, "--strict-mcp-config",
+         "--mcp-config", mcpConfigPath, "--append-system-prompt", systemPrompt, input]
+    }
+
     /// The argv of a naming call (docs/chats.md › Haiku naming › Command).
     static func naming(cliPath: String, prompt: String, input: String) -> [String] {
         [cliPath, "-p", "--model", "haiku", "--output-format", "json", "--no-session-persistence", "--tools", "",

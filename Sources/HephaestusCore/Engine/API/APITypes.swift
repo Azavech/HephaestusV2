@@ -81,14 +81,18 @@ public struct ProjectSummary: Codable, Sendable, Hashable, Identifiable {
     /// Identifiers of the loaded direct sub projects, in the order of `subprojects`.
     public var subprojectIDs: [ProjectID]
     public var ticketCounts: TicketCounts
-    /// Cost of the project's own chats and deleted chats (docs/costs.md › Project totals).
+    /// Cost of the project's own chats, deleted chats and comment answers (docs/costs.md › Project
+    /// totals).
     public var ownCostUSD: Double
     /// Own cost plus the own costs of every loaded descendant.
     public var costUSD: Double
+    /// The comment answer calls running for the project's tickets, its sub projects excluded
+    /// (docs/chats.md › Comment answers).
+    public var commentAnswersRunning: Int
 
     public init(id: ProjectID, name: String, type: ProjectType = .none, rootPath: String, parentID: ProjectID? = nil,
                 subprojectIDs: [ProjectID] = [], ticketCounts: TicketCounts = TicketCounts(), ownCostUSD: Double = 0,
-                costUSD: Double = 0) {
+                costUSD: Double = 0, commentAnswersRunning: Int = 0) {
         self.id = id
         self.name = name
         self.type = type
@@ -98,6 +102,7 @@ public struct ProjectSummary: Codable, Sendable, Hashable, Identifiable {
         self.ticketCounts = ticketCounts
         self.ownCostUSD = ownCostUSD
         self.costUSD = costUSD
+        self.commentAnswersRunning = commentAnswersRunning
     }
 }
 

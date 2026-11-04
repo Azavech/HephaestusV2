@@ -1,7 +1,7 @@
 import Foundation
 
-/// One element of the key `history` of a ticket file: the creation of the ticket, a status change
-/// or a rename, with who made it and when (docs/data-model.md › Ticket history entry,
+/// One element of the key `history` of a ticket file: the creation of the ticket, a status change,
+/// a rename, a link added or removed or a description edit, with who made it and when (docs/data-model.md › Ticket history entry,
 /// docs/tickets.md › Ticket history).
 public struct TicketHistoryEntry: Codable, Sendable, Hashable {
     public var kind: TicketHistoryKind
@@ -10,12 +10,14 @@ public struct TicketHistoryEntry: Codable, Sendable, Hashable {
     /// for `title`; nil for `created`.
     public var from: String?
     /// The value after the change: the status the ticket was created with for `created`, the new
-    /// `TicketStatus` raw value for `status`, the new title for `title`.
+    /// `TicketStatus` raw value for `status`, the new title for `title`, the link as
+    /// `<kind> <ticket id>` for `linkAdded` and `linkRemoved`; empty for `description`, whose file
+    /// entry has no `to`.
     public var to: String
     public var author: TicketHistoryAuthor
     /// For the author `user`: the name of the user's device at the time of the change.
     public var device: String?
-    /// For the author `claude`: the chat id (an uppercase UUID) or `external`.
+    /// For the author `claude`: the chat id (an uppercase UUID), `external` or `answer`.
     public var chat: String?
     public var unknownKeys: [String: JSONValue]
 
@@ -44,6 +46,19 @@ public struct TicketHistoryEntry: Codable, Sendable, Hashable {
     /// The status after the change of a `created` or `status` entry.
     public var toStatus: TicketStatus? { TicketStatus(rawValue: to) }
 
+    /// The `to` of a `linkAdded` or `linkRemoved` entry: the link's kind, a space and its ticket.
+    public static func linkValue(_ link: TicketLink) -> String {
+        "\(link.kind.rawValue) \(link.ticketID)"
+    }
+
+    /// The link of a `linkAdded` or `linkRemoved` entry; nil for another `to`.
+    public var link: TicketLink? {
+        let parts = to.split(separator: " ", omittingEmptySubsequences: false)
+        guard parts.count == 2, let kind = TicketLinkKind(rawValue: String(parts[0])), Identifiers.isTicketID(String(parts[1]))
+        else { return nil }
+        return TicketLink(kind: kind, ticketID: String(parts[1]))
+    }
+
     static let knownKeys: Set<String> = ["kind", "date", "from", "to", "author", "device", "chat"]
 
     public init(from decoder: Decoder) throws {
@@ -51,7 +66,7 @@ public struct TicketHistoryEntry: Codable, Sendable, Hashable {
         kind = try c.required("kind")
         date = try c.requiredDate("date")
         from = try c.optional("from")
-        to = try c.required("to")
+        to = try kind == .description ? "" : c.required("to")
         author = try c.required("author")
         device = try c.optional("device")
         chat = try c.optional("chat")
@@ -65,6 +80,10 @@ public struct TicketHistoryEntry: Codable, Sendable, Hashable {
             try c.check("to", to, { TicketStatus(rawValue: $0) != nil }, "ticket status")
         case .title:
             guard from != nil else { throw c.invalid("from", "a title entry needs \"from\"") }
+        case .linkAdded, .linkRemoved:
+            guard link != nil else { throw c.invalid("to", "a link entry needs \"<kind> <ticket id>\"") }
+        case .description:
+            break
         }
     }
 
@@ -73,7 +92,9 @@ public struct TicketHistoryEntry: Codable, Sendable, Hashable {
         try c.encode(kind, "kind")
         try c.encodeDate(date, "date")
         try c.encodeOptional(from, "from")
-        try c.encode(to, "to")
+        if kind != .description {
+            try c.encode(to, "to")
+        }
         try c.encode(author, "author")
         try c.encodeOptional(device, "device")
         try c.encodeOptional(chat, "chat")
@@ -89,13 +110,19 @@ public enum TicketHistoryKind: String, Codable, Sendable, Hashable, CaseIterable
     case status
     /// The ticket was renamed from the title `from` to the title `to`.
     case title
+    /// The ticket declared the link `to`.
+    case linkAdded
+    /// The ticket stopped declaring the link `to`.
+    case linkRemoved
+    /// The description changed.
+    case description
 }
 
 /// Who made the change of a history entry.
 public enum TicketHistoryAuthor: String, Codable, Sendable, Hashable, CaseIterable {
     /// A person using HephaestusV2 on any device, local or remote.
     case user
-    /// Claude, through the MCP server, from a chat or an external session.
+    /// Claude, through the MCP server, from a chat, an external session or a comment answer.
     case claude
     /// The engine itself: Haiku's naming of the ticket.
     case automatic

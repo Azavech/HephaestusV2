@@ -12,6 +12,7 @@ enum Prompts {
         case namingBundle = "naming-bundle"
         case namingChat = "naming-chat"
         case notificationSummary = "notification-summary"
+        case commentAnswer = "comment-answer"
     }
 
     private static let cache = PromptCache()
@@ -90,9 +91,6 @@ enum Prompts {
     /// other chats (`chatLines`, one `- <chat id> (<kind>): <title>` each), cut beyond 30,000
     /// characters.
     static func ticket(_ ticket: Ticket, projectRoot: String, chatLines: [String]) -> String {
-        func attachmentLine(_ attachment: Attachment) -> String {
-            "- \(attachment.name) (\(attachment.contentType), \(attachment.size) bytes): \(attachment.absolutePath(projectRoot: projectRoot))"
-        }
         var lines = [
             "ID: \(ticket.id)",
             "Title: \(ticket.title)",
@@ -110,22 +108,14 @@ enum Prompts {
             lines.append("Attachments: none")
         } else {
             lines.append("Attachments:")
-            lines += ticket.attachments.map(attachmentLine)
+            lines += ticket.attachments.map { attachmentLine($0, projectRoot: projectRoot) }
         }
         if ticket.comments.isEmpty {
             lines.append("Comments: none")
         } else {
             lines.append("Comments:")
             for comment in ticket.comments {
-                let edited = comment.updated.map { " (edited \(ISODate.string(from: $0)))" } ?? ""
-                lines.append("- \(ISODate.string(from: comment.created)) by \(comment.author.rawValue)\(edited):")
-                if !comment.text.isEmpty {
-                    lines += comment.text.components(separatedBy: "\n").map { "  " + $0 }
-                }
-                if !comment.attachments.isEmpty {
-                    lines.append("  Attachments:")
-                    lines += comment.attachments.map { "  " + attachmentLine($0) }
-                }
+                lines += commentLines(comment, projectRoot: projectRoot)
             }
         }
         if chatLines.isEmpty {
@@ -135,6 +125,33 @@ enum Prompts {
             lines += chatLines
         }
         return truncatedTicket(lines.joined(separator: "\n"))
+    }
+
+    /// The lines of one comment in `{{ticket}}`: `- <created> by <author>:`, with
+    /// ` (edited <updated>)` before the colon when it was edited, its text indented by two spaces,
+    /// then its attachments.
+    static func commentLines(_ comment: Comment, projectRoot: String) -> [String] {
+        let edited = comment.updated.map { " (edited \(ISODate.string(from: $0)))" } ?? ""
+        var lines = ["- \(ISODate.string(from: comment.created)) by \(comment.author.rawValue)\(edited):"]
+        if !comment.text.isEmpty {
+            lines += comment.text.components(separatedBy: "\n").map { "  " + $0 }
+        }
+        if !comment.attachments.isEmpty {
+            lines.append("  Attachments:")
+            lines += comment.attachments.map { "  " + attachmentLine($0, projectRoot: projectRoot) }
+        }
+        return lines
+    }
+
+    /// `- <name> (<type>, <size> bytes): <absolute path>`.
+    static func attachmentLine(_ attachment: Attachment, projectRoot: String) -> String {
+        "- \(attachment.name) (\(attachment.contentType), \(attachment.size) bytes): \(attachment.absolutePath(projectRoot: projectRoot))"
+    }
+
+    /// The `<input>` of a comment answer call (docs/chats.md › Answer input): `Ticket:`, the
+    /// ticket's rendering, a blank line, `Comment to answer:` and the comment's lines.
+    static func commentAnswerInput(ticketRendering: String, comment: Comment, projectRoot: String) -> String {
+        (["Ticket:", ticketRendering, "", "Comment to answer:"] + commentLines(comment, projectRoot: projectRoot)).joined(separator: "\n")
     }
 
     /// A ticket rendering longer than 30,000 characters is cut at the last line break before

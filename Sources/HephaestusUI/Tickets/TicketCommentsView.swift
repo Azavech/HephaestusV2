@@ -21,7 +21,13 @@ struct TicketCommentsView: View {
             ForEach(TicketTimeline.items(of: ticket)) { item in
                 switch item {
                 case .comment(let comment):
-                    commentRow(comment)
+                    VStack(alignment: .leading, spacing: 6) {
+                        commentRow(comment)
+                        if let answer = comment.answer {
+                            CommentAnswerRow(window: window, workspace: workspace, ticketID: ticket.id, commentID: comment.id,
+                                             state: answer)
+                        }
+                    }
                 case .entry(_, let entry):
                     TicketHistoryLine(window: window, workspace: workspace, entry: entry)
                 }
@@ -55,7 +61,9 @@ struct TicketCommentsView: View {
             if editingID == comment.id {
                 editor(comment)
             } else if !comment.text.isEmpty {
+                // Mentions of Claude are highlighted (docs/tickets.md › Mentioning Claude).
                 MarkdownView(markdown: comment.text)
+                    .transformEnvironment(\.markdownContext) { $0.highlightsMentions = true }
             }
             if !comment.attachments.isEmpty {
                 TicketFlowLayout(spacing: 10) {
@@ -143,6 +151,77 @@ struct TicketCommentsView: View {
     }
 }
 
+// MARK: - Comment answer
+
+/// The row under a comment that Claude answers (docs/tickets.md › Comment answers):
+/// `Claude is replying…` after a small spinner while the call runs, `Claude could not reply.`
+/// and Retry after it failed.
+private struct CommentAnswerRow: View {
+    let window: WindowState
+    let workspace: DeviceWorkspace
+    let ticketID: String
+    let commentID: UUID
+    let state: CommentAnswerState
+    @State private var isRetrying = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            switch state {
+            case .replying:
+                ProgressView()
+                    .controlSize(.small)
+                Text("Claude is replying…")
+            case .failed:
+                Text("Claude could not reply.")
+                Button("Retry") { retry() }
+                    .controlSize(.small)
+                    .disabled(isRetrying || !window.isConnected)
+            }
+            Spacer()
+        }
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 10)
+    }
+
+    /// `tickets.retryAnswer`; a failure shows the alert `Retry failed`.
+    private func retry() {
+        guard !isRetrying else { return }
+        isRetrying = true
+        Task {
+            defer { isRetrying = false }
+            do {
+                _ = try await workspace.call(TicketsRetryAnswer.self, TicketsRetryAnswer.Params(ticketID: ticketID, commentID: commentID))
+            } catch {
+                window.alert = .failure("Retry", error)
+            }
+        }
+    }
+}
+
+/// The mention list of the composer: one row `Claude`, shown selected
+/// (docs/tickets.md › Mentioning Claude).
+private struct MentionSuggestionList: View {
+    let choose: () -> Void
+
+    var body: some View {
+        Button(action: choose) {
+            Text(CommentMentions.name)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .frame(minWidth: 120, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 4).fill(Color.accentColor))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(4)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .windowBackgroundColor)).shadow(radius: 3, y: 1))
+        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color(nsColor: .separatorColor)))
+        .accessibilityLabel("Mention Claude")
+    }
+}
+
 // MARK: - Composer
 
 /// The comment composer: a multi-line editor that grows to 8 lines, pending files as chips, the
@@ -154,6 +233,8 @@ private struct CommentComposer: View {
     let ticketID: String
     @State private var isPosting = false
     @State private var dropTargeted = false
+    @State private var mentionListShown = false
+    @State private var mentionChoice = 0
 
     private var draft: CommentDraft {
         window.projectStates[ProjectKey(deviceID: window.deviceID, projectID: projectID)]?.commentDrafts[ticketID] ?? CommentDraft()
@@ -191,12 +272,22 @@ private struct CommentComposer: View {
                 onCommandReturn: { post() },
                 onEscape: nil,
                 onPaste: { pasteboard in paste(pasteboard) },
-                onDropFiles: { urls in addFiles(urls) }
+                onDropFiles: { urls in addFiles(urls) },
+                onMentionList: { shown in mentionListShown = shown },
+                mentionChoice: mentionChoice
             )
             .padding(2)
             .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .textBackgroundColor)))
             .overlay(RoundedRectangle(cornerRadius: 6)
                 .strokeBorder(dropTargeted ? Color.accentColor : Color(nsColor: .separatorColor), lineWidth: dropTargeted ? 2 : 1))
+            // The mention list, just above the editor at its left edge.
+            .overlay(alignment: .topLeading) {
+                if mentionListShown {
+                    MentionSuggestionList { mentionChoice += 1 }
+                        .alignmentGuide(.top) { $0[.bottom] + 4 }
+                }
+            }
+            .zIndex(1)
             HStack {
                 Button {
                     Task {

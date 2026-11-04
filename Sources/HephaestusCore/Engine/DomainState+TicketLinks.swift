@@ -5,10 +5,15 @@ import Foundation
 // carries the inverse links that the engine computes from the other tickets of its project.
 
 extension Engine {
-    /// The API form of a ticket: its `inverseLinks`, from the `links` of the other loaded tickets
-    /// of its project, in ascending ticket number of the declaring ticket.
+    /// The API form of a ticket: the `answer` of its comments, and its `inverseLinks`, from the
+    /// `links` of the other loaded tickets of its project, in ascending ticket number of the
+    /// declaring ticket.
     func apiTicket(_ ticket: Ticket) -> Ticket {
         var copy = ticket
+        // The answer state of each comment (docs/engine-api.md › Tickets).
+        for index in copy.comments.indices {
+            copy.comments[index].answer = commentAnswers.states[copy.comments[index].id]
+        }
         copy.inverseLinks = []
         guard let projectID = ticket.projectID else { return copy }
         for other in domain.tickets(of: projectID) where other.id != ticket.id {

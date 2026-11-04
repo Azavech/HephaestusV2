@@ -186,6 +186,8 @@ final class FakeClaudeLauncher: ClaudeProcessLauncher, @unchecked Sendable {
     private var _namingOutput = #"{"type":"result","subtype":"success","is_error":false,"result":"Plan the sprint"}"#
     private var _started: [FakeClaudeProcess] = []
     private var _chatScript: (@Sendable (FakeClaudeProcess) -> Void)?
+    private var _answerOutput = #"{"type":"result","subtype":"success","is_error":false,"result":"  Here is my answer.\n","total_cost_usd":0.25}"#
+    private var _answerScript: (@Sendable (FakeClaudeProcess) -> Void)?
     private var _spawnFailure: String?
     private var _loginShellOutput = "/fake/bin/claude\n"
     private var processWaiters: [UUID: (predicate: (FakeClaudeProcess) -> Bool, continuation: CheckedContinuation<FakeClaudeProcess?, Never>)] = [:]
@@ -219,6 +221,27 @@ final class FakeClaudeLauncher: ClaudeProcessLauncher, @unchecked Sendable {
     var chatScript: (@Sendable (FakeClaudeProcess) -> Void)? {
         get { lock.withLock { _chatScript } }
         set { lock.withLock { _chatScript = newValue } }
+    }
+
+    /// What a comment answer call prints before it exits with status 0 (docs/chats.md › Answer
+    /// output), unless `answerScript` is set.
+    var answerOutput: String {
+        get { lock.withLock { _answerOutput } }
+        set { lock.withLock { _answerOutput = newValue } }
+    }
+
+    /// Sets up each comment answer process when it starts; nil prints `answerOutput` and exits.
+    var answerScript: (@Sendable (FakeClaudeProcess) -> Void)? {
+        get { lock.withLock { _answerScript } }
+        set { lock.withLock { _answerScript = newValue } }
+    }
+
+    var answerProcesses: [FakeClaudeProcess] { started.filter(FakeClaudeLauncher.isAnswer) }
+
+    /// A comment answer call: `--output-format json` with `--append-system-prompt`.
+    static func isAnswer(_ process: FakeClaudeProcess) -> Bool {
+        let arguments = process.arguments
+        return arguments.contains("--append-system-prompt") && arguments.contains("dontAsk") && !isChat(process)
     }
 
     /// What `/bin/zsh -lic 'command -v claude'` prints.
@@ -264,6 +287,8 @@ final class FakeClaudeLauncher: ClaudeProcessLauncher, @unchecked Sendable {
             throw SpawnError(description: failure)
         }
         let script = chatScript
+        let answerScript = answerScript
+        let answerOutput = answerOutput
         var resumed: [CheckedContinuation<FakeClaudeProcess?, Never>] = []
         lock.withLock {
             if FakeClaudeLauncher.isChat(process) {
@@ -288,6 +313,13 @@ final class FakeClaudeLauncher: ClaudeProcessLauncher, @unchecked Sendable {
             process.exit(.exited(0))
         } else if FakeClaudeLauncher.isChat(process) {
             (script ?? FakeClaudeLauncher.replyingChat())(process)
+        } else if FakeClaudeLauncher.isAnswer(process) {
+            if let answerScript {
+                answerScript(process)
+            } else {
+                process.emit(answerOutput)
+                process.exit(.exited(0))
+            }
         } else if arguments.contains("--no-session-persistence") {
             process.onLine = { process, line in
                 if line.contains(#""subtype":"initialize""#) {

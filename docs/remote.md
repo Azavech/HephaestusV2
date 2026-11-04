@@ -470,6 +470,7 @@ Server to client, the first binary frame (s2c counter 0).
         "id": "HEPH",
         "name": "Hephaestus V2",
         "rootPath": "/Users/example/Developer/HephaestusV2",
+        "commentAnswersRunning": 0,
         "costUSD": 12.5,
         "ownCostUSD": 12.5,
         "subprojectIDs": [],

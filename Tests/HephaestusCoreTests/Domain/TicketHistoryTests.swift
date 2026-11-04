@@ -86,8 +86,8 @@ struct TicketHistoryTests {
             _ = try await h.call(TicketsUpdate.self, .init(ticketID: ticket.id, title: "Third"), as: .claude(chatID: chatID.uuidString))
             let last = try await h.call(TicketsUpdate.self, .init(ticketID: ticket.id, title: "Fourth", description: templateDescription),
                                         as: h.claude)
-            let renames = Array(last.history.dropFirst())
-            #expect(renames.map(\.kind) == [.title, .title, .title])
+            let renames = last.history.filter { $0.kind == .title }
+            #expect(last.history.dropFirst().map(\.kind) == [.title, .title, .title, .description])
             #expect(renames.map(\.from) == ["First", "Second", "Third"])
             #expect(renames.map(\.to) == ["Second", "Third", "Fourth"])
             #expect(renames.map(\.author) == [.user, .claude, .claude])
@@ -96,19 +96,45 @@ struct TicketHistoryTests {
         }
     }
 
-    @Test("Saving the current title, or changing only the description or the links, adds no entry")
+    @Test("Saving the current title, description and links adds no entry")
     func sameTitle() async throws {
         try await withDomainEngine { h in
             try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
             let ticket = try await h.ticket("HEPH", "Same")
-            try await h.ticket("HEPH")
-            let same = try await h.connection.call(TicketsUpdate.self, .init(ticketID: ticket.id, title: "  Same "))
+            let same = try await h.connection.call(TicketsUpdate.self, .init(ticketID: ticket.id, title: "  Same ",
+                                                                             description: ticket.description, links: []))
             #expect(same.history.count == 1)
+        }
+    }
+
+    @Test("A description edit and each added or removed link add their entries in order, for every author")
+    func descriptionAndLinks() async throws {
+        try await withDomainEngine { h in
+            try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
+            let deviceName = await h.engine.deviceInfo.name
+            let ticket = try await h.ticket("HEPH", "Same")
+            try await h.ticket("HEPH")
+            try await h.ticket("HEPH")
             let described = try await h.connection.call(TicketsUpdate.self, .init(ticketID: ticket.id, title: "Same", description: "Other"))
-            #expect(described.description == "Other" && described.history.count == 1)
+            #expect(described.description == "Other" && described.history.count == 2)
+            let edit = try #require(described.history.last)
+            #expect(edit.kind == .description && edit.from == nil && edit.to == "" && edit.author == .user && edit.device == deviceName)
             let linked = try await h.connection.call(TicketsUpdate.self, .init(
-                ticketID: ticket.id, links: [TicketLink(kind: .related, ticketID: "HEPH-2")]))
-            #expect(linked.history.count == 1)
+                ticketID: ticket.id, links: [TicketLink(kind: .related, ticketID: "HEPH-2"), TicketLink(kind: .dependsOn, ticketID: "HEPH-3")]))
+            #expect(linked.history.dropFirst(2).map(\.kind) == [.linkAdded, .linkAdded])
+            #expect(linked.history.dropFirst(2).map(\.to) == ["related HEPH-2", "dependsOn HEPH-3"])
+            // A changed kind is removed, then added; the rename and the description come first.
+            let changed = try await h.call(TicketsUpdate.self, .init(
+                ticketID: ticket.id, title: "Renamed", description: templateDescription,
+                links: [TicketLink(kind: .dependsOn, ticketID: "HEPH-2")]), as: .claude(chatID: Actor.answerChatID))
+            let entries = Array(changed.history.dropFirst(4))
+            #expect(entries.map(\.kind) == [.title, .description, .linkRemoved, .linkRemoved, .linkAdded])
+            #expect(entries.map(\.to) == ["Renamed", "", "related HEPH-2", "dependsOn HEPH-3", "dependsOn HEPH-2"])
+            #expect(entries.allSatisfy { $0.author == .claude && $0.chat == "answer" })
+            // The file keeps the entries; a description entry has no `to`.
+            let text = try String(contentsOf: file(h, ticket.id), encoding: .utf8)
+            #expect(text.contains("kind: description") && !text.contains("to: ''") && !text.contains("to: \"\""))
+            #expect(try ProjectFileStore.readTicket(at: file(h, ticket.id), projectID: "HEPH").history == changed.history)
         }
     }
 

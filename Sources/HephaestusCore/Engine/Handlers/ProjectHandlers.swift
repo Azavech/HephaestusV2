@@ -242,6 +242,8 @@ extension Engine {
         }
         let unloaded = unloadTree(id)
         let stoppedRuns = runs.runningRuns().filter { unloaded.projectIDs.contains($0.projectID) }
+        // The comment answers of their tickets stop (docs/engine-api.md › projects.remove).
+        stopCommentAnswers(projectIDs: Set(unloaded.projectIDs))
         emitProjectsRemoved(unloaded.projectIDs, origin: actor)
         if let parentID = removed.parentID {
             emitProjectUpdated(parentID, origin: actor)

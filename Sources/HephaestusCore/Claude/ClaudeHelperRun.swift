@@ -53,9 +53,11 @@ struct HelperResult: Sendable {
 enum ClaudeHelperRun {
     /// Starts `request` with `launcher`, writes `input` to standard input (then closes it), and
     /// waits for the exit. When `timeout` passes first, the process group receives SIGTERM, then
-    /// SIGKILL `killGrace` later (docs/chats.md › Signals).
+    /// SIGKILL `killGrace` later (docs/chats.md › Signals). `started` receives the process once it
+    /// runs, so that its owner can end it earlier.
     static func run(_ request: ChildProcessRequest, launcher: any ClaudeProcessLauncher, registry: HelperProcessRegistry,
-                    input: Data? = nil, timeout: Duration, killGrace: Duration) async -> HelperResult {
+                    input: Data? = nil, timeout: Duration, killGrace: Duration,
+                    started: (@Sendable (any ClaudeProcess) -> Void)? = nil) async -> HelperResult {
         let process: any ClaudeProcess
         do {
             process = try launcher.start(request)
@@ -70,6 +72,7 @@ enum ClaudeHelperRun {
                                 timedOut: false, spawnError: nil)
         }
         defer { registry.unregister(process) }
+        started?(process)
         if let input { process.write(input) }
         process.closeInput()
 

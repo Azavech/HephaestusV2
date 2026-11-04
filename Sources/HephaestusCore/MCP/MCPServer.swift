@@ -290,11 +290,11 @@ private final class OnceFlag: @unchecked Sendable {
 /// hook).
 typealias MCPHookCall = @Sendable (_ chatID: ChatID, _ body: Data) async -> Data
 
-/// Who a request admitted by steps 2 to 6 is for: the MCP endpoint with the actor of a chat token
-/// or the external token, or the linked items hook or the close chat hook with the chat of a hook
-/// token.
+/// Who a request admitted by steps 2 to 6 is for: the MCP endpoint with the actor of a chat token,
+/// an answer token (with the ticket it is limited to) or the external token, or the linked items
+/// hook or the close chat hook with the chat of a hook token.
 enum MCPRoute: Sendable, Equatable {
-    case mcp(Actor)
+    case mcp(Actor, answerTicketID: TicketID? = nil)
     case hook(ChatID)
     case closeChatHook(ChatID)
 }
@@ -323,7 +323,8 @@ struct MCPRequestHandler: Sendable {
             route = head.path == CloseChatHook.path ? .closeChatHook(chatID) : .hook(chatID)
         } else {
             guard let token = bearerToken(head), let actor = await tokens.actor(forToken: token) else { return .failure(.unauthorized) }
-            route = .mcp(actor)
+            let answerTicketID = actor.chatID == Actor.answerChatID ? await tokens.answerTicketID(forToken: token) : nil
+            route = .mcp(actor, answerTicketID: answerTicketID)
         }
         if let length = head.contentLength, length > HTTPRequestParser.bodyLimit { return .failure(.bodyTooLarge) }
         return .success(route)
@@ -349,13 +350,15 @@ struct MCPRequestHandler: Sendable {
     /// version (docs/mcp.md › Protocol version).
     func respond(to body: Data, head: HTTPRequestHead, route: MCPRoute) async -> MCPAnswer {
         let actor: Actor
+        let answerTicketID: TicketID?
         switch route {
         case .hook(let chatID):
             return .hook(await hookCall(chatID, body))
         case .closeChatHook(let chatID):
             return .hook(CloseChatHook.answer(chatID: chatID, body: body))
-        case .mcp(let routeActor):
+        case .mcp(let routeActor, let ticketID):
             actor = routeActor
+            answerTicketID = ticketID
         }
         switch JSONRPCMessage.classify(body) {
         case .invalid(let code, let message):
@@ -363,7 +366,7 @@ struct MCPRequestHandler: Sendable {
         case .notification, .response:
             return .accepted
         case .request(let id, let method, let params):
-            return await handle(id: id, method: method, params: params, head: head, actor: actor)
+            return await handle(id: id, method: method, params: params, head: head, actor: actor, answerTicketID: answerTicketID)
         }
     }
 
@@ -373,7 +376,8 @@ struct MCPRequestHandler: Sendable {
 
     /// docs/mcp.md › Methods; -32601 is checked before the protocol version, the protocol version
     /// before -32602.
-    private func handle(id: JSONRPCID, method: String, params: JSONValue?, head: HTTPRequestHead, actor: Actor) async -> MCPAnswer {
+    private func handle(id: JSONRPCID, method: String, params: JSONValue?, head: HTTPRequestHead, actor: Actor,
+                        answerTicketID: TicketID?) async -> MCPAnswer {
         func failure(_ code: Int, _ message: String) -> MCPAnswer {
             .json(JSONRPCResponse.error(id: id, code: code, message: message))
         }
@@ -418,15 +422,15 @@ struct MCPRequestHandler: Sendable {
                 return failure(JSONRPCError.invalidParams, "Unknown tool: \(name)")
             }
             return .json(JSONRPCResponse.result(id: id, await callTool(tool, arguments: arguments.isNull ? .object([:]) : arguments,
-                                                                         actor: actor)))
+                                                                         actor: actor, answerTicketID: answerTicketID)))
         }
     }
 
     /// docs/mcp.md › tools/call, steps 2 to 7, and the tool result of docs/mcp.md › Tool
     /// results; logged without arguments or results (docs/mcp.md › Logging).
-    private func callTool(_ tool: MCPToolDefinition, arguments: JSONValue, actor: Actor) async -> JSONValue {
+    private func callTool(_ tool: MCPToolDefinition, arguments: JSONValue, actor: Actor, answerTicketID: TicketID?) async -> JSONValue {
         let start = ContinuousClock.now
-        let outcome = await tools.call(tool, arguments: arguments, actor: actor)
+        let outcome = await tools.call(tool, arguments: arguments, actor: actor, answerTicketID: answerTicketID)
         let elapsed = ContinuousClock.now - start
         let milliseconds = elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000
         let caller = actor.chatID ?? actor.kind.rawValue

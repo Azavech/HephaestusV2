@@ -220,7 +220,7 @@ extension Engine {
     }
 
     /// `{{ticket}}` of a ticket, listing its chats other than `chatID` that have metadata.
-    private func renderTicket(_ ticket: Ticket, excluding chatID: ChatID) -> String {
+    func renderTicket(_ ticket: Ticket, excluding chatID: ChatID?) -> String {
         guard let projectID = ticket.projectID, let root = domain.projectRoot(projectID) else {
             return Prompts.deletedTicket
         }

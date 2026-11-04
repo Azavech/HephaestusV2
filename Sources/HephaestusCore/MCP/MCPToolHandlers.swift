@@ -55,10 +55,12 @@ struct MCPToolHandlers: Sendable {
     var homeDirectory: String = NSHomeDirectory()
 
     /// The tool result text of a call of `tool`, a listed tool, with `arguments` (an object;
-    /// absent or `null` arguments are `{}`) by `actor`.
-    func call(_ tool: MCPToolDefinition, arguments: JSONValue, actor: Actor) async -> Result<String, MCPToolError> {
+    /// absent or `null` arguments are `{}`) by `actor`. `answerTicketID` is the ticket an answer
+    /// token is limited to, nil for the other tokens.
+    func call(_ tool: MCPToolDefinition, arguments: JSONValue, actor: Actor,
+              answerTicketID: TicketID? = nil) async -> Result<String, MCPToolError> {
         do {
-            return .success(try await run(tool, arguments: arguments, actor: actor))
+            return .success(try await run(tool, arguments: arguments, actor: actor, answerTicketID: answerTicketID))
         } catch let error as MCPToolError {
             return .failure(error)
         } catch let error as EngineError {
@@ -68,8 +70,16 @@ struct MCPToolHandlers: Sendable {
         }
     }
 
-    private func run(_ tool: MCPToolDefinition, arguments: JSONValue, actor: Actor) async throws -> String {
+    /// The tools a comment answer may call (docs/mcp.md › Actor rules).
+    static let answerTools = Set(ClaudeCommandLine.answerMCPTools)
+    /// The tools of a comment answer that change a ticket, limited to the answered comment's.
+    static let answerTicketTools: Set<String> = ["update_ticket", "set_ticket_status"]
+
+    private func run(_ tool: MCPToolDefinition, arguments: JSONValue, actor: Actor, answerTicketID: TicketID?) async throws -> String {
         // Step 2: availability for the token.
+        if answerTicketID != nil || actor.chatID == Actor.answerChatID, !Self.answerTools.contains(tool.name) {
+            throw MCPToolError(.forbidden, "\(tool.name) is not available to a comment answer.")
+        }
         if [.askQuestions, .askSymbol, .askColor, .askSound, .askShortcut, .askFont, .askAnimation].contains(tool.handling),
            actor.chat == nil {
             throw MCPToolError(.forbidden, "Only the chat's own Claude can ask questions.")
@@ -83,6 +93,13 @@ struct MCPToolHandlers: Sendable {
             throw error
         }
         let args = MCPSchemaValidator.normalizingIntegers(cleaned, schema: tool.inputSchema).objectValue ?? [:]
+        // Step 4, for an answer token: only the ticket of the answered comment changes.
+        if actor.chatID == Actor.answerChatID, Self.answerTicketTools.contains(tool.name) {
+            let ticketID = answerTicketID ?? ""
+            guard Identifiers.normalizedTicketID(args["ticketID"]?.stringValue ?? "") == ticketID else {
+                throw MCPToolError(.forbidden, "A comment answer changes only \(ticketID).")
+            }
+        }
 
         // Steps 4 to 7: the rules of the tool, path expansion, the engine call and the result.
         switch tool.handling {
