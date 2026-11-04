@@ -135,7 +135,11 @@ extension WindowState {
                 $0.ticketList.clearFilters(hiding: ticket)
             }
         case .bundle(let bundleID):
-            updateViewState { $0.selectedBundleID = bundleID }
+            let bundle = workspace.bundles[resolvedProjectID]?[bundleID]
+            updateViewState {
+                $0.selectedBundleID = bundleID
+                $0.bundleList.clearFilter(hiding: bundle)
+            }
         case .chat(let chatID):
             updateViewState {
                 $0.selectedChatIDs = [chatID.uuidString]

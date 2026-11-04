@@ -73,17 +73,27 @@ struct BundlesSectionView: View {
 
     // MARK: List
 
-    private var rows: [BundleRow] {
+    /// Every bundle of the project, the ones the filter hides included.
+    private var allRows: [BundleRow] {
         let tickets = workspace.tickets[projectID] ?? [:]
-        let rows = (workspace.bundles[projectID] ?? [:]).values.map { bundle in
+        return (workspace.bundles[projectID] ?? [:]).values.map { bundle in
             let progress = BundleProgress.of(bundle, tickets: tickets)
             return BundleRow(id: bundle.id, title: bundle.title, status: bundle.status, progress: progress, created: bundle.created)
         }
-        return Self.sorted(rows, by: sort)
+    }
+
+    private var listState: BundleListState {
+        window.projectStates[key]?.bundleList ?? BundleListState()
     }
 
     private var sort: ItemTableSort {
-        (window.projectStates[key]?.bundleList ?? BundleListState()).tableSort
+        listState.tableSort
+    }
+
+    /// The rows the list shows: the bundles the done filter does not hide, in the list's sort
+    /// order (docs/tickets.md › Bundles section).
+    static func shown(_ rows: [BundleRow], by state: BundleListState) -> [BundleRow] {
+        sorted(rows.filter { state.shows($0.status) }, by: state.tableSort)
     }
 
     /// ID by number, Title by localized standard comparison, Status in the order todo,
@@ -120,8 +130,17 @@ struct BundlesSectionView: View {
 
     private var list: some View {
         VStack(spacing: 0) {
+            let state = listState
             HStack {
                 Spacer()
+                // Hides or shows the done bundles (docs/tickets.md › Bundles section).
+                Button {
+                    window.updateViewState(of: projectID) { $0.bundleList.hidesDoneBundles = !state.hidesDoneBundles }
+                } label: {
+                    Image(systemName: BundleListState.filterSymbol(hidesDoneBundles: state.hidesDoneBundles))
+                }
+                .buttonStyle(.borderless)
+                .help(BundleListState.filterTooltip(hidesDoneBundles: state.hidesDoneBundles))
                 Button {
                     newBundle()
                 } label: {
@@ -135,14 +154,26 @@ struct BundlesSectionView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 7)
             Divider()
-            let rows = rows
-            if rows.isEmpty {
+            let allRows = allRows
+            let rows = Self.shown(allRows, by: state)
+            if allRows.isEmpty {
                 VStack(spacing: 8) {
                     Text("No Bundles")
                         .font(.title3.weight(.semibold))
                     Text("Select tickets in Tickets and choose Create Bundle from Selection, or create a bundle here.")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
+                    Button("New Bundle") { newBundle() }
+                        .disabled(!window.isConnected)
+                        .padding(.top, 4)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if rows.isEmpty {
+                // Every bundle is done and hidden by the filter (docs/tickets.md › Bundles section).
+                VStack(spacing: 8) {
+                    Text(BundleListState.noOpenBundles)
+                        .font(.title3.weight(.semibold))
                     Button("New Bundle") { newBundle() }
                         .disabled(!window.isConnected)
                         .padding(.top, 4)

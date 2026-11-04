@@ -188,20 +188,63 @@ struct TicketListState: Codable, Hashable {
     }
 }
 
-/// The bundle list's sort order (`ProjectViewState.bundleList`, docs/tickets.md › Bundles
-/// section); not persisted.
+/// The bundle list's done filter and sort order (`ProjectViewState.bundleList`, docs/tickets.md ›
+/// Bundles section); not persisted.
 struct BundleListState: Codable, Hashable {
     /// The sorted column.
     enum SortColumn: String, Codable, Hashable, CaseIterable {
         case id, title, status, progress, created
     }
 
+    /// Whether the list hides the bundles whose status is Done; done bundles are hidden by default.
+    var hidesDoneBundles = true
     /// The list starts sorted by ID, newest first.
     var sortColumn = SortColumn.id
     var sortAscending = false
 
+    init() {}
+
     /// The sort of the list's `ItemTable`.
     var tableSort: ItemTableSort {
         ItemTableSort(columnID: sortColumn.rawValue, ascending: sortAscending)
+    }
+
+    /// True when the list shows a bundle of this status.
+    func shows(_ status: BundleStatus) -> Bool {
+        !(hidesDoneBundles && status == .done)
+    }
+
+    /// A `bundle` navigation target turns the filter off when it hides the bundle, and while the
+    /// bundle is not known yet (its project loading), so that its row shows once loaded
+    /// (docs/ui.md › Resolving a target).
+    mutating func clearFilter(hiding bundle: TicketBundle?) {
+        if let bundle, shows(bundle.status) { return }
+        hidesDoneBundles = false
+    }
+
+    /// The filter button's symbol, filled while done bundles are hidden.
+    static func filterSymbol(hidesDoneBundles: Bool) -> String {
+        hidesDoneBundles ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
+    }
+
+    /// The filter button's tooltip.
+    static func filterTooltip(hidesDoneBundles: Bool) -> String {
+        hidesDoneBundles ? "Show Done Bundles" : "Hide Done Bundles"
+    }
+
+    /// The text of a list whose bundles the filter all hides.
+    static let noOpenBundles = "No Open Bundles"
+
+    // MARK: Coding
+
+    enum CodingKeys: String, CodingKey {
+        case hidesDoneBundles, sortColumn, sortAscending
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        hidesDoneBundles = try c.decodeIfPresent(Bool.self, forKey: .hidesDoneBundles) ?? true
+        sortColumn = try c.decodeIfPresent(SortColumn.self, forKey: .sortColumn) ?? .id
+        sortAscending = try c.decodeIfPresent(Bool.self, forKey: .sortAscending) ?? false
     }
 }
