@@ -37,10 +37,10 @@ enum ActorRules {
 
     /// chats.postQuestions and the other requests to the user: only the chat's own Claude; the
     /// external token is refused.
-    static func requireOwnChat(_ chatID: ChatID, _ actor: Actor) throws {
+    static func requireOwnChat(_ chatID: ChatID, _ actor: Actor, else refusal: EngineError = ownChatOnly) throws {
         guard actor.kind != .system else { return }
         guard actor.chat == chatID else {
-            throw ownChatOnly
+            throw refusal
         }
     }
 
@@ -59,6 +59,9 @@ enum ActorRules {
     /// The message of chats.postQuestions and the other requests in an implement chat.
     static let questionsBlocked = EngineError(
         .forbidden, "This chat implements a ticket and cannot ask questions: decide yourself and note the choice in the completion comment.")
+
+    /// The message of chats.postImages and of `show_image` with the external token.
+    static let ownChatImagesOnly = EngineError(.forbidden, "Only the chat's own Claude can show images.")
 
     /// The message of chats.close and of `close_chat` with the external token.
     static let ownChatCloseOnly = EngineError(.forbidden, "Only the chat's own Claude can close its chat.")

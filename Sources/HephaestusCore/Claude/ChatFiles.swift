@@ -42,6 +42,17 @@ enum ChatAttachments {
         return attachment
     }
 
+    /// The content type of a PNG, JPEG, GIF or WebP image, read from the signature its data starts
+    /// with, whatever the file's extension; nil for any other content (docs/mcp.md › Image rules).
+    static func imageContentType(_ data: Data) -> String? {
+        let head = [UInt8](data.prefix(12))
+        if head.starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) { return "image/png" }
+        if head.starts(with: [0xFF, 0xD8, 0xFF]) { return "image/jpeg" }
+        if head.starts(with: Array("GIF87a".utf8)) || head.starts(with: Array("GIF89a".utf8)) { return "image/gif" }
+        if head.count == 12, head.starts(with: Array("RIFF".utf8)), head[8...].elementsEqual("WEBP".utf8) { return "image/webp" }
+        return nil
+    }
+
     /// The extension of a tool-result image: png, jpg, gif or webp; another media type takes its
     /// subtype, else `bin` (docs/chats.md › Tool results).
     static func imageExtension(_ mediaType: String) -> String {

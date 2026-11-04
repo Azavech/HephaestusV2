@@ -216,6 +216,38 @@ struct MCPToolHandlersTests {
             == .failure(MCPToolError(code: .conflict, message: "Questions are already waiting for answers in this chat.")))
     }
 
+    @Test("show_image: the external token fails before validation; a chat token sends its chat, the expanded paths and the caption")
+    func showImage() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        let refused = try await Self.call(handlers, "show_image", #"{"paths":"not an array"}"#, actor: Self.external)
+        #expect(refused == .failure(MCPToolError(code: .forbidden, message: "Only the chat's own Claude can show images.")))
+        #expect(engine.calls.isEmpty)
+
+        #expect(try await Self.call(handlers, "show_image", #"{"caption":"Icon"}"#)
+            == .failure(MCPToolError(code: .invalid, message: "paths: required.")))
+        #expect(try await Self.call(handlers, "show_image", #"{"paths":[1]}"#)
+            == .failure(MCPToolError(code: .invalid, message: "paths[0]: must be a string.")))
+        #expect(try await Self.call(handlers, "show_image", #"{"paths":["/tmp/a.png"],"caption":["Icon"]}"#)
+            == .failure(MCPToolError(code: .invalid, message: "caption: must be a string.")))
+        #expect(engine.calls.isEmpty)
+
+        engine.answer("chats.postImages", .success("[]"))
+        let arguments = #"{"paths":["~/Desktop/icon.png","/tmp/preview.png","Assets/anim.gif","~"],"caption":"**Icon**"}"#
+        #expect(try await Self.call(handlers, "show_image", arguments) == .success("images shown in the chat"))
+        let call = try #require(engine.calls.last)
+        #expect(call.method == "chats.postImages")
+        #expect(call.params == .object(["chatID": .string(Self.chatID.uuidString), "caption": "**Icon**",
+                                        "paths": ["/Users/example/Desktop/icon.png", "/tmp/preview.png", "Assets/anim.gif", "/Users/example"]]))
+        #expect(call.actor == Self.chat)
+        _ = try await Self.call(handlers, "show_image", #"{"paths":["/tmp/a.png"],"caption":null}"#)
+        #expect(engine.calls.last?.params == .object(["chatID": .string(Self.chatID.uuidString), "paths": ["/tmp/a.png"]]))
+
+        engine.answer("chats.postImages", .failure(EngineError(.invalid, "/tmp/notes.txt is not a PNG, JPEG, GIF or WebP image.")))
+        #expect(try await Self.call(handlers, "show_image", #"{"paths":["/tmp/notes.txt"]}"#)
+            == .failure(MCPToolError(code: .invalid, message: "/tmp/notes.txt is not a PNG, JPEG, GIF or WebP image.")))
+    }
+
     @Test("ask_color: the external token fails before validation; a chat token posts to its chat")
     func askColor() async throws {
         let engine = RecordedEngine()

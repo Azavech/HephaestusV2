@@ -486,6 +486,29 @@ public enum ChatsAnswerAnimation: EngineMethod {
     public typealias Result = Empty
 }
 
+/// `chats.postImages`: called by the MCP tool `show_image`. Actors: claude (the chat's own Claude
+/// only) (docs/engine-api.md › chats.postImages).
+public enum ChatsPostImages: EngineMethod {
+    public static let name = "chats.postImages"
+    public struct Params: Codable, Sendable, Hashable {
+        /// Must be the actor's chatID.
+        public var chatID: ChatID
+        /// 1 to 10 paths of PNG, JPEG, GIF or WebP files on the main device: absolute, starting
+        /// with `~/`, or relative to the root of the chat's project.
+        public var paths: [String]
+        /// Markdown text shown above the images; trimmed, and left out when empty.
+        public var caption: String?
+
+        public init(chatID: ChatID, paths: [String], caption: String? = nil) {
+            self.chatID = chatID
+            self.paths = paths
+            self.caption = caption
+        }
+    }
+    /// The stored images, in the order of `paths`.
+    public typealias Result = [Attachment]
+}
+
 /// `chats.implementTicket`. Actors: user, claude. The chat it creates has `questionsBlocked` true
 /// (docs/engine-api.md › chats.implementTicket).
 public enum ChatsImplementTicket: EngineMethod {

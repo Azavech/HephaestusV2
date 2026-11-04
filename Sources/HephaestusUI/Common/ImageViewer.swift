@@ -126,6 +126,7 @@ struct ImageViewerWindow: View {
                 switch item {
                 case .user(let user): return user.attachments
                 case .toolResult(let result): return result.images
+                case .images(let shown): return shown.images
                 default: return []
                 }
             }

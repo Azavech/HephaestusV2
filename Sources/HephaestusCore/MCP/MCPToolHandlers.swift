@@ -45,6 +45,8 @@ struct MCPToolHandlers: Sendable {
     static let fontShownText = "font request shown; the answer arrives in the next user message; end your turn"
     /// The text of a successful `ask_animation` (docs/mcp.md › ask_animation).
     static let animationShownText = "animation request shown; the answer arrives in the next user message; end your turn"
+    /// The text of a successful `show_image` (docs/mcp.md › show_image).
+    static let imagesShownText = "images shown in the chat"
 
     /// Runs the engine method; `Engine.dispatch` in the app, so the result text is byte for byte
     /// the JSON the dispatcher returns.
@@ -83,6 +85,9 @@ struct MCPToolHandlers: Sendable {
         if [.askQuestions, .askSymbol, .askColor, .askSound, .askShortcut, .askFont, .askAnimation].contains(tool.handling),
            actor.chat == nil {
             throw MCPToolError(.forbidden, "Only the chat's own Claude can ask questions.")
+        }
+        if tool.handling == .showImage, actor.chat == nil {
+            throw MCPToolError(ActorRules.ownChatImagesOnly)
         }
         if tool.handling == .closeChat, actor.chat == nil {
             throw MCPToolError(.forbidden, "Only the chat's own Claude can close its chat.")
@@ -217,6 +222,16 @@ struct MCPToolHandlers: Sendable {
             params["chatID"] = .string(actor.chat?.uuidString.uppercased() ?? "")
             _ = try await engineText(tool, params: .object(params), actor: actor)
             return Self.animationShownText
+
+        case .showImage:
+            // Step 2 made sure the token is a chat token.
+            var params = args
+            params["chatID"] = .string(actor.chat?.uuidString.uppercased() ?? "")
+            if case .array(let paths)? = args["paths"] {
+                params["paths"] = .array(paths.map { .string(Self.expandingTilde($0.stringValue ?? "", home: homeDirectory)) })
+            }
+            _ = try await engineText(tool, params: .object(params), actor: actor)
+            return Self.imagesShownText
 
         case .closeChat:
             // Step 2 made sure the token is a chat token.

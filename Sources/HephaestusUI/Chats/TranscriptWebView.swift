@@ -228,7 +228,7 @@ final class TranscriptController {
             key.markedLabel = context.markedLabel(set)
         }
         switch item {
-        case .user: key.today = context.today
+        case .user, .images: key.today = context.today
         case .assistant(let assistant):
             key.today = context.today
             key.claudeName = ChatFormat.claudeName(model: assistant.model, effort: assistant.effort, models: context.models)

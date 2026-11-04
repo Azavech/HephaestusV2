@@ -596,18 +596,19 @@ created: 2026-10-30T15:00:00Z
 
 ## Attachments
 
-Swift type `Attachment`. It describes one file stored inside the project's `.hephaestus/` folder. Ticket files use it for ticket and comment attachments; transcripts use it for the files of user messages and the images of tool results.
+Swift type `Attachment`. It describes one file stored inside the project's `.hephaestus/` folder. Ticket files use it for ticket and comment attachments; transcripts use it for the files of user messages, the images of tool results and the images Claude shows with `show_image`.
 
-| Swift name  | Key           | Type                  | Required | Default                    | Rules                                                                                                                                                                                                                                                                                           |
-| ----------- | ------------- | --------------------- | -------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| id          | `id`          | `UUID`                | yes      | —                          | Unique within its ticket or chat.                                                                                                                                                                                                                                                               |
-| name        | `name`        | `String`              | yes      | —                          | File name shown to the user, one path component. Uploads are cleaned by the rules of [AttachmentUpload](engine-api.md#attachmentupload); tool-result images are named `image-<n>.<extension>`; the stored file name `<id>-<name>` is at most 213 UTF-8 bytes ([Atomic writes](#atomic-writes)). |
-| path        | `path`        | `String`              | yes      | —                          | Location of the file relative to `.hephaestus/`: `attachments/<TICKET-ID>/<id>-<name>` or `chats/<CHAT-ID>/<id>-<name>`.                                                                                                                                                                        |
-| contentType | `contentType` | `String`              | no       | `application/octet-stream` | MIME type.                                                                                                                                                                                                                                                                                      |
-| size        | `size`        | `Int`                 | no       | `0`                        | Size of the file in bytes.                                                                                                                                                                                                                                                                      |
-| unknownKeys | —             | `[String: JSONValue]` | —        | `[:]`                      | [Unknown keys](#unknown-keys).                                                                                                                                                                                                                                                                  |
+| Swift name  | Key           | Type                  | Required | Default                    | Rules                                                                                                                                                                                                                                                                                                                                    |
+| ----------- | ------------- | --------------------- | -------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id          | `id`          | `UUID`                | yes      | —                          | Unique within its ticket or chat.                                                                                                                                                                                                                                                                                                        |
+| name        | `name`        | `String`              | yes      | —                          | File name shown to the user, one path component. Uploads, and the images shown with `show_image`, are cleaned by the rules of [AttachmentUpload](engine-api.md#attachmentupload); tool-result images are named `image-<n>.<extension>`; the stored file name `<id>-<name>` is at most 213 UTF-8 bytes ([Atomic writes](#atomic-writes)). |
+| path        | `path`        | `String`              | yes      | —                          | Location of the file relative to `.hephaestus/`: `attachments/<TICKET-ID>/<id>-<name>` or `chats/<CHAT-ID>/<id>-<name>`.                                                                                                                                                                                                                 |
+| contentType | `contentType` | `String`              | no       | `application/octet-stream` | MIME type.                                                                                                                                                                                                                                                                                                                               |
+| size        | `size`        | `Int`                 | no       | `0`                        | Size of the file in bytes.                                                                                                                                                                                                                                                                                                               |
+| unknownKeys | —             | `[String: JSONValue]` | —        | `[:]`                      | [Unknown keys](#unknown-keys).                                                                                                                                                                                                                                                                                                           |
 
-- Ticket attachments and comment attachments are stored in `attachments/<TICKET-ID>/`. Files of user messages, the feedback screenshot and images of tool results are stored in `chats/<CHAT-ID>/`.
+- Ticket attachments and comment attachments are stored in `attachments/<TICKET-ID>/`. Files of user messages, the feedback screenshot, images of tool results and images shown with `show_image` are stored in `chats/<CHAT-ID>/`.
+- An image shown with `show_image` is a copy of the file Claude named, under the last component of its path, with the content type of its image format, `image/png`, `image/jpeg`, `image/gif` or `image/webp` ([MCP](mcp.md#image-rules)); deleting or changing that file later does not change the copy.
 - An image returned by a tool is named `image-<n>.<extension>`, `<n>` counting from 1 in each result ([Chats](chats.md)).
 - `contentType` is the type given with the upload, else the type derived from the extension of `name` with `UTType(filenameExtension:)?.preferredMIMEType`, else `application/octet-stream`. Default chosen at design time.
 - An attachment is shown as an image (thumbnail and image viewer) when its `contentType` is one of the types of [Showing attachments](tickets.md#showing-attachments) (png, jpeg, gif, heic, heif, tiff, bmp and webp), and sent to Claude as an image block when it meets the rule of [User messages](chats.md#user-messages) (png, jpeg, gif and webp of at most 5,000,000 bytes); every other attachment, `image/svg+xml` included, is an ordinary file.
@@ -828,23 +829,24 @@ Swift type `ChatItem`: an enum whose case is selected by the key `type` and whos
 | id         | `id`      | `String`       | yes      | —       | Unique within the transcript; opaque to readers. [Chats](chats.md) defines how the engine forms it. |
 | created    | `created` | `Date`         | yes      | —       | Time the engine created the item.                                                                   |
 
-| `type`              | Swift case           | Payload type            | Item                                                     |
-| ------------------- | -------------------- | ----------------------- | -------------------------------------------------------- |
-| `user`              | `.user`              | `UserItem`              | A message sent to Claude.                                |
-| `assistant`         | `.assistant`         | `AssistantItem`         | A text block written by Claude.                          |
-| `thinking`          | `.thinking`          | `ThinkingItem`          | A thinking block.                                        |
-| `toolUse`           | `.toolUse`           | `ToolUseItem`           | A tool call, MCP calls included.                         |
-| `toolResult`        | `.toolResult`        | `ToolResultItem`        | The result of a tool call.                               |
-| `permissionRequest` | `.permissionRequest` | `PermissionRequestItem` | A request to allow a tool call.                          |
-| `questions`         | `.questions`         | `QuestionsItem`         | A set of labelled questions.                             |
-| `symbol`            | `.symbol`            | `SymbolItem`            | A request to choose one SF Symbol.                       |
-| `color`             | `.color`             | `ColorItem`             | A request to choose one color or a light and dark pair.  |
-| `sound`             | `.sound`             | `SoundItem`             | A request to choose one sound.                           |
-| `shortcut`          | `.shortcut`          | `ShortcutItem`          | A request to choose one keyboard shortcut.               |
-| `font`              | `.font`              | `FontItem`              | A request to choose one font.                            |
-| `animation`         | `.animation`         | `AnimationItem`         | A request to choose one SwiftUI animation.               |
-| `system`            | `.system`            | `SystemItem`            | A line from the app, such as the session start.          |
-| `result`            | `.result`            | `ResultItem`            | The end of a CLI turn ([Chats](chats.md#turn-tracking)). |
+| `type`              | Swift case           | Payload type            | Item                                                       |
+| ------------------- | -------------------- | ----------------------- | ---------------------------------------------------------- |
+| `user`              | `.user`              | `UserItem`              | A message sent to Claude.                                  |
+| `assistant`         | `.assistant`         | `AssistantItem`         | A text block written by Claude.                            |
+| `thinking`          | `.thinking`          | `ThinkingItem`          | A thinking block.                                          |
+| `toolUse`           | `.toolUse`           | `ToolUseItem`           | A tool call, MCP calls included.                           |
+| `toolResult`        | `.toolResult`        | `ToolResultItem`        | The result of a tool call.                                 |
+| `permissionRequest` | `.permissionRequest` | `PermissionRequestItem` | A request to allow a tool call.                            |
+| `questions`         | `.questions`         | `QuestionsItem`         | A set of labelled questions.                               |
+| `symbol`            | `.symbol`            | `SymbolItem`            | A request to choose one SF Symbol.                         |
+| `color`             | `.color`             | `ColorItem`             | A request to choose one color or a light and dark pair.    |
+| `sound`             | `.sound`             | `SoundItem`             | A request to choose one sound.                             |
+| `shortcut`          | `.shortcut`          | `ShortcutItem`          | A request to choose one keyboard shortcut.                 |
+| `font`              | `.font`              | `FontItem`              | A request to choose one font.                              |
+| `animation`         | `.animation`         | `AnimationItem`         | A request to choose one SwiftUI animation.                 |
+| `images`            | `.images`            | `ImagesItem`            | Images Claude shows with `show_image`, with their caption. |
+| `system`            | `.system`            | `SystemItem`            | A line from the app, such as the session start.            |
+| `result`            | `.result`            | `ResultItem`            | The end of a CLI turn ([Chats](chats.md#turn-tracking)).   |
 
 ```swift
 public enum ChatItem: Codable, Sendable, Hashable, Identifiable {
@@ -861,6 +863,7 @@ public enum ChatItem: Codable, Sendable, Hashable, Identifiable {
     case shortcut(ShortcutItem)
     case font(FontItem)
     case animation(AnimationItem)
+    case images(ImagesItem)
     case system(SystemItem)
     case result(ResultItem)
 }
@@ -1072,6 +1075,19 @@ The persisted form of an animation request posted with the MCP tool `ask_animati
 
 ```json
 {"type":"animation","id":"8E1F2A3B-4C5D-4E6F-9A0B-1C2D3E4F5A6B","created":"2026-11-03T14:20:01Z","requestID":"8E1F2A3B-4C5D-4E6F-9A0B-1C2D3E4F5A6B","question":"How should the sidebar slide in?","suggestions":[".snappy",".spring(duration: 0.4, bounce: 0.2)",".easeInOut(duration: 0.25)"],"recommended":".snappy","answer":"![](animation:.spring(duration: 0.4, bounce: 0.2))"}
+```
+
+### Images item
+
+The images Claude shows with the MCP tool `show_image`, copied into the chat ([Chats](chats.md#shown-images)). Its `id` is a new uppercase UUID.
+
+| Swift name | Key       | Type           | Required | Default | Rules                                                                                                                                   |
+| ---------- | --------- | -------------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| caption    | `caption` | `String?`      | no       | `null`  | Markdown text shown above the images, trimmed and not empty; `null` when Claude gave none.                                              |
+| images     | `images`  | `[Attachment]` | yes      | —       | 1 to 10 PNG, JPEG, GIF or WebP images stored in `chats/<CHAT-ID>/`, in the order Claude gave their paths ([Attachments](#attachments)). |
+
+```json
+{"type":"images","id":"9F0A1B2C-3D4E-4F5A-8B6C-7D8E9F0A1B2C","created":"2026-11-03T22:10:04Z","caption":"Preview of the new app icon at 1024 px.","images":[{"id":"1A2B3C4D-5E6F-4A7B-8C9D-0E1F2A3B4C5D","name":"icon-1024.png","path":"chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301/1A2B3C4D-5E6F-4A7B-8C9D-0E1F2A3B4C5D-icon-1024.png","contentType":"image/png","size":98418}]}
 ```
 
 ### System item
@@ -1695,3 +1711,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R141: A ticket's history also records each link added or removed and each change of its description, with its author and date.
 - R145: A chat started to implement a ticket asks the user no question until the user writes in it: it makes the choices itself, marks them in the docs and lists them, with the decisions it took, in its completion comment; the engine refuses its questions.
 - R149: Claude's replies in chats and the comments Claude writes show the model and effort that wrote them.
+- R150: Claude shows the user images in the chat with `show_image`: PNG, JPEG, GIF and WebP files are copied into the chat and shown, with an optional caption, at the place of the call, without a permission prompt, in local and remote windows; clicking one opens the image viewer.

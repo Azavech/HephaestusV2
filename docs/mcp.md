@@ -1,6 +1,6 @@
 # MCP server
 
-HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server that the Claude CLI processes of the app's chats, and terminal Claude sessions holding the external token, call to read and change projects, tickets, bundles, chats, web tabs and skills, to ask the user labelled questions, an SF Symbol, a color or a sound and to navigate the app. The server implements MCP's Streamable HTTP transport limited to JSON answers: JSON-RPC 2.0 messages are POSTed to `http://127.0.0.1:47820/mcp`, each one authenticated by a bearer token that identifies the calling chat. Every tool call runs an engine method with the actor `claude`, so it is validated like any other call and emits the same events, which every connected client, local or remote, receives live. This document specifies the transport, the authentication, the JSON-RPC handling, every tool with its exact description and input schema, the results and errors, the actor rules, external use and the debug tools.
+HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server that the Claude CLI processes of the app's chats, and terminal Claude sessions holding the external token, call to read and change projects, tickets, bundles, chats, web tabs and skills, to ask the user labelled questions, an SF Symbol, a color or a sound, to show the user images in a chat and to navigate the app. The server implements MCP's Streamable HTTP transport limited to JSON answers: JSON-RPC 2.0 messages are POSTed to `http://127.0.0.1:47820/mcp`, each one authenticated by a bearer token that identifies the calling chat. Every tool call runs an engine method with the actor `claude`, so it is validated like any other call and emits the same events, which every connected client, local or remote, receives live. This document specifies the transport, the authentication, the JSON-RPC handling, every tool with its exact description and input schema, the results and errors, the actor rules, external use and the debug tools.
 
 ## Overview
 
@@ -315,7 +315,7 @@ From step 2 on, every failure is a tool result with `isError: true`, never a JSO
 
 - `content` holds exactly one text item; there is no `structuredContent`.
 - For a tool backed by an engine method, the text is the method's result encoded with `EngineJSON.encoder()`, byte for byte the JSON that `Engine.dispatch` returns: sorted keys, dates as in [JSON encoding](engine-api.md#json-encoding) (whole seconds without a fraction, milliseconds when a fraction exists), `{}` for an empty result ([Engine API](engine-api.md#json-encoding)). `list_tickets` with `status` encodes the filtered array with the same encoder, and `get_ticket` the ticket with absolute attachment paths ([get_ticket](#get_ticket)).
-- `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font` and `ask_animation` return plain text ([Text returned to Claude](#text-returned-to-claude), [ask_symbol](#ask_symbol), [ask_color](#ask_color), [ask_sound](#ask_sound), [ask_shortcut](#ask_shortcut), [ask_font](#ask_font), [ask_animation](#ask_animation)) and the debug tools return the JSON given in their sections.
+- `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font`, `ask_animation` and `show_image` return plain text ([Text returned to Claude](#text-returned-to-claude), [ask_symbol](#ask_symbol), [ask_color](#ask_color), [ask_sound](#ask_sound), [ask_shortcut](#ask_shortcut), [ask_font](#ask_font), [ask_animation](#ask_animation), [show_image](#show_image)) and the debug tools return the JSON given in their sections.
 
 ### Tool errors
 
@@ -379,7 +379,7 @@ These failures have the code `invalid`. The server uses exactly these texts. Def
 
 ### Path expansion
 
-The `path` of `create_project` and the elements of `attachments` (`create_ticket`, `add_comment`) are expanded before the engine call: a path that is `~` or starts with `~/` gets the home folder of the user running the app in place of `~`. Default chosen at design time.
+The `path` of `create_project`, the elements of `attachments` (`create_ticket`, `add_comment`) and the elements of `paths` (`show_image`) are expanded before the engine call: a path that is `~` or starts with `~/` gets the home folder of the user running the app in place of `~`. Default chosen at design time.
 
 ### Attachments from paths
 
@@ -392,6 +392,8 @@ The `path` of `create_project` and the elements of `attachments` (`create_ticket
 | contentType | The MIME type of the path's extension (`UTType`), `application/octet-stream` when it has none.                                                                                                                                                                        |
 
 The engine reads and copies each file; a path that is missing, unreadable or not a regular file, or a file larger than 20 MB, fails the whole call with `invalid` and nothing is created ([Engine API](engine-api.md#attachmentupload), [Tickets](tickets.md#attachments)). Default chosen at design time for the name and content type.
+
+`show_image` passes its expanded `paths` to chats.postImages, which reads each path as an `AttachmentUpload` with `sourcePath`, named by the rule of the table above, and gives it the content type of its image format ([Image rules](#image-rules)).
 
 ## Actor rules
 
@@ -408,6 +410,7 @@ A chat token runs every engine call as the actor `claude` with the chat's id, th
 | A comment added by Claude has `author: claude`                                                                                                                                                                                                                                                                | tickets.addComment ([Tickets](tickets.md#comments))                                                                                                                                                                                    | —                      |
 | Claude never sets a ticket title at creation, chat settings or project chat defaults                                                                                                                                                                                                                          | The tools never send these params ([Engine API](engine-api.md#rules-for-claude))                                                                                                                                                       | —                      |
 | Only the chat's own Claude asks questions, symbol, color, sound, shortcut, font and animation requests                                                                                                                                                                                                        | `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font`, `ask_animation`, chats.postQuestions, chats.postSymbol, chats.postColor, chats.postSound, chats.postShortcut, chats.postFont, chats.postAnimation | `forbidden`            |
+| Only the chat's own Claude shows images                                                                                                                                                                                                                                                                       | `show_image`, chats.postImages                                                                                                                                                                                                         | `forbidden`            |
 | An implement chat asks no question, symbol, color, sound, shortcut, font or animation request until the user writes in it (`This chat implements a ticket and cannot ask questions: decide yourself and note the choice in the completion comment.`)                                                          | chats.postQuestions, chats.postSymbol, chats.postColor, chats.postSound, chats.postShortcut, chats.postFont, chats.postAnimation, while the chat's metadata holds `questionsBlocked` ([Workflow](workflow.md#implement-chats))         | `forbidden`            |
 | Claude asks for a sound only in a project of type Swift application                                                                                                                                                                                                                                           | chats.postSound ([Projects](projects.md#project-types))                                                                                                                                                                                | `forbidden`            |
 | Shortcut requests are posted only in Swift application projects                                                                                                                                                                                                                                               | `ask_shortcut`, chats.postShortcut ([Workflow](workflow.md#shortcut-requests))                                                                                                                                                         | `forbidden`            |
@@ -424,7 +427,7 @@ The tools are not limited to the calling chat's project: a chat may read and cha
 
 ## Tool catalogue
 
-The table lists every tool in the order of `tools/list`. "Required inputs" holds the names in the tool's `inputSchema.required` and "Optional inputs" its other top-level properties; `—` means none. The result types are defined in [Engine API](engine-api.md#api-types) and [Data model](data-model.md); `{}` is an empty result, `text` the plain text of [ask_questions](#ask_questions), [ask_symbol](#ask_symbol), [ask_color](#ask_color), [ask_sound](#ask_sound), [ask_shortcut](#ask_shortcut) and [ask_font](#ask_font), and `{refused}` the result of [close_chat](#close_chat): `{}` without `chatIDs`, the object that lists the refused chats with it. The [conformance test](#conformance) reads this table.
+The table lists every tool in the order of `tools/list`. "Required inputs" holds the names in the tool's `inputSchema.required` and "Optional inputs" its other top-level properties; `—` means none. The result types are defined in [Engine API](engine-api.md#api-types) and [Data model](data-model.md); `{}` is an empty result, `text` the plain text of [ask_questions](#ask_questions), [ask_symbol](#ask_symbol), [ask_color](#ask_color), [ask_sound](#ask_sound), [ask_shortcut](#ask_shortcut), [ask_font](#ask_font), [ask_animation](#ask_animation) and [show_image](#show_image), and `{refused}` the result of [close_chat](#close_chat): `{}` without `chatIDs`, the object that lists the refused chats with it. The [conformance test](#conformance) reads this table.
 
 | Tool                | Required inputs                                    | Optional inputs                  | Engine method            | Result           |
 | ------------------- | -------------------------------------------------- | -------------------------------- | ------------------------ | ---------------- |
@@ -460,6 +463,7 @@ The table lists every tool in the order of `tools/list`. "Required inputs" holds
 | `ask_shortcut`      | `question`, `suggestions`, `recommended`, `inUse`  | —                                | chats.postShortcut       | text             |
 | `ask_font`          | `question`, `sample`, `suggestions`, `recommended` | —                                | chats.postFont           | text             |
 | `ask_animation`     | `question`, `suggestions`, `recommended`           | —                                | chats.postAnimation      | text             |
+| `show_image`        | `paths`                                            | `caption`                        | chats.postImages         | text             |
 | `list_chats`        | `projectID`                                        | —                                | chats.list               | [ChatMeta]       |
 | `get_chat`          | `chatID`                                           | —                                | chats.get                | ChatTranscript   |
 | `rename_chat`       | `chatID`, `title`                                  | —                                | chats.rename             | ChatMeta         |
@@ -1935,6 +1939,60 @@ The app shows the request in a pinned animation card: one row per suggestion wit
 Animation: ![](animation:.spring(duration: 0.4, bounce: 0.2))
 ```
 
+### show_image
+
+- **Engine call:** chats.postImages with `chatID` = the calling chat, `paths` after [path expansion](#path-expansion) and `caption` as given ([Engine API](engine-api.md#chatspostimages)). The engine copies each image into the chat's attachment folder and adds an `images` item to the transcript at the place of the call ([Chats](chats.md#shown-images)).
+- **Availability:** chat tokens only. With the external token the call fails before argument validation with `Only the chat's own Claude can show images.`, the message of chats.postImages for that case. The tool is listed for every token. A comment answer cannot call it ([Actor rules](#actor-rules)). Default chosen at design time for the message.
+- **Permission:** pre-approved, so it runs without a permission prompt in every permission mode ([Chats](chats.md#command-line)).
+- **Asking:** showing images asks the user nothing, so the call is accepted in an implement chat whose metadata holds `questionsBlocked` and while a question set or another request waits for an answer ([Workflow](workflow.md#showing-images)).
+- **Result:** plain text, not JSON. On success the text is exactly `images shown in the chat`. Default chosen at design time.
+- **Errors:**
+  - The external token (`forbidden`, message above).
+  - An [image rule](#image-rules) fails (`invalid`); nothing is stored and the transcript shows nothing new.
+  - The chat no longer exists (`notFound`).
+
+Description:
+
+```text
+Show the user one or more images in this chat, for example an image you rendered or a screenshot you took. Give the paths of the image files on this Mac (absolute, starting with ~/, or relative to the project root) and an optional caption in markdown. Only PNG, JPEG, GIF and WebP files are accepted; any other file or a missing path fails the whole call. The app copies the images into the chat, so they stay visible after the files are deleted, and shows the caption and the images at the place of the call; clicking an image opens it in the image viewer. Only available in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "paths": {
+      "type": "array",
+      "description": "1 to 10 image files on this Mac, shown in this order: absolute paths, paths starting with ~/, or paths relative to the project root.",
+      "items": {"type": "string"}
+    },
+    "caption": {
+      "type": "string",
+      "description": "Text shown above the images (markdown)."
+    }
+  },
+  "required": ["paths"],
+  "additionalProperties": false
+}
+```
+
+#### Image rules
+
+The input schema checks only the shape of the arguments. chats.postImages checks the rules below in this order, the second to the fourth for each path in array order, and refuses the whole call with `invalid` at the first one that fails, so that nothing is stored and the transcript shows nothing new. The rules and their messages are Default chosen at design time, except the image formats, which the user chose.
+
+| Rule             | Detail                                                                                                                                                                                                                      | Message                                                                        |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Number of images | 1 to 10 paths.                                                                                                                                                                                                              | `show_image needs 1 to 10 images.`                                             |
+| Readable file    | The path, absolute, starting with `~/` or relative to the root of the chat's project, names a regular file that can be read, as for an `AttachmentUpload` with `sourcePath` ([Engine API](engine-api.md#attachmentupload)). | `<path> is not a readable file.`                                               |
+| Size             | The file has at most 20 MB, and all the files of the call together at most 20 MB, as for attachments.                                                                                                                       | `<name> is larger than 20 MB.`, `The attachments of one request exceed 20 MB.` |
+| Image format     | The file's content starts with the signature of a PNG (`89 50 4E 47 0D 0A 1A 0A`), a JPEG (`FF D8 FF`), a GIF (`GIF87a` or `GIF89a`) or a WebP image (`RIFF`, four bytes, then `WEBP`).                                     | `<path> is not a PNG, JPEG, GIF or WebP image.`                                |
+
+- The signature decides the format, whatever the file's extension, and the stored content type is the format's: `image/png`, `image/jpeg`, `image/gif` or `image/webp`.
+- The caption is trimmed; an absent caption, or one that is empty after trimming, gives an item without caption. Its line breaks are stored as `\n`.
+- The images are stored in the order of `paths`; the same path twice is stored twice.
+
 ### list_chats
 
 - **Engine call:** chats.list with `projectID`.
@@ -3093,3 +3151,4 @@ Unauthorized: missing or invalid bearer token.
 - R137: Claude closes other chats of the project when the user asks it to, never on its own; a chat with a turn in progress is not closed.
 - R140: A comment that mentions `@Claude` gets an answer from Claude as a new comment, made by a one-shot call without a chat; typing `@` in the comment composer suggests Claude, mentions are highlighted, Claude may change the ticket's title, description, links and status, a row shows while Claude replies and offers Retry when it could not, and the answers count in the project's costs.
 - R145: A chat started to implement a ticket asks the user no question until the user writes in it: it makes the choices itself, marks them in the docs and lists them, with the decisions it took, in its completion comment; the engine refuses its questions.
+- R150: Claude shows the user images in the chat with `show_image`: PNG, JPEG, GIF and WebP files are copied into the chat and shown, with an optional caption, at the place of the call, without a permission prompt, in local and remote windows; clicking one opens the image viewer.

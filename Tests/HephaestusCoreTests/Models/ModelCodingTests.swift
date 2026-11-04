@@ -356,6 +356,12 @@ struct ModelCodingTests {
                            suggestions: [".headline", "System/Bold/17"], recommended: ".headline", answer: "![](font:System/Bold/17)")),
             .animation(AnimationItem(id: "an", created: created, requestID: UUID(), question: "How?", suggestions: [".snappy", ".smooth"],
                                      recommended: ".snappy", answer: "![](animation:.smooth)")),
+            .images(ImagesItem(id: "im", created: created, caption: "Preview", images: [
+                HephaestusCore.Attachment(id: UUID(), name: "icon.png", path: "chats/C/icon.png", contentType: "image/png", size: 3),
+            ])),
+            .images(ImagesItem(id: "in", created: created, images: [
+                HephaestusCore.Attachment(id: UUID(), name: "a.gif", path: "chats/C/a.gif", contentType: "image/gif", size: 4),
+            ])),
             .system(SystemItem(id: "s", created: created, text: "Session started", level: .warning)),
             .result(ResultItem(id: "r", created: created, durationMs: 10, costUSD: 0.5)),
         ]
@@ -367,7 +373,27 @@ struct ModelCodingTests {
             let object = try JSONDecoder().decode(JSONValue.self, from: data).objectValue?["item"]?.objectValue
             #expect(object?["type"] == .string(item.type.rawValue))
         }
-        #expect(items.map(\.id) == ["u", "a", "t", "tu", "tr", "p", "q", "sy", "sa", "co", "cp", "so", "sc", "fo", "fa", "an", "s", "r"])
+        #expect(items.map(\.id) == ["u", "a", "t", "tu", "tr", "p", "q", "sy", "sa", "co", "cp", "so", "sc", "fo", "fa", "an", "im", "in",
+                                    "s", "r"])
+    }
+
+    @Test("The images item of docs/data-model.md › Images item: caption null when Claude gave none")
+    func imagesItem() throws {
+        let markdown = try Repository.doc("data-model.md")
+        let start = try #require(markdown.range(of: "### Images item")).upperBound
+        let line = try #require(markdown[start...].split(separator: "\n").first { $0.hasPrefix(#"{"type":"images""#) })
+        let item = try StorageJSON.decoder().decode(ChatItem.self, from: Data(line.utf8))
+        guard case .images(var shown) = item else {
+            Issue.record("not an images item")
+            return
+        }
+        #expect(shown.caption == "Preview of the new app icon at 1024 px.")
+        #expect(shown.images.map(\.name) == ["icon-1024.png"])
+        #expect(shown.images.first?.contentType == "image/png")
+        shown.caption = nil
+        let encoded = try JSONDecoder().decode(JSONValue.self, from: StorageJSON.lineEncoder().encode(ChatItem.images(shown)))
+        #expect(encoded.objectValue?["caption"] == .null)
+        #expect(encoded.objectValue?["type"] == "images")
     }
 
     @Test("The symbol item of docs/data-model.md › Symbol item: answer null until the user answers")

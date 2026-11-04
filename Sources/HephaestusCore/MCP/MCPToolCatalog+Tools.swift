@@ -1035,6 +1035,33 @@ extension MCPToolCatalog {
             handling: .askAnimation
         ),
         MCPToolDefinition(
+            name: "show_image",
+            description: #"""
+            Show the user one or more images in this chat, for example an image you rendered or a screenshot you took. Give the paths of the image files on this Mac (absolute, starting with ~/, or relative to the project root) and an optional caption in markdown. Only PNG, JPEG, GIF and WebP files are accepted; any other file or a missing path fails the whole call. The app copies the images into the chat, so they stay visible after the files are deleted, and shows the caption and the images at the place of the call; clicking an image opens it in the image viewer. Only available in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "paths": {
+                  "type": "array",
+                  "description": "1 to 10 image files on this Mac, shown in this order: absolute paths, paths starting with ~/, or paths relative to the project root.",
+                  "items": {"type": "string"}
+                },
+                "caption": {
+                  "type": "string",
+                  "description": "Text shown above the images (markdown)."
+                }
+              },
+              "required": ["paths"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "chats.postImages",
+            handling: .showImage
+        ),
+        MCPToolDefinition(
             name: "list_chats",
             description: #"""
             List a project's chats of every kind (project, ticket, bundle, feedback), most recently updated first, with their title, kind, linked ticket or bundle, settings and state.

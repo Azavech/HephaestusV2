@@ -465,6 +465,20 @@ struct PromptAndNamingTests {
         }
     }
 
+    @Test("The common prompt lists show_image and tells Claude to show every image with it; show_image is pre-approved")
+    func showImagePrompt() throws {
+        let common = Prompts.text(.common)
+        #expect(common.contains("- Images: show_image (shows images in this chat).\n"))
+        let lower = try #require(common.range(of: "# Images\n")).lowerBound
+        let upper = try #require(common.range(of: "# When the project is a Go service")).lowerBound
+        let section = String(common[lower..<upper])
+        #expect(section.contains("Whenever you show the user an image"))
+        #expect(section.contains("call show_image with the paths of the image files and an optional caption in Markdown"))
+        #expect(section.contains("show_image accepts PNG, JPEG, GIF and WebP files"))
+        #expect(section.contains("show_image asks the user nothing: after it returns, continue your work."))
+        #expect(ClaudeCommandLine.preApprovedTools.contains("mcp__hephaestus__ask_animation,mcp__hephaestus__show_image,"))
+    }
+
     @Test("The common prompt lists ask_animation and tells Claude to use it in a Swift application project")
     func askAnimationPrompt() throws {
         let common = Prompts.text(.common)

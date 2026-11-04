@@ -96,6 +96,8 @@ enum TranscriptRenderer {
             return TranscriptFragment(id: request.id, type: "font", html: fontHTML(request, context: context))
         case .animation(let request):
             return TranscriptFragment(id: request.id, type: "animation", html: animationHTML(request, context: context))
+        case .images(let shown):
+            return TranscriptFragment(id: shown.id, type: "images", html: imagesHTML(shown, context: context))
         case .system(let system):
             return TranscriptFragment(id: system.id, type: "system",
                                       html: "<div class=\"system-line level-\(system.level.rawValue)\">\(escape(system.text))</div>")
@@ -164,6 +166,22 @@ enum TranscriptRenderer {
                 + "<span class=\"linked-name\">\(escape(item.name))</span></span>"
         }
         return html + "</div>"
+    }
+
+    /// The images Claude shows with `show_image`: left-aligned as an assistant bubble, with the
+    /// caption `Claude` and the date and time, the item's caption in an assistant bubble when it
+    /// has one, then the images as thumbnails, as those of a user message (docs/chats.md › Item
+    /// rendering).
+    private static func imagesHTML(_ shown: ImagesItem, context: TranscriptRenderContext) -> String {
+        var html = "<div class=\"msg assistant\">" + caption("Claude", created: shown.created, context: context)
+        if let text = shown.caption {
+            html += bubble(kind: "assistant-bubble", source: text, created: shown.created, context: context)
+        }
+        html += "<div class=\"attachments\">"
+        for image in shown.images {
+            html += imageHTML(image, title: ChatFormat.created(shown.created))
+        }
+        return html + "</div></div>"
     }
 
     private static func assistantHTML(_ assistant: AssistantItem, context: TranscriptRenderContext) -> String {

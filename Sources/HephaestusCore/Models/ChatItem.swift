@@ -17,6 +17,7 @@ public enum ChatItem: Codable, Sendable, Hashable, Identifiable {
     case shortcut(ShortcutItem)
     case font(FontItem)
     case animation(AnimationItem)
+    case images(ImagesItem)
     case system(SystemItem)
     case result(ResultItem)
 
@@ -39,6 +40,7 @@ public enum ChatItem: Codable, Sendable, Hashable, Identifiable {
         case .shortcut(let item): return item
         case .font(let item): return item
         case .animation(let item): return item
+        case .images(let item): return item
         case .system(let item): return item
         case .result(let item): return item
         }
@@ -61,6 +63,7 @@ public enum ChatItem: Codable, Sendable, Hashable, Identifiable {
         case .shortcut: self = .shortcut(try ShortcutItem(from: decoder))
         case .font: self = .font(try FontItem(from: decoder))
         case .animation: self = .animation(try AnimationItem(from: decoder))
+        case .images: self = .images(try ImagesItem(from: decoder))
         case .system: self = .system(try SystemItem(from: decoder))
         case .result: self = .result(try ResultItem(from: decoder))
         }
@@ -86,6 +89,7 @@ public enum ChatItemType: String, Codable, Sendable, Hashable, CaseIterable {
     case shortcut
     case font
     case animation
+    case images
     case system
     case result
 }
@@ -917,6 +921,40 @@ public struct AnimationItem: ChatItemPayload {
         try c.encode(suggestions, "suggestions")
         try c.encode(recommended, "recommended")
         try c.encodeOptional(answer, "answer")
+    }
+}
+
+/// The images Claude shows with the MCP tool `show_image`, copied into the chat
+/// (docs/data-model.md › Images item).
+public struct ImagesItem: ChatItemPayload {
+    public static let itemType = ChatItemType.images
+    public var id: String
+    public var created: Date
+    /// Markdown text shown above the images, trimmed and not empty; nil when Claude gave none.
+    public var caption: String?
+    /// 1 to 10 PNG, JPEG, GIF or WebP images stored in `chats/<CHAT-ID>/`, in the order Claude
+    /// gave their paths.
+    public var images: [Attachment]
+
+    public init(id: String, created: Date, caption: String? = nil, images: [Attachment]) {
+        self.id = id
+        self.created = created
+        self.caption = caption
+        self.images = images
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try ModelDecodingContainer(decoder)
+        (id, created) = try ItemHeader.decode(c)
+        caption = try c.optional("caption")
+        images = try c.required("images")
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = ModelEncodingContainer(encoder)
+        try ItemHeader.encode(&c, type: Self.itemType, id: id, created: created)
+        try c.encodeOptional(caption, "caption")
+        try c.encode(images, "images")
     }
 }
 

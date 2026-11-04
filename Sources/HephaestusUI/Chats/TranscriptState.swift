@@ -176,19 +176,20 @@ struct TranscriptState {
         return nil
     }
 
-    /// Every image of the chat's items in transcript order: user attachments and tool-result
-    /// images.
+    /// Every image of the chat's items in transcript order: user attachments, tool-result images
+    /// and the images Claude shows with `show_image`.
     var images: [Attachment] {
         items.flatMap { item -> [Attachment] in
             switch item {
             case .user(let user): return user.attachments.filter { ChatAttachmentKind.isImage($0.contentType) }
             case .toolResult(let result): return result.images
+            case .images(let shown): return shown.images
             default: return []
             }
         }
     }
 
-    /// The stored attachment of a user item or a tool result with this data path.
+    /// The stored attachment of a user item, a tool result or an `images` item with this data path.
     func attachment(atPath path: String) -> Attachment? {
         for item in items {
             switch item {
@@ -196,6 +197,8 @@ struct TranscriptState {
                 if let attachment = user.attachments.first(where: { $0.path == path }) { return attachment }
             case .toolResult(let result):
                 if let attachment = result.images.first(where: { $0.path == path }) { return attachment }
+            case .images(let shown):
+                if let attachment = shown.images.first(where: { $0.path == path }) { return attachment }
             default:
                 break
             }

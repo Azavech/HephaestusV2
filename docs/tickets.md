@@ -473,11 +473,11 @@ The drop areas and ⌘V are defaults. Default chosen at design time.
 
 - Each image opens in its own window; opening an image that already has a window brings that window to the front. The sources, titles and Previous and Next sets are: Default chosen at design time.
 
-| Source                                                    | Title                   | Previous and next                                    |
-| --------------------------------------------------------- | ----------------------- | ---------------------------------------------------- |
-| Ticket or comment attachment                              | `<name> — <TICKET-ID>`  | the ticket's images, as below                        |
-| Image of a chat item (user attachment, tool-result image) | `<name> — <chat title>` | the images of that chat's items, in transcript order |
-| Screenshot of the Feedback sheet                          | `Feedback Screenshot`   | none                                                 |
+| Source                                                                                   | Title                   | Previous and next                                    |
+| ---------------------------------------------------------------------------------------- | ----------------------- | ---------------------------------------------------- |
+| Ticket or comment attachment                                                             | `<name> — <TICKET-ID>`  | the ticket's images, as below                        |
+| Image of a chat item (user attachment, tool-result image, image shown with `show_image`) | `<name> — <chat title>` | the images of that chat's items, in transcript order |
+| Screenshot of the Feedback sheet                                                         | `Feedback Screenshot`   | none                                                 |
 
 - The window opens at 640 × 480 pt with a spinner; once the image is decoded it resizes once, keeping its top-left corner, to the image's size when that fits in 80 % of the visible frame of its screen, otherwise to the largest size with the image's proportions that fits, never smaller than 400 × 300 pt. The image starts fitted, never above 100 %. Default chosen at design time.
 - Zoom ranges from 10 % to 800 %, and each step multiplies or divides it by 1.25. Default chosen at design time.
@@ -781,3 +781,4 @@ Shortcuts of this document. All global shortcuts are listed in [UI](ui.md).
 - R146: In a Go service project, Claude waits after the push for CI to be green, fixing what fails, then tests the tickets on a test service and sets them done; Go service tickets have no User tests.
 - R147: The Bundles list has a filter button that hides done bundles.
 - R149: Claude's replies in chats and the comments Claude writes show the model and effort that wrote them.
+- R150: Claude shows the user images in the chat with `show_image`: PNG, JPEG, GIF and WebP files are copied into the chat and shown, with an optional caption, at the place of the call, without a permission prompt, in local and remote windows; clicking one opens the image viewer.

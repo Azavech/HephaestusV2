@@ -115,8 +115,8 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | MCP request with an answer token       | claude, chatID `answer` ([Comment answers](chats.md#comment-answers)) |
 | Engine-internal work and tests         | system                                                                |
 
-- **user** may call every method except `chats.postQuestions`, `chats.postSymbol`, `chats.postColor`, `chats.postSound`, `chats.postShortcut`, `chats.postFont` and `chats.postAnimation`. Local and remote users have the same rights.
-- **claude** may call only the 50 methods that MCP tools map to (the Actors column says "claude"), with the rules below. Any other method fails with `forbidden` before its params are decoded.
+- **user** may call every method except `chats.postQuestions`, `chats.postSymbol`, `chats.postColor`, `chats.postSound`, `chats.postShortcut`, `chats.postFont`, `chats.postAnimation` and `chats.postImages`. Local and remote users have the same rights.
+- **claude** may call only the 51 methods that MCP tools map to (the Actors column says "claude"), with the rules below. Any other method fails with `forbidden` before its params are decoded.
 - **system** may call every method, without restrictions.
 
 ### Rules for Claude
@@ -131,6 +131,7 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | chats.implementTicket, chats.implementBundle                                                                                     | `settings` must be absent; the new chat uses the project's defaults, or the calling bundle chat's settings for an orchestrated ticket chat.                                                                                                                                                                                                        | forbidden |
 | chats.postQuestions, chats.postSymbol, chats.postColor, chats.postSound, chats.postShortcut, chats.postFont, chats.postAnimation | Only the chat's own Claude may call it: the actor's chatID must equal the `chatID` param; the external token is refused.                                                                                                                                                                                                                           | forbidden |
 | chats.postQuestions, chats.postSymbol, chats.postColor, chats.postSound, chats.postShortcut, chats.postFont, chats.postAnimation | Refused while the chat's metadata holds `questionsBlocked`, in an implement chat that the user has not written in yet (`This chat implements a ticket and cannot ask questions: decide yourself and note the choice in the completion comment.`) ([Workflow](workflow.md#implement-chats)). Checked after the rule above, before the other checks. | forbidden |
+| chats.postImages                                                                                                                 | Only the chat's own Claude may call it: the actor's chatID must equal the `chatID` param; the external token is refused (`Only the chat's own Claude can show images.`).                                                                                                                                                                           | forbidden |
 | chats.postSound                                                                                                                  | The chat's project must have the type `swiftApplication` (`ask_sound is only available in Swift application projects.`) ([Projects](projects.md#project-types)).                                                                                                                                                                                   | forbidden |
 | chats.postShortcut                                                                                                               | The chat's project must have the type `swiftApplication` (`ask_shortcut is available only in Swift application projects.`) ([Projects](projects.md#project-types)).                                                                                                                                                                                | forbidden |
 | chats.postAnimation                                                                                                              | The chat's project must have the type `swiftApplication` (`ask_animation is available only in Swift application projects.`) ([Projects](projects.md#project-types)).                                                                                                                                                                               | forbidden |
@@ -243,6 +244,7 @@ The first column lists every engine method; it is the list the docs conformance 
 | `chats.answerFont`         | ChatsAnswerFont         | chatID, requestID, answer                                  | Empty            | user         |
 | `chats.postAnimation`      | ChatsPostAnimation      | chatID, question, suggestions, recommended                 | AnimationRequest | claude       |
 | `chats.answerAnimation`    | ChatsAnswerAnimation    | chatID, requestID, answer                                  | Empty            | user         |
+| `chats.postImages`         | ChatsPostImages         | chatID, paths, caption?                                    | [Attachment]     | claude       |
 | `chats.implementTicket`    | ChatsImplementTicket    | ticketID, settings?                                        | ChatMeta         | user, claude |
 | `chats.implementBundle`    | ChatsImplementBundle    | bundleID, settings?                                        | ChatMeta         | user, claude |
 | `chats.createFeedback`     | ChatsCreateFeedback     | projectID, comment, screenshot, context, settings?         | ChatMeta         | user         |
@@ -759,7 +761,7 @@ Events: ticket.updated.
 
 Swift type `AttachmentsRead` · actors: user · result: [BinaryContent](#binarycontent)
 
-Reads a stored attachment: a ticket or comment attachment, or a file of a chat (user attachments, the feedback screenshot, tool-result images). Local and remote windows use it to show images and open files.
+Reads a stored attachment: a ticket or comment attachment, or a file of a chat (user attachments, the feedback screenshot, tool-result images, the images Claude shows with `show_image`). Local and remote windows use it to show images and open files.
 
 | Param     | Type      | Required | Description                                                                                                                     |
 | --------- | --------- | -------- | ------------------------------------------------------------------------------------------------------------------------------- |
@@ -1467,6 +1469,34 @@ Swift type `ChatsAnswerAnimation` · actors: user · result: [Empty](#empty)
 | unavailable | The Claude CLI is not available; nothing is stored.                                                                                         |
 
 Events: chat.item (the `animation` item), chat.item (the user message) and chat.updated.
+
+### chats.postImages
+
+Swift type `ChatsPostImages` · actors: claude (the chat's own Claude only) · result: [Attachment](data-model.md#attachments) array
+
+Called by the MCP tool `show_image`, which fills `chatID` from its token and expands `~` in `paths` ([MCP server](mcp.md#show_image)). What it does in the chat is in [Chats](chats.md#shown-images).
+
+| Param   | Type     | Required | Description                                                                                                                                    |
+| ------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| chatID  | ChatID   | yes      | Chat id; must be the actor's chatID.                                                                                                           |
+| paths   | [String] | yes      | 1 to 10 paths of PNG, JPEG, GIF or WebP files on the main device: absolute, starting with `~/`, or relative to the root of the chat's project. |
+| caption | String   | no       | Markdown text shown above the images; trimmed, and left out when empty.                                                                        |
+
+1. Check the actor, the number of paths and that the chat exists, then the [image rules](mcp.md#image-rules) of each path in order: the readable file, its size and the size of the files so far, and its image format.
+2. Copy each file into the chat's attachment folder `chats/<chatID>/` as an [Attachment](data-model.md#attachments): a new UUID `id`, the name of [Attachments from paths](mcp.md#attachments-from-paths) cleaned as an upload's ([AttachmentUpload](#attachmentupload)), the content type of its image format and its size. The source files stay unchanged.
+3. Add one `images` item {caption, images} with a new uppercase UUID as id ([Data model](data-model.md#images-item)).
+4. Return the stored attachments, in the order of `paths`.
+
+The call asks the user nothing: it does not depend on the chat's state, on `questionsBlocked` or on a waiting question set or request, and it does not change the chat's state.
+
+| Error     | When                                                                                                                                                                                                                                                                                        |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid   | chatID is not a UUID; an [image rule](mcp.md#image-rules) fails (`show_image needs 1 to 10 images.`, `<path> is not a readable file.`, `<name> is larger than 20 MB.`, `The attachments of one request exceed 20 MB.`, `<path> is not a PNG, JPEG, GIF or WebP image.`). Nothing is stored. |
+| notFound  | No such chat.                                                                                                                                                                                                                                                                               |
+| forbidden | The actor is not this chat's Claude (`Only the chat's own Claude can show images.`).                                                                                                                                                                                                        |
+| internal  | A file cannot be written; the files already written by the call are removed and no item is added.                                                                                                                                                                                           |
+
+Events: chat.item.
 
 ### chats.implementTicket
 
@@ -3494,3 +3524,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R140: A comment that mentions `@Claude` gets an answer from Claude as a new comment, made by a one-shot call without a chat; typing `@` in the comment composer suggests Claude, mentions are highlighted, Claude may change the ticket's title, description, links and status, a row shows while Claude replies and offers Retry when it could not, and the answers count in the project's costs.
 - R141: A ticket's history also records each link added or removed and each change of its description, with its author and date.
 - R145: A chat started to implement a ticket asks the user no question until the user writes in it: it makes the choices itself, marks them in the docs and lists them, with the decisions it took, in its completion comment; the engine refuses its questions.
+- R150: Claude shows the user images in the chat with `show_image`: PNG, JPEG, GIF and WebP files are copied into the chat and shown, with an optional caption, at the place of the call, without a permission prompt, in local and remote windows; clicking one opens the image viewer.

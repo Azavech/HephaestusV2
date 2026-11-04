@@ -79,6 +79,9 @@ extension Engine {
         register(ChatsAnswerAnimation.self, actors: [.user]) { [unowned self] params, actor in
             try await self.chatsAnswerAnimation(params, actor)
         }
+        register(ChatsPostImages.self, actors: [.claude]) { [unowned self] params, actor in
+            try await self.chatsPostImages(params, actor)
+        }
         register(ChatsImplementTicket.self, actors: [.user, .claude]) { [unowned self] params, actor in
             try await self.chatsImplementTicket(params, actor)
         }
@@ -923,6 +926,55 @@ extension Engine {
             return set
         }
         throw EngineError.notFound("Question set", questionSetID.uuidString)
+    }
+
+    // MARK: Shown images
+
+    /// `chats.postImages` (docs/chats.md › Shown images): checks the image rules of
+    /// docs/mcp.md › Image rules, copies the images into the chat's attachment folder and adds an
+    /// `images` item. It asks the user nothing, so neither `questionsBlocked` nor a waiting request
+    /// refuses it.
+    func chatsPostImages(_ params: ChatsPostImages.Params, _ actor: Actor) async throws -> [Attachment] {
+        try ActorRules.requireOwnChat(params.chatID, actor, else: ActorRules.ownChatImagesOnly)
+        guard (1...10).contains(params.paths.count) else {
+            throw EngineError(.invalid, "show_image needs 1 to 10 images.")
+        }
+        let meta = try requireChat(params.chatID)
+        let folder = try chatFolder(meta)
+        var images: [PreparedUpload] = []
+        var total = 0
+        for path in params.paths {
+            // A readable regular file of at most 20 MB, as an upload with `sourcePath`.
+            let upload = AttachmentUpload(name: MCPToolHandlers.attachmentName(path: path), contentType: "", sourcePath: path)
+            guard var image = try AttachmentUploads.prepare([upload], projectRoot: folder.root, param: "paths").first else { continue }
+            total += image.data.count
+            guard total <= AttachmentUploads.maximumSize else {
+                throw EngineError(.invalid, "The attachments of one request exceed 20 MB.")
+            }
+            guard let contentType = ChatAttachments.imageContentType(image.data) else {
+                throw EngineError(.invalid, "\(path) is not a PNG, JPEG, GIF or WebP image.")
+            }
+            image.contentType = contentType
+            images.append(image)
+        }
+        let caption = params.caption
+            .map { ModelRules.normalizedLineBreaks($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty ? nil : $0 }
+        let stored: [Attachment]
+        do {
+            stored = try AttachmentUploads.store(images, in: folder.chatAttachmentsFolder(params.chatID),
+                                                 pathPrefix: "chats/\(params.chatID.uuidString)", ownWrites: ownWrites)
+        } catch {
+            throw storageFailure(error)
+        }
+        let item = ImagesItem(id: RandomIDs.uuidString(), created: ISODate.now(), caption: caption, images: stored)
+        do {
+            try appendChatItem(.images(item), chatID: params.chatID, origin: actor)
+        } catch {
+            AttachmentUploads.remove(stored.map { folder.attachmentFile(path: $0.path) }, ownWrites: ownWrites)
+            throw error
+        }
+        return stored
     }
 
     // MARK: Helpers
