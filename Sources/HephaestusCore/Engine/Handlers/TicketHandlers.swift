@@ -257,8 +257,9 @@ extension Engine {
             throw storageFailure(error)
         }
         let now = ISODate.now()
+        let (model, effort) = commentModel(ticketID: ticket.id, text: params.text, actor)
         let comment = Comment(id: UUID(), author: actor.kind == .claude ? .claude : .user, created: now, updated: nil,
-                              text: ModelRules.normalizedLineBreaks(params.text), attachments: attachments)
+                              text: ModelRules.normalizedLineBreaks(params.text), attachments: attachments, model: model, effort: effort)
         ticket.comments.append(comment)
         ticket.updated = now
         try saveTicket(ticket)
@@ -273,6 +274,17 @@ extension Engine {
             emitProjectsChanged(origin: actor)
         }
         return ticket
+    }
+
+    /// The model and effort of a comment (docs/engine-api.md › tickets.addComment): for a claude
+    /// actor of a chat, the model of the chat's `add_comment` call, else of its latest message,
+    /// with the chat's effort; nil for every other actor.
+    private func commentModel(ticketID: TicketID, text: String, _ actor: Actor) -> (String?, Effort?) {
+        guard case .claude(let id) = actor, let chatID = UUID(uuidString: id), let meta = domain.chat(chatID),
+              let process = chats.runtimes[chatID]?.process,
+              let model = process.mapper.takeCommentModel(ticketID: ticketID, text: text)
+        else { return (nil, nil) }
+        return (model, ClaudeModel.effort(meta.settings.effort, of: model, in: claudeCLI.cachedModels))
     }
 
     /// docs/engine-api.md › tickets.updateComment.

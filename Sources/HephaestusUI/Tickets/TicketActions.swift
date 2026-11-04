@@ -27,6 +27,13 @@ enum TicketFormat {
         author == .claude ? "Claude" : "You"
     }
 
+    /// The author of a comment: `You`, `Claude`, or for a comment Claude added from a chat, which
+    /// has a model, `Claude (<model> · <effort>)` (docs/tickets.md › Comments).
+    static func author(of comment: Comment, models: [ClaudeModel]) -> String {
+        guard comment.author == .claude, comment.model != nil else { return author(comment.author) }
+        return ChatFormat.claudeName(model: comment.model, effort: comment.effort, models: models)
+    }
+
     /// The ticket ids of a list in ascending ticket number (`HEPH-9` before `HEPH-10`).
     static func ascending(_ ids: [String]) -> [String] {
         ids.sorted { TicketListState.number(of: $0) < TicketListState.number(of: $1) }

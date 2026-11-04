@@ -272,7 +272,8 @@ struct AgentView: View {
         } else if let state = workspace.agentTranscripts[key] {
             let context = TranscriptRenderContext(projectRootPath: workspace.project(projectID)?.rootPath,
                                                   chatIsRunning: agent.state == .running, displayedQuestion: nil,
-                                                  projectIdentifiers: workspace.projectIdentifiers, today: TranscriptDay.shared.today)
+                                                  projectIdentifiers: workspace.projectIdentifiers, today: TranscriptDay.shared.today,
+                                                  models: workspace.models)
             TranscriptWebView(controller: controller, input: TranscriptInput(state: state, context: context, placeholder: nil))
         } else {
             ProgressView()

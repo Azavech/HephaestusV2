@@ -1,24 +1,18 @@
 import Darwin
 import Foundation
 
-/// A model of the last `initialize` response, with the `resolvedModel` the engine keeps in
-/// memory to name the model of `system/init` (docs/chats.md › Models).
-struct CachedModel: Sendable, Hashable {
-    var model: ClaudeModel
-    var resolvedModel: String?
-
+extension ClaudeModel {
     /// The entries of `response.models` of an `initialize` answer, in order. An entry without a
     /// string `value` is skipped; a missing `displayName` is the value and a missing `description`
     /// is empty (docs/chats.md › Models).
-    static func parse(_ models: JSONValue?) -> [CachedModel]? {
+    static func parse(_ models: JSONValue?) -> [ClaudeModel]? {
         guard let entries = models?.arrayValue else { return nil }
         return entries.compactMap { entry in
             guard let object = entry.objectValue, let value = object["value"]?.stringValue else { return nil }
             let efforts = object["supportedEffortLevels"]?.arrayValue?.compactMap(\.stringValue) ?? []
-            return CachedModel(
-                model: ClaudeModel(value: value, displayName: object["displayName"]?.stringValue ?? value,
-                                   description: object["description"]?.stringValue ?? "", supportedEffortLevels: efforts),
-                resolvedModel: object["resolvedModel"]?.stringValue)
+            return ClaudeModel(value: value, displayName: object["displayName"]?.stringValue ?? value,
+                               description: object["description"]?.stringValue ?? "", supportedEffortLevels: efforts,
+                               resolvedModel: object["resolvedModel"]?.stringValue)
         }
     }
 }
@@ -48,7 +42,7 @@ final class ClaudeCLI {
     /// `--version` has answered.
     var status = ClaudeStatus.detecting
     /// The models of the last `initialize` response since the engine started, nil before.
-    var initializeModels: [CachedModel]?
+    var initializeModels: [ClaudeModel]?
     /// The captured login-shell environment, nil until the capture has finished
     /// (docs/chats.md › Environment). Child processes get it without any `HEPHAESTUS_*` variable.
     var loginEnvironment: [String: String]?
@@ -71,13 +65,13 @@ final class ClaudeCLI {
     /// fallback list before the first response and while the CLI is unavailable.
     var models: [ClaudeModel] {
         guard status.available, let initializeModels else { return ClaudeCLI.fallbackModels }
-        return initializeModels.map(\.model)
+        return initializeModels
     }
 
-    /// The models used to name the model of `system/init`: those of the last `initialize`
-    /// response, or the fallback list.
-    var cachedModels: [CachedModel] {
-        initializeModels ?? ClaudeCLI.fallbackModels.map { CachedModel(model: $0, resolvedModel: nil) }
+    /// The models used to name model ids (docs/chats.md › Model names): those of the last
+    /// `initialize` response, or the fallback list.
+    var cachedModels: [ClaudeModel] {
+        initializeModels ?? ClaudeCLI.fallbackModels
     }
 
     /// docs/chats.md › Models: the list used until the first `initialize` response since the
@@ -401,7 +395,7 @@ extension Engine {
         let response = await answer.value
         process.closeInput()
         if let response, response.objectValue?["subtype"]?.stringValue == "success",
-           let models = CachedModel.parse(response.objectValue?["response"]?.objectValue?["models"]) {
+           let models = ClaudeModel.parse(response.objectValue?["response"]?.objectValue?["models"]) {
             receivedInitializeModels(models)
         } else if response == nil {
             log.warn(.claude, "the models probe got no answer to initialize")
@@ -418,7 +412,7 @@ extension Engine {
 
     /// An `initialize` answer of the probe or of a chat process: the model list changes and
     /// `claude.updated` is emitted when the `claude.models` result changed.
-    func receivedInitializeModels(_ models: [CachedModel]) {
+    func receivedInitializeModels(_ models: [ClaudeModel]) {
         let old = claudeCLI.models
         claudeCLI.initializeModels = models
         if claudeCLI.models != old {

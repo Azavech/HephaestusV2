@@ -52,10 +52,12 @@ struct BackgroundWorkTests {
                                            + "You will be notified when it completes. To check interim output, use Read on that file path.",
                                        isError: false, images: [])),
             .assistant(AssistantItem(id: "msg_011CgdMDNWTEhXYByHerU7c9#0", created: Self.date, text: "started",
-                                     messageID: "msg_011CgdMDNWTEhXYByHerU7c9", parentToolUseID: nil)),
+                                     messageID: "msg_011CgdMDNWTEhXYByHerU7c9", parentToolUseID: nil, model: StreamMapperTests.haiku,
+                                     effort: .low)),
             .result(ResultItem(id: "ID", created: Self.date, durationMs: 2957, costUSD: 0.00279145, isError: false, summary: nil)),
             .assistant(AssistantItem(id: "msg_011CgdMEVDooDVB1CUKL6uJ9#0", created: Self.date, text: "finished",
-                                     messageID: "msg_011CgdMEVDooDVB1CUKL6uJ9", parentToolUseID: nil)),
+                                     messageID: "msg_011CgdMEVDooDVB1CUKL6uJ9", parentToolUseID: nil, model: StreamMapperTests.haiku,
+                                     effort: .low)),
             .result(ResultItem(id: "ID", created: Self.date, durationMs: 1328, costUSD: 0.00312027, isError: false, summary: nil)),
         ]
         #expect(StreamMapperTests.items(all) == expected)
@@ -97,7 +99,8 @@ struct BackgroundWorkTests {
         #expect(launched.text.hasPrefix("Async agent launched successfully."))
         #expect(!launched.isError)
         #expect(items[4] == .assistant(AssistantItem(id: "msg_011CgdMDKcLVAmjfkwa4BBpE#0", created: Self.date, text: "started",
-                                                     messageID: "msg_011CgdMDKcLVAmjfkwa4BBpE", parentToolUseID: nil)))
+                                                     messageID: "msg_011CgdMDKcLVAmjfkwa4BBpE", parentToolUseID: nil,
+                                                     model: StreamMapperTests.haiku, effort: .low)))
         #expect(items[5] == .result(ResultItem(id: "ID", created: Self.date, durationMs: 1807, costUSD: 0.0028821500000000004,
                                                isError: false, summary: nil)))
         // Lines 35, 39 and 40: the agent's own work, after the result of the turn that started it.
@@ -110,9 +113,11 @@ struct BackgroundWorkTests {
                                                        isError: false, images: [])))
         #expect(items[8] == .assistant(AssistantItem(id: "msg_011CgdMEVEnsh9QvsQPsupn5#0", created: Self.date, text: "ok",
                                                      messageID: "msg_011CgdMEVEnsh9QvsQPsupn5",
-                                                     parentToolUseID: "toolu_01P13PE4h122VQc4ctmUmWLB")))
+                                                     parentToolUseID: "toolu_01P13PE4h122VQc4ctmUmWLB", model: StreamMapperTests.haiku,
+                                                     effort: .low)))
         #expect(items[9] == .assistant(AssistantItem(id: "msg_011CgdMEY8RornfuXFzx1VUg#0", created: Self.date, text: "finished",
-                                                     messageID: "msg_011CgdMEY8RornfuXFzx1VUg", parentToolUseID: nil)))
+                                                     messageID: "msg_011CgdMEY8RornfuXFzx1VUg", parentToolUseID: nil,
+                                                     model: StreamMapperTests.haiku, effort: .low)))
         #expect(items[10] == .result(ResultItem(id: "ID", created: Self.date, durationMs: 698, costUSD: 0.005617915, isError: false,
                                                 summary: nil)))
         #expect(replay[18].outputs == [.backgroundTasks(["a20896a2a89380e93"])])

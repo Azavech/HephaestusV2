@@ -44,11 +44,13 @@ struct ChatAgentsTests {
         #expect(result.id == "\(Self.workflowCall)#result")
         #expect(result.text.hasPrefix("Workflow launched in background. Task ID: wflx39ys6"))
         #expect(items[4] == .assistant(AssistantItem(id: "msg_011Cggr9i2zRVjfbkFSiUQL6#0", created: Self.date, text: "started",
-                                                     messageID: "msg_011Cggr9i2zRVjfbkFSiUQL6", parentToolUseID: nil)))
+                                                     messageID: "msg_011Cggr9i2zRVjfbkFSiUQL6", parentToolUseID: nil,
+                                                     model: StreamMapperTests.haiku, effort: .low)))
         #expect(items[5] == .result(ResultItem(id: "ID", created: Self.date, durationMs: 3139, costUSD: 0.00465701, isError: false,
                                                summary: nil)))
         #expect(items[6] == .assistant(AssistantItem(id: "msg_011CggrArMpbGCi28NKrWsDF#0", created: Self.date, text: "finished",
-                                                     messageID: "msg_011CggrArMpbGCi28NKrWsDF", parentToolUseID: nil)))
+                                                     messageID: "msg_011CggrArMpbGCi28NKrWsDF", parentToolUseID: nil,
+                                                     model: StreamMapperTests.haiku, effort: .low)))
         #expect(items[7] == .result(ResultItem(id: "ID", created: Self.date, durationMs: 864, costUSD: 0.007687169999999999,
                                                isError: false, summary: nil)))
         #expect(replay[26].outputs == [.backgroundTasks(["wflx39ys6"])])

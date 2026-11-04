@@ -159,12 +159,12 @@ struct ClaudeProtocolTests {
     @Test("The models of an initialize response, supportedEffortLevels empty when absent")
     func models() throws {
         let response = try JSONDecoder().decode(JSONValue.self, from: FakeClaudeLauncher.fixture("initialize-response.json"))
-        let models = try #require(CachedModel.parse(response.objectValue?["response"]?.objectValue?["response"]?.objectValue?["models"]))
-        #expect(models.first == CachedModel(model: ClaudeModel(value: "default", displayName: "Default (recommended)",
-                                                               description: "Opus 5.5 · Best for everyday, complex tasks",
-                                                               supportedEffortLevels: ["low", "medium", "high", "xhigh", "max"]),
+        let models = try #require(ClaudeModel.parse(response.objectValue?["response"]?.objectValue?["response"]?.objectValue?["models"]))
+        #expect(models.first == ClaudeModel(value: "default", displayName: "Default (recommended)",
+                                            description: "Opus 5.5 · Best for everyday, complex tasks",
+                                            supportedEffortLevels: ["low", "medium", "high", "xhigh", "max"],
                                             resolvedModel: "claude-opus-5-5"))
-        #expect(models.first { $0.model.value == "claude-haiku-4-5-20251001" }?.model.supportedEffortLevels == [])
+        #expect(models.first { $0.value == "claude-haiku-4-5-20251001" }?.supportedEffortLevels == [])
         #expect(ClaudeCLI.fallbackModels.map(\.value) == ["default", "opus", "fable", "sonnet", "haiku"])
     }
 

@@ -53,6 +53,17 @@ enum ChatFormat {
         return formatter
     }()
 
+    /// `<Claude name>` of an assistant caption and of the author of a comment Claude added from a
+    /// chat (docs/chats.md › Item rendering, docs/tickets.md › Comments): `Claude (<model> ·
+    /// <effort>)`, `Claude (<model>)` without effort, `Claude` without model; `<model>` is named
+    /// with `models` (docs/chats.md › Model names).
+    static func claudeName(model: String?, effort: Effort?, models: [ClaudeModel]) -> String {
+        guard let model else { return "Claude" }
+        let name = ClaudeModel.name(of: model, in: models)
+        guard let effort else { return "Claude (\(name))" }
+        return "Claude (\(name) · \(effort.label))"
+    }
+
     /// `<created>` of a bubble's caption: only the short time for a message created on the day of
     /// `today`, else the abbreviated date and short time as in the ticket list's Created column, in
     /// the user's locale and time zone.

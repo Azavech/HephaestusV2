@@ -46,6 +46,9 @@ struct TranscriptRenderContext: Hashable {
     /// The start of the current day: the captions of messages created on it show only the time
     /// (docs/chats.md › Item rendering).
     var today: Date = Calendar.autoupdatingCurrent.startOfDay(for: Date())
+    /// The `claude.models` of the window's device: they name the models of the assistant captions
+    /// (docs/chats.md › Model names).
+    var models: [ClaudeModel] = []
 
     /// The label marked in a question set: the displayed question of this set, when it is not
     /// completed.
@@ -66,7 +69,7 @@ enum TranscriptRenderer {
         case .user(let user):
             return TranscriptFragment(id: user.id, type: "user", html: userHTML(user, context: context))
         case .assistant(let assistant):
-            return TranscriptFragment(id: assistant.id, type: "assistant", html: assistantHTML(text: assistant.text, created: assistant.created, context: context),
+            return TranscriptFragment(id: assistant.id, type: "assistant", html: assistantHTML(assistant, context: context),
                                       parentToolUseID: assistant.parentToolUseID)
         case .thinking(let thinking):
             return TranscriptFragment(id: thinking.id, type: "thinking", html: thinkingHTML(thinking.text, open: false, context: context),
@@ -103,13 +106,15 @@ enum TranscriptRenderer {
         }
     }
 
-    /// The HTML of a streaming bubble (docs/chats.md › Streaming bubbles): an assistant bubble, an
-    /// expanded `Thinking` block, or a `Preparing tool call…` card with the last 300 characters of
-    /// the partial JSON.
-    static func streamHTML(kind: ChatDeltaEvent.Payload.Kind, text: String, context: TranscriptRenderContext) -> String {
+    /// The HTML of a streaming bubble (docs/chats.md › Streaming bubbles): an assistant bubble whose
+    /// caption names the model and effort of its `chat.delta`, an expanded `Thinking` block, or a
+    /// `Preparing tool call…` card with the last 300 characters of the partial JSON.
+    static func streamHTML(kind: ChatDeltaEvent.Payload.Kind, text: String, model: String? = nil, effort: Effort? = nil,
+                           context: TranscriptRenderContext) -> String {
         switch kind {
         case .text:
-            return "<div class=\"msg assistant\">" + caption("Claude", created: nil, context: context)
+            let name = ChatFormat.claudeName(model: model, effort: effort, models: context.models)
+            return "<div class=\"msg assistant\">" + caption(name, created: nil, context: context)
                 + "<div class=\"bubble assistant-bubble\">\(markdown(text, context: context))</div></div>"
         case .thinking:
             return thinkingHTML(text, open: true, context: context)
@@ -161,9 +166,10 @@ enum TranscriptRenderer {
         return html + "</div>"
     }
 
-    private static func assistantHTML(text: String, created: Date, context: TranscriptRenderContext) -> String {
-        "<div class=\"msg assistant\">" + caption("Claude", created: created, context: context)
-            + bubble(kind: "assistant-bubble", source: text, created: created, context: context) + "</div>"
+    private static func assistantHTML(_ assistant: AssistantItem, context: TranscriptRenderContext) -> String {
+        let name = ChatFormat.claudeName(model: assistant.model, effort: assistant.effort, models: context.models)
+        return "<div class=\"msg assistant\">" + caption(name, created: assistant.created, context: context)
+            + bubble(kind: "assistant-bubble", source: assistant.text, created: assistant.created, context: context) + "</div>"
     }
 
     /// The caption above a bubble: the sender in semibold followed by `<created>` in secondary

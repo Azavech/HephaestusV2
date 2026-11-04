@@ -7,10 +7,13 @@ import HephaestusCore
 /// transcript order and the streaming buffers. Pending permission requests and the incomplete
 /// question set are read from the items.
 struct TranscriptState {
-    /// A streaming bubble: the kind and the text appended by `chat.delta`.
+    /// A streaming bubble: the kind, the text appended by `chat.delta`, and for a text bubble the
+    /// model and effort of its caption.
     struct StreamingBuffer: Hashable {
         var kind: ChatDeltaEvent.Payload.Kind
         var text: String
+        var model: String? = nil
+        var effort: Effort? = nil
         /// Incremented by every append, so that views redraw only the bubbles that changed.
         var revision = 0
     }
@@ -68,7 +71,7 @@ struct TranscriptState {
     mutating func append(_ delta: ChatDeltaEvent.Payload) {
         guard !delta.append.isEmpty, indexByID[delta.itemID] == nil else { return }
         if streams[delta.itemID] == nil {
-            streams[delta.itemID] = StreamingBuffer(kind: delta.kind, text: "")
+            streams[delta.itemID] = StreamingBuffer(kind: delta.kind, text: "", model: delta.model, effort: delta.effort)
             streamOrder.append(delta.itemID)
         }
         streams[delta.itemID]?.text += delta.append

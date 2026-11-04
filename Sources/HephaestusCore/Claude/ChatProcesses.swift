@@ -310,8 +310,8 @@ extension Engine {
             agentTaskProgress(progress, chatID: chatID)
         case .taskUpdated(let taskID, let status):
             agentTaskUpdated(taskID, status: status, chatID: chatID)
-        case .delta(let itemID, let kind, let text):
-            runtime.deltas.append(itemID: itemID, kind: kind, text: text)
+        case .delta(let itemID, let kind, let text, let model, let effort):
+            runtime.deltas.append(itemID: itemID, kind: kind, text: text, model: model, effort: effort)
             scheduleDeltaFlush(chatID)
         case .permissionRequest(let item, let suggestions):
             guard process.permissions[item.requestID] == nil else { return }
@@ -373,7 +373,8 @@ extension Engine {
     private func flushDelta(_ chatID: ChatID) {
         guard !chats.deleting.contains(chatID), let runtime = chats.runtimes[chatID], let pending = runtime.deltas.takeOldest() else { return }
         runtime.lastDeltaFlush = .now
-        emit(ChatDeltaEvent.self, .init(chatID: chatID, itemID: pending.itemID, kind: pending.kind, append: pending.text), origin: .system)
+        emit(ChatDeltaEvent.self, .init(chatID: chatID, itemID: pending.itemID, kind: pending.kind, append: pending.text,
+                                        model: pending.model, effort: pending.effort), origin: .system)
         scheduleDeltaFlush(chatID)
     }
 
@@ -541,7 +542,7 @@ extension Engine {
         }
         entry.timer?.cancel()
         if success {
-            if entry.purpose == .initialize, let models = CachedModel.parse(response?.objectValue?["models"]) {
+            if entry.purpose == .initialize, let models = ClaudeModel.parse(response?.objectValue?["models"]) {
                 receivedInitializeModels(models)
                 process.mapper.models = claudeCLI.cachedModels
             }

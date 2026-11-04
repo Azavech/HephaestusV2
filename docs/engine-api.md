@@ -643,6 +643,13 @@ Swift type `TicketsAddComment` · actors: user, claude · result: [Ticket](data-
 
 Appends a comment with a new UUID `id`, `author` claude for a claude actor and user otherwise, `created` now, no `updated`, the text and the attachments ([Data model](data-model.md#comment)).
 
+For a claude actor whose chatID is a chat's UUID, the comment also gets `model` and `effort` ([Assistant blocks](chats.md#assistant-blocks)):
+
+- `model`: the model of the chat's reply whose tool call added the comment. The engine takes the oldest record of an `add_comment` call of the chat's process whose ticket id equals `ticketID` in uppercase and whose text equals `text`, removes it and uses its model. Without such a record, the model of the latest `assistant` line or `message_start` event of the chat's process; without one, `null`.
+- `effort`: the chat's `settings.effort` at the moment of the call; `null` when `model` is `null` or has no effort setting ([Model names](chats.md#model-names)).
+
+A user, a claude actor with the external token or the answer token, and a system actor add a comment whose `model` and `effort` are `null`. The matching of the call and the fallback to the latest model: Default chosen at design time.
+
 When the actor is a user and the text mentions Claude ([Mentioning Claude](tickets.md#mentioning-claude)), the engine starts a [comment answer](chats.md#comment-answers) for the new comment: the returned ticket and its `ticket.updated` carry the comment with `answer` `replying`, and `projects.changed` follows with the new `commentAnswersRunning` of the project. A claude or system actor never starts one.
 
 | Error     | When                                                                                                                                            |
@@ -663,7 +670,7 @@ Swift type `TicketsUpdateComment` · actors: user, claude · result: [Ticket](da
 | commentID | UUID     | yes      | Comment id.                                                                  |
 | text      | String   | yes      | New text; may be empty after trimming only when the comment has attachments. |
 
-Sets the comment's `updated` to now. The attachments of a comment do not change. The user and Claude may edit any comment, whoever wrote it ([Tickets and bundles](tickets.md#comments)). An edit never starts a comment answer, even when it adds a mention of Claude.
+Sets the comment's `updated` to now. The attachments, the `model` and the `effort` of a comment do not change. Default chosen at design time for `model` and `effort`. The user and Claude may edit any comment, whoever wrote it ([Tickets and bundles](tickets.md#comments)). An edit never starts a comment answer, even when it adds a mention of Claude.
 
 | Error    | When                                                                                             |
 | -------- | ------------------------------------------------------------------------------------------------ |
@@ -2264,7 +2271,7 @@ Every event travels as an [EngineEventEnvelope](#engineeventenvelope) `{name, or
 | chat.updated      | ChatUpdatedEvent      | ChatMeta, with `projectID` and `state`                | A chat was created, or its metadata, state or `backgroundWork` changed.                                                                                                                                        |
 | chat.deleted      | ChatDeletedEvent      | {projectID, chatID}                                   | A chat was deleted.                                                                                                                                                                                            |
 | chat.item         | ChatItemEvent         | {chatID, item ChatItem}                               | A transcript item was added, or replaced (same `id`).                                                                                                                                                          |
-| chat.delta        | ChatDeltaEvent        | {chatID, itemID, kind, append}                        | Claude streams text, thinking or tool input. Not persisted.                                                                                                                                                    |
+| chat.delta        | ChatDeltaEvent        | {chatID, itemID, kind, append, model, effort}         | Claude streams text, thinking or tool input. Not persisted.                                                                                                                                                    |
 | chat.agents       | ChatAgentsEvent       | ChatAgents                                            | A chat's workflows or agents changed: one was created or its state, title, phase, summary or run id changed ([Agents](chats.md#agents)).                                                                       |
 | chat.agentItem    | ChatAgentItemEvent    | {chatID, agentID, item ChatItem}                      | An item was added to the transcript of one of a chat's agents ([Agents](chats.md#agents)).                                                                                                                     |
 | files.changed     | FilesChangedEvent     | {projectID, paths [String]}                           | Files changed under a project root.                                                                                                                                                                            |
@@ -2296,6 +2303,8 @@ Every event travels as an [EngineEventEnvelope](#engineeventenvelope) `{name, or
 | chat.delta        | itemID    | String           | Id of the item being streamed; the chat.item that completes it carries the same id ([Chats](chats.md#item-ids)).                                                                                                                 |
 | chat.delta        | kind      | String           | `text`, `thinking` or `toolInput`.                                                                                                                                                                                               |
 | chat.delta        | append    | String           | Text to append: to the item's text for `text` and `thinking`, to the raw JSON of the tool input for `toolInput`.                                                                                                                 |
+| chat.delta        | model     | String, optional | For kind `text`: the CLI model id of the streamed message, which the item's `model` will hold ([Chats](chats.md#streaming)); absent for the other kinds and for a message without model.                                         |
+| chat.delta        | effort    | Effort, optional | For kind `text`: the chat's effort when the text was read; absent when `model` is absent or has no effort setting, and for the other kinds.                                                                                      |
 | chat.agentItem    | chatID    | ChatID           | Chat of the agent.                                                                                                                                                                                                               |
 | chat.agentItem    | agentID   | String           | The `id` of the agent ([ChatAgent](data-model.md#chatagent)).                                                                                                                                                                    |
 | chat.agentItem    | item      | ChatItem         | The complete item; it replaces a received item of the agent with the same `id`, otherwise it is appended.                                                                                                                        |
@@ -3152,15 +3161,16 @@ The field set is a design-time choice. Default chosen at design time.
 
 ### ClaudeModel
 
-| Field                 | Type     | Required | Description                                                                                                    |
-| --------------------- | -------- | -------- | -------------------------------------------------------------------------------------------------------------- |
-| value                 | String   | yes      | CLI value for `--model` and `set_model`, for example `opus`.                                                   |
-| displayName           | String   | yes      | Name shown in the model menu, for example `Opus`.                                                              |
-| description           | String   | yes      | One-line description from the CLI.                                                                             |
-| supportedEffortLevels | [String] | yes      | Effort values the model accepts, among `low`, `medium`, `high`, `xhigh`, `max`; empty when the CLI gives none. |
+| Field                 | Type     | Required | Description                                                                                                                                                                                                      |
+| --------------------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| value                 | String   | yes      | CLI value for `--model` and `set_model`, for example `opus`.                                                                                                                                                     |
+| displayName           | String   | yes      | Name shown in the model menu, for example `Opus`.                                                                                                                                                                |
+| description           | String   | yes      | One-line description from the CLI.                                                                                                                                                                               |
+| supportedEffortLevels | [String] | yes      | Effort values the model accepts, among `low`, `medium`, `high`, `xhigh`, `max`; empty when the CLI gives none.                                                                                                   |
+| resolvedModel         | String   | no       | CLI model id that the value stands for, for example `claude-opus-5-5` for `opus`; absent when the CLI gives none and in the fallback list. Clients name model ids with it ([Model names](chats.md#model-names)). |
 
 ```json
-{"description": "Best for everyday, complex tasks", "displayName": "Opus", "supportedEffortLevels": ["low", "medium", "high", "xhigh", "max"], "value": "opus"}
+{"description": "Best for everyday, complex tasks", "displayName": "Opus 5.5", "resolvedModel": "claude-opus-5-5", "supportedEffortLevels": ["low", "medium", "high", "xhigh", "max"], "value": "opus"}
 ```
 
 ### ClaudeStatus

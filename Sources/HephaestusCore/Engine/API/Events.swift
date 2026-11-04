@@ -149,12 +149,20 @@ public enum ChatDeltaEvent: EngineEvent {
         /// Text to append: to the item's text for `text` and `thinking`, to the raw JSON of the
         /// tool input for `toolInput`.
         public var append: String
+        /// For kind `text`: the CLI model id of the streamed message; nil for the other kinds and
+        /// for a message without model.
+        public var model: String?
+        /// For kind `text`: the chat's effort when the text was read; nil when `model` is nil or
+        /// has no effort setting.
+        public var effort: Effort?
 
-        public init(chatID: ChatID, itemID: String, kind: Kind, append: String) {
+        public init(chatID: ChatID, itemID: String, kind: Kind, append: String, model: String? = nil, effort: Effort? = nil) {
             self.chatID = chatID
             self.itemID = itemID
             self.kind = kind
             self.append = append
+            self.model = model
+            self.effort = effort
         }
     }
 }

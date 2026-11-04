@@ -371,6 +371,9 @@ struct DeltaBuffer {
         var itemID: String
         var kind: ChatDeltaEvent.Payload.Kind
         var text: String
+        /// The model and effort of a `text` block (docs/chats.md › Streaming).
+        var model: String?
+        var effort: Effort?
         /// Order in which the buffer became non-empty.
         var since: Int
     }
@@ -380,12 +383,14 @@ struct DeltaBuffer {
 
     var isEmpty: Bool { pending.isEmpty }
 
-    mutating func append(itemID: String, kind: ChatDeltaEvent.Payload.Kind, text: String) {
+    mutating func append(itemID: String, kind: ChatDeltaEvent.Payload.Kind, text: String, model: String? = nil, effort: Effort? = nil) {
         if pending[itemID] != nil {
             pending[itemID]?.text += text
+            pending[itemID]?.model = model
+            pending[itemID]?.effort = effort
         } else {
             counter += 1
-            pending[itemID] = Pending(itemID: itemID, kind: kind, text: text, since: counter)
+            pending[itemID] = Pending(itemID: itemID, kind: kind, text: text, model: model, effort: effort, since: counter)
         }
     }
 

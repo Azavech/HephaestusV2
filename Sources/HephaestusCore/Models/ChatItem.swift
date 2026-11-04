@@ -187,13 +187,22 @@ public struct AssistantItem: ChatItemPayload {
     public var text: String
     public var messageID: String
     public var parentToolUseID: String?
+    /// CLI model id of the model that wrote the block; nil for items written before it was stored,
+    /// a message without model and the items of workflow agents (docs/chats.md › Assistant blocks).
+    public var model: String?
+    /// The chat's effort when the block was written; nil when the model has no effort setting or
+    /// `model` is nil.
+    public var effort: Effort?
 
-    public init(id: String, created: Date, text: String, messageID: String, parentToolUseID: String? = nil) {
+    public init(id: String, created: Date, text: String, messageID: String, parentToolUseID: String? = nil,
+                model: String? = nil, effort: Effort? = nil) {
         self.id = id
         self.created = created
         self.text = text
         self.messageID = messageID
         self.parentToolUseID = parentToolUseID
+        self.model = model
+        self.effort = effort
     }
 
     public init(from decoder: Decoder) throws {
@@ -202,6 +211,8 @@ public struct AssistantItem: ChatItemPayload {
         text = try c.required("text")
         messageID = try c.required("messageID")
         parentToolUseID = try c.optional("parentToolUseID")
+        model = try c.optional("model")
+        effort = try c.optional("effort")
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -210,6 +221,8 @@ public struct AssistantItem: ChatItemPayload {
         try c.encode(text, "text")
         try c.encode(messageID, "messageID")
         try c.encodeOptional(parentToolUseID, "parentToolUseID")
+        try c.encodeOptional(model, "model")
+        try c.encodeOptional(effort, "effort")
     }
 }
 

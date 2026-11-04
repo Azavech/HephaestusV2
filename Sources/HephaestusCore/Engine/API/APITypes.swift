@@ -866,12 +866,35 @@ public struct ClaudeModel: Codable, Sendable, Hashable {
     public var description: String
     /// Effort values the model accepts; empty when the CLI gives none.
     public var supportedEffortLevels: [String]
+    /// CLI model id that the value stands for, for example `claude-opus-5-5` for `opus`; nil when
+    /// the CLI gives none and in the fallback list.
+    public var resolvedModel: String?
 
-    public init(value: String, displayName: String, description: String, supportedEffortLevels: [String] = []) {
+    public init(value: String, displayName: String, description: String, supportedEffortLevels: [String] = [],
+                resolvedModel: String? = nil) {
         self.value = value
         self.displayName = displayName
         self.description = description
         self.supportedEffortLevels = supportedEffortLevels
+        self.resolvedModel = resolvedModel
+    }
+
+    /// The entry of a CLI model id (docs/chats.md › Model names): the first entry whose value is
+    /// not `default` and whose `resolvedModel` equals the id; else the entry whose `value` equals it.
+    public static func entry(of model: String, in models: [ClaudeModel]) -> ClaudeModel? {
+        models.first { $0.value != "default" && $0.resolvedModel == model } ?? models.first { $0.value == model }
+    }
+
+    /// The name of a CLI model id: its entry's `displayName`, else the id itself.
+    public static func name(of model: String, in models: [ClaudeModel]) -> String {
+        entry(of: model, in: models)?.displayName ?? model
+    }
+
+    /// The effort stored with the work of a model: nil when the model has no effort setting (its
+    /// entry has an empty `supportedEffortLevels`); a model without entry counts as having one.
+    public static func effort(_ effort: Effort, of model: String, in models: [ClaudeModel]) -> Effort? {
+        guard let entry = entry(of: model, in: models) else { return effort }
+        return entry.supportedEffortLevels.isEmpty ? nil : effort
     }
 }
 

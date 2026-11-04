@@ -46,7 +46,7 @@ struct TicketCommentsView: View {
     private func commentRow(_ comment: Comment) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Text(TicketFormat.author(comment.author))
+                Text(TicketFormat.author(of: comment, models: workspace.models))
                     .fontWeight(.semibold)
                 Text(TicketFormat.created(comment.created))
                     .foregroundStyle(.secondary)

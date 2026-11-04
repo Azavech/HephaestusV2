@@ -89,6 +89,8 @@ final class TranscriptController {
         var markedLabel: String?
         /// For user and assistant items: the day their captions were rendered for.
         var today: Date?
+        /// For assistant items: the name of their caption, which follows `claude.models`.
+        var claudeName: String?
     }
 
     /// `connection` and the chat's project serve the images of the page (`ResourceSchemeHandler`,
@@ -226,7 +228,10 @@ final class TranscriptController {
             key.markedLabel = context.markedLabel(set)
         }
         switch item {
-        case .user, .assistant: key.today = context.today
+        case .user: key.today = context.today
+        case .assistant(let assistant):
+            key.today = context.today
+            key.claudeName = ChatFormat.claudeName(model: assistant.model, effort: assistant.effort, models: context.models)
         default: break
         }
         guard renderKeys[item.id] != key else { return nil }
@@ -243,7 +248,8 @@ final class TranscriptController {
             guard let buffer = state.streams[id], sentStreams[id] != buffer.revision else { continue }
             sentStreams[id] = buffer.revision
             let options = StreamOptions(itemID: id, kind: buffer.kind.rawValue,
-                                        html: TranscriptRenderer.streamHTML(kind: buffer.kind, text: buffer.text, context: context))
+                                        html: TranscriptRenderer.streamHTML(kind: buffer.kind, text: buffer.text, model: buffer.model,
+                                                                            effort: buffer.effort, context: context))
             calls.append("HephaestusChat.stream(\(Self.json(options)));")
         }
         return calls

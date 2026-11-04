@@ -70,6 +70,64 @@ struct BubbleCaptionTests {
         #expect(!html.contains("caption-time"))
     }
 
+    /// The `claude.models` of a device: `opus` stands for `claude-opus-5-5`; Haiku 4.5 has no effort
+    /// setting.
+    static let models = [
+        ClaudeModel(value: "default", displayName: "Default (recommended)", description: "", supportedEffortLevels: ["high"],
+                    resolvedModel: "claude-opus-5-5"),
+        ClaudeModel(value: "opus", displayName: "Opus 5.5", description: "", supportedEffortLevels: ["high", "xhigh"],
+                    resolvedModel: "claude-opus-5-5"),
+        ClaudeModel(value: "claude-haiku-4-5-20251001", displayName: "Haiku 4.5", description: "", supportedEffortLevels: [],
+                    resolvedModel: "claude-haiku-4-5-20251001"),
+    ]
+
+    func assistantCaption(model: String?, effort: Effort?) -> String {
+        let today = Calendar.autoupdatingCurrent.startOfDay(for: Self.created)
+        let context = TranscriptRenderContext(projectRootPath: nil, chatIsRunning: false, displayedQuestion: nil, today: today,
+                                              models: Self.models)
+        let item = ChatItem.assistant(AssistantItem(id: "a", created: Self.created, text: "Done", messageID: "m", model: model, effort: effort))
+        let time = ChatFormat.captionTime(Self.created, today: today)
+        let html = TranscriptRenderer.fragment(for: item, in: TranscriptState(), context: context).html
+        let prefix = "<div class=\"msg assistant\"><div class=\"caption\"><span class=\"caption-sender\">"
+        let suffix = "</span> <span class=\"caption-time\">\(time)</span></div>"
+        guard html.hasPrefix(prefix), let end = html.range(of: suffix) else { return html }
+        return String(html[html.index(html.startIndex, offsetBy: prefix.count)..<end.lowerBound])
+    }
+
+    @Test("An assistant caption names the item's model and effort, the model only without effort, Claude without model")
+    func modelAndEffortCaption() {
+        #expect(assistantCaption(model: "claude-opus-5-5", effort: .xhigh) == "Claude (Opus 5.5 · Extra High)")
+        #expect(assistantCaption(model: "claude-opus-5-5", effort: .high) == "Claude (Opus 5.5 · High)")
+        #expect(assistantCaption(model: "claude-haiku-4-5-20251001", effort: nil) == "Claude (Haiku 4.5)")
+        #expect(assistantCaption(model: "claude-unknown-9", effort: .low) == "Claude (claude-unknown-9 · Low)")
+        #expect(assistantCaption(model: nil, effort: nil) == "Claude")
+    }
+
+    @Test("A streaming assistant bubble names the model and effort of its chat.delta")
+    func streamingModelCaption() {
+        let context = TranscriptRenderContext(projectRootPath: nil, chatIsRunning: true, displayedQuestion: nil, models: Self.models)
+        let html = TranscriptRenderer.streamHTML(kind: .text, text: "Wor", model: "claude-opus-5-5", effort: .xhigh, context: context)
+        #expect(html.hasPrefix("<div class=\"msg assistant\"><div class=\"caption\"><span class=\"caption-sender\">"
+                + "Claude (Opus 5.5 · Extra High)</span></div>"))
+        var state = TranscriptState()
+        state.append(ChatDeltaEvent.Payload(chatID: UUID(), itemID: "m#0", kind: .text, append: "Wor", model: "claude-opus-5-5",
+                                            effort: .xhigh))
+        #expect(state.streams["m#0"]?.model == "claude-opus-5-5" && state.streams["m#0"]?.effort == .xhigh)
+    }
+
+    @Test("A comment Claude added from a chat names its model and effort; the other comments keep You or Claude")
+    func commentAuthor() {
+        let created = Self.created
+        func author(_ author: Author, model: String?, effort: Effort?) -> String {
+            TicketFormat.author(of: Comment(id: UUID(), author: author, created: created, text: "x", model: model, effort: effort),
+                                models: Self.models)
+        }
+        #expect(author(.claude, model: "claude-opus-5-5", effort: .xhigh) == "Claude (Opus 5.5 · Extra High)")
+        #expect(author(.claude, model: "claude-haiku-4-5-20251001", effort: nil) == "Claude (Haiku 4.5)")
+        #expect(author(.claude, model: nil, effort: nil) == "Claude")
+        #expect(author(.user, model: nil, effort: nil) == "You")
+    }
+
     @Test("The hover tooltip and the Copy button of a bubble stay as they are")
     func tooltipAndCopy() {
         let today = Calendar.autoupdatingCurrent.startOfDay(for: Self.created)

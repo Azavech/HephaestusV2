@@ -167,6 +167,12 @@ public struct Comment: Codable, Sendable, Hashable, Identifiable {
     /// Markdown.
     public var text: String
     public var attachments: [Attachment]
+    /// Set only for a comment Claude adds from a chat: the CLI model id of the chat's reply whose
+    /// tool call added it (docs/data-model.md › Comment). Never changed by an edit.
+    public var model: String?
+    /// Set only with `model`: the chat's effort when the comment was added; nil when the model has
+    /// no effort setting.
+    public var effort: Effort?
     /// Runtime only: the state of the comment answer of this comment, nil when no call runs and
     /// none failed (docs/data-model.md › Comment). Never written to the file and ignored when read
     /// from it; in the engine API only while set.
@@ -174,18 +180,21 @@ public struct Comment: Codable, Sendable, Hashable, Identifiable {
     public var unknownKeys: [String: JSONValue]
 
     public init(id: UUID, author: Author, created: Date, updated: Date? = nil, text: String = "",
-                attachments: [Attachment] = [], answer: CommentAnswerState? = nil, unknownKeys: [String: JSONValue] = [:]) {
+                attachments: [Attachment] = [], model: String? = nil, effort: Effort? = nil, answer: CommentAnswerState? = nil,
+                unknownKeys: [String: JSONValue] = [:]) {
         self.id = id
         self.author = author
         self.created = created
         self.updated = updated
         self.text = text
         self.attachments = attachments
+        self.model = model
+        self.effort = effort
         self.answer = answer
         self.unknownKeys = unknownKeys
     }
 
-    static let fileKeys: Set<String> = ["id", "author", "created", "updated", "text", "attachments"]
+    static let fileKeys: Set<String> = ["id", "author", "created", "updated", "text", "attachments", "model", "effort"]
     static let knownKeys = fileKeys.union(["answer"])
 
     public init(from decoder: Decoder) throws {
@@ -196,6 +205,8 @@ public struct Comment: Codable, Sendable, Hashable, Identifiable {
         updated = try c.optionalDate("updated")
         text = try c.value("text", default: "")
         attachments = try c.value("attachments", default: [])
+        model = try c.optional("model")
+        effort = try c.optional("effort")
         answer = c.isYAML ? nil : try c.optional("answer")
         unknownKeys = try c.unknownKeys(known: Self.knownKeys)
     }
@@ -208,6 +219,8 @@ public struct Comment: Codable, Sendable, Hashable, Identifiable {
         try c.encodeOptionalDate(updated, "updated")
         try c.encode(text, "text")
         try c.encode(attachments, "attachments")
+        try c.encodeOptional(model, "model")
+        try c.encodeOptional(effort, "effort")
         if !c.isYAML, let answer {
             try c.encode(answer, "answer")
         }

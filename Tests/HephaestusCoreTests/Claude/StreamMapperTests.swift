@@ -8,10 +8,12 @@ import Testing
 struct StreamMapperTests {
     static let date = Date(timeIntervalSince1970: 1_793_500_000)
     static let captureSettings = ChatSettings(model: "haiku", effort: .low, permissionMode: .manual, ultracode: false)
+    /// The model of every message of the captures.
+    static let haiku = "claude-haiku-5-5"
 
-    static func cachedModels() throws -> [CachedModel] {
+    static func cachedModels() throws -> [ClaudeModel] {
         let response = try JSONDecoder().decode(JSONValue.self, from: FakeClaudeLauncher.fixture("initialize-response.json"))
-        return try #require(CachedModel.parse(response.objectValue?["response"]?.objectValue?["response"]?.objectValue?["models"]))
+        return try #require(ClaudeModel.parse(response.objectValue?["response"]?.objectValue?["response"]?.objectValue?["models"]))
     }
 
     static func mapper(settings: ChatSettings = captureSettings) throws -> StreamMapper {
@@ -42,7 +44,7 @@ struct StreamMapperTests {
     static func deltas(_ outputs: [MapperOutput], itemID: String) -> (kinds: Set<ChatDeltaEvent.Payload.Kind>, text: String) {
         var kinds = Set<ChatDeltaEvent.Payload.Kind>()
         var text = ""
-        for case .delta(let id, let kind, let append) in outputs where id == itemID {
+        for case .delta(let id, let kind, let append, _, _) in outputs where id == itemID {
             kinds.insert(kind)
             text += append
         }
@@ -66,7 +68,7 @@ struct StreamMapperTests {
             .toolResult(ToolResultItem(id: "toolu_01JGkKXVVCvtBiysD3rhiEXj#result", created: Self.date,
                                        toolUseID: "toolu_01JGkKXVVCvtBiysD3rhiEXj", text: "probe-ok", isError: false, images: [])),
             .assistant(AssistantItem(id: "msg_011CgbN9DUEEzm4yYRLnxmCV#0", created: Self.date, text: "done",
-                                     messageID: "msg_011CgbN9DUEEzm4yYRLnxmCV", parentToolUseID: nil)),
+                                     messageID: "msg_011CgbN9DUEEzm4yYRLnxmCV", parentToolUseID: nil, model: Self.haiku, effort: .low)),
             .result(ResultItem(id: "ID", created: Self.date, durationMs: 3523, costUSD: 0.008435510000000002, isError: false, summary: nil)),
         ]
         #expect(Self.items(all) == expected)
@@ -77,7 +79,8 @@ struct StreamMapperTests {
         #expect(toolInput.kinds == [.toolInput])
         #expect(toolInput.text == #"{"command": "echo probe-ok", "description": "Print probe-ok"}"#)
         // Line 22: the text delta.
-        #expect(replay[21].outputs == [.delta(itemID: "msg_011CgbN9DUEEzm4yYRLnxmCV#0", kind: .text, text: "done")])
+        #expect(replay[21].outputs == [.delta(itemID: "msg_011CgbN9DUEEzm4yYRLnxmCV#0", kind: .text, text: "done", model: Self.haiku,
+                                              effort: .low)])
         // Line 28 is the result that closes the CLI turn.
         #expect(replay[27].outputs.last.map { if case .result = $0 { return true } else { return false } } == true)
         // Line 16: the weekly window of the rate_limit_event is the plan usage.
@@ -121,7 +124,7 @@ struct StreamMapperTests {
         #expect(items[5] == .assistant(AssistantItem(
             id: "msg_011CgbNBQVp7hM3Fkm45qGrN#1", created: Self.date,
             text: "Not done: the Write to `note.txt` was denied, so the file wasn't created. I tried the scratchpad directory. I can retry in the working directory if you want, or you can approve the scratchpad write.",
-            messageID: "msg_011CgbNBQVp7hM3Fkm45qGrN", parentToolUseID: nil)))
+            messageID: "msg_011CgbNBQVp7hM3Fkm45qGrN", parentToolUseID: nil, model: Self.haiku, effort: .low)))
         #expect(items[6] == .result(ResultItem(id: "ID", created: Self.date, durationMs: 6775, costUSD: 0.00333187, isError: false, summary: nil)))
         // Lines 32–39: the thinking block streams empty text, so no delta; line 40 matches block 0.
         #expect(Self.deltas(all, itemID: "msg_011CgbNBQVp7hM3Fkm45qGrN#0").text.isEmpty)
@@ -226,6 +229,68 @@ struct StreamMapperTests {
             .toolUse(ToolUseItem(id: "msg_A#2", created: Self.date, toolUseID: "toolu_x", name: "get_ticket", server: "hephaestus",
                                  input: ["ticketID": "DEMO-1"], parentToolUseID: "toolu_parent")),
         ])
+    }
+
+    @Test("An assistant line gives its model and the chat's effort; a model without effort setting gives none")
+    func assistantModelAndEffort() throws {
+        var mapper = try Self.mapper(settings: ChatSettings(model: "opus", effort: .xhigh))
+        func text(_ id: String, model: String?) -> String {
+            let field = model.map { #""model":"\#($0)","# } ?? ""
+            return #"{"type":"assistant","parent_tool_use_id":null,"message":{\#(field)"id":"\#(id)","content":[{"type":"text","text":"hi"}]}}"#
+        }
+        #expect(Self.items(mapper.map(Data(text("msg_O", model: "claude-opus-5-5").utf8))) == [
+            .assistant(AssistantItem(id: "msg_O#0", created: Self.date, text: "hi", messageID: "msg_O", model: "claude-opus-5-5",
+                                     effort: .xhigh)),
+        ])
+        // `supportedEffortLevels` is absent for this model in initialize-response.json.
+        #expect(Self.items(mapper.map(Data(text("msg_H", model: "claude-haiku-4-5-20251001").utf8))) == [
+            .assistant(AssistantItem(id: "msg_H#0", created: Self.date, text: "hi", messageID: "msg_H", model: "claude-haiku-4-5-20251001",
+                                     effort: nil)),
+        ])
+        // A model without entry keeps the effort; a message without model has neither.
+        #expect(Self.items(mapper.map(Data(text("msg_U", model: "claude-unknown-9").utf8))) == [
+            .assistant(AssistantItem(id: "msg_U#0", created: Self.date, text: "hi", messageID: "msg_U", model: "claude-unknown-9",
+                                     effort: .xhigh)),
+        ])
+        #expect(Self.items(mapper.map(Data(text("msg_N", model: nil).utf8))) == [
+            .assistant(AssistantItem(id: "msg_N#0", created: Self.date, text: "hi", messageID: "msg_N")),
+        ])
+        #expect(mapper.modelName("claude-opus-5-5") == "Opus 5.5")
+    }
+
+    @Test("Text deltas carry the model of message_start and the current effort; finalization keeps them")
+    func streamedModelAndEffort() throws {
+        var mapper = try Self.mapper(settings: ChatSettings(model: "sonnet", effort: .high))
+        let start = #"{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_S","model":"claude-sonnet-5-5"}},"parent_tool_use_id":null}"#
+        let block = #"{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}},"parent_tool_use_id":null}"#
+        let delta = #"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Wor"}},"parent_tool_use_id":null}"#
+        _ = mapper.map(Data(start.utf8))
+        _ = mapper.map(Data(block.utf8))
+        #expect(mapper.map(Data(delta.utf8)) == [.delta(itemID: "msg_S#0", kind: .text, text: "Wor", model: "claude-sonnet-5-5", effort: .high)])
+        mapper.settings.effort = .max
+        #expect(mapper.map(Data(delta.utf8)) == [.delta(itemID: "msg_S#0", kind: .text, text: "Wor", model: "claude-sonnet-5-5", effort: .max)])
+        #expect(mapper.finalize() == [
+            .assistant(AssistantItem(id: "msg_S#0", created: Self.date, text: "WorWor", messageID: "msg_S", model: "claude-sonnet-5-5",
+                                     effort: .max)),
+        ])
+    }
+
+    @Test("An add_comment call gives the model of its comment; else the model of the latest message")
+    func commentModels() throws {
+        var mapper = try Self.mapper()
+        #expect(mapper.takeCommentModel(ticketID: "DEMO-1", text: "Done") == nil)
+        let call = #"{"type":"assistant","parent_tool_use_id":"toolu_agent","message":{"model":"claude-haiku-5-5","id":"msg_C","content":[{"type":"tool_use","id":"toolu_c","name":"mcp__hephaestus__add_comment","input":{"ticketID":"demo-1","text":"Done"}}]}}"#
+        let main = #"{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_M","model":"claude-opus-5-5"}},"parent_tool_use_id":null}"#
+        _ = mapper.map(Data(call.utf8))
+        _ = mapper.map(Data(main.utf8))
+        #expect(mapper.commentCalls == [StreamMapper.CommentCall(ticketID: "DEMO-1", text: "Done", model: "claude-haiku-5-5")])
+        #expect(mapper.takeCommentModel(ticketID: "DEMO-1", text: "Other") == "claude-opus-5-5")
+        #expect(mapper.takeCommentModel(ticketID: "demo-1", text: "Done") == "claude-haiku-5-5")
+        #expect(mapper.commentCalls.isEmpty)
+        #expect(mapper.takeCommentModel(ticketID: "DEMO-1", text: "Done") == "claude-opus-5-5")
+        _ = mapper.map(Data(call.utf8))
+        _ = mapper.map(Data(FakeClaudeLauncher.resultLine().utf8))
+        #expect(mapper.commentCalls.isEmpty)
     }
 
     @Test("Finalization turns open text blocks into items and drops open tool calls")

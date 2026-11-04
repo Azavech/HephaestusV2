@@ -60,8 +60,9 @@ enum MapperOutput: Sendable, Hashable {
     /// A `system/task_notification` line: the task `taskID` has ended, with the `tool_use_id` of
     /// the call that started it and its `status`.
     case taskNotification(taskID: String, toolUseID: String? = nil, status: String? = nil)
-    /// Text appended to a streamed block.
-    case delta(itemID: String, kind: ChatDeltaEvent.Payload.Kind, text: String)
+    /// Text appended to a streamed block; for a `text` block, the model of its message and the
+    /// effort stored with it (docs/chats.md › Streaming).
+    case delta(itemID: String, kind: ChatDeltaEvent.Payload.Kind, text: String, model: String? = nil, effort: Effort? = nil)
     /// A `can_use_tool` request: its item, its input and `permission_suggestions`.
     case permissionRequest(PermissionRequestItem, suggestions: JSONValue?)
     /// A control request of another subtype: the engine answers with an error.
@@ -85,9 +86,10 @@ enum MapperOutput: Sendable, Hashable {
 /// The output mapping of docs/chats.md › Output mapping for one chat process: the open blocks of
 /// the streamed messages, the assistant blocks, tool results, control messages and results.
 struct StreamMapper {
-    /// What the session start item needs: the chat's settings and the cached models.
+    /// What the session start item, the models and the efforts of the items need: the chat's
+    /// settings and the cached models.
     var settings: ChatSettings
-    var models: [CachedModel]
+    var models: [ClaudeModel]
     /// The creation time of new items (UTC with seconds).
     var now: () -> Date = { ISODate.now() }
     /// The id of new user, system and result items.
@@ -114,8 +116,24 @@ struct StreamMapper {
     private var messageOrder: [String] = []
     /// The message id of the latest `message_start` per `parent_tool_use_id` (`""` for null).
     private var latestMessageID: [String: String] = [:]
+    /// The model of each message, from its `message_start` or its `assistant` lines.
+    private var messageModels: [String: String] = [:]
+    /// The model of the latest `assistant` line or `message_start` event.
+    private(set) var latestModel: String?
 
-    init(settings: ChatSettings, models: [CachedModel]) {
+    /// An `add_comment` call of the chat, for the model of the comment it adds
+    /// (docs/engine-api.md › tickets.addComment).
+    struct CommentCall: Sendable, Hashable {
+        /// `input.ticketID` in uppercase.
+        var ticketID: String
+        var text: String
+        var model: String?
+    }
+
+    /// The `add_comment` calls not taken yet, oldest first; cleared by `finalize`.
+    private(set) var commentCalls: [CommentCall] = []
+
+    init(settings: ChatSettings, models: [ClaudeModel]) {
         self.settings = settings
         self.models = models
     }
@@ -214,13 +232,22 @@ struct StreamMapper {
     /// The `displayName` of the first cached model whose value is not `default` and whose
     /// `resolvedModel` equals `model`; else of the model whose `value` equals it; else `model`.
     func modelName(_ model: String) -> String {
-        if let match = models.first(where: { $0.model.value != "default" && $0.resolvedModel == model }) {
-            return match.model.displayName
+        ClaudeModel.name(of: model, in: models)
+    }
+
+    /// The effort stored with the work of `model`: the chat's effort, nil when the model has no
+    /// effort setting or is nil (docs/chats.md › Assistant blocks).
+    func effort(of model: String?) -> Effort? {
+        model.flatMap { ClaudeModel.effort(settings.effort, of: $0, in: models) }
+    }
+
+    /// The model of the comment that an `add_comment` call adds to `ticketID` with `text`: the
+    /// model of the oldest such call, which is taken; else the model of the latest message.
+    mutating func takeCommentModel(ticketID: String, text: String) -> String? {
+        guard let index = commentCalls.firstIndex(where: { $0.ticketID == ticketID.uppercased() && $0.text == text }) else {
+            return latestModel
         }
-        if let match = models.first(where: { $0.model.value == model }) {
-            return match.model.displayName
-        }
-        return model
+        return commentCalls.remove(at: index).model
     }
 
     /// The MCP check of docs/chats.md › Session start item.
@@ -245,8 +272,12 @@ struct StreamMapper {
         let parent = line["parent_tool_use_id"]?.stringValue
         let parentKey = parent ?? ""
         if eventType == "message_start" {
-            if let id = event["message"]?.objectValue?["id"]?.stringValue {
+            let message = event["message"]?.objectValue
+            let model = message?["model"]?.stringValue
+            if let model { latestModel = model }
+            if let id = message?["id"]?.stringValue {
                 latestMessageID[parentKey] = id
+                messageModels[id] = model
             }
             return []
         }
@@ -273,7 +304,9 @@ struct StreamMapper {
                   blocks[messageID]?[position].final == false
             else { return [] }
             blocks[messageID]?[position].text += text
-            return [.delta(itemID: StreamMapper.itemID(messageID, index), kind: kind, text: text)]
+            guard kind == .text else { return [.delta(itemID: StreamMapper.itemID(messageID, index), kind: kind, text: text)] }
+            let model = messageModels[messageID]
+            return [.delta(itemID: StreamMapper.itemID(messageID, index), kind: kind, text: text, model: model, effort: effort(of: model))]
         default:
             return []
         }
@@ -302,6 +335,11 @@ struct StreamMapper {
     private mutating func mapAssistant(_ line: [String: JSONValue]) -> [MapperOutput] {
         guard let message = line["message"]?.objectValue, let messageID = message["id"]?.stringValue else { return [] }
         let parent = line["parent_tool_use_id"]?.stringValue
+        let model = message["model"]?.stringValue
+        if let model {
+            latestModel = model
+            messageModels[messageID] = model
+        }
         var outputs: [MapperOutput] = []
         for content in message["content"]?.arrayValue ?? [] {
             guard let block = content.objectValue else { continue }
@@ -313,13 +351,18 @@ struct StreamMapper {
                 let text = block["text"]?.stringValue ?? ""
                 guard !text.isEmpty else { continue }
                 outputs.append(.item(.assistant(AssistantItem(id: id, created: now(), text: text, messageID: messageID,
-                                                              parentToolUseID: parent))))
+                                                              parentToolUseID: parent, model: model, effort: effort(of: model)))))
             case "thinking":
                 let text = block["thinking"]?.stringValue ?? ""
                 guard !text.isEmpty else { continue }
                 outputs.append(.item(.thinking(ThinkingItem(id: id, created: now(), text: text, parentToolUseID: parent))))
             case "tool_use":
-                let (name, server) = StreamMapper.splitToolName(block["name"]?.stringValue ?? "")
+                let toolName = block["name"]?.stringValue ?? ""
+                if toolName == StreamMapper.addCommentTool, let input = block["input"]?.objectValue,
+                   let ticketID = input["ticketID"]?.stringValue, let text = input["text"]?.stringValue {
+                    commentCalls.append(CommentCall(ticketID: ticketID.uppercased(), text: text, model: model))
+                }
+                let (name, server) = StreamMapper.splitToolName(toolName)
                 outputs.append(.item(.toolUse(ToolUseItem(
                     id: id, created: now(), toolUseID: block["id"]?.stringValue ?? "", name: name, server: server,
                     input: StreamMapper.truncated(block["input"] ?? .object([:])), parentToolUseID: parent))))
@@ -346,6 +389,9 @@ struct StreamMapper {
         return index
     }
 
+    /// The CLI name of the `add_comment` tool of the app's MCP server.
+    static let addCommentTool = "mcp__hephaestus__add_comment"
+
     /// docs/chats.md › Assistant blocks, name rule: `mcp__<server>__<tool>` gives the server and
     /// the tool's own name; any other name has no server.
     static func splitToolName(_ name: String) -> (name: String, server: String?) {
@@ -368,8 +414,10 @@ struct StreamMapper {
                 let id = StreamMapper.itemID(messageID, block.index)
                 switch block.type {
                 case "text":
+                    let model = messageModels[messageID]
                     items.append(.assistant(AssistantItem(id: id, created: now(), text: block.text, messageID: messageID,
-                                                          parentToolUseID: block.parentToolUseID)))
+                                                          parentToolUseID: block.parentToolUseID, model: model,
+                                                          effort: effort(of: model))))
                 case "thinking":
                     items.append(.thinking(ThinkingItem(id: id, created: now(), text: block.text, parentToolUseID: block.parentToolUseID)))
                 default:
@@ -380,6 +428,8 @@ struct StreamMapper {
         blocks = [:]
         messageOrder = []
         latestMessageID = [:]
+        messageModels = [:]
+        commentCalls = []
         return items
     }
 
