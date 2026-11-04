@@ -127,7 +127,8 @@ enum TranscriptRenderer {
         var html = "<div class=\"msg user\">" + caption(user.sender, created: user.created, context: context)
         html += linkedItemsHTML(user.linkedItems)
         if !user.text.isEmpty {
-            html += bubble(kind: "user-bubble", source: user.text, created: user.created, context: context)
+            html += bubble(kind: "user-bubble", source: user.text, created: user.created, context: context,
+                           softBreaksAsLineBreaks: true)
         }
         if !user.attachments.isEmpty {
             html += "<div class=\"attachments\">"
@@ -177,10 +178,12 @@ enum TranscriptRenderer {
     }
 
     /// A bubble: the Markdown, its `created` time as tooltip and the Copy button shown on hover,
-    /// which copies the Markdown source.
-    private static func bubble(kind: String, source: String, created: Date, context: TranscriptRenderContext) -> String {
+    /// which copies the Markdown source. The user bubble writes each soft line break as a line
+    /// break (docs/chats.md › Item rendering).
+    private static func bubble(kind: String, source: String, created: Date, context: TranscriptRenderContext,
+                               softBreaksAsLineBreaks: Bool = false) -> String {
         "<div class=\"bubble \(kind)\" title=\"\(escape(ChatFormat.created(created)))\" data-source=\"\(escape(source))\">"
-            + markdown(source, context: context)
+            + markdown(source, context: context, softBreaksAsLineBreaks: softBreaksAsLineBreaks)
             + "<button type=\"button\" class=\"bubble-copy\">Copy</button></div>"
     }
 
@@ -452,12 +455,12 @@ enum TranscriptRenderer {
     /// the SF Symbols and the colors of this Mac, the sound markers, shortcut markers as key caps,
     /// font markers in their font, animation markers with their lane and the ids of the device's
     /// projects as links (docs/chats.md › Links, images and files).
-    static func markdown(_ text: String, context: TranscriptRenderContext) -> String {
+    static func markdown(_ text: String, context: TranscriptRenderContext, softBreaksAsLineBreaks: Bool = false) -> String {
         let options = MarkdownRenderOptions(baseDirectory: "", projectRootPath: context.projectRootPath, stripFrontMatter: false,
                                             isSymbolAvailable: SFSymbols.isAvailable, colorSwatch: ColorSwatches.swatch,
                                             readsSoundMarkers: true, shortcutKeys: { KeyShortcut.keyCaps(of: $0) },
                                             fontMarker: FontMarkers.marker, animationCurve: AnimationExpression.markdownCurve,
-                                            projectIdentifiers: context.projectIdentifiers)
+                                            projectIdentifiers: context.projectIdentifiers, softBreaksAsLineBreaks: softBreaksAsLineBreaks)
         return "<div class=\"md\">" + MarkdownHTMLRenderer.render(text, options: options) + "</div>"
     }
 

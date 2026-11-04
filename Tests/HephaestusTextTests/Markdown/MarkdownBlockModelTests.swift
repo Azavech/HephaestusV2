@@ -189,6 +189,22 @@ struct MarkdownHTMLRendererTests {
             == "<p><a href=\"x.md\" title=\"q&#39;&quot;&lt;\">a</a></p>\n")
     }
 
+    @Test("A soft line break is a newline, or a hard line break with softBreaksAsLineBreaks")
+    func softBreaks() {
+        let markdown = "Answers:\nA: *Yes*\nB: Skipped\n\n- one\n  two\n\n```\nx\ny\n```\n"
+        let codeBlock = MarkdownHTMLRenderer.renderCodeBlock("x\ny", languageWord: "")
+        #expect(codeBlock.contains("<pre><code>x\ny\n</code></pre>"))
+        #expect(MarkdownHTMLRenderer.render(markdown, options: MarkdownRenderOptions())
+            == "<p>Answers:\nA: <em>Yes</em>\nB: Skipped</p>\n<ul>\n<li>one\ntwo</li>\n</ul>\n"
+                + codeBlock)
+        let options = MarkdownRenderOptions(softBreaksAsLineBreaks: true)
+        #expect(MarkdownHTMLRenderer.render(markdown, options: options)
+            == "<p>Answers:<br>\nA: <em>Yes</em><br>\nB: Skipped</p>\n<ul>\n<li>one<br>\ntwo</li>\n</ul>\n"
+                + codeBlock)
+        #expect(MarkdownBlockRenderer.render("a\nb", options: options) == [.paragraph([.text("a"), .lineBreak, .text("b")])])
+        #expect(MarkdownHTMLRenderer.render("a  \nb", options: options) == "<p>a<br>\nb</p>\n")
+    }
+
     @Test("Tight and loose items, nested blocks")
     func listItems() {
         #expect(MarkdownHTMLRenderer.render("- a\n  > q\n- b", options: MarkdownRenderOptions())

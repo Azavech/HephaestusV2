@@ -274,7 +274,7 @@ struct MarkdownConverter {
                 let source = MarkdownLinks.imageSource(image.source ?? "", options: options)
                 result.append(.image(source: source, alt: Self.altText(image.children), title: Self.nonEmpty(image.title)))
             case is SoftBreak:
-                result.append(.softBreak)
+                result.append(options.softBreaksAsLineBreaks ? .lineBreak : .softBreak)
             case is LineBreak:
                 result.append(.lineBreak)
             case let attributes as InlineAttributes:

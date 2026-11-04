@@ -29,6 +29,8 @@ public struct MarkdownRenderOptions: Sendable {
     /// Identifiers of the projects of the device; their ticket and bundle ids become links
     /// (docs/documentation-viewer.md › Ticket and bundle ids).
     public var projectIdentifiers: Set<String>
+    /// Writes each soft line break as a hard line break (docs/documentation-viewer.md › Renderer).
+    public var softBreaksAsLineBreaks: Bool
 
     public init(baseDirectory: String = "", projectRootPath: String? = nil, stripFrontMatter: Bool = false,
                 isSymbolAvailable: (@Sendable (String) -> Bool)? = nil,
@@ -36,7 +38,7 @@ public struct MarkdownRenderOptions: Sendable {
                 shortcutKeys: (@Sendable (String) -> [String]?)? = nil,
                 fontMarker: (@Sendable (String) -> MarkdownFontMarker?)? = nil,
                 animationCurve: (@Sendable (String) -> MarkdownAnimationCurve?)? = nil,
-                projectIdentifiers: Set<String> = []) {
+                projectIdentifiers: Set<String> = [], softBreaksAsLineBreaks: Bool = false) {
         self.baseDirectory = baseDirectory
         self.projectRootPath = projectRootPath
         self.stripFrontMatter = stripFrontMatter
@@ -47,6 +49,7 @@ public struct MarkdownRenderOptions: Sendable {
         self.fontMarker = fontMarker
         self.animationCurve = animationCurve
         self.projectIdentifiers = projectIdentifiers
+        self.softBreaksAsLineBreaks = softBreaksAsLineBreaks
     }
 }
 
