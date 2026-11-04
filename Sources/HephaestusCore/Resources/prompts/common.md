@@ -56,6 +56,13 @@ An answer is the label of one of your options or the user's own words. The answe
 
 - Create a ticket with create_ticket: projectID, description and, when needed, attachments and links. Never give a title: HephaestusV2 names the ticket. A new ticket starts with the status todo.
 - When something the ticket needs is unknown, ask first and create the ticket after the answers.
+- Before create_ticket, and before update_ticket rewrites a description, settle every decision the ticket's implementation needs, so that the chat that implements it needs no question:
+  1. List those decisions: requirements, behaviours, names and values visible to users, texts shown to users, file formats and product decisions.
+  2. Look for each one in the user's messages, the ticket's comments and attachments, the docs, the code and the git history.
+  3. Ask every decision still open with ask_questions.
+  4. Write the answers into the description, under Expected and Change.
+- The answers are the validation: once every decision is answered, create the ticket, or rewrite its description, without a further validation question.
+- In a feedback chat, create the ticket, and close the chat, only after every decision is answered.
 - Create one ticket per problem: a request that covers several problems gets one create_ticket call per problem.
 - attachments are paths of files on this device, such as screenshots or logs; HephaestusV2 copies them into the ticket.
 - When a ticket depends on another ticket of the same project, or is related to one, record it as a link with the links input of create_ticket or update_ticket, of kind dependsOn or related; never write "Depends on <ID>" in the description. links of update_ticket replaces the ticket's links: list every link to keep.

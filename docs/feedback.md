@@ -1,6 +1,6 @@
 # Feedback
 
-The ladybug at the right end of the status bar, the menu command Help ▸ Send Feedback… and ⇧⌘B start feedback from any window. The app captures the window into a PNG inside its own process, then shows a sheet with the screenshot, a comment field, the project that will receive the feedback and the model, effort and permission mode of the feedback chat. Send asks the engine to create a feedback chat, with the comment, the screenshot and the context already sent, and a main window comes to the front showing it in the Chats section of its project. Claude clarifies with labelled questions when something is unclear, then creates a ticket that follows the description template, starts as `todo`, gets its title from Haiku and carries the screenshot. The chat is linked to that ticket.
+The ladybug at the right end of the status bar, the menu command Help ▸ Send Feedback… and ⇧⌘B start feedback from any window. The app captures the window into a PNG inside its own process, then shows a sheet with the screenshot, a comment field, the project that will receive the feedback and the model, effort and permission mode of the feedback chat. Send asks the engine to create a feedback chat, with the comment, the screenshot and the context already sent, and a main window comes to the front showing it in the Chats section of its project. Claude asks with labelled questions every decision of the ticket's implementation that is still open, then creates a ticket that holds the answers, follows the description template, starts as `todo`, gets its title from Haiku and carries the screenshot. The chat is linked to that ticket.
 
 ## Flow
 
@@ -9,7 +9,7 @@ The ladybug at the right end of the status bar, the menu command Help ▸ Send F
 3. Sheet: screenshot preview, comment, project, chat settings, Send ([Feedback sheet](#feedback-sheet)).
 4. Send: the client calls `chats.createFeedback` on the receiving device ([Creating the feedback chat](#creating-the-feedback-chat)).
 5. Pop up: a main window comes to the front and shows the returned chat, selected in the Chats section of its project ([Feedback sheet](#feedback-sheet)).
-6. Claude asks labelled questions when needed, creates the ticket with `create_ticket` and summarizes ([Feedback chat](#feedback-chat)).
+6. Claude asks every open decision with labelled questions, creates the ticket with `create_ticket` once every decision is answered, and summarizes ([Feedback chat](#feedback-chat)).
 7. The engine links the chat and the ticket ([Resulting ticket](#resulting-ticket)).
 
 ## Starting feedback
@@ -202,8 +202,8 @@ Example params, with a 1 × 1 pixel PNG standing in for a real screenshot:
 - Its system prompt is the common prompt plus the feedback prompt ([Chats](chats.md#prompt-feedback)). The feedback prompt gives Claude the rendered context and the absolute path of the stored screenshot on the receiving device.
 - Claude's steps, as the feedback prompt orders them ([Workflow](workflow.md)):
   1. read the comment, the context and the screenshot;
-  2. when something needed for the ticket is unclear, ask labelled questions (A, B, C…) with the MCP tool `ask_questions`, each with options and one recommended option, then end the turn; the user answers them one by one in the chat view ([Chats](chats.md));
-  3. call `create_ticket` in the target project with a description that follows the template and the screenshot path in `attachments`;
+  2. list every decision the ticket's implementation needs, look for each one in the feedback, the docs, the code and the git history, and ask every decision still open with labelled questions (A, B, C…) with the MCP tool `ask_questions`, each with options and one recommended option, then end the turn; the user answers them one by one in the chat view ([Chats](chats.md)); Claude goes on to step 3 only once every decision is answered, without a further validation question ([Workflow › Writing tickets](workflow.md#writing-tickets));
+  3. call `create_ticket` in the target project with a description that follows the template and holds the answers, and the screenshot path in `attachments`;
   4. reply with the ticket id and a short summary of the ticket.
 - Permission prompts for these tool calls follow the chat's permission mode ([Chats](chats.md)).
 - Claude implements the ticket in the feedback chat only when the user asks ([Workflow](workflow.md)).
@@ -304,3 +304,4 @@ When the feedback project is the HephaestusV2 repository, the ticket enters the 
 - R61: The discussion creates a ticket.
 - R102: The main window's sidebar and inspector are translucent and frosted, like the sidebars of native macOS apps such as Music.
 - R123: Implement, Implement All and the feedback sheet let the user choose the model, the effort and the permission mode of the chat they start; the ticket chats that a bundle chat starts take its settings.
+- R144: The chat that writes a ticket settles every decision of its implementation with the user before it creates the ticket or rewrites its description, and writes the answers into the description; a feedback chat creates its ticket, and closes, only after every decision is answered.

@@ -11,8 +11,8 @@ The feedback context:
 Follow these steps:
 
 1. Read the comment, the context and the screenshot (included in the first message and saved at {{screenshotPath}}), then the docs and the code of this project that concern them.
-2. When something the ticket needs is unknown, ask with ask_questions and end your turn. Continue when the answers arrive.
-3. Call create_ticket with projectID {{projectID}}, a description that follows the template, and attachments ["{{screenshotPath}}"]. When the feedback reports several problems, create one ticket per problem.
+2. List every decision the ticket's implementation needs, as "Writing tickets" says, ask every one still open with ask_questions and end your turn. Continue when the answers arrive, and go to step 3 only once every decision is answered.
+3. Call create_ticket with projectID {{projectID}}, a description that follows the template and holds the answers, and attachments ["{{screenshotPath}}"]. When the feedback reports several problems, create one ticket per problem.
 4. Reply with a short summary of the ticket that names its id.
 
 Implement the ticket in this chat only when the user asks for that, and then follow "Implementing a ticket".

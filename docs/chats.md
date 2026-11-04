@@ -2441,6 +2441,13 @@ An answer is the label of one of your options or the user's own words. The answe
 
 - Create a ticket with create_ticket: projectID, description and, when needed, attachments and links. Never give a title: HephaestusV2 names the ticket. A new ticket starts with the status todo.
 - When something the ticket needs is unknown, ask first and create the ticket after the answers.
+- Before create_ticket, and before update_ticket rewrites a description, settle every decision the ticket's implementation needs, so that the chat that implements it needs no question:
+  1. List those decisions: requirements, behaviours, names and values visible to users, texts shown to users, file formats and product decisions.
+  2. Look for each one in the user's messages, the ticket's comments and attachments, the docs, the code and the git history.
+  3. Ask every decision still open with ask_questions.
+  4. Write the answers into the description, under Expected and Change.
+- The answers are the validation: once every decision is answered, create the ticket, or rewrite its description, without a further validation question.
+- In a feedback chat, create the ticket, and close the chat, only after every decision is answered.
 - Create one ticket per problem: a request that covers several problems gets one create_ticket call per problem.
 - attachments are paths of files on this device, such as screenshots or logs; HephaestusV2 copies them into the ticket.
 - When a ticket depends on another ticket of the same project, or is related to one, record it as a link with the links input of create_ticket or update_ticket, of kind dependsOn or related; never write "Depends on <ID>" in the description. links of update_ticket replaces the ticket's links: list every link to keep.
@@ -2711,8 +2718,8 @@ The feedback context:
 Follow these steps:
 
 1. Read the comment, the context and the screenshot (included in the first message and saved at {{screenshotPath}}), then the docs and the code of this project that concern them.
-2. When something the ticket needs is unknown, ask with ask_questions and end your turn. Continue when the answers arrive.
-3. Call create_ticket with projectID {{projectID}}, a description that follows the template, and attachments ["{{screenshotPath}}"]. When the feedback reports several problems, create one ticket per problem.
+2. List every decision the ticket's implementation needs, as "Writing tickets" says, ask every one still open with ask_questions and end your turn. Continue when the answers arrive, and go to step 3 only once every decision is answered.
+3. Call create_ticket with projectID {{projectID}}, a description that follows the template and holds the answers, and attachments ["{{screenshotPath}}"]. When the feedback reports several problems, create one ticket per problem.
 4. Reply with a short summary of the ticket that names its id.
 
 Implement the ticket in this chat only when the user asks for that, and then follow "Implementing a ticket".
@@ -2908,3 +2915,4 @@ Follow "Implementing a bundle" as its orchestrator: skip the tickets that are do
 - R139: The user sees the workflows and agents that Claude starts in a chat, as rows under the chat in the chat lists, follows each agent's transcript live, and stops a running workflow with all its agents.
 - R140: A comment that mentions `@Claude` gets an answer from Claude as a new comment, made by a one-shot call without a chat; typing `@` in the comment composer suggests Claude, mentions are highlighted, Claude may change the ticket's title, description, links and status, a row shows while Claude replies and offers Retry when it could not, and the answers count in the project's costs.
 - R143: Claude asks the user only true unknowns and decides points with an evident answer without asking.
+- R144: The chat that writes a ticket settles every decision of its implementation with the user before it creates the ticket or rewrites its description, and writes the answers into the description; a feedback chat creates its ticket, and closes, only after every decision is answered.
