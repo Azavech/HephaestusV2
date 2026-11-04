@@ -135,7 +135,7 @@ struct PromptAndNamingTests {
         let values = [
             "projectName": "Hephaestus V2", "projectID": "HEPH", "projectRoot": "/Users/example/Developer/HephaestusV2",
             "workingDirectory": "It is your working directory.",
-            "deviceName": "Studio", "docsPath": "docs", "projectCommands": "- build: make build", "ticketID": "HEPH-12",
+            "deviceName": "Studio", "docsPath": "docs", "projectType": "Go service", "projectCommands": "- build: make build", "ticketID": "HEPH-12",
             "ticketTitle": "Locked web tabs close with Command-W", "ticket": "ID: HEPH-12", "bundleID": "HEPH-B2",
             "bundleTitle": "Web tab polish", "bundleTicketIDs": "HEPH-12, HEPH-13", "bundle": "ID: HEPH-B2", "feedbackContext": "- App: X",
             "screenshotPath": "/Users/example/s.png",
@@ -149,6 +149,7 @@ struct PromptAndNamingTests {
         let prompt = Prompts.systemPrompt(kind: .ticket, values: values)
         #expect(prompt.hasPrefix("You are Claude, working inside HephaestusV2"))
         #expect(prompt.contains("The project's root folder is /Users/example/Developer/HephaestusV2 on the device Studio. It is your working directory. "))
+        #expect(prompt.contains("of the project. The project's type is Go service.\n\nThe project's commands:\n"))
         #expect(prompt.contains("\n\n# This chat\n\nThis is the chat of ticket HEPH-12"))
     }
 
@@ -168,7 +169,7 @@ struct PromptAndNamingTests {
         #expect(section.contains("change the first line of each ticket's completion comment so that it names the hash of the ticket's commit on main."))
         #expect(section.contains("you commit on your branch without pushing"))
         #expect(!section.contains("one ticket chat runs at a time"))
-        #expect(section.contains("Never set a ticket to done."))
+        #expect(section.contains("- Never set a ticket to done, except in step 6 of \"When the project is a Go service\" in a Go service project."))
         #expect(section.contains("After every ticket has reported back or been skipped, merge the branches not merged yet, in bundle order."))
         #expect(section.contains("When the build or the tests fail, do not push and ask the user with ask_questions how to proceed. Otherwise push once"))
         #expect(section.contains("Your final reply lists each ticket with the hash of its commit on main, or with skipped and the reason, "
@@ -185,6 +186,61 @@ struct PromptAndNamingTests {
         #expect(bundle.contains("After the last report, merge the remaining branches in this order, build and test main, push once, then remove the merged tickets' worktrees and branches."))
         #expect(!bundle.contains("one at a time"))
         #expect(Prompts.text(.implementTicket).contains(", push, post the completion comment"))
+    }
+
+    @Test("Go service projects: tickets have only Claude tests; after the push the chat waits for CI, runs the test service and the checks, fixing what fails, updates the completion comments and sets the status; bundle ticket chats leave their Claude tests to the bundle chat")
+    func goServicePrompts() throws {
+        let common = Prompts.text(.common)
+        func section(_ start: String, _ end: String) throws -> String {
+            let lower = try #require(common.range(of: start)).lowerBound
+            let upper = try #require(common.range(of: end, range: lower..<common.endIndex)).lowerBound
+            return String(common[lower..<upper])
+        }
+        #expect(common.contains("of the project. The project's type is {{projectType}}.\n"))
+        let go = try section("# When the project is a Go service", "# When the project is HephaestusV2")
+        #expect(go.contains("- The Testing section of a ticket has only Claude bullets, each a check of the behaviour on the test service; it has no User bullet."))
+        #expect(go.contains("The implement chat of a single ticket, started by Implement or by implement_ticket from a chat that is not a bundle chat, "
+            + "posts its completion comment after its push, with the result waiting for the test service on each Claude line, then follows the steps below."))
+        #expect(go.contains("In a bundle, the ticket chats do not run their Claude tests"))
+        #expect(go.contains("1. CI: wait with the gh CLI for the CI runs of the pushed commit until they end"))
+        #expect(go.contains("commit the fix as fix: <summary> (<TICKET-ID>) with the id of the ticket whose change caused the failure"))
+        #expect(go.contains("When there is no run to wait for (no workflow, no gh CLI or no remote), skip the wait, go on with step 2, "
+            + "and say in your final reply that CI was not checked."))
+        #expect(go.contains("2. Test service: build the Docker image from the repository's Dockerfile and run it with docker, "
+            + "with a temporary postgres when the service uses one, and mocks of the services it calls."))
+        #expect(go.contains("3. Checks: run every Claude bullet of each ticket's Testing section against the test service."))
+        #expect(go.contains("4. When the test service cannot start (no Dockerfile, docker not available, the container exits)"))
+        #expect(go.contains("5. Update each ticket's completion comment with update_comment: each Testing line gets its result, "
+            + "and Notes lists each fix commit of that ticket with its short hash and subject."))
+        #expect(go.contains("6. Set each ticket whose Claude tests have all passed to done, following \"Ticket status\"; set the other tickets to review. "
+            + "Then stop the test service. The bundle chat then closes its chat."))
+        #expect(go.contains("these are the exceptions to \"Do not implement the tickets yourself\" and \"Never set a ticket to done\""))
+
+        // The other sections refer to it.
+        #expect(try section("# Writing tickets", "# Ticket status").contains(
+            "In a project whose type is Go service, the Testing section has only Claude bullets"))
+        #expect(try section("# Ticket status", "# Implementing a ticket").contains(
+            "- In a project whose type is Go service, the implement chat of a single ticket and the bundle chat set the tickets to done or review after the checks on the test service"))
+        #expect(try section("# Implementing a ticket", "# Commits").contains("then follows \"When the project is a Go service\", whose step 6 replaces step 8"))
+        #expect(try section("# Commits", "# Pushing").contains("In a Go service project, each fix of a failed CI run or of a failed check gets its own commit too"))
+        #expect(try section("# Completion comment", "# Implementing a bundle").contains(
+            "the result of a Claude line is waiting for the test service until the checks on the test service have run"))
+        let bundle = try section("# Implementing a bundle", "# Project and feedback chats")
+        #expect(bundle.contains("Do not implement the tickets yourself, except the fixes of \"When the project is a Go service\" in a Go service project."))
+        #expect(bundle.contains("- Never set a ticket to done, except in step 6 of \"When the project is a Go service\" in a Go service project."))
+        #expect(bundle.contains("- In a Go service project, then follow \"When the project is a Go service\" for the merged tickets."))
+        #expect(bundle.contains("- In a Go service project, do not run the Claude tests of your ticket: each Claude line of your completion comment "
+            + "reads waiting for the test service, and you set the ticket to review."))
+
+        // The implement messages.
+        #expect(Prompts.text(.implementTicket).hasSuffix("\n\nIn a Go service project, follow \"When the project is a Go service\" after the push: "
+            + "post the completion comment with the Claude tests waiting for the test service, wait for CI, run the test service and the checks, "
+            + "then update the completion comment and set the status."))
+        #expect(Prompts.text(.implementBundleTicket).hasSuffix("\n\nIn a Go service project, do not run the Claude tests: "
+            + "they wait for the test service that the bundle chat runs after its push, and you set the ticket to review."))
+        #expect(Prompts.text(.implementBundle).hasSuffix("\n\nIn a Go service project, follow \"When the project is a Go service\" after the push: "
+            + "wait for CI, run the test service and every ticket's Claude tests, fixing what fails, update the completion comments, "
+            + "set the tickets to done or review, then close your chat."))
     }
 
     @Test("Claude sets review after the completion comment, in a ticket chat and in each ticket chat of a bundle")
@@ -257,7 +313,8 @@ struct PromptAndNamingTests {
         #expect(section.contains("After the call, finish your reply: when your turn ends, HephaestusV2 ends your session"))
         #expect(section.contains("- when the user asks you to close the chat;"))
         #expect(section.contains("- in a ticket chat, once you have set its ticket to done;"))
-        #expect(section.contains("- in a bundle chat, once every ticket has been implemented or skipped and you have pushed;"))
+        #expect(section.contains("- in a bundle chat, once every ticket has been implemented or skipped and you have pushed, and in a Go service "
+            + "project once you have finished step 6 of \"When the project is a Go service\";"))
         #expect(section.contains("- in a feedback chat, once you have created its ticket."))
         #expect(section.contains("Close a project chat only when the user asks for it."))
         #expect(section.contains("To close other chats of the project, call close_chat with chatIDs"))

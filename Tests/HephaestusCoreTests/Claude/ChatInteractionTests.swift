@@ -514,6 +514,28 @@ struct ChatInteractionTests {
         }
     }
 
+    @Test("The system prompt gives the project's type and the Go service rules, for a project of type None and of type Go service")
+    func projectTypeInSystemPrompt() async throws {
+        try await withChatEngine { bed in
+            func systemPrompt(_ chat: ChatMeta, _ index: Int) async throws -> String {
+                let process = try #require(await bed.launcher.chatProcess(index))
+                #expect(process.request.arguments.contains(chat.id.uuidString))
+                return try #require(process.request.arguments.firstIndex(of: "--append-system-prompt").map { process.request.arguments[$0 + 1] })
+            }
+            let none = try await bed.createChat(message: "Plan")
+            let nonePrompt = try await systemPrompt(none, 0)
+            #expect(nonePrompt.contains(" of the project. The project's type is None.\n\nThe project's commands:\n"))
+            #expect(nonePrompt.contains("\n\n# When the project is a Go service\n\nWhen the project's type is Go service, these rules apply too."))
+
+            _ = try await bed.connection.call(ProjectsUpdate.self, .init(projectID: "DEMO", type: .goService))
+            let go = try await bed.createChat(message: "Plan")
+            let goPrompt = try await systemPrompt(go, 1)
+            #expect(goPrompt.contains(" of the project. The project's type is Go service.\n\nThe project's commands:\n"))
+            #expect(goPrompt.contains("\n\n# When the project is a Go service\n\nWhen the project's type is Go service, these rules apply too."))
+            #expect(!goPrompt.contains("{{"))
+        }
+    }
+
     @Test("Implement All: the bundle chat and its message; a bundle without a ticket left is refused")
     func implementBundle() async throws {
         try await withChatEngine { bed in
