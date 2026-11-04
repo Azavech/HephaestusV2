@@ -69,6 +69,9 @@ public final class AppModel {
     var settingsTab = SettingsTab.general
     /// PNG data of the Feedback sheets' screenshots, by preview id, while their sheet is open.
     var feedbackPreviews: [UUID: Data] = [:]
+    /// True once a SIGTERM or SIGINT ended the open sheets: the SwiftUI sheets whose state belongs
+    /// to a view stay closed.
+    var sheetsEnded = false
     @ObservationIgnored let windowRegistry = WindowRegistry()
     @ObservationIgnored let updateController: UpdateController
     @ObservationIgnored let feedbackController: FeedbackController

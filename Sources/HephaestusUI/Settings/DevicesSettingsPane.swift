@@ -60,7 +60,7 @@ struct DevicesSettingsPane: View {
             storedName = await app.engine.deviceNameSetting()
             pairingCode = await app.engine.syncServer.pairingCode.display
         }
-        .sheet(isPresented: $showsAddDevice) {
+        .sheet(isPresented: Binding(get: { showsAddDevice && !app.sheetsEnded }, set: { showsAddDevice = $0 })) {
             AddDeviceSheet(preselectedDeviceID: nil, window: nil)
                 .environment(app)
         }

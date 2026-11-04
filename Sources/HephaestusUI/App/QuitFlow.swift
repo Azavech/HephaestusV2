@@ -34,9 +34,21 @@ extension AppModel {
     /// while a window shows a sheet. A Quit whose checks are running goes on to the shutdown.
     func terminateWithoutConfirmation() {
         skipsQuitConfirmations = true
+        endSwiftUISheets()
         endModalUI()
         guard !quitChecksPending else { return }
         requestTermination()
+    }
+
+    /// Clears the state of the SwiftUI sheets and alerts. SwiftUI presents a sheet again as long as
+    /// its state asks for it: a sheet only ended by `endSheet` is back while `terminate` waits for
+    /// the window state to be saved, and AppKit then refuses to terminate.
+    func endSwiftUISheets() {
+        sheetsEnded = true
+        for window in windows.values {
+            window.sheet = nil
+            window.alert = nil
+        }
     }
 
     /// Ends the app-modal session and every sheet, the innermost first.
