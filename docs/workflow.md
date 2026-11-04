@@ -1,6 +1,6 @@
 # Claude workflow
 
-This is the operating manual Claude follows in every HephaestusV2 chat. Claude never invents: it asks labelled questions, each with a recommended answer. It writes tickets with the description template and respects the status rules. It implements a ticket by changing the docs first and then the code to match them; it then builds and tests, commits with a conventional commit message, pushes and comments on the ticket, and it never marks the ticket done. A bundle chat orchestrates a bundle: it starts at once a ticket chat for every ticket that waits for no other ticket, each running that workflow on its own branch without pushing, then merges the branches into the main branch, builds and tests it, and pushes once at the end. On the HephaestusV2 project itself, the push starts the self-update loop, which ends with the app restarting on the new version. The rules reach Claude through the system prompts of [Chats](chats.md), and the engine enforces the ones it can check. The user-facing behaviour of tickets and bundles is in [Tickets and bundles](tickets.md); both documents state the same rules.
+This is the operating manual Claude follows in every HephaestusV2 chat. Claude never invents: it asks the true unknowns with labelled questions, each with a recommended answer, and decides a point with an evident answer without asking. It writes tickets with the description template and respects the status rules. It implements a ticket by changing the docs first and then the code to match them; it then builds and tests, commits with a conventional commit message, pushes and comments on the ticket, and it never marks the ticket done. A bundle chat orchestrates a bundle: it starts at once a ticket chat for every ticket that waits for no other ticket, each running that workflow on its own branch without pushing, then merges the branches into the main branch, builds and tests it, and pushes once at the end. On the HephaestusV2 project itself, the push starts the self-update loop, which ends with the app restarting on the new version. The rules reach Claude through the system prompts of [Chats](chats.md), and the engine enforces the ones it can check. The user-facing behaviour of tickets and bundles is in [Tickets and bundles](tickets.md); both documents state the same rules.
 
 ## Where the rules apply
 
@@ -29,15 +29,19 @@ This is the operating manual Claude follows in every HephaestusV2 chat. Claude n
 
 - Claude never invents a requirement, behaviour, name or value visible to users, text shown to users, file format or product decision. Everything of this kind that it builds comes from the user's messages, the ticket with its comments and attachments, the docs, or the existing code.
 - Technical choices inside the code that change no documented behaviour are Claude's to make. Default chosen at design time.
-- Before asking, Claude looks for the answer itself in the ticket, its comments and attachments, the docs, the code and the git history, and asks only what is still unknown.
+- Before asking, Claude looks for the answer itself in the ticket, its comments and attachments, the docs, the code and the git history.
+- Claude asks only true unknowns: points where several answers are reasonable and neither the user's messages, the ticket with its comments, the docs, the code nor the answers already given settle them.
+- A point with one evident answer, one that follows from the user's request, the docs, the code or a decision already made, is not an unknown: Claude decides it without asking. A ticket that Claude writes states such a point as decided.
 - Claude asks what is still unknown with the [questions protocol](#questions-protocol) before acting on it, then ends its turn and waits. It never continues on a guess to be confirmed later.
 - Statements that contradict each other, such as a comment that contradicts the description, count as an unknown. Default chosen at design time.
 - In comments and replies Claude reports only what it did and checked.
+- These rules apply in every chat kind, project, ticket, bundle and feedback, and in comment answers ([Where the rules apply](#where-the-rules-apply)).
 
 ## Questions protocol
 
 ### Asking
 
+- Claude asks only the true unknowns of [Never invent](#never-invent): a point with an evident answer gets no question.
 - Claude asks with the MCP tool `ask_questions`. Its input `questions` is a list of `{label, question, options: [{label, description?}], recommended}`, and its schema is in [MCP](mcp.md).
 - Questions are labelled `A`, `B`, `C` and so on, in order, starting at `A` in every call. One call holds at most 26 questions.
 - Each question asks for one decision and offers 2 to 10 options. An option's `label` is the answer text; its optional `description` is one line stating the consequence.
@@ -767,3 +771,4 @@ Notes
 - R136: In a Swift application project, Claude asks the user to choose a SwiftUI animation with `ask_animation`: each suggestion plays in a lane, the user compares them, sets a preset and its parameters in a Custom row, picks one, answers another way or skips.
 - R137: Claude closes other chats of the project when the user asks it to, never on its own; a chat with a turn in progress is not closed.
 - R140: A comment that mentions `@Claude` gets an answer from Claude as a new comment, made by a one-shot call without a chat; typing `@` in the comment composer suggests Claude, mentions are highlighted, Claude may change the ticket's title, description, links and status, a row shows while Claude replies and offers Retry when it could not, and the answers count in the project's costs.
+- R143: Claude asks the user only true unknowns and decides points with an evident answer without asking.

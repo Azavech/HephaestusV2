@@ -753,7 +753,7 @@ The chat's `settings.permissionMode` follows the CLI. When the engine answers `a
 
 ## Questions
 
-Claude never invents unknowns: it asks with the MCP tool `ask_questions`, which calls `chats.postQuestions` for the chat that owns the token and returns at once. The rules Claude follows are in [Claude workflow](workflow.md#questions-protocol) and in the prompt [common](#prompt-common). To have the user choose an SF Symbol, Claude asks with `ask_symbol` instead ([Symbol requests](#symbol-requests)), to have the user choose a color, with `ask_color` ([Color requests](#color-requests)), to have the user choose a sound, in a Swift application project, with `ask_sound` ([Sound requests](#sound-requests)), to have the user choose a keyboard shortcut, in a Swift application project, with `ask_shortcut` ([Shortcut requests](#shortcut-requests)), to have the user choose a font, with `ask_font` ([Font requests](#font-requests)), and to have the user choose an animation, in a Swift application project, with `ask_animation` ([Animation requests](#animation-requests)).
+Claude never invents unknowns, and asks only true unknowns ([Never invent](workflow.md#never-invent)): it asks with the MCP tool `ask_questions`, which calls `chats.postQuestions` for the chat that owns the token and returns at once. The rules Claude follows are in [Claude workflow](workflow.md#questions-protocol) and in the prompt [common](#prompt-common). To have the user choose an SF Symbol, Claude asks with `ask_symbol` instead ([Symbol requests](#symbol-requests)), to have the user choose a color, with `ask_color` ([Color requests](#color-requests)), to have the user choose a sound, in a Swift application project, with `ask_sound` ([Sound requests](#sound-requests)), to have the user choose a keyboard shortcut, in a Swift application project, with `ask_shortcut` ([Shortcut requests](#shortcut-requests)), to have the user choose a font, with `ask_font` ([Font requests](#font-requests)), and to have the user choose an animation, in a Swift application project, with `ask_animation` ([Animation requests](#animation-requests)).
 
 ### Posting questions
 
@@ -2410,13 +2410,16 @@ Read and change HephaestusV2 data (projects, tickets, comments, bundles, chats, 
 
 - Never invent a requirement, a behaviour, a name or value visible to users, a text shown to users, a file format or a product decision. Everything of this kind that you build comes from the user's messages, the ticket with its comments and attachments, the docs, or the existing code.
 - Technical choices inside the code that change no documented behaviour are yours to make.
-- Before you ask, look for the answer yourself in the ticket, its comments and attachments, the docs, the code and the git history. Ask only what is still unknown.
+- Before you ask, look for the answer yourself in the ticket, its comments and attachments, the docs, the code and the git history.
+- Ask only true unknowns: points where several answers are reasonable and neither the user's messages, the ticket with its comments, the docs, the code nor the answers already given settle them.
+- A point with one evident answer, one that follows from the user's request, the docs, the code or a decision already made, is not an unknown: decide it without asking. When you write a ticket, state such a point in it as decided.
 - Statements that contradict each other, such as a comment that contradicts the description, are an unknown.
 - Ask what is still unknown before you act on it, then end your turn and wait. Never continue on a guess to be confirmed later.
 - In comments and replies, report only what you did and checked.
 
 # Asking questions
 
+- Ask only the true unknowns that "Never invent" defines: never ask about a point with an evident answer.
 - Ask only with ask_questions, never with questions written in your reply.
 - Put every point that is unknown at that moment into one call, with at most 26 questions.
 - Label the questions A, B, C and so on, in order, starting at A in every call.
@@ -2799,6 +2802,8 @@ The user message holds the ticket, after the line "Ticket:", and the comment to 
 # Rules
 
 - Never invent a requirement, a behaviour, a name or value visible to users, a text shown to users, a file format or a product decision. Take them from the comment, the ticket with its comments and attachments, the docs or the code. Before you ask, look for the answer there yourself.
+- Ask only true unknowns: points where several answers are reasonable and neither the comment, the ticket with its comments, the docs, the code nor the answers already given settle them.
+- A point with one evident answer, one that follows from the comment, the docs, the code or a decision already made, is not an unknown: decide it without asking. When you rewrite the ticket's description, state such a point in it as decided.
 - A description you write follows the ticket template: the headings Problem, Current Behavior, Expected, Change, Testing and Docs, each alone on its line, in this order, each followed by its text. HephaestusV2 rejects a description that does not follow it.
 - The status of a ticket is todo, in_progress, review or done. Change it only when the comment asks for it, and never change the status of a done ticket: tell the user that they have to do it themselves. Set done only when every Claude test of the ticket's Testing section has passed, as its comments report, and the user has said that every User test has passed.
 - When HephaestusV2 answers forbidden or invalid, report its message in your reply and do not work around it.
@@ -2806,7 +2811,7 @@ The user message holds the ticket, after the line "Ticket:", and the comment to 
 
 # Questions
 
-When something you need is unknown, or when statements contradict each other, do not guess and change nothing that depends on it: write your questions at the end of your reply. Put every point that is unknown into them, label them A, B, C and so on, give each 2 to 10 options and mark exactly one option as recommended, in this form:
+When something you need is a true unknown, or when statements contradict each other, do not guess and change nothing that depends on it: write your questions at the end of your reply. Put every true unknown into them and no point with an evident answer, label them A, B, C and so on, give each 2 to 10 options and mark exactly one option as recommended, in this form:
 
 A: <question>
    1. <option> (recommended)
@@ -2902,3 +2907,4 @@ Follow "Implementing a bundle" as its orchestrator: skip the tickets that are do
 - R138: The user closes one chat, or several selected chats of the Chats section, after a confirmation.
 - R139: The user sees the workflows and agents that Claude starts in a chat, as rows under the chat in the chat lists, follows each agent's transcript live, and stops a running workflow with all its agents.
 - R140: A comment that mentions `@Claude` gets an answer from Claude as a new comment, made by a one-shot call without a chat; typing `@` in the comment composer suggests Claude, mentions are highlighted, Claude may change the ticket's title, description, links and status, a row shows while Claude replies and offers Retry when it could not, and the answers count in the project's costs.
+- R143: Claude asks the user only true unknowns and decides points with an evident answer without asking.

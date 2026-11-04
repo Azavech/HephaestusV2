@@ -25,13 +25,16 @@ Read and change HephaestusV2 data (projects, tickets, comments, bundles, chats, 
 
 - Never invent a requirement, a behaviour, a name or value visible to users, a text shown to users, a file format or a product decision. Everything of this kind that you build comes from the user's messages, the ticket with its comments and attachments, the docs, or the existing code.
 - Technical choices inside the code that change no documented behaviour are yours to make.
-- Before you ask, look for the answer yourself in the ticket, its comments and attachments, the docs, the code and the git history. Ask only what is still unknown.
+- Before you ask, look for the answer yourself in the ticket, its comments and attachments, the docs, the code and the git history.
+- Ask only true unknowns: points where several answers are reasonable and neither the user's messages, the ticket with its comments, the docs, the code nor the answers already given settle them.
+- A point with one evident answer, one that follows from the user's request, the docs, the code or a decision already made, is not an unknown: decide it without asking. When you write a ticket, state such a point in it as decided.
 - Statements that contradict each other, such as a comment that contradicts the description, are an unknown.
 - Ask what is still unknown before you act on it, then end your turn and wait. Never continue on a guess to be confirmed later.
 - In comments and replies, report only what you did and checked.
 
 # Asking questions
 
+- Ask only the true unknowns that "Never invent" defines: never ask about a point with an evident answer.
 - Ask only with ask_questions, never with questions written in your reply.
 - Put every point that is unknown at that moment into one call, with at most 26 questions.
 - Label the questions A, B, C and so on, in order, starting at A in every call.

@@ -265,6 +265,36 @@ struct PromptAndNamingTests {
         #expect(section.contains("Tell the user which chats were not closed and why."))
     }
 
+    @Test("Claude asks only true unknowns and decides evident points, in every chat kind and in comment answers")
+    func onlyTrueUnknowns() throws {
+        let values = ["projectName": "Hephaestus V2", "projectID": "HEPH", "projectRoot": "/Users/example/Developer/HephaestusV2",
+                      "deviceName": "Studio", "docsPath": "docs", "projectCommands": "- build: make build"]
+        let unknowns = "- Ask only true unknowns: points where several answers are reasonable and neither the user's messages, "
+            + "the ticket with its comments, the docs, the code nor the answers already given settle them.\n"
+        let evident = "- A point with one evident answer, one that follows from the user's request, the docs, the code or a decision "
+            + "already made, is not an unknown: decide it without asking. When you write a ticket, state such a point in it as decided.\n"
+        let asking = "# Asking questions\n\n- Ask only the true unknowns that \"Never invent\" defines: "
+            + "never ask about a point with an evident answer.\n"
+        for kind in [ChatKind.project, .ticket, .bundle, .feedback] {
+            let prompt = Prompts.systemPrompt(kind: kind, values: values)
+            let lower = try #require(prompt.range(of: "# Never invent")).lowerBound
+            let upper = try #require(prompt.range(of: "# Asking questions")).lowerBound
+            let neverInvent = String(prompt[lower..<upper])
+            #expect(neverInvent.contains(unknowns), "\(kind)")
+            #expect(neverInvent.contains(evident), "\(kind)")
+            #expect(!neverInvent.contains("Ask only what is still unknown."), "\(kind)")
+            #expect(prompt.contains(asking), "\(kind)")
+        }
+
+        let answer = Prompts.text(.commentAnswer)
+        #expect(answer.contains("- Ask only true unknowns: points where several answers are reasonable and neither the comment, "
+            + "the ticket with its comments, the docs, the code nor the answers already given settle them.\n"))
+        #expect(answer.contains("- A point with one evident answer, one that follows from the comment, the docs, the code or a decision "
+            + "already made, is not an unknown: decide it without asking. When you rewrite the ticket's description, state such a point in it as decided.\n"))
+        #expect(answer.contains("When something you need is a true unknown, or when statements contradict each other, do not guess"))
+        #expect(answer.contains("Put every true unknown into them and no point with an evident answer,"))
+    }
+
     @Test("The rendered common prompt tells Claude to write an SF Symbol as ![](sf:<name>)")
     func sfSymbolPrompt() throws {
         let rule = "# SF Symbols\n\nWhen you name an SF Symbol in a reply or in ask_questions, write it as ![](sf:<name>), "
