@@ -1,6 +1,6 @@
 # HephaestusV2 documentation
 
-HephaestusV2 is a macOS app (macOS 26 or later) that coordinates the work on all of a user's projects. A toolbar selector chooses the device, the project and the sub project, as in Xcode. Each project has tickets and bundles, Claude chats, a code editor for Go and Swift with a file browser, its Markdown documentation, web tabs and the skills it enables from the app's own skills library. Claude runs through the Claude CLI and reads and changes the app's data through the app's MCP server. Another Mac running HephaestusV2 can show and work on a Mac's projects live. Feedback sent with the ladybug of the status bar becomes a ticket that Claude writes. GitHub Actions builds a release from every push to `main`, and a second executable, the Updater, installs it. The files of this folder are the specification of the app.
+HephaestusV2 is a macOS app (macOS 26 or later) that coordinates the work on all of a user's projects. A toolbar selector chooses the device, the project and the sub project, as in Xcode. Each project has tickets and bundles, Claude chats, a code editor for Go and Swift with a file browser and a Contract view for OpenAPI files, its Markdown documentation, web tabs and the skills it enables from the app's own skills library. Claude runs through the Claude CLI and reads and changes the app's data through the app's MCP server. Another Mac running HephaestusV2 can show and work on a Mac's projects live. Feedback sent with the ladybug of the status bar becomes a ticket that Claude writes. GitHub Actions builds a release from every push to `main`, and a second executable, the Updater, installs it. The files of this folder are the specification of the app.
 
 ## Docs first
 
@@ -17,7 +17,7 @@ Every change starts in these docs; the code is generated or updated to match the
 2. [architecture.md](architecture.md): the engine, its clients, the modules and the processes.
 3. [ui.md](ui.md), [projects.md](projects.md), [dashboard.md](dashboard.md) and [tickets.md](tickets.md): the windows, the projects and the tickets the user works with.
 4. [workflow.md](workflow.md), [chats.md](chats.md) and [mcp.md](mcp.md): how Claude works in the app.
-5. The other features: [web-tabs.md](web-tabs.md), [code-editor.md](code-editor.md), [documentation-viewer.md](documentation-viewer.md), [costs.md](costs.md), [search.md](search.md), [skills.md](skills.md), [feedback.md](feedback.md) and [remote.md](remote.md).
+5. The other features: [web-tabs.md](web-tabs.md), [code-editor.md](code-editor.md), [openapi.md](openapi.md), [documentation-viewer.md](documentation-viewer.md), [costs.md](costs.md), [search.md](search.md), [skills.md](skills.md), [feedback.md](feedback.md) and [remote.md](remote.md).
 6. The reference contracts, read when a feature needs them: [data-model.md](data-model.md) and [engine-api.md](engine-api.md).
 7. Delivery: [updater.md](updater.md), [ci.md](ci.md) and [development.md](development.md).
 
@@ -37,6 +37,7 @@ Every change starts in these docs; the code is generated or updated to match the
 | [mcp.md](mcp.md)                                   | The MCP server: transport, authentication, every tool with its schema, results and errors, external use and debug tools.                                                           |
 | [web-tabs.md](web-tabs.md)                         | The integrated browser: tab strip, address bar, navigation, locked tabs, popups, downloads and website data.                                                                       |
 | [code-editor.md](code-editor.md)                   | File tree, editor tabs, the editor, saving, changes on disk and the syntax highlighting rules for Go, Swift and the basic languages.                                               |
+| [openapi.md](openapi.md)                           | The Contract view of OpenAPI 3.x files in the Code section: detection, the Source switch, `$ref` resolution, the request form, sending, the response and the stored values.        |
 | [documentation-viewer.md](documentation-viewer.md) | The Docs section with its Preview, Edit and Split modes, and the shared Markdown renderer.                                                                                         |
 | [costs.md](costs.md)                               | The cost of each chat and comment answer, the project totals with sub projects, the costs of deleted chats, the Costs section and the status bar item.                             |
 | [search.md](search.md)                             | Search scopes, matching, ranking, sources, snippets and the search panel.                                                                                                          |

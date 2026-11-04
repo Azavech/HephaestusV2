@@ -380,24 +380,24 @@ HephaestusV2.app/
 
 `Resources/Info.plist` is copied into the bundle by `scripts/build-app.sh`, which sets the three keys marked "build-app.sh" ([Build steps](#build-steps)).
 
-| Key                              | Type             | Value                                                                                                             | Set by                      |
-| -------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| `CFBundleDevelopmentRegion`      | string           | `en`                                                                                                              | the file                    |
-| `CFBundleExecutable`             | string           | `HephaestusV2`                                                                                                    | the file                    |
-| `CFBundleIconFile`               | string           | `AppIcon`                                                                                                         | the file                    |
-| `CFBundleIdentifier`             | string           | `ca.azavech.hephaestusv2`                                                                                         | the file                    |
-| `CFBundleInfoDictionaryVersion`  | string           | `6.0`                                                                                                             | the file                    |
-| `CFBundleName`                   | string           | `HephaestusV2`                                                                                                    | the file                    |
-| `CFBundlePackageType`            | string           | `APPL`                                                                                                            | the file                    |
-| `CFBundleShortVersionString`     | string           | The version, `X.Y.Z`; `0.0.0` in the file                                                                         | build-app.sh `--version`    |
-| `CFBundleVersion`                | string           | The build number; `0` in the file                                                                                 | build-app.sh `--build`      |
-| `HephaestusReleaseRepository`    | string           | `<owner>/<name>` of the GitHub repository that publishes the releases; empty in the file                          | build-app.sh `--repository` |
-| `LSApplicationCategoryType`      | string           | `public.app-category.developer-tools`                                                                             | the file                    |
-| `LSMinimumSystemVersion`         | string           | `26.0`                                                                                                            | the file                    |
-| `NSAppTransportSecurity`         | dictionary       | `NSAllowsArbitraryLoadsInWebContent` = true                                                                       | the file                    |
-| `NSBonjourServices`              | array of strings | `_hephaestus2._tcp`                                                                                               | the file                    |
-| `NSHighResolutionCapable`        | boolean          | true                                                                                                              | the file                    |
-| `NSLocalNetworkUsageDescription` | string           | `HephaestusV2 uses the local network to find your other Macs running HephaestusV2 and to work on their projects.` | the file                    |
+| Key                              | Type             | Value                                                                                                                  | Set by                      |
+| -------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| `CFBundleDevelopmentRegion`      | string           | `en`                                                                                                                   | the file                    |
+| `CFBundleExecutable`             | string           | `HephaestusV2`                                                                                                         | the file                    |
+| `CFBundleIconFile`               | string           | `AppIcon`                                                                                                              | the file                    |
+| `CFBundleIdentifier`             | string           | `ca.azavech.hephaestusv2`                                                                                              | the file                    |
+| `CFBundleInfoDictionaryVersion`  | string           | `6.0`                                                                                                                  | the file                    |
+| `CFBundleName`                   | string           | `HephaestusV2`                                                                                                         | the file                    |
+| `CFBundlePackageType`            | string           | `APPL`                                                                                                                 | the file                    |
+| `CFBundleShortVersionString`     | string           | The version, `X.Y.Z`; `0.0.0` in the file                                                                              | build-app.sh `--version`    |
+| `CFBundleVersion`                | string           | The build number; `0` in the file                                                                                      | build-app.sh `--build`      |
+| `HephaestusReleaseRepository`    | string           | `<owner>/<name>` of the GitHub repository that publishes the releases; empty in the file                               | build-app.sh `--repository` |
+| `LSApplicationCategoryType`      | string           | `public.app-category.developer-tools`                                                                                  | the file                    |
+| `LSMinimumSystemVersion`         | string           | `26.0`                                                                                                                 | the file                    |
+| `NSAppTransportSecurity`         | dictionary       | `NSAllowsArbitraryLoads` = true ([Web tabs](web-tabs.md#infoplist), [OpenAPI contracts](openapi.md#sending-a-request)) | the file                    |
+| `NSBonjourServices`              | array of strings | `_hephaestus2._tcp`                                                                                                    | the file                    |
+| `NSHighResolutionCapable`        | boolean          | true                                                                                                                   | the file                    |
+| `NSLocalNetworkUsageDescription` | string           | `HephaestusV2 uses the local network to find your other Macs running HephaestusV2 and to work on their projects.`      | the file                    |
 
 - `HephaestusReleaseRepository` is read by the [Updater](updater.md#release-feed), by the feedback project resolution ([Feedback](feedback.md#feedback-project)) and by Settings > Updates ([UI](ui.md#updates)). CI passes `github.repository`; local builds pass the Makefile's `RELEASE_REPOSITORY` ([Local make targets](#local-make-targets)).
 - `NSBonjourServices` and `NSLocalNetworkUsageDescription` are those of [Remote devices](remote.md#infoplist-keys).
@@ -437,7 +437,7 @@ Contents of `Resources/Info.plist`:
 	<string>26.0</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
 	<key>NSBonjourServices</key>

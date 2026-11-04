@@ -83,12 +83,19 @@ private struct EditorArea: View {
                               selectedPath: state.selectedEditorPath)
                 Divider()
                 if let selected {
-                    CodeEditorView(buffer: selected.buffer, workspace: workspace)
-                        .overlay(alignment: .top) {
-                            GoToLineAnchor(isPresented: $commands.goToLineShown) {
-                                selected.buffer.loadedTextController
-                            }
+                    Group {
+                        // An OpenAPI contract shows the mode bar (docs/openapi.md › Contract and Source).
+                        if selected.buffer.isOpenAPI, selected.buffer.content == .text {
+                            OpenAPITabView(buffer: selected.buffer, workspace: workspace)
+                        } else {
+                            CodeEditorView(buffer: selected.buffer, workspace: workspace)
                         }
+                    }
+                    .overlay(alignment: .top) {
+                        GoToLineAnchor(isPresented: $commands.goToLineShown) {
+                            selected.buffer.loadedTextController
+                        }
+                    }
                 } else {
                     Color.clear
                         .frame(maxWidth: .infinity, maxHeight: .infinity)

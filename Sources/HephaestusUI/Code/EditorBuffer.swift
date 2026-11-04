@@ -90,6 +90,12 @@ final class EditorBuffer {
     /// UTF-16 range.
     var selection = NSRange(location: 0, length: 0)
     var isSaving = false
+    /// True when the last read found an OpenAPI 3.x contract; Code tabs only (docs/openapi.md ›
+    /// Detection).
+    var isOpenAPI = false
+    /// The tab shows the Contract view rather than Source; kept while the tab is open
+    /// (docs/openapi.md › Contract and Source).
+    var showsContract = true
 
     var isDirty: Bool { text != diskText }
 
@@ -133,6 +139,15 @@ final class EditorBuffer {
     @ObservationIgnored private var holds = 0
     @ObservationIgnored private var checkWhenReleased = false
     @ObservationIgnored private var checkAfterLoad = false
+    @ObservationIgnored private var contractModelIfLoaded: OpenAPIContractModel?
+
+    /// The state of the tab's Contract view, created when it first shows.
+    var contractModel: OpenAPIContractModel {
+        if let contractModelIfLoaded { return contractModelIfLoaded }
+        let model = OpenAPIContractModel(buffer: self)
+        contractModelIfLoaded = model
+        return model
+    }
 
     /// A buffer still to be loaded with `files.read`.
     init(path: String, role: Role = .codeTab, isRestored: Bool = false) {
@@ -214,6 +229,21 @@ final class EditorBuffer {
             task.cancel()
         }
         tasks.removeAll()
+        contractModelIfLoaded?.stop()
+    }
+
+    /// Detection of OpenAPI 3.x contracts, run each time the buffer takes the text of a read
+    /// (docs/openapi.md › Detection); a tab whose file becomes a contract shows the Contract view.
+    private func detectContract() {
+        guard role == .codeTab, content == .text, language == .yaml || language == .json else {
+            isOpenAPI = false
+            return
+        }
+        let detected = OpenAPIDetection.isContract(text: text, isJSON: language == .json)
+        if detected, !isOpenAPI {
+            showsContract = true
+        }
+        isOpenAPI = detected
     }
 
     /// True when a `files.changed` path is the buffer's path or a folder above it, or `""`.
@@ -293,10 +323,12 @@ final class EditorBuffer {
             content = .text
             editorUndoManager.removeAllActions()
             textControllerIfLoaded?.syncWithHost()
+            detectContract()
         } else {
             text = ""
             diskText = ""
             isReadOnly = false
+            isOpenAPI = false
             if let base64 = file.dataBase64 {
                 binaryData = Data(base64Encoded: base64)
                 content = .binary(size: file.size)
@@ -406,6 +438,7 @@ final class EditorBuffer {
         isReadOnly = file.size > Self.readOnlyThreshold
         editorUndoManager.removeAllActions()
         textControllerIfLoaded?.syncWithHost()
+        detectContract()
     }
 
     // MARK: Banners (docs/code-editor.md › Banners)
@@ -426,6 +459,7 @@ final class EditorBuffer {
             size = fileSize
             binaryData = data
             content = notice
+            isOpenAPI = false
         case nil:
             checkDisk()
         }

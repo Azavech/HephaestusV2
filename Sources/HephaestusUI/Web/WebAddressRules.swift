@@ -200,3 +200,17 @@ enum LocalhostRewrite {
         return parts.string
     }
 }
+
+extension LocalhostRewrite {
+    /// The device address of a window that shows a remote device; nil for This Mac. It is the
+    /// paired record's host: the stored or typed host, or after a Bonjour connection the IPv4
+    /// address of its remote endpoint (docs/remote.md › Device address). Web tabs and the requests
+    /// of OpenAPI forms use it (docs/openapi.md › Sending a request).
+    @MainActor
+    static func deviceAddress(of window: WindowState?) -> String? {
+        guard let window, let workspace = window.workspace, !workspace.isLocal else { return nil }
+        let deviceID = workspace.deviceID
+        return window.app?.pairedDevices.first { $0.id.uuidString == deviceID }?.host
+            ?? workspace.remoteConnection?.device.host
+    }
+}

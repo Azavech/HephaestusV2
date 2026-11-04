@@ -275,7 +275,7 @@ Values other than the persistent store are design-time choices. Default chosen a
 
 ### Info.plist
 
-`NSAppTransportSecurity` contains `NSAllowsArbitraryLoadsInWebContent` = true, so web views load plain `http` pages, such as development servers on another Mac. The app's own connections are not affected. Default chosen at design time.
+`NSAppTransportSecurity` contains `NSAllowsArbitraryLoads` = true, so web views load plain `http` pages, such as development servers on another Mac, and the app's own HTTP client sends the plain `http` requests of OpenAPI request forms ([OpenAPI contracts](openapi.md#sending-a-request)). `NSAllowsArbitraryLoadsInWebContent` is not set: when it is present, macOS ignores `NSAllowsArbitraryLoads`.
 
 ## Remote windows
 

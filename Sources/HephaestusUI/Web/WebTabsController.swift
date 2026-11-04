@@ -463,10 +463,7 @@ final class WebTabsController: SectionCommandHandler {
     /// paired record's host: the stored or typed host, or after a Bonjour connection the IPv4
     /// address of its remote endpoint (docs/remote.md › Paired devices).
     var deviceAddress: String? {
-        guard let window, let workspace = window.workspace, !workspace.isLocal else { return nil }
-        let deviceID = workspace.deviceID
-        return window.app?.pairedDevices.first { $0.id.uuidString == deviceID }?.host
-            ?? workspace.remoteConnection?.device.host
+        LocalhostRewrite.deviceAddress(of: window)
     }
 
     /// A stored URL as the web view loads it.

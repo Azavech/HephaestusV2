@@ -838,7 +838,7 @@ Stream and action events are never queued. Mutation results are not written into
 
 ## Localhost rewrite
 
-Web tabs are loaded by the WKWebView of the Mac whose window shows them ([Web tabs](web-tabs.md)). A window that shows a remote device rewrites URLs that point to the loopback interface so that they reach the main device.
+Web tabs are loaded by the WKWebView of the Mac whose window shows them ([Web tabs](web-tabs.md)), and the requests of an OpenAPI contract's request form are sent by the HTTP client of that Mac ([OpenAPI contracts](openapi.md#sending-a-request)). A window that shows a remote device rewrites URLs that point to the loopback interface so that they reach the main device.
 
 ### Device address
 
@@ -851,7 +851,7 @@ The device address is the one of the current connection. While a device is not c
 
 ### Forward rewrite
 
-A window that shows a remote device applies the rewrite to the URL it loads when a tab is shown and to every navigation of the tab's web view (main frame and frames): when the scheme is `http` or `https` and the host, compared case-insensitively, is `localhost`, `127.0.0.1` or `::1` (written `[::1]` in URLs), the host is replaced by the device address. Scheme, user info, port, path, query and fragment are kept; no port is added to a URL without one. Other URLs are loaded unchanged. Subresource requests (images, scripts, `fetch`) are not rewritten. The navigation coverage is Default chosen at design time.
+A window that shows a remote device applies the rewrite to the URL it loads when a tab is shown and to every navigation of the tab's web view (main frame and frames): when the scheme is `http` or `https` and the host, compared case-insensitively, is `localhost`, `127.0.0.1` or `::1` (written `[::1]` in URLs), the host is replaced by the device address. Scheme, user info, port, path, query and fragment are kept; no port is added to a URL without one. Other URLs are loaded unchanged. Subresource requests (images, scripts, `fetch`) are not rewritten. The navigation coverage is Default chosen at design time. The same rewrite applies to the URL of an OpenAPI request and of each of its redirects; the request form keeps the URL as typed.
 
 | Stored URL                            | Device address | Loaded URL                               |
 | ------------------------------------- | -------------- | ---------------------------------------- |
@@ -871,16 +871,17 @@ When a remote window reports a tab's new URL after a navigation (`webTabs.update
 
 ## Remote windows
 
-| Feature                                                                                             | Window that shows a remote device                                                                                                                        |
-| --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Projects, tickets, bundles, chats, files, docs, search, skills, runs                                | The same Engine API calls as a local window, executed by the main device. Claude processes, the MCP server and project files stay on the main device.    |
-| Web pages                                                                                           | Loaded by this Mac's WKWebView with this Mac's website data store (its own logins), with the [localhost rewrite](#localhost-rewrite).                    |
-| Feedback screenshot                                                                                 | Taken on this Mac and sent inside `chats.createFeedback` ([Feedback](feedback.md)).                                                                      |
-| Files dropped, pasted or picked                                                                     | Read on this Mac and sent as AttachmentUpload (base64) inside the request ([Tickets and bundles](tickets.md)).                                           |
-| Folder choice in New Project and Open Project                                                       | A folder browser over `fs.browse` of the main device instead of the system open panel ([Projects](projects.md)).                                         |
-| Settings window                                                                                     | Always This Mac's settings ([UI](ui.md#settings-window)).                                                                                                |
-| Commands that show a project file or folder in this Mac's Finder (Show in Finder, Reveal in Finder) | Hidden. Commands that open a temporary copy of a file or attachment on this Mac (Quick Look, Open With Default App) stay. Default chosen at design time. |
-| Menus, keyboard shortcuts, windows                                                                  | Identical to local windows ([UI](ui.md)).                                                                                                                |
+| Feature                                                                                             | Window that shows a remote device                                                                                                                                                                                                             |
+| --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Projects, tickets, bundles, chats, files, docs, search, skills, runs                                | The same Engine API calls as a local window, executed by the main device. Claude processes, the MCP server and project files stay on the main device.                                                                                         |
+| Web pages                                                                                           | Loaded by this Mac's WKWebView with this Mac's website data store (its own logins), with the [localhost rewrite](#localhost-rewrite).                                                                                                         |
+| OpenAPI requests                                                                                    | Sent by this Mac's HTTP client with the [localhost rewrite](#localhost-rewrite); the contract and the files of its refs are read through the engine; the form values are stored on this Mac ([OpenAPI contracts](openapi.md#remote-windows)). |
+| Feedback screenshot                                                                                 | Taken on this Mac and sent inside `chats.createFeedback` ([Feedback](feedback.md)).                                                                                                                                                           |
+| Files dropped, pasted or picked                                                                     | Read on this Mac and sent as AttachmentUpload (base64) inside the request ([Tickets and bundles](tickets.md)).                                                                                                                                |
+| Folder choice in New Project and Open Project                                                       | A folder browser over `fs.browse` of the main device instead of the system open panel ([Projects](projects.md)).                                                                                                                              |
+| Settings window                                                                                     | Always This Mac's settings ([UI](ui.md#settings-window)).                                                                                                                                                                                     |
+| Commands that show a project file or folder in this Mac's Finder (Show in Finder, Reveal in Finder) | Hidden. Commands that open a temporary copy of a file or attachment on this Mac (Quick Look, Open With Default App) stay. Default chosen at design time.                                                                                      |
+| Menus, keyboard shortcuts, windows                                                                  | Identical to local windows ([UI](ui.md)).                                                                                                                                                                                                     |
 
 ## Failure states
 

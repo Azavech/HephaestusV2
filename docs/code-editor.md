@@ -1,6 +1,6 @@
 # Code editor
 
-The Code section (⌘5) shows the active project's folder as a lazy file tree next to editor tabs and a source code editor. The editor is an `NSTextView` with a line-number ruler, SF Mono 13, current-line highlight, automatic indentation, line comment toggling, find and replace, go to line, and syntax highlighting from HephaestusText: complete for Go and Swift, basic for Markdown, JSON, YAML and Shell. Files are read and written through the engine of the window's device, so the editor works the same on a remote device; saving checks that the file did not change since it was read, and changes made on disk by Claude, another client or another program reload clean files silently and raise a "changed on disk" banner on files with unsaved changes. This document specifies the tree, the tabs, the editor, saving and conflicts, and the exact token rules of every highlighted language together with the token colors shared by the editor and every rendered code block.
+The Code section (⌘5) shows the active project's folder as a lazy file tree next to editor tabs and a source code editor. The editor is an `NSTextView` with a line-number ruler, SF Mono 13, current-line highlight, automatic indentation, line comment toggling, find and replace, go to line, and syntax highlighting from HephaestusText: complete for Go and Swift, basic for Markdown, JSON, YAML and Shell. Files are read and written through the engine of the window's device, so the editor works the same on a remote device; saving checks that the file did not change since it was read, and changes made on disk by Claude, another client or another program reload clean files silently and raise a "changed on disk" banner on files with unsaved changes. A YAML or JSON file that holds an OpenAPI 3.x contract opens on a Contract view, with a switch to the editor ([OpenAPI contracts](openapi.md)). This document specifies the tree, the tabs, the editor, saving and conflicts, and the exact token rules of every highlighted language together with the token colors shared by the editor and every rendered code block.
 
 ## Layout
 
@@ -18,13 +18,13 @@ The Code section (⌘5) shows the active project's folder as a lazy file tree ne
   file tree, 260 pt                      editor area
 ```
 
-| Part        | Content                                                                                                                                 |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Tree header | The project name and a `+` button with the menu New File…, New Folder… (for the [location](#new-file-and-new-folder) of the selection). |
-| File tree   | [File tree](#file-tree).                                                                                                                |
-| Editor tabs | [Editor tabs](#editor-tabs).                                                                                                            |
-| Banner      | One of the [banners](#banners), above the editor.                                                                                       |
-| Editor      | The selected tab's [editor](#editor), or its notice for files that cannot be edited.                                                    |
+| Part        | Content                                                                                                                                                                                                                                             |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tree header | The project name and a `+` button with the menu New File…, New Folder… (for the [location](#new-file-and-new-folder) of the selection).                                                                                                             |
+| File tree   | [File tree](#file-tree).                                                                                                                                                                                                                            |
+| Editor tabs | [Editor tabs](#editor-tabs).                                                                                                                                                                                                                        |
+| Banner      | One of the [banners](#banners), above the editor.                                                                                                                                                                                                   |
+| Editor      | The selected tab's [editor](#editor), or its notice for files that cannot be edited. An OpenAPI contract's tab shows the mode bar `Contract`, `Source` above the Contract view or the editor ([OpenAPI contracts](openapi.md#contract-and-source)). |
 
 The divider between tree and editor is draggable (180 to 480 pt). With no open tab the editor area shows `No Open File` and the line `Select a file in the tree.`. Sizes and texts are design-time choices. Default chosen at design time.
 
@@ -110,7 +110,7 @@ A file opens when it is clicked in the tree, when a `file` navigation target arr
 
 1. A `file` target whose path no tab has first lists the parent folder with `files.list`. When the path is a folder there, the folders above it are expanded, the folder is selected and scrolled into view in the tree, and the editor tabs and their selection stay as they are; the steps below do not apply. When the listing fails or does not show the path as a folder, the target opens as a file.
 2. When a tab already has the path, it is selected; otherwise a tab is added and selected. For a `file` target the folders above the file are expanded and the file is selected in the tree, as Reveal in File Tree does.
-3. A new tab reads the file with `files.read` and creates its [buffer](#editor-buffers) from the result ([Large and binary files](#large-and-binary-files)). When that read finds a folder (a folder the listing of step 1 did not show), the tab is removed, the tab selected before it is selected again, and the folder is revealed and selected in the tree as in step 1.
+3. A new tab reads the file with `files.read` and creates its [buffer](#editor-buffers) from the result ([Large and binary files](#large-and-binary-files)). A text that holds an OpenAPI 3.x contract ([Detection](openapi.md#detection)) opens on the Contract view, with the switch to Source ([Contract and Source](openapi.md#contract-and-source)). When that read finds a folder (a folder the listing of step 1 did not show), the tab is removed, the tab selected before it is selected again, and the folder is revealed and selected in the tree as in step 1.
 4. A `file` target with `line` n selects line n (its text without the line break; n is clamped to 1 through the number of lines), puts that line in the vertical middle of the view and gives the editor the focus. Without `line` the insertion point goes to the start of the file.
 5. A path that does not exist shows `File <path> was not found.` in the editor area (the buffer's content `notFound`, [Editor buffers](#editor-buffers)).
 
@@ -266,6 +266,8 @@ public struct EditorTabState: Identifiable {
     public var banner: EditorBanner?
     public var selection: NSRange           // UTF-16 range
     public var isSaving: Bool
+    public var isOpenAPI: Bool              // the last read found an OpenAPI 3.x contract (Code tabs only)
+    public var showsContract: Bool          // the tab shows the Contract view rather than Source
     public var isDirty: Bool { text != diskText }
 }
 
@@ -286,11 +288,13 @@ public enum EditorBanner: Equatable {
 
 Besides this data, a buffer holds what the rules above need: the pending reveal of a `file` target (line or end of text), whether its editor has the keyboard focus (for the menu items), the size of the last read and the bytes of a binary file (Quick Look), and the window's engine connection and project. Default chosen at design time.
 
+`isOpenAPI` is set each time the buffer takes the text of a read ([Detection](openapi.md#detection)); when it becomes true, `showsContract` becomes true. `showsContract` is changed by the mode bar and kept while the tab is open ([Contract and Source](openapi.md#contract-and-source)). A buffer of an OpenAPI contract also holds its Contract view's state: the parsed contract, the selected row, the forms and the last responses, none of them persisted.
+
 The large-file banner is derived from `isReadOnly`. "Unsaved changes" everywhere in the app means `isDirty` ([UI](ui.md#unsaved-changes-and-quitting)); the Updater's idle check counts them too ([Updater](updater.md)).
 
 ## Remote windows
 
-The Code section is the same in a window that shows a remote device ([Remote devices](remote.md#remote-windows)): listing, reading, writing, creating, renaming and trashing are engine calls executed by the main device, formatting runs there, and every window receives the `files.changed` events. Show in Finder is hidden; Quick Look copies are written on the Mac that shows the window.
+The Code section is the same in a window that shows a remote device ([Remote devices](remote.md#remote-windows)): listing, reading, writing, creating, renaming and trashing are engine calls executed by the main device, formatting runs there, and every window receives the `files.changed` events. Show in Finder is hidden; Quick Look copies are written on the Mac that shows the window. The requests of an OpenAPI contract's request form run on the Mac that shows the window, with the localhost rewrite of web tabs, and their form values are stored on that Mac ([OpenAPI contracts](openapi.md#remote-windows)).
 
 ## Not included
 
@@ -358,6 +362,8 @@ extension TokenKind {
 | the first line starts with `#!` and names the interpreter `sh`, `bash`, `zsh`, `ksh` or `dash` (the last path component of the first word, or the word after `env`) | shell    |
 | the first line starts with `#!` and names the interpreter `swift`                                                                                                   | swift    |
 | any other file                                                                                                                                                      | plain    |
+
+An OpenAPI contract keeps the language `yaml` or `json` and its highlighting in Source; whether its tab shows the Contract view is decided from its text ([OpenAPI contracts › Detection](openapi.md#detection)).
 
 ### Token kinds and colors
 
@@ -748,3 +754,4 @@ These tests are design-time additions to the conformance tests of [CI](ci.md). D
 
 - R13: A project has a Code section with a file browser.
 - R14: A code editor for Go and Swift is included.
+- R142: In the Code section, an OpenAPI 3.0 or 3.1 contract opens on a read-only Contract view, with a switch to its source, that shows its info, its operations by tag and its schemas with their `$ref` pointers resolved across the project's files, and sends each operation's request from a form whose values are kept per project on the Mac that shows the window, credentials included.
