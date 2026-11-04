@@ -261,6 +261,23 @@ struct ModelCodingTests {
         #expect(throws: Never.self) { try YAMLCoding.decode(ChatMeta.self, from: base + "kind: feedback\nticket: HEPH-12\n") }
     }
 
+    @Test("questionsBlocked: false by default, written only when true, only for kind ticket")
+    func chatQuestionsBlocked() throws {
+        let base = "id: 3F2504E0-4F89-11D3-9A0C-0305E82C3301\ncreated: 2026-10-31T13:00:00Z\n"
+        let open = try YAMLCoding.decode(ChatMeta.self, from: base + "kind: ticket\nticket: HEPH-1\n")
+        #expect(!open.questionsBlocked)
+        #expect(!(try YAMLCoding.encode(open)).contains("questionsBlocked"))
+        let blocked = try YAMLCoding.decode(ChatMeta.self, from: base + "kind: ticket\nticket: HEPH-1\nquestionsBlocked: true\n")
+        #expect(blocked.questionsBlocked)
+        #expect(blocked.unknownKeys.isEmpty)
+        #expect(try YAMLCoding.encode(blocked).contains("questionsBlocked: true\n"))
+        #expect(try StorageJSON.decoder().decode(ChatMeta.self, from: try StorageJSON.lineEncoder().encode(blocked)).questionsBlocked)
+        for other in ["kind: project\n", "kind: bundle\nbundle: HEPH-B1\n", "kind: feedback\n"] {
+            #expect(throws: (any Error).self) { try YAMLCoding.decode(ChatMeta.self, from: base + other + "questionsBlocked: true\n") }
+            #expect(throws: Never.self) { try YAMLCoding.decode(ChatMeta.self, from: base + other + "questionsBlocked: false\n") }
+        }
+    }
+
     @Test("The runtime keys of ChatMeta, backgroundWork included, are ignored in files and carried in JSON")
     func chatMetaRuntimeKeys() throws {
         let yaml = "id: 3F2504E0-4F89-11D3-9A0C-0305E82C3301\nkind: project\ncreated: 2026-10-31T13:00:00Z\nprojectID: HEPH\nstate: running\n"

@@ -53,11 +53,12 @@ extension Engine {
 
     /// Appends the `user` item with the stored attachments, the linked items and `sender`,
     /// delivers the message to the chat's Claude process with the context of its linked items for
-    /// the linked items hook, writes the metadata (`chat.updated`) with `closed` false, and starts
-    /// the naming when this is the chat's first user message with text (docs/chats.md › User
-    /// messages, › Linked items hook, › Closing a chat).
+    /// the linked items hook, writes the metadata (`chat.updated`) with `closed` false, and
+    /// `questionsBlocked` false when `unblocksQuestions`, and starts the naming when this is the
+    /// chat's first user message with text (docs/chats.md › User messages, › Linked items hook,
+    /// › Closing a chat, › Implement and feedback chats).
     func sendChatMessage(_ chatID: ChatID, text: String, attachments stored: [(Attachment, Data)],
-                         linkedItems: [ChatLinkedItem] = [], sender: String, origin: Actor) throws {
+                         linkedItems: [ChatLinkedItem] = [], sender: String, unblocksQuestions: Bool = false, origin: Actor) throws {
         let meta = try requireChat(chatID)
         let folder = try chatFolder(meta)
         let text = ModelRules.normalizedLineBreaks(text)
@@ -88,6 +89,7 @@ extension Engine {
         var current = domain.chat(chatID) ?? meta
         // A message reopens a closed chat (docs/chats.md › Closing a chat).
         current.closed = false
+        if unblocksQuestions { current.questionsBlocked = false }
         try saveChatMeta(current, origin: origin)
         if startsNaming { startChatNaming(chatID, firstMessage: text) }
     }

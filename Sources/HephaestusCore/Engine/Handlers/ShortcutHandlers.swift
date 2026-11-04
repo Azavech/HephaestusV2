@@ -9,6 +9,7 @@ extension Engine {
     /// then the project type, the rules and the waiting request.
     func chatsPostShortcut(_ params: ChatsPostShortcut.Params, _ actor: Actor) async throws -> ShortcutRequest {
         try ActorRules.requireOwnChat(params.chatID, actor)
+        try ActorRules.requireQuestionsAllowed(domain.chat(params.chatID), actor)
         let meta = try requireChat(params.chatID)
         try requireSwiftApplication(meta.projectID, else: Engine.shortcutProjectTypeRefusal)
         let trim: (String) -> String = { $0.trimmingCharacters(in: .whitespacesAndNewlines) }

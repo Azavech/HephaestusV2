@@ -58,7 +58,8 @@ public enum ChatsCreate: EngineMethod {
     public typealias Result = ChatMeta
 }
 
-/// `chats.send`. Actors: user.
+/// `chats.send`. Actors: user. Removes `questionsBlocked` from an implement chat
+/// (docs/engine-api.md › chats.send).
 public enum ChatsSend: EngineMethod {
     public static let name = "chats.send"
     public struct Params: Codable, Sendable, Hashable {
@@ -182,7 +183,7 @@ public enum ChatsAnswerPermission: EngineMethod {
 }
 
 /// `chats.postQuestions`: called by the MCP tool `ask_questions`. Actors: claude (the chat's own
-/// Claude only).
+/// Claude only), refused while the chat's metadata holds `questionsBlocked`.
 public enum ChatsPostQuestions: EngineMethod {
     public static let name = "chats.postQuestions"
     public struct Params: Codable, Sendable, Hashable {
@@ -221,7 +222,7 @@ public enum ChatsAnswerQuestion: EngineMethod {
 }
 
 /// `chats.postSymbol`: called by the MCP tool `ask_symbol`. Actors: claude (the chat's own Claude
-/// only).
+/// only), refused while the chat's metadata holds `questionsBlocked`.
 public enum ChatsPostSymbol: EngineMethod {
     public static let name = "chats.postSymbol"
     public struct Params: Codable, Sendable, Hashable {
@@ -485,7 +486,8 @@ public enum ChatsAnswerAnimation: EngineMethod {
     public typealias Result = Empty
 }
 
-/// `chats.implementTicket`. Actors: user, claude.
+/// `chats.implementTicket`. Actors: user, claude. The chat it creates has `questionsBlocked` true
+/// (docs/engine-api.md › chats.implementTicket).
 public enum ChatsImplementTicket: EngineMethod {
     public static let name = "chats.implementTicket"
     public struct Params: Codable, Sendable, Hashable {

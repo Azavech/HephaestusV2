@@ -201,11 +201,13 @@ extension Engine {
     /// (`chat.updated`), then links it to its ticket or bundle (docs/data-model.md › Changes that
     /// touch several files). A given `bundleStatus` is set on the bundle in the same write.
     private func createChat(kind: ChatKind, project: Project, ticketID: TicketID?, bundleID: BundleID?, settings chosen: ChatSettings?,
-                            orchestratorChatID: ChatID? = nil, bundleStatus: BundleStatus? = nil, origin: Actor) throws -> ChatMeta {
+                            orchestratorChatID: ChatID? = nil, questionsBlocked: Bool = false, bundleStatus: BundleStatus? = nil,
+                            origin: Actor) throws -> ChatMeta {
         let now = ISODate.now()
         let meta = ChatMeta(id: UUID(), kind: kind, ticketID: ticketID, bundleID: bundleID, orchestratorChatID: orchestratorChatID,
                             created: now, updated: now,
-                            settings: chosen ?? project.chatDefaults ?? settings.defaultChatSettings, projectID: project.id)
+                            settings: chosen ?? project.chatDefaults ?? settings.defaultChatSettings, questionsBlocked: questionsBlocked,
+                            projectID: project.id)
         let saved = try saveChatMeta(meta, origin: origin)
         chats.scannedChats.insert(meta.id)
         chats.hasTextMessage[meta.id] = false
@@ -239,10 +241,11 @@ extension Engine {
         guard let projectID = ticket.projectID, let project = domain.project(projectID) else { throw EngineError.notFound("Ticket", ticketID) }
         let orchestrator = orchestratorChat(of: ticketID, actor)
         // An orchestrated ticket chat takes its orchestrator's settings (docs/chats.md ›
-        // Orchestrated ticket chats).
+        // Orchestrated ticket chats). Every chat created here is an implement chat, which asks no
+        // question until the user writes in it (docs/chats.md › Implement and feedback chats).
         let meta = try createChat(kind: .ticket, project: project, ticketID: ticketID, bundleID: nil,
                                   settings: params.settings ?? orchestrator?.chat.settings,
-                                  orchestratorChatID: orchestrator?.chat.id, origin: actor)
+                                  orchestratorChatID: orchestrator?.chat.id, questionsBlocked: true, origin: actor)
         recordDrivingDevice(meta.id, actor)
         let text: String
         if let orchestrator {
@@ -348,8 +351,10 @@ extension Engine {
         _ = try requireChat(params.chatID)
         recordDrivingDevice(params.chatID, actor)
         let stored = try storeChatAttachments(prepared, chatID: params.chatID)
+        // The user's message lifts the refusal of questions in an implement chat (docs/engine-api.md ›
+        // chats.send).
         try sendChatMessage(params.chatID, text: params.message.text, attachments: stored,
-                            linkedItems: params.message.linkedItems ?? [], sender: sender, origin: actor)
+                            linkedItems: params.message.linkedItems ?? [], sender: sender, unblocksQuestions: true, origin: actor)
         return Empty()
     }
 
@@ -488,6 +493,7 @@ extension Engine {
     /// `chats.postQuestions` (docs/chats.md › Posting questions).
     func chatsPostQuestions(_ params: ChatsPostQuestions.Params, _ actor: Actor) async throws -> QuestionSet {
         try ActorRules.requireOwnChat(params.chatID, actor)
+        try ActorRules.requireQuestionsAllowed(domain.chat(params.chatID), actor)
         try Engine.validated { try ModelRules.questions(params.questions) }
         let questions = params.questions.map { question in
             let recommended = question.recommended.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -590,6 +596,7 @@ extension Engine {
     /// `chats.postSymbol` (docs/chats.md › Posting a symbol request).
     func chatsPostSymbol(_ params: ChatsPostSymbol.Params, _ actor: Actor) async throws -> SymbolRequest {
         try ActorRules.requireOwnChat(params.chatID, actor)
+        try ActorRules.requireQuestionsAllowed(domain.chat(params.chatID), actor)
         let catalog = SFSymbolCatalog.system
         if !chats.loggedSymbolCatalogProblems {
             chats.loggedSymbolCatalogProblems = true
@@ -656,6 +663,7 @@ extension Engine {
     /// `chats.postColor` (docs/chats.md › Posting a color request).
     func chatsPostColor(_ params: ChatsPostColor.Params, _ actor: Actor) async throws -> ColorRequest {
         try ActorRules.requireOwnChat(params.chatID, actor)
+        try ActorRules.requireQuestionsAllowed(domain.chat(params.chatID), actor)
         let suggestions = params.suggestions.map(\.trimmed)
         let recommended = params.recommended.trimmed
         let lightAndDark = params.lightAndDark ?? false
@@ -717,6 +725,7 @@ extension Engine {
     /// of its project, the rules, then the waiting request.
     func chatsPostSound(_ params: ChatsPostSound.Params, _ actor: Actor) async throws -> SoundRequest {
         try ActorRules.requireOwnChat(params.chatID, actor)
+        try ActorRules.requireQuestionsAllowed(domain.chat(params.chatID), actor)
         let meta = try requireChat(params.chatID)
         try requireSwiftApplication(meta.projectID,
                                     else: EngineError(.forbidden, "ask_sound is only available in Swift application projects."))
@@ -781,6 +790,7 @@ extension Engine {
     /// font catalogue of this device for the chat's project.
     func chatsPostFont(_ params: ChatsPostFont.Params, _ actor: Actor) async throws -> FontRequest {
         try ActorRules.requireOwnChat(params.chatID, actor)
+        try ActorRules.requireQuestionsAllowed(domain.chat(params.chatID), actor)
         let sample = ModelRules.normalizedLineBreaks(params.sample.trimmingCharacters(in: .whitespacesAndNewlines))
         let suggestions = params.suggestions.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         let recommended = params.recommended.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -845,6 +855,7 @@ extension Engine {
     /// the project type, the rules, then the waiting request.
     func chatsPostAnimation(_ params: ChatsPostAnimation.Params, _ actor: Actor) async throws -> AnimationRequest {
         try ActorRules.requireOwnChat(params.chatID, actor)
+        try ActorRules.requireQuestionsAllowed(domain.chat(params.chatID), actor)
         let meta = try requireChat(params.chatID)
         try requireSwiftApplication(meta.projectID,
                                     else: EngineError(.forbidden, "ask_animation is available only in Swift application projects."))

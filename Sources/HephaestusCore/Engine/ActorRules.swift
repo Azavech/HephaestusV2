@@ -47,6 +47,19 @@ enum ActorRules {
     /// The message of chats.postQuestions and of `ask_questions` with the external token.
     static let ownChatOnly = EngineError(.forbidden, "Only the chat's own Claude can ask questions.")
 
+    /// chats.postQuestions and the other requests to the user: refused while the chat's metadata
+    /// holds `questionsBlocked`, in an implement chat the user has not written in yet
+    /// (docs/workflow.md › Implement chats). Checked after `requireOwnChat`; a chat that does not
+    /// exist passes, and fails later with `notFound`.
+    static func requireQuestionsAllowed(_ chat: ChatMeta?, _ actor: Actor) throws {
+        guard actor.kind != .system, chat?.questionsBlocked == true else { return }
+        throw questionsBlocked
+    }
+
+    /// The message of chats.postQuestions and the other requests in an implement chat.
+    static let questionsBlocked = EngineError(
+        .forbidden, "This chat implements a ticket and cannot ask questions: decide yourself and note the choice in the completion comment.")
+
     /// The message of chats.close and of `close_chat` with the external token.
     static let ownChatCloseOnly = EngineError(.forbidden, "Only the chat's own Claude can close its chat.")
 

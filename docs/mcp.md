@@ -408,6 +408,7 @@ A chat token runs every engine call as the actor `claude` with the chat's id, th
 | A comment added by Claude has `author: claude`                                                                                                                                                                                                                                                                | tickets.addComment ([Tickets](tickets.md#comments))                                                                                                                                                                                    | —                      |
 | Claude never sets a ticket title at creation, chat settings or project chat defaults                                                                                                                                                                                                                          | The tools never send these params ([Engine API](engine-api.md#rules-for-claude))                                                                                                                                                       | —                      |
 | Only the chat's own Claude asks questions, symbol, color, sound, shortcut, font and animation requests                                                                                                                                                                                                        | `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font`, `ask_animation`, chats.postQuestions, chats.postSymbol, chats.postColor, chats.postSound, chats.postShortcut, chats.postFont, chats.postAnimation | `forbidden`            |
+| An implement chat asks no question, symbol, color, sound, shortcut, font or animation request until the user writes in it (`This chat implements a ticket and cannot ask questions: decide yourself and note the choice in the completion comment.`)                                                          | chats.postQuestions, chats.postSymbol, chats.postColor, chats.postSound, chats.postShortcut, chats.postFont, chats.postAnimation, while the chat's metadata holds `questionsBlocked` ([Workflow](workflow.md#implement-chats))         | `forbidden`            |
 | Claude asks for a sound only in a project of type Swift application                                                                                                                                                                                                                                           | chats.postSound ([Projects](projects.md#project-types))                                                                                                                                                                                | `forbidden`            |
 | Shortcut requests are posted only in Swift application projects                                                                                                                                                                                                                                               | `ask_shortcut`, chats.postShortcut ([Workflow](workflow.md#shortcut-requests))                                                                                                                                                         | `forbidden`            |
 | Animation requests are posted only in Swift application projects                                                                                                                                                                                                                                              | `ask_animation`, chats.postAnimation ([Workflow](workflow.md#animation-requests))                                                                                                                                                      | `forbidden`            |
@@ -1412,6 +1413,7 @@ Input schema:
 - **Result:** plain text, not JSON ([Text returned to Claude](#text-returned-to-claude)).
 - **Errors:**
   - The external token (`forbidden`, message above).
+  - The chat is an implement chat whose metadata holds `questionsBlocked`: the user has not written in it yet (`forbidden`, `This chat implements a ticket and cannot ask questions: decide yourself and note the choice in the completion comment.`) ([Workflow](workflow.md#implement-chats)).
   - A [question rule](#question-rules) fails (`invalid`).
   - The chat already has a question set without all its answers, a symbol request without answer, a color request without answer, a sound request without answer, a shortcut request without answer, a font request without answer or an animation request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostquestions)).
 
@@ -1517,6 +1519,7 @@ B: Skipped
 - **Result:** plain text, not JSON. On success the text is exactly `symbol request shown; the answer arrives in the next user message; end your turn`, and Claude then ends its turn ([Workflow](workflow.md#symbol-requests)). Default chosen at design time.
 - **Errors:**
   - The external token (`forbidden`, message above).
+  - The chat is an implement chat whose metadata holds `questionsBlocked`: the user has not written in it yet (`forbidden`, `This chat implements a ticket and cannot ask questions: decide yourself and note the choice in the completion comment.`) ([Workflow](workflow.md#implement-chats)).
   - A [symbol rule](#symbol-rules) fails (`invalid`).
   - The chat already has a question set without all its answers, a symbol request without answer, a color request without answer, a sound request without answer, a shortcut request without answer, a font request without answer or an animation request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostsymbol)).
 
@@ -1580,6 +1583,7 @@ Symbol: ![](sf:line.3.horizontal.decrease.circle)
 - **Result:** plain text, not JSON. On success the text is exactly `color request shown; the answer arrives in the next user message; end your turn`, and Claude then ends its turn ([Workflow](workflow.md#color-requests)). Default chosen at design time.
 - **Errors:**
   - The external token (`forbidden`, message above).
+  - The chat is an implement chat whose metadata holds `questionsBlocked`: the user has not written in it yet (`forbidden`, `This chat implements a ticket and cannot ask questions: decide yourself and note the choice in the completion comment.`) ([Workflow](workflow.md#implement-chats)).
   - A suggestion or `recommended` is neither a string nor an object with the strings `light` and `dark` (`invalid`, the message of params that do not decode, [Engine API](engine-api.md#dispatcher-errors)).
   - A [color rule](#color-rules) fails (`invalid`).
   - The chat already has a question set without all its answers, a symbol request without answer, a color request without answer, a sound request without answer, a shortcut request without answer, a font request without answer or an animation request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostcolor)).
@@ -1652,6 +1656,7 @@ Color: Light ![](color:#FFFFFF), Dark ![](color:#1C1C1E)
 - **Result:** plain text, not JSON. On success the text is exactly `sound request shown; the answer arrives in the next user message; end your turn`, and Claude then ends its turn ([Workflow](workflow.md#sound-requests)). Default chosen at design time.
 - **Errors:**
   - The external token (`forbidden`, message above).
+  - The chat is an implement chat whose metadata holds `questionsBlocked`: the user has not written in it yet (`forbidden`, `This chat implements a ticket and cannot ask questions: decide yourself and note the choice in the completion comment.`) ([Workflow](workflow.md#implement-chats)).
   - The project type is not `swiftApplication` (`forbidden`, message above).
   - A [sound rule](#sound-rules) fails (`invalid`).
   - The chat already has a question set without all its answers, a symbol request without answer, a color request without answer, a sound request without answer, a shortcut request without answer, a font request without answer or an animation request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostsound)).
@@ -1717,6 +1722,7 @@ Sound: ![](sound:iOS 26.1/sms-received1.caf)
 - **Result:** plain text, not JSON. On success the text is exactly `shortcut request shown; the answer arrives in the next user message; end your turn`, and Claude then ends its turn ([Workflow](workflow.md#shortcut-requests)). Default chosen at design time.
 - **Errors:**
   - The external token (`forbidden`, message above).
+  - The chat is an implement chat whose metadata holds `questionsBlocked`: the user has not written in it yet (`forbidden`, `This chat implements a ticket and cannot ask questions: decide yourself and note the choice in the completion comment.`) ([Workflow](workflow.md#implement-chats)).
   - The chat's project is not a Swift application (`forbidden`, message above).
   - A [shortcut rule](#shortcut-rules) fails (`invalid`).
   - The chat already has a question set without all its answers, a symbol request without answer, a color request without answer, a sound request without answer, a shortcut request without answer, a font request without answer or an animation request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostshortcut)).
@@ -1801,6 +1807,7 @@ Shortcut: ![](shortcut:⇧⌘K)
 - **Result:** plain text, not JSON. On success the text is exactly `font request shown; the answer arrives in the next user message; end your turn`, and Claude then ends its turn ([Workflow](workflow.md#font-requests)). Default chosen at design time.
 - **Errors:**
   - The external token (`forbidden`, message above).
+  - The chat is an implement chat whose metadata holds `questionsBlocked`: the user has not written in it yet (`forbidden`, `This chat implements a ticket and cannot ask questions: decide yourself and note the choice in the completion comment.`) ([Workflow](workflow.md#implement-chats)).
   - A [font rule](#font-rules) fails (`invalid`).
   - The chat already has a question set without all its answers, a symbol request without answer, a color request without answer, a sound request without answer, a shortcut request without answer, a font request without answer or an animation request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostfont)).
 
@@ -1871,6 +1878,7 @@ Font: ![](font:System Rounded/Semibold/17)
 - **Result:** plain text, not JSON. On success the text is exactly `animation request shown; the answer arrives in the next user message; end your turn`, and Claude then ends its turn ([Workflow](workflow.md#animation-requests)). Default chosen at design time.
 - **Errors:**
   - The external token (`forbidden`, message above).
+  - The chat is an implement chat whose metadata holds `questionsBlocked`: the user has not written in it yet (`forbidden`, `This chat implements a ticket and cannot ask questions: decide yourself and note the choice in the completion comment.`) ([Workflow](workflow.md#implement-chats)).
   - The chat's project is not a Swift application (`forbidden`, message above).
   - An [animation rule](#animation-rules) fails (`invalid`).
   - The chat already has a question set without all its answers, a symbol request without answer, a color request without answer, a sound request without answer, a shortcut request without answer, a font request without answer or an animation request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostanimation)).
@@ -3084,3 +3092,4 @@ Unauthorized: missing or invalid bearer token.
 - R136: In a Swift application project, Claude asks the user to choose a SwiftUI animation with `ask_animation`: each suggestion plays in a lane, the user compares them, sets a preset and its parameters in a Custom row, picks one, answers another way or skips.
 - R137: Claude closes other chats of the project when the user asks it to, never on its own; a chat with a turn in progress is not closed.
 - R140: A comment that mentions `@Claude` gets an answer from Claude as a new comment, made by a one-shot call without a chat; typing `@` in the comment composer suggests Claude, mentions are highlighted, Claude may change the ticket's title, description, links and status, a row shows while Claude replies and offers Retry when it could not, and the answers count in the project's costs.
+- R145: A chat started to implement a ticket asks the user no question until the user writes in it: it makes the choices itself, marks them in the docs and lists them, with the decisions it took, in its completion comment; the engine refuses its questions.
