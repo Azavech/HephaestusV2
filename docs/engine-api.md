@@ -148,14 +148,14 @@ A failed call returns an [EngineError](#engineerror) `{code, message}`.
 
 ### Error codes
 
-| Code        | Meaning                                                                                                                                                                                                                                                                                                                                                                                 |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| notFound    | The method, or an object named by the params, does not exist: project, ticket, bundle, chat, comment, attachment, run, file, directory, skill, web tab, question set, symbol request, color request, sound request, shortcut request, font request, animation request, sound or permission request.                                                                                     |
-| invalid     | The params do not decode or break a validation rule.                                                                                                                                                                                                                                                                                                                                    |
-| conflict    | The call clashes with the current state: an id or a file already exists, a file changed since `expectedModified`, a run is already running, a question set, a symbol request, a color request, a sound request, a shortcut request, a font request or an animation request is waiting or already answered, a ticket to implement is done, a bundle to implement is in progress or done. |
-| forbidden   | The actor may not do this: a method or param not open to the actor, a ticket or bundle status rule, a locked web tab, a protected path.                                                                                                                                                                                                                                                 |
-| unavailable | A required service is missing: the Claude CLI, the Trash, the skills library folder, or the connection to the device.                                                                                                                                                                                                                                                                   |
-| internal    | Unexpected failure: file system error, process start failure, encoding failure.                                                                                                                                                                                                                                                                                                         |
+| Code        | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| notFound    | The method, or an object named by the params, does not exist: project, ticket, bundle, chat, comment, attachment, run, file, directory, skill, web tab, question set, symbol request, color request, sound request, shortcut request, font request, animation request, sound, permission request, workflow or agent.                                                                                                       |
+| invalid     | The params do not decode or break a validation rule.                                                                                                                                                                                                                                                                                                                                                                       |
+| conflict    | The call clashes with the current state: an id or a file already exists, a file changed since `expectedModified`, a run is already running, a question set, a symbol request, a color request, a sound request, a shortcut request, a font request or an animation request is waiting or already answered, a ticket to implement is done, a bundle to implement is in progress or done, a workflow to stop is not running. |
+| forbidden   | The actor may not do this: a method or param not open to the actor, a ticket or bundle status rule, a locked web tab, a protected path.                                                                                                                                                                                                                                                                                    |
+| unavailable | A required service is missing: the Claude CLI, the Trash, the skills library folder, or the connection to the device.                                                                                                                                                                                                                                                                                                      |
+| internal    | Unexpected failure: file system error, process start failure, encoding failure.                                                                                                                                                                                                                                                                                                                                            |
 
 ### Dispatcher errors
 
@@ -243,6 +243,9 @@ The first column lists every engine method; it is the list the docs conformance 
 | `chats.implementTicket`    | ChatsImplementTicket    | ticketID, settings?                                        | ChatMeta         | user, claude |
 | `chats.implementBundle`    | ChatsImplementBundle    | bundleID, settings?                                        | ChatMeta         | user, claude |
 | `chats.createFeedback`     | ChatsCreateFeedback     | projectID, comment, screenshot, context, settings?         | ChatMeta         | user         |
+| `chats.listAgents`         | ChatsListAgents         | projectID                                                  | [ChatAgents]     | user         |
+| `chats.agentTranscript`    | ChatsAgentTranscript    | chatID, agentID                                            | [ChatItem]       | user         |
+| `chats.stopWorkflow`       | ChatsStopWorkflow       | chatID, workflowID                                         | Empty            | user         |
 | `sounds.list`              | SoundsList              | projectID                                                  | [String]         | user         |
 | `sounds.read`              | SoundsRead              | projectID, name                                            | BinaryContent    | user         |
 | `claude.models`            | ClaudeModels            | none                                                       | [ClaudeModel]    | user         |
@@ -1501,6 +1504,60 @@ Creates a chat of kind feedback in the project and sends its first user message,
 
 Events: chat.updated, chat.item (the first user message), then the events of a running chat.
 
+### chats.listAgents
+
+Swift type `ChatsListAgents` · actors: user · result: [ChatAgents](#chatagents) array
+
+| Param     | Type      | Required | Description         |
+| --------- | --------- | -------- | ------------------- |
+| projectID | ProjectID | yes      | Project identifier. |
+
+Returns the workflows and agents of the project's chats ([Agents](chats.md#agents)): one entry per chat that has at least one workflow or agent, sorted by chat id. The engine reads the agents file of every chat of the project the first time ([Storage of agents](chats.md#storage-of-agents)). Clients call it with `chats.list` and keep it current with chat.agents.
+
+| Error    | When                                   |
+| -------- | -------------------------------------- |
+| invalid  | projectID is malformed.                |
+| notFound | No loaded project has this identifier. |
+
+Events: none.
+
+### chats.agentTranscript
+
+Swift type `ChatsAgentTranscript` · actors: user · result: [ChatItem](data-model.md#chat-items) array
+
+| Param   | Type   | Required | Description                                                                  |
+| ------- | ------ | -------- | ---------------------------------------------------------------------------- |
+| chatID  | ChatID | yes      | Chat id.                                                                     |
+| agentID | String | yes      | The `id` of one of the chat's agents ([ChatAgent](data-model.md#chatagent)). |
+
+Returns the agent's transcript in transcript order: for a workflow agent, the items of its [agent transcript file](data-model.md#agent-transcript-file) after replay; for a sub-agent, the items of [Sub-agent transcripts](chats.md#sub-agent-transcripts), taken from the chat's transcript. Clients keep it current with chat.agentItem.
+
+| Error    | When                                                                             |
+| -------- | -------------------------------------------------------------------------------- |
+| invalid  | chatID is not a UUID.                                                            |
+| notFound | No such chat; the chat has no agent with this id (`Agent <agentID> not found.`). |
+
+Events: none.
+
+### chats.stopWorkflow
+
+Swift type `ChatsStopWorkflow` · actors: user · result: [Empty](#empty)
+
+| Param      | Type   | Required | Description                                                                           |
+| ---------- | ------ | -------- | ------------------------------------------------------------------------------------- |
+| chatID     | ChatID | yes      | Chat id.                                                                              |
+| workflowID | String | yes      | The `id` of one of the chat's workflows ([ChatWorkflow](data-model.md#chatworkflow)). |
+
+Writes the control request `stop_task` for the workflow to the chat's Claude process, in every chat state, and returns without waiting for the answer ([Stopping a workflow](chats.md#stopping-a-workflow)). The workflow and its agents become stopped when the CLI reports it; an error answer adds a warning item to the chat.
+
+| Error    | When                                                                                                   |
+| -------- | ------------------------------------------------------------------------------------------------------ |
+| invalid  | chatID is not a UUID.                                                                                  |
+| notFound | No such chat; the chat has no workflow with this id (`Workflow <workflowID> not found.`).              |
+| conflict | The workflow is not running, or the chat has no live Claude process (`This workflow is not running.`). |
+
+Events: none at once; chat.agents with origin system when the CLI reports the stop.
+
 ## Sounds
 
 The [sound catalogue](chats.md#sound-catalogue) of a project, for the search of the pinned sound card, and the files of its sounds, which the windows play ([Sound playback](chats.md#sound-playback)). A window that shows a remote device calls them on the main device, so it lists and plays the sounds of the main device. The two methods are Default chosen at design time.
@@ -2163,7 +2220,7 @@ Events: ui.open.
 Every event travels as an [EngineEventEnvelope](#engineeventenvelope) `{name, origin, data}`:
 
 - `name` is the event name below.
-- `origin` is the [Actor](#actor) of the call that caused the event. Background work of the engine carries `system`: Haiku naming results, chat.notification, the output and exit of Claude processes (chat.item, chat.delta and chat.updated of a running chat), run output and exit (run.output, run.finished), changes made outside the engine, the `gitRemoteURL` reads (project.updated), and timers ([Architecture](architecture.md#callers-and-actors)).
+- `origin` is the [Actor](#actor) of the call that caused the event. Background work of the engine carries `system`: Haiku naming results, chat.notification, the output and exit of Claude processes (chat.item, chat.delta and chat.updated of a running chat, chat.agents and chat.agentItem of its workflows and agents), run output and exit (run.output, run.finished), changes made outside the engine, the `gitRemoteURL` reads (project.updated), and timers ([Architecture](architecture.md#callers-and-actors)).
 - `data` is the payload below.
 
 ### Event list
@@ -2181,6 +2238,8 @@ Every event travels as an [EngineEventEnvelope](#engineeventenvelope) `{name, or
 | chat.deleted      | ChatDeletedEvent      | {projectID, chatID}                                   | A chat was deleted.                                                                                                                                              |
 | chat.item         | ChatItemEvent         | {chatID, item ChatItem}                               | A transcript item was added, or replaced (same `id`).                                                                                                            |
 | chat.delta        | ChatDeltaEvent        | {chatID, itemID, kind, append}                        | Claude streams text, thinking or tool input. Not persisted.                                                                                                      |
+| chat.agents       | ChatAgentsEvent       | ChatAgents                                            | A chat's workflows or agents changed: one was created or its state, title, phase, summary or run id changed ([Agents](chats.md#agents)).                         |
+| chat.agentItem    | ChatAgentItemEvent    | {chatID, agentID, item ChatItem}                      | An item was added to the transcript of one of a chat's agents ([Agents](chats.md#agents)).                                                                       |
 | files.changed     | FilesChangedEvent     | {projectID, paths [String]}                           | Files changed under a project root.                                                                                                                              |
 | webTabs.updated   | WebTabsUpdatedEvent   | {projectID, tabs [WebTab]}                            | A project's web tabs changed.                                                                                                                                    |
 | skills.changed    | SkillsChangedEvent    | [SkillSummary]: the complete `skills.list` result     | The skills library changed, including files inside a skill.                                                                                                      |
@@ -2210,6 +2269,9 @@ Every event travels as an [EngineEventEnvelope](#engineeventenvelope) `{name, or
 | chat.delta        | itemID    | String           | Id of the item being streamed; the chat.item that completes it carries the same id ([Chats](chats.md#item-ids)).                                                                                                                 |
 | chat.delta        | kind      | String           | `text`, `thinking` or `toolInput`.                                                                                                                                                                                               |
 | chat.delta        | append    | String           | Text to append: to the item's text for `text` and `thinking`, to the raw JSON of the tool input for `toolInput`.                                                                                                                 |
+| chat.agentItem    | chatID    | ChatID           | Chat of the agent.                                                                                                                                                                                                               |
+| chat.agentItem    | agentID   | String           | The `id` of the agent ([ChatAgent](data-model.md#chatagent)).                                                                                                                                                                    |
+| chat.agentItem    | item      | ChatItem         | The complete item; it replaces a received item of the agent with the same `id`, otherwise it is appended.                                                                                                                        |
 | files.changed     | projectID | ProjectID        | One event per loaded project whose root contains the changed paths; a sub project gets its own event with its own relative paths.                                                                                                |
 | files.changed     | paths     | [String]         | Project paths that changed. A directory path means that anything below it may have changed; `[""]` means the whole project.                                                                                                      |
 | webTabs.updated   | projectID | ProjectID        | Project of the tabs.                                                                                                                                                                                                             |
@@ -2794,6 +2856,17 @@ Rules:
 | ----- | ---------- | -------- | ----------------------------------------------------------------------------------- |
 | meta  | ChatMeta   | yes      | Chat metadata with `projectID` and `state`.                                         |
 | items | [ChatItem] | yes      | Every transcript item in transcript order ([Data model](data-model.md#chat-items)). |
+
+### ChatAgents
+
+The workflows and agents of one chat ([Agents](chats.md#agents)): the result entries of `chats.listAgents` and the payload of chat.agents.
+
+| Field     | Type                                             | Required | Description                                                                                                 |
+| --------- | ------------------------------------------------ | -------- | ----------------------------------------------------------------------------------------------------------- |
+| chatID    | ChatID                                           | yes      | Chat id.                                                                                                    |
+| projectID | ProjectID                                        | yes      | Project of the chat.                                                                                        |
+| workflows | [ChatWorkflow](data-model.md#chatworkflow) array | yes      | The chat's workflows, in the order of their `started`, then of their creation.                              |
+| agents    | [ChatAgent](data-model.md#chatagent) array       | yes      | The chat's agents, workflow agents and sub-agents, in the order of their `started`, then of their creation. |
 
 ### ChatState
 

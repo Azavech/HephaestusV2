@@ -94,6 +94,8 @@ extension Engine {
         chats.runtimes[chatID]?.deltas.drop(item.id)
         chats.runtimes[chatID]?.turnReport.record(item)
         emit(ChatItemEvent.self, .init(chatID: chatID, item: item), origin: origin)
+        // docs/chats.md › Agents: workflow and sub-agent calls, and the items of sub-agents.
+        if op == .add { trackAgentItem(item, chatID: chatID) }
         // A chat that is not scanned yet gets its cost from the whole transcript when it is.
         if op == .add, case .result(let result) = item, let cost = result.costUSD, chats.scannedChats.contains(chatID) {
             chats.costs[chatID, default: ChatCost()].add(cost)

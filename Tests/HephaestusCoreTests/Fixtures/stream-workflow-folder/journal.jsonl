@@ -1,0 +1,5 @@
+{"type":"launched"}
+{"type":"started","key":"v2:53b4d1a12f05586c8e5311439e7752d035825a9127c6b80a64bc9bab03fb31b2","agentId":"abd107d9822b6600d","label":"probe-a","phase":"Probe"}
+{"type":"started","key":"v2:8496a09aa89c943ae4da7f4cedea21d021906f18d7a608b0e62347413217f214","agentId":"afa76c5ae2246d66b","label":"probe-b","phase":"Probe"}
+{"type":"result","key":"v2:53b4d1a12f05586c8e5311439e7752d035825a9127c6b80a64bc9bab03fb31b2","agentId":"abd107d9822b6600d","result":"ok"}
+{"type":"result","key":"v2:8496a09aa89c943ae4da7f4cedea21d021906f18d7a608b0e62347413217f214","agentId":"afa76c5ae2246d66b","result":"ok"}

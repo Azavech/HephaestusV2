@@ -49,9 +49,10 @@ struct LinkedChatsView: View {
     }
 
     /// Sets the chat of a Chats tab (`chatsTabSelection`) and whether it shows a draft
-    /// (`chatsTabDrafts`).
+    /// (`chatsTabDrafts`); the tab shows the chat's view, not one of its workflows or agents.
     static func select(_ chatID: String?, draft: Bool, owner: LinkedChatsOwner, window: WindowState, projectID: String) {
         window.updateViewState(of: projectID) { state in
+            state.chatsTabAgentSelection[owner.id] = nil
             if let chatID {
                 state.chatsTabSelection[owner.id] = chatID
             } else if !draft {
@@ -138,6 +139,38 @@ struct LinkedChatsView: View {
 
     private var showsDraft: Bool {
         viewState.chatsTabDrafts.contains(owner.id)
+    }
+
+    /// The workflow or agent of the selected chat shown in place of its view (docs/tickets.md ›
+    /// Ticket chats and Implement).
+    private func selectedAgent(_ chats: [ChatMeta]) -> ChatAgentSelection? {
+        guard !showsDraft, let selection = viewState.chatsTabAgentSelection[owner.id],
+              selection.chatID == selectedChatID(chats) else { return nil }
+        return selection
+    }
+
+    /// Shows a workflow or an agent of a chat of this tab in place of the chat view.
+    private func selectAgent(_ selection: ChatAgentSelection) {
+        window.updateViewState(of: projectID) { state in
+            state.chatsTabSelection[owner.id] = selection.chatID
+            state.chatsTabAgentSelection[owner.id] = selection
+            state.chatsTabDrafts.remove(owner.id)
+        }
+    }
+
+    /// The rows of the list: each listed chat followed by the rows of its workflows and agents,
+    /// indented with it when it is an orchestrated ticket chat.
+    private func listRows(_ rows: [Row]) -> [(row: ChatListRow, nested: Bool)] {
+        rows.flatMap { listed in
+            [(ChatListRow.chat(listed.meta), listed.nested)] + agentRows(listed.meta).map { (ChatListRow.agent($0), listed.nested) }
+        }
+    }
+
+    /// The rows of a chat's workflows and agents: the running ones, and the ended ones while the
+    /// chat is unfolded (docs/chats.md › Where chats appear).
+    private func agentRows(_ meta: ChatMeta) -> [ChatAgentRow] {
+        let chatID = meta.id.uuidString
+        return ChatAgentRows.rows(workspace.agents[chatID], expanded: ChatAgentRows.isExpanded(chatID, window: window, projectID: projectID))
     }
 
     var body: some View {
@@ -251,35 +284,49 @@ struct LinkedChatsView: View {
     // MARK: List
 
     private func list(_ rows: [Row]) -> some View {
-        let selectedID = showsDraft ? nil : selectedChatID(rows.map(\.meta))
+        let chats = rows.map(\.meta)
+        let selectedID = showsDraft ? nil : (selectedAgent(chats)?.tag ?? selectedChatID(chats))
         return List(selection: Binding<String?>(
             get: { selectedID },
             set: { id in
                 guard let id else { return }
-                select(id, draft: false)
+                if let agent = ChatAgentSelection(tag: id) {
+                    selectAgent(agent)
+                } else {
+                    select(id, draft: false)
+                }
             }
         )) {
-            ForEach(rows) { listed in
-                let meta = listed.meta
-                row(meta)
-                    .padding(.leading, listed.nested ? 22 : 0)
-                    .tag(meta.id.uuidString)
-                    .contextMenu {
-                        Button("Open in New Window") {
-                            window.app?.openChatWindow(ChatWindowValue(deviceID: workspace.deviceID, chatID: meta.id.uuidString))
-                        }
-                        Button("Rename…") {
-                            renameText = meta.title
-                            renamingID = meta.id.uuidString
-                            DispatchQueue.main.async { renameFocused = true }
-                        }
-                        .disabled(!window.isConnected)
-                        Button("Close") { close(meta) }
-                            .disabled(!window.isConnected || !ChatActions.canClose([meta]))
-                        Divider()
-                        Button("Delete…") { delete(meta) }
+            // Each chat followed by its workflows and agents (docs/chats.md › Where chats appear),
+            // one row per element.
+            ForEach(listRows(rows), id: \.row.id) { entry in
+                switch entry.row {
+                case .chat(let meta):
+                    row(meta)
+                        .padding(.leading, entry.nested ? 22 : 0)
+                        .contextMenu {
+                            Button("Open in New Window") {
+                                window.app?.openChatWindow(ChatWindowValue(deviceID: workspace.deviceID, chatID: meta.id.uuidString))
+                            }
+                            Button("Rename…") {
+                                renameText = meta.title
+                                renamingID = meta.id.uuidString
+                                DispatchQueue.main.async { renameFocused = true }
+                            }
                             .disabled(!window.isConnected)
-                    }
+                            Button("Close") { close(meta) }
+                                .disabled(!window.isConnected || !ChatActions.canClose([meta]))
+                            Divider()
+                            Button("Delete…") { delete(meta) }
+                                .disabled(!window.isConnected)
+                        }
+                        .tag(entry.row.id)
+                case .agent(let agentRow):
+                    ChatAgentRowView(row: agentRow)
+                        .padding(.leading, entry.nested ? 22 : 0)
+                        .chatAgentRowMenu(agentRow, workspace: workspace, window: window)
+                        .tag(entry.row.id)
+                }
             }
         }
         .listStyle(.inset)
@@ -287,6 +334,9 @@ struct LinkedChatsView: View {
 
     private func row(_ meta: ChatMeta) -> some View {
         HStack(spacing: 8) {
+            if ChatAgentRows.hasEndedRows(workspace.agents[meta.id.uuidString]) {
+                ChatAgentsDisclosure(chatID: meta.id.uuidString, window: window, projectID: projectID)
+            }
             Image(systemName: Self.kindSymbol(meta.kind))
                 .foregroundStyle(.secondary)
                 .frame(width: 16)
@@ -339,6 +389,8 @@ struct LinkedChatsView: View {
                 select(chatID.uuidString, draft: false)
             }
             .id(draftIdentity)
+        } else if let agent = selectedAgent(chats) {
+            ChatAgentDetailView(selection: agent, workspace: workspace, window: window, select: selectAgent)
         } else if let chatID = selectedChatID(chats) {
             ChatView(chatID: chatID, workspace: workspace)
                 .id(chatID)

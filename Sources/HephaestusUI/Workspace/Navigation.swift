@@ -137,7 +137,10 @@ extension WindowState {
         case .bundle(let bundleID):
             updateViewState { $0.selectedBundleID = bundleID }
         case .chat(let chatID):
-            updateViewState { $0.selectedChatIDs = [chatID.uuidString] }
+            updateViewState {
+                $0.selectedChatIDs = [chatID.uuidString]
+                $0.selectedChatAgent = nil
+            }
         case .doc(_, let path, let fragment):
             if viewState.selectedDocPath != path {
                 if let buffer = viewState.docBuffer, buffer.hasUnsavedChanges {

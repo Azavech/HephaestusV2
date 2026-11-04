@@ -104,7 +104,7 @@ public enum EngineMethods {
         ChatsPostFont.self, ChatsAnswerFont.self,
         ChatsPostAnimation.self, ChatsAnswerAnimation.self,
         ChatsImplementTicket.self, ChatsImplementBundle.self,
-        ChatsCreateFeedback.self,
+        ChatsCreateFeedback.self, ChatsListAgents.self, ChatsAgentTranscript.self, ChatsStopWorkflow.self,
         SoundsList.self, SoundsRead.self,
         ClaudeModels.self, ClaudeStatusMethod.self, ClaudePlanUsage.self, ClaudeReportPlanUsage.self,
         FilesList.self, FilesRead.self, FilesWrite.self, FilesCreate.self, FilesRename.self, FilesTrash.self, FilesFonts.self,

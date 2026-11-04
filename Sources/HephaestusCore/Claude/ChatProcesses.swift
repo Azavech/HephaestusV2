@@ -299,10 +299,17 @@ extension Engine {
             process.background.tasksChanged(taskIDs)
             updateIdleTimer(chatID, runtime: runtime, process: process)
             reportChatState(chatID)
-        case .taskNotification(let taskID):
+        case .taskNotification(let taskID, let toolUseID, let status):
             process.background.taskEnded(taskID, cliTurnOpen: process.turns.cliTurnOpen)
             updateIdleTimer(chatID, runtime: runtime, process: process)
             reportChatState(chatID)
+            agentTaskNotification(taskID, toolUseID: toolUseID, status: status, chatID: chatID)
+        case .taskStarted(let start):
+            agentTaskStarted(start, chatID: chatID)
+        case .taskProgress(let progress):
+            agentTaskProgress(progress, chatID: chatID)
+        case .taskUpdated(let taskID, let status):
+            agentTaskUpdated(taskID, status: status, chatID: chatID)
         case .delta(let itemID, let kind, let text):
             runtime.deltas.append(itemID: itemID, kind: kind, text: text)
             scheduleDeltaFlush(chatID)
@@ -330,6 +337,7 @@ extension Engine {
             process.stopTask?.cancel()
             process.stopTask = nil
             appendChatItemLogging(.result(item), chatID: chatID)
+            agentTurnEnded(chatID)
             // Steps 4 and 5.
             process.turns.resultReceived()
             if !process.turns.isWorking { chatTurnEnded(chatID, runtime: runtime, process: process) }
@@ -489,7 +497,7 @@ extension Engine {
 
     /// Writes a control request with the process's next id and forgets it after 30 s without an
     /// answer; for a setting, the warning item is added with the description `no answer`.
-    private func sendControlRequest(_ purpose: ControlPurpose, chatID: ChatID, process: ChatProcess, line: (String) -> Data) {
+    func sendControlRequest(_ purpose: ControlPurpose, chatID: ChatID, process: ChatProcess, line: (String) -> Data) {
         let id = process.takeRequestID()
         process.handle.write(line(id))
         let timeout = chats.timings.controlRequestTimeout
@@ -510,6 +518,9 @@ extension Engine {
         log.warn(.claude, "chat \(chatID.uuidString): control request \(requestID) got no answer")
         if let name = entry.purpose.settingName {
             addSystemItem(Engine.refusedSettingText(name, "no answer"), level: .warning, chatID: chatID)
+        }
+        if case .stopWorkflow(let workflowID) = entry.purpose {
+            workflowStopRefused(workflowID, description: "no answer", chatID: chatID, process: process)
         }
     }
 
@@ -543,6 +554,8 @@ extension Engine {
         process.log.appendLine("control request \(requestID) failed: \(description)")
         if let name = entry.purpose.settingName {
             addSystemItem(Engine.refusedSettingText(name, description), level: .warning, chatID: chatID)
+        } else if case .stopWorkflow(let workflowID) = entry.purpose {
+            workflowStopRefused(workflowID, description: description, chatID: chatID, process: process)
         } else {
             log.warn(.claude, "chat \(chatID.uuidString): control request \(requestID) failed")
         }
@@ -782,6 +795,8 @@ extension Engine {
                 runtime.starting = false
                 runtime.turnInProgress = false
             }
+            // docs/chats.md › Agent states: the workflows and agents of the process stop.
+            agentProcessExited(chatID)
         }
         runtime.process = nil
         runtime.cleaningUp = true

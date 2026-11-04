@@ -515,6 +515,27 @@ public struct ChatTranscript: Codable, Sendable, Hashable {
     }
 }
 
+/// The workflows and agents of one chat (docs/engine-api.md › ChatAgents): the entries of
+/// `chats.listAgents` and the payload of `chat.agents`.
+public struct ChatAgents: Codable, Sendable, Hashable {
+    public var chatID: ChatID
+    public var projectID: ProjectID
+    /// In the order of their `started`, then of their creation.
+    public var workflows: [ChatWorkflow]
+    /// Workflow agents and sub-agents, in the order of their `started`, then of their creation.
+    public var agents: [ChatAgent]
+
+    public init(chatID: ChatID, projectID: ProjectID, workflows: [ChatWorkflow], agents: [ChatAgent]) {
+        self.chatID = chatID
+        self.projectID = projectID
+        self.workflows = workflows
+        self.agents = agents
+    }
+
+    /// True when the chat has no workflow and no agent.
+    public var isEmpty: Bool { workflows.isEmpty && agents.isEmpty }
+}
+
 /// A set of questions posted by `chats.postQuestions` (docs/engine-api.md › QuestionSet).
 public struct QuestionSet: Codable, Sendable, Hashable {
     public var questionSetID: UUID

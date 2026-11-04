@@ -63,6 +63,8 @@ struct DataModelExamplesTests {
         } else if path.contains(".hephaestus/chats/"), path.hasSuffix(".yml") {
             let meta = try checkYAML(ChatMeta.self, example)
             #expect(meta.id.uuidString == name)
+        } else if path.contains(".hephaestus/chats/"), path.hasSuffix("/agents.jsonl") {
+            try checkAgents(example)
         } else if path.contains(".hephaestus/chats/"), path.hasSuffix(".jsonl") {
             try checkTranscript(example)
         } else if path.hasSuffix("/device.yml") {
@@ -126,6 +128,28 @@ struct DataModelExamplesTests {
             let encoded = try StorageJSON.lineEncoder().encode(value)
             #expect(!encoded.contains(0x0A))
             let decodedAgain = try StorageJSON.decoder().decode(TranscriptLine.self, from: encoded)
+            #expect(decodedAgain == value, "line \(index + 1): the round trip changed the value")
+            let exampleTree = try JSONDecoder().decode(JSONValue.self, from: line)
+            let encodedTree = try JSONDecoder().decode(JSONValue.self, from: encoded)
+            for missing in missingKeys(exampleTree, in: encodedTree, path: "") {
+                Issue.record("\(example.path):\(index + 1): the key \(missing) is missing from the encoded output")
+            }
+        }
+    }
+
+    /// docs/data-model.md › Chat agents file: every line decodes, round-trips and keeps its keys,
+    /// and replay skips none.
+    private func checkAgents(_ example: Example) throws {
+        let data = Data(example.text.utf8)
+        let replay = ChatAgentsReplay.replay(data)
+        #expect(replay.skipped.isEmpty, "\(example.path): replay skipped \(replay.skipped)")
+        let lines = JSONLines.lines(of: data)
+        #expect(!lines.isEmpty)
+        for (index, line) in lines.enumerated() {
+            let value = try StorageJSON.decoder().decode(ChatAgentsLine.self, from: line)
+            let encoded = try StorageJSON.lineEncoder().encode(value)
+            #expect(!encoded.contains(0x0A))
+            let decodedAgain = try StorageJSON.decoder().decode(ChatAgentsLine.self, from: encoded)
             #expect(decodedAgain == value, "line \(index + 1): the round trip changed the value")
             let exampleTree = try JSONDecoder().decode(JSONValue.self, from: line)
             let encodedTree = try JSONDecoder().decode(JSONValue.self, from: encoded)

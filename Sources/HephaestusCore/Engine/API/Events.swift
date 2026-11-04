@@ -105,6 +105,30 @@ public enum ChatItemEvent: EngineEvent {
     }
 }
 
+/// `chat.agents`: a chat's workflows or agents changed (docs/chats.md › Agents).
+public enum ChatAgentsEvent: EngineEvent {
+    public static let name = "chat.agents"
+    public typealias Payload = ChatAgents
+}
+
+/// `chat.agentItem`: an item was added to the transcript of one of a chat's agents.
+public enum ChatAgentItemEvent: EngineEvent {
+    public static let name = "chat.agentItem"
+    public struct Payload: Codable, Sendable, Hashable {
+        public var chatID: ChatID
+        public var agentID: String
+        /// The complete item; it replaces a received item of the agent with the same `id`,
+        /// otherwise it is appended.
+        public var item: ChatItem
+
+        public init(chatID: ChatID, agentID: String, item: ChatItem) {
+            self.chatID = chatID
+            self.agentID = agentID
+            self.item = item
+        }
+    }
+}
+
 /// `chat.delta`: Claude streams text, thinking or tool input. Not persisted.
 public enum ChatDeltaEvent: EngineEvent {
     public static let name = "chat.delta"
@@ -307,7 +331,7 @@ public enum EngineEvents {
         ProjectsChangedEvent.self, ProjectUpdatedEvent.self, ProjectRemovedEvent.self,
         TicketUpdatedEvent.self, TicketDeletedEvent.self, BundleUpdatedEvent.self, BundleDeletedEvent.self,
         ChatUpdatedEvent.self, ChatDeletedEvent.self, ChatItemEvent.self, ChatDeltaEvent.self,
-        FilesChangedEvent.self, WebTabsUpdatedEvent.self, SkillsChangedEvent.self,
+        ChatAgentsEvent.self, ChatAgentItemEvent.self, FilesChangedEvent.self, WebTabsUpdatedEvent.self, SkillsChangedEvent.self,
         RunStartedEvent.self, RunOutputEvent.self, RunFinishedEvent.self,
         SettingsUpdatedEvent.self, ClaudeUpdatedEvent.self, PlanUsageUpdatedEvent.self, UIOpenEvent.self,
         ChatNotificationEvent.self,
@@ -329,6 +353,8 @@ public enum DecodedEngineEvent: Sendable, Hashable {
     case chatDeleted(ChatDeletedEvent.Payload)
     case chatItem(ChatItemEvent.Payload)
     case chatDelta(ChatDeltaEvent.Payload)
+    case chatAgents(ChatAgents)
+    case chatAgentItem(ChatAgentItemEvent.Payload)
     case filesChanged(FilesChangedEvent.Payload)
     case webTabsUpdated(WebTabsUpdatedEvent.Payload)
     case skillsChanged([SkillSummary])
@@ -359,6 +385,8 @@ extension EngineEventEnvelope {
         case ChatDeletedEvent.name: return .chatDeleted(try payload(ChatDeletedEvent.self))
         case ChatItemEvent.name: return .chatItem(try payload(ChatItemEvent.self))
         case ChatDeltaEvent.name: return .chatDelta(try payload(ChatDeltaEvent.self))
+        case ChatAgentsEvent.name: return .chatAgents(try payload(ChatAgentsEvent.self))
+        case ChatAgentItemEvent.name: return .chatAgentItem(try payload(ChatAgentItemEvent.self))
         case FilesChangedEvent.name: return .filesChanged(try payload(FilesChangedEvent.self))
         case WebTabsUpdatedEvent.name: return .webTabsUpdated(try payload(WebTabsUpdatedEvent.self))
         case SkillsChangedEvent.name: return .skillsChanged(try payload(SkillsChangedEvent.self))

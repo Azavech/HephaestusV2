@@ -11,6 +11,8 @@ HephaestusV2 stores everything in plain files: each project's `.hephaestus/` fol
 | Bundle file        | `.hephaestus/bundle/<BUNDLE-ID>.yml`                                        | `TicketBundle`                | YAML                           | [Bundle file](#bundle-file)                     |
 | Chat metadata file | `.hephaestus/chats/<CHAT-ID>.yml`                                           | `ChatMeta`                    | YAML                           | [Chat metadata file](#chat-metadata-file)       |
 | Chat transcript    | `.hephaestus/chats/<CHAT-ID>.jsonl`                                         | `TranscriptLine` on each line | JSON Lines                     | [Chat transcript file](#chat-transcript-file)   |
+| Chat agents file   | `.hephaestus/chats/<CHAT-ID>/agents.jsonl`                                  | `ChatAgentsLine` on each line | JSON Lines                     | [Chat agents file](#chat-agents-file)           |
+| Agent transcript   | `.hephaestus/chats/<CHAT-ID>/agents/<AGENT-ID>.jsonl`                       | `TranscriptLine` on each line | JSON Lines                     | [Agent transcript file](#agent-transcript-file) |
 | Attachment files   | `.hephaestus/attachments/<TICKET-ID>/…` and `.hephaestus/chats/<CHAT-ID>/…` | described by `Attachment`     | any                            | [Attachments](#attachments)                     |
 | Git ignore file    | `.hephaestus/.gitignore`                                                    | —                             | text                           | [Project folder layout](#project-folder-layout) |
 | Device file        | `<data dir>/device.yml`                                                     | `DeviceRecord`                | YAML                           | [Device file](#device-file)                     |
@@ -117,6 +119,8 @@ The engine API sends these types as JSON objects with the same keys and value ru
     chats/<CHAT-ID>.yml                            ChatMeta              (git-ignored)
     chats/<CHAT-ID>.jsonl                          chat transcript       (git-ignored)
     chats/<CHAT-ID>/<UUID>-<file name>             chat attachments      (git-ignored)
+    chats/<CHAT-ID>/agents.jsonl                   chat agents           (git-ignored)
+    chats/<CHAT-ID>/agents/<AGENT-ID>.jsonl        agent transcripts     (git-ignored)
   docs/                                            project documentation (docsPath)
 ```
 
@@ -742,7 +746,7 @@ closed: true
 
 ## Chat transcript file
 
-`.hephaestus/chats/<CHAT-ID>.jsonl` is the chat's transcript in JSON Lines: one `TranscriptLine` per line, appended by the engine and never rewritten.
+`.hephaestus/chats/<CHAT-ID>.jsonl` is the chat's transcript in JSON Lines: one `TranscriptLine` per line, appended by the engine and never rewritten. It holds the work of the chat's Agent tool sub-agents; the chat's workflows and agents are recorded in its [chat agents file](#chat-agents-file), and the transcripts of its workflow agents in [agent transcript files](#agent-transcript-file).
 
 | Swift name | Key    | Type           | Required | Default | Rules                                                                         |
 | ---------- | ------ | -------------- | -------- | ------- | ----------------------------------------------------------------------------- |
@@ -1066,6 +1070,80 @@ The transcript of the project chat above: a message with an image and a linked t
 {"op":"update","item":{"type":"questions","id":"4D3C2B1A-0F9E-4D8C-B7A6-958473625140","created":"2026-10-31T13:00:32Z","questionSetID":"4D3C2B1A-0F9E-4D8C-B7A6-958473625140","questions":[{"label":"A","question":"Should the build number also appear in the About window?","options":[{"label":"Status bar only","description":"Keep the About window as it is."},{"label":"Both","description":null}],"recommended":"Status bar only"},{"label":"B","question":"Which format should the status bar use?","options":[{"label":"v0.4.0(57)","description":"Same format as the About window."},{"label":"57","description":"Build number only."}],"recommended":"v0.4.0(57)"}],"answers":{"A":"Status bar only"},"completed":false}}
 {"op":"update","item":{"type":"questions","id":"4D3C2B1A-0F9E-4D8C-B7A6-958473625140","created":"2026-10-31T13:00:32Z","questionSetID":"4D3C2B1A-0F9E-4D8C-B7A6-958473625140","questions":[{"label":"A","question":"Should the build number also appear in the About window?","options":[{"label":"Status bar only","description":"Keep the About window as it is."},{"label":"Both","description":null}],"recommended":"Status bar only"},{"label":"B","question":"Which format should the status bar use?","options":[{"label":"v0.4.0(57)","description":"Same format as the About window."},{"label":"57","description":"Build number only."}],"recommended":"v0.4.0(57)"}],"answers":{"A":"Status bar only","B":"v0.4.0(57), with the release date in its tooltip"},"completed":true}}
 {"op":"add","item":{"type":"user","id":"A7B6C5D4-E3F2-4011-9F8E-7D6C5B4A3928","created":"2026-10-31T13:02:10Z","text":"Answers:\nA: Status bar only\nB: v0.4.0(57), with the release date in its tooltip","attachments":[],"sender":"MacBook","linkedItems":[]}}
+```
+
+## Chat agents file
+
+`.hephaestus/chats/<CHAT-ID>/agents.jsonl` holds the workflows and agents of one chat ([Agents](chats.md#agents)) in JSON Lines: one `ChatAgentsLine` per line, appended by the engine and never rewritten. It lives in the chat's folder `chats/<CHAT-ID>/`, which goes to the Trash with the chat, so the chat's workflows and agents stay as long as the chat exists ([Attachments](#attachments)).
+
+| Swift name | Key        | Type            | Required | Default | Rules                                       |
+| ---------- | ---------- | --------------- | -------- | ------- | ------------------------------------------- |
+| workflow   | `workflow` | `ChatWorkflow?` | no       | `null`  | A workflow of the chat, in its new version. |
+| agent      | `agent`    | `ChatAgent?`    | no       | `null`  | An agent of the chat, in its new version.   |
+
+- A line holds exactly one of the two keys. The engine appends a line for each new record and for each change of a record, with the whole record ([Storage of agents](chats.md#storage-of-agents)).
+- Replay: starting with no workflow and no agent, each line replaces the workflow or the agent with the same `id`, or adds it after the others. A line that is not valid JSON, holds neither key or both, or whose record lacks a required key or breaks a rule below is skipped and logged to `engine.log`; replay continues with the next line. Unknown keys of a record are ignored.
+- The file is written as the [chat transcript file](#transcript-writes) is: one compact JSON line per write, opened with `O_APPEND`, created by the first append.
+
+Default chosen at design time.
+
+### ChatWorkflow
+
+A workflow that the chat's Claude started with the Workflow tool ([Workflows and agents](chats.md#workflows-and-agents)).
+
+| Swift name | Key         | Type             | Required | Default | Rules                                                                                            |
+| ---------- | ----------- | ---------------- | -------- | ------- | ------------------------------------------------------------------------------------------------ |
+| id         | `id`        | `String`         | yes      | —       | The CLI's task id of the workflow, for example `wflx39ys6`. Unique among the chat's workflows.   |
+| toolUseID  | `toolUseID` | `String?`        | no       | `null`  | `toolUseID` of the `Workflow` call that launched it.                                             |
+| runID      | `runID`     | `String?`        | no       | `null`  | The CLI's run id, for example `wf_0afd7514-9e5`, set when the engine has read the call's result. |
+| name       | `name`      | `String?`        | no       | `null`  | The workflow's name in its script.                                                               |
+| summary    | `summary`   | `String`         | yes      | —       | The workflow's summary, the title of its row. Single line.                                       |
+| state      | `state`     | `ChatAgentState` | yes      | —       | `running`, `completed`, `failed` or `stopped` ([Agent states](chats.md#agent-states)).           |
+| started    | `started`   | `Date`           | yes      | —       | When the engine created the record.                                                              |
+| ended      | `ended`     | `Date?`          | no       | `null`  | When the state left `running`; `null` while it runs.                                             |
+
+### ChatAgent
+
+A workflow agent or an Agent tool sub-agent of the chat ([Workflows and agents](chats.md#workflows-and-agents)).
+
+| Swift name | Key          | Type             | Required | Default | Rules                                                                                                                                                                                                                              |
+| ---------- | ------------ | ---------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id         | `id`         | `String`         | yes      | —       | For kind `workflow`, the CLI's agent id, matching `^[A-Za-z0-9_-]{1,64}$`, also the name of its [agent transcript file](#agent-transcript-file); for kind `subagent`, the `toolUseID` of its call. Unique among the chat's agents. |
+| kind       | `kind`       | `ChatAgentKind`  | yes      | —       | `workflow` or `subagent`.                                                                                                                                                                                                          |
+| workflowID | `workflowID` | `String?`        | no       | `null`  | The `id` of its workflow: required for kind `workflow`, `null` for kind `subagent`.                                                                                                                                                |
+| title      | `title`      | `String`         | yes      | —       | The title of its row. Single line.                                                                                                                                                                                                 |
+| phase      | `phase`      | `String?`        | no       | `null`  | The phase of a workflow agent in its workflow; `null` for a sub-agent.                                                                                                                                                             |
+| state      | `state`      | `ChatAgentState` | yes      | —       | As for [ChatWorkflow](#chatworkflow).                                                                                                                                                                                              |
+| started    | `started`    | `Date`           | yes      | —       | When the engine created the record.                                                                                                                                                                                                |
+| ended      | `ended`      | `Date?`          | no       | `null`  | When the state left `running`; `null` while it runs.                                                                                                                                                                               |
+
+`ChatAgentState` has the cases `running`, `completed`, `failed` and `stopped`; `ChatAgentKind` the cases `workflow` and `subagent`.
+
+### Chat agents file example
+
+The workflow of the capture `stream-workflow.jsonl` ([Fixture replays](chats.md#fixture-replays)) in a chat that also started a sub-agent: the workflow starts, gets its run id, its two agents start and complete, then the workflow completes.
+
+```jsonl .hephaestus/chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301/agents.jsonl
+{"workflow":{"id":"wflx39ys6","toolUseID":"toolu_018UGwAHQxAU5JGeaDmkUda7","runID":null,"name":"probe","summary":"Two probe agents","state":"running","started":"2026-11-03T23:17:35Z","ended":null}}
+{"workflow":{"id":"wflx39ys6","toolUseID":"toolu_018UGwAHQxAU5JGeaDmkUda7","runID":"wf_0afd7514-9e5","name":"probe","summary":"Two probe agents","state":"running","started":"2026-11-03T23:17:35Z","ended":null}}
+{"agent":{"id":"abd107d9822b6600d","kind":"workflow","workflowID":"wflx39ys6","title":"probe-a","phase":"Probe","state":"running","started":"2026-11-03T23:17:35Z","ended":null}}
+{"agent":{"id":"afa76c5ae2246d66b","kind":"workflow","workflowID":"wflx39ys6","title":"probe-b","phase":"Probe","state":"running","started":"2026-11-03T23:17:37Z","ended":null}}
+{"agent":{"id":"abd107d9822b6600d","kind":"workflow","workflowID":"wflx39ys6","title":"probe-a","phase":"Probe","state":"completed","started":"2026-11-03T23:17:35Z","ended":"2026-11-03T23:17:50Z"}}
+{"agent":{"id":"afa76c5ae2246d66b","kind":"workflow","workflowID":"wflx39ys6","title":"probe-b","phase":"Probe","state":"completed","started":"2026-11-03T23:17:37Z","ended":"2026-11-03T23:17:51Z"}}
+{"workflow":{"id":"wflx39ys6","toolUseID":"toolu_018UGwAHQxAU5JGeaDmkUda7","runID":"wf_0afd7514-9e5","name":"probe","summary":"Two probe agents","state":"completed","started":"2026-11-03T23:17:35Z","ended":"2026-11-03T23:17:51Z"}}
+{"agent":{"id":"toolu_01Tk3Ls5Mt7Nu9Ov1Pw3Qx5R","kind":"subagent","workflowID":null,"title":"Find the status bar code","phase":null,"state":"running","started":"2026-11-03T23:20:15Z","ended":null}}
+{"agent":{"id":"toolu_01Tk3Ls5Mt7Nu9Ov1Pw3Qx5R","kind":"subagent","workflowID":null,"title":"Find the status bar code","phase":null,"state":"completed","started":"2026-11-03T23:20:15Z","ended":"2026-11-03T23:20:25Z"}}
+```
+
+## Agent transcript file
+
+`.hephaestus/chats/<CHAT-ID>/agents/<AGENT-ID>.jsonl` is the transcript of one workflow agent of the chat, `<AGENT-ID>` being its `id`, with the items the engine read from the CLI's transcript of the agent ([Agent transcript lines](chats.md#agent-transcript-lines)). It has the format of the [chat transcript file](#chat-transcript-file): one `TranscriptLine` with the op `add` per item, written as [Transcript writes](#transcript-writes) specifies, except that each line is emitted as `chat.agentItem`, and replayed as [Replay](#replay) specifies. It goes to the Trash with the chat's folder. A sub-agent has no such file: its transcript is made of the chat's own items ([Sub-agent transcripts](chats.md#sub-agent-transcripts)). Default chosen at design time.
+
+```jsonl .hephaestus/chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301/agents/abd107d9822b6600d.jsonl
+{"op":"add","item":{"type":"user","id":"882dfd6b-ad6f-49e4-baf4-f4e4f2975d22","created":"2026-11-03T23:17:35Z","text":"[Workflow harness — computed task] The task text below was computed at runtime by a workflow script.\n  Run the shell command sleep 12 with the Bash tool, then reply with the single word ok.","attachments":[],"sender":"Claude","linkedItems":[]}}
+{"op":"add","item":{"type":"toolUse","id":"msg_011Cggr9htocvAJJzxCtn725#0","created":"2026-11-03T23:17:37Z","toolUseID":"toolu_01J599gbfLDdjVJrP5jQuHof","name":"Bash","server":null,"input":{"command":"sleep 12","description":"Sleep for 12 seconds"},"parentToolUseID":null}}
+{"op":"add","item":{"type":"toolResult","id":"toolu_01J599gbfLDdjVJrP5jQuHof#result","created":"2026-11-03T23:17:49Z","toolUseID":"toolu_01J599gbfLDdjVJrP5jQuHof","text":"(Bash completed with no output)","isError":false,"images":[]}}
+{"op":"add","item":{"type":"assistant","id":"msg_011CggrAhynRATuCizr72uzY#0","created":"2026-11-03T23:17:49Z","text":"ok","messageID":"msg_011CggrAhynRATuCizr72uzY","parentToolUseID":null}}
 ```
 
 ## Skill file
@@ -1519,20 +1597,22 @@ The docs conformance tests ([CI](ci.md)) read this page and decode its examples 
 
 The type is chosen by the end of the path:
 
-| Path ends with                   | Decoded as                                             | Extra check                               |
-| -------------------------------- | ------------------------------------------------------ | ----------------------------------------- |
-| `.hephaestus/project.yml`        | `Project`                                              | —                                         |
-| `.hephaestus/ticket/<name>.yml`  | `Ticket`                                               | `id` equals `<name>`                      |
-| `.hephaestus/bundle/<name>.yml`  | `TicketBundle`                                         | `id` equals `<name>`                      |
-| `.hephaestus/chats/<name>.yml`   | `ChatMeta`                                             | `id` equals `<name>`                      |
-| `.hephaestus/chats/<name>.jsonl` | `TranscriptLine`, each line                            | replay skips no line                      |
-| `/device.yml`                    | `DeviceRecord`                                         | —                                         |
-| `/registry.yml`                  | `Registry`                                             | —                                         |
-| `/settings.yml`                  | `HostSettings`                                         | —                                         |
-| `/remotes.yml`                   | `RemotesFile`                                          | —                                         |
-| `/plan-usage.yml`                | `PlanUsage`                                            | —                                         |
-| `/secrets.json`                  | `Secrets`                                              | —                                         |
-| `/SKILL.md`                      | `SkillFrontmatter` (the block is the frontmatter only) | `name` equals the folder name in the path |
+| Path ends with                                 | Decoded as                                             | Extra check                               |
+| ---------------------------------------------- | ------------------------------------------------------ | ----------------------------------------- |
+| `.hephaestus/project.yml`                      | `Project`                                              | —                                         |
+| `.hephaestus/ticket/<name>.yml`                | `Ticket`                                               | `id` equals `<name>`                      |
+| `.hephaestus/bundle/<name>.yml`                | `TicketBundle`                                         | `id` equals `<name>`                      |
+| `.hephaestus/chats/<name>.yml`                 | `ChatMeta`                                             | `id` equals `<name>`                      |
+| `.hephaestus/chats/<name>.jsonl`               | `TranscriptLine`, each line                            | replay skips no line                      |
+| `.hephaestus/chats/<chat>/agents.jsonl`        | `ChatAgentsLine`, each line                            | replay skips no line                      |
+| `.hephaestus/chats/<chat>/agents/<name>.jsonl` | `TranscriptLine`, each line                            | replay skips no line                      |
+| `/device.yml`                                  | `DeviceRecord`                                         | —                                         |
+| `/registry.yml`                                | `Registry`                                             | —                                         |
+| `/settings.yml`                                | `HostSettings`                                         | —                                         |
+| `/remotes.yml`                                 | `RemotesFile`                                          | —                                         |
+| `/plan-usage.yml`                              | `PlanUsage`                                            | —                                         |
+| `/secrets.json`                                | `Secrets`                                              | —                                         |
+| `/SKILL.md`                                    | `SkillFrontmatter` (the block is the frontmatter only) | `name` equals the folder name in the path |
 
 For every decoded value, encoding it and decoding the output gives an equal value, and every key of the example is present in the encoded output, known or preserved. A block that fails a check fails the test with the block's path. Blocks with other tags are not decoded.
 

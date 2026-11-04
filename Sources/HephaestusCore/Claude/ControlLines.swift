@@ -34,6 +34,11 @@ enum ControlLines {
         line(#"{"type":"control_request","request_id":\#(string(id)),"request":{"subtype":"apply_flag_settings","settings":{"ultracode":\#(on)}}}"#)
     }
 
+    /// The `stop_task` request that stops a workflow (docs/chats.md › Stopping a workflow).
+    static func stopTask(id: String, taskID: String) -> Data {
+        line(#"{"type":"control_request","request_id":\#(string(id)),"request":{"subtype":"stop_task","task_id":\#(string(taskID))}}"#)
+    }
+
     /// The error answer to a control request of the CLI the engine does not support.
     static func unsupportedAnswer(requestID: String, subtype: String) -> Data {
         line(#"{"type":"control_response","response":{"subtype":"error","request_id":\#(string(requestID)),"error":\#(string("Unsupported control request: \(subtype)"))}}"#)

@@ -6,6 +6,33 @@ struct ToolResultImage: Sendable, Hashable {
     var base64: String
 }
 
+/// A `system/task_started` line: a task of the CLI started (docs/chats.md › Agents).
+struct TaskStart: Sendable, Hashable {
+    var taskID: String
+    /// `local_workflow` for a workflow.
+    var taskType: String?
+    var toolUseID: String?
+    var description: String?
+    var workflowName: String?
+}
+
+/// A `system/task_progress` line: the summary and the agents of a workflow (docs/chats.md › Agents).
+struct TaskProgress: Sendable, Hashable {
+    var taskID: String
+    var summary: String?
+    /// The `workflow_agent` entries of `workflow_progress`; nil when the line has none.
+    var agents: [WorkflowAgentProgress]?
+}
+
+/// A `workflow_agent` entry of `workflow_progress`.
+struct WorkflowAgentProgress: Sendable, Hashable {
+    var agentID: String?
+    var label: String?
+    var phase: String?
+    /// `start`, `progress`, `done` or `error`.
+    var state: String?
+}
+
 /// What one stdout line of a chat process asks the engine to do (docs/chats.md › Output mapping).
 enum MapperOutput: Sendable, Hashable {
     /// A new item: appended to the transcript and emitted as `chat.item`.
@@ -24,8 +51,15 @@ enum MapperOutput: Sendable, Hashable {
     /// A `system/background_tasks_changed` line: the `task_id` of every background task still
     /// running (docs/chats.md › Background work).
     case backgroundTasks([String])
-    /// A `system/task_notification` line: the task `taskID` has ended.
-    case taskNotification(taskID: String)
+    /// A `system/task_started` line (docs/chats.md › Agents).
+    case taskStarted(TaskStart)
+    /// A `system/task_progress` line (docs/chats.md › Agents).
+    case taskProgress(TaskProgress)
+    /// A `system/task_updated` line: the task's new `patch.status`, when it has one.
+    case taskUpdated(taskID: String, status: String?)
+    /// A `system/task_notification` line: the task `taskID` has ended, with the `tool_use_id` of
+    /// the call that started it and its `status`.
+    case taskNotification(taskID: String, toolUseID: String? = nil, status: String? = nil)
     /// Text appended to a streamed block.
     case delta(itemID: String, kind: ChatDeltaEvent.Payload.Kind, text: String)
     /// A `can_use_tool` request: its item, its input and `permission_suggestions`.
@@ -144,7 +178,25 @@ struct StreamMapper {
             return [.backgroundTasks(tasks.compactMap { $0.objectValue?["task_id"]?.stringValue })]
         }
         if subtype == "task_notification", let taskID = line["task_id"]?.stringValue {
-            return [.taskNotification(taskID: taskID)]
+            return [.taskNotification(taskID: taskID, toolUseID: line["tool_use_id"]?.stringValue, status: line["status"]?.stringValue)]
+        }
+        // docs/chats.md › Agents: the task lines of workflows.
+        if subtype == "task_started", let taskID = line["task_id"]?.stringValue {
+            return [.taskStarted(TaskStart(taskID: taskID, taskType: line["task_type"]?.stringValue,
+                                           toolUseID: line["tool_use_id"]?.stringValue, description: line["description"]?.stringValue,
+                                           workflowName: line["workflow_name"]?.stringValue))]
+        }
+        if subtype == "task_progress", let taskID = line["task_id"]?.stringValue {
+            let agents = line["workflow_progress"]?.arrayValue.map { entries in
+                entries.compactMap(\.objectValue).filter { $0["type"]?.stringValue == "workflow_agent" }.map { entry in
+                    WorkflowAgentProgress(agentID: entry["agentId"]?.stringValue, label: entry["label"]?.stringValue,
+                                          phase: entry["phaseTitle"]?.stringValue, state: entry["state"]?.stringValue)
+                }
+            }
+            return [.taskProgress(TaskProgress(taskID: taskID, summary: line["summary"]?.stringValue, agents: agents))]
+        }
+        if subtype == "task_updated", let taskID = line["task_id"]?.stringValue {
+            return [.taskUpdated(taskID: taskID, status: line["patch"]?.objectValue?["status"]?.stringValue)]
         }
         return [.ignored(subtype.map { "ignored system/\($0)" } ?? "ignored system")]
     }
@@ -339,39 +391,45 @@ struct StreamMapper {
         let results = content.compactMap(\.objectValue).filter { $0["type"]?.stringValue == "tool_result" }
         guard !results.isEmpty else { return [.ignored("ignored user")] }
         return results.map { block in
-            let toolUseID = block["tool_use_id"]?.stringValue ?? ""
-            var images: [ToolResultImage] = []
-            let text: String
-            switch block["content"] {
-            case .string(let value):
-                text = value
-            case .array(let parts):
-                var texts: [String] = []
-                var others: [String] = []
-                for part in parts {
-                    let object = part.objectValue
-                    switch object?["type"]?.stringValue {
-                    case "text":
-                        texts.append(object?["text"]?.stringValue ?? "")
-                    case "image":
-                        // Only `base64` sources hold data; a missing `media_type` counts as
-                        // `image/png` (docs/chats.md › Tool results).
-                        if let source = object?["source"]?.objectValue, source["type"]?.stringValue == "base64",
-                           let data = source["data"]?.stringValue {
-                            images.append(ToolResultImage(mediaType: source["media_type"]?.stringValue ?? "image/png", base64: data))
-                        }
-                    default:
-                        others.append(ControlLines.json(part))
-                    }
-                }
-                text = (texts + others).joined(separator: "\n")
-            default:
-                text = ""
-            }
-            let item = ToolResultItem(id: "\(toolUseID)#result", created: now(), toolUseID: toolUseID,
-                                      text: StreamMapper.truncated(text), isError: block["is_error"]?.claudeBool ?? false)
+            let (item, images) = StreamMapper.toolResult(block, created: now())
             return .toolResult(item, images: images)
         }
+    }
+
+    /// One `tool_result` block as a `toolResult` item and its images (docs/chats.md › Tool results).
+    static func toolResult(_ block: [String: JSONValue], created: Date) -> (ToolResultItem, [ToolResultImage]) {
+        let toolUseID = block["tool_use_id"]?.stringValue ?? ""
+        var images: [ToolResultImage] = []
+        let text: String
+        switch block["content"] {
+        case .string(let value):
+            text = value
+        case .array(let parts):
+            var texts: [String] = []
+            var others: [String] = []
+            for part in parts {
+                let object = part.objectValue
+                switch object?["type"]?.stringValue {
+                case "text":
+                    texts.append(object?["text"]?.stringValue ?? "")
+                case "image":
+                    // Only `base64` sources hold data; a missing `media_type` counts as
+                    // `image/png` (docs/chats.md › Tool results).
+                    if let source = object?["source"]?.objectValue, source["type"]?.stringValue == "base64",
+                       let data = source["data"]?.stringValue {
+                        images.append(ToolResultImage(mediaType: source["media_type"]?.stringValue ?? "image/png", base64: data))
+                    }
+                default:
+                    others.append(ControlLines.json(part))
+                }
+            }
+            text = (texts + others).joined(separator: "\n")
+        default:
+            text = ""
+        }
+        let item = ToolResultItem(id: "\(toolUseID)#result", created: created, toolUseID: toolUseID,
+                                  text: StreamMapper.truncated(text), isError: block["is_error"]?.claudeBool ?? false)
+        return (item, images)
     }
 
     // MARK: Control messages

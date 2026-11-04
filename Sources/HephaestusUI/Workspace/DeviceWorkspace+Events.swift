@@ -36,10 +36,15 @@ extension DeviceWorkspace {
             chats[payload.chatID.uuidString] = nil
             transcripts[payload.chatID.uuidString] = nil
             drafts[payload.chatID.uuidString] = nil
+            dropAgents(of: payload.chatID.uuidString)
         case .chatItem(let payload):
             transcripts[payload.chatID.uuidString]?.upsert(payload.item)
         case .chatDelta(let payload):
             transcripts[payload.chatID.uuidString]?.append(payload)
+        case .chatAgents(let payload):
+            agents[payload.chatID.uuidString] = payload.isEmpty ? nil : payload
+        case .chatAgentItem(let payload):
+            agentTranscripts[DeviceWorkspace.agentKey(chatID: payload.chatID.uuidString, agentID: payload.agentID)]?.upsert(payload.item)
         case .filesChanged:
             // Passed to the open editors, file trees and doc lists through `events()`.
             break
@@ -119,6 +124,7 @@ extension DeviceWorkspace {
             chats[chatID] = nil
             transcripts[chatID] = nil
             drafts[chatID] = nil
+            dropAgents(of: chatID)
         }
         runs = runs.filter { !projectIDs.contains($0.value.info.projectID) }
         return chatIDs

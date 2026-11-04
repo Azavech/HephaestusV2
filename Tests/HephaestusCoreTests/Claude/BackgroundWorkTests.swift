@@ -63,11 +63,15 @@ struct BackgroundWorkTests {
         #expect(replay[2].outputs == [.planUsage(Self.fixturePlanUsage)])
         #expect(replay[17].outputs == [.backgroundTasks(["bw1kgc2rd"])])
         #expect(replay[29].outputs == [.commandState(uuid: "7C3E1F0A-2B4D-4E6F-8A9B-0C1D2E3F4A5B", state: "completed")])
-        #expect(replay[31].outputs == [.taskNotification(taskID: "bw1kgc2rd")])
+        #expect(replay[18].outputs == [.taskStarted(TaskStart(taskID: "bw1kgc2rd", taskType: "local_bash",
+                                                              toolUseID: "toolu_01U7E6eH2DZ7DD4vbka3AsVz",
+                                                              description: "Sleep 15 seconds then echo bg-done"))])
+        #expect(replay[30].outputs == [.taskUpdated(taskID: "bw1kgc2rd", status: "completed")])
+        #expect(replay[31].outputs == [.taskNotification(taskID: "bw1kgc2rd", toolUseID: "toolu_01U7E6eH2DZ7DD4vbka3AsVz",
+                                                          status: "completed")])
         #expect(replay[32].outputs == [.backgroundTasks([])])
         #expect(replay[33].outputs == [.cliTurnOpened])
-        #expect(Self.logged(all) == ["ignored system/status", "ignored system/task_started", "ignored system/status",
-                                     "ignored system/task_updated", "ignored system/status"])
+        #expect(Self.logged(all) == ["ignored system/status", "ignored system/status", "ignored system/status"])
     }
 
     @Test("stream-background-agent.jsonl gives the items and background lines of docs/chats.md › Fixture replays")
@@ -113,13 +117,14 @@ struct BackgroundWorkTests {
                                                 summary: nil)))
         #expect(replay[18].outputs == [.backgroundTasks(["a20896a2a89380e93"])])
         #expect(replay[23].outputs == [.planUsage(Self.fixturePlanUsage)])
-        #expect(replay[37].outputs == [.taskNotification(taskID: "b8q7odjuj")])
-        #expect(replay[41].outputs == [.taskNotification(taskID: "a20896a2a89380e93")])
+        #expect(replay[35].outputs == [.taskProgress(TaskProgress(taskID: "a20896a2a89380e93", summary: nil, agents: nil))])
+        #expect(replay[37].outputs == [.taskNotification(taskID: "b8q7odjuj", toolUseID: "toolu_015RLF2zoV76K9UNqrMgjxjE",
+                                                          status: "completed")])
+        #expect(replay[41].outputs == [.taskNotification(taskID: "a20896a2a89380e93", toolUseID: "toolu_01P13PE4h122VQc4ctmUmWLB",
+                                                          status: "completed")])
         #expect(replay[42].outputs == [.backgroundTasks([])])
         #expect(replay[43].outputs == [.cliTurnOpened])
-        #expect(Self.logged(all) == ["ignored system/status", "ignored system/task_started", "ignored system/status",
-                                     "ignored system/task_progress", "ignored system/task_started", "ignored system/task_updated",
-                                     "ignored system/status"])
+        #expect(Self.logged(all) == ["ignored system/status", "ignored system/status", "ignored system/status"])
     }
 
     @Test("Background lines without their field are ignored; task entries without a task_id string are skipped")
@@ -133,6 +138,9 @@ struct BackgroundWorkTests {
             == [.backgroundTasks(["a"])])
         #expect(map(#"{"type":"system","subtype":"task_notification","status":"completed"}"#) == [.ignored("ignored system/task_notification")])
         #expect(map(#"{"type":"system","subtype":"task_notification","task_id":"a"}"#) == [.taskNotification(taskID: "a")])
+        #expect(map(#"{"type":"system","subtype":"task_started"}"#) == [.ignored("ignored system/task_started")])
+        #expect(map(#"{"type":"system","subtype":"task_progress","task_id":7}"#) == [.ignored("ignored system/task_progress")])
+        #expect(map(#"{"type":"system","subtype":"task_updated"}"#) == [.ignored("ignored system/task_updated")])
     }
 
     @Test("BackgroundWorkTracker: the rules of docs/chats.md › Background work")

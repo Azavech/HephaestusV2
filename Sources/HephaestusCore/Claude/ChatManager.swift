@@ -10,6 +10,8 @@ struct ChatTimings: Sendable {
     var stopStep: Duration = .seconds(5)
     /// Idle termination after a turn ends.
     var idleTimeout: Duration = .seconds(20 * 60)
+    /// The interval of the reads of a running workflow's folder (docs/chats.md › Workflow folder).
+    var workflowFolderInterval: Duration = .seconds(1)
     /// After closing standard input: SIGTERM, then SIGKILL after the same time again.
     var idleCloseGrace: Duration = .seconds(5)
     /// A control request without an answer after this time is forgotten.
@@ -46,6 +48,12 @@ final class ChatManager {
     var openFontRequests: [ChatID: FontItem] = [:]
     /// The animation request without answer, per chat (docs/chats.md › Animation requests).
     var openAnimationRequests: [ChatID: AnimationItem] = [:]
+    /// The workflows and agents of each chat whose agents file the engine has read since it started
+    /// (docs/chats.md › Agents).
+    var agentTrackers: [ChatID: ChatAgentTracker] = [:]
+    /// The workflow folders the engine follows, per chat and workflow id (docs/chats.md › Workflow
+    /// folder).
+    var workflowFollows: [ChatID: [String: WorkflowFollow]] = [:]
     /// The macOS and Simulator runtime sounds, read the first time they are needed and kept
     /// until the engine stops (docs/chats.md › Sound catalogue).
     var systemSounds: Task<SoundCatalog.SystemSounds, Never>?
@@ -165,6 +173,8 @@ final class ChatRuntime {
 enum ControlPurpose: Sendable, Equatable {
     case initialize, interrupt, model, effort, ultracode
     case permissionMode(PermissionMode, origin: Actor)
+    /// `stop_task` for the workflow with this id (docs/chats.md › Stopping a workflow).
+    case stopWorkflow(String)
 
     /// The setting named in the warning of a refused setting (docs/chats.md › Control protocol).
     var settingName: String? {
@@ -173,7 +183,7 @@ enum ControlPurpose: Sendable, Equatable {
         case .permissionMode: return "permission mode"
         case .effort: return "effort"
         case .ultracode: return "ultracode"
-        case .initialize, .interrupt: return nil
+        case .initialize, .interrupt, .stopWorkflow: return nil
         }
     }
 }
@@ -314,12 +324,13 @@ struct TurnTracker: Sendable {
 }
 
 /// docs/chats.md › Background work: the background tasks of one process that the CLI reports
-/// running, every task id it has listed, and whether a notification turn is pending: the CLI
-/// turn the CLI starts on its own to give Claude the result of a background task that ended while
-/// no CLI turn was open.
+/// running, every task id it has listed, the tasks the engine stopped with `stop_task`, and
+/// whether a notification turn is pending: the CLI turn the CLI starts on its own to give Claude
+/// the result of a background task that ended while no CLI turn was open.
 struct BackgroundWorkTracker: Sendable {
     private(set) var runningTasks: Set<String> = []
     private var listedTasks: Set<String> = []
+    private var stoppedTasks: Set<String> = []
     private(set) var notificationTurnPending = false
 
     /// The process has background work running.
@@ -334,8 +345,18 @@ struct BackgroundWorkTracker: Sendable {
     /// Rule 2: `task_notification`; only a listed task that ends while no CLI turn is open makes
     /// a notification turn pending.
     mutating func taskEnded(_ taskID: String, cliTurnOpen: Bool) {
-        guard !cliTurnOpen, listedTasks.contains(taskID) else { return }
+        guard !cliTurnOpen, listedTasks.contains(taskID), !stoppedTasks.contains(taskID) else { return }
         notificationTurnPending = true
+    }
+
+    /// The engine wrote `stop_task` for the task: the CLI starts no CLI turn for its end
+    /// (docs/chats.md › Stopping a workflow). `false` when the CLI refused to stop it.
+    mutating func taskStopped(_ taskID: String, _ stopped: Bool = true) {
+        if stopped {
+            stoppedTasks.insert(taskID)
+        } else {
+            stoppedTasks.remove(taskID)
+        }
     }
 
     /// Rule 3: `system/init` ends the pending notification turn.
@@ -378,5 +399,18 @@ struct DeltaBuffer {
         guard let oldest = pending.values.min(by: { $0.since < $1.since }) else { return nil }
         pending[oldest.itemID] = nil
         return oldest
+    }
+}
+
+/// The reads of one workflow folder that the engine follows (docs/chats.md › Workflow folder).
+final class WorkflowFollow {
+    let reader: WorkflowFolderReader
+    /// The loop of reads.
+    var task: Task<Void, Never>?
+    /// The workflow has ended: the next read is the last one.
+    var ended = false
+
+    init(reader: WorkflowFolderReader) {
+        self.reader = reader
     }
 }

@@ -61,13 +61,28 @@ struct ChatsSectionView: View {
         window.projectStates[ProjectKey(deviceID: workspace.deviceID, projectID: projectID)]?.selectedChatIDs ?? []
     }
 
-    /// The selection the list shows: none while a draft is shown.
+    /// The tags of the rows the list shows selected: the shown workflow or agent, else the
+    /// selected chats; none while a draft is shown.
     private var listedSelection: Set<String> {
-        draft == nil ? selection : []
+        guard draft == nil else { return [] }
+        return selectedChatAgent.map { [$0.tag] } ?? selection
     }
 
     private var listedChats: [ChatMeta] {
         groups.flatMap(\.chats)
+    }
+
+    /// The workflow or agent shown in place of the chat view while its chat is the only selected
+    /// chat (docs/chats.md › Where chats appear).
+    private var selectedChatAgent: ChatAgentSelection? {
+        guard let agent = window.projectStates[ProjectKey(deviceID: workspace.deviceID, projectID: projectID)]?.selectedChatAgent,
+              selection == [agent.chatID] else { return nil }
+        return agent
+    }
+
+    /// The workflow and agent rows the list shows.
+    private var listedAgentRows: [ChatAgentRow] {
+        listedChats.flatMap(agentRows)
     }
 
     var body: some View {
@@ -93,8 +108,12 @@ struct ChatsSectionView: View {
         .task(id: ObjectIdentifier(workspace)) {
             for await event in workspace.events() {
                 if case .chatDeleted(let payload) = event.event, selection.contains(payload.chatID.uuidString) {
-                    // A deleted chat leaves the selection (docs/chats.md › Where chats appear).
-                    window.updateViewState(of: projectID) { $0.selectedChatIDs.remove(payload.chatID.uuidString) }
+                    // A deleted chat leaves the selection, with its shown workflow or agent
+                    // (docs/chats.md › Where chats appear).
+                    window.updateViewState(of: projectID) {
+                        $0.selectedChatIDs.remove(payload.chatID.uuidString)
+                        if $0.selectedChatAgent?.chatID == payload.chatID.uuidString { $0.selectedChatAgent = nil }
+                    }
                 }
             }
         }
@@ -137,9 +156,17 @@ struct ChatsSectionView: View {
             ForEach(groups, id: \.kind) { group in
                 // Titled with the kind's name, as the kind chip (docs/chats.md › Where chats appear).
                 Section(ChatFormat.kindTitle(group.kind)) {
-                    ForEach(group.chats) { meta in
-                        row(meta)
-                            .tag(meta.id.uuidString)
+                    // Each chat followed by its workflows and agents (docs/chats.md › Where chats
+                    // appear), one row per element.
+                    ForEach(listRows(group.chats)) { listRow in
+                        switch listRow {
+                        case .chat(let meta):
+                            row(meta)
+                                .tag(listRow.id)
+                        case .agent(let agentRow):
+                            ChatAgentRowView(row: agentRow)
+                                .tag(listRow.id)
+                        }
                     }
                 }
             }
@@ -151,22 +178,31 @@ struct ChatsSectionView: View {
         }
         .onKeyPress(keys: [.delete], phases: .down) { press in
             // Delete… of a single selected chat; a selected chat whose row the filter hides is not
-            // deleted from the list.
+            // deleted from the list, nor the chat of a shown workflow or agent.
             guard press.modifiers.subtracting(.command).isEmpty, renamingChatID == nil, selection.count == 1,
-                  let chatID = selection.first, let meta = listedChats.first(where: { $0.id.uuidString == chatID })
+                  selectedChatAgent == nil, let chatID = selection.first,
+                  let meta = listedChats.first(where: { $0.id.uuidString == chatID })
             else { return .ignored }
             ChatActions.confirmDelete(meta, workspace: workspace, window: windowReference.window, app: app)
             return .handled
         }
     }
 
-    /// The context menu of the selected rows; right-clicking a row that is not selected selects it
-    /// first. With several chats, Close is the only enabled item (docs/chats.md › Where chats
-    /// appear).
+    /// The context menu of the selected chats; right-clicking a chat row that is not selected
+    /// selects it first. With several chats, Close is the only enabled item. A workflow or agent
+    /// row has Stop Workflow while its workflow runs, and is not selected by the right-click
+    /// (docs/chats.md › Where chats appear).
     @ViewBuilder
     private func contextMenu(_ ids: Set<String>) -> some View {
         let chats = Self.menuChats(ids, listed: listedChats)
-        if !chats.isEmpty {
+        if chats.isEmpty {
+            if let agentRow = listedAgentRows.first(where: { ids.contains($0.id) }), let workflowID = agentRow.stoppableWorkflowID {
+                Button("Stop Workflow") {
+                    ChatAgentRows.stopWorkflow(chatID: agentRow.chatID, workflowID: workflowID, workspace: workspace, window: window)
+                }
+                .disabled(!window.isConnected)
+            }
+        } else {
             let _ = selectClickedRow(ids)
             let single = chats.count == 1 ? chats.first : nil
             Button("Open in New Window") {
@@ -200,10 +236,25 @@ struct ChatsSectionView: View {
         }
     }
 
-    /// A row: the title, the linked ticket or bundle id, a state mark and the relative `updated`
-    /// time.
+    /// The rows of a group: each chat followed by the rows of its workflows and agents.
+    private func listRows(_ chats: [ChatMeta]) -> [ChatListRow] {
+        chats.flatMap { meta in [ChatListRow.chat(meta)] + agentRows(meta).map(ChatListRow.agent) }
+    }
+
+    /// The rows of the chat's workflows and agents: the running ones, and the ended ones while
+    /// the chat is unfolded.
+    private func agentRows(_ meta: ChatMeta) -> [ChatAgentRow] {
+        let chatID = meta.id.uuidString
+        return ChatAgentRows.rows(workspace.agents[chatID], expanded: ChatAgentRows.isExpanded(chatID, window: window, projectID: projectID))
+    }
+
+    /// A row: the disclosure triangle of ended workflows and agents, the title, the linked ticket
+    /// or bundle id, a state mark and the relative `updated` time.
     private func row(_ meta: ChatMeta) -> some View {
         HStack(spacing: 6) {
+            if ChatAgentRows.hasEndedRows(workspace.agents[meta.id.uuidString]) {
+                ChatAgentsDisclosure(chatID: meta.id.uuidString, window: window, projectID: projectID)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 if renamingChatID == meta.id.uuidString {
                     TextField("", text: $renameText)
@@ -260,13 +311,25 @@ struct ChatsSectionView: View {
         }
     }
 
-    /// A selection made in the list; an empty one keeps the current selection, so that the area
-    /// beside the list stays.
+    /// A selection made in the list: a single workflow or agent row shows its view in place of its
+    /// chat's view; otherwise the selection holds the chats among the rows, and an empty one keeps
+    /// the current selection, so that the area beside the list stays.
     private func select(_ ids: Set<String>) {
+        if ids.count == 1, let agent = ids.first.flatMap(ChatAgentSelection.init(tag:)) {
+            draft = nil
+            window.updateViewState(of: projectID) {
+                $0.selectedChatIDs = [agent.chatID]
+                $0.selectedChatAgent = agent
+            }
+            return
+        }
         let ids = Self.listSelection(ids, listed: listedChats)
         guard !ids.isEmpty else { return }
         draft = nil
-        window.updateViewState(of: projectID) { $0.selectedChatIDs = ids }
+        window.updateViewState(of: projectID) {
+            $0.selectedChatIDs = ids
+            $0.selectedChatAgent = nil
+        }
     }
 
     /// Rename… of a row edits its title in place, as the chat view's title: Return renames, Escape
@@ -283,11 +346,16 @@ struct ChatsSectionView: View {
     private var detail: some View {
         if let draft {
             ChatView(draft: draft, workspace: workspace) { meta in
-                window.updateViewState(of: projectID) { $0.selectedChatIDs = [meta.id.uuidString] }
+                window.updateViewState(of: projectID) {
+                    $0.selectedChatIDs = [meta.id.uuidString]
+                    $0.selectedChatAgent = nil
+                }
                 self.draft = nil
             }
         } else if selection.count > 1 {
             severalSelected
+        } else if let agent = selectedChatAgent {
+            ChatAgentDetailView(selection: agent, workspace: workspace, window: window, select: { select([$0.tag]) })
         } else if let chatID = selection.first {
             // A chat whose metadata is not known yet (just created, or named by a navigation) is
             // loaded with `chats.get`, which shows the not-found text when it does not exist.

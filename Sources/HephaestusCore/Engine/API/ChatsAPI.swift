@@ -542,3 +542,49 @@ public enum ChatsCreateFeedback: EngineMethod {
     }
     public typealias Result = ChatMeta
 }
+
+/// `chats.listAgents`: the workflows and agents of the project's chats, one entry per chat that
+/// has at least one, sorted by chat id (docs/chats.md › Agents). Actors: user.
+public enum ChatsListAgents: EngineMethod {
+    public static let name = "chats.listAgents"
+    public struct Params: Codable, Sendable, Hashable {
+        public var projectID: ProjectID
+
+        public init(projectID: ProjectID) {
+            self.projectID = projectID
+        }
+    }
+    public typealias Result = [ChatAgents]
+}
+
+/// `chats.agentTranscript`: the transcript of one agent of a chat (docs/chats.md › Agent transcript
+/// lines, › Sub-agent transcripts). Actors: user.
+public enum ChatsAgentTranscript: EngineMethod {
+    public static let name = "chats.agentTranscript"
+    public struct Params: Codable, Sendable, Hashable {
+        public var chatID: ChatID
+        public var agentID: String
+
+        public init(chatID: ChatID, agentID: String) {
+            self.chatID = chatID
+            self.agentID = agentID
+        }
+    }
+    public typealias Result = [ChatItem]
+}
+
+/// `chats.stopWorkflow`: writes the `stop_task` request for a running workflow (docs/chats.md ›
+/// Stopping a workflow). Actors: user.
+public enum ChatsStopWorkflow: EngineMethod {
+    public static let name = "chats.stopWorkflow"
+    public struct Params: Codable, Sendable, Hashable {
+        public var chatID: ChatID
+        public var workflowID: String
+
+        public init(chatID: ChatID, workflowID: String) {
+            self.chatID = chatID
+            self.workflowID = workflowID
+        }
+    }
+    public typealias Result = Empty
+}

@@ -251,6 +251,14 @@ struct ProjectViewState {
     var chatsTabSelection: [String: String] = [:]
     /// The tickets and bundles whose Chats tab shows a draft chat.
     var chatsTabDrafts: Set<String> = []
+    /// The workflow or agent shown in the Chats section in place of the chat view; its chat is
+    /// then the only chat of `selectedChatIDs` (docs/chats.md › Where chats appear).
+    var selectedChatAgent: ChatAgentSelection?
+    /// The workflow or agent shown in the Chats tab of a ticket or bundle in place of the chat
+    /// view, by ticket or bundle id.
+    var chatsTabAgentSelection: [String: ChatAgentSelection] = [:]
+    /// Chats whose ended workflows and agents are unfolded in the chat lists.
+    var expandedAgentChats: Set<String> = []
     /// Whether the Chats section and the Chats tabs of tickets and bundles hide closed chats;
     /// persisted for every project the window showed (docs/chats.md › Where chats appear).
     var hidesClosedChats = true
@@ -277,7 +285,8 @@ extension ProjectViewState: @MainActor Codable {
         case selectedTicketIDs, selectedBundleID, selectedChatIDs, inspectorChatID, inspectorShowsDraft, unlinkedItems, editorTabs,
              selectedEditorPath, selectedDocPath, docMode, selectedWebTabID, selectedSkillName, consoleRunID,
              expandedCodeFolders, selectedTreePath, expandedDocFolders, ticketList, ticketTab, bundleList, bundleTab,
-             chatsTabSelection, chatsTabDrafts, hidesClosedChats, commentDrafts
+             chatsTabSelection, chatsTabDrafts, hidesClosedChats, commentDrafts, selectedChatAgent, chatsTabAgentSelection,
+             expandedAgentChats
         /// The single selected chat of a state persisted before `selectedChatIDs`; decoded only.
         case selectedChatID
     }
@@ -313,6 +322,9 @@ extension ProjectViewState: @MainActor Codable {
         chatsTabDrafts = Set(try c.decodeIfPresent([String].self, forKey: .chatsTabDrafts) ?? [])
         hidesClosedChats = try c.decodeIfPresent(Bool.self, forKey: .hidesClosedChats) ?? true
         commentDrafts = try c.decodeIfPresent([String: CommentDraft].self, forKey: .commentDrafts) ?? [:]
+        selectedChatAgent = try c.decodeIfPresent(ChatAgentSelection.self, forKey: .selectedChatAgent)
+        chatsTabAgentSelection = try c.decodeIfPresent([String: ChatAgentSelection].self, forKey: .chatsTabAgentSelection) ?? [:]
+        expandedAgentChats = Set(try c.decodeIfPresent([String].self, forKey: .expandedAgentChats) ?? [])
     }
 
     // Sets are encoded as sorted arrays so that the JSON is stable.
@@ -344,6 +356,42 @@ extension ProjectViewState: @MainActor Codable {
             try c.encode(chatsTabDrafts.sorted(), forKey: .chatsTabDrafts)
             try c.encode(commentDrafts, forKey: .commentDrafts)
             try c.encode(unlinkedItems.sorted(), forKey: .unlinkedItems)
+            try c.encodeIfPresent(selectedChatAgent, forKey: .selectedChatAgent)
+            try c.encode(chatsTabAgentSelection, forKey: .chatsTabAgentSelection)
+            try c.encode(expandedAgentChats.sorted(), forKey: .expandedAgentChats)
+        }
+    }
+}
+
+/// A workflow or an agent of a chat shown in place of the chat view (docs/chats.md › Where chats
+/// appear).
+enum ChatAgentSelection: Codable, Hashable, Sendable {
+    case workflow(chatID: String, workflowID: String)
+    case agent(chatID: String, agentID: String)
+
+    var chatID: String {
+        switch self {
+        case .workflow(let chatID, _), .agent(let chatID, _): return chatID
+        }
+    }
+
+    /// The tag of its row in a chat list: `workflow:<chat id>:<workflow id>` or
+    /// `agent:<chat id>:<agent id>`; a chat row's tag is the chat id.
+    var tag: String {
+        switch self {
+        case .workflow(let chatID, let workflowID): return "workflow:\(chatID):\(workflowID)"
+        case .agent(let chatID, let agentID): return "agent:\(chatID):\(agentID)"
+        }
+    }
+
+    /// The selection of a row tag; nil for a chat row's tag.
+    init?(tag: String) {
+        let parts = tag.split(separator: ":", maxSplits: 2).map(String.init)
+        guard parts.count == 3 else { return nil }
+        switch parts[0] {
+        case "workflow": self = .workflow(chatID: parts[1], workflowID: parts[2])
+        case "agent": self = .agent(chatID: parts[1], agentID: parts[2])
+        default: return nil
         }
     }
 }

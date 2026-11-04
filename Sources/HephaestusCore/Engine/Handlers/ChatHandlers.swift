@@ -88,6 +88,15 @@ extension Engine {
         register(ChatsCreateFeedback.self, actors: [.user]) { [unowned self] params, actor in
             try await self.chatsCreateFeedback(params, actor)
         }
+        register(ChatsListAgents.self, actors: [.user]) { [unowned self] params, actor in
+            try await self.chatsListAgents(params, actor)
+        }
+        register(ChatsAgentTranscript.self, actors: [.user]) { [unowned self] params, actor in
+            try await self.chatsAgentTranscript(params, actor)
+        }
+        register(ChatsStopWorkflow.self, actors: [.user]) { [unowned self] params, actor in
+            try await self.chatsStopWorkflow(params, actor)
+        }
     }
 
     // MARK: Lists
@@ -99,6 +108,29 @@ extension Engine {
             .filter { !chats.deleting.contains($0.id) }
             .map(apiChatMeta)
             .sorted { $0.updated > $1.updated }
+    }
+
+    /// `chats.listAgents` (docs/chats.md › Agents): the workflows and agents of every chat of the
+    /// project that has any, sorted by chat id.
+    func chatsListAgents(_ params: ChatsListAgents.Params, _ actor: Actor) async throws -> [ChatAgents] {
+        let projectID = try loadedProjectID(params.projectID)
+        return domain.chats(of: projectID)
+            .filter { !chats.deleting.contains($0.id) }
+            .map { chatAgents($0.id, projectID: projectID) }
+            .filter { !$0.isEmpty }
+            .sorted { $0.chatID.uuidString < $1.chatID.uuidString }
+    }
+
+    /// `chats.agentTranscript` (docs/chats.md › Agent transcript lines, › Sub-agent transcripts).
+    func chatsAgentTranscript(_ params: ChatsAgentTranscript.Params, _ actor: Actor) async throws -> [ChatItem] {
+        try agentTranscript(params.chatID, agentID: params.agentID)
+    }
+
+    /// `chats.stopWorkflow` (docs/chats.md › Stopping a workflow).
+    func chatsStopWorkflow(_ params: ChatsStopWorkflow.Params, _ actor: Actor) async throws -> Empty {
+        _ = try requireChat(params.chatID)
+        try stopWorkflow(params.chatID, workflowID: params.workflowID)
+        return Empty()
     }
 
     /// `chats.get`: the metadata and every item after replaying the transcript; without a live
@@ -401,6 +433,7 @@ extension Engine {
         chats.hasTextMessage[chatID] = nil
         chats.reportedStates[chatID] = nil
         chats.reportedBackgroundWork[chatID] = nil
+        forgetAgents(chatID)
         try unlinkChat(chatID, origin: actor)
         try moveChatItemToTrash(folder.chatMetaFile(chatID))
         try moveChatItemToTrash(folder.transcriptFile(chatID))

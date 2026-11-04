@@ -60,7 +60,8 @@ extension DeviceWorkspace {
     }
 
     /// `chats.list` of one project, under the replay rule: its result replaces the chats of the
-    /// project.
+    /// project. `chats.listAgents` follows, whose result replaces the workflows and agents of the
+    /// project's chats (docs/chats.md › UI state).
     func loadChats(of projectID: String) async {
         _ = try? await seed({ try await call(ChatsList.self, ChatsList.Params(projectID: projectID)) },
                             replace: { list in
@@ -69,6 +70,16 @@ extension DeviceWorkspace {
                                 }
                                 for meta in list {
                                     chats[meta.id.uuidString] = meta
+                                }
+                            },
+                            replay: { event in var event = event; apply(&event) })
+        _ = try? await seed({ try await call(ChatsListAgents.self, ChatsListAgents.Params(projectID: projectID)) },
+                            replace: { list in
+                                for chatID in agents.values.filter({ $0.projectID == projectID }).map(\.chatID.uuidString) {
+                                    agents[chatID] = nil
+                                }
+                                for entry in list {
+                                    agents[entry.chatID.uuidString] = entry
                                 }
                             },
                             replay: { event in var event = event; apply(&event) })

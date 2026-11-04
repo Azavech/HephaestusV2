@@ -37,6 +37,16 @@ public struct ProjectFolder: Sendable, Hashable {
     public func chatAttachmentsFolder(_ id: ChatID) -> URL {
         chatsFolder.appendingPathComponent(id.uuidString, isDirectory: true)
     }
+    /// `.hephaestus/chats/<CHAT-ID>/agents.jsonl`: the chat's workflows and agents
+    /// (docs/data-model.md › Chat agents file).
+    public func chatAgentsFile(_ id: ChatID) -> URL {
+        chatAttachmentsFolder(id).appendingPathComponent("agents.jsonl")
+    }
+    /// `.hephaestus/chats/<CHAT-ID>/agents/<AGENT-ID>.jsonl`: the transcript of a workflow agent
+    /// (docs/data-model.md › Agent transcript file).
+    public func agentTranscriptFile(chatID: ChatID, agentID: String) -> URL {
+        chatAttachmentsFolder(chatID).appendingPathComponent("agents", isDirectory: true).appendingPathComponent("\(agentID).jsonl")
+    }
     /// `.hephaestus/attachments/<TICKET-ID>/`: ticket and comment attachments.
     public func ticketAttachmentsFolder(_ id: TicketID) -> URL {
         attachmentsFolder.appendingPathComponent(id, isDirectory: true)

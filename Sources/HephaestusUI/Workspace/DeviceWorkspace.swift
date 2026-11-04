@@ -84,6 +84,11 @@ final class DeviceWorkspace {
     var webTabs: [String: [WebTab]] = [:]
     /// One transcript state per chat shown in a view, by chat id.
     var transcripts: [String: TranscriptState] = [:]
+    /// The workflows and agents of every chat of every project, by chat id (docs/chats.md › UI
+    /// state).
+    var agents: [String: ChatAgents] = [:]
+    /// One transcript state per agent shown in an agent view, by `<chat id>/<agent id>`.
+    var agentTranscripts: [String: TranscriptState] = [:]
     /// Projects whose detail, tickets, bundles and web tabs are loaded.
     var loadedProjectIDs: Set<String> = []
     /// Unsent composer text and attachments of existing chats, by chat id.
@@ -219,6 +224,19 @@ final class DeviceWorkspace {
     /// The chats of a project.
     func chats(of projectID: String) -> [ChatMeta] {
         chats.values.filter { $0.projectID == projectID }
+    }
+
+    /// The key of an agent's transcript state in `agentTranscripts`.
+    static func agentKey(chatID: String, agentID: String) -> String {
+        "\(chatID)/\(agentID)"
+    }
+
+    /// Drops the workflows and agents of a chat and the transcript states of its agents.
+    func dropAgents(of chatID: String) {
+        agents[chatID] = nil
+        for key in agentTranscripts.keys where key.hasPrefix(chatID + "/") {
+            agentTranscripts[key] = nil
+        }
     }
 
     /// The runs of a project, newest first.
