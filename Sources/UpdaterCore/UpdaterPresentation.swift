@@ -73,7 +73,7 @@ public struct UpdateArea: Sendable, Hashable {
     public struct Input: Sendable, Hashable {
         /// `UpdateController.unavailableReason`: the Updater was not started or stopped for good.
         public var unavailableReason: String?
-        /// Install was chosen in the About window and the app has not quit.
+        /// Install was chosen (About window, Update item or Update Now) and the app has not quit.
         public var installChosen: Bool
         /// No status arrived within 15 seconds after the app posted its last `check`.
         public var checkTimedOut: Bool
@@ -110,12 +110,14 @@ public struct UpdateArea: Sendable, Hashable {
         return common(input)
     }
 
-    /// The Settings > Updates status line: the text of rows 1 and 3 to 9, without controls.
-    public static func settingsStatusLine(_ input: Input) -> String {
+    /// The Settings > Updates status line: rows 1 to 10, their text and progress indicator,
+    /// without controls. Settings has no Not Now.
+    public static func settingsStatusLine(_ input: Input) -> UpdateArea {
         var input = input
-        input.installChosen = false
         input.notNowClicked = false
-        return about(input).text
+        var area = about(input)
+        area.controls = .none
+        return area
     }
 
     private static func common(_ input: Input) -> UpdateArea {

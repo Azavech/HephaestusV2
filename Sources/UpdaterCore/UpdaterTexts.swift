@@ -61,12 +61,23 @@ public enum UpdaterTexts {
     }
 
     // docs/updater.md › Update item
-    /// The text of the status bar's Update item, whatever `autoUpdate` is.
+    /// The text of the status bar's Update item in `available`, `downloading` and `ready`, whatever
+    /// `autoUpdate` is; while the install is chosen the item shows `installing`.
     public static let updateItem = "Update available…"
 
-    /// The Update item's tooltip: `Update v0.5.0(61) ready — restarts when idle` with
+    /// The Update item's tooltip in `available`: `Update v0.5.0(61) available — click to install`.
+    public static func updateItemAvailableTooltip(_ version: AppVersion) -> String {
+        "Update \(version.display) available — click to install"
+    }
+
+    /// The Update item's tooltip in `downloading`: `Downloading update v0.5.0(61)…`.
+    public static func updateItemDownloadingTooltip(_ version: AppVersion) -> String {
+        "Downloading update \(version.display)…"
+    }
+
+    /// The Update item's tooltip in `ready`: `Update v0.5.0(61) ready — restarts when idle` with
     /// `autoUpdate`, `Update v0.5.0(61) ready` without.
-    public static func updateItemTooltip(_ version: AppVersion, autoUpdate: Bool) -> String {
+    public static func updateItemReadyTooltip(_ version: AppVersion, autoUpdate: Bool) -> String {
         autoUpdate ? "Update \(version.display) ready — restarts when idle" : "Update \(version.display) ready"
     }
 }

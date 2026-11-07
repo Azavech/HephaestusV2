@@ -19,7 +19,8 @@ final class UpdateController {
     private(set) var awaitingCheck = false
     /// No status arrived within 15 seconds after the app posted its last `check`.
     private(set) var checkTimedOut = false
-    /// Install was chosen in the About window and the app has not quit (About window, row 2).
+    /// The install mark, one for the app: Install was chosen in the About window, with the Update
+    /// item or with Update Now, and the app has not quit (About window, row 2).
     private(set) var installChosen = false
     /// Set after a restart sequence that failed at step 3, while the update stays.
     private(set) var restartFailedMessage: String?
@@ -277,8 +278,8 @@ final class UpdateController {
         UpdateArea.about(areaInput(notNowClicked: notNowClicked))
     }
 
-    /// The Settings > Updates status line: rows 1 and 3 to 9 of the About window, without controls.
-    var settingsStatusLine: String {
+    /// The Settings > Updates status line: rows 1 to 10 of the About window, without controls.
+    var settingsStatusLine: UpdateArea {
         UpdateArea.settingsStatusLine(areaInput(notNowClicked: false))
     }
 
@@ -291,10 +292,11 @@ final class UpdateController {
                          restartFailedMessage: restartFailedMessage)
     }
 
-    /// Install in the About window: marks the install as chosen; in `ready` the restart checks run
-    /// at once, in `available` the app posts `install` and runs them when `ready` arrives.
+    /// Install in the About window, a click on the Update item and Update Now: marks the install
+    /// as chosen; in `ready` the restart checks run at once, in `available` the app posts `install`,
+    /// and otherwise they run when `ready` arrives.
     func install() {
-        guard let app, isRunning else { return }
+        guard let app, isRunning, !installChosen, !restartInProgress else { return }
         installChosen = true
         restartFailedMessage = nil
         switch app.updaterStatus.state {
@@ -317,31 +319,61 @@ final class UpdateController {
         }
     }
 
-    // MARK: Update item
+    // MARK: Update item and Update Now
 
-    /// docs/updater.md › Update item: the status bar of main windows shows the item while the
-    /// Updater runs, the state is `ready`, Install is not chosen and the restart sequence has not
-    /// started.
-    static func updateItemVisible(updaterRunning: Bool, state: UpdaterState, installChosen: Bool, restartInProgress: Bool) -> Bool {
-        updaterRunning && state == .ready && !installChosen && !restartInProgress
+    /// What the status bar's Update item shows (docs/updater.md › Update item).
+    enum UpdateItem: Equatable {
+        /// `Update available…` with the tooltip of the state; a click installs the update.
+        case available(tooltip: String)
+        /// `Installing…` with a small progress indicator, no tooltip, not clickable.
+        case installing
     }
 
-    var updateItemVisible: Bool {
-        Self.updateItemVisible(updaterRunning: isRunning, state: app?.updaterStatus.state ?? .idle, installChosen: installChosen,
-                               restartInProgress: restartInProgress)
+    /// The states in which the Update item and Update Now offer the update.
+    static let offeredStates: Set<UpdaterState> = [.available, .downloading, .ready]
+
+    /// docs/updater.md › Update item: while the Updater runs, `Installing…` while the install is
+    /// chosen; `Update available…` in `available`, `downloading` or `ready` while the restart
+    /// sequence has not started; nil (hidden) otherwise.
+    static func updateItem(updaterRunning: Bool, status: UpdaterStatus, autoUpdate: Bool, installChosen: Bool,
+                           restartInProgress: Bool) -> UpdateItem? {
+        guard updaterRunning else { return nil }
+        if installChosen {
+            return .installing
+        }
+        guard !restartInProgress, offeredStates.contains(status.state) else { return nil }
+        let version = AppVersion(version: status.version ?? "", build: status.build ?? 0)
+        switch status.state {
+        case .available:
+            return .available(tooltip: UpdaterTexts.updateItemAvailableTooltip(version))
+        case .downloading:
+            return .available(tooltip: UpdaterTexts.updateItemDownloadingTooltip(version))
+        default:
+            return .available(tooltip: UpdaterTexts.updateItemReadyTooltip(version, autoUpdate: autoUpdate))
+        }
     }
 
-    /// `Update available…`, whatever `autoUpdate` is.
-    var updateItemText: String { UpdaterTexts.updateItem }
-
-    var updateItemTooltip: String {
-        let version = app?.updaterStatus.appVersion ?? appVersion
-        return UpdaterTexts.updateItemTooltip(version, autoUpdate: autoUpdate)
+    /// docs/updater.md › Settings: Update Now shows exactly when the Update item offers the update.
+    static func updateNowVisible(updaterRunning: Bool, status: UpdaterStatus, installChosen: Bool, restartInProgress: Bool) -> Bool {
+        guard case .available = updateItem(updaterRunning: updaterRunning, status: status, autoUpdate: false,
+                                           installChosen: installChosen, restartInProgress: restartInProgress)
+        else { return false }
+        return true
     }
 
-    /// A click on the Update item: the restart checks, then the restart sequence.
+    var updateItem: UpdateItem? {
+        Self.updateItem(updaterRunning: isRunning, status: app?.updaterStatus ?? .initial, autoUpdate: autoUpdate,
+                        installChosen: installChosen, restartInProgress: restartInProgress)
+    }
+
+    var updateNowVisible: Bool {
+        Self.updateNowVisible(updaterRunning: isRunning, status: app?.updaterStatus ?? .initial, installChosen: installChosen,
+                              restartInProgress: restartInProgress)
+    }
+
+    /// A click on the Update item or on Update Now does what the About window's Install does.
     func updateItemClicked() {
-        runRestartChecksAndRestart()
+        install()
     }
 
     // MARK: Restart rules

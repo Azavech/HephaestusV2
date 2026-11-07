@@ -3,6 +3,7 @@
 import AppKit
 import HephaestusCore
 import SwiftUI
+import UpdaterCore
 
 /// The device state of a window: a dot and a text (docs/ui.md › Status bar, device state table).
 struct DeviceStatePresentation {
@@ -147,18 +148,29 @@ struct StatusBarView: View {
 
     // MARK: Right: update, costs
 
-    /// Shown while an update is ready; a click runs the restart checks, then the restart sequence
-    /// (docs/updater.md › Update item).
+    /// `Update available…` while an update is available, downloading or ready, a click installing
+    /// it; `Installing…` with a small progress indicator, not clickable, while the install is
+    /// chosen (docs/updater.md › Update item).
     @ViewBuilder
     private var updateItem: some View {
         let controller = app.updateController
-        if controller.updateItemVisible {
-            Button(controller.updateItemText) {
+        switch controller.updateItem {
+        case .available(let tooltip):
+            Button(UpdaterTexts.updateItem) {
                 controller.updateItemClicked()
             }
             .buttonStyle(.plain)
-            .help(controller.updateItemTooltip)
+            .help(tooltip)
             separator
+        case .installing:
+            HStack(spacing: 5) {
+                ProgressView()
+                    .controlSize(.mini)
+                Text(UpdaterTexts.installing)
+            }
+            separator
+        case nil:
+            EmptyView()
         }
     }
 

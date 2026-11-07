@@ -165,21 +165,30 @@ struct PresentationTests {
             == UpdateArea(row: 8, text: failed, controls: .installOrNotNow))
     }
 
-    @Test("The Settings status line shows rows 1 and 3 to 9 without row 2")
+    @Test("The Settings status line shows rows 1 to 10 without controls")
     func settingsLine() {
-        #expect(UpdateArea.settingsStatusLine(Input(unavailableReason: "x")) == "x")
-        #expect(UpdateArea.settingsStatusLine(Input(installChosen: true, status: Self.available)) == "v0.5.0(61) available")
-        #expect(UpdateArea.settingsStatusLine(Input(status: Self.available, notNowClicked: true)) == "v0.5.0(61) available")
-        #expect(UpdateArea.settingsStatusLine(Input(checkTimedOut: true)) == "The updater is not responding.")
-        #expect(UpdateArea.settingsStatusLine(Input(status: UpdaterStatus(state: .upToDate))) == "No update available")
+        func line(_ input: Input) -> UpdateArea { UpdateArea.settingsStatusLine(input) }
+        #expect(line(Input(unavailableReason: "x", installChosen: true)) == UpdateArea(row: 1, text: "x"))
+        #expect(line(Input(installChosen: true, status: Self.available)) == UpdateArea(row: 2, text: "Installing…", showsProgress: true))
+        #expect(line(Input(checkTimedOut: true)) == UpdateArea(row: 3, text: "The updater is not responding."))
+        #expect(line(Input(awaitingCheck: true)) == UpdateArea(row: 4, text: "Checking for updates…", showsProgress: true))
+        #expect(line(Input(status: UpdaterStatus(state: .upToDate))) == UpdateArea(row: 5, text: "No update available"))
+        #expect(line(Input(status: Self.available)) == UpdateArea(row: 8, text: "v0.5.0(61) available"))
+        #expect(line(Input(status: Self.available, notNowClicked: true)) == UpdateArea(row: 8, text: "v0.5.0(61) available"))
+        #expect(line(Input(status: UpdaterStatus(state: .error, message: "GitHub answered HTTP 500.")))
+            == UpdateArea(row: 9, text: "GitHub answered HTTP 500."))
+        #expect(line(Input(status: UpdaterStatus(state: .installing, version: "0.5.0", build: 61)))
+            == UpdateArea(row: 2, text: "Installing…", showsProgress: true))
     }
 
     @Test("The Update item's text and tooltips")
     func updateItem() {
         let version = AppVersion(version: "0.5.0", build: 61)
         #expect(UpdaterTexts.updateItem == "Update available…")
-        #expect(UpdaterTexts.updateItemTooltip(version, autoUpdate: true) == "Update v0.5.0(61) ready — restarts when idle")
-        #expect(UpdaterTexts.updateItemTooltip(version, autoUpdate: false) == "Update v0.5.0(61) ready")
+        #expect(UpdaterTexts.updateItemAvailableTooltip(version) == "Update v0.5.0(61) available — click to install")
+        #expect(UpdaterTexts.updateItemDownloadingTooltip(version) == "Downloading update v0.5.0(61)…")
+        #expect(UpdaterTexts.updateItemReadyTooltip(version, autoUpdate: true) == "Update v0.5.0(61) ready — restarts when idle")
+        #expect(UpdaterTexts.updateItemReadyTooltip(version, autoUpdate: false) == "Update v0.5.0(61) ready")
         #expect(UpdaterTexts.restartFailed == "The updater did not respond; the update was not installed.")
     }
 }

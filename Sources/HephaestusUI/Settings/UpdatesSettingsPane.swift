@@ -16,9 +16,6 @@ struct UpdatesSettingsPane: View {
         (360, "Every 6 hours"), (1440, "Every day"),
     ]
 
-    /// The text of row 4 of docs/updater.md › About window, shown with a small progress indicator.
-    static let checkingText = "Checking for updates…"
-
     var body: some View {
         SettingsForm {
             SettingsRow(label: "Version") {
@@ -50,8 +47,14 @@ struct UpdatesSettingsPane: View {
                         app.updateController.postCheck()
                     }
                     .disabled(!app.updateController.canCheckNow)
-                    statusLine
+                    // Update Now does what a click on the status bar's Update item does.
+                    if app.updateController.updateNowVisible {
+                        Button("Update Now") {
+                            app.updateController.updateItemClicked()
+                        }
+                    }
                 }
+                statusLine
             }
         }
         .disabled(settings == nil)
@@ -87,17 +90,17 @@ struct UpdatesSettingsPane: View {
 
     // MARK: Status line
 
-    /// The text of the About window's update area (rows 1 and 3 to 9) without its controls, or the
-    /// reason while the Updater does not run (docs/updater.md › Settings).
+    /// The About window's update area (rows 1 to 10), its text and progress indicator without its
+    /// controls, or the reason while the Updater does not run (docs/updater.md › Settings).
     @ViewBuilder
     private var statusLine: some View {
-        let text = app.updateController.settingsStatusLine
+        let area = app.updateController.settingsStatusLine
         HStack(spacing: 6) {
-            if text == Self.checkingText {
+            if area.showsProgress {
                 ProgressView()
                     .controlSize(.small)
             }
-            Text(text)
+            Text(area.text)
                 .foregroundStyle(app.updateController.isRunning ? Color.primary : Color.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
