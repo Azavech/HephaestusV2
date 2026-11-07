@@ -41,10 +41,12 @@ extension Engine {
         }
     }
 
-    /// docs/engine-api.md › tickets.list: the project's own tickets by ticket number.
+    /// docs/engine-api.md › tickets.list: the project's own tickets by ticket number; with
+    /// `includeSubprojects`, followed by those of each loaded descendant in `projects.list` order.
     func ticketsList(_ params: TicketsList.Params, _ actor: Actor) async throws -> [Ticket] {
         let id = try loadedProjectID(params.projectID)
-        return domain.tickets(of: id)
+        guard params.includeSubprojects == true else { return domain.tickets(of: id) }
+        return ([id] + domain.descendants(of: id)).flatMap { domain.tickets(of: $0) }
     }
 
     /// docs/engine-api.md › tickets.get.

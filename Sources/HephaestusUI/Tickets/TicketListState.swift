@@ -7,7 +7,7 @@ import HephaestusCore
 struct TicketListState: Codable, Hashable {
     /// The sorted column.
     enum SortColumn: String, Codable, Hashable, CaseIterable {
-        case id, title, status, created
+        case id, project, title, status, created
     }
 
     /// The statuses that To Do, In Progress and In Review of the Filter by Status menu turn on and
@@ -55,8 +55,9 @@ struct TicketListState: Codable, Hashable {
     /// that hide the ticket (docs/ui.md › Resolving a target): a ticket whose status is off turns All
     /// on, a done ticket turns All and Show Done on, and a text filter the ticket does not match is
     /// emptied. `ticket` is nil while the project is not loaded; All and Show Done are then turned on
-    /// and the text filter emptied, so that the ticket shows once loaded.
-    mutating func clearFilters(hiding ticket: Ticket?) {
+    /// and the text filter emptied, so that the ticket shows once loaded. `projectName` is the name
+    /// of the ticket's project, which the text filter matches too.
+    mutating func clearFilters(hiding ticket: Ticket?, projectName: String = "") {
         guard let ticket else {
             selectAll()
             showDone = true
@@ -69,7 +70,7 @@ struct TicketListState: Codable, Hashable {
                 showDone = true
             }
         }
-        if !passesTextFilter(ticket) {
+        if !passesTextFilter(ticket, projectName: projectName) {
             textFilter = ""
         }
     }
@@ -84,9 +85,9 @@ struct TicketListState: Codable, Hashable {
 
     // MARK: Matching
 
-    /// True when the ticket passes both filters.
-    func matches(_ ticket: Ticket) -> Bool {
-        passesStatusFilter(ticket) && passesTextFilter(ticket)
+    /// True when the ticket passes both filters; `projectName` is the name of its project.
+    func matches(_ ticket: Ticket, projectName: String = "") -> Bool {
+        passesStatusFilter(ticket) && passesTextFilter(ticket, projectName: projectName)
     }
 
     /// A done ticket passes while All and Show Done are checked; another ticket while its status is on.
@@ -94,17 +95,18 @@ struct TicketListState: Codable, Hashable {
         ticket.status == .done ? isAll && showDone : statuses.contains(ticket.status)
     }
 
-    /// A ticket matches when every whitespace-separated term appears in its id, title or
-    /// description, ignoring case.
-    func passesTextFilter(_ ticket: Ticket) -> Bool {
-        Self.matches(ticket, text: textFilter)
+    /// A ticket matches when every whitespace-separated term appears in its id, title,
+    /// description or project name, ignoring case.
+    func passesTextFilter(_ ticket: Ticket, projectName: String = "") -> Bool {
+        Self.matches(ticket, text: textFilter, projectName: projectName)
     }
 
-    /// The text filter rule, shared with the ticket picker sheet's filter.
-    static func matches(_ ticket: Ticket, text: String) -> Bool {
+    /// The text filter rule, shared with the filters of the ticket picker sheet and the Add Link
+    /// sheet.
+    static func matches(_ ticket: Ticket, text: String, projectName: String = "") -> Bool {
         let terms = terms(of: text)
         guard !terms.isEmpty else { return true }
-        let fields = [ticket.id, ticket.title, ticket.description]
+        let fields = [ticket.id, ticket.title, ticket.description, projectName]
         return terms.allSatisfy { term in
             fields.contains { $0.range(of: term, options: .caseInsensitive) != nil }
         }
@@ -117,23 +119,45 @@ struct TicketListState: Codable, Hashable {
 
     // MARK: Sorting
 
-    /// The tickets in the list's sort order: ID by number, Title by localized standard
-    /// comparison, Status in the order todo, in_progress, review, done, Created by date. Ties keep the
-    /// ticket number order, newest first.
-    func sorted(_ tickets: [Ticket]) -> [Ticket] {
+    /// The tickets in the list's sort order (docs/tickets.md › Ticket list): ID grouped by project
+    /// in the order of `projects`, by number within each group, the groups keeping their order in
+    /// both directions; Project by project name and Title by localized standard comparison, Status in
+    /// the order todo, in_progress, review, done, Created by date. Ties keep the starting ID order:
+    /// grouped by project, newest first.
+    func sorted(_ tickets: [Ticket], projects: TicketListProjects) -> [Ticket] {
         tickets.sorted { a, b in
-            let order = compare(a, b)
+            if sortColumn == .id {
+                return Self.precedesByID(a, b, projects: projects, newestFirst: !sortAscending)
+            }
+            let order = compare(a, b, projects: projects)
             if order == .orderedSame {
-                return Self.number(of: a.id) > Self.number(of: b.id)
+                return Self.precedesByID(a, b, projects: projects, newestFirst: true)
             }
             return sortAscending ? order == .orderedAscending : order == .orderedDescending
         }
     }
 
-    private func compare(_ a: Ticket, _ b: Ticket) -> ComparisonResult {
+    /// The ID order: the groups of `projects` in their order, then the ticket number.
+    private static func precedesByID(_ a: Ticket, _ b: Ticket, projects: TicketListProjects, newestFirst: Bool) -> Bool {
+        let groupA = projects.group(of: a)
+        let groupB = projects.group(of: b)
+        if groupA != groupB {
+            return groupA < groupB
+        }
+        let numberA = number(of: a.id)
+        let numberB = number(of: b.id)
+        if numberA != numberB {
+            return newestFirst ? numberA > numberB : numberA < numberB
+        }
+        return a.id < b.id
+    }
+
+    private func compare(_ a: Ticket, _ b: Ticket, projects: TicketListProjects) -> ComparisonResult {
         switch sortColumn {
         case .id:
             return Self.compareNumbers(Self.number(of: a.id), Self.number(of: b.id))
+        case .project:
+            return projects.name(of: a).localizedStandardCompare(projects.name(of: b))
         case .title:
             return a.title.localizedStandardCompare(b.title)
         case .status:
@@ -185,6 +209,68 @@ struct TicketListState: Codable, Hashable {
         try c.encode(textFilter, forKey: .textFilter)
         try c.encode(sortColumn, forKey: .sortColumn)
         try c.encode(sortAscending, forKey: .sortAscending)
+    }
+}
+
+/// The projects whose tickets a ticket list shows (docs/tickets.md › Tickets section): the
+/// active project, then its loaded descendants in `projects.list` order, with their names.
+struct TicketListProjects: Hashable {
+    /// The project ids in the order of the ID sort's groups, the active project first.
+    var ids: [String]
+    /// The project names, by id.
+    var names: [String: String]
+
+    init(ids: [String], names: [String: String]) {
+        self.ids = ids
+        self.names = names
+    }
+
+    /// The active project and its descendants, from the workspace's `projects`.
+    @MainActor
+    init(projectID: String, workspace: DeviceWorkspace) {
+        let descendants = workspace.descendants(of: projectID).map(\.project)
+        ids = [projectID] + descendants.map(\.id)
+        var names: [String: String] = [:]
+        for project in [workspace.project(projectID)].compactMap({ $0 }) + descendants {
+            names[project.id] = project.name
+        }
+        self.names = names
+    }
+
+    /// The list has a Project column, right after ID, when the active project has at least one
+    /// loaded sub project.
+    var showsProjectColumn: Bool {
+        ids.count > 1
+    }
+
+    /// The name of a ticket's project; empty when the project is not listed.
+    func name(of ticket: Ticket) -> String {
+        ticket.projectID.flatMap { names[$0] } ?? ""
+    }
+
+    /// The group of a ticket in the ID order: the index of its project; a ticket of another
+    /// project comes after every group.
+    func group(of ticket: Ticket) -> Int {
+        ticket.projectID.flatMap { ids.firstIndex(of: $0) } ?? ids.count
+    }
+
+    /// The tickets of the listed projects that the workspace holds, by ticket id.
+    @MainActor
+    func tickets(in workspace: DeviceWorkspace) -> [String: Ticket] {
+        var result: [String: Ticket] = [:]
+        for id in ids {
+            result.merge(workspace.tickets[id] ?? [:]) { first, _ in first }
+        }
+        return result
+    }
+
+    /// The project Create Bundle from Selection makes the bundle in: the project of the selected
+    /// tickets when there is at least one and all belong to one project; nil otherwise, which
+    /// disables it.
+    static func bundleProject(of ticketIDs: Set<String>) -> String? {
+        let projects = Set(ticketIDs.map { Identifiers.projectID(of: $0) })
+        guard projects.count == 1, let project = projects.first ?? nil else { return nil }
+        return project
     }
 }
 

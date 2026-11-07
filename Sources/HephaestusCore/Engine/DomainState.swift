@@ -192,7 +192,7 @@ struct DomainState {
 
     // MARK: Summaries
 
-    /// The number of tickets per status of a project.
+    /// The number of tickets per status of a project, its sub projects excluded.
     func ticketCounts(of id: ProjectID) -> TicketCounts {
         var counts = TicketCounts()
         for ticket in projects[id].map({ Array($0.tickets.values) }) ?? [] {
@@ -206,11 +206,14 @@ struct DomainState {
         return counts
     }
 
-    /// The ProjectSummary of a loaded project.
+    /// The ProjectSummary of a loaded project: `ticketCounts` with every loaded descendant,
+    /// `ownTicketCounts` without (docs/engine-api.md › TicketCounts).
     func summary(_ id: ProjectID) -> ProjectSummary? {
         guard let loaded = projects[id] else { return nil }
+        let own = ticketCounts(of: id)
+        let total = descendants(of: id).map(ticketCounts(of:)).reduce(own, +)
         return ProjectSummary(id: id, name: loaded.project.name, type: loaded.project.type, rootPath: loaded.rootPath, parentID: loaded.parentID,
-                              subprojectIDs: childIDs(of: id), ticketCounts: ticketCounts(of: id))
+                              subprojectIDs: childIDs(of: id), ticketCounts: total, ownTicketCounts: own)
     }
 
     /// The `projects.list` result: every loaded project and sub project, depth first.

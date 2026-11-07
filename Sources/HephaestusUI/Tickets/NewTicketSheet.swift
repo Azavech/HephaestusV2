@@ -81,9 +81,10 @@ struct NewTicketSheet: View {
             defer { isCreating = false }
             do {
                 let ticket = try await workspace.call(TicketsCreate.self, params)
+                let projectName = workspace.project(projectID)?.name ?? ""
                 window.updateViewState(of: projectID) {
                     $0.selectedTicketIDs = [ticket.id]
-                    $0.ticketList.clearFilters(hiding: ticket)
+                    $0.ticketList.clearFilters(hiding: ticket, projectName: projectName)
                 }
                 dismiss()
             } catch {

@@ -130,8 +130,9 @@ struct MCPToolHandlers: Sendable {
             return try await engineText(tool, params: .object(params), actor: actor)
 
         case .listTickets:
-            let projectOnly: [String: JSONValue] = ["projectID": args["projectID"] ?? .null]
-            let text = try await engineText(tool, params: .object(projectOnly), actor: actor)
+            // The tickets of the project and of its loaded descendants (docs/mcp.md › list_tickets).
+            let params: [String: JSONValue] = ["projectID": args["projectID"] ?? .null, "includeSubprojects": .bool(true)]
+            let text = try await engineText(tool, params: .object(params), actor: actor)
             guard case .string(let status)? = args["status"] else { return text }
             let method = tool.engineMethod ?? ""
             let tickets: [Ticket]

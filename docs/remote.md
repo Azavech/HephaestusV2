@@ -473,6 +473,7 @@ Server to client, the first binary frame (s2c counter 0).
         "commentAnswersRunning": 0,
         "costUSD": 12.5,
         "ownCostUSD": 12.5,
+        "ownTicketCounts": {"done": 8, "inProgress": 1, "review": 0, "todo": 3},
         "subprojectIDs": [],
         "ticketCounts": {"done": 8, "inProgress": 1, "review": 0, "todo": 3},
         "type": "swiftApplication"
@@ -821,7 +822,7 @@ The server keeps no event history. A session starts from the snapshot of its `we
 
 ### Seeding calls and the replay rule
 
-A seeding call is a call whose result replaces a whole part of a client's cached data: `snapshot.get`, `projects.get`, `tickets.list`, `bundles.list`, `chats.list`, `chats.listAgents`, `webTabs.list`, `chats.get`, `chats.agentTranscript`, and the list and file reads that section documents name ([UI](ui.md#deviceworkspace)).
+A seeding call is a call whose result replaces a whole part of a client's cached data: `snapshot.get`, `projects.get`, `tickets.list`, `bundles.list`, `chats.list`, `chats.listAgents`, `webTabs.list`, `chats.get`, `chats.agentTranscript`, and the list and file reads that section documents name ([UI](ui.md#deviceworkspace)). The workspace calls `tickets.list` without `includeSubprojects`, one project per call, so that each result replaces the tickets of one project; the Tickets section merges the tickets of a project and of its descendants itself ([tickets.list](engine-api.md#ticketslist), [Tickets section](tickets.md#tickets-section)).
 
 1. While a seeding call is in flight, the state events that change the data it returns are queued.
 2. When the result arrives, it replaces that data, then the queued events are applied in arrival order.

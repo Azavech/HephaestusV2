@@ -97,6 +97,15 @@ extension DeviceWorkspace {
         }
     }
 
+    /// Loading step 3 for the loaded descendants of a project that a main window shows, so that its
+    /// Tickets section lists their tickets (docs/tickets.md › Tickets section). A descendant whose
+    /// calls failed stays out until Try Again of its own failure state.
+    func ensureDescendantsLoaded(of projectID: String) {
+        for descendant in descendants(of: projectID) {
+            ensureProjectLoaded(descendant.project.id)
+        }
+    }
+
     /// Try Again of the failure state: runs the failed seeding calls again.
     func retryProjectLoad(_ projectID: String) {
         projectLoadErrors[projectID] = nil

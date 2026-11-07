@@ -7,9 +7,12 @@ public enum TicketsList: EngineMethod {
     public static let name = "tickets.list"
     public struct Params: Codable, Sendable, Hashable {
         public var projectID: ProjectID
+        /// When true, the tickets of every loaded descendant follow the project's own.
+        public var includeSubprojects: Bool?
 
-        public init(projectID: ProjectID) {
+        public init(projectID: ProjectID, includeSubprojects: Bool? = nil) {
             self.projectID = projectID
+            self.includeSubprojects = includeSubprojects
         }
     }
     public typealias Result = [Ticket]

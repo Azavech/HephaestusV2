@@ -130,9 +130,10 @@ extension WindowState {
             break
         case .ticket(let ticketID):
             let ticket = workspace.tickets[resolvedProjectID]?[ticketID]
+            let projectName = workspace.project(resolvedProjectID)?.name ?? ""
             updateViewState {
                 $0.selectedTicketIDs = [ticketID]
-                $0.ticketList.clearFilters(hiding: ticket)
+                $0.ticketList.clearFilters(hiding: ticket, projectName: projectName)
             }
         case .bundle(let bundleID):
             let bundle = workspace.bundles[resolvedProjectID]?[bundleID]

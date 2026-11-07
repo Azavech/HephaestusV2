@@ -183,7 +183,20 @@ private struct ProjectColumns: View {
         .onChange(of: state.viewState.openItems(in: state.section)) {
             state.updateViewState(of: project.id) { $0.forgetClosedUnlinkedItems(in: state.section) }
         }
+        // The descendants' tickets, for the Tickets section: loaded at once, then for each
+        // descendant added or opened, and again once the device is connected (docs/ui.md ›
+        // DeviceWorkspace, Loading step 3).
+        .task(id: DescendantsLoad(projectIDs: workspace.descendants(of: project.id).map(\.project.id),
+                                  isConnected: workspace.isConnected)) {
+            workspace.ensureDescendantsLoaded(of: project.id)
+        }
     }
+}
+
+/// What makes a main window load the descendants of its project again.
+private struct DescendantsLoad: Hashable {
+    var projectIDs: [String]
+    var isConnected: Bool
 }
 
 /// The selected section of the active project, with the console drawer under it

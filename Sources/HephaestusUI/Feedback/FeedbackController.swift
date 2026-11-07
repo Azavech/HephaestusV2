@@ -191,8 +191,9 @@ final class FeedbackController {
         let view = state.projectStates[ProjectKey(deviceID: workspace.deviceID, projectID: projectID)] ?? ProjectViewState()
         switch state.section {
         case .tickets:
-            return firstTicketInListOrder(view.selectedTicketIDs, tickets: workspace.tickets[projectID] ?? [:],
-                                          list: view.ticketList)
+            let projects = TicketListProjects(projectID: projectID, workspace: workspace)
+            return firstTicketInListOrder(view.selectedTicketIDs, tickets: projects.tickets(in: workspace),
+                                          list: view.ticketList, projects: projects)
         case .bundles:
             return view.selectedBundleID
         case .chats:
@@ -228,38 +229,16 @@ final class FeedbackController {
         return line
     }
 
-    /// The first selected ticket in the ticket list's order: the sorted column, then the ticket
-    /// number (docs/tickets.md › Ticket list).
-    static func firstTicketInListOrder(_ ids: Set<String>, tickets: [String: Ticket], list: TicketListState) -> String? {
+    /// The first selected ticket in the ticket list's order (docs/tickets.md › Ticket list);
+    /// selected tickets the workspace does not hold come after, by number, as the list starts.
+    static func firstTicketInListOrder(_ ids: Set<String>, tickets: [String: Ticket], list: TicketListState,
+                                       projects: TicketListProjects) -> String? {
         guard !ids.isEmpty else { return nil }
-        let number = { (id: String) in Identifiers.parseTicketID(id)?.number ?? 0 }
-        return ids.sorted { a, b in
-            guard let first = tickets[a], let second = tickets[b] else {
-                // Tickets the workspace does not hold: by number, as the list starts.
-                return list.sortAscending ? number(a) < number(b) : number(a) > number(b)
-            }
-            var order: ComparisonResult
-            switch list.sortColumn {
-            case .id:
-                order = compare(number(a), number(b))
-            case .title:
-                order = first.title.localizedStandardCompare(second.title)
-            case .status:
-                let statuses = TicketStatus.allCases
-                order = compare(statuses.firstIndex(of: first.status) ?? 0, statuses.firstIndex(of: second.status) ?? 0)
-            case .created:
-                order = compare(first.created, second.created)
-            }
-            if order == .orderedSame {
-                order = compare(number(a), number(b))
-            }
-            return list.sortAscending ? order == .orderedAscending : order == .orderedDescending
+        if let first = list.sorted(ids.compactMap { tickets[$0] }, projects: projects).first {
+            return first.id
         }
-        .first
-    }
-
-    private static func compare<T: Comparable>(_ a: T, _ b: T) -> ComparisonResult {
-        a < b ? .orderedAscending : (a > b ? .orderedDescending : .orderedSame)
+        let number = { (id: String) in Identifiers.parseTicketID(id)?.number ?? 0 }
+        return ids.sorted { list.sortAscending ? number($0) < number($1) : number($0) > number($1) }.first
     }
 
     // MARK: The context line of the sheet

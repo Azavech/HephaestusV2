@@ -200,7 +200,7 @@ The first column lists every engine method; it is the list the docs conformance 
 | `projects.remove`          | ProjectsRemove          | projectID                                                  | Empty            | user, claude |
 | `projects.run`             | ProjectsRun             | projectID, kind, wait, timeoutSeconds?                     | RunResult        | user, claude |
 | `projects.stopRun`         | ProjectsStopRun         | runID                                                      | Empty            | user, claude |
-| `tickets.list`             | TicketsList             | projectID                                                  | [Ticket]         | user, claude |
+| `tickets.list`             | TicketsList             | projectID, includeSubprojects?                             | [Ticket]         | user, claude |
 | `tickets.get`              | TicketsGet              | ticketID                                                   | Ticket           | user, claude |
 | `tickets.create`           | TicketsCreate           | projectID, title?, description, attachments?               | Ticket           | user, claude |
 | `tickets.update`           | TicketsUpdate           | ticketID, title?, description?                             | Ticket           | user, claude |
@@ -501,11 +501,12 @@ A `ticketID` param, or a `ui.open` target, that names a ticket whose file exists
 
 Swift type `TicketsList` · actors: user, claude · result: [Ticket](data-model.md#ticket-file) array
 
-| Param     | Type      | Required | Description         |
-| --------- | --------- | -------- | ------------------- |
-| projectID | ProjectID | yes      | Project identifier. |
+| Param              | Type      | Required | Description                                                                                |
+| ------------------ | --------- | -------- | ------------------------------------------------------------------------------------------ |
+| projectID          | ProjectID | yes      | Project identifier.                                                                        |
+| includeSubprojects | Bool      | no       | When true, the tickets of every loaded descendant follow the project's own. Default false. |
 
-Returns every ticket of the project, not those of its sub projects, sorted by ticket number ascending; a ticket whose file never loaded is left out. Default chosen at design time (order). The MCP tool `list_tickets` filters the result by status itself.
+Without `includeSubprojects`, or with false, returns every ticket of the project, not those of its sub projects, sorted by ticket number ascending, so that the seeding call of a client's workspace keeps one project per call ([Seeding calls and the replay rule](remote.md#seeding-calls-and-the-replay-rule)). With true, the project's own tickets come first, then the tickets of each loaded descendant, at any depth, project by project in project-tree order (`projects.list` order, depth first); each project's tickets are sorted by ticket number ascending. A ticket whose file never loaded is left out. Default chosen at design time (order). The MCP tool `list_tickets` calls it with `includeSubprojects: true` and filters the result by status itself.
 
 | Error    | When                                   |
 | -------- | -------------------------------------- |
@@ -2543,8 +2544,9 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
       "commentAnswersRunning": 0,
       "costUSD": 18.4,
       "ownCostUSD": 16.25,
+      "ownTicketCounts": {"done": 7, "inProgress": 1, "review": 2, "todo": 4},
       "subprojectIDs": ["SITE"],
-      "ticketCounts": {"done": 7, "inProgress": 1, "review": 2, "todo": 4},
+      "ticketCounts": {"done": 7, "inProgress": 1, "review": 2, "todo": 6},
       "type": "swiftApplication"
     },
     {
@@ -2555,6 +2557,7 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
       "commentAnswersRunning": 0,
       "costUSD": 2.15,
       "ownCostUSD": 2.15,
+      "ownTicketCounts": {"done": 0, "inProgress": 0, "review": 0, "todo": 2},
       "subprojectIDs": [],
       "ticketCounts": {"done": 0, "inProgress": 0, "review": 0, "todo": 2},
       "type": "none"
@@ -2602,7 +2605,8 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
 | rootPath              | String       | yes      | Standardized absolute path of the project folder on the main device.                                                                                                               |
 | parentID              | ProjectID    | no       | Identifier of the parent; absent for a top-level project.                                                                                                                          |
 | subprojectIDs         | [ProjectID]  | yes      | Identifiers of the loaded direct sub projects, in the order of `subprojects`.                                                                                                      |
-| ticketCounts          | TicketCounts | yes      | Number of tickets per status.                                                                                                                                                      |
+| ticketCounts          | TicketCounts | yes      | Number of tickets per status of the project and of every loaded descendant.                                                                                                        |
+| ownTicketCounts       | TicketCounts | yes      | Number of tickets per status of the project's own tickets, its sub projects excluded.                                                                                              |
 | ownCostUSD            | Double       | yes      | Cost of the project's own chats, deleted chats and comment answers ([Project totals](costs.md#project-totals)).                                                                    |
 | costUSD               | Double       | yes      | Own cost plus the own costs of every loaded descendant ([Project totals](costs.md#project-totals)).                                                                                |
 | commentAnswersRunning | Int          | yes      | Number of [comment answer](chats.md#comment-answers) calls running for the project's tickets, its sub projects excluded; the [restart rules](updater.md#restart-rules) wait for 0. |
@@ -2615,6 +2619,8 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
 | inProgress | Int  | yes      | Tickets with status `in_progress`. |
 | review     | Int  | yes      | Tickets with status `review`.      |
 | done       | Int  | yes      | Tickets with status `done`.        |
+
+In a [ProjectSummary](#projectsummary), `ticketCounts` counts the tickets of the project and of every loaded descendant, and `ownTicketCounts` the project's own tickets, as `costUSD` and `ownCostUSD` do for costs ([Project totals](costs.md#project-totals)). A ticket created, deleted or moved to another status changes the counts of its project and of each of its ancestors; the `projects.changed` that follows carries them all, and so does the `projects.changed` of a sub project that is added, opened or removed.
 
 ### ProjectDetail
 
@@ -3533,3 +3539,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R145: A chat started to implement a ticket asks the user no question until the user writes in it: it makes the choices itself, marks them in the docs and lists them, with the decisions it took, in its completion comment; the engine refuses its questions.
 - R150: Claude shows the user images in the chat with `show_image`: PNG, JPEG, GIF and WebP files are copied into the chat and shown, with an optional caption, at the place of the call, without a permission prompt, in local and remote windows; clicking one opens the image viewer.
 - R151: Claude can ask multiple-choice questions: the user checks options within the minimum and maximum Claude sets and adds own answers.
+- R152: A project's Tickets section lists the tickets of its sub projects too.

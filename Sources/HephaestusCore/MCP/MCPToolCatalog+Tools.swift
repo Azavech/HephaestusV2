@@ -222,7 +222,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "list_tickets",
             description: #"""
-            List a project's tickets, optionally only those with one status: todo, in_progress, review or done.
+            List a project's tickets, those of its sub projects included, optionally only those with one status: todo, in_progress, review or done.
             """#,
             inputSchema: schema(#"""
             {

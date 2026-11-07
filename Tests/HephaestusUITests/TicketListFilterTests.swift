@@ -18,7 +18,7 @@ struct TicketListFilterTests {
     }
 
     private func shown(_ state: TicketListState) -> [String] {
-        tickets.filter(state.matches).map(\.id)
+        tickets.filter { state.matches($0) }.map(\.id)
     }
 
     @Test("The starting state checks All, leaves Show Done off and hides done tickets")

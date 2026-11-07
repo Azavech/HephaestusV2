@@ -87,6 +87,8 @@ struct DashboardView: View {
                 count(counts.review, "In Review")
                 count(counts.done, "Done")
             }
+            Text("Sub projects included")
+                .foregroundStyle(.secondary)
         }
     }
 

@@ -40,7 +40,8 @@ struct TicketPickerSheet: View {
     }
 
     private var visible: [Ticket] {
-        candidates.filter { TicketListState.matches($0, text: filter) }
+        let projectName = workspace.project(projectID)?.name ?? ""
+        return candidates.filter { TicketListState.matches($0, text: filter, projectName: projectName) }
     }
 
     /// The checked tickets that still exist and can be added, in ascending ticket number.
@@ -130,8 +131,9 @@ struct TicketPickerSheet: View {
     }
 
     /// Create calls `bundles.create` with the checked tickets in ascending number; on success the
-    /// window switches to the Bundles section with the new bundle selected. Add appends the
-    /// checked tickets at the end with `bundles.update`. A failure shows under the fields.
+    /// window navigates to the new bundle, which activates the bundle's project, a sub project of the
+    /// active one for a selection of its tickets. Add appends the checked tickets at the end with
+    /// `bundles.update`. A failure shows under the fields.
     private func confirm() {
         guard canConfirm else { return }
         let ids = checkedIDs
@@ -153,8 +155,7 @@ struct TicketPickerSheet: View {
                         projectID: projectID, title: trimmed.isEmpty ? nil : trimmed, ticketIDs: ids))
                     dismiss()
                     await TicketActions.waitUntil { workspace.bundles[projectID]?[bundle.id] != nil }
-                    window.updateViewState(of: projectID) { $0.selectedBundleID = bundle.id }
-                    window.section = .bundles
+                    await window.navigate(to: .bundle(bundleID: bundle.id))
                 }
             } catch {
                 failure = errorMessage(error)

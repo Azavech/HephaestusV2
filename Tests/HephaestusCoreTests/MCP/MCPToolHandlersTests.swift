@@ -97,7 +97,7 @@ struct MCPToolHandlersTests {
     "schema":1,"status":"in_progress","title":"Two","updated":"2026-10-31T14:03:07Z"}]
     """
 
-    @Test("list_tickets: without status the method's JSON; with status the filtered tickets, same encoder")
+    @Test("list_tickets: tickets.list with includeSubprojects; without status the method's JSON; with status the filtered tickets, same encoder")
     func listTickets() async throws {
         let engine = RecordedEngine()
         let tickets = try EngineJSON.decode([Ticket].self, from: Data(Self.ticketsJSON.utf8))
@@ -108,7 +108,28 @@ struct MCPToolHandlersTests {
         let filtered = try await Self.call(handlers, "list_tickets", #"{"projectID":"HEPH","status":"in_progress"}"#)
         #expect(filtered == .success(String(decoding: try EngineJSON.encode([tickets[1]]), as: UTF8.self)))
         #expect(try await Self.call(handlers, "list_tickets", #"{"projectID":"HEPH","status":"done"}"#) == .success("[]"))
-        #expect(engine.calls.allSatisfy { $0.params == .object(["projectID": "HEPH"]) })
+        #expect(engine.calls.allSatisfy { $0.params == .object(["projectID": "HEPH", "includeSubprojects": .bool(true)]) })
+    }
+
+    @Test("list_tickets on a parent: its tickets, then each sub project's, in project-tree order; status filters them all")
+    func listTicketsOfParent() async throws {
+        try await Self.withEngine(namer: FixedTitleNamer(title: nil)) { handlers, h in
+            try await h.create("Heph/site", name: "Website", identifier: "SITE", parentID: "HEPH")
+            try await h.create("Heph/site/blog", name: "Blog", identifier: "BLOG", parentID: "SITE")
+            for projectID in ["BLOG", "SITE", "HEPH", "BLOG"] {
+                try await h.ticket(projectID)
+            }
+            _ = try await h.connection.call(TicketsSetStatus.self, .init(ticketID: "BLOG-2", status: "done"))
+            let definition = try #require(MCPToolCatalog.tool(named: "list_tickets", debugTools: false))
+            func ids(_ arguments: JSONValue) async throws -> [String] {
+                let text = try await handlers.call(definition, arguments: arguments, actor: Self.chat).get()
+                return try EngineJSON.decode([Ticket].self, from: Data(text.utf8)).map(\.id)
+            }
+            #expect(try await ids(["projectID": "HEPH"]) == ["HEPH-1", "SITE-1", "BLOG-1", "BLOG-2"])
+            #expect(try await ids(["projectID": "HEPH", "status": "todo"]) == ["HEPH-1", "SITE-1", "BLOG-1"])
+            #expect(try await ids(["projectID": "SITE"]) == ["SITE-1", "BLOG-1", "BLOG-2"])
+            #expect(try await ids(["projectID": "BLOG", "status": "done"]) == ["BLOG-2"])
+        }
     }
 
     @Test("create_ticket and add_comment: paths become AttachmentUpload values in array order")

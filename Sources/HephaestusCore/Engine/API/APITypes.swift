@@ -80,7 +80,10 @@ public struct ProjectSummary: Codable, Sendable, Hashable, Identifiable {
     public var parentID: ProjectID?
     /// Identifiers of the loaded direct sub projects, in the order of `subprojects`.
     public var subprojectIDs: [ProjectID]
+    /// Tickets per status of the project and of every loaded descendant.
     public var ticketCounts: TicketCounts
+    /// Tickets per status of the project's own tickets, its sub projects excluded.
+    public var ownTicketCounts: TicketCounts
     /// Cost of the project's own chats, deleted chats and comment answers (docs/costs.md › Project
     /// totals).
     public var ownCostUSD: Double
@@ -91,8 +94,9 @@ public struct ProjectSummary: Codable, Sendable, Hashable, Identifiable {
     public var commentAnswersRunning: Int
 
     public init(id: ProjectID, name: String, type: ProjectType = .none, rootPath: String, parentID: ProjectID? = nil,
-                subprojectIDs: [ProjectID] = [], ticketCounts: TicketCounts = TicketCounts(), ownCostUSD: Double = 0,
-                costUSD: Double = 0, commentAnswersRunning: Int = 0) {
+                subprojectIDs: [ProjectID] = [], ticketCounts: TicketCounts = TicketCounts(),
+                ownTicketCounts: TicketCounts = TicketCounts(), ownCostUSD: Double = 0, costUSD: Double = 0,
+                commentAnswersRunning: Int = 0) {
         self.id = id
         self.name = name
         self.type = type
@@ -100,6 +104,7 @@ public struct ProjectSummary: Codable, Sendable, Hashable, Identifiable {
         self.parentID = parentID
         self.subprojectIDs = subprojectIDs
         self.ticketCounts = ticketCounts
+        self.ownTicketCounts = ownTicketCounts
         self.ownCostUSD = ownCostUSD
         self.costUSD = costUSD
         self.commentAnswersRunning = commentAnswersRunning
@@ -118,6 +123,12 @@ public struct TicketCounts: Codable, Sendable, Hashable {
         self.inProgress = inProgress
         self.review = review
         self.done = done
+    }
+
+    /// The counts of two sets of tickets together.
+    public static func + (lhs: TicketCounts, rhs: TicketCounts) -> TicketCounts {
+        TicketCounts(todo: lhs.todo + rhs.todo, inProgress: lhs.inProgress + rhs.inProgress,
+                     review: lhs.review + rhs.review, done: lhs.done + rhs.done)
     }
 }
 

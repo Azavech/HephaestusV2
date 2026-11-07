@@ -531,8 +531,13 @@ public final class AppModel {
         case .chatNotification(let payload):
             chatNotifier.handle(payload, from: workspace)
         case .ticketDeleted(let payload):
+            // The ticket may be selected in its project's list and in the lists of its ancestors
+            // (docs/tickets.md › Tickets section).
             for state in windows.values where state.deviceID == deviceID {
-                state.updateViewState(of: payload.projectID) { $0.selectedTicketIDs.remove(payload.ticketID) }
+                for key in state.projectStates.keys where key.deviceID == deviceID
+                    && state.projectStates[key]?.selectedTicketIDs.contains(payload.ticketID) == true {
+                    state.projectStates[key]?.selectedTicketIDs.remove(payload.ticketID)
+                }
             }
         case .bundleDeleted(let payload):
             for state in windows.values where state.deviceID == deviceID {

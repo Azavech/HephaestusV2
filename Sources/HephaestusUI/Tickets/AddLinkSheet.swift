@@ -37,7 +37,8 @@ struct AddLinkSheet: View {
     }
 
     private var visible: [Ticket] {
-        candidates.filter { TicketListState.matches($0, text: filter) }
+        let projectName = workspace.project(projectID)?.name ?? ""
+        return candidates.filter { TicketListState.matches($0, text: filter, projectName: projectName) }
     }
 
     /// The selected ticket while it is in the list.

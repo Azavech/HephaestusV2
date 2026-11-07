@@ -2,7 +2,8 @@
 import HephaestusCore
 import SwiftUI
 
-/// The Tickets section of the active project; a selected ticket that does not exist shows `NotFoundView(kind: "Ticket", id:)`.
+/// The Tickets section of the active project, which lists the tickets of its loaded descendants
+/// too; a selected ticket that does not exist shows `NotFoundView(kind: "Ticket", id:)`.
 struct TicketsSectionView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -27,8 +28,10 @@ struct TicketsSectionView: View {
         if ids.isEmpty {
             placeholder("No Ticket Selected")
         } else if ids.count == 1, let ticketID = ids.first {
-            if workspace.tickets[projectID]?[ticketID] != nil {
-                TicketDetailView(window: window, workspace: workspace, projectID: projectID, ticketID: ticketID)
+            // A sub project's ticket shows as in its own project, without changing the active one.
+            let ticketProjectID = Identifiers.projectID(of: ticketID) ?? projectID
+            if workspace.tickets[ticketProjectID]?[ticketID] != nil {
+                TicketDetailView(window: window, workspace: workspace, projectID: ticketProjectID, ticketID: ticketID)
                     .id(TicketWindowStore.key(workspace.deviceID, ticketID))
             } else {
                 NotFoundView(kind: "Ticket", id: ticketID)
@@ -39,11 +42,14 @@ struct TicketsSectionView: View {
                 Text("\(ids.count) Tickets Selected")
                     .font(.title3)
                     .foregroundStyle(.secondary)
+                // Enabled when the selected tickets belong to one project, where the bundle is made.
+                let bundleProjectID = TicketListProjects.bundleProject(of: ids)
                 Button("Create Bundle from Selection") {
-                    window.sheet = .ticketPicker(projectID: projectID, bundleID: nil,
+                    guard let bundleProjectID else { return }
+                    window.sheet = .ticketPicker(projectID: bundleProjectID, bundleID: nil,
                                                  checkedTicketIDs: TicketFormat.ascending(Array(ids)))
                 }
-                .disabled(!window.isConnected)
+                .disabled(bundleProjectID == nil || !window.isConnected)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(nsColor: .textBackgroundColor))

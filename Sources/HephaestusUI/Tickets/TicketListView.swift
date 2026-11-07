@@ -3,7 +3,8 @@ import AppKit
 import HephaestusCore
 import SwiftUI
 
-/// The ticket list; its filters and sort order are `ProjectViewState.ticketList`.
+/// The ticket list of a project and its loaded descendants; its filters and sort order are
+/// `ProjectViewState.ticketList`.
 struct TicketListView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -21,14 +22,16 @@ struct TicketListView: View {
         window.projectStates[key]?.selectedTicketIDs ?? []
     }
 
-    private var allTickets: [Ticket] {
-        Array((workspace.tickets[projectID] ?? [:]).values)
+    /// The project and its loaded descendants, whose tickets the list shows.
+    private var projects: TicketListProjects {
+        TicketListProjects(projectID: projectID, workspace: workspace)
     }
 
     /// The tickets that pass the filters, in the list's sort order.
-    private var visibleTickets: [Ticket] {
+    private func visibleTickets(_ projects: TicketListProjects) -> [Ticket] {
         let state = listState
-        return state.sorted(allTickets.filter(state.matches))
+        let tickets = projects.tickets(in: workspace).values.filter { state.matches($0, projectName: projects.name(of: $0)) }
+        return state.sorted(tickets, projects: projects)
     }
 
     var body: some View {
@@ -79,7 +82,7 @@ struct TicketListView: View {
         .buttonStyle(.borderless)
         .help("Create Bundle from Selection")
         .accessibilityLabel("Create Bundle from Selection")
-        .disabled(selection.isEmpty || !window.isConnected)
+        .disabled(TicketListProjects.bundleProject(of: selection) == nil || !window.isConnected)
     }
 
     private var newTicketButton: some View {
@@ -98,7 +101,8 @@ struct TicketListView: View {
 
     @ViewBuilder
     private var content: some View {
-        if allTickets.isEmpty {
+        let projects = projects
+        if projects.tickets(in: workspace).isEmpty {
             VStack(spacing: 8) {
                 Text("No Tickets")
                     .font(.title3.weight(.semibold))
@@ -112,7 +116,7 @@ struct TicketListView: View {
             .padding()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            let tickets = visibleTickets
+            let tickets = visibleTickets(projects)
             if tickets.isEmpty {
                 VStack(spacing: 8) {
                     Text("No Matching Tickets")
@@ -124,16 +128,16 @@ struct TicketListView: View {
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                table(tickets)
+                table(tickets, projects: projects)
             }
         }
     }
 
-    private func table(_ tickets: [Ticket]) -> some View {
+    private func table(_ tickets: [Ticket], projects: TicketListProjects) -> some View {
         let state = listState
         return ItemTable(
             rows: tickets,
-            columns: Self.columns(tickets: workspace.tickets[projectID] ?? [:]),
+            columns: Self.columns(tickets: projects.tickets(in: workspace), projects: projects),
             selection: selection,
             onSelectionChange: { ids in
                 window.updateViewState(of: projectID) { $0.selectedTicketIDs = ids }
@@ -152,17 +156,44 @@ struct TicketListView: View {
                 Task { await TicketActions.deleteTickets(ids, workspace: workspace, window: window) }
             }
         )
+        // The table makes its columns once: a new one when the Project column comes or goes, or a
+        // project name changes its width.
+        .id(projects)
     }
 
-    /// The columns; `tickets`, the tickets of the project, give the blocked marks.
-    static func columns(tickets: [String: Ticket]) -> [ItemTableColumn<Ticket>] { [
+    /// The columns: ID, Project when the active project has a loaded sub project, Title, Status
+    /// and Created; `tickets`, the listed tickets, give the blocked marks.
+    static func columns(tickets: [String: Ticket], projects: TicketListProjects) -> [ItemTableColumn<Ticket>] {
+        var columns = [idColumn]
+        if projects.showsProjectColumn {
+            columns.append(projectColumn(projects))
+        }
+        return columns + otherColumns(tickets: tickets)
+    }
+
+    private static var idColumn: ItemTableColumn<Ticket> {
         ItemTableColumn(id: TicketListState.SortColumn.id.rawValue, title: "ID", minWidth: 24, sizing: .content,
                         contentWidth: { ItemTableText.width($0.id, font: ItemTableText.monospaced) }) { ticket in
             AnyView(Text(ticket.id)
                 .font(.system(size: 12, design: .monospaced))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading))
-        },
+        }
+    }
+
+    /// The name of the ticket's project; it truncates like Created when the list narrows.
+    private static func projectColumn(_ projects: TicketListProjects) -> ItemTableColumn<Ticket> {
+        ItemTableColumn(id: TicketListState.SortColumn.project.rawValue, title: "Project", minWidth: 40, sizing: .shrinkableContent,
+                        contentWidth: { ItemTableText.width(projects.name(of: $0), font: ItemTableText.body) }) { ticket in
+            AnyView(Text(projects.name(of: ticket))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .help(projects.name(of: ticket)))
+        }
+    }
+
+    private static func otherColumns(tickets: [String: Ticket]) -> [ItemTableColumn<Ticket>] { [
         ItemTableColumn(id: TicketListState.SortColumn.title.rawValue, title: "Title", minWidth: 40, sizing: .fill) { ticket in
             AnyView(Text(ticket.title)
                 .lineLimit(1)
@@ -194,10 +225,11 @@ struct TicketListView: View {
     // MARK: Menu
 
     private func menu(for ids: Set<String>) -> [ItemTableMenuItem] {
-        let tickets = ids.compactMap { workspace.tickets[projectID]?[$0] }
+        let projects = projects
+        let tickets = ids.compactMap { projects.tickets(in: workspace)[$0] }
         let single = ids.count == 1 ? tickets.first : nil
         let canImplement = single.map { TicketActions.implementAvailability(of: $0, workspace: workspace).enabled } ?? false
-        let ordered = visibleTickets.map(\.id).filter { ids.contains($0) }
+        let ordered = visibleTickets(projects).map(\.id).filter { ids.contains($0) }
         return [
             .action("Implement", enabled: canImplement) {
                 guard let single else { return }
@@ -208,7 +240,7 @@ struct TicketListView: View {
                     Task { await TicketActions.setStatus(status, of: Array(ids), workspace: workspace, window: window) }
                 }
             }),
-            .action("Create Bundle from Selection…", enabled: !ids.isEmpty) {
+            .action("Create Bundle from Selection…", enabled: TicketListProjects.bundleProject(of: ids) != nil) {
                 createBundleFromSelection(ids)
             },
             .separator,
@@ -229,9 +261,10 @@ struct TicketListView: View {
         window.sheet = .newTicket(projectID: projectID)
     }
 
+    /// Opens the ticket picker sheet of the selected tickets' project, when they all belong to one.
     private func createBundleFromSelection(_ ids: Set<String>) {
-        guard !ids.isEmpty else { return }
-        window.sheet = .ticketPicker(projectID: projectID, bundleID: nil, checkedTicketIDs: TicketFormat.ascending(Array(ids)))
+        guard let bundleProjectID = TicketListProjects.bundleProject(of: ids) else { return }
+        window.sheet = .ticketPicker(projectID: bundleProjectID, bundleID: nil, checkedTicketIDs: TicketFormat.ascending(Array(ids)))
     }
 }
 

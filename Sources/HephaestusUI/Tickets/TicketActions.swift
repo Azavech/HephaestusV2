@@ -199,12 +199,12 @@ enum TicketActions {
         window.sheet = .implementTicket(ticketID: ticketID)
     }
 
-    /// Implement from the list's context menu: selects the ticket and its Chats tab first.
+    /// Implement from the list's context menu: selects the ticket in the list of `projectID` and
+    /// its Chats tab first. The detail of a sub project's ticket keeps its tab in the view state of
+    /// the ticket's project.
     static func implementFromList(ticketID: String, workspace: DeviceWorkspace, window: WindowState, projectID: String) async {
-        window.updateViewState(of: projectID) {
-            $0.selectedTicketIDs = [ticketID]
-            $0.ticketTab = .chats
-        }
+        window.updateViewState(of: projectID) { $0.selectedTicketIDs = [ticketID] }
+        window.updateViewState(of: Identifiers.projectID(of: ticketID) ?? projectID) { $0.ticketTab = .chats }
         await implement(ticketID: ticketID, workspace: workspace, window: window)
     }
 

@@ -41,7 +41,8 @@ public enum MCPToolHandling: String, Sendable, Hashable, CaseIterable {
     case createProject
     /// `run_project`: `wait` defaults to `kind != run`.
     case runProject
-    /// `list_tickets`: tickets.list, then the tickets with `status` when given.
+    /// `list_tickets`: tickets.list with `includeSubprojects: true`, then the tickets with
+    /// `status` when given.
     case listTickets
     /// `get_ticket`: tickets.get, then projects.get for the root; attachment paths made
     /// absolute (docs/mcp.md › get_ticket).

@@ -490,7 +490,7 @@ Each section gives the engine call, the result and the errors of the tool, then 
 ### list_projects
 
 - **Engine call:** projects.list with `{}`.
-- **Result:** the `[ProjectSummary]` array ([Engine API](engine-api.md#projectsummary)).
+- **Result:** the `[ProjectSummary]` array ([Engine API](engine-api.md#projectsummary)): each project's `ticketCounts` counts its tickets and those of all its loaded descendants, and `ownTicketCounts` its own tickets ([TicketCounts](engine-api.md#ticketcounts)).
 - **Errors:** only argument validation errors.
 
 Description:
@@ -754,14 +754,14 @@ Input schema:
 
 ### list_tickets
 
-- **Engine call:** tickets.list with `projectID`. With `status`, the MCP layer keeps the tickets with that status, in the order tickets.list returned them, and encodes them with `EngineJSON.encoder()`.
+- **Engine call:** tickets.list with `projectID` and `includeSubprojects: true`: the project's own tickets, then those of each loaded descendant, grouped by project in project-tree order starting with the project itself, each group in ascending ticket number ([tickets.list](engine-api.md#ticketslist)). With `status`, the MCP layer keeps the tickets with that status, of every project, in the order tickets.list returned them, and encodes them with `EngineJSON.encoder()`.
 - **Result:** the `[Ticket]` array ([Data model](data-model.md)), each ticket with the links it declares, `links`, and those other tickets declare to it, `inverseLinks` ([Ticket links](tickets.md#ticket-links)).
 - **Errors:** Those of tickets.list: unknown project (`notFound`).
 
 Description:
 
 ```text
-List a project's tickets, optionally only those with one status: todo, in_progress, review or done.
+List a project's tickets, those of its sub projects included, optionally only those with one status: todo, in_progress, review or done.
 ```
 
 Input schema:
@@ -3182,3 +3182,4 @@ Unauthorized: missing or invalid bearer token.
 - R145: A chat started to implement a ticket asks the user no question until the user writes in it: it makes the choices itself, marks them in the docs and lists them, with the decisions it took, in its completion comment; the engine refuses its questions.
 - R150: Claude shows the user images in the chat with `show_image`: PNG, JPEG, GIF and WebP files are copied into the chat and shown, with an optional caption, at the place of the call, without a permission prompt, in local and remote windows; clicking one opens the image viewer.
 - R151: Claude can ask multiple-choice questions: the user checks options within the minimum and maximum Claude sets and adds own answers.
+- R152: A project's Tickets section lists the tickets of its sub projects too.
