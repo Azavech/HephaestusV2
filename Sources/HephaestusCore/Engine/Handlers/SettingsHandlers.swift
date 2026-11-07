@@ -12,23 +12,16 @@ extension Engine {
     }
 
     /// `settings.update` (docs/engine-api.md › settings.update): applies the present params,
-    /// checks the HostSettings rules, the feedback project and the skills folder, writes
+    /// checks the HostSettings rules and the skills folder, writes
     /// settings.yml, emits `settings.updated`, then applies the effects of the changed keys.
     /// A call that changes nothing writes nothing and emits nothing.
     func updateSettings(_ params: SettingsUpdate.Params, _ actor: Actor) async throws -> HostSettings {
-        var patch = params
-        if case .set(let id) = patch.feedbackProjectID {
-            patch.feedbackProjectID = .set(id.uppercased())
-        }
         let old = settings
-        let new = patch.applied(to: old)
+        let new = params.applied(to: old)
         do {
             try new.validate()
         } catch let error as ValidationError {
             throw EngineError(error)
-        }
-        if case .set(let id) = patch.feedbackProjectID, !domain.isLoaded(id) {
-            throw EngineError.notFound("Project", id)
         }
         let newSkillsFolder = new.skillsLibraryURL(dataDirectory: dataDirectory)
         let skillsFolderChanged = newSkillsFolder != old.skillsLibraryURL(dataDirectory: dataDirectory)
@@ -70,6 +63,9 @@ extension Engine {
         if skillsFolderChanged {
             await skillsLibraryFolderDidChange()
             emit(SkillsChangedEvent.self, skillSummaries(), origin: actor)
+        }
+        if new.showHephaestusProject != old.showHephaestusProject {
+            hephaestusVisibilityDidChange(shown: new.showHephaestusProject, origin: actor)
         }
     }
 }

@@ -322,7 +322,6 @@ extension Engine {
         let params = SettingsUpdate.Params(
             claudePath: stored.claudePath.map { .set($0) } ?? .clear,
             defaultChatSettings: stored.defaultChatSettings,
-            feedbackProjectID: stored.feedbackProjectID.map { .set($0) } ?? .clear,
             mcpPort: stored.mcpPort,
             syncEnabled: stored.syncEnabled,
             syncPort: stored.syncPort,
@@ -333,7 +332,8 @@ extension Engine {
             formatSwiftOnSave: stored.formatSwiftOnSave,
             notifyNeedsYou: stored.notifyNeedsYou,
             notifyFinished: stored.notifyFinished,
-            notifyAISummary: stored.notifyAISummary
+            notifyAISummary: stored.notifyAISummary,
+            showHephaestusProject: stored.showHephaestusProject
         )
         do {
             _ = try await updateSettings(params, .system)

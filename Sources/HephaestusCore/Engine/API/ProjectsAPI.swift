@@ -142,3 +142,12 @@ public enum ProjectsStopRun: EngineMethod {
     }
     public typealias Result = Empty
 }
+
+/// `projects.ensureHephaestus`: starts the launch check of the HephaestusV2 project again when
+/// the device has none loaded and no attempt runs; returns at once (docs/projects.md › Launch
+/// check and clone). Actors: user.
+public enum ProjectsEnsureHephaestus: EngineMethod {
+    public static let name = "projects.ensureHephaestus"
+    public typealias Params = Empty
+    public typealias Result = Empty
+}

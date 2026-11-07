@@ -399,7 +399,7 @@ HephaestusV2.app/
 | `NSHighResolutionCapable`        | boolean          | true                                                                                                                   | the file                    |
 | `NSLocalNetworkUsageDescription` | string           | `HephaestusV2 uses the local network to find your other Macs running HephaestusV2 and to work on their projects.`      | the file                    |
 
-- `HephaestusReleaseRepository` is read by the [Updater](updater.md#release-feed), by the feedback project resolution ([Feedback](feedback.md#feedback-project)) and by Settings > Updates ([UI](ui.md#updates)). CI passes `github.repository`; local builds pass the Makefile's `RELEASE_REPOSITORY` ([Local make targets](#local-make-targets)).
+- `HephaestusReleaseRepository` is read by the [Updater](updater.md#release-feed) and by Settings > Updates ([UI](ui.md#updates)). Feedback does not read it: it goes to the HephaestusV2 project, whose repository URL is hardcoded in the app ([HephaestusV2 project](projects.md#hephaestusv2-project)). CI passes `github.repository`; local builds pass the Makefile's `RELEASE_REPOSITORY` ([Local make targets](#local-make-targets)).
 - `NSBonjourServices` and `NSLocalNetworkUsageDescription` are those of [Remote devices](remote.md#infoplist-keys).
 - `NSAppTransportSecurity` lets the web views of [Web tabs](web-tabs.md) load any URL the user opens, `http://` pages of local servers included. Default chosen at design time.
 - `CFBundleDevelopmentRegion`, `CFBundleExecutable`, `CFBundleIconFile`, `CFBundleInfoDictionaryVersion` and `CFBundlePackageType` are Default chosen at design time.

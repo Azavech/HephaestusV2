@@ -3,16 +3,12 @@ import Foundation
 /// The rules of `HostSettings` that depend on the device: write rules, `~/` expansion and the
 /// skills library folder (docs/data-model.md › Settings file, docs/engine-api.md › settings.update).
 extension HostSettings {
-    /// The write rules of the field table. `feedbackProjectID` naming a loaded project is
-    /// checked by the engine (`notFound`).
+    /// The write rules of the field table.
     public func validate(homeDirectory: String = NSHomeDirectory()) throws {
         if let claudePath, !ModelRules.isAbsoluteOrHomePath(claudePath) {
             throw ValidationError.invalid("claudePath", "use an absolute path or a path starting with ~/")
         }
         try defaultChatSettings.validate()
-        if let feedbackProjectID, !Identifiers.isProjectID(feedbackProjectID) {
-            throw ValidationError.invalid("feedbackProjectID", "use 2 to 8 letters A–Z")
-        }
         _ = try ModelRules.serverPort(mcpPort, field: "mcpPort")
         _ = try ModelRules.serverPort(syncPort, field: "syncPort")
         guard mcpPort != syncPort else {

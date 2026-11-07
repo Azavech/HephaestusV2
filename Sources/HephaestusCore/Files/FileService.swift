@@ -151,13 +151,15 @@ extension Engine {
 
     /// Looks up `git`, `gofmt` and `swift-format` in the captured login-shell environment
     /// (docs/architecture.md › Startup step 7 and › Child processes, rule 5), then reads the remote
-    /// of every loaded project (docs/engine-api.md › ProjectDetail). Runs once, after the
+    /// of every loaded project (docs/engine-api.md › ProjectDetail) and runs the launch check of
+    /// the HephaestusV2 project (docs/projects.md › Launch check and clone). Runs once, after the
     /// environment capture.
     func lookUpFileTools(environment: [String: String]) async {
         let tools = await FileTools.lookUp(environment: environment, log: log)
         guard !files.toolsSetByTest else { return }
         files.tools = tools
         refreshGitRemoteURLs()
+        ensureHephaestusProject()
     }
 
     /// Sets the tools directly, for tests; the lookup of the engine start does not replace them.

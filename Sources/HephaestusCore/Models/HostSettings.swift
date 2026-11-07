@@ -7,7 +7,6 @@ public struct HostSettings: Codable, Sendable, Hashable {
     public var schema: Int
     public var claudePath: String?
     public var defaultChatSettings: ChatSettings
-    public var feedbackProjectID: ProjectID?
     public var mcpPort: Int
     public var syncEnabled: Bool
     public var syncPort: Int
@@ -23,21 +22,23 @@ public struct HostSettings: Codable, Sendable, Hashable {
     /// This Mac posts the notifications with Haiku's summary; false posts them at once with the
     /// fallback detail (docs/chats.md › Notifications).
     public var notifyAISummary: Bool
+    /// The clients and Claude see the HephaestusV2 project and its sub projects; false hides them
+    /// and this device's feedback entry points (docs/projects.md › Hiding the HephaestusV2 project).
+    public var showHephaestusProject: Bool
     public var unknownKeys: [String: JSONValue]
 
     public static let defaultMCPPort = 47820
     public static let defaultSyncPort = 47821
 
     public init(schema: Int = 1, claudePath: String? = nil, defaultChatSettings: ChatSettings = ChatSettings(),
-                feedbackProjectID: ProjectID? = nil, mcpPort: Int = HostSettings.defaultMCPPort, syncEnabled: Bool = true,
+                mcpPort: Int = HostSettings.defaultMCPPort, syncEnabled: Bool = true,
                 syncPort: Int = HostSettings.defaultSyncPort, skillsLibraryPath: String? = nil, autoUpdate: Bool = true,
                 updateCheckIntervalMinutes: Int = 30, formatGoOnSave: Bool = true, formatSwiftOnSave: Bool = false,
                 notifyNeedsYou: Bool = true, notifyFinished: Bool = true, notifyAISummary: Bool = true,
-                unknownKeys: [String: JSONValue] = [:]) {
+                showHephaestusProject: Bool = true, unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
         self.claudePath = claudePath
         self.defaultChatSettings = defaultChatSettings
-        self.feedbackProjectID = feedbackProjectID
         self.mcpPort = mcpPort
         self.syncEnabled = syncEnabled
         self.syncPort = syncPort
@@ -49,13 +50,14 @@ public struct HostSettings: Codable, Sendable, Hashable {
         self.notifyNeedsYou = notifyNeedsYou
         self.notifyFinished = notifyFinished
         self.notifyAISummary = notifyAISummary
+        self.showHephaestusProject = showHephaestusProject
         self.unknownKeys = unknownKeys
     }
 
     static let knownKeys: Set<String> = [
-        "schema", "claudePath", "defaultChatSettings", "feedbackProjectID", "mcpPort", "syncEnabled", "syncPort",
+        "schema", "claudePath", "defaultChatSettings", "mcpPort", "syncEnabled", "syncPort",
         "skillsLibraryPath", "autoUpdate", "updateCheckIntervalMinutes", "formatGoOnSave", "formatSwiftOnSave",
-        "notifyNeedsYou", "notifyFinished", "notifyAISummary",
+        "notifyNeedsYou", "notifyFinished", "notifyAISummary", "showHephaestusProject",
     ]
 
     public init(from decoder: Decoder) throws {
@@ -63,10 +65,6 @@ public struct HostSettings: Codable, Sendable, Hashable {
         schema = try c.schema()
         claudePath = try c.optional("claudePath")
         defaultChatSettings = try c.value("defaultChatSettings", default: ChatSettings())
-        feedbackProjectID = try c.optional("feedbackProjectID")
-        if let feedbackProjectID {
-            try c.check("feedbackProjectID", feedbackProjectID, Identifiers.isProjectID, "project identifier")
-        }
         mcpPort = try c.value("mcpPort", default: HostSettings.defaultMCPPort)
         syncEnabled = try c.value("syncEnabled", default: true)
         syncPort = try c.value("syncPort", default: HostSettings.defaultSyncPort)
@@ -78,6 +76,7 @@ public struct HostSettings: Codable, Sendable, Hashable {
         notifyNeedsYou = try c.value("notifyNeedsYou", default: true)
         notifyFinished = try c.value("notifyFinished", default: true)
         notifyAISummary = try c.value("notifyAISummary", default: true)
+        showHephaestusProject = try c.value("showHephaestusProject", default: true)
         unknownKeys = try c.unknownKeys(known: Self.knownKeys)
     }
 
@@ -86,7 +85,6 @@ public struct HostSettings: Codable, Sendable, Hashable {
         try c.encode(schema, "schema")
         try c.encodeOptional(claudePath, "claudePath")
         try c.encode(defaultChatSettings, "defaultChatSettings")
-        try c.encodeOptional(feedbackProjectID, "feedbackProjectID")
         try c.encode(mcpPort, "mcpPort")
         try c.encode(syncEnabled, "syncEnabled")
         try c.encode(syncPort, "syncPort")
@@ -98,6 +96,7 @@ public struct HostSettings: Codable, Sendable, Hashable {
         try c.encode(notifyNeedsYou, "notifyNeedsYou")
         try c.encode(notifyFinished, "notifyFinished")
         try c.encode(notifyAISummary, "notifyAISummary")
+        try c.encode(showHephaestusProject, "showHephaestusProject")
         try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
     }
 }

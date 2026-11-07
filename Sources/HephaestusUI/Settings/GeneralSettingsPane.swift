@@ -7,7 +7,7 @@ struct GeneralSettingsPane: View {
     @Environment(AppModel.self) private var app
     @State private var claudePathMessage: String?
     @State private var chatSettingsMessage: String?
-    @State private var feedbackMessage: String?
+    @State private var hephaestusMessage: String?
     /// The result of the last `claude.status` call, until `claude.updated` replaces it.
     @State private var status: ClaudeStatus?
     @State private var hostWindow = HostWindow()
@@ -43,10 +43,12 @@ struct GeneralSettingsPane: View {
                     .fixedSize()
                 FieldMessage(text: chatSettingsMessage)
             }
-            SettingsRow(label: "Feedback project") {
-                IndentedPopUpButton(items: feedbackItems, selection: settings?.feedbackProjectID ?? "", select: applyFeedbackProject)
-                    .fixedSize()
-                FieldMessage(text: feedbackMessage)
+            SettingsRow(label: "") {
+                Toggle("Show the HephaestusV2 project", isOn: showHephaestusProject)
+                Text("Hiding it also turns off Send Feedback.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                FieldMessage(text: hephaestusMessage)
             }
         }
         .disabled(settings == nil)
@@ -131,39 +133,15 @@ struct GeneralSettingsPane: View {
         }
     }
 
-    // MARK: Feedback project
+    // MARK: HephaestusV2 project
 
-    /// `Automatic`, a separator, then This Mac's projects in `projects.list` order with sub
-    /// projects indented; a stored identifier that is not registered shows as
-    /// `Missing project (<identifier>)`.
-    private var feedbackItems: [IndentedPopUpButton.Item] {
-        var items = [IndentedPopUpButton.Item(tag: "", title: "Automatic"), .separator()]
-        for project in workspace.projects {
-            items.append(IndentedPopUpButton.Item(tag: project.id, title: project.name, indentation: depth(of: project)))
-        }
-        if let stored = settings?.feedbackProjectID, workspace.project(stored) == nil {
-            // The missing project's item ends the list (docs/ui.md › General).
-            items.append(.separator())
-            items.append(IndentedPopUpButton.Item(tag: stored, title: "Missing project (\(stored))"))
-        }
-        return items
-    }
-
-    private func depth(of project: ProjectSummary) -> Int {
-        var depth = 0
-        var parentID = project.parentID
-        while let current = parentID {
-            depth += 1
-            parentID = workspace.project(current)?.parentID
-        }
-        return depth
-    }
-
-    /// `Automatic` stores no value.
-    private func applyFeedbackProject(_ tag: String) {
-        guard tag != (settings?.feedbackProjectID ?? "") else { return }
-        Task {
-            feedbackMessage = await updateLocalSettings(app, SettingsUpdate.Params(feedbackProjectID: tag.isEmpty ? .clear : .set(tag)))
-        }
+    /// `showHephaestusProject`, applied when changed (docs/projects.md › Hiding the HephaestusV2
+    /// project).
+    private var showHephaestusProject: Binding<Bool> {
+        Binding(get: { settings?.showHephaestusProject ?? true }, set: { value in
+            Task {
+                hephaestusMessage = await updateLocalSettings(app, SettingsUpdate.Params(showHephaestusProject: value))
+            }
+        })
     }
 }

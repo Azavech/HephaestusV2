@@ -3,10 +3,11 @@ import AppKit
 import HephaestusCore
 import SwiftUI
 
-/// Send Feedback: the screenshot (`AppModel.feedbackPreviews[previewID]`), the comment, the
-/// project, the chat settings menus and the context; Send calls `chats.createFeedback` on the
-/// receiving device and a main window shows the returned chat in its Chats section
-/// (docs/feedback.md › Feedback sheet, › Chat settings menus, › Creating the feedback chat).
+/// Send Feedback: the screenshot (`AppModel.feedbackPreviews[previewID]`), the comment, the chat
+/// settings menus and the context; Send calls `chats.createFeedback` on the receiving device with
+/// its HephaestusV2 project, and a main window shows the returned chat in its Chats section
+/// (docs/feedback.md › Feedback sheet, › Chat settings menus, › Feedback project, › Creating the
+/// feedback chat).
 struct FeedbackSheet: View {
     let previewID: UUID
     let source: FeedbackSource
@@ -18,19 +19,15 @@ struct FeedbackSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var comment = ""
-    @State private var selectedProjectID: String?
-    /// The user picked a project in the pop-up button; the pick is not saved.
-    @State private var userPicked = false
-    @State private var lookupFinished = false
     @State private var isSending = false
     /// The error of the last Send.
     @State private var sendError: String?
-    /// The settings chosen in the menus; nil until a menu changes them, while the menus follow the
-    /// selected project.
+    /// The settings chosen in the menus; nil until a menu changes them, while the menus show the
+    /// HephaestusV2 project's defaults.
     @State private var chosenSettings: ChatSettings?
-    /// The `chatDefaults` read with `projects.get` for selected projects whose detail the
-    /// workspace has not loaded, by project id; `.some(nil)` for a project without them.
-    @State private var readChatDefaults: [String: ChatSettings?] = [:]
+    /// The `chatDefaults` of the HephaestusV2 project read with `projects.get` when the workspace
+    /// has not loaded its detail; `.some(nil)` for a project without them, nil while not read.
+    @State private var readChatDefaults: ChatSettings??
     @FocusState private var commentFocused: Bool
     /// The screenshot, decoded once.
     @State private var image: NSImage?
@@ -43,19 +40,19 @@ struct FeedbackSheet: View {
         app.feedbackPreviews[previewID]
     }
 
+    /// The receiving device.
+    private var receivingDeviceID: String {
+        capture?.receivingDeviceID ?? FeedbackProject.receivingDeviceID(of: source, app: app)
+    }
+
     /// The receiving device's workspace.
     private var workspace: DeviceWorkspace? {
-        let deviceID: String
-        if let capture {
-            deviceID = capture.receivingDeviceID
-        } else {
-            switch source {
-            case .main(let state): deviceID = state.deviceID
-            case .chat(let value): deviceID = value.deviceID
-            case .other: deviceID = app.localDeviceID
-            }
-        }
-        return app.workspaces[deviceID]
+        app.workspaces[receivingDeviceID]
+    }
+
+    /// The receiving device's HephaestusV2 project, while it is loaded and shown.
+    private var hephaestusProject: ProjectSummary? {
+        FeedbackProject.project(in: workspace)
     }
 
     var body: some View {
@@ -72,7 +69,6 @@ struct FeedbackSheet: View {
             } else if let sendError {
                 ValidationMessage(text: sendError)
             }
-            projectRow
             settingsRow
             if let capture {
                 let line = FeedbackController.contextLine(capture.context, projectName: contextProjectName(capture))
@@ -89,11 +85,11 @@ struct FeedbackSheet: View {
         .padding(20)
         .frame(width: 520)
         .disabled(isSending)
-        .task(id: lookupKey) {
-            await lookUpDefaultProject()
+        .task(id: workspace?.isConnected ?? false) {
+            await ensureHephaestusProject()
         }
-        .task(id: DefaultsKey(projectID: selectedProjectID, connected: workspace?.isConnected ?? false)) {
-            await readSelectedChatDefaults()
+        .task(id: DefaultsKey(available: hephaestusProject != nil, connected: workspace?.isConnected ?? false)) {
+            await readHephaestusChatDefaults()
         }
         .onAppear {
             image = png.flatMap { NSImage(data: $0) }
@@ -152,18 +148,6 @@ struct FeedbackSheet: View {
             .accessibilityLabel("Comment")
     }
 
-    private var projectRow: some View {
-        HStack(spacing: 8) {
-            Text("Project")
-            ProjectPopUpButton(items: ProjectPopUpButton.items(for: workspace?.projects ?? []), selection: projectSelection)
-                .frame(maxWidth: .infinity)
-            if !lookupFinished || !chatDefaultsKnown {
-                ProgressView()
-                    .controlSize(.small)
-            }
-        }
-    }
-
     /// The composer's Model, Effort and Permissions menus, in one row.
     private var settingsRow: some View {
         let menus = ChatSettingsMenus(settings: chatSettings, models: workspace?.models ?? []) { chosenSettings = $0 }
@@ -174,6 +158,10 @@ struct FeedbackSheet: View {
                 .fixedSize()
             ChatPermissionsMenuButton(menus: menus)
                 .fixedSize()
+            if hephaestusProject != nil, !chatDefaultsKnown {
+                ProgressView()
+                    .controlSize(.small)
+            }
             Spacer(minLength: 0)
         }
     }
@@ -213,13 +201,6 @@ struct FeedbackSheet: View {
         }
     }
 
-    private var projectSelection: Binding<String?> {
-        Binding(get: { selectedProjectID }, set: { projectID in
-            selectedProjectID = projectID
-            userPicked = true
-        })
-    }
-
     private func contextProjectName(_ capture: FeedbackCapture) -> String? {
         guard let projectID = capture.context.projectID else { return nil }
         return app.workspaces[capture.receivingDeviceID]?.project(projectID)?.name
@@ -233,8 +214,8 @@ struct FeedbackSheet: View {
         if png == nil {
             return "The window could not be captured."
         }
-        guard let workspace, !workspace.projects.isEmpty else {
-            return "No project can receive feedback. Create or open a project first."
+        guard let workspace, hephaestusProject != nil else {
+            return "HephaestusV2 is not available on \(workspace?.deviceName ?? app.deviceName(receivingDeviceID))."
         }
         let name = workspace.deviceName
         guard workspace.isConnected else {
@@ -251,92 +232,65 @@ struct FeedbackSheet: View {
     }
 
     private var canSend: Bool {
-        guard !isSending, blockingMessage == nil, lookupFinished, chatDefaultsKnown, let selectedProjectID,
-              let workspace, workspace.project(selectedProjectID) != nil else { return false }
-        return true
+        !isSending && blockingMessage == nil && chatDefaultsKnown && hephaestusProject != nil
     }
 
     // MARK: Chat settings (docs/feedback.md › Chat settings menus)
 
-    /// The selected project's `chatDefaults`: from the loaded detail, else as read with
+    /// The HephaestusV2 project's `chatDefaults`: from the loaded detail, else as read with
     /// `projects.get`; `.some(nil)` for a project without them, nil while they are not known.
-    private var selectedChatDefaults: ChatSettings?? {
-        guard let selectedProjectID, let workspace else { return nil }
-        if let detail = workspace.details[selectedProjectID] {
+    private var hephaestusChatDefaults: ChatSettings?? {
+        guard hephaestusProject != nil, let workspace else { return nil }
+        if let detail = workspace.details[FeedbackProject.projectID] {
             return .some(detail.project.chatDefaults)
         }
-        return readChatDefaults[selectedProjectID]
+        return readChatDefaults
     }
 
     /// The menus need no defaults once one of them was changed.
     private var chatDefaultsKnown: Bool {
-        chosenSettings != nil || selectedChatDefaults != nil
+        chosenSettings != nil || hephaestusChatDefaults != nil
     }
 
-    /// The settings of the menus: the choice, else the selected project's `chatDefaults`, else the
-    /// receiving device's `defaultChatSettings`.
+    /// The settings of the menus: the choice, else the HephaestusV2 project's `chatDefaults`, else
+    /// the receiving device's `defaultChatSettings`.
     private var chatSettings: ChatSettings {
         if let chosenSettings { return chosenSettings }
-        if let defaults = selectedChatDefaults ?? nil { return defaults }
+        if let defaults = hephaestusChatDefaults ?? nil { return defaults }
         return workspace?.settings?.defaultChatSettings ?? ChatSettings()
     }
 
     private struct DefaultsKey: Hashable {
-        var projectID: String?
+        var available: Bool
         var connected: Bool
     }
 
-    /// Reads the selected project's `chatDefaults` when the workspace has not loaded its detail; a
-    /// failed read leaves the receiving device's defaults.
-    private func readSelectedChatDefaults() async {
-        guard let workspace, workspace.isConnected, let projectID = selectedProjectID,
-              workspace.details[projectID] == nil, readChatDefaults[projectID] == nil
+    /// Reads the HephaestusV2 project's `chatDefaults` when the workspace has not loaded its
+    /// detail; a failed read leaves the receiving device's defaults.
+    private func readHephaestusChatDefaults() async {
+        guard let workspace, workspace.isConnected, hephaestusProject != nil,
+              workspace.details[FeedbackProject.projectID] == nil, readChatDefaults == nil
         else { return }
-        let detail = try? await workspace.call(ProjectsGet.self, ProjectsGet.Params(projectID: projectID))
+        let detail = try? await workspace.call(ProjectsGet.self, ProjectsGet.Params(projectID: FeedbackProject.projectID))
         guard !Task.isCancelled else { return }
-        readChatDefaults[projectID] = .some(detail?.project.chatDefaults)
+        readChatDefaults = .some(detail?.project.chatDefaults)
     }
 
-    // MARK: Default project (docs/feedback.md › Feedback project)
+    // MARK: HephaestusV2 project (docs/feedback.md › Feedback sheet)
 
-    /// Runs the lookup again when the connection, the snapshot, the projects or the setting
-    /// `feedbackProjectID` of the receiving device change.
-    private struct LookupKey: Hashable {
-        var connected: Bool
-        var hasSnapshot: Bool
-        var projectIDs: [String]
-        var feedbackProjectID: String?
-    }
-
-    private var lookupKey: LookupKey {
-        LookupKey(connected: workspace?.isConnected ?? false, hasSnapshot: workspace?.hasSnapshot ?? false,
-                  projectIDs: workspace?.projects.map(\.id) ?? [], feedbackProjectID: workspace?.settings?.feedbackProjectID)
-    }
-
-    private func lookUpDefaultProject() async {
-        guard let workspace else {
-            lookupFinished = true
-            return
-        }
-        let keepsPick = userPicked && selectedProjectID.map { workspace.project($0) != nil } == true
-        if !keepsPick {
-            lookupFinished = false
-        }
-        // Rule 3: the project selected in the captured main window, or the chat's project.
-        let windowProjectID = capture?.context.projectID
-        let projectID = await FeedbackProjectLookup.defaultProject(in: workspace, windowProjectID: windowProjectID)
-        guard !Task.isCancelled else { return }
-        if !(userPicked && selectedProjectID.map { workspace.project($0) != nil } == true) {
-            selectedProjectID = projectID
-            userPicked = false
-        }
-        lookupFinished = true
+    /// `projects.ensureHephaestus` on the receiving device, when the sheet opens and each time the
+    /// connection comes back: a device whose clone failed tries again. The sheet does not wait for
+    /// the clone; the project arrives with `projects.changed`.
+    private func ensureHephaestusProject() async {
+        guard let workspace, workspace.isConnected else { return }
+        _ = try? await workspace.call(ProjectsEnsureHephaestus.self)
     }
 
     // MARK: Send (docs/feedback.md › Creating the feedback chat)
 
     private func send() {
-        guard canSend, let workspace, let png, let capture, let projectID = selectedProjectID else { return }
+        guard canSend, let workspace, let png, let capture else { return }
+        let projectID = FeedbackProject.projectID
         isSending = true
         sendError = nil
         let params = ChatsCreateFeedback.Params(
@@ -352,7 +306,7 @@ struct FeedbackSheet: View {
                 closeSheet()
                 await app.feedbackController.showChat(meta, in: workspace, source: source)
             } catch {
-                // The sheet stays open; the comment, the project and the chat settings are kept.
+                // The sheet stays open; the comment and the chat settings are kept.
                 sendError = errorMessage(error)
                 isSending = false
             }

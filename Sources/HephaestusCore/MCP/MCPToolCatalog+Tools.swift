@@ -48,7 +48,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "create_project",
             description: #"""
-            Create a project in a folder on this Mac (the folder is created when missing) and register it in HephaestusV2. The identifier is 2 to 8 letters, unique and permanent: ask the user for the name and the identifier unless they gave them. With parentID the folder must be inside the parent project's folder and the new project becomes its sub project. type is none when omitted.
+            Create a project in a folder on this Mac (the folder is created when missing) and register it in HephaestusV2. The identifier is 2 to 8 letters, unique and permanent: ask the user for the name and the identifier unless they gave them. HEPH is reserved for HephaestusV2. With parentID the folder must be inside the parent project's folder and the new project becomes its sub project. type is none when omitted.
             """#,
             inputSchema: schema(#"""
             {
@@ -145,7 +145,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "remove_project",
             description: #"""
-            Remove a project and its sub projects from HephaestusV2 on this Mac. They are unregistered and their files are left untouched; their runs stop and the Claude processes of their chats end. A chat cannot remove the project it belongs to.
+            Remove a project and its sub projects from HephaestusV2 on this Mac. They are unregistered and their files are left untouched; their runs stop and the Claude processes of their chats end. A chat cannot remove the project it belongs to, and the HephaestusV2 project and its ancestors cannot be removed.
             """#,
             inputSchema: schema(#"""
             {

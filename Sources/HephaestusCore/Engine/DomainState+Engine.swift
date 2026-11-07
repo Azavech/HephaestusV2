@@ -206,7 +206,8 @@ extension Engine {
     /// read (docs/engine-api.md › ProjectDetail).
     func projectDetail(_ id: ProjectID) -> ProjectDetail? {
         guard let loaded = domain.projects[id] else { return nil }
-        let subprojects = domain.childIDs(of: id).compactMap { projectSummary($0) }
+        let hidden = hiddenProjectIDs
+        let subprojects = domain.childIDs(of: id).filter { !hidden.contains($0) }.compactMap { projectSummary($0) }
         return ProjectDetail(project: loaded.project, rootPath: loaded.rootPath, parentID: loaded.parentID,
                              subprojects: subprojects, gitRemoteURL: gitRemoteURL(root: loaded.rootPath))
     }
@@ -222,9 +223,16 @@ extension Engine {
         emit(ProjectsChangedEvent.self, projectSummaries(), origin: origin)
     }
 
-    /// The `projects.list` result: every loaded project, depth first, with its costs.
+    /// The `projects.list` result: every loaded project, depth first, with its costs, without the
+    /// hidden projects (docs/projects.md › Hiding the HephaestusV2 project).
     func projectSummaries() -> [ProjectSummary] {
-        domain.loadedProjectIDs().compactMap(projectSummary)
+        let hidden = hiddenProjectIDs
+        guard !hidden.isEmpty else { return domain.loadedProjectIDs().compactMap(projectSummary) }
+        return domain.loadedProjectIDs().filter { !hidden.contains($0) }.compactMap { id in
+            guard var summary = projectSummary(id) else { return nil }
+            summary.subprojectIDs.removeAll { hidden.contains($0) }
+            return summary
+        }
     }
 
     /// The ProjectSummary of a loaded project with its own cost and its total

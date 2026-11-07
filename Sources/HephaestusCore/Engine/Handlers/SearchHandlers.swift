@@ -18,7 +18,8 @@ extension Engine {
         guard SearchRunner.limits.contains(limit) else {
             throw EngineError.invalid("limit", "use a number from 1 to 1000")
         }
-        var projectIDs = domain.loadedProjectIDs()
+        let hidden = actor.kind == .system ? [] : hiddenProjectIDs
+        var projectIDs = domain.loadedProjectIDs().filter { !hidden.contains($0) }
         if let requested = params.projectID {
             // docs/engine-api.md › search.query, errors; › Identifiers
             guard let projectID = Identifiers.normalizedProjectID(requested) else {

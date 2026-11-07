@@ -29,6 +29,8 @@ The order of this table (projects, tickets, bundles, docs, code, chats, skills, 
 
 The `skills` scope ignores the project filter, because skills belong to no project.
 
+A hidden HephaestusV2 project and its sub projects are never searched: `projectID` naming one of them fails with `notFound`, and the search of every project leaves them out ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)).
+
 ## Query and matching
 
 1. The query is trimmed of leading and trailing whitespace. A query that is empty after trimming returns an empty list.

@@ -18,8 +18,6 @@ public enum SettingsUpdate: EngineMethod {
         public var claudePath: Patch<String> = .keep
         /// Complete defaults for new chats.
         public var defaultChatSettings: ChatSettings?
-        /// Clearable: null returns to automatic resolution.
-        public var feedbackProjectID: Patch<ProjectID> = .keep
         public var mcpPort: Int?
         public var syncEnabled: Bool?
         public var syncPort: Int?
@@ -33,15 +31,17 @@ public enum SettingsUpdate: EngineMethod {
         public var notifyNeedsYou: Bool?
         public var notifyFinished: Bool?
         public var notifyAISummary: Bool?
+        /// Show the HephaestusV2 project (docs/projects.md › Hiding the HephaestusV2 project).
+        public var showHephaestusProject: Bool?
 
         public init(claudePath: Patch<String> = .keep, defaultChatSettings: ChatSettings? = nil,
-                    feedbackProjectID: Patch<ProjectID> = .keep, mcpPort: Int? = nil, syncEnabled: Bool? = nil,
+                    mcpPort: Int? = nil, syncEnabled: Bool? = nil,
                     syncPort: Int? = nil, skillsLibraryPath: Patch<String> = .keep, autoUpdate: Bool? = nil,
                     updateCheckIntervalMinutes: Int? = nil, formatGoOnSave: Bool? = nil, formatSwiftOnSave: Bool? = nil,
-                    notifyNeedsYou: Bool? = nil, notifyFinished: Bool? = nil, notifyAISummary: Bool? = nil) {
+                    notifyNeedsYou: Bool? = nil, notifyFinished: Bool? = nil, notifyAISummary: Bool? = nil,
+                    showHephaestusProject: Bool? = nil) {
             self.claudePath = claudePath
             self.defaultChatSettings = defaultChatSettings
-            self.feedbackProjectID = feedbackProjectID
             self.mcpPort = mcpPort
             self.syncEnabled = syncEnabled
             self.syncPort = syncPort
@@ -53,6 +53,7 @@ public enum SettingsUpdate: EngineMethod {
             self.notifyNeedsYou = notifyNeedsYou
             self.notifyFinished = notifyFinished
             self.notifyAISummary = notifyAISummary
+            self.showHephaestusProject = showHephaestusProject
         }
 
         /// `settings` with every present param applied.
@@ -60,7 +61,6 @@ public enum SettingsUpdate: EngineMethod {
             var result = settings
             result.claudePath = claudePath.applied(to: settings.claudePath)
             if let defaultChatSettings { result.defaultChatSettings = defaultChatSettings }
-            result.feedbackProjectID = feedbackProjectID.applied(to: settings.feedbackProjectID)
             if let mcpPort { result.mcpPort = mcpPort }
             if let syncEnabled { result.syncEnabled = syncEnabled }
             if let syncPort { result.syncPort = syncPort }
@@ -72,6 +72,7 @@ public enum SettingsUpdate: EngineMethod {
             if let notifyNeedsYou { result.notifyNeedsYou = notifyNeedsYou }
             if let notifyFinished { result.notifyFinished = notifyFinished }
             if let notifyAISummary { result.notifyAISummary = notifyAISummary }
+            if let showHephaestusProject { result.showHephaestusProject = showHephaestusProject }
             return result
         }
     }

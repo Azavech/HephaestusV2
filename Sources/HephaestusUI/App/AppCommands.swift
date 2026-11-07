@@ -348,13 +348,21 @@ private struct ProjectCommands: View {
             }
             .disabled(!project)
         }
-        Divider()
-        Button("Remove Project…") {
-            if let window, let workspace = window.workspace {
-                ProjectFlows.removeProject(window: window, workspace: workspace)
+        // Not shown for the HephaestusV2 project and its ancestors (docs/projects.md › Removing a project).
+        if !removalHidden(focused) {
+            Divider()
+            Button("Remove Project…") {
+                if let window, let workspace = window.workspace {
+                    ProjectFlows.removeProject(window: window, workspace: workspace)
+                }
             }
+            .disabled(!project)
         }
-        .disabled(!project)
+    }
+
+    private func removalHidden(_ window: WindowState?) -> Bool {
+        guard let window, let projectID = window.projectID, let workspace = window.workspace else { return false }
+        return ProjectRules.isHephaestusOrAncestor(projectID, projects: workspace.projects)
     }
 }
 
@@ -372,7 +380,8 @@ extension ProjectCommands {
 // MARK: - Help
 
 /// Help ▸ Send Feedback… (⇧⌘B): starts feedback for the key window; disabled without a key window
-/// and while the key window shows a sheet (docs/feedback.md › Starting feedback).
+/// and while the key window shows a sheet; not shown, so that ⇧⌘B does nothing, while the key
+/// window's receiving device hides its HephaestusV2 project (docs/feedback.md › Starting feedback).
 private struct SendFeedbackCommand: View {
     let app: AppModel
     @FocusedValue(\.windowState) private var focusedMain
@@ -380,6 +389,20 @@ private struct SendFeedbackCommand: View {
 
     var body: some View {
         let validation = MenuValidation.shared
+        if !keyWindowHidesFeedback(validation) {
+            button(validation)
+        }
+    }
+
+    /// The key window's receiving device hides its HephaestusV2 project; `keyWindowNumber` is read
+    /// so that the menu follows the key window.
+    private func keyWindowHidesFeedback(_ validation: MenuValidation) -> Bool {
+        _ = validation.keyWindowNumber
+        let receivingDeviceID = FeedbackProject.receivingDeviceID(of: NSApp.keyWindow, app: app)
+        return FeedbackProject.hidesFeedback(app.workspaces[receivingDeviceID])
+    }
+
+    private func button(_ validation: MenuValidation) -> some View {
         Button("Send Feedback…") {
             guard let key = NSApp.keyWindow else { return }
             let source: FeedbackSource

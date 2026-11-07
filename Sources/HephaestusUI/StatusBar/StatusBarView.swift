@@ -82,11 +82,16 @@ struct StatusBarView: View {
                     Spacer(minLength: 16)
                     updateItem
                 }
-                WeeklyUsageItem(usage: workspace?.planUsage, now: usageClock)
+                // The ladybug is hidden while the receiving device hides its HephaestusV2 project
+                // (docs/feedback.md › Starting feedback); the separators of the items before it follow.
+                let showsLadybug = !FeedbackProject.hidesFeedback(workspace)
+                WeeklyUsageItem(usage: workspace?.planUsage, now: usageClock, separated: showsCosts || showsLadybug)
                 if case .main(let window) = context {
-                    costsItem(window)
+                    costsItem(window, separated: showsLadybug)
                 }
-                ladybug
+                if showsLadybug {
+                    ladybug
+                }
             }
             .padding(.horizontal, 10)
             .frame(maxHeight: .infinity)
@@ -177,7 +182,7 @@ struct StatusBarView: View {
     /// The active project's total, sub projects included; a click selects the Costs section
     /// (docs/costs.md › Status bar item).
     @ViewBuilder
-    private func costsItem(_ window: WindowState) -> some View {
+    private func costsItem(_ window: WindowState, separated: Bool) -> some View {
         if let projectID = window.projectID, let project = workspace?.project(projectID) {
             Button {
                 window.section = .costs
@@ -190,8 +195,16 @@ struct StatusBarView: View {
             }
             .buttonStyle(.plain)
             .help("Cost of \(project.name), sub projects included")
-            separator
+            if separated {
+                separator
+            }
         }
+    }
+
+    /// The Costs item is shown: a main window with an active project.
+    private var showsCosts: Bool {
+        guard case .main(let window) = context, let projectID = window.projectID else { return false }
+        return workspace?.project(projectID) != nil
     }
 
     // MARK: Middle: running chats, waiting chats, run

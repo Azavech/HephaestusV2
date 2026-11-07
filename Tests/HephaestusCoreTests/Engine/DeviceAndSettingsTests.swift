@@ -70,9 +70,9 @@ struct DeviceAndSettingsTests {
             #expect(json == (try jsonValue("""
                 {"autoUpdate": true, "claudePath": null,
                  "defaultChatSettings": {"effort": "high", "model": "default", "permissionMode": "manual", "ultracode": false},
-                 "feedbackProjectID": null, "formatGoOnSave": true, "formatSwiftOnSave": true, "mcpPort": 47830,
+                 "formatGoOnSave": true, "formatSwiftOnSave": true, "mcpPort": 47830,
                  "notifyAISummary": true, "notifyFinished": true, "notifyNeedsYou": true, "schema": 1,
-                 "skillsLibraryPath": null, "syncEnabled": true, "syncPort": 47821, "updateCheckIntervalMinutes": 30}
+                 "showHephaestusProject": true, "skillsLibraryPath": null, "syncEnabled": true, "syncPort": 47821, "updateCheckIntervalMinutes": 30}
                 """)))
         }
     }
@@ -106,6 +106,24 @@ struct DeviceAndSettingsTests {
         }
     }
 
+    @Test("showHephaestusProject round-trips and a feedbackProjectID of earlier versions stays as an unknown key")
+    func showHephaestusProjectRoundTrip() async throws {
+        try await withTestEngine(prepare: { directory in
+            try Data("schema: 1\nfeedbackProjectID: HEPH\n".utf8).write(to: directory.settingsFile)
+        }) { engine, connection, _ in
+            #expect(try await connection.call(SettingsGet.self).showHephaestusProject)
+            let updated = try await connection.call(SettingsUpdate.self, .init(showHephaestusProject: false))
+            #expect(!updated.showHephaestusProject)
+            let text = try String(contentsOf: engine.dataDirectory.settingsFile, encoding: .utf8)
+            #expect(text.contains("showHephaestusProject: false"))
+            #expect(text.contains("feedbackProjectID: HEPH"))
+            let stored = try ProjectFileStore.decodeYAML(HostSettings.self, at: engine.dataDirectory.settingsFile)
+            #expect(stored == updated)
+            #expect(stored.unknownKeys["feedbackProjectID"] == .string("HEPH"))
+            #expect(try await connection.call(SettingsUpdate.self, .init(showHephaestusProject: true)).showHephaestusProject)
+        }
+    }
+
     @Test("settings.update refuses values that break the HostSettings rules")
     func settingsUpdateErrors() async throws {
         try await withTestEngine { (engine, connection, _) async throws in
@@ -116,8 +134,6 @@ struct DeviceAndSettingsTests {
             #expect(await update(.init(syncPort: HostSettings.defaultMCPPort))?.code == .invalid)
             #expect(await update(.init(updateCheckIntervalMinutes: 2))?.code == .invalid)
             #expect(await update(.init(claudePath: .set("claude")))?.code == .invalid)
-            #expect(await update(.init(feedbackProjectID: .set("heph"))) == EngineError(.notFound, "Project HEPH not found."))
-            #expect(await update(.init(feedbackProjectID: .set("H")))?.code == .invalid)
             #expect(try await connection.call(SettingsGet.self) == HostSettings())
             #expect(try ProjectFileStore.decodeYAML(HostSettings.self, at: engine.dataDirectory.settingsFile) == HostSettings())
         }

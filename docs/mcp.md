@@ -490,7 +490,7 @@ Each section gives the engine call, the result and the errors of the tool, then 
 ### list_projects
 
 - **Engine call:** projects.list with `{}`.
-- **Result:** the `[ProjectSummary]` array ([Engine API](engine-api.md#projectsummary)): each project's `ticketCounts` counts its tickets and those of all its loaded descendants, and `ownTicketCounts` its own tickets ([TicketCounts](engine-api.md#ticketcounts)).
+- **Result:** the `[ProjectSummary]` array ([Engine API](engine-api.md#projectsummary)): each project's `ticketCounts` counts its tickets and those of all its loaded descendants, and `ownTicketCounts` its own tickets ([TicketCounts](engine-api.md#ticketcounts)). A hidden HephaestusV2 project and its sub projects are left out, and every tool that names them by id fails with `notFound` ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)).
 - **Errors:** only argument validation errors.
 
 Description:
@@ -544,12 +544,12 @@ Input schema:
 - **Result:** the `ProjectDetail` of the new project.
 - **Errors:**
   - `invalid`: `path` is not absolute (message above).
-  - Those of projects.create ([Engine API](engine-api.md#projectscreate)): identifier already used or folder already holding a project (`conflict`), unknown parent (`notFound`), malformed identifier, invalid name or folder outside the parent (`invalid`).
+  - Those of projects.create ([Engine API](engine-api.md#projectscreate)): identifier already used or folder already holding a project (`conflict`), unknown parent (`notFound`), malformed identifier, the identifier `HEPH` outside a clone of the HephaestusV2 repository (`HEPH is reserved for HephaestusV2.`), invalid name or folder outside the parent (`invalid`).
 
 Description:
 
 ```text
-Create a project in a folder on this Mac (the folder is created when missing) and register it in HephaestusV2. The identifier is 2 to 8 letters, unique and permanent: ask the user for the name and the identifier unless they gave them. With parentID the folder must be inside the parent project's folder and the new project becomes its sub project. type is none when omitted.
+Create a project in a folder on this Mac (the folder is created when missing) and register it in HephaestusV2. The identifier is 2 to 8 letters, unique and permanent: ask the user for the name and the identifier unless they gave them. HEPH is reserved for HephaestusV2. With parentID the folder must be inside the parent project's folder and the new project becomes its sub project. type is none when omitted.
 ```
 
 Input schema:
@@ -655,12 +655,12 @@ Input schema:
 - **Engine call:** projects.remove with `projectID`.
 - The project of the calling chat, and each of its ancestors, is refused, because removing it would end the chat's own Claude process ([Engine API](engine-api.md#rules-for-claude)). Default chosen at design time.
 - **Result:** `{}`.
-- **Errors:** Those of projects.remove ([Engine API](engine-api.md#projectsremove)): unknown project (`notFound`), the project of the calling chat or one of its ancestors (`forbidden`, `A chat cannot remove the project it belongs to.`).
+- **Errors:** Those of projects.remove ([Engine API](engine-api.md#projectsremove)): unknown project (`notFound`), the HephaestusV2 project or one of its ancestors (`forbidden`, `“<project name>” cannot be removed: it is the HephaestusV2 project. Hide it in Settings ▸ General instead.`), the project of the calling chat or one of its ancestors (`forbidden`, `A chat cannot remove the project it belongs to.`).
 
 Description:
 
 ```text
-Remove a project and its sub projects from HephaestusV2 on this Mac. They are unregistered and their files are left untouched; their runs stop and the Claude processes of their chats end. A chat cannot remove the project it belongs to.
+Remove a project and its sub projects from HephaestusV2 on this Mac. They are unregistered and their files are left untouched; their runs stop and the Claude processes of their chats end. A chat cannot remove the project it belongs to, and the HephaestusV2 project and its ancestors cannot be removed.
 ```
 
 Input schema:

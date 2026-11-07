@@ -45,6 +45,8 @@ final class FeedbackController {
         // shown), does not start feedback; nor does a start while a capture is running.
         guard let app, !isCapturing, let window, window.attachedSheet == nil, window.sheetParent == nil else { return }
         if case .main(let state) = source, state.sheet != nil { return }
+        // A receiving device that hides its HephaestusV2 project takes no feedback.
+        guard !FeedbackProject.hidesFeedback(app.workspaces[FeedbackProject.receivingDeviceID(of: source, app: app)]) else { return }
         let capture = makeCapture(for: source, app: app)
         isCapturing = true
         Task {

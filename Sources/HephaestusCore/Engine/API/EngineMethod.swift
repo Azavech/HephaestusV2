@@ -89,7 +89,7 @@ public enum EngineMethods {
     public static let all: [any EngineMethod.Type] = [
         DeviceInfoMethod.self, SnapshotGet.self,
         ProjectsList.self, ProjectsGet.self, ProjectsCreate.self, ProjectsOpen.self, ProjectsUpdate.self,
-        ProjectsRemove.self, ProjectsRun.self, ProjectsStopRun.self,
+        ProjectsRemove.self, ProjectsRun.self, ProjectsStopRun.self, ProjectsEnsureHephaestus.self,
         TicketsList.self, TicketsGet.self, TicketsCreate.self, TicketsUpdate.self, TicketsSetStatus.self,
         TicketsDelete.self, TicketsAddComment.self, TicketsUpdateComment.self, TicketsDeleteComment.self, TicketsRetryAnswer.self,
         TicketsAddAttachments.self, TicketsRemoveAttachment.self,

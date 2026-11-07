@@ -51,6 +51,10 @@ extension Engine {
             id = existing
         } else {
             guard let project = readProjectForLoading(rootPath: rootPath) else { return [] }
+            if isReservedIdentifierRefused(project, rootPath: rootPath) {
+                log.warn(.storage, "\(rootPath) skipped: the identifier \(project.id) is reserved for HephaestusV2 and the origin does not name \(HephaestusRepository.path)")
+                return []
+            }
             if let other = domain.projects[project.id] {
                 log.warn(.storage, "\(rootPath) skipped: the identifier \(project.id) is used by the project at \(other.rootPath)")
                 return []

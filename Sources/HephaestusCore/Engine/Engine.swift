@@ -69,6 +69,10 @@ public actor Engine {
     let files = FileService()
     /// search.query (Search/SearchService.swift).
     let search = SearchService()
+    /// The running attempt of the launch check of the HephaestusV2 project and its `git clone`
+    /// (Engine/HephaestusProject.swift).
+    var hephaestusAttempt: Task<Void, Never>?
+    let hephaestusCloneProcess = HephaestusCloneProcess()
 
     // MARK: Servers and local-only services (docs/architecture.md › Local-only services)
 
@@ -163,7 +167,8 @@ public actor Engine {
         async let chatProcesses: Void = stopChatProcesses()
         async let projectRuns: Void = stopProjectRuns()
         async let claudeHelpers: Void = stopClaudeHelperProcesses()
-        _ = await (chatProcesses, projectRuns, claudeHelpers)
+        async let hephaestusClone: Void = stopHephaestusClone()
+        _ = await (chatProcesses, projectRuns, claudeHelpers, hephaestusClone)
 
         await stopMCPServer()
         await stopSyncServer()
@@ -244,7 +249,8 @@ public actor Engine {
     }
 
     /// Registers the handler of a method with the actor kinds of the Actors column of
-    /// docs/engine-api.md › Method index. The params are decoded and the result encoded with
+    /// docs/engine-api.md › Method index. The params are decoded, then checked for a hidden
+    /// project (docs/engine-api.md › Dispatcher errors), and the result encoded with
     /// `EngineJSON`; an error other than EngineError becomes `internal` and is logged.
     func register<M: EngineMethod>(
         _ method: M.Type,
@@ -252,12 +258,15 @@ public actor Engine {
         _ handler: @escaping @Sendable (M.Params, Actor) async throws -> M.Result
     ) {
         let log = self.log
-        handlers[M.name] = Registration(actors: actors) { data, actor in
+        handlers[M.name] = Registration(actors: actors) { [unowned self] data, actor in
             let params: M.Params
             do {
                 params = try Engine.decodeParams(M.Params.self, from: data)
             } catch {
                 throw EngineError.invalidParams(M.name, decoding: error)
+            }
+            if actor.kind != .system {
+                try await self.rejectHiddenNames(in: data, actor: actor)
             }
             let result: M.Result
             do {
@@ -290,7 +299,13 @@ public actor Engine {
 
     /// Encodes the envelope once with `EngineJSON` and yields the same bytes to every
     /// subscriber, in emission order. A handler emits after the write it describes succeeded.
+    /// The events about a hidden project are not emitted, except `project.removed`
+    /// (docs/engine-api.md › Delivery and ordering).
     func emit<E: EngineEvent>(_ event: E.Type, _ payload: E.Payload, origin: Actor) {
+        if !settings.showHephaestusProject, E.name != ProjectRemovedEvent.name, let projectID = eventProjectID(payload),
+           hiddenProjectIDs.contains(projectID) {
+            return
+        }
         let data: Data
         do {
             data = try EngineJSON.encode(OutgoingEnvelope(name: E.name, origin: origin, data: payload))

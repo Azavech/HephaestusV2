@@ -25,9 +25,13 @@ public struct EngineConfiguration: Sendable {
     public var appVersion: String
     /// `CFBundleVersion`, as in `DeviceInfo`; 0 for a development build.
     public var build: Int
+    /// The HephaestusV2 project (docs/projects.md › HephaestusV2 project); nil turns it off: no
+    /// launch check, no clone, `HEPH` is an ordinary identifier and nothing is hidden.
+    public var hephaestusProject: HephaestusProjectConfiguration?
 
     public init(dataDirectory: URL, mcpPort: Int?, syncPort: Int?, syncInterface: SyncInterface, advertisesBonjour: Bool,
-                debugTools: Bool, claudePath: String?, claudeLauncher: any ClaudeProcessLauncher, appVersion: String, build: Int) {
+                debugTools: Bool, claudePath: String?, claudeLauncher: any ClaudeProcessLauncher, appVersion: String, build: Int,
+                hephaestusProject: HephaestusProjectConfiguration? = nil) {
         self.dataDirectory = dataDirectory
         self.mcpPort = mcpPort
         self.syncPort = syncPort
@@ -38,10 +42,12 @@ public struct EngineConfiguration: Sendable {
         self.claudeLauncher = claudeLauncher
         self.appVersion = appVersion
         self.build = build
+        self.hephaestusProject = hephaestusProject
     }
 
     /// The app's configuration: the values of the launch environment, all interfaces, Bonjour
-    /// advertising, the real Claude CLI and the bundle's version.
+    /// advertising, the real Claude CLI, the bundle's version and the HephaestusV2 project cloned
+    /// from its repository.
     public static func app(environment: LaunchEnvironment, appVersion: String, build: Int,
                            claudeLauncher: any ClaudeProcessLauncher = SystemClaudeProcessLauncher(),
                            homeDirectory: String = NSHomeDirectory()) -> EngineConfiguration {
@@ -55,14 +61,16 @@ public struct EngineConfiguration: Sendable {
             claudePath: environment.claudePath,
             claudeLauncher: claudeLauncher,
             appVersion: appVersion,
-            build: build
+            build: build,
+            hephaestusProject: HephaestusProjectConfiguration(cloneURL: HephaestusRepository.url)
         )
     }
 
     /// A test configuration: the given temporary data directory, ports 0, the sync server on
-    /// the loopback interface, no Bonjour advertising, no Claude path, version `0.0.0` and build 0.
-    public static func test(dataDirectory: URL, debugTools: Bool = false,
-                            claudeLauncher: any ClaudeProcessLauncher) -> EngineConfiguration {
+    /// the loopback interface, no Bonjour advertising, no Claude path, version `0.0.0`, build 0 and
+    /// no HephaestusV2 project unless the test gives one.
+    public static func test(dataDirectory: URL, debugTools: Bool = false, claudeLauncher: any ClaudeProcessLauncher,
+                            hephaestusProject: HephaestusProjectConfiguration? = nil) -> EngineConfiguration {
         EngineConfiguration(
             dataDirectory: dataDirectory,
             mcpPort: 0,
@@ -73,7 +81,8 @@ public struct EngineConfiguration: Sendable {
             claudePath: nil,
             claudeLauncher: claudeLauncher,
             appVersion: "0.0.0",
-            build: 0
+            build: 0,
+            hephaestusProject: hephaestusProject
         )
     }
 
@@ -85,5 +94,16 @@ public struct EngineConfiguration: Sendable {
     /// The sync port in use: the override, else the stored setting.
     public func syncPort(settings: HostSettings) -> Int {
         syncPort ?? settings.syncPort
+    }
+}
+
+/// The HephaestusV2 project of an engine (docs/architecture.md › Engine configuration).
+public struct HephaestusProjectConfiguration: Sendable, Hashable {
+    /// The URL `git clone` reads: the repository URL in the app, a local repository in tests. The
+    /// clone's `origin` is then set to the repository URL.
+    public var cloneURL: String
+
+    public init(cloneURL: String) {
+        self.cloneURL = cloneURL
     }
 }

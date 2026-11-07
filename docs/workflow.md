@@ -669,7 +669,7 @@ Whenever Claude shows the user an image, for example one it rendered, a screensh
 
 ## Self-update loop
 
-When the project is HephaestusV2 itself (the registered project whose git remote is the app's release repository, Info.plist key `HephaestusReleaseRepository`), a pushed change reaches the running app without manual steps:
+When the project is HephaestusV2 itself (the HephaestusV2 project: the project `HEPH` whose origin names the repository `Azavech/HephaestusV2`, whose URL is hardcoded in the app, [HephaestusV2 project](projects.md#hephaestusv2-project)), a pushed change reaches the running app without manual steps:
 
 | Step | Who                           | What                                                                                                                                                                                                                                                                                                                      | Specification                                                       |
 | ---- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |

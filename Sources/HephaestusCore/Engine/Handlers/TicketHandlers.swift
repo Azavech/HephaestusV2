@@ -46,7 +46,8 @@ extension Engine {
     func ticketsList(_ params: TicketsList.Params, _ actor: Actor) async throws -> [Ticket] {
         let id = try loadedProjectID(params.projectID)
         guard params.includeSubprojects == true else { return domain.tickets(of: id) }
-        return ([id] + domain.descendants(of: id)).flatMap { domain.tickets(of: $0) }
+        let hidden = actor.kind == .system ? [] : hiddenProjectIDs
+        return ([id] + domain.descendants(of: id)).filter { !hidden.contains($0) }.flatMap { domain.tickets(of: $0) }
     }
 
     /// docs/engine-api.md › tickets.get.

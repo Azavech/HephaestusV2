@@ -1,14 +1,14 @@
 # Feedback
 
-The ladybug at the right end of the status bar, the menu command Help ▸ Send Feedback… and ⇧⌘B start feedback from any window. The app captures the window into a PNG inside its own process, then shows a sheet with the screenshot, a comment field, the project that will receive the feedback and the model, effort and permission mode of the feedback chat. Send asks the engine to create a feedback chat, with the comment, the screenshot and the context already sent, and a main window comes to the front showing it in the Chats section of its project. Claude asks with labelled questions every decision of the ticket's implementation that is still open, then creates a ticket that holds the answers, follows the description template, starts as `todo`, gets its title from Haiku and carries the screenshot. The chat is linked to that ticket.
+The ladybug at the right end of the status bar, the menu command Help ▸ Send Feedback… and ⇧⌘B start feedback from any window. Feedback is about HephaestusV2 itself, so it always goes to the HephaestusV2 project of the receiving device ([HephaestusV2 project](projects.md#hephaestusv2-project)). The app captures the window into a PNG inside its own process, then shows a sheet with the screenshot, a comment field and the model, effort and permission mode of the feedback chat. Send asks the engine to create a feedback chat in the HephaestusV2 project, with the comment, the screenshot and the context already sent, and a main window comes to the front showing it in the Chats section of that project. Claude asks with labelled questions every decision of the ticket's implementation that is still open, then creates a ticket that holds the answers, follows the description template, starts as `todo`, gets its title from Haiku and carries the screenshot. The chat is linked to that ticket.
 
 ## Flow
 
-1. Start: the ladybug, Help ▸ Send Feedback… or ⇧⌘B ([Starting feedback](#starting-feedback)).
+1. Start: the ladybug, Help ▸ Send Feedback… or ⇧⌘B, shown while the receiving device shows its HephaestusV2 project ([Starting feedback](#starting-feedback)).
 2. Capture: the window is rendered into a PNG in-process ([Screenshot capture](#screenshot-capture)).
-3. Sheet: screenshot preview, comment, project, chat settings, Send ([Feedback sheet](#feedback-sheet)).
-4. Send: the client calls `chats.createFeedback` on the receiving device ([Creating the feedback chat](#creating-the-feedback-chat)).
-5. Pop up: a main window comes to the front and shows the returned chat, selected in the Chats section of its project ([Feedback sheet](#feedback-sheet)).
+3. Sheet: screenshot preview, comment, chat settings, Send; the sheet asks the receiving device to clone its HephaestusV2 project when it has none ([Feedback sheet](#feedback-sheet)).
+4. Send: the client calls `chats.createFeedback` on the receiving device with the HephaestusV2 project ([Creating the feedback chat](#creating-the-feedback-chat)).
+5. Pop up: a main window comes to the front and shows the returned chat, selected in the Chats section of the HephaestusV2 project ([Feedback sheet](#feedback-sheet)).
 6. Claude asks every open decision with labelled questions, creates the ticket with `create_ticket` once every decision is answered, and summarizes ([Feedback chat](#feedback-chat)).
 7. The engine links the chat and the ticket ([Resulting ticket](#resulting-ticket)).
 
@@ -31,6 +31,14 @@ The receiving device is the device whose engine creates the feedback chat:
 | Chat window                     | the device of the chat                                               |
 | Settings, About or other window | this Mac. Default chosen at design time.                             |
 
+While the receiving device hides its HephaestusV2 project (its host setting `showHephaestusProject` is false, [Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)), the feedback entry points are hidden:
+
+- The ladybug is not shown in a window whose receiving device hides it.
+- Help ▸ Send Feedback… is not shown, and ⇧⌘B does nothing, while the key window's receiving device hides it.
+- A window reads the setting from the snapshot and the `settings.updated` events of its receiving device; before the device's settings are known, the entry points are shown. Default chosen at design time.
+
+Feedback from a remote window follows the remote device's setting.
+
 ## Screenshot capture
 
 The capture runs on the main actor inside the app process. It never uses screen-capture APIs, so no screen recording permission is needed.
@@ -50,62 +58,53 @@ The capture runs on the main actor inside the app process. It never uses screen-
 
 ## Feedback sheet
 
-The sheet is attached to the captured window.
+The sheet is attached to the captured window. It has no project choice: the feedback goes to the HephaestusV2 project of the receiving device ([Feedback project](#feedback-project)).
 
 | Element       | Content                                                                                                                                                                                                                                                                               |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Title         | `Send Feedback`                                                                                                                                                                                                                                                                       |
 | Screenshot    | the PNG scaled to fit 480 × 300 pt; a click opens it in the image viewer ([Tickets](tickets.md#image-viewer))                                                                                                                                                                         |
 | Comment       | multi-line text field with the focus and the placeholder `What happened, and what did you expect?`; it may stay empty                                                                                                                                                                 |
-| Project       | pop-up button listing the receiving device's projects depth-first, sub projects indented under their parent, each item shown as `<name> (<identifier>)`; preselected per [Feedback project](#feedback-project)                                                                        |
 | Chat settings | the composer's Model menu with its `Ultracode` toggle, Effort menu and Permissions menu, `Allow All` with its red badge, in one row in the composer's order: the settings of the feedback chat ([Chat settings](chats.md#chat-settings), [Chat settings menus](#chat-settings-menus)) |
-| Context       | one read-only line: the App, Device, Project, Section and Item lines of the [feedback message](chats.md#feedback-message), without their leading `- `, joined with ` · `; the Screenshot line is left out                                                                             |
+| Context       | one read-only line: the App, Device, Project, Section and Item lines of the [feedback message](chats.md#feedback-message), without their leading `- `, joined with ` · `; the Screenshot line is left out. The Project line names the captured window's project.                      |
 | Buttons       | `Cancel` (Escape) and `Send` (⌘Return, default button)                                                                                                                                                                                                                                |
+
+When the sheet opens, and each time the connection to the receiving device comes back while it is open, the client calls [projects.ensureHephaestus](engine-api.md#projectsensurehephaestus) on the receiving device, so that a device whose clone of the HephaestusV2 project failed tries again ([Launch check and clone](projects.md#launch-check-and-clone)). The sheet does not wait for the clone.
 
 Send is enabled when every condition holds; otherwise one line under the comment field gives the first failing reason:
 
-| Condition                                                                  | Message when it fails                                                                                                                                                                                                        |
-| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| a screenshot exists                                                        | `The window could not be captured.`                                                                                                                                                                                          |
-| the receiving device has at least one project                              | `No project can receive feedback. Create or open a project first.`                                                                                                                                                           |
-| the connection to the receiving device is connected                        | `Not connected to <device name>. Send is available when the connection is back.`                                                                                                                                             |
-| Claude is available on the receiving device (`ClaudeStatus.available`)     | `Checking the Claude CLI on <device name>…` while `ClaudeStatus.checking` is true or the status is not known yet (no snapshot of the device), otherwise `Claude CLI is not available on <device name>: <ClaudeStatus.error>` |
-| the default project lookup is finished                                     | no message; the pop-up button shows a progress indicator                                                                                                                                                                     |
-| the chat defaults of the selected project are known, or a menu was changed | no message; the pop-up button shows a progress indicator                                                                                                                                                                     |
+| Condition                                                                              | Message when it fails                                                                                                                                                                                                        |
+| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| a screenshot exists                                                                    | `The window could not be captured.`                                                                                                                                                                                          |
+| the receiving device has its HephaestusV2 project loaded: `projects.list` holds `HEPH` | `HephaestusV2 is not available on <device name>.` (the clone is running or failed, or the project is hidden)                                                                                                                 |
+| the connection to the receiving device is connected                                    | `Not connected to <device name>. Send is available when the connection is back.`                                                                                                                                             |
+| Claude is available on the receiving device (`ClaudeStatus.available`)                 | `Checking the Claude CLI on <device name>…` while `ClaudeStatus.checking` is true or the status is not known yet (no snapshot of the device), otherwise `Claude CLI is not available on <device name>: <ClaudeStatus.error>` |
+| the chat defaults of the HephaestusV2 project are known, or a menu was changed         | no message; a progress indicator shows after the chat settings menus                                                                                                                                                         |
 
-The sheet re-evaluates the conditions when the connection state or the snapshot of the receiving device changes. Default chosen at design time.
+The sheet re-evaluates the conditions when the connection state or the snapshot of the receiving device changes, and when `projects.changed` arrives. The order of the conditions and the progress indicator are design-time choices. Default chosen at design time.
 
 - Sending: `Send` shows a progress indicator and every control of the sheet, `Cancel` included, is disabled until the answer arrives. Default chosen at design time.
-- Success: the sheet closes, no chat window opens, and a main window navigates to the returned chat as for a `chat{chatID}` target: it activates the chat's project, selects the Chats section and selects the chat ([Resolving a target](ui.md#resolving-a-target)). That main window, ordered front and made key, is the pop up of the feedback flow ([Choosing the window](ui.md#choosing-the-window)):
+- Success: the sheet closes, no chat window opens, and a main window navigates to the returned chat as for a `chat{chatID}` target: it activates the chat's project, the HephaestusV2 project, selects the Chats section and selects the chat ([Resolving a target](ui.md#resolving-a-target)). That main window, ordered front and made key, is the pop up of the feedback flow ([Choosing the window](ui.md#choosing-the-window)):
   - feedback captured from a main window: that main window;
   - feedback captured from a chat window, Settings, About or any other window: the most recently key main window showing the receiving device, otherwise a new main window opened on that device; the window the feedback came from stays open.
-- Error: the sheet stays open with the error message under the comment field; the comment, the project and the chat settings are kept.
+- Error: the sheet stays open with the error message under the comment field; the comment and the chat settings are kept.
 
 ### Chat settings menus
 
-- The menus show the `chatDefaults` of the project selected in the pop-up button, or else the receiving device's `defaultChatSettings` ([Fields and defaults](chats.md#fields-and-defaults)), each time the sheet opens.
-- They follow the pop-up button until the user changes one of them: the preselection of [Feedback project](#feedback-project) and every project the user picks show that project's defaults. Once a menu has been changed, the chosen settings stay when the project changes.
+- The menus show the `chatDefaults` of the HephaestusV2 project, or else the receiving device's `defaultChatSettings` ([Fields and defaults](chats.md#fields-and-defaults)), each time the sheet opens.
+- When the HephaestusV2 project becomes available while the sheet is open, the menus show its defaults, unless the user changed one of them before.
 - The choice sets only the feedback chat that Send creates; nothing is saved.
-- When the client has not loaded the selected project, it reads the project's `chatDefaults` with `projects.get`; until the answer arrives, the pop-up button shows a progress indicator and Send stays disabled, unless a menu was changed. When the call fails, the menus show the receiving device's `defaultChatSettings`. Default chosen at design time.
+- When the client has not loaded the HephaestusV2 project, it reads the project's `chatDefaults` with `projects.get`; until the answer arrives, a progress indicator shows after the menus and Send stays disabled, unless a menu was changed. When the call fails, the menus show the receiving device's `defaultChatSettings`. Default chosen at design time.
 - The layout of the row: Default chosen at design time.
 
 ## Feedback project
 
-The pop-up button preselects the first project found by these rules, all of them evaluated on the receiving device's projects:
+Feedback always goes to the HephaestusV2 project of the receiving device: its loaded project with the identifier `HEPH`, which the engine loads only for a clone of `Azavech/HephaestusV2` ([HephaestusV2 project](projects.md#hephaestusv2-project)).
 
-1. the host setting `feedbackProjectID` of the receiving device, when it names a loaded project;
-2. the project whose `gitRemoteURL` ([Projects](projects.md)) names the app's release repository, the value of the Info.plist key `HephaestusReleaseRepository` of the running app (`<owner>/<repo>`, set by CI, [CI](ci.md));
-3. the project selected in the captured main window (the sub project when one is selected), or the chat's project for a chat window;
-4. the first project of the pop-up button. Default chosen at design time.
-
-Rule 2 details:
-
-- When rule 1 gives no project, the sheet calls `projects.get` for every project in parallel to read `gitRemoteURL`. It waits at most 2 seconds; projects that have not answered by then are not considered. Default chosen at design time.
-- A remote URL names `<owner>/<repo>` when its host is `github.com`, compared case-insensitively, and its path, without the leading `/`, a trailing `/` and a trailing `.git`, equals `<owner>/<repo>` compared case-insensitively. The forms read are `https://`, `http://`, `ssh://` and `git://` URLs, with or without user info and port, and the scp-like form `<user>@github.com:<owner>/<repo>.git`.
-- When several projects match, top-level projects come before sub projects (lower depth first), then identifiers in ascending order. Default chosen at design time.
-- When `HephaestusReleaseRepository` is missing or empty, rule 2 gives no project.
-
-The user can pick any project in the pop-up button; the pick is not saved. The setting is chosen in Settings ▸ General ▸ Feedback project ([UI](ui.md#general)): `Automatic` (no value) or one project of that device. A `feedbackProjectID` that no longer names a loaded project is kept and acts as `Automatic`. Default chosen at design time.
+- The receiving device rules of [Starting feedback](#starting-feedback) are unchanged: feedback from a remote window goes to the remote device's HephaestusV2 project and follows that device's `showHephaestusProject`.
+- The captured window's project does not choose the target: it stays in the Context line of the sheet and in the [Feedback context](#feedback-context).
+- When the receiving device has no HephaestusV2 project loaded, because its clone is running or failed or because it hides the project, the sheet cannot send ([Feedback sheet](#feedback-sheet)).
+- There is no setting that chooses another project. The host setting `feedbackProjectID` of earlier versions is no longer read; a value already in `settings.yml` is kept as an unknown key ([Unknown keys](data-model.md#unknown-keys)).
 
 ## Feedback context
 
@@ -157,7 +156,7 @@ Send calls [chats.createFeedback](engine-api.md#chatscreatefeedback) on the rece
 
 | Param        | Value                                                                       |
 | ------------ | --------------------------------------------------------------------------- |
-| `projectID`  | the project of the pop-up button                                            |
+| `projectID`  | `HEPH`, the HephaestusV2 project                                            |
 | `comment`    | the comment as typed, possibly empty                                        |
 | `screenshot` | `{name: "screenshot.png", contentType: "image/png", dataBase64: <the PNG>}` |
 | `context`    | the [Feedback context](#feedback-context)                                   |
@@ -166,10 +165,10 @@ Send calls [chats.createFeedback](engine-api.md#chatscreatefeedback) on the rece
 The engine then:
 
 1. checks the call and fails without creating anything when the Claude CLI is not available (`unavailable`); the errors are listed in [Engine API](engine-api.md#chatscreatefeedback);
-2. creates a chat of kind `feedback` with `ticket` null in the target project and emits `chat.updated`;
-3. stores the screenshot as an attachment of the chat, in `.hephaestus/chats/<chat-id>/<attachment-uuid>-screenshot.png` of the target project ([Data model](data-model.md));
+2. creates a chat of kind `feedback` with `ticket` null in the HephaestusV2 project and emits `chat.updated`;
+3. stores the screenshot as an attachment of the chat, in `.hephaestus/chats/<chat-id>/<attachment-uuid>-screenshot.png` of the HephaestusV2 project ([Data model](data-model.md));
 4. sends the feedback message, the comment and the rendered context with the screenshot as an image, in the format of [Chats](chats.md#implement-and-feedback-chats), and launches the Claude process with the feedback prompt;
-5. returns the `ChatMeta`, and a main window of the client shows the chat in the Chats section of its project ([Feedback sheet](#feedback-sheet)).
+5. returns the `ChatMeta`, and a main window of the client shows the chat in the Chats section of the HephaestusV2 project ([Feedback sheet](#feedback-sheet)).
 
 Haiku names the chat from this first message, as for every chat, and the chat's row and header follow the chat title ([Chats](chats.md)).
 
@@ -198,16 +197,16 @@ Example params, with a 1 × 1 pixel PNG standing in for a real screenshot:
 
 ## Feedback chat
 
-- The feedback chat is a chat of the target project: its Claude process runs in the project root, with the project's enabled skills ([Skills](skills.md)) and its own MCP token, so its MCP calls run as actor `claude` with the chat id ([MCP](mcp.md)).
+- The feedback chat is a chat of the HephaestusV2 project: its Claude process runs in the project root, with the project's enabled skills ([Skills](skills.md)) and its own MCP token, so its MCP calls run as actor `claude` with the chat id ([MCP](mcp.md)).
 - Its system prompt is the common prompt plus the feedback prompt ([Chats](chats.md#prompt-feedback)). The feedback prompt gives Claude the rendered context and the absolute path of the stored screenshot on the receiving device.
 - Claude's steps, as the feedback prompt orders them ([Workflow](workflow.md)):
   1. read the comment, the context and the screenshot;
   2. list every decision the ticket's implementation needs, look for each one in the feedback, the docs, the code and the git history, and ask every decision still open with labelled questions (A, B, C…) with the MCP tool `ask_questions`, each with options and one recommended option, then end the turn; the user answers them one by one in the chat view ([Chats](chats.md)); Claude goes on to step 3 only once every decision is answered, without a further validation question ([Workflow › Writing tickets](workflow.md#writing-tickets));
-  3. call `create_ticket` in the target project with a description that follows the template and holds the answers, and the screenshot path in `attachments`;
+  3. call `create_ticket` in the HephaestusV2 project with a description that follows the template and holds the answers, and the screenshot path in `attachments`;
   4. reply with the ticket id and a short summary of the ticket.
 - Permission prompts for these tool calls follow the chat's permission mode ([Chats](chats.md)).
 - Claude implements the ticket in the feedback chat only when the user asks ([Workflow](workflow.md)).
-- The chat is listed in the Chats section of the target project, in the Feedback group, where Send shows it. Selecting another chat, or closing the main window or a chat window opened with Open in New Window, does not stop the chat.
+- The chat is listed in the Chats section of the HephaestusV2 project, in the Feedback group, where Send shows it. Selecting another chat, or closing the main window or a chat window opened with Open in New Window, does not stop the chat.
 
 Example `.hephaestus/chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301.yml` after the ticket was created:
 
@@ -292,7 +291,7 @@ chats: [3F2504E0-4F89-11D3-9A0C-0305E82C3301]
 
 ## Self-update loop
 
-When the feedback project is the HephaestusV2 repository, the ticket enters the self-update loop: Claude implements it docs first, then code, commits and pushes to main; CI publishes a release; the Updater installs it and the app restarts on the new version ([Workflow](workflow.md), [CI](ci.md), [Updater](updater.md)).
+Every feedback ticket belongs to the HephaestusV2 project, a clone of the app's repository, so it enters the self-update loop: Claude implements it docs first, then code, commits and pushes to main; CI publishes a release; the Updater installs it and the app restarts on the new version ([Workflow](workflow.md), [CI](ci.md), [Updater](updater.md)).
 
 ## Requirements covered
 
@@ -305,3 +304,4 @@ When the feedback project is the HephaestusV2 repository, the ticket enters the 
 - R102: The main window's sidebar and inspector are translucent and frosted, like the sidebars of native macOS apps such as Music.
 - R123: Implement, Implement All and the feedback sheet let the user choose the model, the effort and the permission mode of the chat they start; the ticket chats that a bundle chat starts take its settings.
 - R144: The chat that writes a ticket settles every decision of its implementation with the user before it creates the ticket or rewrites its description, and writes the answers into the description; a feedback chat creates its ticket, and closes, only after every decision is answered.
+- R155: Each device always has the HephaestusV2 project, cloned from the app's repository when it is missing; it cannot be removed, receives all feedback, and can be hidden, which turns feedback off.

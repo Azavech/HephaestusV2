@@ -50,8 +50,10 @@ struct DomainHarness {
 
 /// Runs `body` with a started engine whose Trash is a temporary folder and whose title namer is
 /// `titleNamer`, by default one that fails at once. `prepare` receives the data directory and
-/// the projects folder before the engine opens them.
+/// the projects folder before the engine opens them. `hephaestusProject` turns the HephaestusV2
+/// project on (docs/architecture.md › Engine configuration).
 func withDomainEngine<T>(titleNamer: any TitleNamer = FixedTitleNamer(title: nil),
+                         hephaestusProject: HephaestusProjectConfiguration? = nil,
                          prepare: (DataDirectory, URL) throws -> Void = { _, _ in },
                          _ body: (DomainHarness) async throws -> T) async throws -> T {
     try await TestEngineSlots.withSlot { try await withTemporaryDirectory { folder in
@@ -62,7 +64,8 @@ func withDomainEngine<T>(titleNamer: any TitleNamer = FixedTitleNamer(title: nil
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         }
         try prepare(directory, projects)
-        let configuration = EngineConfiguration.test(dataDirectory: directory.url, claudeLauncher: NoClaudeLauncher())
+        let configuration = EngineConfiguration.test(dataDirectory: directory.url, claudeLauncher: NoClaudeLauncher(),
+                                                     hephaestusProject: hephaestusProject)
         let engine = try await Engine(configuration: configuration)
         await engine.useFileTrash(.folder(trash))
         await engine.useCLITimings(.inert)

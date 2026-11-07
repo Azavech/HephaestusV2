@@ -164,13 +164,15 @@ A failed call returns an [EngineError](#engineerror) `{code, message}`.
 
 Every method can fail with these, in this order of checks.
 
-| Situation                                         | Code      | Message                                                                              |
-| ------------------------------------------------- | --------- | ------------------------------------------------------------------------------------ |
-| No method has this name                           | notFound  | `Unknown method <name>.`                                                             |
-| The actor's kind may not call the method          | forbidden | `<name> is not available to <user, claude or system>.`                               |
-| The params do not decode                          | invalid   | `Invalid params for <name>: <coding path>: <reason>.`                                |
-| The handler throws another error than EngineError | internal  | `Internal error: <localized description>.` The error is logged to `Logs/engine.log`. |
+| Situation                                                                                           | Code      | Message                                                                                                 |
+| --------------------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------- |
+| No method has this name                                                                             | notFound  | `Unknown method <name>.`                                                                                |
+| The actor's kind may not call the method                                                            | forbidden | `<name> is not available to <user, claude or system>.`                                                  |
+| The params do not decode                                                                            | invalid   | `Invalid params for <name>: <coding path>: <reason>.`                                                   |
+| A param names a hidden project, or a ticket, bundle or chat of one, and the actor is user or claude | notFound  | `Project <id> not found.`, `Ticket <id> not found.`, `Bundle <id> not found.` or `Chat <id> not found.` |
+| The handler throws another error than EngineError                                                   | internal  | `Internal error: <localized description>.` The error is logged to `Logs/engine.log`.                    |
 
+- A hidden project is the HephaestusV2 project or one of its sub projects while the host setting `showHephaestusProject` is false ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)). The params checked are `projectID`, `parentID`, `ticketID`, `ticketIDs`, `bundleID` and `chatID`, at the top level and inside `target`; the first one that names a hidden project gives the error. The check runs for every method, so that a hidden project answers as a project that is not registered.
 - `<coding path>` names the param from the top level with the form of [MCP server](mcp.md#validation-messages), indexes counting from 0 (`questions[1].options[0].label`); `params` names the params object itself.
 - `<reason>` is `required` for a missing or null required key, `must be <type>` for a value of the wrong type (`a string`, `an integer`, `a boolean`, `a number`, `an array`, `an object`, else `a valid value`), `must be one of <values joined by ", ">` for an unknown enum value, `must be a UUID` for a malformed UUID, `is not valid JSON` for params that are not JSON, and `is not a valid value` otherwise.
 - `<localized description>` is the error's `localizedDescription` when it provides one, and its Swift `description` otherwise, so that the message names the failure; a final period is dropped.
@@ -188,102 +190,103 @@ The forms of the coding path and the reasons are Default chosen at design time.
 
 The first column lists every engine method; it is the list the docs conformance test compares with the registered methods ([Conformance](#conformance)). `?` marks an optional param.
 
-| Method                     | Swift type              | Params                                                     | Result           | Actors       |
-| -------------------------- | ----------------------- | ---------------------------------------------------------- | ---------------- | ------------ |
-| `device.info`              | DeviceInfoMethod        | none                                                       | DeviceInfo       | user         |
-| `snapshot.get`             | SnapshotGet             | none                                                       | Snapshot         | user         |
-| `projects.list`            | ProjectsList            | none                                                       | [ProjectSummary] | user, claude |
-| `projects.get`             | ProjectsGet             | projectID                                                  | ProjectDetail    | user, claude |
-| `projects.create`          | ProjectsCreate          | rootPath, name, identifier, parentID?, createDirectory     | ProjectDetail    | user, claude |
-| `projects.open`            | ProjectsOpen            | rootPath                                                   | ProjectDetail    | user         |
-| `projects.update`          | ProjectsUpdate          | projectID, name?, docsPath?, commands?, chatDefaults?      | ProjectDetail    | user, claude |
-| `projects.remove`          | ProjectsRemove          | projectID                                                  | Empty            | user, claude |
-| `projects.run`             | ProjectsRun             | projectID, kind, wait, timeoutSeconds?                     | RunResult        | user, claude |
-| `projects.stopRun`         | ProjectsStopRun         | runID                                                      | Empty            | user, claude |
-| `tickets.list`             | TicketsList             | projectID, includeSubprojects?                             | [Ticket]         | user, claude |
-| `tickets.get`              | TicketsGet              | ticketID                                                   | Ticket           | user, claude |
-| `tickets.create`           | TicketsCreate           | projectID, title?, description, attachments?               | Ticket           | user, claude |
-| `tickets.update`           | TicketsUpdate           | ticketID, title?, description?                             | Ticket           | user, claude |
-| `tickets.setStatus`        | TicketsSetStatus        | ticketID, status                                           | Ticket           | user, claude |
-| `tickets.delete`           | TicketsDelete           | ticketID                                                   | Empty            | user, claude |
-| `tickets.addComment`       | TicketsAddComment       | ticketID, text, attachments?                               | Ticket           | user, claude |
-| `tickets.updateComment`    | TicketsUpdateComment    | ticketID, commentID, text                                  | Ticket           | user, claude |
-| `tickets.deleteComment`    | TicketsDeleteComment    | ticketID, commentID                                        | Ticket           | user, claude |
-| `tickets.retryAnswer`      | TicketsRetryAnswer      | ticketID, commentID                                        | Ticket           | user         |
-| `tickets.addAttachments`   | TicketsAddAttachments   | ticketID, attachments                                      | Ticket           | user         |
-| `tickets.removeAttachment` | TicketsRemoveAttachment | ticketID, attachmentID                                     | Ticket           | user, claude |
-| `attachments.read`         | AttachmentsRead         | projectID, path                                            | BinaryContent    | user         |
-| `bundles.list`             | BundlesList             | projectID                                                  | [TicketBundle]   | user, claude |
-| `bundles.get`              | BundlesGet              | bundleID                                                   | TicketBundle     | user, claude |
-| `bundles.create`           | BundlesCreate           | projectID, title?, ticketIDs                               | TicketBundle     | user, claude |
-| `bundles.update`           | BundlesUpdate           | bundleID, title?, ticketIDs?                               | TicketBundle     | user, claude |
-| `bundles.setStatus`        | BundlesSetStatus        | bundleID, status                                           | TicketBundle     | user, claude |
-| `bundles.delete`           | BundlesDelete           | bundleID                                                   | Empty            | user, claude |
-| `chats.list`               | ChatsList               | projectID                                                  | [ChatMeta]       | user, claude |
-| `chats.get`                | ChatsGet                | chatID                                                     | ChatTranscript   | user, claude |
-| `chats.create`             | ChatsCreate             | projectID, kind, ticketID?, bundleID?, settings?, message? | ChatMeta         | user         |
-| `chats.send`               | ChatsSend               | chatID, message                                            | Empty            | user         |
-| `chats.interrupt`          | ChatsInterrupt          | chatID                                                     | Empty            | user         |
-| `chats.updateSettings`     | ChatsUpdateSettings     | chatID, settings                                           | ChatMeta         | user         |
-| `chats.rename`             | ChatsRename             | chatID, title                                              | ChatMeta         | user, claude |
-| `chats.delete`             | ChatsDelete             | chatID                                                     | Empty            | user         |
-| `chats.close`              | ChatsClose              | chatID                                                     | Empty            | user, claude |
-| `chats.reopen`             | ChatsReopen             | chatID                                                     | ChatMeta         | user         |
-| `chats.answerPermission`   | ChatsAnswerPermission   | chatID, requestID, decision, message?                      | Empty            | user         |
-| `chats.postQuestions`      | ChatsPostQuestions      | chatID, questions                                          | QuestionSet      | claude       |
-| `chats.answerQuestion`     | ChatsAnswerQuestion     | chatID, questionSetID, label, answer                       | Empty            | user         |
-| `chats.postSymbol`         | ChatsPostSymbol         | chatID, question, suggestions, recommended                 | SymbolRequest    | claude       |
-| `chats.answerSymbol`       | ChatsAnswerSymbol       | chatID, requestID, answer                                  | Empty            | user         |
-| `chats.postColor`          | ChatsPostColor          | chatID, question, suggestions, recommended, lightAndDark?  | ColorRequest     | claude       |
-| `chats.answerColor`        | ChatsAnswerColor        | chatID, requestID, answer                                  | Empty            | user         |
-| `chats.postSound`          | ChatsPostSound          | chatID, question, suggestions, recommended                 | SoundRequest     | claude       |
-| `chats.answerSound`        | ChatsAnswerSound        | chatID, requestID, answer                                  | Empty            | user         |
-| `chats.postShortcut`       | ChatsPostShortcut       | chatID, question, suggestions, recommended, inUse          | ShortcutRequest  | claude       |
-| `chats.answerShortcut`     | ChatsAnswerShortcut     | chatID, requestID, answer                                  | Empty            | user         |
-| `chats.postFont`           | ChatsPostFont           | chatID, question, sample, suggestions, recommended         | FontRequest      | claude       |
-| `chats.answerFont`         | ChatsAnswerFont         | chatID, requestID, answer                                  | Empty            | user         |
-| `chats.postAnimation`      | ChatsPostAnimation      | chatID, question, suggestions, recommended                 | AnimationRequest | claude       |
-| `chats.answerAnimation`    | ChatsAnswerAnimation    | chatID, requestID, answer                                  | Empty            | user         |
-| `chats.postImages`         | ChatsPostImages         | chatID, paths, caption?                                    | [Attachment]     | claude       |
-| `chats.implementTicket`    | ChatsImplementTicket    | ticketID, settings?                                        | ChatMeta         | user, claude |
-| `chats.implementBundle`    | ChatsImplementBundle    | bundleID, settings?                                        | ChatMeta         | user, claude |
-| `chats.createFeedback`     | ChatsCreateFeedback     | projectID, comment, screenshot, context, settings?         | ChatMeta         | user         |
-| `chats.listAgents`         | ChatsListAgents         | projectID                                                  | [ChatAgents]     | user         |
-| `chats.agentTranscript`    | ChatsAgentTranscript    | chatID, agentID                                            | [ChatItem]       | user         |
-| `chats.stopWorkflow`       | ChatsStopWorkflow       | chatID, workflowID                                         | Empty            | user         |
-| `sounds.list`              | SoundsList              | projectID                                                  | [String]         | user         |
-| `sounds.read`              | SoundsRead              | projectID, name                                            | BinaryContent    | user         |
-| `claude.models`            | ClaudeModels            | none                                                       | [ClaudeModel]    | user         |
-| `claude.status`            | ClaudeStatusMethod      | none                                                       | ClaudeStatus     | user         |
-| `claude.planUsage`         | ClaudePlanUsage         | none                                                       | PlanUsageState   | user         |
-| `claude.reportPlanUsage`   | ClaudeReportPlanUsage   | usage                                                      | PlanUsageState   | user         |
-| `files.list`               | FilesList               | projectID, path                                            | [FileEntry]      | user         |
-| `files.read`               | FilesRead               | projectID, path                                            | FileContent      | user         |
-| `files.write`              | FilesWrite              | projectID, path, text, expectedModified?                   | FileContent      | user         |
-| `files.create`             | FilesCreate             | projectID, path, isDirectory                               | FileEntry        | user         |
-| `files.rename`             | FilesRename             | projectID, path, newPath                                   | FileEntry        | user         |
-| `files.trash`              | FilesTrash              | projectID, path                                            | Empty            | user         |
-| `files.fonts`              | FilesFonts              | projectID                                                  | [FontFamily]     | user         |
-| `docs.list`                | DocsList                | projectID                                                  | [DocEntry]       | user, claude |
-| `fs.browse`                | FSBrowse                | path?                                                      | BrowseResult     | user         |
-| `webTabs.list`             | WebTabsList             | projectID                                                  | [WebTab]         | user, claude |
-| `webTabs.open`             | WebTabsOpen             | projectID, url, title?, locked?, index?                    | WebTab           | user, claude |
-| `webTabs.update`           | WebTabsUpdate           | projectID, tabID, url?, title?, locked?                    | WebTab           | user, claude |
-| `webTabs.close`            | WebTabsClose            | projectID, tabID                                           | Empty            | user, claude |
-| `webTabs.move`             | WebTabsMove             | projectID, tabID, toIndex                                  | [WebTab]         | user, claude |
-| `search.query`             | SearchQuery             | query, scopes?, projectID?, limit?                         | [SearchResult]   | user, claude |
-| `skills.list`              | SkillsList              | none                                                       | [SkillSummary]   | user, claude |
-| `skills.get`               | SkillsGet               | name                                                       | Skill            | user, claude |
-| `skills.create`            | SkillsCreate            | name, description, body?                                   | Skill            | user, claude |
-| `skills.update`            | SkillsUpdate            | name, newName?, description?, body?                        | Skill            | user, claude |
-| `skills.delete`            | SkillsDelete            | name                                                       | Empty            | user, claude |
-| `skills.readFile`          | SkillsReadFile          | name, path                                                 | FileContent      | user         |
-| `skills.writeFile`         | SkillsWriteFile         | name, path, text                                           | Empty            | user         |
-| `skills.deleteFile`        | SkillsDeleteFile        | name, path                                                 | Empty            | user         |
-| `skills.setEnabled`        | SkillsSetEnabled        | projectID, name, enabled                                   | ProjectDetail    | user, claude |
-| `settings.get`             | SettingsGet             | none                                                       | HostSettings     | user         |
-| `settings.update`          | SettingsUpdate          | any HostSettings key (partial)                             | HostSettings     | user         |
-| `ui.open`                  | UIOpen                  | target, deviceID?                                          | Empty            | user, claude |
+| Method                      | Swift type               | Params                                                     | Result           | Actors       |
+| --------------------------- | ------------------------ | ---------------------------------------------------------- | ---------------- | ------------ |
+| `device.info`               | DeviceInfoMethod         | none                                                       | DeviceInfo       | user         |
+| `snapshot.get`              | SnapshotGet              | none                                                       | Snapshot         | user         |
+| `projects.list`             | ProjectsList             | none                                                       | [ProjectSummary] | user, claude |
+| `projects.get`              | ProjectsGet              | projectID                                                  | ProjectDetail    | user, claude |
+| `projects.create`           | ProjectsCreate           | rootPath, name, identifier, parentID?, createDirectory     | ProjectDetail    | user, claude |
+| `projects.open`             | ProjectsOpen             | rootPath                                                   | ProjectDetail    | user         |
+| `projects.update`           | ProjectsUpdate           | projectID, name?, docsPath?, commands?, chatDefaults?      | ProjectDetail    | user, claude |
+| `projects.remove`           | ProjectsRemove           | projectID                                                  | Empty            | user, claude |
+| `projects.run`              | ProjectsRun              | projectID, kind, wait, timeoutSeconds?                     | RunResult        | user, claude |
+| `projects.stopRun`          | ProjectsStopRun          | runID                                                      | Empty            | user, claude |
+| `projects.ensureHephaestus` | ProjectsEnsureHephaestus | none                                                       | Empty            | user         |
+| `tickets.list`              | TicketsList              | projectID, includeSubprojects?                             | [Ticket]         | user, claude |
+| `tickets.get`               | TicketsGet               | ticketID                                                   | Ticket           | user, claude |
+| `tickets.create`            | TicketsCreate            | projectID, title?, description, attachments?               | Ticket           | user, claude |
+| `tickets.update`            | TicketsUpdate            | ticketID, title?, description?                             | Ticket           | user, claude |
+| `tickets.setStatus`         | TicketsSetStatus         | ticketID, status                                           | Ticket           | user, claude |
+| `tickets.delete`            | TicketsDelete            | ticketID                                                   | Empty            | user, claude |
+| `tickets.addComment`        | TicketsAddComment        | ticketID, text, attachments?                               | Ticket           | user, claude |
+| `tickets.updateComment`     | TicketsUpdateComment     | ticketID, commentID, text                                  | Ticket           | user, claude |
+| `tickets.deleteComment`     | TicketsDeleteComment     | ticketID, commentID                                        | Ticket           | user, claude |
+| `tickets.retryAnswer`       | TicketsRetryAnswer       | ticketID, commentID                                        | Ticket           | user         |
+| `tickets.addAttachments`    | TicketsAddAttachments    | ticketID, attachments                                      | Ticket           | user         |
+| `tickets.removeAttachment`  | TicketsRemoveAttachment  | ticketID, attachmentID                                     | Ticket           | user, claude |
+| `attachments.read`          | AttachmentsRead          | projectID, path                                            | BinaryContent    | user         |
+| `bundles.list`              | BundlesList              | projectID                                                  | [TicketBundle]   | user, claude |
+| `bundles.get`               | BundlesGet               | bundleID                                                   | TicketBundle     | user, claude |
+| `bundles.create`            | BundlesCreate            | projectID, title?, ticketIDs                               | TicketBundle     | user, claude |
+| `bundles.update`            | BundlesUpdate            | bundleID, title?, ticketIDs?                               | TicketBundle     | user, claude |
+| `bundles.setStatus`         | BundlesSetStatus         | bundleID, status                                           | TicketBundle     | user, claude |
+| `bundles.delete`            | BundlesDelete            | bundleID                                                   | Empty            | user, claude |
+| `chats.list`                | ChatsList                | projectID                                                  | [ChatMeta]       | user, claude |
+| `chats.get`                 | ChatsGet                 | chatID                                                     | ChatTranscript   | user, claude |
+| `chats.create`              | ChatsCreate              | projectID, kind, ticketID?, bundleID?, settings?, message? | ChatMeta         | user         |
+| `chats.send`                | ChatsSend                | chatID, message                                            | Empty            | user         |
+| `chats.interrupt`           | ChatsInterrupt           | chatID                                                     | Empty            | user         |
+| `chats.updateSettings`      | ChatsUpdateSettings      | chatID, settings                                           | ChatMeta         | user         |
+| `chats.rename`              | ChatsRename              | chatID, title                                              | ChatMeta         | user, claude |
+| `chats.delete`              | ChatsDelete              | chatID                                                     | Empty            | user         |
+| `chats.close`               | ChatsClose               | chatID                                                     | Empty            | user, claude |
+| `chats.reopen`              | ChatsReopen              | chatID                                                     | ChatMeta         | user         |
+| `chats.answerPermission`    | ChatsAnswerPermission    | chatID, requestID, decision, message?                      | Empty            | user         |
+| `chats.postQuestions`       | ChatsPostQuestions       | chatID, questions                                          | QuestionSet      | claude       |
+| `chats.answerQuestion`      | ChatsAnswerQuestion      | chatID, questionSetID, label, answer                       | Empty            | user         |
+| `chats.postSymbol`          | ChatsPostSymbol          | chatID, question, suggestions, recommended                 | SymbolRequest    | claude       |
+| `chats.answerSymbol`        | ChatsAnswerSymbol        | chatID, requestID, answer                                  | Empty            | user         |
+| `chats.postColor`           | ChatsPostColor           | chatID, question, suggestions, recommended, lightAndDark?  | ColorRequest     | claude       |
+| `chats.answerColor`         | ChatsAnswerColor         | chatID, requestID, answer                                  | Empty            | user         |
+| `chats.postSound`           | ChatsPostSound           | chatID, question, suggestions, recommended                 | SoundRequest     | claude       |
+| `chats.answerSound`         | ChatsAnswerSound         | chatID, requestID, answer                                  | Empty            | user         |
+| `chats.postShortcut`        | ChatsPostShortcut        | chatID, question, suggestions, recommended, inUse          | ShortcutRequest  | claude       |
+| `chats.answerShortcut`      | ChatsAnswerShortcut      | chatID, requestID, answer                                  | Empty            | user         |
+| `chats.postFont`            | ChatsPostFont            | chatID, question, sample, suggestions, recommended         | FontRequest      | claude       |
+| `chats.answerFont`          | ChatsAnswerFont          | chatID, requestID, answer                                  | Empty            | user         |
+| `chats.postAnimation`       | ChatsPostAnimation       | chatID, question, suggestions, recommended                 | AnimationRequest | claude       |
+| `chats.answerAnimation`     | ChatsAnswerAnimation     | chatID, requestID, answer                                  | Empty            | user         |
+| `chats.postImages`          | ChatsPostImages          | chatID, paths, caption?                                    | [Attachment]     | claude       |
+| `chats.implementTicket`     | ChatsImplementTicket     | ticketID, settings?                                        | ChatMeta         | user, claude |
+| `chats.implementBundle`     | ChatsImplementBundle     | bundleID, settings?                                        | ChatMeta         | user, claude |
+| `chats.createFeedback`      | ChatsCreateFeedback      | projectID, comment, screenshot, context, settings?         | ChatMeta         | user         |
+| `chats.listAgents`          | ChatsListAgents          | projectID                                                  | [ChatAgents]     | user         |
+| `chats.agentTranscript`     | ChatsAgentTranscript     | chatID, agentID                                            | [ChatItem]       | user         |
+| `chats.stopWorkflow`        | ChatsStopWorkflow        | chatID, workflowID                                         | Empty            | user         |
+| `sounds.list`               | SoundsList               | projectID                                                  | [String]         | user         |
+| `sounds.read`               | SoundsRead               | projectID, name                                            | BinaryContent    | user         |
+| `claude.models`             | ClaudeModels             | none                                                       | [ClaudeModel]    | user         |
+| `claude.status`             | ClaudeStatusMethod       | none                                                       | ClaudeStatus     | user         |
+| `claude.planUsage`          | ClaudePlanUsage          | none                                                       | PlanUsageState   | user         |
+| `claude.reportPlanUsage`    | ClaudeReportPlanUsage    | usage                                                      | PlanUsageState   | user         |
+| `files.list`                | FilesList                | projectID, path                                            | [FileEntry]      | user         |
+| `files.read`                | FilesRead                | projectID, path                                            | FileContent      | user         |
+| `files.write`               | FilesWrite               | projectID, path, text, expectedModified?                   | FileContent      | user         |
+| `files.create`              | FilesCreate              | projectID, path, isDirectory                               | FileEntry        | user         |
+| `files.rename`              | FilesRename              | projectID, path, newPath                                   | FileEntry        | user         |
+| `files.trash`               | FilesTrash               | projectID, path                                            | Empty            | user         |
+| `files.fonts`               | FilesFonts               | projectID                                                  | [FontFamily]     | user         |
+| `docs.list`                 | DocsList                 | projectID                                                  | [DocEntry]       | user, claude |
+| `fs.browse`                 | FSBrowse                 | path?                                                      | BrowseResult     | user         |
+| `webTabs.list`              | WebTabsList              | projectID                                                  | [WebTab]         | user, claude |
+| `webTabs.open`              | WebTabsOpen              | projectID, url, title?, locked?, index?                    | WebTab           | user, claude |
+| `webTabs.update`            | WebTabsUpdate            | projectID, tabID, url?, title?, locked?                    | WebTab           | user, claude |
+| `webTabs.close`             | WebTabsClose             | projectID, tabID                                           | Empty            | user, claude |
+| `webTabs.move`              | WebTabsMove              | projectID, tabID, toIndex                                  | [WebTab]         | user, claude |
+| `search.query`              | SearchQuery              | query, scopes?, projectID?, limit?                         | [SearchResult]   | user, claude |
+| `skills.list`               | SkillsList               | none                                                       | [SkillSummary]   | user, claude |
+| `skills.get`                | SkillsGet                | name                                                       | Skill            | user, claude |
+| `skills.create`             | SkillsCreate             | name, description, body?                                   | Skill            | user, claude |
+| `skills.update`             | SkillsUpdate             | name, newName?, description?, body?                        | Skill            | user, claude |
+| `skills.delete`             | SkillsDelete             | name                                                       | Empty            | user, claude |
+| `skills.readFile`           | SkillsReadFile           | name, path                                                 | FileContent      | user         |
+| `skills.writeFile`          | SkillsWriteFile          | name, path, text                                           | Empty            | user         |
+| `skills.deleteFile`         | SkillsDeleteFile         | name, path                                                 | Empty            | user         |
+| `skills.setEnabled`         | SkillsSetEnabled         | projectID, name, enabled                                   | ProjectDetail    | user, claude |
+| `settings.get`              | SettingsGet              | none                                                       | HostSettings     | user         |
+| `settings.update`           | SettingsUpdate           | any HostSettings key (partial)                             | HostSettings     | user         |
+| `ui.open`                   | UIOpen                   | target, deviceID?                                          | Empty            | user, claude |
 
 Swift type names are the wire name in UpperCamelCase without the dot (acronyms uppercase: `FSBrowse`, `UIOpen`). When that name equals an API type, the suffix `Method` is added: `DeviceInfoMethod`, `ClaudeStatusMethod`. Default chosen at design time.
 
@@ -309,13 +312,13 @@ Params: none. Errors: dispatcher errors only. Events: none.
 
 A project's id is its identifier. Folder layout, identifier rules and the create, open and remove flows of the UI are in [Projects](projects.md); the project.yml format, its validation rules and loading are in [Data model](data-model.md#project-file).
 
-At start the engine loads every registered project: each root listed in registry.yml and, recursively, each folder listed in the `subprojects` of a loaded project. A folder whose `.hephaestus/project.yml` is missing or invalid, or whose identifier is already used by a project loaded before it, is not loaded; the engine logs it and keeps its registry entry, and loads it as soon as its file becomes valid ([Data model](data-model.md#loading)). A project skipped because its identifier is used is tried again, in registry order, each time a project is unloaded or unregistered. Default chosen at design time.
+At start the engine loads every registered project: each root listed in registry.yml and, recursively, each folder listed in the `subprojects` of a loaded project. A folder whose `.hephaestus/project.yml` is missing or invalid, or whose identifier is already used by a project loaded before it, is not loaded; the engine logs it and keeps its registry entry, and loads it as soon as its file becomes valid ([Data model](data-model.md#loading)). A project skipped because its identifier is used is tried again, in registry order, each time a project is unloaded or unregistered. Default chosen at design time. A project with the identifier `HEPH` whose origin does not name `Azavech/HephaestusV2` is skipped the same way, and the engine then clones its own HephaestusV2 project ([HephaestusV2 project](projects.md#hephaestusv2-project)).
 
 ### projects.list
 
 Swift type `ProjectsList` · actors: user, claude · result: [ProjectSummary](#projectsummary) array
 
-Returns every loaded project and sub project in depth-first order: the top-level projects in registry.yml order, each followed by its descendants in the order of their parent's `subprojects`. Default chosen at design time.
+Returns every loaded project and sub project in depth-first order: the top-level projects in registry.yml order, each followed by its descendants in the order of their parent's `subprojects`. Default chosen at design time. A hidden HephaestusV2 project and its sub projects are left out, also from the `subprojectIDs` of their parent ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)).
 
 Params: none. Errors: dispatcher errors only. Events: none.
 
@@ -351,19 +354,19 @@ Steps:
 
 1. Standardize `rootPath` and uppercase `identifier`.
 2. Validate: `identifier` matches `^[A-Z]{2,8}$`; `name` is valid; `rootPath` is absolute and has no `.hephaestus` component; with `parentID`, that project is loaded and `rootPath` is strictly inside its root. A call that fails here creates no folder. Default chosen at design time (parent checked here).
-3. Check that no loaded project uses the identifier.
+3. Check that the identifier is not `HEPH`, unless the folder exists and its origin names `Azavech/HephaestusV2` ([Reserved identifier](projects.md#reserved-identifier)); then that no loaded project uses the identifier.
 4. Use the folder when it exists as a directory; create it when it does not exist and `createDirectory` is true. When `createDirectory` is true and the folder exists, the existing folder is used. Default chosen at design time.
 5. Check that the folder has no `.hephaestus/project.yml`.
 6. Choose the parent: with `parentID`, that project (checked at step 2); without `parentID`, the innermost loaded project whose root contains `rootPath`, when there is one; otherwise the project is top-level. Projects already registered inside `rootPath` are left as they are. Default chosen at design time.
 7. Write `.hephaestus/project.yml` with `type` and the defaults of [Data model](data-model.md#project-file) and `.hephaestus/.gitignore` containing the line `chats/`.
 8. Register it: a top-level project's root is appended to registry.yml; a sub project's path relative to the parent root is appended to the parent's `subprojects`.
 
-| Error    | When                                                                                                                                                                                                                                                           |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| invalid  | rootPath is not absolute or has a `.hephaestus` component; identifier is not 2–8 letters A–Z (`identifier: use 2 to 8 letters A–Z.`); name is invalid; rootPath exists and is a file; parentID is given and rootPath is not strictly inside the parent's root. |
-| notFound | parentID names no loaded project; the folder does not exist and createDirectory is false.                                                                                                                                                                      |
-| conflict | The identifier is used by another project (`Identifier HEPH is already used by Hephaestus V2.`); the folder already contains `.hephaestus/project.yml` (`<rootPath> already contains a project; open it instead.`).                                            |
-| internal | The folder or a file cannot be created or written.                                                                                                                                                                                                             |
+| Error    | When                                                                                                                                                                                                                                                                                                                                                                                       |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| invalid  | rootPath is not absolute or has a `.hephaestus` component; identifier is not 2–8 letters A–Z (`identifier: use 2 to 8 letters A–Z.`); identifier is `HEPH` for a folder whose origin does not name `Azavech/HephaestusV2` (`HEPH is reserved for HephaestusV2.`); name is invalid; rootPath exists and is a file; parentID is given and rootPath is not strictly inside the parent's root. |
+| notFound | parentID names no loaded project; the folder does not exist and createDirectory is false.                                                                                                                                                                                                                                                                                                  |
+| conflict | The identifier is used by another project (`Identifier HEPH is already used by Hephaestus V2.`); the folder already contains `.hephaestus/project.yml` (`<rootPath> already contains a project; open it instead.`).                                                                                                                                                                        |
+| internal | The folder or a file cannot be created or written.                                                                                                                                                                                                                                                                                                                                         |
 
 Events: project.updated (the new project), project.updated (the parent, for a sub project), projects.changed.
 
@@ -380,19 +383,19 @@ Registers an existing project folder. When the folder is inside a loaded project
 Steps:
 
 1. Standardize `rootPath`.
-2. When `rootPath` is the root of a loaded project, return its ProjectDetail without writing anything or emitting events. Default chosen at design time.
-3. Read and validate its project.yml and, recursively, the sub projects it lists; a listed sub project that cannot be loaded is skipped and logged.
+2. When `rootPath` is the root of a loaded project, return its ProjectDetail without writing anything or emitting events. Default chosen at design time. When that project is hidden, fail with `conflict` and `HephaestusV2 is hidden. Show it in Settings ▸ General.` ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)).
+3. Read and validate its project.yml and, recursively, the sub projects it lists; a listed sub project that cannot be loaded is skipped and logged. A project.yml with the identifier `HEPH` whose folder's origin does not name `Azavech/HephaestusV2` fails with `invalid` and `HEPH is reserved for HephaestusV2.` ([Reserved identifier](projects.md#reserved-identifier)).
 4. Check that no identifier of the project or of its loaded descendants is used by a loaded project at another root.
 5. Append the line `chats/` to `.hephaestus/.gitignore` when it lacks it ([Data model](data-model.md#project-folder-layout)).
 6. Register it: the innermost loaded project whose root contains `rootPath` becomes its parent (the relative path is appended to the parent's `subprojects`); without such a project, `rootPath` is appended to registry.yml.
 7. Remove from registry.yml every top-level entry that is now loaded as a descendant of the opened project. Default chosen at design time.
 
-| Error    | When                                                                                                                                                               |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| invalid  | rootPath is not absolute; project.yml fails validation (`project.yml: <field>: <reason>.`, for example `project.yml: name: the required key is missing or null.`). |
-| notFound | The folder does not exist; the folder has no `.hephaestus/project.yml` (`No project at <rootPath>.`).                                                              |
-| conflict | An identifier of the project or of a descendant is used by another loaded project (`Identifier HEPH is already used by Hephaestus V2.`).                           |
-| internal | registry.yml or the parent's project.yml cannot be written.                                                                                                        |
+| Error    | When                                                                                                                                                                                                                                                                                                          |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid  | rootPath is not absolute; project.yml fails validation (`project.yml: <field>: <reason>.`, for example `project.yml: name: the required key is missing or null.`); project.yml has the identifier `HEPH` and the folder's origin does not name `Azavech/HephaestusV2` (`HEPH is reserved for HephaestusV2.`). |
+| notFound | The folder does not exist; the folder has no `.hephaestus/project.yml` (`No project at <rootPath>.`).                                                                                                                                                                                                         |
+| conflict | An identifier of the project or of a descendant is used by another loaded project (`Identifier HEPH is already used by Hephaestus V2.`); rootPath is the root of a hidden project (`HephaestusV2 is hidden. Show it in Settings ▸ General.`).                                                                 |
+| internal | registry.yml or the parent's project.yml cannot be written.                                                                                                                                                                                                                                                   |
 
 Events: project.updated (the parent, when the project becomes a sub project), project.updated (the opened project), projects.changed.
 
@@ -434,13 +437,21 @@ Unregisters the project and all its descendants. No file inside their folders is
 - A sub project's relative path is removed from its parent's `subprojects` (the parent's project.yml is rewritten).
 - The runs of the removed projects are stopped as by `projects.stopRun`, the Claude processes of their chats are terminated as [Chats](chats.md#idle-termination-and-quitting) describes, and the comment answer calls of their tickets are stopped ([Comment answers](chats.md#comment-answers)). Their identifiers become free. Default chosen at design time (runs stopped).
 
-| Error     | When                                                                                                                                       |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| invalid   | projectID is malformed.                                                                                                                    |
-| notFound  | No loaded project has this identifier.                                                                                                     |
-| forbidden | The actor is claude and the project holds the calling chat or is one of its ancestors (`A chat cannot remove the project it belongs to.`). |
+| Error     | When                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid   | projectID is malformed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| notFound  | No loaded project has this identifier.                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| forbidden | The project is the HephaestusV2 project or one of its ancestors, for every actor (`“<project name>” cannot be removed: it is the HephaestusV2 project. Hide it in Settings ▸ General instead.`, where `<project name>` is the name of the HephaestusV2 project; [Removing a project](projects.md#removing-a-project)); the actor is claude and the project holds the calling chat or is one of its ancestors (`A chat cannot remove the project it belongs to.`). The first rule is checked first. |
 
 Events: project.removed for the project and for each descendant (depth-first order), project.updated (the parent, for a sub project), projects.changed; then run.finished for each stopped run.
+
+### projects.ensureHephaestus
+
+Swift type `ProjectsEnsureHephaestus` · actors: user · result: [Empty](#empty)
+
+Starts the launch check of the HephaestusV2 project again ([Launch check and clone](projects.md#launch-check-and-clone)): when the device has no HephaestusV2 project loaded and no attempt is running, the engine starts one in a background task, which clones the repository when needed and registers the project. It returns at once, without waiting for the attempt; the project then arrives with `projects.changed`. With a HephaestusV2 project loaded, shown or hidden, or an attempt running, it does nothing. The feedback sheet calls it each time feedback starts for the device ([Feedback sheet](feedback.md#feedback-sheet)). The method name is a design-time choice. Default chosen at design time.
+
+Params: none. Errors: dispatcher errors only. Events: once the attempt succeeds, project.updated (the HephaestusV2 project) and projects.changed.
 
 ### projects.run
 
@@ -2222,7 +2233,6 @@ Every param is optional; an absent param keeps its value. Value rules are those 
 | -------------------------- | ------------ | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | claudePath                 | String       | no, clearable | Path of the Claude CLI, absolute or starting with `~/`; null returns to detection.                                                                  |
 | defaultChatSettings        | ChatSettings | no            | Complete defaults for new chats.                                                                                                                    |
-| feedbackProjectID          | ProjectID    | no, clearable | A loaded project; null returns to automatic resolution ([Feedback](feedback.md#feedback-project)).                                                  |
 | mcpPort                    | Int          | no            | MCP server port, 1024–65535, different from `syncPort`.                                                                                             |
 | syncEnabled                | Bool         | no            | Allow remote devices.                                                                                                                               |
 | syncPort                   | Int          | no            | Sync server port, 1024–65535, different from `mcpPort`.                                                                                             |
@@ -2234,26 +2244,26 @@ Every param is optional; an absent param keeps its value. Value rules are those 
 | notifyNeedsYou             | Bool         | no            | This Mac posts "needs you" notifications.                                                                                                           |
 | notifyFinished             | Bool         | no            | This Mac posts "finished" notifications.                                                                                                            |
 | notifyAISummary            | Bool         | no            | This Mac posts the notifications with Haiku's summary.                                                                                              |
+| showHephaestusProject      | Bool         | no            | Show the HephaestusV2 project ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)).                                     |
 
-| Changed key                                     | Effect                                                                                                                                               |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| claudePath                                      | The CLI status is computed again ([Chats](chats.md#version-and-status)).                                                                             |
-| defaultChatSettings                             | Used by chats created afterwards.                                                                                                                    |
-| feedbackProjectID                               | Used by the feedback sheet ([Feedback](feedback.md#feedback-project)).                                                                               |
-| mcpPort                                         | The MCP server moves to the new port and chat processes launched before are terminated when their turn ends ([MCP server](mcp.md#server-lifecycle)). |
-| syncEnabled, syncPort                           | The sync server stops, or restarts on the new port; connected remote devices are disconnected ([Remote devices](remote.md)).                         |
-| skillsLibraryPath                               | The engine uses the new folder, created when missing; skills of the previous folder are not moved ([Skills](skills.md#settings)).                    |
-| autoUpdate, updateCheckIntervalMinutes          | Sent to the Updater ([Updater](updater.md)).                                                                                                         |
-| formatGoOnSave, formatSwiftOnSave               | Used by `files.write`.                                                                                                                               |
-| notifyNeedsYou, notifyFinished, notifyAISummary | Used by the notifications This Mac posts ([UI › Status bar](ui.md#status-bar)).                                                                      |
+| Changed key                                     | Effect                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| claudePath                                      | The CLI status is computed again ([Chats](chats.md#version-and-status)).                                                                                                                                                                                                                                     |
+| defaultChatSettings                             | Used by chats created afterwards.                                                                                                                                                                                                                                                                            |
+| mcpPort                                         | The MCP server moves to the new port and chat processes launched before are terminated when their turn ends ([MCP server](mcp.md#server-lifecycle)).                                                                                                                                                         |
+| syncEnabled, syncPort                           | The sync server stops, or restarts on the new port; connected remote devices are disconnected ([Remote devices](remote.md)).                                                                                                                                                                                 |
+| skillsLibraryPath                               | The engine uses the new folder, created when missing; skills of the previous folder are not moved ([Skills](skills.md#settings)).                                                                                                                                                                            |
+| autoUpdate, updateCheckIntervalMinutes          | Sent to the Updater ([Updater](updater.md)).                                                                                                                                                                                                                                                                 |
+| formatGoOnSave, formatSwiftOnSave               | Used by `files.write`.                                                                                                                                                                                                                                                                                       |
+| notifyNeedsYou, notifyFinished, notifyAISummary | Used by the notifications This Mac posts ([UI › Status bar](ui.md#status-bar)).                                                                                                                                                                                                                              |
+| showHephaestusProject                           | false: the runs, chat processes and comment answers of the HephaestusV2 project and its sub projects stop, and project.removed is emitted for each of them, then projects.changed; true: projects.changed lists them again ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)). |
 
 | Error    | When                                                                                                                                                                                                |
 | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | invalid  | A value breaks the HostSettings rules; mcpPort equals syncPort after the update; the new skills folder cannot be created (`skillsLibraryPath: <path> cannot be created.`) or is inside `~/.claude`. |
-| notFound | feedbackProjectID names no loaded project.                                                                                                                                                          |
 | internal | settings.yml cannot be written.                                                                                                                                                                     |
 
-Events: settings.updated; claude.updated when claudePath changed; skills.changed when skillsLibraryPath changed.
+Events: settings.updated; claude.updated when claudePath changed; skills.changed when skillsLibraryPath changed; project.removed for each project hidden, depth first, then projects.changed, when showHephaestusProject changed to false; projects.changed when it changed to true; run.finished for each stopped run.
 
 ## UI navigation
 
@@ -2364,7 +2374,7 @@ chat.delta events are flushed at most every 50 ms per chat, so a chat emits at m
 
 ### Delivery and ordering
 
-- Every connection receives every event; there are no subscriptions or filters.
+- Every connection receives every event; there are no subscriptions or filters. The only exception: the events about a hidden HephaestusV2 project, its sub projects and their tickets, bundles, chats and runs are not emitted, except `project.removed` ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)).
 - On one connection, events arrive in the order they were emitted.
 - On a remote connection, the events emitted while handling a call are queued before the call's response, on the same ordered channel ([Remote devices](remote.md#event-delivery)). On a local connection, events arrive on the `events` stream and results on the call; their relative order is not defined.
 - Clients update their caches from snapshots, list results and events, never from mutation results; a mutation result serves only the caller's own flow ([Architecture](architecture.md#events-and-ordering)). Except chat.delta, run.output, files.changed, ui.open and chat.notification, every event carries the complete current object, so applying it twice gives the same result.
@@ -2577,7 +2587,6 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
     "autoUpdate": true,
     "claudePath": null,
     "defaultChatSettings": {"effort": "high", "model": "default", "permissionMode": "manual", "ultracode": false},
-    "feedbackProjectID": null,
     "formatGoOnSave": true,
     "formatSwiftOnSave": false,
     "mcpPort": 47820,
@@ -2585,6 +2594,7 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
     "notifyFinished": true,
     "notifyNeedsYou": true,
     "schema": 1,
+    "showHephaestusProject": true,
     "skillsLibraryPath": null,
     "syncEnabled": true,
     "syncPort": 47821,

@@ -15,14 +15,17 @@ enum ProjectRules {
 
     // MARK: Identifier
 
-    /// docs/projects.md › Identifier rules: empty, not 2 to 8 letters, or used by a loaded project
-    /// of the window's device.
+    /// docs/projects.md › Identifier rules: empty, not 2 to 8 letters, reserved for the
+    /// HephaestusV2 project, or used by a loaded project of the window's device.
     static func identifierMessage(_ typed: String, projects: [ProjectSummary]) -> String? {
         guard !typed.isEmpty else { return "Enter an identifier." }
         guard typed.range(of: "^[A-Za-z]{2,8}$", options: .regularExpression) != nil else {
             return "Use 2 to 8 letters (A–Z)."
         }
         let identifier = typed.uppercased()
+        if identifier == HephaestusRepository.identifier {
+            return "\(identifier) is reserved for HephaestusV2."
+        }
         if let owner = projects.first(where: { $0.id == identifier }) {
             return "\(identifier) is already used by “\(owner.name)”."
         }
@@ -164,6 +167,22 @@ enum ProjectRules {
         let valid = ModelRules.isRelativePath(docsPath) && docsPath.split(separator: "/").first != ".hephaestus"
         return valid ? nil : "Enter a folder path inside the project, for example docs."
     }
+    // MARK: HephaestusV2 project
+
+    /// True for the HephaestusV2 project, the device's project `HEPH`, and for its ancestors:
+    /// Project ▸ Remove Project… is not shown for them (docs/projects.md › Removing a project).
+    static func isHephaestusOrAncestor(_ projectID: String, projects: [ProjectSummary]) -> Bool {
+        var current: String? = HephaestusRepository.identifier
+        var visited: Set<String> = []
+        while let id = current, visited.insert(id).inserted, let project = projects.first(where: { $0.id == id }) {
+            if id == projectID {
+                return true
+            }
+            current = project.parentID
+        }
+        return false
+    }
+
 }
 
 /// The Project type of the New Project and New Sub Project sheets: it follows the project folder

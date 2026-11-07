@@ -284,14 +284,17 @@ public enum ChildProcessRunner {
     /// Starts the request with standard output and error piped, writes `input` to standard
     /// input when given, and waits for the exit. When `timeout` passes first, the process
     /// group receives SIGTERM, then SIGKILL `killGrace` later (docs/architecture.md › Child
-    /// processes, rule 6).
+    /// processes, rule 6). `started` receives the process once it is spawned, for a caller that
+    /// signals it at shutdown.
     public static func run(_ request: ChildProcessRequest, input: Data? = nil, timeout: Duration? = nil,
-                           killGrace: Duration = .seconds(2)) async throws -> ProcessResult {
+                           killGrace: Duration = .seconds(2),
+                           started: (@Sendable (ChildProcess) -> Void)? = nil) async throws -> ProcessResult {
         var request = request
         request.standardOutput = .pipe
         request.standardError = .pipe
         request.standardInput = input == nil ? .null : .pipe
         let process = try ChildProcess.spawn(request)
+        started?(process)
 
         let output = PipeCollector(process.standardOutput!)
         let errorOutput = PipeCollector(process.standardError!)

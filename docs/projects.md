@@ -1,6 +1,6 @@
 # Projects
 
-A project is a folder that contains `.hephaestus/project.yml`. It has a display name and an identifier of 2 to 8 letters chosen at creation, and the identifier is the project's id everywhere: in the engine API, in MCP tools, in ticket and bundle ids and in navigation targets. A sub project is a normal project whose folder lies inside its parent's folder. This document specifies the identifier rules, the registry and the project tree, how projects and sub projects are created, opened and removed (with local and remote folder picking), the project selector's rules, the Project Settings section, the build, run and test commands, and the console that shows their output. File formats are in [Data model](data-model.md) and method signatures in [Engine API](engine-api.md#projects).
+A project is a folder that contains `.hephaestus/project.yml`. It has a display name and an identifier of 2 to 8 letters chosen at creation, and the identifier is the project's id everywhere: in the engine API, in MCP tools, in ticket and bundle ids and in navigation targets. A sub project is a normal project whose folder lies inside its parent's folder. This document specifies the identifier rules, the registry and the project tree, how projects and sub projects are created, opened and removed (with local and remote folder picking), the HephaestusV2 project that every device has, the project selector's rules, the Project Settings section, the build, run and test commands, and the console that shows their output. File formats are in [Data model](data-model.md) and method signatures in [Engine API](engine-api.md#projects).
 
 ## Project model
 
@@ -38,6 +38,7 @@ The project root is the folder that contains `.hephaestus/`. Tickets, bundles, a
 | Characters   | 2 to 8 letters `A` to `Z`. Digits, spaces, accented letters and punctuation are refused.                                                   | Brief §1                       |
 | Case         | Typed in any case, stored and shown in uppercase: `heph` becomes `HEPH`.                                                                   | Brief §1                       |
 | Uniqueness   | Unique among all projects loaded on the device, top-level projects and sub projects at any depth.                                          | Brief §1                       |
+| Reserved     | `HEPH` is reserved for the [HephaestusV2 project](#hephaestusv2-project): no other project gets it.                                        | The user                       |
 | Immutability | Set at creation. No screen, engine method or MCP tool changes it.                                                                          | Brief §1                       |
 | Use          | It is the project's id. Ticket ids are `<IDENT>-<n>` and bundle ids `<IDENT>-B<n>` ([Identifiers](engine-api.md#identifiers)).             | Brief §1                       |
 | Scope        | Uniqueness is per device: two devices may each have a project `HEPH`, because a window and a chat only address the projects of one device. | Default chosen at design time. |
@@ -48,17 +49,19 @@ A typed identifier is valid when it matches `^[A-Za-z]{2,8}$` and, uppercased, i
 | ------------------------------------ | ---------------------------------------------- |
 | The field is empty                   | `Enter an identifier.`                         |
 | The value does not match the pattern | `Use 2 to 8 letters (A–Z).`                    |
+| The value is `HEPH`, in any case     | `HEPH is reserved for HephaestusV2.`           |
 | A loaded project uses it             | `<IDENT> is already used by “<project name>”.` |
 
-The engine checks again; its errors (`identifier: use 2 to 8 letters A–Z.`, `Identifier HEPH is already used by Hephaestus V2.`) are shown the same way ([projects.create](engine-api.md#projectscreate)). The sheet messages are design-time texts. Default chosen at design time.
+The engine checks again; its errors (`identifier: use 2 to 8 letters A–Z.`, `HEPH is reserved for HephaestusV2.`, `Identifier HEPH is already used by Hephaestus V2.`) are shown the same way ([projects.create](engine-api.md#projectscreate)). The sheets refuse `HEPH` in every folder, while the engine accepts it for a folder whose origin names the HephaestusV2 repository ([HephaestusV2 project](#hephaestusv2-project)). Default chosen at design time. The `HEPH is reserved for HephaestusV2.` message comes from the user; the other sheet messages are design-time texts. Default chosen at design time.
 
 While the user has not edited the identifier field, the New Project and New Sub Project sheets fill it from the name: the name's letters with their diacritics removed (`é` becomes `E`), uppercased, keeping only `A` to `Z`, first four of them. `Hephaestus V2` gives `HEPH`, `Go API` gives `GOAP`. A name with fewer than 2 such letters leaves the field empty. A suggestion that is already used stays in the field with its message. Default chosen at design time.
 
 ## Registry and project tree
 
 - `registry.yml` lists the root paths of the top-level projects in registration order ([Registry file](data-model.md#registry-file)). Sub projects are not listed there: each is reached through its parent's `subprojects` ([Sub project entries](data-model.md#sub-project-entries)).
-- At start the engine loads every registered project and, recursively, the sub projects they list. A project whose `project.yml` is missing or invalid, or whose identifier is already used by a project loaded before it, is skipped and logged, its entry is kept, and it loads as soon as its file becomes valid ([Projects](engine-api.md#projects), [Loading](data-model.md#loading)).
-- `projects.list` returns every loaded project in depth-first order: the top-level projects in `registry.yml` order, each followed by its descendants in `subprojects` order. Every project menu and project picker of the UI shows projects in this order, sub projects indented by depth. Default chosen at design time.
+- At start the engine loads every registered project and, recursively, the sub projects they list. A project whose `project.yml` is missing or invalid, or whose identifier is already used by a project loaded before it, is skipped and logged, its entry is kept, and it loads as soon as its file becomes valid ([Projects](engine-api.md#projects), [Loading](data-model.md#loading)). A project with the identifier `HEPH` whose origin does not name the HephaestusV2 repository is skipped the same way ([HephaestusV2 project](#hephaestusv2-project)).
+- Then the engine checks that the device's HephaestusV2 project is loaded, and clones it when it is not ([HephaestusV2 project](#hephaestusv2-project)).
+- `projects.list` returns every loaded project in depth-first order: the top-level projects in `registry.yml` order, each followed by its descendants in `subprojects` order. Every project menu and project picker of the UI shows projects in this order, sub projects indented by depth. Default chosen at design time. A hidden HephaestusV2 project and its sub projects are left out ([Hiding the HephaestusV2 project](#hiding-the-hephaestusv2-project)).
 - Absolute paths are standardized by the engine before use ([Paths](engine-api.md#paths)).
 - Creating or opening a project inside the folder of a loaded project makes it a sub project of that project ([Creating a project](#creating-a-project), [Opening an existing project](#opening-an-existing-project)).
 
@@ -138,7 +141,9 @@ The layout, the texts and the first folder are design-time choices. Default chos
 
 1. File ▸ Open Project… (⌘O), Project segment ▸ Open Project… or the welcome view's Open Project… asks for a folder. On This Mac it is an `NSOpenPanel` presented as a sheet of the window: folders only, one selection, no folder creation, prompt `Open`, message `Choose a folder that contains .hephaestus/project.yml.`, starting in the default parent folder of [Creating a project](#creating-a-project). On a remote device it is the [Choose Folder sheet](#picking-a-folder-on-a-remote-device) titled `Open a Project on <device name>`.
 2. The window calls `projects.open` with the chosen folder ([projects.open](engine-api.md#projectsopen)).
-3. On success the window activates the returned project, as for a created project. This includes a folder that is already a loaded project's root, which the engine returns unchanged.
+3. On success the window activates the returned project, as for a created project. This includes a folder that is already a loaded project's root, which the engine returns unchanged, except the root of a hidden HephaestusV2 project or of one of its sub projects, which fails with `HephaestusV2 is hidden. Show it in Settings ▸ General.` ([Hiding the HephaestusV2 project](#hiding-the-hephaestusv2-project)).
+
+A folder whose `project.yml` has the identifier `HEPH` and whose origin does not name the HephaestusV2 repository fails with `HEPH is reserved for HephaestusV2.` ([HephaestusV2 project](#hephaestusv2-project)).
 
 What the engine does on open:
 
@@ -174,6 +179,11 @@ The New Sub Project sheet's parent picker and the folder constraints are design-
 
 Project ▸ Remove Project… removes the window's active project, top-level or sub project, from HephaestusV2. Every user, on This Mac or on a remote device, may remove projects; Claude can, with `remove_project`, except the project its chat belongs to and that project's ancestors ([Rules for Claude](engine-api.md#rules-for-claude)).
 
+The HephaestusV2 project and its ancestors cannot be removed ([HephaestusV2 project](#hephaestusv2-project)):
+
+- Project ▸ Remove Project… is not shown while the window's active project is the HephaestusV2 project or one of its ancestors. The window recognizes it as its device's project `HEPH`, which the engine loads only for the HephaestusV2 project. Default chosen at design time.
+- `projects.remove` and Claude's `remove_project`, called on it or on one of its ancestors, fail with `forbidden` and the message `“<project name>” cannot be removed: it is the HephaestusV2 project. Hide it in Settings ▸ General instead.`, where `<project name>` is the name of the HephaestusV2 project ([projects.remove](engine-api.md#projectsremove)).
+
 1. The window runs the unsaved editors check for the project and its descendants ([Unsaved changes and quitting](ui.md#unsaved-changes-and-quitting)).
 2. It shows the alert `Remove “<project name>” from HephaestusV2?` with the message below and the buttons `Remove` (destructive) and `Cancel` (default).
 3. Remove calls `projects.remove` ([projects.remove](engine-api.md#projectsremove)). The engine unregisters the project and all its descendants, stops their runs, terminates the Claude processes of their chats and emits `project.removed` for each of them. No file is changed or deleted: `.hephaestus/`, its tickets, bundles and chats stay in the folders.
@@ -190,7 +200,64 @@ When `project.removed` arrives, every client reacts:
 
 Opening the folder again with Open Project… registers the project again with its tickets, bundles and chats.
 
+The clients react the same way when the HephaestusV2 project is hidden ([Hiding the HephaestusV2 project](#hiding-the-hephaestusv2-project)).
+
 The alert texts and the window reactions are design-time choices. Default chosen at design time.
+
+## HephaestusV2 project
+
+Each device has one HephaestusV2 project: the project of the app's own repository, which receives all feedback ([Feedback](feedback.md#feedback-project)). The repository URL `https://github.com/Azavech/HephaestusV2` is hardcoded in the app; the Info.plist key `HephaestusReleaseRepository` is read only by the Updater and Settings ▸ Updates ([Info.plist keys](ci.md#infoplist-keys)).
+
+### Recognition
+
+The HephaestusV2 project of a device is its loaded project with the identifier `HEPH` whose `origin` remote names `Azavech/HephaestusV2`.
+
+- A remote URL names `Azavech/HephaestusV2` when its path, without the leading `/`, a trailing `/` and a trailing `.git`, equals `Azavech/HephaestusV2`, compared case-insensitively, whatever its host. The forms read are `https://`, `http://`, `ssh://` and `git://` URLs, with or without user info and port, and the scp-like form `[<user>@]<host>:<path>`, whose host may be an SSH host alias, for example `git@github-alias:Azavech/HephaestusV2.git`.
+- The engine reads the origin without running `git`: the last `url` of the `[remote "origin"]` section of the configuration of the repository that holds the project root, found in the `.git` folder of the root or of its nearest parent folder that has one; a `.git` file (`gitdir: <path>`) and the `commondir` of a linked worktree are followed. Default chosen at design time.
+- A project with the identifier `HEPH` whose origin does not name `Azavech/HephaestusV2`, or that has no origin, is not loaded: at start, and each time the engine loads projects, it is skipped like a project whose identifier is already used; its registry entry is kept and the skip is logged ([Loading](data-model.md#loading)).
+- A clone of the repository whose identifier is not `HEPH` is a regular project.
+
+### Reserved identifier
+
+`HEPH` is reserved for the HephaestusV2 project ([Identifier rules](#identifier-rules)).
+
+- `projects.create`, and so the New Project and New Sub Project sheets and Claude's `create_project`, refuse the identifier `HEPH` with `invalid` and the message `HEPH is reserved for HephaestusV2.`, unless the project folder exists and its origin names `Azavech/HephaestusV2` ([projects.create](engine-api.md#projectscreate)). The sheets show that message under the Identifier field as soon as `HEPH` is typed.
+- Open Project… on a folder whose `project.yml` has the identifier `HEPH` and whose origin does not name `Azavech/HephaestusV2` fails with the alert `Open Project failed` and the message `HEPH is reserved for HephaestusV2.` ([projects.open](engine-api.md#projectsopen)).
+
+### Launch check and clone
+
+At every launch, once the tools are looked up ([Startup](architecture.md#startup), step 7), each device's engine checks that its HephaestusV2 project is loaded, whether it is shown or hidden. When it is not, the engine clones `https://github.com/Azavech/HephaestusV2` into `<data dir>/HephaestusV2` and registers that folder as a top-level project:
+
+1. When `<data dir>/HephaestusV2` already exists and its origin names `Azavech/HephaestusV2`, the engine uses it as it is and skips the clone. When it exists with another origin or none, the attempt fails and is logged, and the folder is left untouched. Default chosen at design time.
+2. Otherwise the engine deletes `<data dir>/.HephaestusV2.clone` when it exists, runs `git clone --quiet https://github.com/Azavech/HephaestusV2 <data dir>/.HephaestusV2.clone` in the data directory, with `GIT_TERMINAL_PROMPT=0` so that git never asks for credentials, and renames that folder to `<data dir>/HephaestusV2` once the clone succeeded. A failed clone deletes the temporary folder. The clone has a timeout of 10 minutes ([Child processes](architecture.md#child-processes)). Default chosen at design time.
+3. When the folder has no `.hephaestus/project.yml`, the engine creates it with the name `HephaestusV2`, the identifier `HEPH`, the type `swiftApplication` and the docs folder `docs`, and writes `.hephaestus/.gitignore` with the line `chats/`, as `projects.create` does.
+4. The folder's root is appended to `registry.yml`, even when it lies inside a loaded project, and the project loads; the engine emits `project.updated` and `projects.changed`.
+
+- One attempt runs at a time. When a HephaestusV2 project is loaded before the attempt ends, for example a clone the user opened, the attempt registers nothing; a finished clone stays on disk. Default chosen at design time.
+- When the attempt fails (no network, `git` not found, a timeout, a folder that cannot be written), the engine logs the reason and tries again at the next launch and each time feedback starts for that device: the feedback sheet calls `projects.ensureHephaestus` on the receiving device ([projects.ensureHephaestus](engine-api.md#projectsensurehephaestus), [Feedback sheet](feedback.md#feedback-sheet)).
+- While the attempt runs or after it failed, the device has no HephaestusV2 project and feedback cannot be sent to it ([Feedback sheet](feedback.md#feedback-sheet)).
+- The test engines of `swift test` have no HephaestusV2 project unless a test configures one ([Engine configuration](architecture.md#engine-configuration)).
+
+### Hiding the HephaestusV2 project
+
+Settings ▸ General has the toggle `Show the HephaestusV2 project`, on by default, with the caption `Hiding it also turns off Send Feedback.` under it ([General](ui.md#general)). Like every control of the Settings window, it changes This Mac's host settings: the key `showHephaestusProject` ([Settings file](data-model.md#settings-file)). Each device has its own value.
+
+While the toggle is off, the HephaestusV2 project and its sub projects stay registered and loaded in the engine, but are hidden everywhere from the clients and from Claude:
+
+- They are left out of `projects.list`, of the projects of `snapshot.get` and of `projects.changed`, and out of the sub projects of a `ProjectDetail` and the `subprojectIDs` of a `ProjectSummary`. As a result, the breadcrumb menus, the default project of a window, search results ([Project filter](search.md#project-filter)), the Dashboard, Claude's `list_projects`, the chats popover, the Running chats and Waiting chats counts of the status bar, the Dock badge and chat notifications leave them and their chats out.
+- Every call of a user or of Claude that names one of them by id fails with `notFound`, as for a project that is not registered: Claude's `get_project`, `list_tickets` and `create_ticket`, `open_in_app`, navigation targets and engine calls. The engine checks the params `projectID`, `parentID`, `ticketID`, `ticketIDs`, `bundleID` and `chatID`, and those of a `target`; a ticket, bundle or chat of a hidden project counts as not found (`Ticket HEPH-3 not found.`) ([Dispatcher errors](engine-api.md#dispatcher-errors)).
+- The events about them are not emitted, except `project.removed`; `tickets.list` with `includeSubprojects` leaves out their tickets and `search.query` their results.
+
+| Change                 | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Turning the toggle off | The engine stops their runs, terminates the Claude processes of their chats and stops the comment answers of their tickets, as when a project is removed, then emits `project.removed` for each of them, depth first, and `projects.changed`. The clients react as to a removal ([Removing a project](#removing-a-project)): a main window whose active project is one of them activates the device's default project ([Project selector](#project-selector)), or shows the welcome view when there is none; the chat windows of their chats close. |
+| Turning the toggle on  | `projects.changed` lists them again. No window switches to them.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+
+- Open Project… on the folder of the hidden HephaestusV2 project, or of one of its sub projects, fails with the alert `Open Project failed` and the message `HephaestusV2 is hidden. Show it in Settings ▸ General.` ([projects.open](engine-api.md#projectsopen)).
+- While the receiving device hides its HephaestusV2 project, the feedback entry points are hidden ([Starting feedback](feedback.md#starting-feedback)).
+- The launch check and the clone also run while the project is hidden ([Launch check and clone](#launch-check-and-clone)).
+
+The repository URL, the identifier, the recognition, the clone folder, the created `project.yml`, the retry, the removal refusal and the hiding rules come from the user, as do the toggle, its caption and the messages.
 
 ## Project selector
 
@@ -211,6 +278,7 @@ The breadcrumb selector's layout and menus are in [Breadcrumb selector](ui.md#br
 | A project is renamed                                                                                                                                                                                              | The segment titles and the window title follow.                                                                                                                                                                            |
 | Sub projects are added or removed                                                                                                                                                                                 | The Sub project segment appears, changes or disappears.                                                                                                                                                                    |
 | The active project is removed                                                                                                                                                                                     | [Removing a project](#removing-a-project).                                                                                                                                                                                 |
+| The active project is hidden, being the HephaestusV2 project or one of its sub projects                                                                                                                           | [Hiding the HephaestusV2 project](#hiding-the-hephaestusv2-project): the device's default project, else the welcome view.                                                                                                  |
 | The window's device disconnects                                                                                                                                                                                   | The selection is kept; the Project and Sub project segments are disabled until the device is connected again.                                                                                                              |
 
 These rules are design-time choices. Default chosen at design time.
@@ -334,3 +402,4 @@ The elements, texts, limits and processing rules of the console are design-time 
 - R146: In a Go service project, Claude waits after the push for CI to be green, fixing what fails, then tests the tickets on a test service and sets them done; Go service tickets have no User tests.
 - R152: A project's Tickets section lists the tickets of its sub projects too.
 - R153: A project can have a color, set in Project Settings with a hex field or the macOS color picker; the ticket list shows each ticket's project as a badge in that color.
+- R155: Each device always has the HephaestusV2 project, cloned from the app's repository when it is missing; it cannot be removed, receives all feedback, and can be hidden, which turns feedback off.

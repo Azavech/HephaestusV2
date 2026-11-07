@@ -27,9 +27,14 @@ extension Engine {
         register(ProjectsStopRun.self, actors: [.user, .claude]) { [unowned self] params, actor in
             try await self.projectsStopRun(params, actor)
         }
+        register(ProjectsEnsureHephaestus.self, actors: [.user]) { [unowned self] _, _ in
+            await self.ensureHephaestusProject()
+            return Empty()
+        }
     }
 
-    /// docs/engine-api.md › projects.list: every loaded project and sub project, depth first.
+    /// docs/engine-api.md › projects.list: every loaded project and sub project, depth first,
+    /// without the hidden ones.
     func projectsList(_ params: Empty, _ actor: Actor) async throws -> [ProjectSummary] {
         projectSummaries()
     }
@@ -59,7 +64,11 @@ extension Engine {
             }
             parentID = id
         }
-        // 3. The identifier is free.
+        // 3. The identifier is not reserved (docs/projects.md › Reserved identifier), then free.
+        if configuration.hephaestusProject != nil, identifier == HephaestusRepository.identifier,
+           !(FileManager.default.fileExists(atPath: rootPath) && HephaestusRepository.isClone(root: rootPath)) {
+            throw Self.reservedIdentifier
+        }
         if let other = domain.project(identifier) {
             throw Self.identifierUsed(identifier, by: other)
         }
@@ -112,6 +121,7 @@ extension Engine {
         // 1. Standardize; 2. an already loaded root is returned unchanged.
         let rootPath = try standardizedAbsolutePath(params.rootPath)
         if let id = domain.projectID(atRoot: rootPath) {
+            guard !hiddenProjectIDs.contains(id) else { throw Self.hiddenProjectOpened }
             return projectDetail(id)!
         }
         var isDirectory: ObjCBool = false
@@ -129,6 +139,9 @@ extension Engine {
         } catch let error as StorageError {
             // docs/engine-api.md › projects.open, errors
             throw EngineError(.invalid, "project.yml: \(Self.trimmedReason(error.reason)).")
+        }
+        if isReservedIdentifierRefused(project, rootPath: rootPath) {
+            throw Self.reservedIdentifier
         }
         // 4. No identifier of the project or of its descendants is used at another root.
         if let other = domain.projects[project.id], other.rootPath != rootPath {
@@ -231,6 +244,7 @@ extension Engine {
     /// without changing any file inside their folders.
     func projectsRemove(_ params: ProjectsRemove.Params, _ actor: Actor) async throws -> Empty {
         let id = try loadedProjectID(params.projectID)
+        try refuseHephaestusRemoval(id)
         if let chatID = actor.chat, let chatProject = domain.chat(chatID)?.projectID,
            chatProject == id || domain.ancestors(of: chatProject).contains(id) {
             throw ActorRules.ownProjectRemoval

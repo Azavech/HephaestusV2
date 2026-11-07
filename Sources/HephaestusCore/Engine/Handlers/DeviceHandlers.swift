@@ -16,7 +16,9 @@ extension Engine {
     /// cannot be read), the host settings, the running runs, the Claude CLI status and the plan
     /// usage.
     func snapshot() -> Snapshot {
-        Snapshot(device: deviceInfo, projects: projectSummaries(), skills: skillSummaries(), settings: settings,
-                 runs: runs.runningRuns(), claude: claudeCLI.status, planUsage: visiblePlanUsage())
+        let hidden = hiddenProjectIDs
+        return Snapshot(device: deviceInfo, projects: projectSummaries(), skills: skillSummaries(), settings: settings,
+                        runs: runs.runningRuns().filter { !hidden.contains($0.projectID) }, claude: claudeCLI.status,
+                        planUsage: visiblePlanUsage())
     }
 }
