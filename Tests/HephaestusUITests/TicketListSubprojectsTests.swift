@@ -76,6 +76,30 @@ struct TicketListSubprojectsTests {
         #expect(!TicketListProjects(projectID: "WEB", workspace: workspace).showsProjectColumn)
     }
 
+    @Test("Project badges: each listed project's color, gray with white text without one, black or white text by contrast")
+    func projectBadges() {
+        let workspace = workspace()
+        workspace.projects[1].color = "#FFD60A"
+        workspace.projects[3].color = "#13284D"
+        let demo = TicketListProjects(projectID: "DEMO", workspace: workspace)
+        #expect(demo.colors == ["MUS": "#FFD60A", "SHR": "#13284D"])
+        #expect(demo.color(of: ticket("MUS-1", "Charlie", minutes: 1)) == "#FFD60A")
+        #expect(demo.color(of: ticket("DEMO-1", "Delta", minutes: 0)) == nil)
+        // A color change makes a new value, so that the table makes its columns again.
+        workspace.projects[1].color = "#34C759"
+        #expect(TicketListProjects(projectID: "DEMO", workspace: workspace) != demo)
+
+        #expect(ProjectBadge.fill(of: nil) == StatusCapsule.color(of: .todo))
+        #expect(ProjectBadge.textColor(of: nil) == .white)
+        #expect(ProjectBadge.usesBlackText("#FFD60A"))
+        #expect(ProjectBadge.usesBlackText("#FFFFFF"))
+        #expect(!ProjectBadge.usesBlackText("#13284D"))
+        #expect(!ProjectBadge.usesBlackText("#000000"))
+        #expect(ProjectBadge.textColor(of: "#FFD60A") == .black)
+        #expect(ProjectBadge.textColor(of: "#13284D") == .white)
+        #expect(ProjectBadge.width(of: "yc-music") > ProjectBadge.width(of: "Api"))
+    }
+
     @Test("ID: grouped by project, the active project first, newest first; reversed, each group oldest first in the same group order")
     func groupedIDSort() {
         let workspace = workspace()

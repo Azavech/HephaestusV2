@@ -55,14 +55,14 @@ struct ModelCodingTests {
             chatDefaults:
               model: opus
               temperature: 0.5
-            color: blue
+            icon: hammer
 
             """
         var project = try YAMLCoding.decode(Project.self, from: yaml)
         #expect(project.commands.unknownKeys == ["lint": "make lint"])
         #expect(project.webTabs[0].unknownKeys == ["pinnedAt": "2026-10-31T12:00:00Z"])
         #expect(project.chatDefaults?.unknownKeys == ["temperature": .double(0.5)])
-        #expect(project.unknownKeys == ["color": "blue"])
+        #expect(project.unknownKeys == ["icon": "hammer"])
         project.name = "Renamed"
         let again = try YAMLCoding.decode(Project.self, from: try YAMLCoding.encode(project))
         #expect(again.unknownKeys == project.unknownKeys)
@@ -201,6 +201,33 @@ struct ModelCodingTests {
         #expect(ProjectType.allCases.map(\.label) == ["None", "Go service", "Swift application"])
         #expect(throws: (any Error).self) {
             try YAMLCoding.decode(Project.self, from: "id: WEB\nname: W\ncreated: 2026-10-31T09:30:00Z\ntype: rustCrate\n")
+        }
+    }
+
+    @Test("The project color is written after type when set, left out when absent, uppercased when read, and refuses other values")
+    func projectColor() throws {
+        let plain = Project(id: "WEB", name: "Website", created: Self.created)
+        let plainYAML = try YAMLCoding.encode(plain)
+        #expect(!plainYAML.contains("color"))
+        #expect(try YAMLCoding.decode(Project.self, from: plainYAML).color == nil)
+        let plainJSON = try JSONDecoder().decode(JSONValue.self, from: try EngineJSON.encode(plain))
+        #expect(plainJSON.objectValue?["color"] == .null)
+
+        let colored = Project(id: "WEB", name: "Website", created: Self.created, color: "#FFD60A")
+        let yaml = try YAMLCoding.encode(colored)
+        #expect(yaml.contains("type: none\ncolor: '#FFD60A'\nnextTicketNumber"))
+        #expect(try YAMLCoding.decode(Project.self, from: yaml) == colored)
+        #expect(try EngineJSON.decode(Project.self, from: try EngineJSON.encode(colored)).color == "#FFD60A")
+
+        let lowercase = try YAMLCoding.decode(Project.self, from: "id: WEB\nname: W\ncreated: 2026-10-31T09:30:00Z\ncolor: '#ffd60a'\n")
+        #expect(lowercase.color == "#FFD60A")
+        for invalid in ["red", "'#12345'", "'#1234567'", "'#GGGGGG'", "'34C759'"] {
+            #expect(throws: (any Error).self) {
+                try YAMLCoding.decode(Project.self, from: "id: WEB\nname: W\ncreated: 2026-10-31T09:30:00Z\ncolor: \(invalid)\n")
+            }
+        }
+        #expect(throws: (any Error).self) {
+            try Project(id: "WEB", name: "W", created: Self.created, color: "#12345").validate()
         }
     }
 

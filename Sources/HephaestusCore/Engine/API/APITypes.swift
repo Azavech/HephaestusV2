@@ -74,6 +74,8 @@ public struct ProjectSummary: Codable, Sendable, Hashable, Identifiable {
     public var id: ProjectID
     public var name: String
     public var type: ProjectType
+    /// The project's color, `#RRGGBB` in uppercase; absent when the project has no color.
+    public var color: String?
     /// Standardized absolute path of the project folder on the main device.
     public var rootPath: String
     /// Identifier of the parent; absent for a top-level project.
@@ -93,13 +95,14 @@ public struct ProjectSummary: Codable, Sendable, Hashable, Identifiable {
     /// (docs/chats.md › Comment answers).
     public var commentAnswersRunning: Int
 
-    public init(id: ProjectID, name: String, type: ProjectType = .none, rootPath: String, parentID: ProjectID? = nil,
+    public init(id: ProjectID, name: String, type: ProjectType = .none, color: String? = nil, rootPath: String, parentID: ProjectID? = nil,
                 subprojectIDs: [ProjectID] = [], ticketCounts: TicketCounts = TicketCounts(),
                 ownTicketCounts: TicketCounts = TicketCounts(), ownCostUSD: Double = 0, costUSD: Double = 0,
                 commentAnswersRunning: Int = 0) {
         self.id = id
         self.name = name
         self.type = type
+        self.color = color
         self.rootPath = rootPath
         self.parentID = parentID
         self.subprojectIDs = subprojectIDs

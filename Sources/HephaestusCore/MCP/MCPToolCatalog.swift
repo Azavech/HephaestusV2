@@ -39,6 +39,8 @@ public enum MCPToolHandling: String, Sendable, Hashable, CaseIterable {
     /// `create_project`: `path` expanded and required absolute, sent as `rootPath`, with
     /// `createDirectory: true`.
     case createProject
+    /// `update_project`: an empty `color` is sent as `null`, which removes the color.
+    case updateProject
     /// `run_project`: `wait` defaults to `kind != run`.
     case runProject
     /// `list_tickets`: tickets.list with `includeSubprojects: true`, then the tickets with

@@ -72,6 +72,8 @@ public enum ProjectsUpdate: EngineMethod {
         public var projectID: ProjectID
         public var name: String?
         public var type: ProjectType?
+        /// Clearable: `#RRGGBB` in either letter case, stored in uppercase; null removes the color.
+        public var color: Patch<String> = .keep
         /// Docs folder as a project path.
         public var docsPath: String?
         /// Replaces all run commands.
@@ -79,11 +81,12 @@ public enum ProjectsUpdate: EngineMethod {
         /// Clearable: null removes the project's chat defaults. Must be absent for claude.
         public var chatDefaults: Patch<ChatSettings> = .keep
 
-        public init(projectID: ProjectID, name: String? = nil, type: ProjectType? = nil, docsPath: String? = nil,
-                    commands: ProjectCommands? = nil, chatDefaults: Patch<ChatSettings> = .keep) {
+        public init(projectID: ProjectID, name: String? = nil, type: ProjectType? = nil, color: Patch<String> = .keep,
+                    docsPath: String? = nil, commands: ProjectCommands? = nil, chatDefaults: Patch<ChatSettings> = .keep) {
             self.projectID = projectID
             self.name = name
             self.type = type
+            self.color = color
             self.docsPath = docsPath
             self.commands = commands
             self.chatDefaults = chatDefaults

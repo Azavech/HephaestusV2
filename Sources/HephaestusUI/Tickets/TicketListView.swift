@@ -157,7 +157,7 @@ struct TicketListView: View {
             }
         )
         // The table makes its columns once: a new one when the Project column comes or goes, or a
-        // project name changes its width.
+        // project name or color changes its badges.
         .id(projects)
     }
 
@@ -181,13 +181,12 @@ struct TicketListView: View {
         }
     }
 
-    /// The name of the ticket's project; it truncates like Created when the list narrows.
+    /// The badge of the ticket's project; its name truncates inside the capsule like Created when
+    /// the list narrows.
     private static func projectColumn(_ projects: TicketListProjects) -> ItemTableColumn<Ticket> {
         ItemTableColumn(id: TicketListState.SortColumn.project.rawValue, title: "Project", minWidth: 40, sizing: .shrinkableContent,
-                        contentWidth: { ItemTableText.width(projects.name(of: $0), font: ItemTableText.body) }) { ticket in
-            AnyView(Text(projects.name(of: ticket))
-                .lineLimit(1)
-                .truncationMode(.tail)
+                        contentWidth: { ProjectBadge.width(of: projects.name(of: $0)) }) { ticket in
+            AnyView(ProjectBadge(name: projects.name(of: ticket), color: projects.color(of: ticket))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .help(projects.name(of: ticket)))
         }

@@ -122,6 +122,13 @@ struct MCPToolHandlers: Sendable {
             }
             return try await engineText(tool, params: .object(params), actor: actor)
 
+        case .updateProject:
+            var params = args
+            if args["color"] == .string("") {
+                params["color"] = .null
+            }
+            return try await engineText(tool, params: .object(params), actor: actor)
+
         case .runProject:
             var params = args
             if params["wait"] == nil {

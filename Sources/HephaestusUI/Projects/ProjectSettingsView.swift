@@ -59,6 +59,11 @@ private struct ProjectSettingsForm: View {
                     ProjectTypeMenu(selection: typeBinding)
                     FieldMessage(text: typeFailure)
                 }
+                row("Color") {
+                    ProjectColorField(value: project.color) { color in
+                        await update(ProjectsUpdate.Params(projectID: project.id, color: color.map { .set($0) } ?? .clear))
+                    }
+                }
                 row("Folder") {
                     HStack(spacing: 8) {
                         PathText(path: detail.rootPath)
@@ -219,6 +224,99 @@ private struct ProjectSettingsForm: View {
             return nil
         } catch {
             return errorMessage(error)
+        }
+    }
+}
+
+/// The Color field: a color well in its expanded style, then a hex field in SF Mono. A color
+/// chosen in the well or the color panel applies at once; the hex field applies on Return or when
+/// it loses the focus, and an empty field removes the color. The well shows the field's hex color
+/// while the field holds one, otherwise the stored color, or the gray of the default project badge
+/// when there is none.
+private struct ProjectColorField: View {
+    /// The stored color, `#RRGGBB`; nil for none.
+    let value: String?
+    /// Applies a color, or nil to remove it; returns the engine's message, or nil on success.
+    let apply: (String?) async -> String?
+
+    @State private var text = ""
+    @State private var failure: String?
+    /// The last color chosen in the well that is not applied yet.
+    @State private var chosen: String?
+    @State private var applyingChosen = false
+    @FocusState private var focused: Bool
+
+    static let message = "Enter a color as #RRGGBB, for example #34C759."
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ColorWellView(color: wellColor, interact: {}, change: choose)
+                .fixedSize()
+            TextField("Color", text: $text, prompt: Text(""))
+                .labelsHidden()
+                .font(.system(.body, design: .monospaced))
+                .frame(width: 110)
+                .focused($focused)
+                .onSubmit(commit)
+                .onChange(of: focused) { _, isFocused in
+                    if !isFocused {
+                        commit()
+                    }
+                }
+                .onChange(of: text) {
+                    failure = nil
+                }
+            Spacer(minLength: 0)
+        }
+        .onAppear {
+            text = value ?? ""
+        }
+        .onChange(of: value) { _, newValue in
+            if !focused {
+                text = newValue ?? ""
+            }
+        }
+        FieldMessage(text: Self.validationMessage(text) ?? failure)
+    }
+
+    /// The red message of a hex field's text: nil for an empty field or a hex color.
+    static func validationMessage(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty || ProjectColor.isValid(trimmed) ? nil : message
+    }
+
+    private var wellColor: NSColor {
+        let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let shown = ProjectColor.isValid(typed) ? typed : value
+        return shown.flatMap(ColorSwatches.nsColor) ?? NSColor(StatusCapsule.color(of: .todo))
+    }
+
+    /// A color chosen in the well or the panel: shown in the field and applied at once. Colors
+    /// chosen while one applies are applied one after the other, the last one last.
+    private func choose(_ hex: String) {
+        text = hex
+        chosen = hex
+        guard !applyingChosen else { return }
+        applyingChosen = true
+        Task {
+            while let next = chosen {
+                chosen = nil
+                failure = await apply(next)
+            }
+            applyingChosen = false
+        }
+    }
+
+    /// Applies the hex field: a hex color in uppercase, written back in uppercase; nil for an
+    /// empty field. An invalid value, or one equal to the stored color, is not applied.
+    private func commit() {
+        guard Self.validationMessage(text) == nil else { return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let color = trimmed.isEmpty ? nil : trimmed.uppercased()
+        text = color ?? ""
+        guard color != value else { return }
+        Task {
+            failure = await apply(color)
         }
     }
 }

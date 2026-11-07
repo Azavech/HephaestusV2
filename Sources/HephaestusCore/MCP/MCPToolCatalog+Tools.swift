@@ -26,7 +26,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "get_project",
             description: #"""
-            Get a project: its .hephaestus/project.yml settings (name, type, docs folder, build/run/test commands, sub projects, web tabs, enabled skills, chat defaults), root folder, parent, sub projects and git remote URL.
+            Get a project: its .hephaestus/project.yml settings (name, type, color, docs folder, build/run/test commands, sub projects, web tabs, enabled skills, chat defaults), root folder, parent, sub projects and git remote URL.
             """#,
             inputSchema: schema(#"""
             {
@@ -87,7 +87,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "update_project",
             description: #"""
-            Change a project's name, type, docs folder or commands. Omitted arguments are left unchanged. commands replaces all three commands: a command that is missing or empty is removed.
+            Change a project's name, type, color, docs folder or commands. Omitted arguments are left unchanged. color is a hex color #RRGGBB, and an empty color removes it. commands replaces all three commands: a command that is missing or empty is removed.
             """#,
             inputSchema: schema(#"""
             {
@@ -105,6 +105,10 @@ extension MCPToolCatalog {
                   "type": "string",
                   "description": "Project type: none, goService (Go service) or swiftApplication (Swift application).",
                   "enum": ["none", "goService", "swiftApplication"]
+                },
+                "color": {
+                  "type": "string",
+                  "description": "Color of the project's badge in the ticket list: #RRGGBB, for example #34C759; an empty string removes it."
                 },
                 "docsPath": {
                   "type": "string",
@@ -136,7 +140,7 @@ extension MCPToolCatalog {
             """#),
             isDebug: false,
             engineMethod: "projects.update",
-            handling: .forward
+            handling: .updateProject
         ),
         MCPToolDefinition(
             name: "remove_project",

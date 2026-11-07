@@ -7,6 +7,9 @@ public struct Project: Codable, Sendable, Hashable {
     public var name: String
     public var created: Date
     public var type: ProjectType
+    /// The project's color, `#RRGGBB` in uppercase; nil for no color (docs/projects.md › Project
+    /// settings).
+    public var color: String?
     public var nextTicketNumber: Int
     public var nextBundleNumber: Int
     public var docsPath: String
@@ -22,7 +25,7 @@ public struct Project: Codable, Sendable, Hashable {
     public var commentAnswers: [CommentAnswerCost]
     public var unknownKeys: [String: JSONValue]
 
-    public init(schema: Int = 1, id: ProjectID, name: String, created: Date, type: ProjectType = .none, nextTicketNumber: Int = 1,
+    public init(schema: Int = 1, id: ProjectID, name: String, created: Date, type: ProjectType = .none, color: String? = nil, nextTicketNumber: Int = 1,
                 nextBundleNumber: Int = 1, docsPath: String = "docs", subprojects: [String] = [],
                 commands: ProjectCommands = ProjectCommands(), webTabs: [WebTab] = [], skills: [String] = [],
                 chatDefaults: ChatSettings? = nil, deletedChats: [DeletedChat] = [], commentAnswers: [CommentAnswerCost] = [],
@@ -32,6 +35,7 @@ public struct Project: Codable, Sendable, Hashable {
         self.name = name
         self.created = created
         self.type = type
+        self.color = color
         self.nextTicketNumber = nextTicketNumber
         self.nextBundleNumber = nextBundleNumber
         self.docsPath = docsPath
@@ -46,7 +50,7 @@ public struct Project: Codable, Sendable, Hashable {
     }
 
     static let knownKeys: Set<String> = [
-        "schema", "id", "name", "created", "type", "nextTicketNumber", "nextBundleNumber", "docsPath",
+        "schema", "id", "name", "created", "type", "color", "nextTicketNumber", "nextBundleNumber", "docsPath",
         "subprojects", "commands", "webTabs", "skills", "chatDefaults", "deletedChats",
         "commentAnswers",
     ]
@@ -59,6 +63,11 @@ public struct Project: Codable, Sendable, Hashable {
         name = try c.required("name")
         created = try c.requiredDate("created")
         type = try c.value("type", default: ProjectType.none)
+        // Read in either letter case and uppercased (docs/data-model.md › Project file).
+        color = try c.optional("color", String.self).map { text in
+            guard ProjectColor.isValid(text) else { throw c.invalid("color", "\"\(text)\" is not a color of the form #RRGGBB") }
+            return text.uppercased()
+        }
         nextTicketNumber = try c.value("nextTicketNumber", default: 1)
         nextBundleNumber = try c.value("nextBundleNumber", default: 1)
         docsPath = try c.value("docsPath", default: "docs")
@@ -80,6 +89,10 @@ public struct Project: Codable, Sendable, Hashable {
         try c.encode(name, "name")
         try c.encodeDate(created, "created")
         try c.encode(type, "type")
+        // Left out of the file when there is no color; `null` in the JSON form.
+        if color != nil || !c.isYAML {
+            try c.encodeOptional(color, "color")
+        }
         try c.encode(nextTicketNumber, "nextTicketNumber")
         try c.encode(nextBundleNumber, "nextBundleNumber")
         try c.encode(docsPath, "docsPath")
@@ -99,6 +112,9 @@ public struct Project: Codable, Sendable, Hashable {
     public func validate() throws {
         guard Identifiers.isProjectID(id) else { throw ValidationError.invalid("identifier", "use 2 to 8 letters A–Z") }
         _ = try ModelRules.projectName(name)
+        if let color {
+            _ = try ProjectColor.normalized(color)
+        }
         guard nextTicketNumber >= 1 else { throw ValidationError.invalid("nextTicketNumber", "use a number of at least 1") }
         guard nextBundleNumber >= 1 else { throw ValidationError.invalid("nextBundleNumber", "use a number of at least 1") }
         _ = try ModelRules.relativePath(docsPath, field: "docsPath")
@@ -236,6 +252,20 @@ public struct DeletedChat: Codable, Sendable, Hashable, Identifiable {
     /// The write rules of the field table: a cost of at least 0.
     public func validate() throws {
         guard costUSD >= 0, costUSD.isFinite else { throw ValidationError.invalid("costUSD", "use an amount of at least 0") }
+    }
+}
+
+/// The key `color` of the project file: a hex color `#RRGGBB` (docs/data-model.md › Project file).
+public enum ProjectColor {
+    /// Whether the text is `#` followed by six hex digits, in either letter case.
+    public static func isValid(_ text: String) -> Bool {
+        SystemColors.isHex(text)
+    }
+
+    /// The color as stored: in uppercase. Any other text than `#RRGGBB` is invalid.
+    public static func normalized(_ text: String) throws -> String {
+        guard isValid(text) else { throw ValidationError.invalid("color", "use a color of the form #RRGGBB") }
+        return text.uppercased()
     }
 }
 

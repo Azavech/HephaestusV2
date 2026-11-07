@@ -219,10 +219,13 @@ struct TicketListProjects: Hashable {
     var ids: [String]
     /// The project names, by id.
     var names: [String: String]
+    /// The colors of the projects that have one, by id.
+    var colors: [String: String]
 
-    init(ids: [String], names: [String: String]) {
+    init(ids: [String], names: [String: String], colors: [String: String] = [:]) {
         self.ids = ids
         self.names = names
+        self.colors = colors
     }
 
     /// The active project and its descendants, from the workspace's `projects`.
@@ -231,10 +234,13 @@ struct TicketListProjects: Hashable {
         let descendants = workspace.descendants(of: projectID).map(\.project)
         ids = [projectID] + descendants.map(\.id)
         var names: [String: String] = [:]
+        var colors: [String: String] = [:]
         for project in [workspace.project(projectID)].compactMap({ $0 }) + descendants {
             names[project.id] = project.name
+            colors[project.id] = project.color
         }
         self.names = names
+        self.colors = colors
     }
 
     /// The list has a Project column, right after ID, when the active project has at least one
@@ -246,6 +252,11 @@ struct TicketListProjects: Hashable {
     /// The name of a ticket's project; empty when the project is not listed.
     func name(of ticket: Ticket) -> String {
         ticket.projectID.flatMap { names[$0] } ?? ""
+    }
+
+    /// The color of a ticket's project; nil when it has none or is not listed.
+    func color(of ticket: Ticket) -> String? {
+        ticket.projectID.flatMap { colors[$0] }
     }
 
     /// The group of a ticket in the ID order: the index of its project; a ticket of another

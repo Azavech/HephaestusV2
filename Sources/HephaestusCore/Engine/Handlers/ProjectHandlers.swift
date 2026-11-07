@@ -184,6 +184,14 @@ extension Engine {
         if let type = params.type {
             new.type = type
         }
+        switch params.color {
+        case .keep:
+            break
+        case .clear:
+            new.color = nil
+        case .set(let color):
+            new.color = try validated { try ProjectColor.normalized(color) }
+        }
         if let docsPath = params.docsPath {
             guard let path = DomainPaths.projectPath(docsPath), !path.isEmpty else {
                 throw EngineError.invalid("docsPath", "use a relative path with / separators and no empty, . or .. component")
@@ -213,7 +221,7 @@ extension Engine {
         guard new != old else { return projectDetail(id)! }
         try saveProject(new)
         emitProjectUpdated(id, origin: actor)
-        if new.name != old.name || new.type != old.type {
+        if new.name != old.name || new.type != old.type || new.color != old.color {
             emitProjectsChanged(origin: actor)
         }
         return projectDetail(id)!

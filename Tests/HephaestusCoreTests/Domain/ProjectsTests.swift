@@ -250,6 +250,40 @@ struct ProjectsTests {
         }
     }
 
+    @Test("projects.update sets the color in uppercase, clears it with null and emits projects.changed with it, for the user and Claude")
+    func updateColor() async throws {
+        try await withDomainEngine { h in
+            try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
+            let events = await DomainEventRecorder.make(h)
+            let set = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "HEPH", color: .set("#13284D")))
+            #expect(set.project.color == "#13284D")
+            #expect(await events.wait(for: ProjectsChangedEvent.name) == ["project.updated", "projects.changed"])
+            #expect(try events.all.last!.payload(ProjectsChangedEvent.self).first?.color == "#13284D")
+            let folder = ProjectFolder(root: URL(fileURLWithPath: h.path("Heph")))
+            #expect(try String(contentsOf: folder.projectFile, encoding: .utf8).contains("color: '#13284D'\n"))
+
+            events.clear()
+            let lowercase = try await h.call(ProjectsUpdate.self, .init(projectID: "HEPH", color: .set("#ffd60a")), as: h.claude)
+            #expect(lowercase.project.color == "#FFD60A")
+            #expect(await events.wait(for: ProjectsChangedEvent.name) == ["project.updated", "projects.changed"])
+            events.clear()
+            _ = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "HEPH", color: .set("#FFD60A")))
+            #expect(await events.settle().isEmpty)
+
+            let invalidColor = EngineError(.invalid, "color: use a color of the form #RRGGBB.")
+            for invalid in ["", "#12345", "#GGGGGG", "red", " #FFD60A"] {
+                let params = ProjectsUpdate.Params(projectID: "HEPH", color: .set(invalid))
+                #expect(await engineError { try await h.connection.call(ProjectsUpdate.self, params) } == invalidColor)
+                #expect(await engineError { try await h.call(ProjectsUpdate.self, params, as: h.claude) } == invalidColor)
+            }
+
+            let cleared = try await h.call(ProjectsUpdate.self, .init(projectID: "HEPH", color: .clear), as: h.claude)
+            #expect(cleared.project.color == nil)
+            #expect(try !String(contentsOf: folder.projectFile, encoding: .utf8).contains("color"))
+            #expect(try await h.connection.call(ProjectsList.self).first?.color == nil)
+        }
+    }
+
     @Test("projects.update refuses invalid values and chat defaults from Claude")
     func updateErrors() async throws {
         try await withDomainEngine { h in

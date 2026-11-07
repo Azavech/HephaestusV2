@@ -44,12 +44,16 @@ enum TicketFormat {
 struct StatusCapsule: View {
     let status: TicketStatus
 
+    /// The font of the capsule's text, `.caption` in medium weight.
+    static let font: NSFont = {
+        let caption = NSFont.preferredFont(forTextStyle: .caption1).pointSize
+        return NSFont.systemFont(ofSize: caption, weight: .medium)
+    }()
+
     /// The width of the widest capsule, for the Status columns: its caption text in medium weight
     /// and 7 pt on each side.
     static let maxWidth: CGFloat = {
-        let caption = NSFont.preferredFont(forTextStyle: .caption1).pointSize
-        let font = NSFont.systemFont(ofSize: caption, weight: .medium)
-        return (TicketStatus.allCases.map { ItemTableText.width($0.label, font: font) }.max() ?? 0) + 14
+        (TicketStatus.allCases.map { ItemTableText.width($0.label, font: font) }.max() ?? 0) + 14
     }()
 
     var body: some View {
@@ -80,6 +84,55 @@ struct StatusCapsule: View {
         case .review: return .orange
         case .done: return .green
         }
+    }
+}
+
+/// The project badge of the Project column: the project's name in a capsule drawn like the status
+/// capsule, filled with the project's color, or with the gray of To Do when the project has none
+/// (docs/tickets.md › Ticket list). The name truncates with an ellipsis inside the capsule.
+struct ProjectBadge: View {
+    let name: String
+    /// The project's color, `#RRGGBB`; nil for none.
+    let color: String?
+
+    var body: some View {
+        Text(name)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(Self.textColor(of: color))
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Self.fill(of: color)))
+    }
+
+    /// The width of a badge that shows the whole name: the name in the capsule's font and 7 pt
+    /// on each side.
+    static func width(of name: String) -> CGFloat {
+        ItemTableText.width(name, font: StatusCapsule.font) + 14
+    }
+
+    /// The capsule's fill: the project's color, or the gray of the To Do capsule.
+    static func fill(of color: String?) -> Color {
+        color.flatMap(ColorSwatches.nsColor).map { Color(nsColor: $0) } ?? StatusCapsule.color(of: .todo)
+    }
+
+    /// The text's color: black or white, whichever has the higher contrast with the project's
+    /// color; white on the gray of a project without color.
+    static func textColor(of color: String?) -> Color {
+        color.map(usesBlackText) == true ? .black : .white
+    }
+
+    /// Whether black text has a higher contrast ratio than white text with a hex color, from the
+    /// color's WCAG 2 relative luminance; false for a text that is not a hex color.
+    static func usesBlackText(_ hex: String) -> Bool {
+        guard let components = SystemColors.components(ofHex: hex) else { return false }
+        func linear(_ value: Int) -> Double {
+            let channel = Double(value) / 255
+            return channel <= 0.04045 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
+        }
+        let luminance = 0.2126 * linear(components.red) + 0.7152 * linear(components.green) + 0.0722 * linear(components.blue)
+        return (luminance + 0.05) / 0.05 > 1.05 / (luminance + 0.05)
     }
 }
 

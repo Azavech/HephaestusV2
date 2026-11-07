@@ -78,6 +78,17 @@ struct MCPToolHandlersTests {
         #expect(engine.calls.last?.params == (try jsonValue(#"{"projectID":"HEPH","type":"swiftApplication"}"#)))
     }
 
+    @Test("update_project forwards a color, and sends an empty color as null")
+    func updateProjectColor() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        _ = try await Self.call(handlers, "update_project", ##"{"projectID":"HEPH","color":"#34C759"}"##)
+        #expect(engine.calls.last?.method == "projects.update")
+        #expect(engine.calls.last?.params == (try jsonValue(##"{"projectID":"HEPH","color":"#34C759"}"##)))
+        _ = try await Self.call(handlers, "update_project", #"{"projectID":"HEPH","color":""}"#)
+        #expect(engine.calls.last?.params == (try jsonValue(#"{"projectID":"HEPH","color":null}"#)))
+    }
+
     @Test("run_project: wait defaults to true for build and test, false for run")
     func runProject() async throws {
         let engine = RecordedEngine()
