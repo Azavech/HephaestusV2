@@ -23,13 +23,15 @@ struct SkillDefaultsConformanceTests {
         Repository.root().appendingPathComponent("Sources/HephaestusCore/Resources/skills", isDirectory: true)
     }
 
-    @Test("The documented defaults, the resource folders and InternalSkills.names are the same four skills")
+    @Test("The documented defaults, the resource folders and InternalSkills.names are the same skills: the called ones and the system prompt skills")
     func names() throws {
         let documented = try Self.documentedDefaults()
         let folders = try FileManager.default.contentsOfDirectory(atPath: Self.skillsFolder.path).filter { !$0.hasPrefix(".") }
         #expect(Set(documented.keys) == Set(InternalSkills.names))
         #expect(Set(folders) == Set(InternalSkills.names))
         #expect(InternalSkills.names == InternalSkills.names.sorted())
+        #expect(Set(InternalSkills.names) == Set(InternalSkills.calledNames + PromptSkill.allCases.map(\.rawValue)))
+        #expect(InternalSkills.names.count == 14)
     }
 
     @Test("Each default SKILL.md equals its block followed by one newline")

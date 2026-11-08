@@ -79,7 +79,7 @@ public struct HaikuTitleNamer: TitleNamer {
         return 60
     }
 
-    static func prompt(for subject: NamingSubject) -> Prompts.Name {
+    static func prompt(for subject: NamingSubject) -> PromptSkill {
         switch subject {
         case .ticket: return .namingTicket
         case .bundle: return .namingBundle
@@ -194,9 +194,9 @@ final class HaikuNamingRuntime: @unchecked Sendable {
     /// One `claude -p --model haiku` call with `prompt` and `input`, queued behind the calls of
     /// this runtime (docs/chats.md › Haiku naming › Command): stdout of a call that exited with
     /// status 0, or nil after a failure or a timeout, written to `engine.log` as `<what> …`.
-    func run(prompt: Prompts.Name, input: String, what: String) async -> (standardOutput: Data, log: LogSink)? {
-        guard let engine = activeEngine, let context = await engine.namingContext(what) else { return nil }
-        let argv = ClaudeCommandLine.naming(cliPath: context.path, prompt: Prompts.text(prompt), input: input)
+    func run(prompt: PromptSkill, input: String, what: String) async -> (standardOutput: Data, log: LogSink)? {
+        guard let engine = activeEngine, let context = await engine.namingContext(what, prompt: prompt) else { return nil }
+        let argv = ClaudeCommandLine.naming(cliPath: context.path, prompt: context.prompt, input: input)
         let request = ChildProcessRequest(executable: argv[0], arguments: Array(argv.dropFirst()), environment: context.environment,
                                           currentDirectory: context.workingDirectory)
         await queue.acquire()
@@ -259,6 +259,8 @@ actor NamingQueue {
 /// What a naming call needs from the engine.
 struct NamingContext: Sendable {
     var path: String
+    /// The text of the call's system prompt skill, read from the library, passed unchanged.
+    var prompt: String
     var environment: [String: String]
     var workingDirectory: String
     var launcher: any ClaudeProcessLauncher
@@ -267,16 +269,19 @@ struct NamingContext: Sendable {
 }
 
 extension Engine {
-    /// The CLI path, the Claude environment and `Runtime/claude-cwd/` for a naming or summary call;
+    /// The CLI path, the text of the call's system prompt skill, read from the library at every
+    /// call (docs/chats.md › Haiku naming › Command), the Claude environment and
+    /// `Runtime/claude-cwd/` for a naming or summary call;
     /// nil while the CLI is unavailable (after waiting up to 20 s while it is being checked), so
     /// that the provisional title or the fallback detail stays (docs/chats.md › Version and
     /// status).
-    func namingContext(_ what: String) async -> NamingContext? {
+    func namingContext(_ what: String, prompt: PromptSkill) async -> NamingContext? {
         guard !claudeCLI.stopped else { return nil }
         do {
             let context = try await requireClaudeCLI()
-            return NamingContext(path: context.path, environment: context.environment, workingDirectory: claudeWorkingDirectory().path,
-                                 launcher: configuration.claudeLauncher, registry: claudeCLI.helpers, log: log)
+            let text = promptSkillTexts([prompt])[prompt] ?? Prompts.text(prompt)
+            return NamingContext(path: context.path, prompt: text, environment: context.environment,
+                                 workingDirectory: claudeWorkingDirectory().path, launcher: configuration.claudeLauncher, registry: claudeCLI.helpers, log: log)
         } catch {
             log.info(.claude, "\(what) skipped: the Claude CLI is not available")
             return nil

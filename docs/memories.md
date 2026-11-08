@@ -116,14 +116,14 @@ Examples:
 At every launch of a chat process, whatever the chat's kind and project ([Launch](chats.md#launch)), the engine:
 
 1. resolves the global memories folder with the chat environment ([Environment](chats.md#environment)) and creates it, with its missing parent folders, when it is missing;
-2. reads its `MEMORY.md`, then names the folder and the lines of `MEMORY.md` in the system prompt, in the block `{{globalMemories}}` of the common prompt ([Rendered blocks](chats.md#rendered-blocks));
+2. reads its `MEMORY.md`, then names the folder and the lines of `MEMORY.md` in the system prompt, in the block `{{globalMemories}}` of the common skill ([Rendered blocks](chats.md#rendered-blocks));
 3. passes the folder to the CLI with `--add-dir` ([Command line](chats.md#command-line)): Claude reads and writes its files with its own file tools, under the chat's permission mode, as the files of the project.
 
-- The common prompt states the rule Claude follows for each memory it saves: a memory that holds for every project goes to the global memories folder, with its line in the global `MEMORY.md`; the other memories go to the project's memory folder, which the CLI gives ([Prompt: common](chats.md#prompt-common)).
+- The default common skill states the rule Claude follows for each memory it saves: a memory that holds for every project goes to the global memories folder, with its line in the global `MEMORY.md`; the other memories go to the project's memory folder, which the CLI gives ([Default: common](skills.md#default-common)).
 - When the folder cannot be created, the chat starts without `--add-dir` and its prompt still names the folder; `engine.log` gets the warning `the global memories folder <path> cannot be created: <reason>`. Default chosen at design time.
-- A comment answer gets no global memories: its system prompt has no common prompt ([Comment answers](chats.md#comment-answers)).
-- A CI chat gets the folder with `--add-dir`, as every chat process, but no `{{globalMemories}}`: its system prompt is the ci prompt alone, without the common prompt ([CI chats](chats.md#ci-chats)). Default chosen at design time.
-- A chat of a sub project gets both the global memories and the memories it inherits, which `{{parentMemories}}` names at the end of the first paragraph of the common prompt, with their `Read` rules ([Inherited memories](#inherited-memories)). The intro of `{{parentMemories}}` tells Claude to save a new memory in the project's own folder or, when it holds for every project, in the global memories folder, never in an inherited folder ([Rendered blocks](chats.md#rendered-blocks)). Naming the global memories folder there is Default chosen at design time.
+- A comment answer gets no global memories: its system prompt has no common skill ([Comment answers](chats.md#comment-answers)).
+- A CI chat gets the folder with `--add-dir`, as every chat process, but no `{{globalMemories}}`: its system prompt is the ci skill alone, without the common skill, and the default ci skill does not use the block ([CI chats](chats.md#ci-chats)). Default chosen at design time.
+- A chat of a sub project gets both the global memories and the memories it inherits, which `{{parentMemories}}` names at the end of the first paragraph of the default common skill, with their `Read` rules ([Inherited memories](#inherited-memories)). The intro of `{{parentMemories}}` tells Claude to save a new memory in the project's own folder or, when it holds for every project, in the global memories folder, never in an inherited folder ([Rendered blocks](chats.md#rendered-blocks)). Naming the global memories folder there is Default chosen at design time.
 - `--add-dir`, the permission mode for the files of the folder and the creation of the folder at launch are Default chosen at design time.
 
 ## Memory files

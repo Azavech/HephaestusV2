@@ -260,7 +260,7 @@ Input schemas, errors and examples: [Debug tools](mcp.md#debug-tools).
 
 ### Docs conformance tests
 
-HephaestusCoreTests compares the docs with the code ([CI and release](ci.md)): the MCP tool names and required inputs of [MCP server](mcp.md), the engine method names of [Engine API](engine-api.md), the prompt texts of [Chats](chats.md) and the YAML examples of [Data model](data-model.md). A behaviour change therefore changes the docs and the code in the same commit, or `swift test` fails.
+HephaestusCoreTests compares the docs with the code ([CI and release](ci.md)): the MCP tool names and required inputs of [MCP server](mcp.md), the engine method names of [Engine API](engine-api.md), the prompt placeholders of [Chats](chats.md), the default internal skills of [Skills](skills.md) and the YAML examples of [Data model](data-model.md). A behaviour change therefore changes the docs and the code in the same commit, or `swift test` fails.
 
 ## Fixtures
 

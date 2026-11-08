@@ -198,10 +198,12 @@ extension Engine {
     // MARK: System prompt
 
     /// The value of `--append-system-prompt` for a launch (docs/chats.md › Composition and
-    /// rendering): rendered at every launch with the current project, ticket and bundle data, and
-    /// the inherited memory folders of the project and the `{{globalMemories}}` block of the launch.
+    /// rendering): the system prompt skills of the chat's kind, read from the library at every
+    /// launch, rendered with the current project, ticket and bundle data, and the inherited memory
+    /// folders of the project and the `{{globalMemories}}` block of the launch.
     func chatSystemPrompt(meta: ChatMeta, project: Project, root: URL, workingDirectory: ChatWorkingDirectory,
-                          items: [ChatItem], parentMemories: [Prompts.ParentMemoryFolder] = [], globalMemories: String) -> String {
+                          parentMemories: [Prompts.ParentMemoryFolder] = [], globalMemories: String) -> String {
+        let texts = promptSkillTexts(Prompts.skills(of: meta.kind))
         var values: [String: String] = [
             "projectName": project.name,
             "projectID": project.id,
@@ -235,23 +237,19 @@ extension Engine {
             var fullCount = tickets.count
             while true {
                 values["bundle"] = Prompts.bundle(id: bundle.id, title: bundle.title, tickets: tickets, fullCount: fullCount)
-                let prompt = Prompts.systemPrompt(kind: meta.kind, values: values)
+                let prompt = Prompts.systemPrompt(kind: meta.kind, values: values, texts: texts)
                 if prompt.utf8.count <= Prompts.systemPromptLimit || fullCount == 0 { return prompt }
                 fullCount -= 1
             }
         case .feedback:
-            let first = items.lazy.compactMap { item -> UserItem? in
-                if case .user(let user) = item { return user }
-                return nil
-            }.first
-            values["feedbackContext"] = Prompts.feedbackContext(fromFirstMessage: first?.text)
-            // `none` without an attachment (docs/chats.md › Placeholders).
-            values["screenshotPath"] = first?.attachments.first.map { root.appendingPathComponent(".hephaestus/" + $0.path).path } ?? "none"
+            // The common skill alone: the feedback skill, which the first message calls, describes
+            // the chat (docs/chats.md › Composition and rendering).
+            break
         case .ci:
             // `none` when the project has no GitHub page (docs/chats.md › Placeholders).
             values["githubRepository"] = githubPage(of: project.id).flatMap(GitHubPage.repository(of:)) ?? "none"
         }
-        return Prompts.systemPrompt(kind: meta.kind, values: values)
+        return Prompts.systemPrompt(kind: meta.kind, values: values, texts: texts)
     }
 
     /// `{{environments}}` of a project: its environments as they apply and its current working

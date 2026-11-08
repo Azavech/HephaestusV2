@@ -1,22 +1,20 @@
 import Foundation
 
-/// The prompt resources and their rendering (docs/chats.md › System prompts).
+/// The system prompts: the texts of the system prompt skills and their rendering
+/// (docs/chats.md › System prompts, docs/skills.md › System prompt skills).
 enum Prompts {
-    /// The resource names: `Sources/HephaestusCore/Resources/prompts/<name>.md`.
-    enum Name: String, CaseIterable, Sendable {
-        case common, project, ticket, bundle, feedback, ci
-        case namingTicket = "naming-ticket"
-        case namingBundle = "naming-bundle"
-        case namingChat = "naming-chat"
-        case notificationSummary = "notification-summary"
-        case commentAnswer = "comment-answer"
-    }
-
     private static let cache = PromptCache()
 
-    /// The text of a prompt: the content of its file without the final newline.
-    static func text(_ name: Name) -> String {
-        cache.text(name)
+    /// The app's default text of a system prompt skill: the text of the body of its default
+    /// SKILL.md.
+    static func text(_ skill: PromptSkill) -> String {
+        cache.text(skill)
+    }
+
+    /// The text of a skill's body: the body without the white space and line breaks at its start
+    /// and at its end.
+    static func text(ofBody body: String) -> String {
+        body.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Replaces each `{{name}}` of `template` with its value in one pass; values are inserted as
@@ -43,15 +41,38 @@ enum Prompts {
         return result
     }
 
-    /// The prompt of a chat kind, appended after the common prompt; a CI chat gets its prompt
-    /// alone.
-    static func kindPrompt(_ kind: ChatKind) -> Name {
+    /// The names of the placeholders of `template`, in order, as `render` reads them: what lies
+    /// between a `{{` and the next `}}`.
+    static func placeholderNames(in template: String) -> [String] {
+        var names: [String] = []
+        var rest = template[...]
+        while let open = rest.range(of: "{{") {
+            let afterOpen = rest[open.upperBound...]
+            guard let close = afterOpen.range(of: "}}") else { break }
+            names.append(String(afterOpen[..<close.lowerBound]))
+            rest = afterOpen[close.upperBound...]
+        }
+        return names
+    }
+
+    /// Renders a system prompt skill with its own placeholders only; any other `{{…}}` stays as
+    /// written, and a skill without placeholders is passed unchanged.
+    static func render(_ skill: PromptSkill, _ text: String, _ values: [String: String]) -> String {
+        let placeholders = Set(skill.placeholders)
+        guard !placeholders.isEmpty else { return text }
+        return render(text, values.filter { placeholders.contains($0.key) })
+    }
+
+    /// The system prompt skills of a chat kind, in their order in `--append-system-prompt`: the
+    /// common skill, then the project, ticket or bundle skill; the common skill alone for a
+    /// feedback chat; the ci skill alone for a CI chat.
+    static func skills(of kind: ChatKind) -> [PromptSkill] {
         switch kind {
-        case .project: return .project
-        case .ticket: return .ticket
-        case .bundle: return .bundle
-        case .feedback: return .feedback
-        case .ci: return .ci
+        case .project: return [.common, .project]
+        case .ticket: return [.common, .ticket]
+        case .bundle: return [.common, .bundle]
+        case .feedback: return [.common]
+        case .ci: return [.ci]
         }
     }
 
@@ -243,15 +264,6 @@ enum Prompts {
         return text
     }
 
-    /// `{{feedbackContext}}`: the lines after the line `Feedback context:` of the first user
-    /// message's text, unchanged; `- none` when that line is missing.
-    static func feedbackContext(fromFirstMessage text: String?) -> String {
-        guard let text else { return "- none" }
-        let lines = text.components(separatedBy: "\n")
-        guard let marker = lines.firstIndex(of: "Feedback context:") else { return "- none" }
-        return lines[(marker + 1)...].joined(separator: "\n")
-    }
-
     /// An inherited memory folder named by `{{parentMemories}}`: the ancestor that gave it, the
     /// folder's absolute path and the text of its `MEMORY.md` (nil when it has none, or one that
     /// cannot be read).
@@ -327,28 +339,27 @@ enum Prompts {
         return cut ? text + "\n[Truncated: read \(folder)/MEMORY.md for the rest.]" : text
     }
 
-    /// The value of `--append-system-prompt`: the rendered common prompt, a blank line, and the
-    /// rendered prompt of the chat's kind; for a CI chat, the rendered ci prompt alone, without
-    /// the common prompt (docs/chats.md › Composition and rendering).
-    static func systemPrompt(kind: ChatKind, values: [String: String]) -> String {
-        if kind == .ci { return render(text(.ci), values) }
-        return render(text(.common), values) + "\n\n" + render(text(kindPrompt(kind)), values)
+    /// The value of `--append-system-prompt` (docs/chats.md › Composition and rendering): the
+    /// skills of the chat's kind, each rendered with its own placeholders, separated by a blank
+    /// line. `texts` are the skills' texts read from the library; a skill missing from it takes the
+    /// app's default text.
+    static func systemPrompt(kind: ChatKind, values: [String: String], texts: [PromptSkill: String] = [:]) -> String {
+        skills(of: kind).map { render($0, texts[$0] ?? text($0), values) }.joined(separator: "\n\n")
     }
 }
 
-/// Reads the prompt files once.
+/// Reads the default text of each system prompt skill once.
 private final class PromptCache: @unchecked Sendable {
     private let lock = NSLock()
-    private var texts: [Prompts.Name: String] = [:]
+    private var texts: [PromptSkill: String] = [:]
 
-    func text(_ name: Prompts.Name) -> String {
+    func text(_ skill: PromptSkill) -> String {
         lock.lock()
         defer { lock.unlock() }
-        if let text = texts[name] { return text }
-        let url = Bundle.module.url(forResource: name.rawValue, withExtension: "md", subdirectory: "prompts")
-        var text = url.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
-        if text.hasSuffix("\n") { text.removeLast() }
-        texts[name] = text
+        if let text = texts[skill] { return text }
+        let body = InternalSkills.defaultContent(skill.rawValue).flatMap { try? SkillDocument.parse($0, folderName: skill.rawValue).body }
+        let text = Prompts.text(ofBody: body ?? "")
+        texts[skill] = text
         return text
     }
 }

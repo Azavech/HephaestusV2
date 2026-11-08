@@ -170,7 +170,7 @@ The engine then:
 1. checks the call and fails without creating anything when the Claude CLI is not available (`unavailable`); the errors are listed in [Engine API](engine-api.md#chatscreatefeedback);
 2. creates a chat of kind `feedback` with `ticket` null in the HephaestusV2 project and emits `chat.updated`;
 3. stores the screenshot as an attachment of the chat, in `.hephaestus/chats/<chat-id>/<attachment-uuid>-screenshot.png` of the HephaestusV2 project ([Data model](data-model.md));
-4. sends the first message, which calls the internal skill `feedback`: the line `/hephaestus-skills:feedback`, then the feedback message, the comment and the rendered context, with the screenshot as an image, in the format of [Chats](chats.md#feedback-message), and launches the Claude process with the feedback prompt ([Internal skills](skills.md#internal-skills));
+4. sends the first message, which calls the internal skill `feedback`: the line `/hephaestus-skills:feedback`, then the feedback message, the comment and the rendered context, with the screenshot as an image, in the format of [Chats](chats.md#feedback-message), and launches the Claude process with the common skill alone as its system prompt ([Internal skills](skills.md#internal-skills));
 5. returns the `ChatMeta`, and a main window of the client shows the chat in the Chats section of the HephaestusV2 project ([Feedback sheet](#feedback-sheet)).
 
 Haiku names the chat from this first message, as for every chat, and the chat's row and header follow the chat title ([Chats](chats.md)).
@@ -201,8 +201,8 @@ Example params, with a 1 × 1 pixel PNG standing in for a real screenshot:
 ## Feedback chat
 
 - The feedback chat is a chat of the HephaestusV2 project: its Claude process runs in the project root, with the project's enabled skills ([Skills](skills.md)) and its own MCP token, so its MCP calls run as actor `claude` with the chat id ([MCP](mcp.md)).
-- Its system prompt is the common prompt plus the feedback prompt ([Chats](chats.md#prompt-feedback)). The feedback prompt gives Claude the rendered context and the absolute path of the stored screenshot on the receiving device.
-- Its first message calls the internal skill `feedback`, which holds Claude's steps; the user edits it in the Skills section of the HephaestusV2 project ([Internal skills](skills.md#internal-skills)).
+- Its system prompt is the common skill alone, as in every chat except CI chats ([Composition and rendering](chats.md#composition-and-rendering)).
+- Its first message calls the internal skill `feedback` with the comment and the rendered context, which hold the absolute path of the stored screenshot on the receiving device. The skill tells Claude that this is a feedback chat, sent from the window the user was using, whose goal is a ticket of the chat's project, and holds Claude's steps; the user edits it in the Skills section of the HephaestusV2 project ([Internal skills](skills.md#internal-skills)). Claude Code keeps the called skill, its arguments filled in, after a compaction ([Calls](skills.md#calls)).
 - Claude's steps, as the default `feedback` skill orders them ([Default: feedback](skills.md#default-feedback), [Workflow](workflow.md)):
   1. read the comment, the context and the screenshot;
   2. list every decision the ticket's implementation needs, look for each one in the feedback, the docs, the code and the git history, and ask every decision still open with labelled questions (A, B, C…) with the MCP tool `ask_questions`, each with options and one recommended option, then end the turn; the user answers them one by one in the chat view ([Chats](chats.md)); Claude goes on to step 3 only once every decision is answered, without a further validation question ([Workflow › Writing tickets](workflow.md#writing-tickets));

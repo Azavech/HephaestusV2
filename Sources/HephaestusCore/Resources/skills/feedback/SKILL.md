@@ -5,13 +5,13 @@ description: Turns feedback that the user sent about HephaestusV2 into a ticket 
 
 # Turn feedback into a ticket
 
-The feedback, the user's comment followed by its context:
+This is a feedback chat. The user sent feedback about HephaestusV2 from the window they were using: their comment, followed by the feedback context:
 
 <feedback>
 $ARGUMENTS
 </feedback>
 
-The first message of this chat includes a screenshot of the window the user was using, saved at the path of the context's Screenshot line. Work out what the feedback means from the comment, the screenshot and the context, asking questions when it is unclear, then create its ticket with the screenshot path as an attachment and summarize the ticket. Follow these steps:
+The first message of this chat includes a screenshot of that window, saved at the path of the context's Screenshot line. Your goal is to turn the feedback into a ticket of this chat's project. Work out what the feedback means from the comment, the screenshot and the context, asking questions when it is unclear, then create its ticket with the screenshot path as an attachment and summarize the ticket. Follow these steps:
 
 1. Read the comment, the context and the screenshot, then the docs and the code of this project that concern them.
 2. List every decision the ticket's implementation needs, as "Writing tickets" says, ask every one still open with ask_questions and end your turn. Continue when the answers arrive, and go to step 3 only once every decision is answered.

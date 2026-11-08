@@ -8,10 +8,11 @@ import Observation
 /// it and the call that a chosen skill inserts.
 enum SkillCompletion {
     /// The skills the project's generated plugin links (docs/skills.md › Generation): the skills of
-    /// the library named in the project's `skills` list, and the internal skills, sorted by name.
-    /// Names of the list that are missing from the library are left out.
+    /// the library named in the project's `skills` list, other than the system prompt skills, and
+    /// the called internal skills, sorted by name. Names of the list that are missing from the
+    /// library are left out.
     static func skills(library: [SkillSummary], enabled: [String]) -> [SkillSummary] {
-        let names = Set(enabled).union(InternalSkills.names)
+        let names = Set(enabled.filter { PromptSkill(rawValue: $0) == nil }).union(InternalSkills.calledNames)
         return library.filter { names.contains($0.name) }.sorted { $0.name < $1.name }
     }
 

@@ -5,12 +5,12 @@ import Foundation
 /// its chat processes with `--plugin-dir` (docs/skills.md › Generated plugin). The chat launch
 /// and the `skills.*` methods call it (docs/architecture.md › HephaestusCore folders).
 public protocol SkillsPluginProvider: Sendable {
-    /// Regenerates the plugin folder of a project from its enabled skills, the internal skills and
-    /// the library, and returns the folder to pass with `--plugin-dir`. The engine writes the
+    /// Regenerates the plugin folder of a project from its enabled skills, the called internal
+    /// skills and the library, and returns the folder to pass with `--plugin-dir`. The engine writes the
     /// missing internal skills before it calls this. Throws on a file system error; the launch
     /// then goes on without `--plugin-dir` (docs/skills.md › Generation).
     ///
-    /// When neither an enabled skill nor an internal skill is a skill of the library, the folder is deleted and the returned
+    /// When neither an enabled skill nor a called internal skill is a skill of the library, the folder is deleted and the returned
     /// URL names no folder: the CLI then gets no `--plugin-dir` (docs/skills.md › Generation,
     /// steps 2 and 4), so a caller passes `--plugin-dir` only when a folder exists at the URL.
     func preparePlugin(projectID: ProjectID, skills: [String], library: URL, dataDirectory: DataDirectory) throws -> URL
@@ -28,9 +28,11 @@ public struct SkillsPluginGenerator: SkillsPluginProvider {
         let manager = FileManager.default
         let libraryPath = library.standardizedFileURL.path
 
-        // 1. E: the names of the project's list and of the internal skills that are skills of the
-        // library, sorted by name (docs/skills.md › Internal skills).
-        let enabled = Set(skills + InternalSkills.names).filter { SkillsLibraryReader.isSkill(named: $0, in: library) }.sorted()
+        // 1. E: the names of the project's list, other than the system prompt skills, and of the
+        // called internal skills that are skills of the library, sorted by name
+        // (docs/skills.md › Generation).
+        let listed = skills.filter { PromptSkill(rawValue: $0) == nil }
+        let enabled = Set(listed + InternalSkills.calledNames).filter { SkillsLibraryReader.isSkill(named: $0, in: library) }.sorted()
 
         // 2. No enabled skill: the folder is deleted.
         guard !enabled.isEmpty else {

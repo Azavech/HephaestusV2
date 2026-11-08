@@ -1,3 +1,8 @@
+---
+name: ticket
+description: Describes a ticket chat to Claude and gives it the chat's ticket. HephaestusV2 puts it in the system prompt of ticket chats, after the common skill; nothing calls it.
+---
+
 # This chat
 
 This is the chat of ticket {{ticketID}} of the project {{projectName}} ({{projectID}}). Everything the user writes here is about this ticket unless they say otherwise. The user asks you to implement the ticket, to investigate or debug it, or to answer questions about it.

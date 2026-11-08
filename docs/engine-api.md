@@ -1183,7 +1183,7 @@ Events: bundle.deleted.
 
 ## Chats
 
-Chat states and their transitions, Claude processes, CLI flags, the stream-json mapping, the control protocol, rendering, naming with Haiku, persistence and the full text of every prompt are in [Chats](chats.md). This section is the method contract.
+Chat states and their transitions, Claude processes, CLI flags, the stream-json mapping, the control protocol, rendering, naming with Haiku, persistence and the composition of the system prompts are in [Chats](chats.md). This section is the method contract.
 
 ### Chat metadata in the API
 

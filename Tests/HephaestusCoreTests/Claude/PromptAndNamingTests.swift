@@ -113,11 +113,16 @@ struct PromptAndNamingTests {
             "\n\nTicket 2 of 2: HEPH-13 Tab titles are cut too early (call get_ticket for its content)"))
     }
 
-    @Test("{{feedbackContext}}")
-    func feedbackContext() {
-        #expect(Prompts.feedbackContext(fromFirstMessage: "Hi\n\nFeedback context:\n- App: X\n- Device: Y") == "- App: X\n- Device: Y")
-        #expect(Prompts.feedbackContext(fromFirstMessage: "no context") == "- none")
-        #expect(Prompts.feedbackContext(fromFirstMessage: nil) == "- none")
+    @Test("The feedback skill describes the feedback chat without placeholders; a feedback chat's system prompt is the common skill alone")
+    func feedbackChatDescription() throws {
+        let feedback = try Self.skill("feedback")
+        #expect(feedback.contains("This is a feedback chat. The user sent feedback about HephaestusV2 from the window they were using: "
+            + "their comment, followed by the feedback context:\n\n<feedback>\n$ARGUMENTS\n</feedback>"))
+        #expect(feedback.contains("Your goal is to turn the feedback into a ticket of this chat's project."))
+        #expect(!feedback.contains("{{"))
+        #expect(Prompts.skills(of: .feedback) == [.common])
+        let values = ["projectName": "Hephaestus V2", "projectID": "HEPH"]
+        #expect(Prompts.systemPrompt(kind: .feedback, values: values) == Prompts.render(.common, Prompts.text(.common), values))
     }
 
     /// The environments of the `{{environments}}` example of docs/chats.md › Rendered blocks: one
@@ -291,15 +296,15 @@ struct PromptAndNamingTests {
             "deviceName": "Studio", "docsPath": "docs", "projectType": "Go service",
             "environments": "\n\nThe project's environments, where the Go service runs; the Kubernetes and Argo CD tools take an environment's name:\n"
                 + "- staging: https://staging.example.com; deployment: orders-api",
-            "ticketID": "HEPH-12", "ticket": "ID: HEPH-12", "bundleID": "HEPH-B2", "bundle": "ID: HEPH-B2", "feedbackContext": "- App: X",
-            "screenshotPath": "/Users/example/s.png", "githubRepository": "Azavech/HephaestusV2", "parentMemories": "",
+            "ticketID": "HEPH-12", "ticket": "ID: HEPH-12", "bundleID": "HEPH-B2", "bundle": "ID: HEPH-B2",
+            "githubRepository": "Azavech/HephaestusV2", "parentMemories": "",
             "globalMemories": "The global memories folder is /Users/example/.claude/memory. Its MEMORY.md has no line yet.",
         ]
-        for name in Prompts.Name.allCases {
-            let text = Prompts.text(name)
-            #expect(!text.isEmpty, "\(name.rawValue)")
+        for skill in PromptSkill.allCases {
+            let text = Prompts.text(skill)
+            #expect(!text.isEmpty, "\(skill.rawValue)")
             #expect(!text.hasSuffix("\n"))
-            #expect(!Prompts.render(text, values).contains("{{"), "\(name.rawValue)")
+            #expect(!Prompts.render(skill, text, values).contains("{{"), "\(skill.rawValue)")
         }
         let prompt = Prompts.systemPrompt(kind: .ticket, values: values)
         #expect(prompt.hasPrefix("You are Claude, working inside HephaestusV2"))
@@ -546,7 +551,7 @@ struct PromptAndNamingTests {
         #expect(prompt.contains("- CI not checked. when no run of the commit appeared within 2 minutes"))
         #expect(!prompt.contains("# HephaestusV2 tools"))
         #expect(!prompt.contains("{{"))
-        #expect(Prompts.kindPrompt(.ci) == .ci)
+        #expect(Prompts.skills(of: .ci) == [.ci])
         #expect(GitHubPage.repository(of: "https://github.com/Azavech/HephaestusV2") == "Azavech/HephaestusV2")
         #expect(GitHubPage.repository(of: "https://github.com/owner/name.git") == "owner/name.git")
         #expect(GitHubPage.repository(of: "https://gitlab.com/owner/name") == nil)
@@ -860,8 +865,6 @@ struct PromptAndNamingTests {
         #expect(Engine.implementTicketMessage(ticketID: "HEPH-12", bundleID: nil) == "/hephaestus-skills:implement-ticket HEPH-12")
         #expect(Engine.implementTicketMessage(ticketID: "HEPH-12", bundleID: "HEPH-B2") == "/hephaestus-skills:implement-ticket HEPH-12 HEPH-B2")
         #expect(Engine.implementBundleMessage(bundleID: "HEPH-B2") == "/hephaestus-skills:implement-bundle HEPH-B2")
-        // {{feedbackContext}} still reads the lines after `Feedback context:` of the first message.
-        #expect(Prompts.feedbackContext(fromFirstMessage: "/hephaestus-skills:feedback\nHi\n\nFeedback context:\n- App: X") == "- App: X")
     }
 
     @Test("The Answers message lists the answers in label order and keeps their line breaks")

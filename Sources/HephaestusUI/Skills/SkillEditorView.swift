@@ -97,7 +97,7 @@ struct SkillEditorView: View {
                 ValidationMessage(text: message)
             }
             HStack(alignment: .firstTextBaseline) {
-                Text("Claude sees this skill as hephaestus-skills:\(editor.skillName)")
+                Text(editor.caption)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
@@ -251,6 +251,14 @@ private struct SkillBodyPart: View {
             content
                 .frame(height: 340)
                 .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color(nsColor: .separatorColor)))
+            // A system prompt skill names the placeholders of the body, unsaved changes included,
+            // that the engine sends as written (docs/skills.md › Editor).
+            if let line = editor.promptSkill?.unsupportedPlaceholdersLine(in: form.body.text) {
+                Text(line)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
         }
         .task(id: form.body.text) {
             guard editor.bodyMode == .split else {

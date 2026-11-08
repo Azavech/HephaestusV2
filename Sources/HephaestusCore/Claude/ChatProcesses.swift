@@ -85,8 +85,6 @@ extension Engine {
             return
         }
         runtime.projectID = meta.projectID
-        let items = (try? loadTranscript(chatID)) ?? []
-
         let port: Int
         if case .listening(let listening) = mcpState { port = listening } else { port = effectiveMCPPort }
         let configURL = dataDirectory.mcpConfigFile(chatID: chatID)
@@ -119,7 +117,7 @@ extension Engine {
         let workingDirectory = chatWorkingDirectory(meta, root: root)
         // The inherited memory folders, named in the prompt and readable (docs/memories.md › Inherited memories).
         let parentMemories = parentMemoryFolders(of: meta.projectID, root: root, environment: context.environment)
-        let systemPrompt = chatSystemPrompt(meta: meta, project: project, root: root, workingDirectory: workingDirectory, items: items,
+        let systemPrompt = chatSystemPrompt(meta: meta, project: project, root: root, workingDirectory: workingDirectory,
                                             parentMemories: parentMemories, globalMemories: globalMemories.block)
         let argv = ClaudeCommandLine.chat(cliPath: context.path, chatID: chatID, sessionStarted: meta.sessionStarted, settings: meta.settings,
                                           mcpPort: port, mcpConfigPath: configURL.path, systemPrompt: systemPrompt,

@@ -243,9 +243,10 @@ extension Engine {
         await finishCommentAnswer(answerID, outcome: CommentAnswerOutcome.read(result))
     }
 
-    /// The rendered comment-answer prompt of a ticket (docs/chats.md › Prompt: comment-answer).
+    /// The comment-answer skill, read from the library at every call and rendered for a ticket
+    /// (docs/chats.md › Answer command).
     func commentAnswerPrompt(ticketID: TicketID, project: Project, root: URL) -> String {
-        Prompts.render(Prompts.text(.commentAnswer), [
+        Prompts.render(.commentAnswer, promptSkillTexts([.commentAnswer])[.commentAnswer] ?? Prompts.text(.commentAnswer), [
             "projectName": project.name,
             "projectID": project.id,
             "projectRoot": root.path,

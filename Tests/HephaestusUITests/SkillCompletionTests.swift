@@ -51,6 +51,14 @@ struct SkillCompletionTests {
         #expect(!names(skills).contains("release-notes"))
     }
 
+    @Test func systemPromptSkillsAreNotOffered() {
+        // docs/chats.md › Skill completion: the plugin does not link them, even when a project's
+        // list names one.
+        let withPrompts = library + PromptSkill.allCases.map { SkillSummary(name: $0.rawValue, description: "A system prompt.") }
+        #expect(names(SkillCompletion.skills(library: withPrompts, enabled: ["common", "swift-testing"]))
+            == ["feedback", "finish-implementation", "implement-bundle", "implement-ticket", "swift-testing"])
+    }
+
     @Test func internalSkillsMissingFromTheLibraryAreLeftOut() {
         let partial = library.filter { $0.name != "feedback" }
         #expect(!names(SkillCompletion.skills(library: partial, enabled: [])).contains("feedback"))

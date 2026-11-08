@@ -1,3 +1,8 @@
+---
+name: bundle
+description: Describes a bundle chat to Claude and gives it the chat's bundle with its tickets. HephaestusV2 puts it in the system prompt of bundle chats, after the common skill; nothing calls it.
+---
+
 # This chat
 
 This is the chat of bundle {{bundleID}} of the project {{projectName}} ({{projectID}}). The user asks you to implement the whole bundle, as its orchestrator with the skill hephaestus-skills:implement-bundle, or to work on some of its tickets, with the skill hephaestus-skills:implement-ticket for each of them.

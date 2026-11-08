@@ -1,3 +1,8 @@
+---
+name: project
+description: Describes a project chat to Claude. HephaestusV2 puts it in the system prompt of project chats, after the common skill; nothing calls it.
+---
+
 # This chat
 
 This is a project chat of {{projectName}} ({{projectID}}). The user plans and directs the work on the project here. Plan and work freely, always following the rules above, and do what the user asks, for example:

@@ -4,8 +4,12 @@ import Foundation
 /// resources, and the record of the defaults the engine wrote in the library folder
 /// (docs/skills.md › Internal skills).
 public enum InternalSkills {
-    /// The names of the internal skills, sorted.
-    public static let names = ["feedback", "finish-implementation", "implement-bundle", "implement-ticket"]
+    /// The internal skills that a first message or Claude calls, which the generated plugins link
+    /// and the skill completion offers, sorted.
+    public static let calledNames = ["feedback", "finish-implementation", "implement-bundle", "implement-ticket"]
+
+    /// The names of every internal skill, the called skills and the system prompt skills, sorted.
+    public static let names = (calledNames + PromptSkill.allCases.map(\.rawValue)).sorted()
 
     public static func isInternal(_ name: String) -> Bool {
         names.contains(name)
@@ -53,6 +57,39 @@ public enum InternalSkills {
         case keep
     }
 
+    /// Why an internal skill cannot be read from the library.
+    struct ReadFailure: Error, CustomStringConvertible {
+        var description: String
+    }
+
+    /// The body of the internal skill `name` of `library`, read from disk; throws a `ReadFailure`
+    /// naming the reason when the library has no folder with this exact name, its SKILL.md cannot
+    /// be read or breaks the SKILL.md format, or the library cannot be read
+    /// (docs/skills.md › System prompt skills).
+    static func body(of name: String, in library: URL) throws -> String {
+        let names: [String]
+        do {
+            names = try SkillsLibraryReader.entryNames(in: library)
+        } catch {
+            throw ReadFailure(description: "the skills library \(library.path) cannot be read: \(error.localizedDescription)")
+        }
+        let folder = library.appendingPathComponent(name, isDirectory: true)
+        guard names.contains(name) else { throw ReadFailure(description: "\(folder.path) does not exist") }
+        guard SkillsLibraryReader.isDirectory(folder) else { throw ReadFailure(description: "\(folder.path) is not a folder") }
+        let file = folder.appendingPathComponent(SkillsLibraryReader.skillFileName)
+        let data: Data
+        do {
+            data = try Data(contentsOf: file)
+        } catch {
+            throw ReadFailure(description: "\(file.path) cannot be read: \(error.localizedDescription)")
+        }
+        do {
+            return try SkillDocument.parse(data, folderName: name).body
+        } catch {
+            throw ReadFailure(description: "\(file.path): \(error)")
+        }
+    }
+
     /// The action for a skill whose SKILL.md has the digest `current` (nil when it is missing),
     /// with `recorded` the digest of the record and `defaultDigest` that of the app's default
     /// (docs/skills.md › Protection).
@@ -63,6 +100,78 @@ public enum InternalSkills {
         }
         // A copy whose digest is the recorded one was never edited: it takes the new default.
         return current == recorded ? .writeDefault : .keep
+    }
+}
+
+/// The system prompt skills: the internal skills that HephaestusV2 puts in the system prompt of the
+/// chats and calls that use them, filled with their own placeholders, and that nothing calls
+/// (docs/skills.md › System prompt skills).
+public enum PromptSkill: String, CaseIterable, Sendable {
+    case bundle, ci, common
+    case commentAnswer = "comment-answer"
+    case namingBundle = "naming-bundle"
+    case namingChat = "naming-chat"
+    case namingTicket = "naming-ticket"
+    case notificationSummary = "notification-summary"
+    case project, ticket
+
+    /// The placeholders of a chat's system prompt skills (docs/chats.md › Placeholders).
+    static let chatPlaceholders = ["projectName", "projectID", "projectRoot", "workingDirectory", "parentMemories", "deviceName",
+                                   "docsPath", "projectType", "environments", "globalMemories"]
+
+    /// The names of the placeholders the engine fills in this skill; any other `{{…}}` stays as
+    /// written. The naming and summary skills have none: they are passed unchanged.
+    public var placeholders: [String] {
+        switch self {
+        case .common, .project: return Self.chatPlaceholders
+        case .ticket: return Self.chatPlaceholders + ["ticketID", "ticket"]
+        case .bundle: return Self.chatPlaceholders + ["bundleID", "bundle"]
+        case .ci: return Self.chatPlaceholders + ["githubRepository"]
+        case .commentAnswer: return ["projectName", "projectID", "projectRoot", "deviceName", "docsPath", "ticketID"]
+        case .namingTicket, .namingChat, .namingBundle, .notificationSummary: return []
+        }
+    }
+
+    /// `<where>` of the editor caption `HephaestusV2 puts this skill in the system prompt of
+    /// <where>` (docs/skills.md › System prompt skills).
+    public var use: String {
+        switch self {
+        case .common: return "every chat except CI chats"
+        case .project: return "project chats"
+        case .ticket: return "ticket chats"
+        case .bundle: return "bundle chats"
+        case .ci: return "CI chats"
+        case .commentAnswer: return "comment answers"
+        case .namingTicket: return "ticket naming calls"
+        case .namingChat: return "chat naming calls"
+        case .namingBundle: return "bundle naming calls"
+        case .notificationSummary: return "notification summary calls"
+        }
+    }
+
+    /// The editor caption of the skill (docs/skills.md › Editor).
+    public var caption: String {
+        "HephaestusV2 puts this skill in the system prompt of \(use)"
+    }
+
+    /// The placeholders of `body` that the rendering leaves as written: each `{{…}}`, from a `{{`
+    /// to the next `}}`, whose name is not in the skill's set, written `{{<name>}}`, once each, in
+    /// order of first appearance (docs/skills.md › Editor).
+    public func unsupportedPlaceholders(in body: String) -> [String] {
+        let supported = Set(placeholders)
+        var found: [String] = []
+        for name in Prompts.placeholderNames(in: body) where !supported.contains(name) {
+            let placeholder = "{{\(name)}}"
+            if !found.contains(placeholder) { found.append(placeholder) }
+        }
+        return found
+    }
+
+    /// The line under the body of the skill's editor, nil while the body holds no unsupported
+    /// placeholder (docs/skills.md › Editor).
+    public func unsupportedPlaceholdersLine(in body: String) -> String? {
+        let placeholders = unsupportedPlaceholders(in: body)
+        return placeholders.isEmpty ? nil : "Unsupported placeholders, sent as written: " + placeholders.joined(separator: ", ")
     }
 }
 
@@ -158,6 +267,28 @@ extension Engine {
             throw EngineError.storage(error)
         } catch {
             throw EngineError(.internal, "\(url.path) cannot be written: \(error.localizedDescription)")
+        }
+    }
+
+    /// The texts of system prompt skills for a chat launch or a call, read from the library after
+    /// the missing internal skills are written (docs/skills.md › System prompt skills).
+    func promptSkillTexts(_ skills: [PromptSkill]) -> [PromptSkill: String] {
+        ensureInternalSkills()
+        var texts: [PromptSkill: String] = [:]
+        for skill in skills {
+            texts[skill] = promptSkillText(skill)
+        }
+        return texts
+    }
+
+    /// The text of a system prompt skill read from the library; the app's default text, with a
+    /// warning in `engine.log`, when it cannot be read.
+    private func promptSkillText(_ skill: PromptSkill) -> String {
+        do {
+            return Prompts.text(ofBody: try InternalSkills.body(of: skill.rawValue, in: skillsLibraryFolder))
+        } catch {
+            log.warn(.skills, "the internal skill \(skill.rawValue) cannot be read: \(error); the app's default text is used")
+            return Prompts.text(skill)
         }
     }
 

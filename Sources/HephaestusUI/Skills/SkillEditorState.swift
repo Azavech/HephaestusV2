@@ -324,6 +324,19 @@ final class SkillEditorState {
         InternalSkills.isInternal(skillName)
     }
 
+    /// The system prompt skill the form shows, nil for any other skill
+    /// (docs/skills.md › System prompt skills).
+    var promptSkill: PromptSkill? {
+        PromptSkill(rawValue: skillName)
+    }
+
+    /// The caption under the header: `HephaestusV2 puts this skill in the system prompt of
+    /// <where>` for a system prompt skill, `Claude sees this skill as hephaestus-skills:<name>`
+    /// otherwise (docs/skills.md › Editor).
+    var caption: String {
+        promptSkill?.caption ?? "Claude sees this skill as \(SkillsPluginGenerator.pluginName):\(skillName)"
+    }
+
     /// Restore Default: `skills.restoreDefault`, without confirmation; once it succeeds the form's
     /// changes are discarded and the form shows the restored skill. A failure shows
     /// `Restore Default failed` and keeps the form (docs/skills.md › Editor).

@@ -845,8 +845,11 @@ struct ChatInteractionTests {
             - Screenshot: \(path)
             """)
             let prompt = try #require(process.request.arguments.firstIndex(of: "--append-system-prompt").map { process.request.arguments[$0 + 1] })
-            #expect(prompt.contains("<feedback>\n- App: HephaestusV2 v0.4.0(57)\n"))
-            #expect(prompt.contains("includes a screenshot of that window, saved at \(path)."))
+            // A feedback chat's system prompt is the common skill alone: the called skill feedback
+            // describes the chat (docs/chats.md › Composition and rendering).
+            #expect(prompt.hasPrefix("You are Claude, working inside HephaestusV2"))
+            #expect(prompt.hasSuffix("wait for CI as hephaestus-skills:finish-implementation describes."))
+            #expect(!prompt.contains("<feedback>") && !prompt.contains("This is a feedback chat") && !prompt.contains("# This chat"))
         }
     }
 

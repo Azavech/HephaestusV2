@@ -21,7 +21,7 @@ struct InternalSkillsTests {
 
     // MARK: Defaults
 
-    @Test("At start the library holds the four internal skills with their default content and the digests of what was written")
+    @Test("At start the library holds the internal skills with their default content and the digests of what was written")
     func writtenAtStart() async throws {
         try await withTestEngine { engine, connection, _ in
             let library = engine.dataDirectory.skillsFolder
@@ -37,7 +37,7 @@ struct InternalSkillsTests {
         }
     }
 
-    @Test("A missing skill folder or SKILL.md is written again before a project's plugin is generated, and the plugin of a project with an empty skills list links the four")
+    @Test("A missing skill folder or SKILL.md is written again before a project's plugin is generated, and the plugin of a project with an empty skills list links the four called ones")
     func missingWrittenAgain() async throws {
         try await withTestEngine { engine, connection, folder in
             let library = engine.dataDirectory.skillsFolder
@@ -51,7 +51,7 @@ struct InternalSkillsTests {
             #expect(try Data(contentsOf: skillFile("implement-ticket", in: library)) == defaultContent("implement-ticket"))
             #expect(try String(contentsOf: library.appendingPathComponent("implement-ticket/notes.md"), encoding: .utf8) == "kept")
             let skills = engine.dataDirectory.pluginFolder(projectID: "DEMO").appendingPathComponent("hephaestus-skills/skills")
-            #expect(try FileManager.default.contentsOfDirectory(atPath: skills.path).sorted() == InternalSkills.names)
+            #expect(try FileManager.default.contentsOfDirectory(atPath: skills.path).sorted() == InternalSkills.calledNames)
             #expect(await engine.domain.project("DEMO")?.skills == [])
         }
     }
@@ -152,10 +152,10 @@ struct InternalSkillsTests {
             try writeSkill("release-notes", in: h.engine.dataDirectory.skillsFolder, description: "Release notes.")
 
             // list_skills, get_skill and update_skill see them only from a chat of the HephaestusV2 project.
-            #expect(try await h.call(SkillsList.self, Empty(), as: inHephaestus).map(\.name) == InternalSkills.names + ["release-notes"])
+            #expect(try await h.call(SkillsList.self, Empty(), as: inHephaestus).map(\.name) == (InternalSkills.names + ["release-notes"]).sorted())
             #expect(try await h.call(SkillsList.self, Empty(), as: elsewhere).map(\.name) == ["release-notes"])
             #expect(try await h.call(SkillsList.self, Empty(), as: h.claude).map(\.name) == ["release-notes"])
-            #expect(try await h.connection.call(SkillsList.self).map(\.name) == InternalSkills.names + ["release-notes"])
+            #expect(try await h.connection.call(SkillsList.self).map(\.name) == (InternalSkills.names + ["release-notes"]).sorted())
             let notFound = EngineError(.notFound, "Skill feedback not found.")
             #expect(await engineError { try await h.call(SkillsGet.self, .init(name: "feedback"), as: elsewhere) } == notFound)
             #expect(await engineError { try await h.call(SkillsUpdate.self, .init(name: "feedback", body: "x"), as: elsewhere) } == notFound)
