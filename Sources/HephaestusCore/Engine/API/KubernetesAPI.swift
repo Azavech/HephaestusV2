@@ -1,8 +1,9 @@
 import Foundation
 
 // docs/engine-api.md › Kubernetes and Argo CD: the methods behind the Kubernetes and Argo CD tools
-// of the MCP server (docs/mcp.md › Kubernetes and Argo CD tools). Every method acts for the chat
-// `chatID`, which must be the actor's.
+// of the MCP server (docs/mcp.md › Kubernetes and Argo CD tools), each acting for the chat
+// `chatID`, which must be the actor's; and the kubeconfig methods that the Environments section of
+// Project Settings calls (docs/engine-api.md › Kubeconfig methods).
 
 /// `kubernetes.status`: the state of the Deployment of an environment and of its pods. Actors:
 /// claude (the chat's own Claude only).
@@ -176,4 +177,62 @@ public enum ArgoCDSync: EngineMethod {
         }
     }
     public typealias Result = KubectlOutput
+}
+
+/// `kubernetes.check`: checks that kubectl reaches the cluster of a kubeconfig file, in the file's
+/// current context. Actors: user.
+public enum KubernetesCheck: EngineMethod {
+    public static let name = "kubernetes.check"
+    public struct Params: Codable, Sendable, Hashable {
+        /// The project in whose root kubectl runs.
+        public var projectID: ProjectID
+        /// The kubeconfig file on the main device: an absolute path or a path starting with `~/`.
+        public var kubeconfig: String
+
+        public init(projectID: ProjectID, kubeconfig: String) {
+            self.projectID = projectID
+            self.kubeconfig = kubeconfig
+        }
+    }
+    public typealias Result = Empty
+}
+
+/// `kubernetes.namespaces`: the names of the namespaces of the cluster of a kubeconfig file, in
+/// kubectl's order. Actors: user.
+public enum KubernetesNamespaces: EngineMethod {
+    public static let name = "kubernetes.namespaces"
+    public struct Params: Codable, Sendable, Hashable {
+        /// The project in whose root kubectl runs.
+        public var projectID: ProjectID
+        /// The kubeconfig file on the main device: an absolute path or a path starting with `~/`.
+        public var kubeconfig: String
+
+        public init(projectID: ProjectID, kubeconfig: String) {
+            self.projectID = projectID
+            self.kubeconfig = kubeconfig
+        }
+    }
+    public typealias Result = [String]
+}
+
+/// `kubernetes.deployments`: the names of the deployments of a namespace of the cluster of a
+/// kubeconfig file, in kubectl's order. Actors: user.
+public enum KubernetesDeployments: EngineMethod {
+    public static let name = "kubernetes.deployments"
+    public struct Params: Codable, Sendable, Hashable {
+        /// The project in whose root kubectl runs.
+        public var projectID: ProjectID
+        /// The kubeconfig file on the main device: an absolute path or a path starting with `~/`.
+        public var kubeconfig: String
+        /// The namespace, trimmed, empty counting as absent; nil: the namespace of the file's
+        /// current context.
+        public var namespace: String?
+
+        public init(projectID: ProjectID, kubeconfig: String, namespace: String? = nil) {
+            self.projectID = projectID
+            self.kubeconfig = kubeconfig
+            self.namespace = namespace
+        }
+    }
+    public typealias Result = [String]
 }

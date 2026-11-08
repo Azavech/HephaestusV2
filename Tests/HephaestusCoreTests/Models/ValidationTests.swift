@@ -200,7 +200,6 @@ struct WriteRuleTests {
             ([ProjectEnvironment(name: "a", url: "ftp://a.example")], url),
             ([ProjectEnvironment(name: "a", url: "/v1")], url),
             ([ProjectEnvironment(name: "a", url: "localhost:8080")], url),
-            ([ProjectEnvironment(name: "a", url: "")], url),
             ([ProjectEnvironment(name: "a", url: "http://a.example", port: 0)], port),
             ([ProjectEnvironment(name: "a", url: "http://a.example", port: 65536)], port),
             ([valid, ProjectEnvironment(name: " local", url: "http://b.example")],
@@ -210,6 +209,9 @@ struct WriteRuleTests {
             #expect(throws: error) { try ProjectEnvironment.normalized(environments) }
         }
         #expect(try ModelRules.environmentName(String(repeating: "x", count: 100)).count == 100)
+        // The URL is optional: an empty one is no URL, and a port without URL is kept.
+        #expect(try ProjectEnvironment.normalized([ProjectEnvironment(name: "a", url: "  ", port: 8080), ProjectEnvironment(name: "b")])
+            == [ProjectEnvironment(name: "a", port: 8080), ProjectEnvironment(name: "b")])
 
         // Environments already stored are written back as they are, rules broken by hand included;
         // the ones the list adds or changes are checked, their names against every other one.
@@ -243,15 +245,15 @@ struct WriteRuleTests {
     @Test("Environment Kubernetes keys: trimmed, empty as null, one line, and the forms of argoCDApplication and kubeconfig, with the messages of projects.update")
     func environmentKubernetesRules() throws {
         let normalized = try ProjectEnvironment.normalized([
-            ProjectEnvironment(name: "staging", url: "https://staging.example.com", context: " staging-eks ", namespace: "orders\n",
+            ProjectEnvironment(name: "staging", url: "https://staging.example.com", namespace: "orders\n",
                                deployment: "\torders-api", argoCDApplication: " argocd/orders-staging ", kubeconfig: " ~/.kube/staging.yaml "),
-            ProjectEnvironment(name: "local", url: "http://127.0.0.1", context: "", namespace: "  ", deployment: "\n",
+            ProjectEnvironment(name: "local", url: "http://127.0.0.1", namespace: "  ", deployment: "\n",
                                argoCDApplication: " ", kubeconfig: ""),
             ProjectEnvironment(name: "prod", url: "https://example.com", argoCDApplication: "orders-prod",
                                kubeconfig: "/Users/example/.kube/prod.yaml"),
         ])
         #expect(normalized == [
-            ProjectEnvironment(name: "staging", url: "https://staging.example.com", context: "staging-eks", namespace: "orders",
+            ProjectEnvironment(name: "staging", url: "https://staging.example.com", namespace: "orders",
                                deployment: "orders-api", argoCDApplication: "argocd/orders-staging", kubeconfig: "~/.kube/staging.yaml"),
             ProjectEnvironment(name: "local", url: "http://127.0.0.1"),
             ProjectEnvironment(name: "prod", url: "https://example.com", argoCDApplication: "orders-prod",
@@ -267,14 +269,15 @@ struct WriteRuleTests {
                 return (error as? ValidationError)?.message ?? "\(error)"
             }
         }
-        func environment(context: String? = nil, namespace: String? = nil, deployment: String? = nil,
+        func environment(namespace: String? = nil, deployment: String? = nil,
                          argoCDApplication: String? = nil, kubeconfig: String? = nil) -> ProjectEnvironment {
-            ProjectEnvironment(name: "staging", url: "https://staging.example.com", context: context, namespace: namespace,
+            ProjectEnvironment(name: "staging", url: "https://staging.example.com", namespace: namespace,
                                deployment: deployment, argoCDApplication: argoCDApplication, kubeconfig: kubeconfig)
         }
-        for context in ["staging\neks", " staging\r\neks "] {
-            #expect(message(environment(context: context)) == "environments[1]: use a kubectl context on one line.")
-        }
+        // A `context` key of an earlier version is an unknown key: no rule checks it.
+        var withContext = environment()
+        withContext.unknownKeys = ["context": "staging\neks"]
+        #expect(message(withContext) == nil)
         #expect(message(environment(namespace: "orders\nprod")) == "environments[1]: use a namespace on one line.")
         #expect(message(environment(deployment: "orders\rapi")) == "environments[1]: use a deployment on one line.")
         for application in ["argocd/orders/staging", "/orders", "argocd/", "/", "a//b", "orders staging", "argocd/ orders",
@@ -286,7 +289,7 @@ struct WriteRuleTests {
             #expect(message(environment(kubeconfig: kubeconfig))
                 == "environments[1]: use a kubeconfig file as an absolute path or a path starting with ~/.", "\(kubeconfig)")
         }
-        #expect(message(environment(context: "staging-eks", namespace: "orders", deployment: "orders-api",
+        #expect(message(environment(namespace: "orders", deployment: "orders-api",
                                     argoCDApplication: "team-a/orders", kubeconfig: "/Users/example/.kube/config")) == nil)
 
         // A stored environment whose Kubernetes keys a hand edit made invalid is written back as it

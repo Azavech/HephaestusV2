@@ -34,15 +34,17 @@ struct OpenAPIRequestFormView: View {
 
     // MARK: Environment (docs/openapi.md › Environment)
 
-    /// The pop-up of the project's environments, `<name> · <base URL>` each; empty and disabled,
-    /// with the note and `Project Settings…`, when the project has none.
+    /// The pop-up of the project's environments, `<name> · <base URL>` each, or `<name>` alone
+    /// for an environment without a URL; empty and disabled, with the note and `Project
+    /// Settings…`, when the project has none. While an environment without a URL is selected, the
+    /// note asks for its API Access, with `Project Settings…` too.
     private var environmentPart: some View {
         let items = Array(model.environments.enumerated())
         return part("Environment") {
             Picker("Environment", selection: Binding(get: { model.environment?.name },
                                                      set: { name in if let name { model.selectEnvironment(name) } })) {
                 ForEach(items, id: \.offset) { _, environment in
-                    Text("\(environment.name) · \(environment.baseURL)").tag(Optional(environment.name))
+                    Text(Self.itemTitle(environment)).tag(Optional(environment.name))
                 }
                 if items.isEmpty {
                     // The empty pop-up's selection, so that it has a tag.
@@ -52,8 +54,8 @@ struct OpenAPIRequestFormView: View {
             .labelsHidden()
             .frame(maxWidth: 420, alignment: .leading)
             .disabled(items.isEmpty)
-            if items.isEmpty {
-                Text("Add an environment in Project Settings.")
+            if let note = items.isEmpty ? Self.noEnvironmentNote : model.environment?.url == nil ? Self.noURLNote : nil {
+                Text(note)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                 Button("Project Settings…") {
@@ -61,6 +63,14 @@ struct OpenAPIRequestFormView: View {
                 }
             }
         }
+    }
+
+    static let noEnvironmentNote = "Add an environment in Project Settings."
+    static let noURLNote = "Set the API Access of this environment in Project Settings."
+
+    /// The pop-up item of an environment: `<name> · <base URL>`, or the name alone without a URL.
+    static func itemTitle(_ environment: ProjectEnvironment) -> String {
+        environment.baseURL.map { "\(environment.name) · \($0)" } ?? environment.name
     }
 
     // MARK: Parameters (docs/openapi.md › Parameters)

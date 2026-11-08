@@ -16,6 +16,7 @@ import Testing
 struct FakeKubectl {
     enum Command: String {
         case deployment, pods, replicasets, events, logs, restart, scale, application, patch, forward
+        case version, namespaces, deployments
     }
 
     /// The folder of the script, of the answers and of the records.
@@ -49,6 +50,9 @@ struct FakeKubectl {
         done
         case "$words" in
           ' get deployment/'*) key=deployment ;;
+          ' get deployments '*) key=deployments ;;
+          ' get namespaces '*) key=namespaces ;;
+          ' version '*) key=version ;;
           ' get pods '*) key=pods ;;
           ' get replicasets '*) key=replicasets ;;
           ' get events '*) key=events ;;
@@ -155,14 +159,16 @@ enum KubernetesFixtures {
     /// When the calls run: the pods' ages are computed at this time.
     static let now = ISODate.date(from: "2026-10-31T14:03:00Z")!
 
-    /// `staging` sets every Kubernetes field, `production` the deployment and an Application without
-    /// namespace only, `team` an absolute kubeconfig file and an Application of another namespace;
-    /// `local` has no Kubernetes field and `edited` an Application of a form that only a file edited
-    /// by hand holds.
+    /// `staging` sets every Kubernetes field and still holds the `context` key of earlier versions,
+    /// which no command passes; `production` the deployment and an Application without namespace
+    /// only, `team` an absolute kubeconfig file and an Application of another namespace; `local` has
+    /// no Kubernetes field and `edited` an Application of a form that only a file edited by hand
+    /// holds.
     static let environments = [
         ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
-        ProjectEnvironment(name: "staging", url: "https://staging.example.com", context: "staging-eks", namespace: "orders",
-                           deployment: "orders-api", argoCDApplication: "argocd/orders-staging", kubeconfig: "~/.kube/staging.yaml"),
+        ProjectEnvironment(name: "staging", url: "https://staging.example.com", namespace: "orders",
+                           deployment: "orders-api", argoCDApplication: "argocd/orders-staging", kubeconfig: "~/.kube/staging.yaml",
+                           unknownKeys: ["context": "staging-eks"]),
         ProjectEnvironment(name: "production", url: "https://orders.example.com", deployment: "orders-api",
                            argoCDApplication: "orders-production"),
         ProjectEnvironment(name: "team", url: "https://team.example.com", namespace: "orders", deployment: "orders-api",
@@ -171,7 +177,7 @@ enum KubernetesFixtures {
     ]
 
     /// The arguments that start every command of `staging`.
-    static let stagingPrefix = ["--kubeconfig=/Users/example/.kube/staging.yaml", "--context=staging-eks", "--namespace=orders"]
+    static let stagingPrefix = ["--kubeconfig=/Users/example/.kube/staging.yaml", "--namespace=orders"]
     /// The label selector of `deployment`.
     static let selector = "app=orders-api,tier=api"
 

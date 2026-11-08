@@ -182,26 +182,26 @@ Swift type `ProjectType`, key `type` of the project file: a string enumeration w
 
 ### Project environment
 
-Swift type `ProjectEnvironment`, one element of the key `environments` of the project file: a place where a Go service runs, which the Contract view sends its requests to ([Environments](projects.md#environments), [Environment](openapi.md#environment)), with the Kubernetes resources it runs on, which Claude inspects and operates with the [Kubernetes and Argo CD tools](mcp.md#kubernetes-and-argo-cd-tools). Project Settings shows the environments of a project whose type is `goService` only; the key is kept when the type changes.
+Swift type `ProjectEnvironment`, one element of the key `environments` of the project file: a place where a Go service runs, which the Contract view sends its requests to when it has a URL ([Environments](projects.md#environments), [Environment](openapi.md#environment)), with the Kubernetes resources it runs on, which Claude inspects and operates with the [Kubernetes and Argo CD tools](mcp.md#kubernetes-and-argo-cd-tools). Project Settings shows the environments of a project whose type is `goService` only; the key is kept when the type changes.
 
 | Swift name        | Key                 | Type                  | Required | Default | Rules                                                                                                                                                                                                                                                                           |
 | ----------------- | ------------------- | --------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | name              | `name`              | `String`              | yes      | —       | Single line, 1–100 characters, trimmed. Unique within the project, compared letter case included.                                                                                                                                                                               |
-| url               | `url`               | `String`              | yes      | —       | Absolute `http` or `https` URL with a host, stored as entered after trimming.                                                                                                                                                                                                   |
+| url               | `url`               | `String?`             | no       | `null`  | The address of the environment's API Access: an absolute `http` or `https` URL with a host, read and written trimmed; an empty value is `null`, and an environment without a URL has no base URL.                                                                               |
 | port              | `port`              | `Int?`                | no       | `null`  | 1–65535. When set, it replaces the URL's port in the base URL; `null` keeps the URL's own port.                                                                                                                                                                                 |
-| context           | `context`           | `String?`             | no       | `null`  | The kubectl context, a context of the kubeconfig file; `null` uses its current context.                                                                                                                                                                                         |
-| namespace         | `namespace`         | `String?`             | no       | `null`  | The Kubernetes namespace of the deployment; `null` uses the namespace of the context.                                                                                                                                                                                           |
+| namespace         | `namespace`         | `String?`             | no       | `null`  | The Kubernetes namespace of the deployment; `null` uses the namespace of the kubeconfig file's current context.                                                                                                                                                                 |
 | deployment        | `deployment`        | `String?`             | no       | `null`  | The name of the Kubernetes Deployment that runs the service.                                                                                                                                                                                                                    |
 | argoCDApplication | `argoCDApplication` | `String?`             | no       | `null`  | The Argo CD Application that deploys the service: `<name>`, in the namespace `argocd`, or `<namespace>/<name>`; one `/` at most, the parts not empty, no white space.                                                                                                           |
 | kubeconfig        | `kubeconfig`        | `String?`             | no       | `null`  | The kubeconfig file on the main device: an absolute path, or a path starting with `~/` for the home folder of the user running the app; `null` uses kubectl's default, the variable `KUBECONFIG` of the [login-shell environment](chats.md#environment), else `~/.kube/config`. |
 | unknownKeys       | —                   | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                                                                                                                                                                                  |
 
-The base URL of an environment is its `url` with the port replaced by `port` when it is set, without a trailing `/` ([Environments](projects.md#environments)). `projects.update` checks these rules on the environments it adds or changes; an environment it receives unchanged is written back as it is, as [Write rules](#write-rules) says. The keys come from the user; the letter case rule is a design-time choice. Default chosen at design time.
+The base URL of an environment is its `url` with the port replaced by `port` when it is set, without a trailing `/`; an environment without `url` has none ([Environments](projects.md#environments)). `projects.update` checks these rules on the environments it adds or changes; an environment it receives unchanged is written back as it is, as [Write rules](#write-rules) says. The keys come from the user; the letter case rule is a design-time choice. Default chosen at design time.
 
-- The five Kubernetes keys, `context`, `namespace`, `deployment`, `argoCDApplication` and `kubeconfig`, are single lines. They are read and written trimmed, and an empty value is `null`. Their only other rules are the forms of `argoCDApplication` and `kubeconfig` given in the table: kubectl checks the names when a tool uses them ([Kubernetes and Argo CD tools](mcp.md#kubernetes-and-argo-cd-tools)).
+- The four Kubernetes keys, `namespace`, `deployment`, `argoCDApplication` and `kubeconfig`, are single lines. They are read and written trimmed, and an empty value is `null`. Their only other rules are the forms of `argoCDApplication` and `kubeconfig` given in the table: kubectl checks the names when a tool uses them ([Kubernetes and Argo CD tools](mcp.md#kubernetes-and-argo-cd-tools)).
+- kubectl always uses the current context of the kubeconfig file. A `context` key, the kubectl context that earlier versions stored, is not in the table: it is kept as an unknown key and no longer used ([Unknown keys](#unknown-keys)).
 - An Argo CD application `<name>` stands for `argocd/<name>`: the Application `<name>` in the namespace `argocd`, Argo CD's default. It lives in that namespace, not in the environment's `namespace`.
 
-The meaning of the five keys and the two forms come from the user; the key names, the trimming, the rule against white space in `argoCDApplication` and the `~/` form of `kubeconfig` are design-time choices. Default chosen at design time.
+The meaning of the four keys and the two forms, the optional URL and the current context used without a key come from the user; the key names, the trimming, the rule against white space in `argoCDApplication` and the `~/` form of `kubeconfig` are design-time choices. Default chosen at design time.
 
 ### Environment override
 
@@ -215,7 +215,7 @@ Swift type `EnvironmentOverride`, one value of the key `environmentOverrides` of
 | argoCDApplication | `argoCDApplication` | `String?`             | no       | `null`  | Replaces the parent's Argo CD application: `<name>` or `<namespace>/<name>`, as in [Project environment](#project-environment). |
 | unknownKeys       | —                   | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                                  |
 
-- The three string keys are single lines, read and written trimmed, an empty value being `null`, as the Kubernetes keys of [Project environment](#project-environment).
+- The three string keys are single lines, read and written trimmed, an empty value being `null`, as the URL and the Kubernetes keys of [Project environment](#project-environment).
 - A change cannot remove a value of the parent, for example its port: `null` always keeps the parent's value.
 - The names under `environmentOverrides` are compared with the names of the inherited environments exactly, letter case included. A change whose environment the parent no longer has, after a rename or a removal, stays in the file and applies again when an inherited environment has its name.
 - `projects.update` checks these rules on the changes it adds or changes; a change equal to the stored change of the same name is written back as it is ([Write rules](#write-rules)).
@@ -407,7 +407,6 @@ environments:
 - name: local
   url: http://127.0.0.1
   port: 8080
-  context: null
   namespace: null
   deployment: null
   argoCDApplication: null
@@ -415,14 +414,13 @@ environments:
 - name: staging
   url: https://staging.example.com
   port: null
-  context: staging-eks
   namespace: orders
   deployment: orders-api
   argoCDApplication: argocd/orders-staging
   kubeconfig: ~/.kube/staging.yaml
 ```
 
-A Go service sub project of `API` that uses its parent's settings ([Inherited environments](projects.md#inherited-environments)): it runs the inherited `local` on port 8081, and the inherited `staging` at its own URL as the deployment `orders-worker` of the Argo CD Application `orders-worker-staging`, and adds an environment of its own, `replay`. Its environments are `local`, `staging` and `replay`, in this order; `staging` keeps the kubectl context, the namespace and the kubeconfig file of `API`:
+A Go service sub project of `API` that uses its parent's settings ([Inherited environments](projects.md#inherited-environments)): it runs the inherited `local` on port 8081, and the inherited `staging` at its own URL as the deployment `orders-worker` of the Argo CD Application `orders-worker-staging`, and adds an environment of its own, `replay`. Its environments are `local`, `staging` and `replay`, in this order; `staging` keeps the namespace and the kubeconfig file of `API`:
 
 ```yaml
 # .hephaestus/project.yml
@@ -436,7 +434,6 @@ environments:
 - name: replay
   url: http://127.0.0.1
   port: 9090
-  context: null
   namespace: null
   deployment: null
   argoCDApplication: null
@@ -1921,7 +1918,7 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R158: A project has a GitHub page, taken from its origin remote unless set in Project Settings; a sub project can use its parent's settings.
 - R159: A locked web tab goes back to its original page each time the user comes back to it.
 - R161: After an implementation is pushed in a project with a GitHub page, a CI chat follows CI and reports to the orchestrator, which asks the user how to proceed when CI fails and finishes only once CI is green or the user decides so.
-- R162: Each environment of a Go service names its Kubernetes context, namespace, deployment, Argo CD application and kubeconfig, which Claude receives and uses through HephaestusV2's Kubernetes and Argo CD tools.
+- R162: Each environment of a Go service names its namespace, deployment, Argo CD application and kubeconfig, which Claude receives and uses through HephaestusV2's Kubernetes and Argo CD tools.
 - R170: The user adds, removes, moves and configures the widgets of each project's Dashboard.
 - R172: A project with a GitHub page always has two locked web tabs, its GitHub page and its CI page, first in the tab strip.
 - R174: A sub project that uses its parent's settings inherits its parent's environments and changes their URL, port, deployment and Argo CD application.

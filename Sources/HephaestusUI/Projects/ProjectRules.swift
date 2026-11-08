@@ -182,16 +182,18 @@ enum ProjectRules {
 
     // MARK: Environments (docs/projects.md › Environments)
 
-    /// The Name field of an environment sheet: 1 to 100 characters after trimming, on one line,
-    /// and no other environment with the trimmed name, letter case included.
+    /// The Name field of the Environments section: 1 to 100 characters after trimming, on one
+    /// line, and no other environment with the trimmed name, letter case included.
     static func environmentNameMessage(_ name: String, otherNames: [String]) -> String? {
         guard let trimmed = try? ModelRules.environmentName(name) else { return "Enter a name of 1 to 100 characters." }
         return otherNames.contains(trimmed) ? ProjectEnvironment.duplicateMessage(trimmed) : nil
     }
 
-    /// The URL field: an absolute `http` or `https` URL with a host, after trimming.
+    /// The URL field of API Access: empty, which removes the URL or, for an inherited environment,
+    /// uses the parent's, or an absolute `http` or `https` URL with a host, after trimming.
     static func environmentURLMessage(_ url: String) -> String? {
-        (try? ModelRules.environmentURL(url)) == nil ? "Enter an http or https URL." : nil
+        guard let trimmed = ModelRules.trimmedOrNil(url) else { return nil }
+        return (try? ModelRules.environmentURL(trimmed)) == nil ? "Enter an http or https URL." : nil
     }
 
     /// The Port field: empty, or a whole number from 1 to 65535 after trimming.
@@ -208,11 +210,9 @@ enum ProjectRules {
         return value
     }
 
-    /// The Argo CD application field: empty, or `<name>` or `<namespace>/<name>` without white
-    /// space after trimming, one `/` at most and the parts not empty.
-    static func environmentArgoCDApplicationMessage(_ application: String) -> String? {
-        guard let trimmed = ModelRules.trimmedOrNil(application) else { return nil }
-        return ModelRules.isArgoCDApplication(trimmed) ? nil : "Enter <name> or <namespace>/<name>."
+    /// The Port field as it applies: the port's number, so `08080` is `8080`, or the trimmed text.
+    static func normalizedEnvironmentPort(_ port: String) -> String {
+        environmentPort(port).map(String.init) ?? port.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// The Kubeconfig file field: empty, or an absolute path or a path starting with `~/` on one
@@ -231,67 +231,35 @@ enum ProjectRules {
         environments.map(\.name).filter { $0 != original?.name } + inherited.map(\.name)
     }
 
-    /// The environment the sheet's fields describe: the name and the URL trimmed, the port as a
-    /// number or none, the five Kubernetes fields trimmed, an empty one giving no value, and the
-    /// edited environment's unknown keys. Every known field comes from its text field, so a
-    /// cleared field removes the edited environment's value.
-    static func environment(name: String, url: String, port: String, context: String, namespace: String,
-                            deployment: String, argoCDApplication: String, kubeconfig: String,
-                            editing original: ProjectEnvironment?) -> ProjectEnvironment {
-        var environment = original ?? ProjectEnvironment(name: "", url: "")
-        environment.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        environment.url = url.trimmingCharacters(in: .whitespacesAndNewlines)
-        environment.port = environmentPort(port)
-        environment.context = ModelRules.trimmedOrNil(context)
-        environment.namespace = ModelRules.trimmedOrNil(namespace)
-        environment.deployment = ModelRules.trimmedOrNil(deployment)
-        environment.argoCDApplication = ModelRules.trimmedOrNil(argoCDApplication)
-        environment.kubeconfig = ModelRules.trimmedOrNil(kubeconfig)
-        return environment
-    }
-
-    /// The list Create or Save applies: the environment in place of the one named `originalName`,
-    /// else appended (Create, or an edited environment renamed or removed meanwhile).
-    static func environments(_ environments: [ProjectEnvironment], saving environment: ProjectEnvironment,
-                             replacing originalName: String?) -> [ProjectEnvironment] {
-        var list = environments
-        if let originalName, let index = list.firstIndex(where: { $0.name == originalName }) {
-            list[index] = environment
-        } else {
-            list.append(environment)
+    /// The name `+` gives: `New Environment`, else `New Environment 2`, `New Environment 3` and so
+    /// on, the first that none of `taken`, the names of the project's own and inherited
+    /// environments, has.
+    static func newEnvironmentName(taken: [String]) -> String {
+        let names = Set(taken)
+        let base = "New Environment"
+        guard names.contains(base) else { return base }
+        var number = 2
+        while names.contains("\(base) \(number)") {
+            number += 1
         }
+        return "\(base) \(number)"
+    }
+
+    /// The list `+` applies: the environments, then a new one named `name` with every other field
+    /// empty.
+    static func environments(_ environments: [ProjectEnvironment], adding name: String) -> [ProjectEnvironment] {
+        environments + [ProjectEnvironment(name: name)]
+    }
+
+    /// The list a field of an environment of the project's own applies: the environments with
+    /// `change` made to the first one named `name`, which keeps its other keys, its Argo CD
+    /// application and unknown keys included; nil when none has that name.
+    static func environments(_ environments: [ProjectEnvironment], changing name: String,
+                             _ change: (inout ProjectEnvironment) -> Void) -> [ProjectEnvironment]? {
+        guard let index = environments.firstIndex(where: { $0.name == name }) else { return nil }
+        var list = environments
+        change(&list[index])
         return list
-    }
-
-    // MARK: Inherited environments (docs/projects.md › Inherited environments)
-
-    /// The URL field of an inherited environment: empty, which keeps the parent's URL, or an
-    /// absolute `http` or `https` URL with a host after trimming.
-    static func inheritedEnvironmentURLMessage(_ url: String) -> String? {
-        ModelRules.trimmedOrNil(url) == nil ? nil : environmentURLMessage(url)
-    }
-
-    /// The change the sheet of an inherited environment describes: the URL, the port, the
-    /// deployment and the Argo CD application trimmed, an empty field giving no value, with the
-    /// unknown keys of the stored change; nil when the four fields are empty, which removes the
-    /// change.
-    static func environmentOverride(url: String, port: String, deployment: String, argoCDApplication: String,
-                                    stored: EnvironmentOverride?) -> EnvironmentOverride? {
-        var change = stored ?? EnvironmentOverride()
-        change.url = ModelRules.trimmedOrNil(url)
-        change.port = environmentPort(port)
-        change.deployment = ModelRules.trimmedOrNil(deployment)
-        change.argoCDApplication = ModelRules.trimmedOrNil(argoCDApplication)
-        return change.isEmpty ? nil : change
-    }
-
-    /// The changes Save applies: the stored ones with the change of the environment `name`
-    /// replaced, or removed when it is nil.
-    static func environmentOverrides(_ overrides: [String: EnvironmentOverride], saving change: EnvironmentOverride?,
-                                     for name: String) -> [String: EnvironmentOverride] {
-        var result = overrides
-        result[name] = change
-        return result
     }
 
     /// The list `−` applies: the environments without the first one named `name`; nil when none
@@ -301,6 +269,20 @@ enum ProjectRules {
         var list = environments
         list.remove(at: index)
         return list
+    }
+
+    // MARK: Inherited environments (docs/projects.md › Inherited environments)
+
+    /// The changes a field of an inherited environment applies: the stored changes, with `change`
+    /// made to the change of the environment `name`, which keeps its other values, its Argo CD
+    /// application and unknown keys included; a change that no longer sets any value is removed.
+    static func environmentOverrides(_ overrides: [String: EnvironmentOverride], changing name: String,
+                                     _ change: (inout EnvironmentOverride) -> Void) -> [String: EnvironmentOverride] {
+        var value = overrides[name] ?? EnvironmentOverride()
+        change(&value)
+        var result = overrides
+        result[name] = value.isEmpty ? nil : value
+        return result
     }
 
     /// An empty field, which removes the page, or `https://github.com/<owner>/<name>`, a trailing

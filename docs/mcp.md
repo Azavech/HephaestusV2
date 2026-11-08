@@ -514,7 +514,7 @@ Input schema:
 ### get_project
 
 - **Engine call:** projects.get with `projectID`.
-- **Result:** the `ProjectDetail` ([Engine API](engine-api.md#projectdetail)). Its `githubPage` is the project's resolved [GitHub page](projects.md#github-page), absent when it has none. Its `environments` are the project's environments as they apply, each with its kubectl context, namespace, deployment, Argo CD application and kubeconfig file ([Project environment](data-model.md#project-environment)): for a sub project that uses its parent's settings, its parent's environments with its changes first, then its own; `inheritedEnvironments` gives the inherited ones as its parent resolves them ([Inherited environments](projects.md#inherited-environments)). Its `project` holds the settings of `project.yml`, among them the page typed in Project Settings, `githubPage`; `useParentSettings`, which tells whether a sub project uses its parent's settings; its own `environments`; and `environmentOverrides`, its changes to the environments it inherits.
+- **Result:** the `ProjectDetail` ([Engine API](engine-api.md#projectdetail)). Its `githubPage` is the project's resolved [GitHub page](projects.md#github-page), absent when it has none. Its `environments` are the project's environments as they apply, each with its URL and port when it has them, its namespace, deployment, Argo CD application and kubeconfig file ([Project environment](data-model.md#project-environment)): for a sub project that uses its parent's settings, its parent's environments with its changes first, then its own; `inheritedEnvironments` gives the inherited ones as its parent resolves them ([Inherited environments](projects.md#inherited-environments)). Its `project` holds the settings of `project.yml`, among them the page typed in Project Settings, `githubPage`; `useParentSettings`, which tells whether a sub project uses its parent's settings; its own `environments`; and `environmentOverrides`, its changes to the environments it inherits.
 - **Errors:** Those of projects.get: no project with this identifier (`notFound`), malformed identifier (`invalid`).
 
 Description:
@@ -2642,7 +2642,7 @@ A missing required property fails with `target.<property>: required for kind <ki
 
 ## Kubernetes and Argo CD tools
 
-These nine tools let Claude inspect and operate where a Go service runs: the Kubernetes Deployment of each environment of the project and the Argo CD Application that deploys it ([Environments](projects.md#environments)), with the kubectl context, namespace and kubeconfig file the environment names, so that Claude never guesses them. `tools/list` lists them after the tools of the [tool catalogue](#tool-catalogue), in the order of the table below, which has the format of the tool catalogue; the [conformance test](#conformance) reads it with the other tool tables. `text` in the Result column is the plain text of [Kubectl output](#kubectl-output).
+These nine tools let Claude inspect and operate where a Go service runs: the Kubernetes Deployment of each environment of the project and the Argo CD Application that deploys it ([Environments](projects.md#environments)), with the kubeconfig file and the namespace the environment names, in the current context of that file, so that Claude never guesses them. `tools/list` lists them after the tools of the [tool catalogue](#tool-catalogue), in the order of the table below, which has the format of the tool catalogue; the [conformance test](#conformance) reads it with the other tool tables. `text` in the Result column is the plain text of [Kubectl output](#kubectl-output).
 
 | Tool                    | Required inputs             | Optional inputs                                             | Engine method          | Result           |
 | ----------------------- | --------------------------- | ----------------------------------------------------------- | ---------------------- | ---------------- |
@@ -2668,7 +2668,7 @@ Every tool of the table follows these rules, in this order, rules 4 to 9 only wh
 4. **Environment:** `environment` names an environment of the chat's project, compared exactly, letter case included: one of the environments that apply, which `get_project` lists in `environments`, an inherited one with the project's changes included ([Project environment](data-model.md#project-environment), [Inherited environments](projects.md#inherited-environments)). An unknown name fails with `invalid` and `environment: <project identifier> has no environment named “<name>”.`
 5. **Fields:** `k8s_status`, `k8s_events`, `k8s_restart`, `k8s_scale`, `k8s_port_forward`, and `k8s_logs` without `pod`, need the environment's `deployment`; `argocd_status` and `argocd_sync` need its `argoCDApplication`, which counts as absent when it has another form than `<name>` or `<namespace>/<name>`, a form that only a `project.yml` edited by hand holds. An environment without the field fails with `invalid` and `Environment “<name>” has no deployment.` or `Environment “<name>” has no Argo CD application.`
 6. **kubectl:** the first executable file named `kubectl` in the `PATH` of the [login-shell environment](chats.md#environment), looked up at each call. When there is none, the call fails with `invalid` and `kubectl was not found in the PATH of the login shell.`
-7. **Arguments:** every kubectl command starts with `--kubeconfig=<file>`, `--context=<context>` and `--namespace=<namespace>`, each only when the environment sets the field, in this order, each a single argument so that no value is read as an option. `<file>` is the environment's `kubeconfig` with `~/` replaced by the home folder of the user running the app. `argocd_status` and `argocd_sync` use the namespace of the Argo CD Application instead of the environment's `namespace`: `<namespace>` of `<namespace>/<name>`, else `argocd`. The commands of each tool follow this prefix, written `kubectl …` below.
+7. **Arguments:** every kubectl command starts with `--kubeconfig=<file>` and `--namespace=<namespace>`, each only when the environment sets the field, in this order, each a single argument so that no value is read as an option. kubectl uses the current context of the kubeconfig file: no command passes `--context`, also when the environment's entry in `project.yml` still holds a `context` key ([Project environment](data-model.md#project-environment)). `<file>` is the environment's `kubeconfig` with `~/` replaced by the home folder of the user running the app. `argocd_status` and `argocd_sync` use the namespace of the Argo CD Application instead of the environment's `namespace`: `<namespace>` of `<namespace>/<name>`, else `argocd`. The commands of each tool follow this prefix, written `kubectl …` below.
 8. **Process:** each command runs on the main device as a child process of the engine ([Child processes](architecture.md#child-processes)): the login-shell environment without any `HEPHAESTUS_*` variable, the project root as working directory, its own process group, standard input `/dev/null`, standard output and standard error captured. A command that runs longer than 60 seconds receives `SIGTERM` on its process group, then `SIGKILL` 2 seconds later.
 9. **kubectl failure:** a command that exits with a non-zero status fails the call with `unavailable` and `<command> exited with code <n>: <standard error>`, `<standard error>` trimmed, or `<command> exited with code <n>.` when it is empty; one that runs longer than 60 seconds fails with `unavailable` and `<command> did not finish within 60 seconds.` `<command>` is `kubectl` and its arguments joined with spaces, an argument that is empty or holds a character other than letters, digits and `-_./:=,@+%` being written in single quotes, as in [Exit handling and logs](chats.md#exit-handling-and-logs). A command whose standard output is not the JSON object the tool reads fails with `internal` and `Unexpected output from <command>.`
 10. **Permission:** `k8s_status`, `k8s_logs`, `k8s_events` and `argocd_status` only read the cluster: they are pre-approved and run without a permission prompt in every permission mode ([Chats](chats.md#command-line)). `k8s_restart`, `k8s_scale`, `k8s_port_forward`, `k8s_stop_port_forward` and `argocd_sync` follow the chat's permission mode: in Ask Every Time the user approves each call.
@@ -2688,7 +2688,7 @@ Every tool of the table follows these rules, in this order, rules 4 to 9 only wh
 Description:
 
 ```text
-Get the state of the Kubernetes deployment of an environment of this Go service project: its desired, ready, updated and available replicas, its container images and conditions, and its pods with their phase, ready containers, restarts, age and node. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context, namespace and kubeconfig file. Only available in projects of type Go service, in chats started by HephaestusV2.
+Get the state of the Kubernetes deployment of an environment of this Go service project: its desired, ready, updated and available replicas, its container images and conditions, and its pods with their phase, ready containers, restarts, age and node. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubeconfig file and namespace. Only available in projects of type Go service, in chats started by HephaestusV2.
 ```
 
 Input schema:
@@ -2717,7 +2717,7 @@ Input schema:
 Description:
 
 ```text
-Get the last log lines of the pods of the Kubernetes deployment of an environment of this Go service project, each line prefixed with [pod/<pod>/<container>], or of one pod with pod. container picks the container (default: each pod's default container), tailLines the number of lines per container (default 200, at most 5000), sinceSeconds keeps the lines of the last seconds only, and previous gives the logs of the previous container, the one that ended, for example after a crash. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context, namespace and kubeconfig file. Only available in projects of type Go service, in chats started by HephaestusV2.
+Get the last log lines of the pods of the Kubernetes deployment of an environment of this Go service project, each line prefixed with [pod/<pod>/<container>], or of one pod with pod. container picks the container (default: each pod's default container), tailLines the number of lines per container (default 200, at most 5000), sinceSeconds keeps the lines of the last seconds only, and previous gives the logs of the previous container, the one that ended, for example after a crash. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubeconfig file and namespace. Only available in projects of type Go service, in chats started by HephaestusV2.
 ```
 
 Input schema:
@@ -2770,7 +2770,7 @@ Input schema:
 Description:
 
 ```text
-Get the Kubernetes events of the deployment of an environment of this Go service project, of its ReplicaSets and of its pods, newest first, each with its type, reason, object, message, count and times. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context, namespace and kubeconfig file. Only available in projects of type Go service, in chats started by HephaestusV2.
+Get the Kubernetes events of the deployment of an environment of this Go service project, of its ReplicaSets and of its pods, newest first, each with its type, reason, object, message, count and times. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubeconfig file and namespace. Only available in projects of type Go service, in chats started by HephaestusV2.
 ```
 
 Input schema:
@@ -2799,7 +2799,7 @@ Input schema:
 Description:
 
 ```text
-Restart the pods of the Kubernetes deployment of an environment of this Go service project with kubectl rollout restart: Kubernetes replaces them as the deployment's rollout strategy says; follow it with k8s_status. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context, namespace and kubeconfig file. Only available in projects of type Go service, in chats started by HephaestusV2.
+Restart the pods of the Kubernetes deployment of an environment of this Go service project with kubectl rollout restart: Kubernetes replaces them as the deployment's rollout strategy says; follow it with k8s_status. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubeconfig file and namespace. Only available in projects of type Go service, in chats started by HephaestusV2.
 ```
 
 Input schema:
@@ -2828,7 +2828,7 @@ Input schema:
 Description:
 
 ```text
-Set the number of replicas of the Kubernetes deployment of an environment of this Go service project with kubectl scale; 0 stops every pod. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context, namespace and kubeconfig file. Only available in projects of type Go service, in chats started by HephaestusV2.
+Set the number of replicas of the Kubernetes deployment of an environment of this Go service project with kubectl scale; 0 stops every pod. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubeconfig file and namespace. Only available in projects of type Go service, in chats started by HephaestusV2.
 ```
 
 Input schema:
@@ -2864,7 +2864,7 @@ Input schema:
 Description:
 
 ```text
-Forward a local port of this Mac to a port of the Kubernetes deployment of an environment of this Go service project with kubectl port-forward, to call the service in one of its pods. remotePort is the port in the pod; localPort is the port on 127.0.0.1, a free port when omitted. Returns the port forward's portForwardID and its url http://127.0.0.1:<localPort>. The forward lasts until k8s_stop_port_forward with its portForwardID, until kubectl ends it, or until this chat's Claude process exits. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context, namespace and kubeconfig file. Only available in projects of type Go service, in chats started by HephaestusV2.
+Forward a local port of this Mac to a port of the Kubernetes deployment of an environment of this Go service project with kubectl port-forward, to call the service in one of its pods. remotePort is the port in the pod; localPort is the port on 127.0.0.1, a free port when omitted. Returns the port forward's portForwardID and its url http://127.0.0.1:<localPort>. The forward lasts until k8s_stop_port_forward with its portForwardID, until kubectl ends it, or until this chat's Claude process exits. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubeconfig file and namespace. Only available in projects of type Go service, in chats started by HephaestusV2.
 ```
 
 Input schema:
@@ -2935,7 +2935,7 @@ Input schema:
 Description:
 
 ```text
-Get the state of the Argo CD Application of an environment of this Go service project: its sync status, health status, synced revision and last operation, read with kubectl from the Application resource. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context and kubeconfig file, in the namespace of the Application. Only available in projects of type Go service, in chats started by HephaestusV2.
+Get the state of the Argo CD Application of an environment of this Go service project: its sync status, health status, synced revision and last operation, read with kubectl from the Application resource. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubeconfig file, in the namespace of the Application. Only available in projects of type Go service, in chats started by HephaestusV2.
 ```
 
 Input schema:
@@ -2964,7 +2964,7 @@ Input schema:
 Description:
 
 ```text
-Start a sync of the Argo CD Application of an environment of this Go service project to its target revision, with Argo CD's default sync options, by setting the Application's sync operation with kubectl; follow it with argocd_status. Fails while the Application has an operation in progress. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context and kubeconfig file, in the namespace of the Application. Only available in projects of type Go service, in chats started by HephaestusV2.
+Start a sync of the Argo CD Application of an environment of this Go service project to its target revision, with Argo CD's default sync options, by setting the Application's sync operation with kubectl; follow it with argocd_status. Fails while the Application has an operation in progress. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubeconfig file, in the namespace of the Application. Only available in projects of type Go service, in chats started by HephaestusV2.
 ```
 
 Input schema:
@@ -3479,6 +3479,6 @@ Unauthorized: missing or invalid bearer token.
 - R158: A project has a GitHub page, taken from its origin remote unless set in Project Settings; a sub project can use its parent's settings.
 - R159: A locked web tab goes back to its original page each time the user comes back to it.
 - R161: After an implementation is pushed in a project with a GitHub page, a CI chat follows CI and reports to the orchestrator, which asks the user how to proceed when CI fails and finishes only once CI is green or the user decides so.
-- R162: Each environment of a Go service names its Kubernetes context, namespace, deployment, Argo CD application and kubeconfig, which Claude receives and uses through HephaestusV2's Kubernetes and Argo CD tools.
+- R162: Each environment of a Go service names its namespace, deployment, Argo CD application and kubeconfig, which Claude receives and uses through HephaestusV2's Kubernetes and Argo CD tools.
 - R172: A project with a GitHub page always has two locked web tabs, its GitHub page and its CI page, first in the tab strip.
 - R174: A sub project that uses its parent's settings inherits its parent's environments and changes their URL, port, deployment and Argo CD application.

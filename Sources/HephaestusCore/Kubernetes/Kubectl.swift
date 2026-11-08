@@ -1,8 +1,9 @@
 import Foundation
 
 /// kubectl for the Kubernetes and Argo CD tools (docs/mcp.md › Rules of the Kubernetes tools,
-/// docs/engine-api.md › Kubernetes and Argo CD): the lookup of kubectl, the arguments taken from an
-/// environment, the runs and the reading of their JSON. The engine keeps one value with the
+/// docs/engine-api.md › Kubernetes and Argo CD) and for the kubeconfig methods of the Environments
+/// section (docs/engine-api.md › Kubeconfig methods): the lookup of kubectl, the arguments taken
+/// from an environment, the runs and the reading of their JSON. The engine keeps one value with the
 /// timeouts and the clock of the calls; tests change them before the calls they make.
 struct Kubectl: Sendable {
     /// A command still running after this time receives SIGTERM on its process group (rule 8).
@@ -78,16 +79,14 @@ extension Kubectl {
         FileTools.executable(named: "kubectl", inPATH: environment["PATH"])
     }
 
-    /// Rule 7: `--kubeconfig=<file>`, `--context=<context>` and `--namespace=<namespace>`, each only
-    /// when it is set, in this order, each one argument so that no value is read as an option.
-    /// `<file>` is `kubeconfig` with a leading `~/` replaced by the home folder.
-    static func prefix(kubeconfig: String?, context: String?, namespace: String?, homeDirectory: String) -> [String] {
+    /// Rule 7: `--kubeconfig=<file>` and `--namespace=<namespace>`, each only when it is set, in
+    /// this order, each one argument so that no value is read as an option; never `--context`, so
+    /// that kubectl uses the current context of the file. `<file>` is `kubeconfig` with a leading
+    /// `~/` replaced by the home folder.
+    static func prefix(kubeconfig: String?, namespace: String?, homeDirectory: String) -> [String] {
         var arguments: [String] = []
         if let kubeconfig {
             arguments.append("--kubeconfig=" + expandingHome(kubeconfig, homeDirectory: homeDirectory))
-        }
-        if let context {
-            arguments.append("--context=" + context)
         }
         if let namespace {
             arguments.append("--namespace=" + namespace)
@@ -198,6 +197,17 @@ extension Kubectl {
             text.removeLast()
         }
         return text
+    }
+}
+
+// MARK: - Names
+
+extension Kubectl {
+    /// The `metadata.name` of each item of a list of `kubectl get <resources> -o json`, in
+    /// kubectl's order, an item without a name left out; nil when the JSON has no `items` array
+    /// (docs/engine-api.md › kubernetes.namespaces, › kubernetes.deployments).
+    static func itemNames(_ list: [String: JSONValue]) -> [String]? {
+        KubeJSON.array(list, "items")?.compactMap { KubeJSON.string($0.objectValue, "metadata", "name") }
     }
 }
 

@@ -155,13 +155,14 @@ The form of an operation has, in this order: Environment, Parameters, Credential
 
 ### Environment
 
-- A pop-up lists the environments of the contract's project in their order, for a sub project that inherits environments its parent's first, with its changes ([Environments](projects.md#environments), [Inherited environments](projects.md#inherited-environments)), each item showing the environment's name and its base URL as `<name> · <base URL>`, for example `local · http://127.0.0.1:8080`. It has no other item: the contract's `servers` do not choose the URL of the requests.
+- A pop-up lists the environments of the contract's project in their order, for a sub project that inherits environments its parent's first, with its changes ([Environments](projects.md#environments), [Inherited environments](projects.md#inherited-environments)), each item showing the environment's name and its base URL as `<name> · <base URL>`, for example `local · http://127.0.0.1:8080`, or the name alone for an environment without a URL, which has no base URL. It has no other item: the contract's `servers` do not choose the URL of the requests.
 - The pop-up starts on the environment stored for the contract ([Stored values](#stored-values)), else on the first environment. Choosing an environment stores its name for the contract.
 - The pop-up follows the project's environments live: an environment added, edited or removed in Project Settings, on any device, shows at once, and so does a change of the environments a sub project inherits from its parent. When the selected environment is renamed or removed, the pop-up shows the first environment.
 - A project whose type is not `goService` has no environment here, even when its `project.yml` still lists environments from an earlier type ([Environments](projects.md#environments)).
 - When the project has no environment, which is always the case for a project whose type is not `goService`, the pop-up is empty and disabled, and under it the form shows `Add an environment in Project Settings.` with a `Project Settings…` button that selects the window's [Project Settings](projects.md#project-settings) section.
+- While an environment without a URL is selected, Send is disabled, and under the pop-up the form shows `Set the API Access of this environment in Project Settings.` with a `Project Settings…` button that selects the window's [Project Settings](projects.md#project-settings) section, where the [Environments section](projects.md#environments) sets the URL and the port.
 
-The item text `<name> · <base URL>` is a design-time choice. Default chosen at design time.
+An environment without a URL listed by its name, with Send disabled, its message and its `Project Settings…` button come from the user. The item text `<name> · <base URL>` is a design-time choice. Default chosen at design time.
 
 ### Parameters
 
@@ -189,7 +190,7 @@ Rows of a name field (placeholder `Name`) and a value field (placeholder `Value`
 
 ### Send
 
-`Send` sends the request ([Sending a request](#sending-a-request)). It is disabled when the project has no environment, and when the URL or the port of the selected environment breaks the rules of [Project environment](data-model.md#project-environment), which happens only for a value written by hand in `project.yml` ([Write rules](data-model.md#write-rules)). While the request runs, a small spinner shows next to the button and the button becomes `Cancel`, which stops the request; the response area then keeps what it showed before.
+`Send` sends the request ([Sending a request](#sending-a-request)). It is disabled when the project has no environment, when the selected environment has no URL, and when the URL or the port of the selected environment breaks the rules of [Project environment](data-model.md#project-environment), which happens only for a value written by hand in `project.yml` ([Write rules](data-model.md#write-rules)). While the request runs, a small spinner shows next to the button and the button becomes `Cancel`, which stops the request; the response area then keeps what it showed before.
 
 The layout of the form and the 200 pt height are design-time choices. Default chosen at design time.
 

@@ -9,7 +9,7 @@ import Testing
 @Suite("Inherited environments")
 struct InheritedEnvironmentsTests {
     static let local = ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080)
-    static let staging = ProjectEnvironment(name: "staging", url: "https://staging.example.com", context: "staging-eks",
+    static let staging = ProjectEnvironment(name: "staging", url: "https://staging.example.com",
                                             namespace: "orders", deployment: "orders-api", argoCDApplication: "argocd/orders-staging",
                                             kubeconfig: "~/.kube/staging.yaml")
     static let replay = ProjectEnvironment(name: "replay", url: "http://127.0.0.1", port: 9090)

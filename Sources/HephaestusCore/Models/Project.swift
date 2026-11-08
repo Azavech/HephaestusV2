@@ -443,12 +443,13 @@ public enum ProjectType: String, Codable, Sendable, Hashable, CaseIterable {
 /// docs/projects.md › Environments, docs/mcp.md › Kubernetes and Argo CD tools).
 public struct ProjectEnvironment: Codable, Sendable, Hashable {
     public var name: String
-    public var url: String
+    /// The address of the environment's API Access; nil for an environment without one, which has
+    /// no base URL.
+    public var url: String?
     /// Replaces the URL's port in the base URL; nil keeps the URL's own port.
     public var port: Int?
-    /// The kubectl context; nil uses the kubeconfig's current context.
-    public var context: String?
-    /// The Kubernetes namespace of the deployment; nil uses the namespace of the context.
+    /// The Kubernetes namespace of the deployment; nil uses the namespace of the kubeconfig file's
+    /// current context, which kubectl always uses.
     public var namespace: String?
     /// The name of the Kubernetes Deployment that runs the service.
     public var deployment: String?
@@ -460,13 +461,12 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
     public var kubeconfig: String?
     public var unknownKeys: [String: JSONValue]
 
-    public init(name: String, url: String, port: Int? = nil, context: String? = nil, namespace: String? = nil,
+    public init(name: String, url: String? = nil, port: Int? = nil, namespace: String? = nil,
                 deployment: String? = nil, argoCDApplication: String? = nil, kubeconfig: String? = nil,
                 unknownKeys: [String: JSONValue] = [:]) {
         self.name = name
         self.url = url
         self.port = port
-        self.context = context
         self.namespace = namespace
         self.deployment = deployment
         self.argoCDApplication = argoCDApplication
@@ -474,16 +474,17 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
         self.unknownKeys = unknownKeys
     }
 
-    static let knownKeys: Set<String> = ["name", "url", "port", "context", "namespace", "deployment", "argoCDApplication", "kubeconfig"]
+    /// A `context` key, the kubectl context of earlier versions, is not known: it is kept as an
+    /// unknown key and no longer used (docs/data-model.md › Project environment).
+    static let knownKeys: Set<String> = ["name", "url", "port", "namespace", "deployment", "argoCDApplication", "kubeconfig"]
 
     public init(from decoder: Decoder) throws {
         let c = try ModelDecodingContainer(decoder)
         name = try c.required("name")
-        url = try c.required("url")
+        // The URL and the Kubernetes keys are read trimmed, an empty value being null
+        // (docs/data-model.md › Project environment).
+        url = ModelRules.trimmedOrNil(try c.optional("url", String.self))
         port = try c.optional("port")
-        // The Kubernetes keys are read trimmed, an empty value being null (docs/data-model.md ›
-        // Project environment).
-        context = ModelRules.trimmedOrNil(try c.optional("context", String.self))
         namespace = ModelRules.trimmedOrNil(try c.optional("namespace", String.self))
         deployment = ModelRules.trimmedOrNil(try c.optional("deployment", String.self))
         argoCDApplication = ModelRules.trimmedOrNil(try c.optional("argoCDApplication", String.self))
@@ -494,9 +495,8 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
     public func encode(to encoder: Encoder) throws {
         var c = ModelEncodingContainer(encoder)
         try c.encode(name, "name")
-        try c.encode(url, "url")
+        try c.encodeOptional(url, "url")
         try c.encodeOptional(port, "port")
-        try c.encodeOptional(context, "context")
         try c.encodeOptional(namespace, "namespace")
         try c.encodeOptional(deployment, "deployment")
         try c.encodeOptional(argoCDApplication, "argoCDApplication")
@@ -504,9 +504,10 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
         try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
     }
 
-    /// The URL with its port replaced by `port` when it is set, without a trailing `/`
-    /// (docs/projects.md › Environments).
-    public var baseURL: String {
+    /// The URL with its port replaced by `port` when it is set, without a trailing `/`; nil for an
+    /// environment without a URL (docs/projects.md › Environments).
+    public var baseURL: String? {
+        guard let url else { return nil }
         var text = url.trimmingCharacters(in: .whitespacesAndNewlines)
         // A negative port, possible only in a file edited by hand, would make Foundation raise.
         if let port, port >= 0, var components = URLComponents(string: text), components.host != nil {
@@ -519,9 +520,11 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
         return text
     }
 
-    /// Whether the URL and the port keep their write rules, which only a file edited by hand
-    /// breaks: the Contract view sends no request to an environment that does not.
+    /// Whether the environment has a URL and the URL and the port keep their write rules, which
+    /// only a file edited by hand breaks: the Contract view sends no request to an environment
+    /// that does not (docs/openapi.md › Send).
     public var isUsable: Bool {
+        guard let url else { return false }
         let portIsValid = port.map { (1...65535).contains($0) } ?? true
         return portIsValid && ModelRules.isHTTPURL(url.trimmingCharacters(in: .whitespacesAndNewlines))
     }
@@ -534,15 +537,14 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
 
     /// The write rules of the field table; `field` names the environment in the messages, for
     /// example `environments[1]`. Returns the environment with its name, its URL and its
-    /// Kubernetes fields trimmed, an empty Kubernetes field being nil.
+    /// Kubernetes fields trimmed, an empty URL or Kubernetes field being nil.
     public func normalized(field: String) throws -> ProjectEnvironment {
         var copy = self
         copy.name = try ModelRules.environmentName(name, field: field)
-        copy.url = try ModelRules.environmentURL(url, field: field)
+        copy.url = try ModelRules.trimmedOrNil(url).map { try ModelRules.environmentURL($0, field: field) }
         if let port {
             copy.port = try ModelRules.environmentPort(port, field: field)
         }
-        copy.context = try ModelRules.environmentLine(context, field: field, what: "a kubectl context")
         copy.namespace = try ModelRules.environmentLine(namespace, field: field, what: "a namespace")
         copy.deployment = try ModelRules.environmentLine(deployment, field: field, what: "a deployment")
         copy.argoCDApplication = try ModelRules.environmentArgoCDApplication(argoCDApplication, field: field)

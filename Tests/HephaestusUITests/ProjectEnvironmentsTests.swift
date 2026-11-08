@@ -3,9 +3,9 @@ import HephaestusCore
 import Testing
 @testable import HephaestusUI
 
-/// docs/projects.md › Environments and docs/openapi.md › Environment: the messages of the
-/// environment sheets and the environment they send, and the Environment pop-up of a contract's
-/// request form with the environment stored for the contract.
+/// docs/projects.md › Environments and docs/openapi.md › Environment: the messages of the fields
+/// of the Environments section and the lists they apply, and the Environment pop-up of a
+/// contract's request form with the environment stored for the contract.
 @MainActor @Suite("Project environments")
 struct ProjectEnvironmentsTests {
     static let created = Date(timeIntervalSince1970: 1_793_448_000)
@@ -31,7 +31,7 @@ struct ProjectEnvironmentsTests {
     let local = ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080)
     let staging = ProjectEnvironment(name: "staging", url: "https://staging.example.com/")
 
-    @Test func sheetMessages() {
+    @Test func fieldMessages() {
         let name = "Enter a name of 1 to 100 characters."
         #expect(ProjectRules.environmentNameMessage("", otherNames: []) == name)
         #expect(ProjectRules.environmentNameMessage("   ", otherNames: []) == name)
@@ -41,9 +41,11 @@ struct ProjectEnvironmentsTests {
         #expect(ProjectRules.environmentNameMessage(" local ", otherNames: ["local"]) == "An environment named “local” already exists.")
         #expect(ProjectRules.environmentNameMessage("Local", otherNames: ["local"]) == nil)
 
-        #expect(ProjectRules.environmentURLMessage("http://127.0.0.1") == nil)
-        #expect(ProjectRules.environmentURLMessage(" https://staging.example.com/v1 ") == nil)
-        for invalid in ["", "127.0.0.1:8080", "ftp://example.com", "/v1", "http://"] {
+        // The URL is optional: an empty field removes it.
+        for valid in ["", "  ", "http://127.0.0.1", " https://staging.example.com/v1 "] {
+            #expect(ProjectRules.environmentURLMessage(valid) == nil, "\(valid)")
+        }
+        for invalid in ["127.0.0.1:8080", "ftp://example.com", "/v1", "http://", "localhost:8080"] {
             #expect(ProjectRules.environmentURLMessage(invalid) == "Enter an http or https URL.", "\(invalid)")
         }
 
@@ -55,18 +57,12 @@ struct ProjectEnvironmentsTests {
         }
         #expect(ProjectRules.environmentPort(" 8080 ") == 8080)
         #expect(ProjectRules.environmentPort("") == nil)
+        #expect(ProjectRules.normalizedEnvironmentPort(" 08080 ") == "8080")
+        #expect(ProjectRules.normalizedEnvironmentPort(" ") == "")
+        #expect(ProjectRules.normalizedEnvironmentPort("80a") == "80a")
     }
 
-    @Test func kubernetesFieldMessages() {
-        let application = "Enter <name> or <namespace>/<name>."
-        for valid in ["", "  ", "orders-staging", " argocd/orders-staging ", "team-a/orders"] {
-            #expect(ProjectRules.environmentArgoCDApplicationMessage(valid) == nil, "\(valid)")
-        }
-        for invalid in ["argocd/orders/staging", "/orders", "argocd/", "/", "a//b", "orders staging", "argocd/ orders",
-                        "orders\tstaging", "two\nlines"] {
-            #expect(ProjectRules.environmentArgoCDApplicationMessage(invalid) == application, "\(invalid)")
-        }
-
+    @Test func kubeconfigFieldMessage() {
         let kubeconfig = "Enter an absolute path or a path starting with ~/."
         for valid in ["", " ", "/Users/example/.kube/config", " ~/.kube/staging.yaml "] {
             #expect(ProjectRules.environmentKubeconfigMessage(valid) == nil, "\(valid)")
@@ -84,59 +80,41 @@ struct ProjectEnvironmentsTests {
         #expect(ProjectRules.otherEnvironmentNames([local, staging], editing: nil) == ["local", "staging"])
     }
 
-    @Test func createSaveAndRemoveBuildTheList() {
-        let dev = sheetEnvironment(name: " dev ", url: " http://localhost:3000/ ")
-        #expect(dev == ProjectEnvironment(name: "dev", url: "http://localhost:3000/"))
-        // Create appends.
-        #expect(ProjectRules.environments([local, staging], saving: dev, replacing: nil) == [local, staging, dev])
+    @Test func plusNamesTheNewEnvironment() {
+        #expect(ProjectRules.newEnvironmentName(taken: []) == "New Environment")
+        #expect(ProjectRules.newEnvironmentName(taken: ["local", "staging"]) == "New Environment")
+        #expect(ProjectRules.newEnvironmentName(taken: ["New Environment"]) == "New Environment 2")
+        #expect(ProjectRules.newEnvironmentName(taken: ["New Environment", "New Environment 2"]) == "New Environment 3")
+        // The first free number: a gap is used again.
+        #expect(ProjectRules.newEnvironmentName(taken: ["New Environment", "New Environment 3"]) == "New Environment 2")
+        // Letter case counts: `new environment` is another name.
+        #expect(ProjectRules.newEnvironmentName(taken: ["new environment"]) == "New Environment")
+        // `+` appends an environment with every other field empty.
+        #expect(ProjectRules.environments([local, staging], adding: "New Environment")
+            == [local, staging, ProjectEnvironment(name: "New Environment")])
+    }
 
-        // Save replaces at its place, with the edited environment's unknown keys.
-        var extended = local
-        extended.unknownKeys = ["region": "eu-west-1"]
-        let saved = sheetEnvironment(name: "local", url: "http://127.0.0.1", port: " 9090 ", editing: extended)
-        #expect(saved == ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 9090, unknownKeys: ["region": "eu-west-1"]))
-        #expect(ProjectRules.environments([extended, staging], saving: saved, replacing: "local") == [saved, staging])
-        let renamed = sheetEnvironment(name: "stage", url: "https://staging.example.com", editing: staging)
-        #expect(ProjectRules.environments([local, staging], saving: renamed, replacing: "staging")
-            == [local, ProjectEnvironment(name: "stage", url: "https://staging.example.com")])
-
-        // Renamed or removed meanwhile: Save appends.
-        #expect(ProjectRules.environments([local], saving: renamed, replacing: "staging").map(\.name) == ["local", "stage"])
+    @Test func eachFieldAppliesTheWholeListWithItsChange() {
+        // A field changes its environment only; the others, and its other keys, stay as stored.
+        var stored = ProjectEnvironment(name: "staging", url: "https://staging.example.com", namespace: "orders",
+                                        deployment: "orders-api", argoCDApplication: "argocd/orders-staging",
+                                        kubeconfig: "~/.kube/staging.yaml", unknownKeys: ["context": "staging-eks"])
+        let renamed = ProjectRules.environments([local, stored], changing: "staging") { $0.name = "stage" }
+        stored.name = "stage"
+        #expect(renamed == [local, stored])
+        let cleared = ProjectRules.environments([local, stored], changing: "stage") { $0.url = nil; $0.port = nil }
+        #expect(cleared?[1] == ProjectEnvironment(name: "stage", namespace: "orders", deployment: "orders-api",
+                                                  argoCDApplication: "argocd/orders-staging", kubeconfig: "~/.kube/staging.yaml",
+                                                  unknownKeys: ["context": "staging-eks"]))
+        #expect(cleared?[0] == local)
+        let browsed = ProjectRules.environments([local], changing: "local") { $0.kubeconfig = "/Users/example/.kube/config" }
+        #expect(browsed == [ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080, kubeconfig: "/Users/example/.kube/config")])
+        // Renamed or removed meanwhile: nothing applies.
+        #expect(ProjectRules.environments([local], changing: "staging") { $0.deployment = "x" } == nil)
 
         // `−` removes the selected environment only.
         #expect(ProjectRules.environments([local, staging], removing: "local") == [staging])
         #expect(ProjectRules.environments([local, staging], removing: "dev") == nil)
-    }
-
-    @Test func kubernetesFieldsAreSentTrimmedAndEmptyFieldsGiveNoValue() {
-        let created = sheetEnvironment(name: "staging", url: "https://staging.example.com", context: " staging-eks ",
-                                       namespace: "orders", deployment: " orders-api", argoCDApplication: "argocd/orders-staging ",
-                                       kubeconfig: " ~/.kube/staging.yaml ")
-        let full = ProjectEnvironment(name: "staging", url: "https://staging.example.com", context: "staging-eks", namespace: "orders",
-                                      deployment: "orders-api", argoCDApplication: "argocd/orders-staging",
-                                      kubeconfig: "~/.kube/staging.yaml")
-        #expect(created == full)
-        let empty = sheetEnvironment(name: "local", url: "http://127.0.0.1", context: "", namespace: "  ", deployment: "\t",
-                                     argoCDApplication: " ", kubeconfig: "")
-        #expect(empty == ProjectEnvironment(name: "local", url: "http://127.0.0.1"))
-
-        // Save starts from the edited environment: its unknown keys stay, and a cleared field
-        // removes its value.
-        var stored = full
-        stored.unknownKeys = ["region": "eu-west-1"]
-        let saved = sheetEnvironment(name: "staging", url: "https://staging.example.com", context: "staging-eks", namespace: "",
-                                     deployment: "orders-api", argoCDApplication: "", kubeconfig: "/Users/example/.kube/config",
-                                     editing: stored)
-        #expect(saved == ProjectEnvironment(name: "staging", url: "https://staging.example.com", context: "staging-eks",
-                                            deployment: "orders-api", kubeconfig: "/Users/example/.kube/config",
-                                            unknownKeys: ["region": "eu-west-1"]))
-        let cleared = sheetEnvironment(name: "staging", url: "https://staging.example.com", editing: stored)
-        #expect(cleared == ProjectEnvironment(name: "staging", url: "https://staging.example.com", unknownKeys: ["region": "eu-west-1"]))
-    }
-
-    @Test func sheetBelongsToItsProject() {
-        #expect(WindowSheet.environment(projectID: "API", name: nil).projectID == "API")
-        #expect(WindowSheet.environment(projectID: "API", name: "local").projectID == "API")
     }
 
     @Test func popUpStartsOnTheStoredEnvironmentElseTheFirst() async throws {
@@ -196,23 +174,21 @@ struct ProjectEnvironmentsTests {
     }
 
     @Test func changeOfAnInheritedEnvironment() {
-        #expect(ProjectRules.inheritedEnvironmentURLMessage("") == nil)
-        #expect(ProjectRules.inheritedEnvironmentURLMessage("  ") == nil)
-        #expect(ProjectRules.inheritedEnvironmentURLMessage("localhost:8080") == "Enter an http or https URL.")
-        #expect(ProjectRules.inheritedEnvironmentURLMessage(" https://worker.example.com ") == nil)
-        let stored = EnvironmentOverride(port: 8081, unknownKeys: ["region": "eu-west-1"])
-        let change = ProjectRules.environmentOverride(url: " https://worker.example.com ", port: " ", deployment: " orders-worker ",
-                                                      argoCDApplication: "", stored: stored)
-        #expect(change == EnvironmentOverride(url: "https://worker.example.com", deployment: "orders-worker", unknownKeys: ["region": "eu-west-1"]))
-        #expect(ProjectRules.environmentOverride(url: "", port: "9000", deployment: "", argoCDApplication: " argocd/w ", stored: nil)
-            == EnvironmentOverride(port: 9000, argoCDApplication: "argocd/w"))
-        // Four empty fields remove the change: the parent's values apply again.
-        #expect(ProjectRules.environmentOverride(url: " ", port: "", deployment: "", argoCDApplication: "", stored: stored) == nil)
+        // Each field changes its value of the stored change, which keeps its Argo CD application
+        // and unknown keys.
+        let stored = EnvironmentOverride(port: 8081, argoCDApplication: "argocd/w", unknownKeys: ["region": "eu-west-1"])
         let gone = EnvironmentOverride(port: 7000)
         let overrides = ["staging": stored, "gone": gone]
-        #expect(ProjectRules.environmentOverrides(overrides, saving: change, for: "staging") == ["staging": change!, "gone": gone])
-        #expect(ProjectRules.environmentOverrides(overrides, saving: nil, for: "staging") == ["gone": gone])
-        #expect(ProjectRules.environmentOverrides([:], saving: gone, for: "local") == ["local": gone])
+        let url = ProjectRules.environmentOverrides(overrides, changing: "staging") { $0.url = "https://worker.example.com" }
+        #expect(url == ["staging": EnvironmentOverride(url: "https://worker.example.com", port: 8081, argoCDApplication: "argocd/w",
+                                                       unknownKeys: ["region": "eu-west-1"]),
+                        "gone": gone])
+        #expect(ProjectRules.environmentOverrides([:], changing: "local") { $0.deployment = "orders-worker" }
+            == ["local": EnvironmentOverride(deployment: "orders-worker")])
+        // A change that no longer sets any value is removed: the parent's values apply again.
+        #expect(ProjectRules.environmentOverrides(["local": gone], changing: "local") { $0.port = nil } == [:])
+        #expect(ProjectRules.environmentOverrides(overrides, changing: "staging") { $0.port = nil }
+            == ["staging": EnvironmentOverride(argoCDApplication: "argocd/w", unknownKeys: ["region": "eu-west-1"]), "gone": gone])
     }
 
     @Test func contractEnvironmentsAreTheEnvironmentsThatApply() async throws {
@@ -230,6 +206,23 @@ struct ProjectEnvironmentsTests {
         #expect(model.canSend)
     }
 
+    @Test func environmentWithoutURLIsListedByNameAndCannotSend() async throws {
+        let replay = ProjectEnvironment(name: "replay", namespace: "orders")
+        let (workspace, buffer, model) = try await contractModel(type: .goService, environments: [replay, local])
+        defer { buffer.detach() }
+        let contract = try #require(model.contract)
+        let operation = try #require(contract.operations.first)
+        #expect(OpenAPIRequestFormView.itemTitle(replay) == "replay")
+        #expect(OpenAPIRequestFormView.itemTitle(local) == "local · http://127.0.0.1:8080")
+        #expect(OpenAPIRequestFormView.noURLNote == "Set the API Access of this environment in Project Settings.")
+        #expect(model.environment == replay)
+        #expect(!model.canSend)
+        #expect(model.requestInput(operation, contract: contract).baseURL == "")
+        model.selectEnvironment("local")
+        #expect(model.canSend)
+        #expect(workspace.details["API"] != nil)
+    }
+
     @Test func environmentWrittenByHandWithAnInvalidURLCannotSend() async throws {
         let (workspace, buffer, model) = try await contractModel(type: .goService,
                                                                 environments: [ProjectEnvironment(name: "files", url: "ftp://example.com")])
@@ -237,14 +230,6 @@ struct ProjectEnvironmentsTests {
         #expect(model.environment?.name == "files")
         #expect(!model.canSend)
         #expect(workspace.details["API"] != nil)
-    }
-
-    /// `ProjectRules.environment` with the sheet's fields, the ones not given empty.
-    private func sheetEnvironment(name: String, url: String, port: String = "", context: String = "", namespace: String = "",
-                                  deployment: String = "", argoCDApplication: String = "", kubeconfig: String = "",
-                                  editing original: ProjectEnvironment? = nil) -> ProjectEnvironment {
-        ProjectRules.environment(name: name, url: url, port: port, context: context, namespace: namespace, deployment: deployment,
-                                 argoCDApplication: argoCDApplication, kubeconfig: kubeconfig, editing: original)
     }
 
     /// The Contract view model of a contract tab of the project `API` in an offline workspace,

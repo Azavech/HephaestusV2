@@ -1557,7 +1557,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "k8s_status",
             description: #"""
-            Get the state of the Kubernetes deployment of an environment of this Go service project: its desired, ready, updated and available replicas, its container images and conditions, and its pods with their phase, ready containers, restarts, age and node. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context, namespace and kubeconfig file. Only available in projects of type Go service, in chats started by HephaestusV2.
+            Get the state of the Kubernetes deployment of an environment of this Go service project: its desired, ready, updated and available replicas, its container images and conditions, and its pods with their phase, ready containers, restarts, age and node. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubeconfig file and namespace. Only available in projects of type Go service, in chats started by HephaestusV2.
             """#,
             inputSchema: schema(#"""
             {
@@ -1579,7 +1579,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "k8s_logs",
             description: #"""
-            Get the last log lines of the pods of the Kubernetes deployment of an environment of this Go service project, each line prefixed with [pod/<pod>/<container>], or of one pod with pod. container picks the container (default: each pod's default container), tailLines the number of lines per container (default 200, at most 5000), sinceSeconds keeps the lines of the last seconds only, and previous gives the logs of the previous container, the one that ended, for example after a crash. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context, namespace and kubeconfig file. Only available in projects of type Go service, in chats started by HephaestusV2.
+            Get the last log lines of the pods of the Kubernetes deployment of an environment of this Go service project, each line prefixed with [pod/<pod>/<container>], or of one pod with pod. container picks the container (default: each pod's default container), tailLines the number of lines per container (default 200, at most 5000), sinceSeconds keeps the lines of the last seconds only, and previous gives the logs of the previous container, the one that ended, for example after a crash. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubeconfig file and namespace. Only available in projects of type Go service, in chats started by HephaestusV2.
             """#,
             inputSchema: schema(#"""
             {
@@ -1625,7 +1625,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "k8s_events",
             description: #"""
-            Get the Kubernetes events of the deployment of an environment of this Go service project, of its ReplicaSets and of its pods, newest first, each with its type, reason, object, message, count and times. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context, namespace and kubeconfig file. Only available in projects of type Go service, in chats started by HephaestusV2.
+            Get the Kubernetes events of the deployment of an environment of this Go service project, of its ReplicaSets and of its pods, newest first, each with its type, reason, object, message, count and times. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubeconfig file and namespace. Only available in projects of type Go service, in chats started by HephaestusV2.
             """#,
             inputSchema: schema(#"""
             {
@@ -1647,7 +1647,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "k8s_restart",
             description: #"""
-            Restart the pods of the Kubernetes deployment of an environment of this Go service project with kubectl rollout restart: Kubernetes replaces them as the deployment's rollout strategy says; follow it with k8s_status. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context, namespace and kubeconfig file. Only available in projects of type Go service, in chats started by HephaestusV2.
+            Restart the pods of the Kubernetes deployment of an environment of this Go service project with kubectl rollout restart: Kubernetes replaces them as the deployment's rollout strategy says; follow it with k8s_status. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubeconfig file and namespace. Only available in projects of type Go service, in chats started by HephaestusV2.
             """#,
             inputSchema: schema(#"""
             {
@@ -1669,7 +1669,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "k8s_scale",
             description: #"""
-            Set the number of replicas of the Kubernetes deployment of an environment of this Go service project with kubectl scale; 0 stops every pod. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context, namespace and kubeconfig file. Only available in projects of type Go service, in chats started by HephaestusV2.
+            Set the number of replicas of the Kubernetes deployment of an environment of this Go service project with kubectl scale; 0 stops every pod. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubeconfig file and namespace. Only available in projects of type Go service, in chats started by HephaestusV2.
             """#,
             inputSchema: schema(#"""
             {
@@ -1697,7 +1697,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "k8s_port_forward",
             description: #"""
-            Forward a local port of this Mac to a port of the Kubernetes deployment of an environment of this Go service project with kubectl port-forward, to call the service in one of its pods. remotePort is the port in the pod; localPort is the port on 127.0.0.1, a free port when omitted. Returns the port forward's portForwardID and its url http://127.0.0.1:<localPort>. The forward lasts until k8s_stop_port_forward with its portForwardID, until kubectl ends it, or until this chat's Claude process exits. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context, namespace and kubeconfig file. Only available in projects of type Go service, in chats started by HephaestusV2.
+            Forward a local port of this Mac to a port of the Kubernetes deployment of an environment of this Go service project with kubectl port-forward, to call the service in one of its pods. remotePort is the port in the pod; localPort is the port on 127.0.0.1, a free port when omitted. Returns the port forward's portForwardID and its url http://127.0.0.1:<localPort>. The forward lasts until k8s_stop_port_forward with its portForwardID, until kubectl ends it, or until this chat's Claude process exits. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubeconfig file and namespace. Only available in projects of type Go service, in chats started by HephaestusV2.
             """#,
             inputSchema: schema(#"""
             {
@@ -1753,7 +1753,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "argocd_status",
             description: #"""
-            Get the state of the Argo CD Application of an environment of this Go service project: its sync status, health status, synced revision and last operation, read with kubectl from the Application resource. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context and kubeconfig file, in the namespace of the Application. Only available in projects of type Go service, in chats started by HephaestusV2.
+            Get the state of the Argo CD Application of an environment of this Go service project: its sync status, health status, synced revision and last operation, read with kubectl from the Application resource. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubeconfig file, in the namespace of the Application. Only available in projects of type Go service, in chats started by HephaestusV2.
             """#,
             inputSchema: schema(#"""
             {
@@ -1775,7 +1775,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "argocd_sync",
             description: #"""
-            Start a sync of the Argo CD Application of an environment of this Go service project to its target revision, with Argo CD's default sync options, by setting the Application's sync operation with kubectl; follow it with argocd_status. Fails while the Application has an operation in progress. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context and kubeconfig file, in the namespace of the Application. Only available in projects of type Go service, in chats started by HephaestusV2.
+            Start a sync of the Argo CD Application of an environment of this Go service project to its target revision, with Argo CD's default sync options, by setting the Application's sync operation with kubectl; follow it with argocd_status. Fails while the Application has an operation in progress. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubeconfig file, in the namespace of the Application. Only available in projects of type Go service, in chats started by HephaestusV2.
             """#,
             inputSchema: schema(#"""
             {

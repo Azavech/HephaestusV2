@@ -92,6 +92,7 @@ public enum EngineMethods {
         ProjectsRemove.self, ProjectsEnsureHephaestus.self,
         KubernetesStatus.self, KubernetesLogs.self, KubernetesEvents.self, KubernetesRestart.self, KubernetesScale.self,
         KubernetesForward.self, KubernetesStopForward.self, ArgoCDStatus.self, ArgoCDSync.self,
+        KubernetesCheck.self, KubernetesNamespaces.self, KubernetesDeployments.self,
         TicketsList.self, TicketsGet.self, TicketsCreate.self, TicketsUpdate.self, TicketsSetStatus.self,
         TicketsDelete.self, TicketsAddComment.self, TicketsUpdateComment.self, TicketsDeleteComment.self, TicketsRetryAnswer.self,
         TicketsAddAttachments.self, TicketsRemoveAttachment.self,

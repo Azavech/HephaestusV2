@@ -21,7 +21,7 @@ struct ProjectSettingsView: View {
                     .paneHeaderBar()
                 Divider()
                 ScrollView {
-                    ProjectSettingsForm(window: window, workspace: workspace, detail: detail)
+                    ProjectSettingsForm(workspace: workspace, detail: detail)
                         // A new active project starts from its own stored values.
                         .id(projectID)
                 }
@@ -55,7 +55,6 @@ private struct ProjectSettingsHeader: View {
 
 /// The fields of the section.
 private struct ProjectSettingsForm: View {
-    let window: WindowState
     let workspace: DeviceWorkspace
     let detail: ProjectDetail
 
@@ -130,16 +129,6 @@ private struct ProjectSettingsForm: View {
                 row("Chat defaults") {
                     chatDefaults
                 }
-                if project.type == .goService {
-                    // The list has no text baseline: the label aligns with its top.
-                    row("Environments", alignment: .top) {
-                        ProjectEnvironmentsPart(window: window, projectID: project.id, environments: detail.environments,
-                                                inheritedNames: Set(detail.inheritedEnvironments.map(\.name)),
-                                                parentName: parentName, own: project.environments) { environments in
-                            await update(ProjectsUpdate.Params(projectID: project.id, environments: environments))
-                        }
-                    }
-                }
                 if !detail.subprojects.isEmpty {
                     row("Sub projects") {
                         ForEach(detail.subprojects, id: \.id) { sub in
@@ -157,6 +146,12 @@ private struct ProjectSettingsForm: View {
                         }
                     }
                 }
+                if project.type == .goService {
+                    // The section's rows join this grid, so that they use its label column.
+                    ProjectEnvironmentsSection(workspace: workspace, detail: detail, parentName: parentName) { params in
+                        await update(params)
+                    }
+                }
             }
         }
         .padding(20)
@@ -166,12 +161,10 @@ private struct ProjectSettingsForm: View {
 
     // MARK: Layout
 
-    private func row<Content: View>(_ label: String, alignment: VerticalAlignment? = nil,
-                                    @ViewBuilder content: () -> Content) -> some View {
-        GridRow(alignment: alignment) {
+    private func row<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
+        GridRow {
             Text(label)
                 .gridColumnAlignment(.trailing)
-                .padding(.top, alignment == .top ? 4 : 0)
             VStack(alignment: .leading, spacing: 4) {
                 content()
             }
@@ -267,353 +260,6 @@ private struct ProjectSettingsForm: View {
             return nil
         } catch {
             return errorMessage(error)
-        }
-    }
-}
-
-/// The Environments part of a Go service project: the list of its environments, the inherited ones
-/// first, then `+`, `Edit` and `−`. The sheets apply their change themselves; `−` applies the list
-/// of the project's own environments without the selected one at once (docs/projects.md ›
-/// Environments, › Inherited environments).
-private struct ProjectEnvironmentsPart: View {
-    let window: WindowState
-    let projectID: String
-    /// The project's environments as they apply, the inherited ones first.
-    let environments: [ProjectEnvironment]
-    /// The names of the environments the project inherits.
-    let inheritedNames: Set<String>
-    /// The name of the parent the inherited environments come from.
-    let parentName: String
-    /// The project's own environments, which `−` changes.
-    let own: [ProjectEnvironment]
-    /// Applies a new list of the project's own environments; returns the engine's message, or nil
-    /// on success.
-    let apply: ([ProjectEnvironment]) async -> String?
-
-    /// The selected environment's name.
-    @State private var selection: String?
-    @State private var failure: String?
-
-    /// The selected environment, while the list still has it.
-    private var selected: ProjectEnvironment? {
-        selection.flatMap { name in environments.first { $0.name == name } }
-    }
-
-    /// True while the selected environment is an inherited one, which `−` cannot remove.
-    private var selectedIsInherited: Bool {
-        selected.map { inheritedNames.contains($0.name) } ?? false
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            List(selection: $selection) {
-                ForEach(Array(environments.enumerated()), id: \.offset) { _, environment in
-                    HStack(spacing: 8) {
-                        Text(environment.name)
-                        Text(environment.baseURL)
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        if inheritedNames.contains(environment.name) {
-                            Spacer(minLength: 8)
-                            Text("Inherited from \(parentName)")
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .fixedSize()
-                        }
-                    }
-                    .tag(environment.name)
-                }
-            }
-            .listStyle(.inset)
-            .frame(height: 112)
-            .contextMenu(forSelectionType: String.self) { _ in
-                EmptyView()
-            } primaryAction: { names in
-                // A double-click on a row edits its environment.
-                if let name = names.first {
-                    edit(name)
-                }
-            }
-            Divider()
-            HStack(spacing: 2) {
-                Button {
-                    window.sheet = .environment(projectID: projectID, name: nil)
-                } label: {
-                    Image(systemName: "plus")
-                        .frame(width: 22, height: 20)
-                }
-                Button("Edit") {
-                    if let selected {
-                        edit(selected.name)
-                    }
-                }
-                .disabled(selected == nil)
-                Button {
-                    remove()
-                } label: {
-                    Image(systemName: "minus")
-                        .frame(width: 22, height: 20)
-                }
-                .disabled(selected == nil || selectedIsInherited)
-                Spacer()
-            }
-            .buttonStyle(.borderless)
-            .padding(.horizontal, 6)
-            .frame(height: 26)
-        }
-        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color(nsColor: .separatorColor)))
-        FieldMessage(text: failure)
-    }
-
-    private func edit(_ name: String) {
-        window.sheet = .environment(projectID: projectID, name: name)
-    }
-
-    /// `−`: the list of the project's own environments without the selected one applies at once.
-    private func remove() {
-        guard let selected, !selectedIsInherited, let list = ProjectRules.environments(own, removing: selected.name) else { return }
-        Task {
-            failure = await apply(list)
-        }
-    }
-}
-
-/// The New Environment sheet, or the Edit Environment sheet of the environment named `name`:
-/// Name, URL, Port, kubectl context, Namespace, Deployment, Argo CD application and Kubeconfig file
-/// with their messages, then `Cancel` and `Create` or `Save`. The change applies at once with
-/// `projects.update` (docs/projects.md › Environments). For an environment the project inherits,
-/// the sheet changes only its URL, port, deployment and Argo CD application for the project, and
-/// shows the parent's other values disabled (docs/projects.md › Inherited environments).
-struct EnvironmentSheet: View {
-    let window: WindowState
-    let workspace: DeviceWorkspace
-    let projectID: String
-    /// True for Edit Environment.
-    private let edits: Bool
-
-    /// The edited environment of the project's own as the sheet opened; nil for New Environment
-    /// and for an inherited environment. Kept while the sheet is open, whatever happens to the
-    /// list meanwhile.
-    @State private var original: ProjectEnvironment?
-    /// The edited inherited environment as the parent resolves it, without the project's change,
-    /// as the sheet opened; nil for an environment of the project's own.
-    @State private var inherited: ProjectEnvironment?
-    @State private var name: String
-    @State private var url: String
-    @State private var port: String
-    @State private var context: String
-    @State private var namespace: String
-    @State private var deployment: String
-    @State private var argoCDApplication: String
-    @State private var kubeconfig: String
-    @State private var nameEdited = false
-    @State private var urlEdited = false
-    @State private var portEdited = false
-    @State private var argoCDApplicationEdited = false
-    @State private var kubeconfigEdited = false
-    @State private var working = false
-    @State private var failure: String?
-
-    init(window: WindowState, workspace: DeviceWorkspace, projectID: String, name: String?) {
-        self.window = window
-        self.workspace = workspace
-        self.projectID = projectID
-        let detail = workspace.details[projectID]
-        // An inherited environment hides an environment of the project's own with its name.
-        let inherited = name.flatMap { name in detail?.inheritedEnvironments.first { $0.name == name } }
-        let original = inherited == nil ? name.flatMap { name in detail?.project.environments.first { $0.name == name } } : nil
-        edits = name != nil
-        _original = State(initialValue: original)
-        _inherited = State(initialValue: inherited)
-        if let inherited {
-            // The project's change of the inherited environment; an empty field keeps the parent's value.
-            let change = detail?.project.environmentOverrides[inherited.name]
-            _name = State(initialValue: inherited.name)
-            _url = State(initialValue: change?.url ?? "")
-            _port = State(initialValue: change?.port.map(String.init) ?? "")
-            _context = State(initialValue: inherited.context ?? "")
-            _namespace = State(initialValue: inherited.namespace ?? "")
-            _deployment = State(initialValue: change?.deployment ?? "")
-            _argoCDApplication = State(initialValue: change?.argoCDApplication ?? "")
-            _kubeconfig = State(initialValue: inherited.kubeconfig ?? "")
-        } else {
-            _name = State(initialValue: original?.name ?? "")
-            _url = State(initialValue: original?.url ?? "")
-            _port = State(initialValue: original?.port.map(String.init) ?? "")
-            _context = State(initialValue: original?.context ?? "")
-            _namespace = State(initialValue: original?.namespace ?? "")
-            _deployment = State(initialValue: original?.deployment ?? "")
-            _argoCDApplication = State(initialValue: original?.argoCDApplication ?? "")
-            _kubeconfig = State(initialValue: original?.kubeconfig ?? "")
-        }
-    }
-
-    /// The project's own environments as they are now, which a change of one of them applies to.
-    private var current: [ProjectEnvironment] {
-        workspace.details[projectID]?.project.environments ?? []
-    }
-
-    private var nameMessage: String? {
-        guard inherited == nil else { return nil }
-        let inheritedNow = workspace.details[projectID]?.inheritedEnvironments ?? []
-        return ProjectRules.environmentNameMessage(name, otherNames: ProjectRules.otherEnvironmentNames(current, inherited: inheritedNow,
-                                                                                                         editing: original))
-    }
-
-    private var urlMessage: String? {
-        inherited == nil ? ProjectRules.environmentURLMessage(url) : ProjectRules.inheritedEnvironmentURLMessage(url)
-    }
-
-    private var portMessage: String? { ProjectRules.environmentPortMessage(port) }
-    private var argoCDApplicationMessage: String? { ProjectRules.environmentArgoCDApplicationMessage(argoCDApplication) }
-    private var kubeconfigMessage: String? { inherited == nil ? ProjectRules.environmentKubeconfigMessage(kubeconfig) : nil }
-
-    private var canConfirm: Bool {
-        nameMessage == nil && urlMessage == nil && portMessage == nil && argoCDApplicationMessage == nil
-            && kubeconfigMessage == nil && !working
-    }
-
-    var body: some View {
-        if edits && original == nil && inherited == nil {
-            // The environment to edit was removed before the sheet opened: it closes at once.
-            Color.clear
-                .frame(width: 1, height: 1)
-                .onAppear {
-                    window.sheet = nil
-                }
-        } else {
-            content
-        }
-    }
-
-    private var content: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(edits ? "Edit Environment" : "New Environment")
-                .font(.headline)
-            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 10) {
-                GridRow {
-                    label("Name")
-                    VStack(alignment: .leading, spacing: 4) {
-                        TextField("Name", text: $name, prompt: Text(""))
-                            .labelsHidden()
-                            .disabled(inherited != nil)
-                            .onChange(of: name) { nameEdited = true }
-                        FieldMessage(text: nameEdited ? nameMessage : nil)
-                    }
-                }
-                GridRow {
-                    label("URL")
-                    VStack(alignment: .leading, spacing: 4) {
-                        TextField("URL", text: $url, prompt: Text(inherited?.url ?? ""))
-                            .labelsHidden()
-                            .font(.system(.body, design: .monospaced))
-                            .onChange(of: url) { urlEdited = true }
-                        FieldMessage(text: urlEdited ? urlMessage : nil)
-                    }
-                }
-                GridRow {
-                    label("Port")
-                    VStack(alignment: .leading, spacing: 4) {
-                        TextField("Port", text: $port, prompt: Text(inherited?.port.map(String.init) ?? ""))
-                            .labelsHidden()
-                            .font(.system(.body, design: .monospaced))
-                            .frame(width: 100)
-                            .onChange(of: port) { portEdited = true }
-                        FieldMessage(text: portEdited ? portMessage : nil)
-                    }
-                }
-                // The Kubernetes fields are optional: an empty field means not set.
-                GridRow {
-                    label("kubectl context")
-                    monospacedField("kubectl context", text: $context)
-                        .disabled(inherited != nil)
-                }
-                GridRow {
-                    label("Namespace")
-                    monospacedField("Namespace", text: $namespace)
-                        .disabled(inherited != nil)
-                }
-                GridRow {
-                    label("Deployment")
-                    monospacedField("Deployment", text: $deployment, placeholder: inherited?.deployment)
-                }
-                GridRow {
-                    label("Argo CD application")
-                    VStack(alignment: .leading, spacing: 4) {
-                        monospacedField("Argo CD application", text: $argoCDApplication, placeholder: inherited?.argoCDApplication)
-                            .onChange(of: argoCDApplication) { argoCDApplicationEdited = true }
-                        FieldMessage(text: argoCDApplicationEdited ? argoCDApplicationMessage : nil)
-                    }
-                }
-                GridRow {
-                    label("Kubeconfig file")
-                    VStack(alignment: .leading, spacing: 4) {
-                        monospacedField("Kubeconfig file", text: $kubeconfig)
-                            .disabled(inherited != nil)
-                            .onChange(of: kubeconfig) { kubeconfigEdited = true }
-                        FieldMessage(text: kubeconfigEdited ? kubeconfigMessage : nil)
-                    }
-                }
-            }
-            FieldMessage(text: failure)
-            SheetButtonRow(defaultTitle: edits ? "Save" : "Create", defaultEnabled: canConfirm,
-                           cancel: { window.sheet = nil }, confirm: confirm) {
-                if working {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-            }
-        }
-        .padding(20)
-        .frame(width: 540)
-    }
-
-    private func label(_ text: String) -> some View {
-        Text(text)
-            .gridColumnAlignment(.trailing)
-    }
-
-    /// A text field in SF Mono that fills its row; `placeholder` is the parent's value of an
-    /// inherited environment, which an empty field keeps.
-    private func monospacedField(_ title: String, text: Binding<String>, placeholder: String? = nil) -> some View {
-        TextField(title, text: text, prompt: Text(placeholder ?? ""))
-            .labelsHidden()
-            .font(.system(.body, design: .monospaced))
-    }
-
-    /// Create appends the environment; Save replaces the edited one at its place, keeping its
-    /// unknown keys, or appends it when no environment has its name any more (renamed or removed
-    /// meanwhile). For an inherited environment, Save replaces the project's change of it, keyed by
-    /// the name it had when the sheet opened, or removes the change when the four fields are empty.
-    /// The whole list, or all the changes, apply at once; the sheet closes on success and shows the
-    /// engine's message otherwise.
-    private func confirm() {
-        guard canConfirm else { return }
-        let params: ProjectsUpdate.Params
-        if let inherited {
-            let stored = workspace.details[projectID]?.project.environmentOverrides ?? [:]
-            let change = ProjectRules.environmentOverride(url: url, port: port, deployment: deployment,
-                                                          argoCDApplication: argoCDApplication, stored: stored[inherited.name])
-            params = ProjectsUpdate.Params(projectID: projectID,
-                                           environmentOverrides: ProjectRules.environmentOverrides(stored, saving: change, for: inherited.name))
-        } else {
-            let environment = ProjectRules.environment(name: name, url: url, port: port, context: context, namespace: namespace,
-                                                       deployment: deployment, argoCDApplication: argoCDApplication,
-                                                       kubeconfig: kubeconfig, editing: original)
-            params = ProjectsUpdate.Params(projectID: projectID,
-                                           environments: ProjectRules.environments(current, saving: environment, replacing: original?.name))
-        }
-        working = true
-        Task {
-            do {
-                _ = try await workspace.call(ProjectsUpdate.self, params)
-                window.sheet = nil
-            } catch {
-                failure = errorMessage(error)
-            }
-            working = false
         }
     }
 }

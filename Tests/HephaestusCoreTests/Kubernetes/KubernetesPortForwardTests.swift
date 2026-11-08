@@ -142,7 +142,7 @@ struct KubernetesPortForwardTests {
             let chat = try await bed.chatWithClaude()
             let error = await engineError { try await Self.forward(bed, chat.id, localPort: 9000) }
             #expect(error == EngineError(
-                .unavailable, "kubectl --kubeconfig=/Users/example/.kube/staging.yaml --context=staging-eks --namespace=orders "
+                .unavailable, "kubectl --kubeconfig=/Users/example/.kube/staging.yaml --namespace=orders "
                     + "port-forward deployment/orders-api --address=127.0.0.1 9000:8080 exited with code 1: "
                     + "error: unable to listen on any of the requested ports: [{9000 8080}]"))
             #expect(await eventually { await bed.engine.portForwardIDs.isEmpty })

@@ -11,16 +11,15 @@ struct KubernetesKubectlTests {
         try #require(Kubectl.jsonObject(Data(json.utf8)))
     }
 
-    @Test("Rule 7: --kubeconfig, --context and --namespace, each only when set, in this order, ~/ expanded")
+    @Test("Rule 7: --kubeconfig and --namespace, each only when set, in this order, ~/ expanded, never --context")
     func prefix() {
-        #expect(Kubectl.prefix(kubeconfig: "~/.kube/staging.yaml", context: "staging-eks", namespace: "orders",
-                               homeDirectory: "/Users/example")
-            == ["--kubeconfig=/Users/example/.kube/staging.yaml", "--context=staging-eks", "--namespace=orders"])
-        #expect(Kubectl.prefix(kubeconfig: nil, context: nil, namespace: nil, homeDirectory: "/Users/example") == [])
-        #expect(Kubectl.prefix(kubeconfig: "/etc/kube/config", context: nil, namespace: "argocd", homeDirectory: "/Users/example")
+        #expect(Kubectl.prefix(kubeconfig: "~/.kube/staging.yaml", namespace: "orders", homeDirectory: "/Users/example")
+            == ["--kubeconfig=/Users/example/.kube/staging.yaml", "--namespace=orders"])
+        #expect(Kubectl.prefix(kubeconfig: nil, namespace: nil, homeDirectory: "/Users/example") == [])
+        #expect(Kubectl.prefix(kubeconfig: "/etc/kube/config", namespace: "argocd", homeDirectory: "/Users/example")
             == ["--kubeconfig=/etc/kube/config", "--namespace=argocd"])
-        #expect(Kubectl.prefix(kubeconfig: nil, context: "--namespace=kube-system", namespace: nil, homeDirectory: "/Users/example")
-            == ["--context=--namespace=kube-system"])
+        #expect(Kubectl.prefix(kubeconfig: nil, namespace: "--context=kube-system", homeDirectory: "/Users/example")
+            == ["--namespace=--context=kube-system"])
         #expect(Kubectl.expandingHome("~/.kube/config", homeDirectory: "/Users/example/") == "/Users/example/.kube/config")
         #expect(Kubectl.expandingHome("~/.kube/config", homeDirectory: "/") == "/.kube/config")
         #expect(Kubectl.expandingHome("/opt/kube/~/config", homeDirectory: "/Users/example") == "/opt/kube/~/config")
@@ -28,13 +27,13 @@ struct KubernetesKubectlTests {
 
     @Test("Rule 9: the command is kubectl and its arguments, quoted as the launch line of a chat's log")
     func command() {
-        #expect(Kubectl.command(["--context=staging-eks", "get", "deployment/orders-api", "-o", "json"])
-            == "kubectl --context=staging-eks get deployment/orders-api -o json")
+        #expect(Kubectl.command(["--namespace=orders", "get", "deployment/orders-api", "-o", "json"])
+            == "kubectl --namespace=orders get deployment/orders-api -o json")
         #expect(Kubectl.command(["patch", "--patch=\(Kubectl.syncPatch)"])
             == #"kubectl patch '--patch={"operation":{"initiatedBy":{"username":"HephaestusV2"},"sync":{"syncStrategy":{"hook":{}}}}}'"#)
         #expect(Kubectl.command(["logs", "-l", "app in (orders,billing)", "--container=", ""])
             == "kubectl logs -l 'app in (orders,billing)' --container= ''")
-        #expect(Kubectl.command(["--context=it's"]) == #"kubectl '--context=it'\''s'"#)
+        #expect(Kubectl.command(["--namespace=it's"]) == #"kubectl '--namespace=it'\''s'"#)
         #expect(Kubectl.command(["get", "pods", "-l", "app=orders-api,tier=api", "-o", "json"])
             == "kubectl get pods -l app=orders-api,tier=api -o json")
         #expect(Kubectl.command([]) == "kubectl")
@@ -54,6 +53,18 @@ struct KubernetesKubectlTests {
         #expect(Kubectl.timeoutFailure(arguments)
             == EngineError(.unavailable, "kubectl get deployment/orders-api -o json did not finish within 60 seconds."))
         #expect(Kubectl.unexpectedOutput(arguments) == EngineError(.internal, "Unexpected output from kubectl get deployment/orders-api -o json."))
+    }
+
+    @Test("The names of a list: metadata.name of each item in kubectl's order, items without a name left out")
+    func itemNames() throws {
+        let list = try Self.object(#"""
+            {"kind": "List", "items": [{"metadata": {"name": "orders"}}, {"metadata": {}}, {"spec": {}},
+                                       {"metadata": {"name": "default"}}, {"metadata": {"name": null}}]}
+            """#)
+        #expect(Kubectl.itemNames(list) == ["orders", "default"])
+        #expect(Kubectl.itemNames(try Self.object(#"{"items": []}"#)) == [])
+        #expect(Kubectl.itemNames(try Self.object(#"{"kind": "List"}"#)) == nil)
+        #expect(Kubectl.itemNames(try Self.object(#"{"items": {}}"#)) == nil)
     }
 
     @Test("Kubectl output: the standard output without its final line break")

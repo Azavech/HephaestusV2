@@ -373,13 +373,14 @@ struct OpenAPIRequestTests {
     func url() throws {
         let environment = ProjectEnvironment(name: "local", url: "http://127.0.0.1/v1/", port: 8080)
         let input = OpenAPIRequestInput(
-            baseURL: environment.baseURL, method: "get", path: "/pets/{petId}/toys",
+            baseURL: try #require(environment.baseURL), method: "get", path: "/pets/{petId}/toys",
             parameters: [(.path, "petId", "a b/c"), (.query, "limit", "10"), (.query, "empty", ""), (.query, "q", "x&y=é")],
             credentials: [.apiKey(name: "key", location: "query", value: "k1")])
         #expect(OpenAPIRequestBuilder.url(for: input)
                 == "http://127.0.0.1:8080/v1/pets/a%20b%2Fc/toys?limit=10&q=x%26y%3D%C3%A9&key=k1")
+        let stagingBaseURL = try #require(ProjectEnvironment(name: "staging", url: "https://staging.example.com/").baseURL)
         let request = try #require(OpenAPIRequestBuilder.request(for: OpenAPIRequestInput(
-            baseURL: ProjectEnvironment(name: "staging", url: "https://staging.example.com/").baseURL, method: "delete", path: "/pets")))
+            baseURL: stagingBaseURL, method: "delete", path: "/pets")))
         #expect(request.url?.absoluteString == "https://staging.example.com/pets")
         #expect(request.httpMethod == "DELETE")
         #expect(OpenAPIRequestBuilder.isUsableBaseURL("http://127.0.0.1:8080"))
@@ -409,6 +410,10 @@ struct OpenAPIRequestTests {
         #expect(!ProjectEnvironment(name: "e", url: "http://127.0.0.1", port: 70000).isUsable)
         #expect(!ProjectEnvironment(name: "e", url: "http://127.0.0.1", port: -1).isUsable)
         #expect(ProjectEnvironment(name: "e", url: "http://127.0.0.1", port: -1).baseURL == "http://127.0.0.1")
+        // Without a URL, an environment has no base URL, whatever its port, and cannot send.
+        #expect(ProjectEnvironment(name: "e").baseURL == nil)
+        #expect(ProjectEnvironment(name: "e", port: 8080).baseURL == nil)
+        #expect(!ProjectEnvironment(name: "e", port: 8080).isUsable)
     }
 
     @Test("Headers: parameters, cookies, credentials, content type, then added headers")

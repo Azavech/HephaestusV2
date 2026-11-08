@@ -260,7 +260,8 @@ final class OpenAPIContractModel {
         update { $0.environment = name }
     }
 
-    /// Whether Send is enabled: an environment is selected and its URL and port keep their rules.
+    /// Whether Send is enabled: an environment is selected, it has a URL, and its URL and port keep
+    /// their rules (docs/openapi.md › Send).
     var canSend: Bool {
         environment?.isUsable ?? false
     }

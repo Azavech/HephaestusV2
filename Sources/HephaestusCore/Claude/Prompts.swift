@@ -61,19 +61,19 @@ enum Prompts {
     // MARK: Rendered blocks (docs/chats.md › Rendered blocks)
 
     /// `{{environments}}`, for a project whose type is `goService`: a blank line, the line that
-    /// introduces the environments, then `- <name>: <base URL>` per environment in their order,
-    /// followed by `; <field>: <value>` for each Kubernetes field it sets, as stored;
+    /// introduces the environments, then `- <name>: <base URL>`, or `- <name>` without a URL, per
+    /// environment in their order, followed by `; <field>: <value>` for each Kubernetes field it
+    /// sets, as stored;
     /// `- none: the user adds them in Project Settings` without environments. Empty for the other
     /// types. The common prompt writes it at the end of its first paragraph, right after the
     /// project's type, so its blank line starts a paragraph of its own.
     static func environments(_ environments: [ProjectEnvironment], type: ProjectType) -> String {
         guard type == .goService else { return "" }
         let lines = environments.map { environment in
-            let fields = [("kubectl context", environment.context), ("namespace", environment.namespace),
-                          ("deployment", environment.deployment), ("Argo CD application", environment.argoCDApplication),
-                          ("kubeconfig file", environment.kubeconfig)]
+            let fields = [("namespace", environment.namespace), ("deployment", environment.deployment),
+                          ("Argo CD application", environment.argoCDApplication), ("kubeconfig file", environment.kubeconfig)]
             let details = fields.compactMap { label, value in value.map { "; \(label): \($0)" } }
-            return "- \(environment.name): \(environment.baseURL)" + details.joined()
+            return "- \(environment.name)" + (environment.baseURL.map { ": \($0)" } ?? "") + details.joined()
         }
         return "\n\nThe project's environments, where the Go service runs; the Kubernetes and Argo CD tools take an environment's name:\n"
             + (lines.isEmpty ? "- none: the user adds them in Project Settings" : lines.joined(separator: "\n"))

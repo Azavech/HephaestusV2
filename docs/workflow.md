@@ -522,7 +522,7 @@ These rules apply to every project and sub project whose [type](projects.md#proj
 - The chat that pushed goes on with the steps below after its push: the implement chat of a single ticket (Implement, or `implement_ticket` outside a bundle), or the bundle chat after its single push, for every ticket it merged ([Bundles](#bundles)).
 - The implement chat of a single ticket posts its completion comment after the push, with the result `waiting for the test service` for each Claude test, updates it in step 5 and sets the status in step 6.
 - In a bundle, the ticket chats do not run their Claude tests: their lines in the completion comments read `waiting for the test service`, and the ticket chats set their tickets to `review`.
-- Claude inspects and operates the project's environments on Kubernetes with the [Kubernetes and Argo CD tools](mcp.md#kubernetes-and-argo-cd-tools), which take an environment's name and use its kubectl context, namespace, deployment, Argo CD application and kubeconfig file, never with kubectl and a guessed context, namespace or deployment; the system prompt lists the environments ([Rendered blocks](chats.md#rendered-blocks)). It stops a port forward with `k8s_stop_port_forward` once it no longer needs it. Default chosen at design time.
+- Claude inspects and operates the project's environments on Kubernetes with the [Kubernetes and Argo CD tools](mcp.md#kubernetes-and-argo-cd-tools), which take an environment's name and use its kubeconfig file, namespace, deployment and Argo CD application, never with kubectl and a guessed kubeconfig file, namespace or deployment; the system prompt lists the environments ([Rendered blocks](chats.md#rendered-blocks)). It stops a port forward with `k8s_stop_port_forward` once it no longer needs it. Default chosen at design time.
 
 The steps after the push:
 
@@ -922,7 +922,7 @@ Notes
 - R150: Claude shows the user images in the chat with `show_image`: PNG, JPEG, GIF and WebP files are copied into the chat and shown, with an optional caption, at the place of the call, without a permission prompt, in local and remote windows; clicking one opens the image viewer.
 - R151: Claude can ask multiple-choice questions: the user checks options within the minimum and maximum Claude sets and adds own answers.
 - R161: After an implementation is pushed in a project with a GitHub page, a CI chat follows CI and reports to the orchestrator, which asks the user how to proceed when CI fails and finishes only once CI is green or the user decides so.
-- R162: Each environment of a Go service names its Kubernetes context, namespace, deployment, Argo CD application and kubeconfig, which Claude receives and uses through HephaestusV2's Kubernetes and Argo CD tools.
+- R162: Each environment of a Go service names its namespace, deployment, Argo CD application and kubeconfig, which Claude receives and uses through HephaestusV2's Kubernetes and Argo CD tools.
 - R164: The main button of the pinned questions card reads `Submit` only when pressing it sends the answers to Claude, and `Next` on the other questions of the set.
 - R169: Claude keeps global memories that every chat of every project receives; the user shows and edits them with View ▸ Global Memories.
 - R175: Ticket descriptions and comments draw the SF Symbol, color, font, shortcut, sound and animation markers, and Claude writes them there when it names one.

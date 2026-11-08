@@ -376,16 +376,20 @@ struct ProjectsTests {
             try await h.create("Api", name: "Orders API", identifier: "API")
             let events = await DomainEventRecorder.make(h)
             let detail = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "API", environments: [
-                ProjectEnvironment(name: " staging ", url: " https://staging.example.com/ ", context: " staging-eks ",
+                ProjectEnvironment(name: " staging ", url: " https://staging.example.com/ ",
                                    namespace: "orders ", deployment: " orders-api", argoCDApplication: " argocd/orders-staging ",
                                    kubeconfig: " ~/.kube/staging.yaml "),
-                ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080, context: " ", namespace: "",
+                ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080, namespace: "",
                                    deployment: "\n", argoCDApplication: "", kubeconfig: "  "),
+                // Without a URL, and with the kubectl context of an earlier version, kept as an
+                // unknown key.
+                ProjectEnvironment(name: "preview", url: "  ", namespace: "orders-preview", unknownKeys: ["context": "kind-preview"]),
             ]))
             #expect(detail.project.environments == [
-                ProjectEnvironment(name: "staging", url: "https://staging.example.com/", context: "staging-eks", namespace: "orders",
+                ProjectEnvironment(name: "staging", url: "https://staging.example.com/", namespace: "orders",
                                    deployment: "orders-api", argoCDApplication: "argocd/orders-staging", kubeconfig: "~/.kube/staging.yaml"),
                 ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
+                ProjectEnvironment(name: "preview", namespace: "orders-preview", unknownKeys: ["context": "kind-preview"]),
             ])
             #expect(await events.wait(for: ProjectUpdatedEvent.name) == ["project.updated"])
             #expect(await events.settle() == ["project.updated"])
@@ -397,7 +401,6 @@ struct ProjectsTests {
                 - name: staging
                   url: https://staging.example.com/
                   port: null
-                  context: staging-eks
                   namespace: orders
                   deployment: orders-api
                   argoCDApplication: argocd/orders-staging
@@ -405,11 +408,18 @@ struct ProjectsTests {
                 - name: local
                   url: http://127.0.0.1
                   port: 8080
-                  context: null
                   namespace: null
                   deployment: null
                   argoCDApplication: null
                   kubeconfig: null
+                - name: preview
+                  url: null
+                  port: null
+                  namespace: orders-preview
+                  deployment: null
+                  argoCDApplication: null
+                  kubeconfig: null
+                  context: kind-preview
 
                 """))
 
@@ -425,8 +435,6 @@ struct ProjectsTests {
                 == EngineError(.invalid, "environments[0]: use a port from 1 to 65535."))
             #expect(await update([valid, ProjectEnvironment(name: "local ", url: "http://b.example")])
                 == EngineError(.invalid, "An environment named “local” already exists."))
-            #expect(await update([valid, ProjectEnvironment(name: "a", url: "http://a.example", context: "staging\neks")])
-                == EngineError(.invalid, "environments[1]: use a kubectl context on one line."))
             #expect(await update([valid, ProjectEnvironment(name: "a", url: "http://a.example", namespace: "orders\nprod")])
                 == EngineError(.invalid, "environments[1]: use a namespace on one line."))
             #expect(await update([valid, ProjectEnvironment(name: "a", url: "http://a.example", deployment: "orders\napi")])
@@ -505,8 +513,9 @@ struct ProjectsTests {
             try await h.create("Api", name: "Orders API", identifier: "API")
             let environments = [
                 ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
-                ProjectEnvironment(name: "staging", url: "https://staging.example.com", context: "staging-eks", namespace: "orders",
+                ProjectEnvironment(name: "staging", url: "https://staging.example.com", namespace: "orders",
                                    deployment: "orders-api", argoCDApplication: "argocd/orders-staging", kubeconfig: "~/.kube/staging.yaml"),
+                ProjectEnvironment(name: "preview", namespace: "orders-preview"),
             ]
             _ = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "API", environments: environments))
             let text = try await call("get_project", #"{"projectID":"API"}"#).get()

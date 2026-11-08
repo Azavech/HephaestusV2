@@ -42,6 +42,17 @@ extension Engine {
         register(ArgoCDSync.self, actors: [.claude]) { [unowned self] params, actor in
             try await self.argoCDSync(params, actor)
         }
+        // docs/engine-api.md › Kubeconfig methods: for the Environments section of Project
+        // Settings, in the windows of every device.
+        register(KubernetesCheck.self, actors: [.user]) { [unowned self] params, _ in
+            try await self.kubernetesCheck(params)
+        }
+        register(KubernetesNamespaces.self, actors: [.user]) { [unowned self] params, _ in
+            try await self.kubernetesNamespaces(params)
+        }
+        register(KubernetesDeployments.self, actors: [.user]) { [unowned self] params, _ in
+            try await self.kubernetesDeployments(params)
+        }
     }
 
     // MARK: Kubernetes
@@ -207,6 +218,62 @@ extension Engine {
         return KubectlOutput(output: Kubectl.outputText(output))
     }
 
+    // MARK: Kubeconfig methods (docs/engine-api.md › Kubeconfig methods)
+
+    /// `kubernetes.check`: `kubectl --kubeconfig=<file> version -o json`, which asks the cluster of
+    /// the file's current context for its version; the output is not read.
+    func kubernetesCheck(_ params: KubernetesCheck.Params) async throws -> Empty {
+        let invocation = try await kubeconfigInvocation(projectID: params.projectID, kubeconfig: params.kubeconfig)
+        let kubectl = self.kubectl
+        _ = try await kubectl.run(invocation, ["version", "-o", "json"])
+        return Empty()
+    }
+
+    /// `kubernetes.namespaces`: the names of `kubectl --kubeconfig=<file> get namespaces -o json`.
+    func kubernetesNamespaces(_ params: KubernetesNamespaces.Params) async throws -> [String] {
+        let invocation = try await kubeconfigInvocation(projectID: params.projectID, kubeconfig: params.kubeconfig)
+        return try await itemNames(invocation, ["get", "namespaces", "-o", "json"])
+    }
+
+    /// `kubernetes.deployments`: the names of `kubectl --kubeconfig=<file> --namespace=<namespace>
+    /// get deployments -o json`, without `--namespace` for an absent or empty namespace.
+    func kubernetesDeployments(_ params: KubernetesDeployments.Params) async throws -> [String] {
+        let invocation = try await kubeconfigInvocation(projectID: params.projectID, kubeconfig: params.kubeconfig,
+                                                        namespace: ModelRules.trimmedOrNil(params.namespace))
+        return try await itemNames(invocation, ["get", "deployments", "-o", "json"])
+    }
+
+    /// The names of the items of a `get … -o json` command; an output without `items` array fails
+    /// with `Unexpected output from <command>.`
+    private func itemNames(_ invocation: KubectlInvocation, _ arguments: [String]) async throws -> [String] {
+        let kubectl = self.kubectl
+        guard let names = Kubectl.itemNames(try await kubectl.runJSON(invocation, arguments)) else {
+            throw Kubectl.unexpectedOutput(invocation.arguments(arguments))
+        }
+        return names
+    }
+
+    /// Checks 1 to 4 of the kubeconfig methods: `projectID` of 2 to 8 letters, a loaded project, a
+    /// kubeconfig file that is an absolute path or starts with `~/` on one line, and kubectl in
+    /// the `PATH` of the login-shell environment, which is awaited first. Every command starts with
+    /// `--kubeconfig=<file>`, then `--namespace=<namespace>` when `namespace` is set, and runs in
+    /// the project root.
+    func kubeconfigInvocation(projectID: ProjectID, kubeconfig: String, namespace: String? = nil) async throws -> KubectlInvocation {
+        let processEnvironment = await childProcessEnvironment()
+        let id = try fileProjectID(projectID)
+        guard let root = domain.projectRoot(id) else {
+            throw EngineError.notFound("Project", id)
+        }
+        guard let file = try? ModelRules.environmentKubeconfig(kubeconfig, field: "kubeconfig") else {
+            throw EngineError.invalid("kubeconfig", "use a kubeconfig file as an absolute path or a path starting with ~/")
+        }
+        guard let executable = Kubectl.executable(environment: processEnvironment) else {
+            throw EngineError(.invalid, "kubectl was not found in the PATH of the login shell.")
+        }
+        let prefix = Kubectl.prefix(kubeconfig: file, namespace: namespace, homeDirectory: configuration.claudeLauncher.homeDirectory)
+        return KubectlInvocation(executable: executable, environment: processEnvironment, directory: root.path, prefix: prefix)
+    }
+
     // MARK: Checks (docs/engine-api.md › Kubernetes and Argo CD)
 
     /// Checks 1 to 3: the actor is the Claude of the chat, the chat exists, and its project has the
@@ -263,7 +330,7 @@ extension Engine {
             throw EngineError(.invalid, "kubectl was not found in the PATH of the login shell.")
         }
         let environment = target.environment
-        let prefix = Kubectl.prefix(kubeconfig: environment.kubeconfig, context: environment.context,
+        let prefix = Kubectl.prefix(kubeconfig: environment.kubeconfig,
                                     namespace: application?.namespace ?? environment.namespace,
                                     homeDirectory: configuration.claudeLauncher.homeDirectory)
         return KubectlInvocation(executable: executable, environment: target.processEnvironment, directory: target.root.path,

@@ -121,11 +121,14 @@ struct PromptAndNamingTests {
     }
 
     /// The environments of the `{{environments}}` example of docs/chats.md › Rendered blocks: one
-    /// without any Kubernetes field, one with every field.
+    /// without any Kubernetes field, one with every field and the kubectl context of an earlier
+    /// version, which the block leaves out, and one without a URL.
     static let exampleEnvironments = [
         ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
-        ProjectEnvironment(name: "staging", url: "https://staging.example.com/", context: "staging-eks", namespace: "orders",
-                           deployment: "orders-api", argoCDApplication: "argocd/orders-staging", kubeconfig: "~/.kube/staging.yaml"),
+        ProjectEnvironment(name: "staging", url: "https://staging.example.com/", namespace: "orders",
+                           deployment: "orders-api", argoCDApplication: "argocd/orders-staging", kubeconfig: "~/.kube/staging.yaml",
+                           unknownKeys: ["context": "staging-eks"]),
+        ProjectEnvironment(name: "preview", port: 8080, namespace: "orders-preview", kubeconfig: "/Users/example/.kube/preview.yaml"),
     ]
 
     /// The line of `{{environments}}` that follows its blank line.
@@ -138,19 +141,25 @@ struct PromptAndNamingTests {
         #expect(Prompts.environments(Self.exampleEnvironments, type: .goService) == "\n\n" + documented.text)
     }
 
-    @Test("{{environments}}: the base URL, then each Kubernetes field set, in the documented order and as stored; an Argo CD application <name> stays <name>")
+    @Test("{{environments}}: the base URL, or the name alone without URL, then each Kubernetes field set, in the documented order and as stored; an Argo CD application <name> stays <name>")
     func environmentsFields() {
         let environments = [
             ProjectEnvironment(name: "prod", url: "https://api.example.com:8443/v1/", port: 9000, deployment: "orders-api",
                                argoCDApplication: "orders-prod"),
             ProjectEnvironment(name: "Preview", url: "https://preview.example.com", namespace: "orders-preview",
                                kubeconfig: "/Users/example/.kube/preview.yaml"),
-            ProjectEnvironment(name: "dev", url: "http://127.0.0.1:8080", context: "kind-dev"),
+            ProjectEnvironment(name: "dev", url: "http://127.0.0.1:8080", unknownKeys: ["context": "kind-dev"]),
+            ProjectEnvironment(name: "New Environment"),
+            ProjectEnvironment(name: "qa", deployment: "orders-api"),
         ]
-        #expect(Prompts.environments(environments, type: .goService) == "\n\n\(Self.environmentsHeader)\n"
-            + "- prod: https://api.example.com:9000/v1; deployment: orders-api; Argo CD application: orders-prod\n"
-            + "- Preview: https://preview.example.com; namespace: orders-preview; kubeconfig file: /Users/example/.kube/preview.yaml\n"
-            + "- dev: http://127.0.0.1:8080; kubectl context: kind-dev")
+        let lines = [
+            "- prod: https://api.example.com:9000/v1; deployment: orders-api; Argo CD application: orders-prod",
+            "- Preview: https://preview.example.com; namespace: orders-preview; kubeconfig file: /Users/example/.kube/preview.yaml",
+            "- dev: http://127.0.0.1:8080",
+            "- New Environment",
+            "- qa; deployment: orders-api",
+        ]
+        #expect(Prompts.environments(environments, type: .goService) == "\n\n\(Self.environmentsHeader)\n" + lines.joined(separator: "\n"))
     }
 
     @Test("{{environments}}: the none line for a Go service without environments; empty for the other types, environments or not")
@@ -169,11 +178,16 @@ struct PromptAndNamingTests {
                       "projectType": "Go service", "environments": Prompts.environments(Self.exampleEnvironments, type: .goService),
                       "parentMemories": ""]
         let go = Prompts.render(Prompts.text(.common), values)
-        #expect(go.contains("The project's type is Go service.\n\n"
-            + "\(Self.environmentsHeader)\n- local: http://127.0.0.1:8080\n"
-            + "- staging: https://staging.example.com; kubectl context: staging-eks; namespace: orders; deployment: orders-api; "
-            + "Argo CD application: argocd/orders-staging; kubeconfig file: ~/.kube/staging.yaml\n\n"
-            + "These rules apply in every chat."))
+        let block = [
+            "The project's type is Go service.\n",
+            Self.environmentsHeader,
+            "- local: http://127.0.0.1:8080",
+            "- staging: https://staging.example.com; namespace: orders; deployment: orders-api; "
+                + "Argo CD application: argocd/orders-staging; kubeconfig file: ~/.kube/staging.yaml",
+            "- preview; namespace: orders-preview; kubeconfig file: /Users/example/.kube/preview.yaml\n",
+            "These rules apply in every chat.",
+        ].joined(separator: "\n")
+        #expect(go.contains(block))
 
         values["environments"] = Prompts.environments([], type: .goService)
         #expect(Prompts.render(Prompts.text(.common), values).contains("The project's type is Go service.\n\n\(Self.environmentsHeader)\n"
@@ -191,11 +205,13 @@ struct PromptAndNamingTests {
         let common = Prompts.text(.common)
         #expect(common.contains("- Kubernetes and Argo CD, in a Go service project: k8s_status, k8s_logs, k8s_events, k8s_restart, k8s_scale, "
             + "k8s_port_forward, k8s_stop_port_forward, argocd_status, argocd_sync (they act on the deployment and the Argo CD application "
-            + "of an environment of the project, with its kubectl context, namespace and kubeconfig file).\n"))
+            + "of an environment of the project, with its kubeconfig file and namespace).\n"))
         let lower = try #require(common.range(of: "# When the project is a Go service")).lowerBound
         let upper = try #require(common.range(of: "# When the project is HephaestusV2")).lowerBound
         let section = String(common[lower..<upper])
-        #expect(section.contains("use the Kubernetes and Argo CD tools with its name, never kubectl with a guessed context, namespace or deployment"))
+        #expect(section.contains("use the Kubernetes and Argo CD tools with its name, never kubectl with a guessed kubeconfig file, namespace or "
+            + "deployment: the tools use the environment's kubeconfig file, namespace, deployment and Argo CD application."))
+        #expect(!common.contains("kubectl context"))
         #expect(section.contains("Stop a port forward with k8s_stop_port_forward once you no longer need it."))
         #expect(ClaudeCommandLine.preApprovedTools.hasSuffix(",mcp__hephaestus__get_chat,mcp__hephaestus__k8s_status,mcp__hephaestus__k8s_logs,"
             + "mcp__hephaestus__k8s_events,mcp__hephaestus__argocd_status"))

@@ -585,7 +585,7 @@ struct ChatInteractionTests {
             let header = "The project's environments, where the Go service runs; the Kubernetes and Argo CD tools take an environment's name:"
             let environments = [
                 ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
-                ProjectEnvironment(name: "staging", url: "https://staging.example.com/", context: "staging-eks", namespace: "orders",
+                ProjectEnvironment(name: "staging", url: "https://staging.example.com/", namespace: "orders",
                                    deployment: "orders-api", argoCDApplication: "orders-staging", kubeconfig: "~/.kube/staging.yaml"),
             ]
             // The environments of a project of type None are kept, not listed.
@@ -597,7 +597,7 @@ struct ChatInteractionTests {
             _ = try await bed.connection.call(ProjectsUpdate.self, .init(projectID: "DEMO", type: .goService))
             let go = try await systemPrompt(try await bed.createChat(message: "Plan"), 1)
             #expect(go.contains("The project's type is Go service.\n\n\(header)\n- local: http://127.0.0.1:8080\n"
-                + "- staging: https://staging.example.com; kubectl context: staging-eks; namespace: orders; deployment: orders-api; "
+                + "- staging: https://staging.example.com; namespace: orders; deployment: orders-api; "
                 + "Argo CD application: orders-staging; kubeconfig file: ~/.kube/staging.yaml\n\nThese rules apply in every chat."))
             #expect(!go.contains("{{"))
 
@@ -614,7 +614,7 @@ struct ChatInteractionTests {
             let header = "The project's environments, where the Go service runs; the Kubernetes and Argo CD tools take an environment's name:"
             _ = try await bed.connection.call(ProjectsUpdate.self, .init(projectID: "DEMO", type: .goService, environments: [
                 ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
-                ProjectEnvironment(name: "staging", url: "https://staging.example.com", context: "staging-eks", deployment: "orders-api"),
+                ProjectEnvironment(name: "staging", url: "https://staging.example.com", deployment: "orders-api"),
             ]))
             let root = bed.root.appendingPathComponent("worker").path
             _ = try await bed.connection.call(ProjectsCreate.self, .init(rootPath: root, name: "Worker", identifier: "WRK", parentID: "DEMO",
@@ -628,7 +628,7 @@ struct ChatInteractionTests {
             #expect(process.request.arguments.contains(chat.id.uuidString))
             let prompt = try #require(process.request.arguments.firstIndex(of: "--append-system-prompt").map { process.request.arguments[$0 + 1] })
             #expect(prompt.contains("The project's type is Go service.\n\n\(header)\n- local: http://127.0.0.1:8080\n"
-                + "- staging: https://staging.example.com; kubectl context: staging-eks; deployment: orders-worker\n"
+                + "- staging: https://staging.example.com; deployment: orders-worker\n"
                 + "- replay: http://127.0.0.1:9090\n\nThese rules apply in every chat."))
         }
     }

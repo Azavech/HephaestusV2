@@ -704,8 +704,7 @@ extension WindowSheet {
         switch self {
         case .newSubProject(let projectID), .newTicket(let projectID),
              .ticketPicker(let projectID, _, _), .newSkill(let projectID), .newDoc(let projectID, _),
-             .renameDoc(let projectID, _), .newFile(let projectID, _, _), .renameFile(let projectID, _),
-             .environment(let projectID, _):
+             .renameDoc(let projectID, _), .newFile(let projectID, _, _), .renameFile(let projectID, _):
             return projectID
         case .implementTicket(let id), .implementBundle(let id), .addLink(let id):
             return Identifiers.projectID(of: id)

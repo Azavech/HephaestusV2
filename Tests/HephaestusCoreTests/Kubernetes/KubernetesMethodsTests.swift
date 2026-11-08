@@ -326,7 +326,7 @@ struct KubernetesMethodsTests {
             let team = try await bed.kubernetes(ArgoCDStatus.self, .init(chatID: chat.id, environment: "team"), as: chat.id)
             #expect(team.application == "delivery/orders-team")
             #expect(kubectl.calls() == [
-                ["--kubeconfig=/Users/example/.kube/staging.yaml", "--context=staging-eks", "--namespace=argocd",
+                ["--kubeconfig=/Users/example/.kube/staging.yaml", "--namespace=argocd",
                  "get", "applications.argoproj.io/orders-staging", "-o", "json"],
                 ["--namespace=argocd", "get", "applications.argoproj.io/orders-production", "-o", "json"],
                 ["--kubeconfig=/Users/example/.kube/team.yaml", "--namespace=delivery",
@@ -343,7 +343,7 @@ struct KubernetesMethodsTests {
             let chat = try await bed.createChat()
             let synced = try await bed.kubernetes(ArgoCDSync.self, .init(chatID: chat.id, environment: "staging"), as: chat.id)
             #expect(synced == KubectlOutput(output: "application.argoproj.io/orders-staging patched"))
-            let prefix = ["--kubeconfig=/Users/example/.kube/staging.yaml", "--context=staging-eks", "--namespace=argocd"]
+            let prefix = ["--kubeconfig=/Users/example/.kube/staging.yaml", "--namespace=argocd"]
             #expect(kubectl.calls() == [
                 prefix + ["get", "applications.argoproj.io/orders-staging", "-o", "json"],
                 prefix + ["patch", "applications.argoproj.io/orders-staging", "--type=merge",
@@ -382,7 +382,7 @@ struct KubernetesMethodsTests {
                     try await bed.kubernetes(KubernetesStatus.self, .init(chatID: chat.id, environment: "staging"), as: chat.id)
                 }
             }
-            let getDeployment = "kubectl --kubeconfig=/Users/example/.kube/staging.yaml --context=staging-eks --namespace=orders "
+            let getDeployment = "kubectl --kubeconfig=/Users/example/.kube/staging.yaml --namespace=orders "
                 + "get deployment/orders-api -o json"
             try kubectl.answer(.deployment, error: "Error from server (NotFound): deployments.apps \"orders-api\" not found\n", status: 1)
             #expect(await status() == EngineError(
@@ -397,7 +397,7 @@ struct KubernetesMethodsTests {
             try kubectl.answer(.deployment, output: KubernetesFixtures.deployment)
             try kubectl.answer(.pods, output: #"{"kind": "List"}"#)
             #expect(await status() == EngineError(
-                .internal, "Unexpected output from kubectl --kubeconfig=/Users/example/.kube/staging.yaml --context=staging-eks "
+                .internal, "Unexpected output from kubectl --kubeconfig=/Users/example/.kube/staging.yaml "
                     + "--namespace=orders get pods -l app=orders-api,tier=api -o json."))
 
             try kubectl.answer(.patch, error: "error: applications.argoproj.io \"orders-production\" is forbidden\n", status: 1)
