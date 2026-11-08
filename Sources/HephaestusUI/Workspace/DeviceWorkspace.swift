@@ -97,6 +97,9 @@ final class DeviceWorkspace {
     var loadedProjectIDs: Set<String> = []
     /// Unsent composer text and attachments of existing chats, by chat id.
     var drafts: [String: ComposerDraft] = [:]
+    /// Whether `openapi/contract.yaml` of a Go service project holds an OpenAPI 3.x contract, by
+    /// project id; absent until the first read ends (docs/openapi.md › Availability).
+    var apiContracts: [String: Bool] = [:]
 
     // MARK: Loading state (docs/ui.md › Empty states)
 
@@ -115,6 +118,9 @@ final class DeviceWorkspace {
     /// Parent of every project seen since the workspace opened, to find the nearest remaining
     /// ancestor of a removed project (docs/projects.md › Removing a project).
     @ObservationIgnored var knownParents: [String: String] = [:]
+    /// The projects whose contract the workspace follows for `apiContracts`, with the number of
+    /// their last read: only the result of the last read is kept.
+    @ObservationIgnored var apiContractReads: [String: Int] = [:]
     @ObservationIgnored private var subscribers: [UUID: AsyncStream<WorkspaceEvent>.Continuation] = [:]
     @ObservationIgnored private var recorders: [UUID: [WorkspaceEvent]] = [:]
     @ObservationIgnored private var tasks: [Task<Void, Never>] = []

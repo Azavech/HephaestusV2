@@ -1,12 +1,12 @@
-// OWNER: ui-shell — the sidebar: the eleven sections and the project footer (docs/ui.md › Sidebar).
+// OWNER: ui-shell — the sidebar: the section rows and the project footer (docs/ui.md › Sidebar).
 import AppKit
 import HephaestusCore
 import SwiftUI
 
 extension ProjectSection {
-    /// The sections listed from the top of the sidebar, in order; `settings` is pinned to its
-    /// bottom.
-    static let listed: [ProjectSection] = allCases.filter { $0 != .settings }
+    /// The sections of the Project category, listed from the top of the sidebar, in order;
+    /// `apiExplorer` is the row of the Go Service category and `settings` is pinned to the bottom.
+    static let listed: [ProjectSection] = allCases.filter { $0 != .apiExplorer && $0 != .settings }
 
     /// The sidebar title.
     var title: String {
@@ -21,6 +21,7 @@ extension ProjectSection {
         case .skills: return "Skills"
         case .memories: return "Memories"
         case .costs: return "Costs"
+        case .apiExplorer: return "API Explorer"
         case .settings: return "Project Settings"
         }
     }
@@ -38,11 +39,12 @@ extension ProjectSection {
         case .skills: return "wand.and.stars"
         case .memories: return "brain"
         case .costs: return "dollarsign.circle"
+        case .apiExplorer: return "point.3.connected.trianglepath.dotted"
         case .settings: return "gearshape"
         }
     }
 
-    /// Its shortcut: ⌘1 to ⌘9, then ⌘0, in the View menu, ⇧⌘, for Project ▸ Project Settings….
+    /// Its shortcut: ⌘1 to ⌘9, then ⌘0, and ⇧⌘E in the View menu, ⇧⌘, for Project ▸ Project Settings….
     var shortcut: KeyboardShortcut {
         switch self {
         case .dashboard: return KeyboardShortcut("1", modifiers: .command)
@@ -55,6 +57,7 @@ extension ProjectSection {
         case .skills: return KeyboardShortcut("8", modifiers: .command)
         case .memories: return KeyboardShortcut("9", modifiers: .command)
         case .costs: return KeyboardShortcut("0", modifiers: .command)
+        case .apiExplorer: return KeyboardShortcut("e", modifiers: [.command, .shift])
         case .settings: return KeyboardShortcut(",", modifiers: [.command, .shift])
         }
     }
@@ -70,12 +73,14 @@ struct SidebarCategory: Equatable, Identifiable {
 
     var id: String { title }
 
-    /// `Project` with every listed section, then `Go Service`, without rows yet, for the
-    /// `goService` type, then `Sub Projects` when the active project has a loaded sub project.
-    static func categories(for type: ProjectType, subProjects: [SidebarSubProject] = []) -> [SidebarCategory] {
+    /// `Project` with every listed section, then `Go Service` for the `goService` type, with the
+    /// API Explorer row while it shows (docs/openapi.md › Availability), then `Sub Projects` when
+    /// the active project has a loaded sub project.
+    static func categories(for type: ProjectType, showsAPIExplorer: Bool = false,
+                           subProjects: [SidebarSubProject] = []) -> [SidebarCategory] {
         var categories = [SidebarCategory(title: "Project", sections: ProjectSection.listed)]
         if type == .goService {
-            categories.append(SidebarCategory(title: "Go Service", sections: []))
+            categories.append(SidebarCategory(title: "Go Service", sections: showsAPIExplorer ? [.apiExplorer] : []))
         }
         if !subProjects.isEmpty {
             categories.append(SidebarCategory(title: "Sub Projects", sections: [], subProjects: subProjects))
@@ -87,7 +92,8 @@ struct SidebarCategory: Equatable, Identifiable {
     /// follow the workspace's `projects`.
     @MainActor
     static func categories(of project: ProjectSummary, in workspace: DeviceWorkspace) -> [SidebarCategory] {
-        categories(for: project.type, subProjects: SidebarSubProject.rows(of: project.id, in: workspace))
+        categories(for: project.type, showsAPIExplorer: workspace.showsAPIExplorer(project.id) == true,
+                   subProjects: SidebarSubProject.rows(of: project.id, in: workspace))
     }
 }
 

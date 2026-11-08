@@ -208,7 +208,7 @@ The type names of this table are Default chosen at design time.
 | `Tickets/`   | Ticket list and detail, comments, attachments, image viewer ([Tickets and bundles](tickets.md)).                                                                               |
 | `Bundles/`   | Bundle list and detail ([Tickets and bundles](tickets.md)).                                                                                                                    |
 | `Chats/`     | Transcript web view, composer, permission and question cards, chat windows ([Chats](chats.md)).                                                                                |
-| `Code/`      | File tree, editor tabs, editor ([Code editor](code-editor.md)); the mode bar, Contract view, request form and response of OpenAPI contracts ([OpenAPI contracts](openapi.md)). |
+| `Code/`      | File tree, editor tabs, editor ([Code editor](code-editor.md)); the OpenAPI mode bar, Contract view, request forms, responses, API Explorer ([OpenAPI contracts](openapi.md)). |
 | `Docs/`      | Docs tree, Preview, Edit and Split modes ([Documentation viewer](documentation-viewer.md)).                                                                                    |
 | `Web/`       | Tab strip, address bar, web views ([Web tabs](web-tabs.md)).                                                                                                                   |
 | `Skills/`    | Skills list and editor ([Skills](skills.md)).                                                                                                                                  |
@@ -475,7 +475,7 @@ The properties of these objects, their loading rules, their event handling and t
 
 ### WindowState
 
-`WindowState` is the state of one main window and `ChatWindowValue {deviceID, chatID}` the state of one chat window; their properties are defined in [WindowState](ui.md#windowstate). For `debug_ui_state` ([MCP server](mcp.md#window-information)), the state of a main window is its `WindowState` encoded with `EngineJSON.encoder()` ([Engine API](engine-api.md#enginejson)), every property of [WindowState](ui.md#windowstate) included except the editor buffers, and the state of a chat window is its `ChatWindowValue` encoded the same way. Buffers are never encoded: an editor tab encodes its path only, and the doc buffer, the skill form and the memory editors are left out. Sets are encoded as sorted arrays. Default chosen at design time.
+`WindowState` is the state of one main window and `ChatWindowValue {deviceID, chatID}` the state of one chat window; their properties are defined in [WindowState](ui.md#windowstate). For `debug_ui_state` ([MCP server](mcp.md#window-information)), the state of a main window is its `WindowState` encoded with `EngineJSON.encoder()` ([Engine API](engine-api.md#enginejson)), every property of [WindowState](ui.md#windowstate) included except the editor buffers, and the state of a chat window is its `ChatWindowValue` encoded the same way. Buffers are never encoded: an editor tab encodes its path only, and the doc buffer, the API Explorer's buffer, the skill form and the memory editors are left out. Sets are encoded as sorted arrays. Default chosen at design time.
 
 ### Navigation
 

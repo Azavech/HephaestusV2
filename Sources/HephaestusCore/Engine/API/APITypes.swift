@@ -424,6 +424,7 @@ public enum ProjectSection: String, Codable, Sendable, Hashable, CaseIterable {
     case skills
     case memories
     case costs
+    case apiExplorer
     case settings
 
     public init(from decoder: Decoder) throws {

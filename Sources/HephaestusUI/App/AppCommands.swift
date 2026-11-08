@@ -223,6 +223,12 @@ private struct ViewCommands: View {
         }
         .keyboardShortcut("m", modifiers: [.command, .shift])
         .disabled(!(window?.isConnected ?? false))
+        // Enabled while the active project's sidebar shows the row (docs/openapi.md › Availability).
+        Button(ProjectSection.apiExplorer.title) {
+            window?.section = .apiExplorer
+        }
+        .keyboardShortcut(ProjectSection.apiExplorer.shortcut)
+        .disabled(!(window?.showsAPIExplorer ?? false))
         Divider()
         let showsDoc = window?.shownSection == .docs && window?.viewState.selectedDocPath != nil
         Menu("Doc Mode") {

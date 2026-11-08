@@ -79,6 +79,23 @@ struct OpenAPIContractView: View {
         .onAppear { model.appear() }
         .onDisappear { model.disappear() }
         .onChange(of: text) { model.textChanged() }
+        .background(StoredValuesFollower(model: model))
+        // The view of another tab's or project's model is a new view, so that each model appears
+        // and disappears.
+        .id(ObjectIdentifier(model))
+    }
+}
+
+/// While the Contract view is shown, it takes the values that another Contract view of the same
+/// file changes (docs/openapi.md › Stored values). Kept apart so that only it reads the revision.
+private struct StoredValuesFollower: View {
+    let model: OpenAPIContractModel
+
+    var body: some View {
+        Color.clear
+            .onChange(of: model.storeRevision) {
+                model.refreshStoredValues()
+            }
     }
 }
 

@@ -200,6 +200,15 @@ private struct ProjectColumns: View {
                                   isConnected: workspace.isConnected)) {
             workspace.ensureDescendantsLoaded(of: project.id)
         }
+        // The workspace follows the contract of a Go service, and the window leaves the API
+        // Explorer where its row is not shown (docs/openapi.md › Availability).
+        .task(id: APIExplorerFollow(deviceID: workspace.deviceID, projectID: project.id, type: project.type)) {
+            workspace.followAPIContract(of: project.id)
+        }
+        .onChange(of: APIExplorerState(deviceID: workspace.deviceID, projectID: project.id, section: state.section,
+                                       isShown: workspace.showsAPIExplorer(project.id)), initial: true) {
+            state.leaveHiddenAPIExplorer(in: workspace)
+        }
     }
 }
 
@@ -207,6 +216,21 @@ private struct ProjectColumns: View {
 private struct DescendantsLoad: Hashable {
     var projectIDs: [String]
     var isConnected: Bool
+}
+
+/// What makes the workspace follow the contract of the window's project.
+private struct APIExplorerFollow: Hashable {
+    var deviceID: String
+    var projectID: String
+    var type: ProjectType
+}
+
+/// What makes the window check that its API Explorer section still has its row.
+private struct APIExplorerState: Hashable {
+    var deviceID: String
+    var projectID: String
+    var section: ProjectSection
+    var isShown: Bool?
 }
 
 /// The centre column: the section the sidebar selects, once the project's data is loaded, or the
@@ -253,6 +277,8 @@ private struct SectionContent: View {
                     .id("\(workspace.deviceID)/\(projectID)")
             case .costs:
                 CostsSectionView(window: state, workspace: workspace, projectID: projectID)
+            case .apiExplorer:
+                APIExplorerView(window: state, workspace: workspace, projectID: projectID)
             case .settings:
                 ProjectSettingsView(window: state, workspace: workspace, projectID: projectID)
             }

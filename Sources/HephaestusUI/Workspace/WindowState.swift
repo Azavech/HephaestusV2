@@ -259,6 +259,9 @@ struct ProjectViewState {
     var docBuffer: EditorBuffer?
     /// Expanded folders of the docs tree (docs/documentation-viewer.md › Docs tree).
     var expandedDocFolders: Set<String> = []
+    /// The buffer of `openapi/contract.yaml` that the API Explorer shows (docs/openapi.md ›
+    /// Explorer view); never encoded.
+    var apiExplorerBuffer: EditorBuffer?
     /// Filters and sort order of the ticket list, kept per window and project while the window is
     /// open (docs/tickets.md › Ticket list).
     var ticketList = TicketListState()

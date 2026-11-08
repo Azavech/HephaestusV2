@@ -49,9 +49,11 @@ final class OpenAPIContractModel {
 
     // MARK: Parsing (docs/openapi.md › Contract and Source, › $ref resolution)
 
-    /// The view appeared: the contract is parsed again.
+    /// The view appeared: it takes the values stored meanwhile by another Contract view of the
+    /// same file, and the contract is parsed again.
     func appear() {
         isVisible = true
+        refreshStoredValues()
         followFileChanges()
         parse()
     }
@@ -175,15 +177,47 @@ final class OpenAPIContractModel {
             ?? OpenAPIStoredContract(deviceID: workspace.deviceID, projectID: projectID, path: buffer.path)
     }
 
-    /// Changes the stored values and writes them 500 ms later.
+    /// Changes the stored values and writes them 500 ms later. The change applies to the latest
+    /// values of the contract, so it keeps what another Contract view of the same file changed.
     func update(_ change: (inout OpenAPIStoredContract) -> Void) {
-        guard var values = stored else { return }
+        guard let current = stored else { return }
+        let latest = storeModel?.store.contract(deviceID: current.deviceID, projectID: current.projectID, path: current.path) ?? current
+        var values = latest
         change(&values)
-        guard values != stored else { return }
-        stored = values
-        if let storeModel {
-            storeModel.store.set(values)
-            storeModel.scheduleSave()
+        guard values != latest else {
+            if latest != current {
+                takeStoredValues(latest)
+            }
+            return
+        }
+        takeStoredValues(values)
+        storeModel?.set(values)
+    }
+
+    /// The stored values changed: the view shown takes the latest ones, which another Contract
+    /// view of the same file may have changed.
+    var storeRevision: Int {
+        storeModel?.revision ?? 0
+    }
+
+    /// Takes the values another Contract view of the same file stored since they were read.
+    func refreshStoredValues() {
+        guard let current = stored, let storeModel else { return }
+        let latest = storeModel.store.contract(deviceID: current.deviceID, projectID: current.projectID, path: current.path)
+        if latest != current {
+            takeStoredValues(latest)
+        }
+    }
+
+    /// The fields show the latest values, and the body editors take their stored bodies.
+    private func takeStoredValues(_ latest: OpenAPIStoredContract) {
+        stored = latest
+        for (operationID, form) in forms {
+            for (mediaType, body) in latest.operations[operationID]?.bodies ?? [:] {
+                if let editor = form.bodies[mediaType], editor.text != body {
+                    editor.text = body
+                }
+            }
         }
     }
 
@@ -439,16 +473,18 @@ struct OpenAPIResponseBody: Sendable {
 }
 
 /// The stored values of this Mac's request forms and their delayed writes (docs/openapi.md ›
-/// Stored values).
-@MainActor
+/// Stored values). Every Contract view of the process reads and changes them here.
+@MainActor @Observable
 final class OpenAPIStoreModel {
     /// The write delay after a change.
     static let saveDelay: Duration = .milliseconds(500)
 
     private static var models: [URL: OpenAPIStoreModel] = [:]
 
-    let store: OpenAPIRequestStore
-    private var saveTask: Task<Void, Never>?
+    @ObservationIgnored let store: OpenAPIRequestStore
+    /// Incremented by every change, so that the Contract views shown take the latest values.
+    private(set) var revision = 0
+    @ObservationIgnored private var saveTask: Task<Void, Never>?
 
     private init(store: OpenAPIRequestStore) {
         self.store = store
@@ -460,6 +496,13 @@ final class OpenAPIStoreModel {
         let model = OpenAPIStoreModel(store: OpenAPIRequestStore(dataDirectory: dataDirectory))
         models[dataDirectory.url] = model
         return model
+    }
+
+    /// Replaces the values of a contract and writes them 500 ms later.
+    func set(_ contract: OpenAPIStoredContract) {
+        store.set(contract)
+        revision += 1
+        scheduleSave()
     }
 
     func scheduleSave() {

@@ -52,10 +52,12 @@ extension EditorTabState: @MainActor Codable {
 /// the app means `isDirty`.
 @MainActor @Observable
 final class EditorBuffer {
-    /// Where the buffer is shown: a Code section tab or the Docs section's doc.
+    /// Where the buffer is shown: a Code section tab, the Docs section's doc, or the contract of the
+    /// API Explorer, which the user never edits (docs/openapi.md › Explorer view).
     enum Role {
         case codeTab
         case doc
+        case apiExplorer
     }
 
     /// What a read of the file gave while a banner is shown: the values Reload and Keep Mine take.
@@ -493,8 +495,8 @@ final class EditorBuffer {
         close()
     }
 
-    /// Removes the buffer from its window: its Code tab closes, or the Docs section's doc is
-    /// discarded and its selection cleared.
+    /// Removes the buffer from its window: its Code tab closes, the Docs section's doc is
+    /// discarded and its selection cleared, or the API Explorer's buffer is dropped.
     func close() {
         detach()
         guard let window, let projectID else { return }
@@ -507,6 +509,10 @@ final class EditorBuffer {
                 if state.docBuffer === buffer {
                     state.docBuffer = nil
                     state.selectedDocPath = nil
+                }
+            case .apiExplorer:
+                if state.apiExplorerBuffer === buffer {
+                    state.apiExplorerBuffer = nil
                 }
             }
         }

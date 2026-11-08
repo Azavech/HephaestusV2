@@ -45,6 +45,19 @@ struct SidebarSectionsTests {
         #expect(state.openItems(in: .settings).isEmpty)
     }
 
+    @Test("API Explorer: its title, symbol and ⇧⌘E; it links no item, even with an open editor tab")
+    func apiExplorerRow() {
+        #expect(ProjectSection.apiExplorer.title == "API Explorer")
+        #expect(ProjectSection.apiExplorer.symbol == "point.3.connected.trianglepath.dotted")
+        #expect(ProjectSection.apiExplorer.shortcut.key == KeyEquivalent("e"))
+        #expect(ProjectSection.apiExplorer.shortcut.modifiers == [.command, .shift])
+        #expect(!ProjectSection.listed.contains(.apiExplorer))
+        var state = ProjectViewState()
+        state.selectedEditorPath = "openapi/contract.yaml"
+        state.selectedDocPath = "docs/ui.md"
+        #expect(state.openItems(in: .apiExplorer).isEmpty)
+    }
+
     @Test("A new window opens on the Dashboard, also when its stored state has no section")
     func defaultSection() throws {
         #expect(WindowState(id: UUID(), deviceID: "device").section == .dashboard)
@@ -65,15 +78,15 @@ struct SidebarSectionsTests {
 /// docs/ui.md › Sidebar: the categories shown for each project type.
 @Suite("Sidebar categories")
 struct SidebarCategoriesTests {
-    @Test("Project holds every listed section; Go Service, without rows, only for the Go service type",
-          arguments: ProjectType.allCases)
-    func categories(_ type: ProjectType) {
-        let categories = SidebarCategory.categories(for: type)
+    @Test("Project holds every listed section; Go Service only for the Go service type, with API Explorer while it shows",
+          arguments: ProjectType.allCases, [false, true])
+    func categories(_ type: ProjectType, showsAPIExplorer: Bool) {
+        let categories = SidebarCategory.categories(for: type, showsAPIExplorer: showsAPIExplorer)
         #expect(categories.first == SidebarCategory(title: "Project", sections: ProjectSection.listed))
         #expect(!categories.contains { $0.sections.contains(.settings) })
         if type == .goService {
             #expect(categories.map(\.title) == ["Project", "Go Service"])
-            #expect(categories[1].sections.isEmpty)
+            #expect(categories[1].sections == (showsAPIExplorer ? [.apiExplorer] : []))
         } else {
             #expect(categories.map(\.title) == ["Project"])
         }

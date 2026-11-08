@@ -45,9 +45,10 @@ extension DeviceWorkspace {
             agents[payload.chatID.uuidString] = payload.isEmpty ? nil : payload
         case .chatAgentItem(let payload):
             agentTranscripts[DeviceWorkspace.agentKey(chatID: payload.chatID.uuidString, agentID: payload.agentID)]?.upsert(payload.item)
-        case .filesChanged:
-            // Passed to the open editors, file trees and doc lists through `events()`.
-            break
+        case .filesChanged(let payload):
+            // Passed to the open editors, file trees and doc lists through `events()`; the
+            // contract of the API Explorer is read again when the paths name it.
+            apiContractFilesChanged(payload)
         case .webTabsUpdated(let payload):
             if webTabs[payload.projectID] != nil {
                 webTabs[payload.projectID] = payload.tabs
@@ -113,6 +114,8 @@ extension DeviceWorkspace {
             loadingProjectIDs.remove(projectID)
             projectLoadErrors[projectID] = nil
             seededParts[projectID] = nil
+            apiContracts[projectID] = nil
+            apiContractReads[projectID] = nil
         }
         let chatIDs = chats.values.filter { projectIDs.contains($0.projectID) }.map(\.id.uuidString)
         for chatID in chatIDs {

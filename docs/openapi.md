@@ -1,6 +1,6 @@
 # OpenAPI contracts
 
-In the Code section ([Code editor](code-editor.md)), a YAML or JSON file that holds an OpenAPI 3.0 or 3.1 contract opens on the **Contract view**, with a switch to **Source**, the ordinary text editor. The Contract view is a native, read-only view of the buffer's current text, unsaved changes included: the API's info, its operations grouped by tag and its schemas, with `$ref` pointers resolved inside the document and across the project's files. Each operation has a request form that sends the request to the project environment chosen in the form ([Environments](projects.md#environments)), from the Mac that shows the window with the app's own HTTP client, and shows the response's status, duration, headers and body. The values typed in the forms are kept per project on that Mac. This document specifies the detection of contracts, the switch, the Contract view, `$ref` resolution, the request form, prefilled bodies, sending, the response, the stored values and remote windows.
+In the Code section ([Code editor](code-editor.md)), a YAML or JSON file that holds an OpenAPI 3.0 or 3.1 contract opens on the **Contract view**, with a switch to **Source**, the ordinary text editor. The Contract view is a native, read-only view of the buffer's current text, unsaved changes included: the API's info, its operations grouped by tag and its schemas, with `$ref` pointers resolved inside the document and across the project's files. Each operation has a request form that sends the request to the project environment chosen in the form ([Environments](projects.md#environments)), from the Mac that shows the window with the app's own HTTP client, and shows the response's status, duration, headers and body. The values typed in the forms are kept per project on that Mac. A Go service whose root holds the contract `openapi/contract.yaml` also shows its Contract view in the **API Explorer** section of the sidebar. This document specifies the detection of contracts, the switch, the Contract view, `$ref` resolution, the request form, prefilled bodies, sending, the response, the stored values, remote windows and the API Explorer.
 
 ## Detection
 
@@ -17,7 +17,7 @@ A file opens on the Contract view when both hold:
 - Swagger 2.0 files (`swagger: "2.0"`) and every other file open in the editor as before.
 - Detection runs when the tab takes the text of a read: when it opens, on Try Again, when a clean buffer is replaced silently after a change on disk, and on Reload ([Changes on disk](code-editor.md#changes-on-disk)). Edits in Source never add or remove the switch. A tab whose file is no longer detected loses the switch and shows the editor; a tab whose file becomes detected gets the switch and shows the Contract view.
 - A file larger than 2 MB, open read-only ([Large and binary files](code-editor.md#large-and-binary-files)), is detected and shows the Contract view too.
-- Only Code section tabs are detected; the Docs section and the skill editor are unchanged.
+- Only Code section tabs are detected, and the API Explorer's `openapi/contract.yaml` ([Availability](#availability)); the Docs section and the skill editor are unchanged.
 
 ## Contract and Source
 
@@ -317,12 +317,46 @@ The values typed in the request forms are kept per project on the Mac that shows
 - The environment is kept by its name, under `environment`, which is absent until the user chooses an environment in the pop-up and changes only with that choice. A stored name that no environment of the project has, after a rename or a removal, selects the first environment.
 - The keys `server`, `usesCustomURL`, `customURL` and `serverVariables` of a file written by an earlier version are ignored and left out at the next write.
 - The mode of the tab, the selected row and the responses are not stored.
+- The Code section tabs of a contract file, in every window of this Mac, and the [API Explorer](#api-explorer) for `openapi/contract.yaml` show and change the same values. A change applies to the latest stored values of the contract, so it keeps what another Contract view changed meanwhile; a Contract view takes the latest values, the stored bodies of its body editors included, when it appears and, while it is shown, after each change made in another one. Default chosen at design time.
 
 The file name and its format are design-time choices. Default chosen at design time.
 
 ## Remote windows
 
 In a window that shows a remote device ([Remote devices](remote.md#remote-windows)), the contract and the files its refs name are read through the engine of the main device, like every file of the Code section, and the environments are those of the project on the main device; the requests still run on the Mac that shows the window, with the [localhost rewrite](remote.md#localhost-rewrite), so a request to an environment whose host is `localhost`, `127.0.0.1` or `::1` reaches a server running on the main device; the values typed in the forms are stored on the Mac that shows the window.
+
+## API Explorer
+
+The Go Service category of the sidebar ([Sidebar](ui.md#sidebar)) has the row `API Explorer`, with the SF Symbol `point.3.connected.trianglepath.dotted`, for the section `apiExplorer`; View ▸ API Explorer (⇧⌘E) selects it too ([Menus and keyboard shortcuts](ui.md#menus-and-keyboard-shortcuts)). The section shows the Contract view of the Go service's contract, the file `openapi/contract.yaml` of the project root, so that the user views and queries the service without opening the file in the Code section.
+
+### Availability
+
+The row shows while both hold:
+
+1. The active project's [type](projects.md#project-types) is `goService`.
+2. The project root holds the file `openapi/contract.yaml`, and its text is an OpenAPI 3.x contract by the rules of [Detection](#detection) for a `yaml` file.
+
+- The workspace of the window's device reads the file with `files.read` ([Engine API](engine-api.md#filesread)) when a main window first shows the Go service project, again after each `files.changed` event of the project whose paths name the file, the `openapi` folder or the whole project (`""`), and after each reconnection ([Event handling](ui.md#event-handling)). Every window that shows the device uses the same result (`DeviceWorkspace.apiContracts`, [DeviceWorkspace](ui.md#deviceworkspace)).
+- A missing file, a file read without text (binary, or larger than 20 MiB), a text that is not a contract and a failed read count as no contract. A read that fails because the device is not connected (`unavailable`) keeps the previous result.
+- Until the first read of a project ends, its row is hidden.
+- The row appears and disappears at once, in every window that shows the project, when the file is added, changed or removed, and when the project's type changes (`project.updated`, `projects.changed`).
+- When the row is not shown while a main window's section is `apiExplorer`, the window selects `dashboard`: after a read that finds no contract, after the type changes, when the window switches to a project where the row is not shown, and after a `section` target naming `apiExplorer` in such a project ([Resolving a target](ui.md#resolving-a-target)). While the first read of the project runs, the section stays selected and the centre column shows a small spinner.
+- View ▸ API Explorer (⇧⌘E) is enabled while the row is shown.
+
+Hiding the row until the first read ends, keeping `apiExplorer` selected meanwhile, and keeping the previous result while the device is not connected are Default chosen at design time.
+
+### Explorer view
+
+- The centre column shows the [Contract view](#contract-view) of `openapi/contract.yaml`: the list, the details, the request forms with Send and the responses. It has no file tree, no editor tabs, no mode bar and no banner; the contract's source is edited in the Code section.
+- The Contract view shows the file as it is on disk. The section holds a buffer of the file for each window and project (`ProjectViewState.apiExplorerBuffer`, never encoded), created and read with `files.read` when the section first shows the project in the window. The user never edits it, so it follows the file as a clean Code section buffer does ([Changes on disk](code-editor.md#changes-on-disk)): after a change on disk it takes the new text and the Contract view is parsed again ([Contract and Source](#contract-and-source)), and when the file is deleted the buffer is dropped. Its `$ref` pointers resolve as in [$ref resolution](#ref-resolution).
+- Until the buffer has text, the centre column shows the notice of the buffer's state, as an editor tab of the Code section does ([Opening files](code-editor.md#opening-files), [Large and binary files](code-editor.md#large-and-binary-files)): a small spinner while the file is read, and `The file could not be opened.` with the engine's message and `Try Again` after a failed read.
+- The selected row, the body editors and the last responses stay with the buffer while the window is open, as they do with a Code section tab; they are not stored.
+- The request forms are those of the Code section: they show and change the [stored values](#stored-values) of the contract `openapi/contract.yaml`, which are the values of the Code section's Contract view of the same file.
+- No menu item acts on the section's content: Save, Close Tab, Go to Line, Toggle Comment, Show Previous Tab and Show Next Tab are disabled, and ⌘W closes the window ([Closing tabs and windows](ui.md#closing-tabs-and-windows)).
+- The composer of the inspector links no item for the section ([Inspector](ui.md#inspector)), and a feedback started from it has no `item` ([Feedback context](feedback.md#feedback-context)).
+- In a window that shows a remote device, the section works as the Contract view does there ([Remote windows](#remote-windows)): the contract and the files its refs name are read through the engine of the main device, the requests run on the Mac that shows the window with the localhost rewrite, and the values typed are stored on that Mac.
+
+The notices and the absent feedback item are Default chosen at design time.
 
 ## Not included
 
@@ -331,4 +365,5 @@ OAuth2, OpenID Connect and mutual TLS credentials, multipart and file bodies, ed
 ## Requirements covered
 
 - R142: In the Code section, an OpenAPI 3.0 or 3.1 contract opens on a read-only Contract view, with a switch to its source, that shows its info, its operations by tag and its schemas with their `$ref` pointers resolved across the project's files, and sends each operation's request from a form whose values are kept per project on the Mac that shows the window, credentials included.
+- R171: A Go service whose code holds `openapi/contract.yaml` shows it in an API Explorer section of the Go Service category, where the user views and queries it.
 - R157: A Go service project declares its environments in Project Settings, and the Contract view sends requests to the environment chosen in its Environment pop-up.

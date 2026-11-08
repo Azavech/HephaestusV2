@@ -16,6 +16,11 @@ extension DeviceWorkspace {
             // states).
             return
         }
+        if afterReconnect {
+            // The contracts of the API Explorer may have changed meanwhile (docs/openapi.md ›
+            // Availability).
+            readFollowedAPIContracts()
+        }
         // `claude.models` and `chats.list` have no failure state (docs/ui.md › DeviceWorkspace,
         // Loading step 2).
         _ = try? await seed({ try await call(ClaudeModels.self) },

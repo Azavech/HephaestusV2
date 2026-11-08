@@ -132,10 +132,11 @@ The client fills the [FeedbackContext](engine-api.md#feedbackcontext) from the c
 | `skills`          | name of the selected skill                                                    |
 | `memories`        | name of the selected memory; `MEMORY.md` when the index is selected           |
 | `costs`           | absent                                                                        |
+| `apiExplorer`     | absent                                                                        |
 | `settings`        | absent                                                                        |
 | chat window       | title of the window's chat                                                    |
 
-A chat window counts as the `chats` section of its project. Default chosen at design time. While a main window shows the Global Memories view ([Global Memories view](memories.md#global-memories-view)), the context has no `section` and no `item`; the screenshot shows the view. Default chosen at design time.
+A chat window counts as the `chats` section of its project, and `apiExplorer` has no item, as its composer links none ([Explorer view](openapi.md#explorer-view)). Default chosen at design time. While a main window shows the Global Memories view ([Global Memories view](memories.md#global-memories-view)), the context has no `section` and no `item`; the screenshot shows the view. Default chosen at design time.
 
 Example, captured in a remote window of the MacBook showing the device Studio, with the GitHub tab selected:
 
