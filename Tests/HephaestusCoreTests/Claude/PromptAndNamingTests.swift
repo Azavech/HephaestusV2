@@ -671,7 +671,7 @@ struct PromptAndNamingTests {
         }
     }
 
-    @Test("The common prompt tells Claude to write sound, shortcut, font and animation markers in ticket descriptions and comments")
+    @Test("The common prompt tells Claude to write sound, shortcut, font and animation markers in replies, ticket descriptions and comments")
     func ticketMarkersPrompt() throws {
         let common = Prompts.text(.common)
         func section(_ heading: String, before next: String) throws -> String {
@@ -679,16 +679,16 @@ struct PromptAndNamingTests {
             let upper = try #require(common.range(of: "# \(next)\n")).lowerBound
             return String(common[lower..<upper])
         }
-        #expect(try section("Sounds", before: "Keyboard shortcuts").contains("When you name a sound in a ticket description or a comment "
-            + "that you write, write it as ![](sound:<name>), <name> being a sound name as above, written as it is, spaces included"))
-        #expect(try section("Keyboard shortcuts", before: "Fonts").contains("When you name a keyboard shortcut in a ticket description or a "
-            + "comment that you write, write it as ![](shortcut:<shortcut>), <shortcut> being in this menu notation, its key an uppercase "
+        #expect(try section("Sounds", before: "Keyboard shortcuts").contains("When you name a sound in a reply, or in a ticket description or a "
+            + "comment that you write, write it as ![](sound:<name>), <name> being a sound name as above, written as it is, spaces included"))
+        #expect(try section("Keyboard shortcuts", before: "Fonts").contains("When you name a keyboard shortcut in a reply, or in a ticket "
+            + "description or a comment that you write, write it as ![](shortcut:<shortcut>), <shortcut> being in this menu notation, its key an uppercase "
             + "letter, a digit or punctuation as typed without Shift, ↩ ⌤ ⎋ ⇥ Space ⌫ ⌦ ← → ↑ ↓ ↖ ↘ ⇞ ⇟, or F1 to F20, with a key (, ) or \\ "
             + "written with a \\ before it"))
-        #expect(try section("Fonts", before: "Animations").contains("When you name a font in a ticket description or a comment that you "
-            + "write, write it as ![](font:<font>)"))
-        #expect(try section("Animations", before: "Images").contains("When you name an animation in a ticket description or a comment "
-            + "that you write, write it as ![](animation:<expression>)"))
+        #expect(try section("Fonts", before: "Animations").contains("When you name a font in a reply, or in a ticket description or a "
+            + "comment that you write, write it as ![](font:<font>)"))
+        #expect(try section("Animations", before: "Images").contains("When you name an animation in a reply, or in a ticket description "
+            + "or a comment that you write, write it as ![](animation:<expression>)"))
     }
 
     @Test("The comment-answer prompt tells Claude to write the six markers in its answer and in the ticket's description")

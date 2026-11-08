@@ -688,25 +688,25 @@ When Claude needs the user to choose a color, it asks with `ask_color` ([Color r
 
 ## Sounds
 
-When Claude names a sound in a ticket description or a comment that it writes, it writes it as `![](sound:<name>)`, `<name>` being a name of the [sound catalogue](chats.md#sound-catalogue) written as it is, spaces included, for example `![](sound:macOS/Glass.aiff)` or `![](sound:iOS 26.1/sms-received1.caf)`. The chat transcript shows a sound marker as a play button followed by the sound's name, and the pinned questions, symbol and sound cards, ticket descriptions and comments as the character `▶` followed by the name; the play button and the `▶` play the sound ([Chats](chats.md#links-images-and-files), [Tickets](tickets.md#ticket-detail)). Docs do not draw it.
+When Claude names a sound in a reply, or in a ticket description or a comment that it writes, it writes it as `![](sound:<name>)`, `<name>` being a name of the [sound catalogue](chats.md#sound-catalogue) written as it is, spaces included, for example `![](sound:macOS/Glass.aiff)` or `![](sound:iOS 26.1/sms-received1.caf)`. The chat transcript shows a sound marker as a play button followed by the sound's name, and the pinned questions, symbol and sound cards, ticket descriptions and comments as the character `▶` followed by the name; the play button and the `▶` play the sound ([Chats](chats.md#links-images-and-files), [Tickets](tickets.md#ticket-detail)). Docs do not draw it.
 
 When, in a Swift application project, Claude needs the user to choose a sound for an app of an Apple platform, it asks with `ask_sound` ([Sound requests](#sound-requests)).
 
 ## Keyboard shortcuts
 
-When Claude names a keyboard shortcut in a ticket description or a comment that it writes, it writes it as `![](shortcut:<shortcut>)`, `<shortcut>` being written in the [shortcut notation](chats.md#shortcut-notation), the modifiers `⌃⌥⇧⌘` in this order and then one key, with a key `(`, `)` or `\` written with a `\` before it, for example `![](shortcut:⇧⌘K)`, `![](shortcut:⌘↩)` or `![](shortcut:⌘\()`. The chat transcript shows such a marker as key caps, and ticket descriptions and comments as its key caps as text ([Chats](chats.md#links-images-and-files), [Tickets](tickets.md#ticket-detail)). Docs do not draw it.
+When Claude names a keyboard shortcut in a reply, or in a ticket description or a comment that it writes, it writes it as `![](shortcut:<shortcut>)`, `<shortcut>` being written in the [shortcut notation](chats.md#shortcut-notation), the modifiers `⌃⌥⇧⌘` in this order and then one key, with a key `(`, `)` or `\` written with a `\` before it, for example `![](shortcut:⇧⌘K)`, `![](shortcut:⌘↩)` or `![](shortcut:⌘\()`. The chat transcript shows such a marker as key caps, and ticket descriptions and comments as its key caps as text ([Chats](chats.md#links-images-and-files), [Tickets](tickets.md#ticket-detail)). Docs do not draw it.
 
 When, in a Swift application project, Claude needs the user to choose a keyboard shortcut, it asks with `ask_shortcut` ([Shortcut requests](#shortcut-requests)).
 
 ## Fonts
 
-When Claude names a font in a ticket description or a comment that it writes, it writes it as `![](font:<font>)`, `<font>` being written in the [font notation](chats.md#font-notation), a Dynamic Type text style or `<family>/<weight>/<size>`, for example `![](font:.headline)` or `![](font:System Rounded/Semibold/17)`. The chat transcript, the pinned questions card, ticket descriptions and comments show such a marker as the font reads, for example `System Rounded · Semibold · 17 pt`, drawn in that font ([Chats](chats.md#links-images-and-files), [Tickets](tickets.md#ticket-detail)). Docs do not draw it.
+When Claude names a font in a reply, or in a ticket description or a comment that it writes, it writes it as `![](font:<font>)`, `<font>` being written in the [font notation](chats.md#font-notation), a Dynamic Type text style or `<family>/<weight>/<size>`, for example `![](font:.headline)` or `![](font:System Rounded/Semibold/17)`. The chat transcript, the pinned questions card, ticket descriptions and comments show such a marker as the font reads, for example `System Rounded · Semibold · 17 pt`, drawn in that font ([Chats](chats.md#links-images-and-files), [Tickets](tickets.md#ticket-detail)). Docs do not draw it.
 
 When Claude needs the user to choose a font, it asks with `ask_font` ([Font requests](#font-requests)).
 
 ## Animations
 
-When Claude names an animation in a ticket description or a comment that it writes, it writes it as `![](animation:<expression>)`, `<expression>` being a SwiftUI animation expression of [Animation expressions](#animation-expressions), for example `![](animation:.spring(duration: 0.4, bounce: 0.2))`. The chat transcript shows such a marker as a replay button and a lane followed by the expression, and ticket descriptions and comments as the expression ([Chats](chats.md#links-images-and-files), [Tickets](tickets.md#ticket-detail)). Docs do not draw it.
+When Claude names an animation in a reply, or in a ticket description or a comment that it writes, it writes it as `![](animation:<expression>)`, `<expression>` being a SwiftUI animation expression of [Animation expressions](#animation-expressions), for example `![](animation:.spring(duration: 0.4, bounce: 0.2))`. The chat transcript shows such a marker as a replay button and a lane followed by the expression, and ticket descriptions and comments as the expression ([Chats](chats.md#links-images-and-files), [Tickets](tickets.md#ticket-detail)). Docs do not draw it.
 
 When, in a Swift application project, Claude needs the user to choose an animation, it asks with `ask_animation` ([Animation requests](#animation-requests)).
 
@@ -928,3 +928,4 @@ Notes
 - R169: Claude keeps global memories that every chat of every project receives; the user shows and edits them with View ▸ Global Memories.
 - R175: Ticket descriptions and comments draw the SF Symbol, color, font, shortcut, sound and animation markers, and Claude writes them there when it names one.
 - R181: Feedback, Implement and Implement All start their chat by calling the internal skills feedback, implement-ticket and implement-bundle, which, with finish-implementation, hold the instructions of these tasks, are always active in every project, and are shown and edited only in the HephaestusV2 project.
+- R184: Claude marks each keyboard shortcut, font, sound and animation it names in a chat reply, and the chat transcript draws the marker.
