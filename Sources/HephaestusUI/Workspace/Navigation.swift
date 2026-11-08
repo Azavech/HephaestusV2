@@ -48,6 +48,7 @@ extension WindowState {
         guard workspace.deviceID == deviceID, workspace.hasSnapshot else { return }
         if let projectID, !needsDefaultProject, workspace.project(projectID) != nil {
             workspace.ensureProjectLoaded(projectID)
+            leaveSubProjectDashboard(ifGoneFrom: workspace)
             return
         }
         if let projectID, !needsDefaultProject, let ancestor = workspace.nearestRemainingAncestor(of: projectID) {
@@ -57,6 +58,19 @@ extension WindowState {
         } else {
             projectID = nil
             needsDefaultProject = false
+        }
+    }
+
+    /// Leaves the Dashboard of a sub project that is no longer a loaded descendant of the active
+    /// project: removed, hidden, no longer loaded or moved, or after a restore (docs/ui.md ›
+    /// WindowState).
+    func leaveSubProjectDashboard(ifGoneFrom workspace: DeviceWorkspace) {
+        guard let shown = subProjectDashboardID else { return }
+        let isDescendant = projectID.map { projectID in
+            workspace.descendants(of: projectID).contains { $0.project.id == shown }
+        } ?? false
+        if !isDescendant {
+            subProjectDashboardID = nil
         }
     }
 
@@ -110,7 +124,8 @@ extension WindowState {
             return
         }
 
-        // Step 4: the project and the section.
+        // Step 4: the project and the section; every target leaves a sub project's Dashboard.
+        subProjectDashboardID = nil
         if projectID != resolvedProjectID || needsDefaultProject {
             activate(projectID: resolvedProjectID)
         } else {

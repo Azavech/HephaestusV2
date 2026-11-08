@@ -138,11 +138,24 @@ struct SidebarSubProject: Equatable, Identifiable {
 }
 
 extension WindowState {
-    /// A click on a row of the sidebar's Sub Projects category: activates the project, as the Sub
-    /// project segment does, and selects the Dashboard section (docs/ui.md › Sidebar).
+    /// A click on a row of the sidebar's Sub Projects category: shows the project's Dashboard
+    /// without activating it, leaving the Global Memories view; the window keeps its section
+    /// (docs/ui.md › Sidebar).
     func showSubProject(_ projectID: String) {
-        activate(projectID: projectID)
-        section = .dashboard
+        showsGlobalMemories = false
+        subProjectDashboardID = projectID
+    }
+
+    /// Whether the sidebar shows a section row as selected: the selected section, unless the
+    /// window shows the Global Memories view or a sub project's Dashboard.
+    func isRowSelected(_ section: ProjectSection) -> Bool {
+        shownSection == section
+    }
+
+    /// Whether the sidebar shows a sub project row as selected: while the window shows that
+    /// project's Dashboard.
+    func isRowSelected(subProject projectID: String) -> Bool {
+        subProjectDashboardID == projectID
     }
 }
 
@@ -189,8 +202,9 @@ struct SidebarView: View {
     }
 
     private func row(_ section: ProjectSection) -> some View {
-        // No row is selected while the Global Memories view shows (docs/ui.md › Sidebar).
-        let selected = window.shownSection == section
+        // No section row is selected while the Global Memories view or a sub project's Dashboard
+        // shows (docs/ui.md › Sidebar).
+        let selected = window.isRowSelected(section)
         return Button {
             window.section = section
         } label: {
@@ -217,15 +231,16 @@ struct SidebarView: View {
     }
 
     /// A row of the Sub Projects category, drawn like a section row without badge, indented by its
-    /// level; never shown as selected.
+    /// level; selected, like a section row, while the window shows its Dashboard.
     private func row(_ subProject: SidebarSubProject) -> some View {
-        Button {
+        let selected = window.isRowSelected(subProject: subProject.id)
+        return Button {
             window.showSubProject(subProject.id)
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: subProject.symbol)
                     .frame(width: 18)
-                    .foregroundStyle(SidebarSubProject.iconColor(subProject.color))
+                    .foregroundStyle(selected ? Color.white : SidebarSubProject.iconColor(subProject.color))
                 Text(subProject.name)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -234,10 +249,12 @@ struct SidebarView: View {
             .padding(.leading, 8 + CGFloat(subProject.level) * SidebarSubProject.indentation)
             .padding(.trailing, 8)
             .padding(.vertical, 5)
-            .foregroundStyle(Color.primary)
+            .foregroundStyle(selected ? Color.white : Color.primary)
+            .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Color.accentColor : Color.clear))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     /// The Tickets badge: the `todo`, `in_progress` and `review` tickets of the active project and

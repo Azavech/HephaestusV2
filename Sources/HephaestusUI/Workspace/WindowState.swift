@@ -15,20 +15,44 @@ import HephaestusCore
 final class WindowState: Identifiable {
     /// The window's identity inside `AppModel`.
     let id: UUID
-    /// The device the window shows.
-    var deviceID: String
+    /// The device the window shows. A switch of device leaves a sub project's Dashboard.
+    var deviceID: String {
+        didSet {
+            if deviceID != oldValue {
+                subProjectDashboardID = nil
+            }
+        }
+    }
     /// The active project; nil when the device has no project or while the window waits for its
-    /// device's default project.
-    var projectID: String?
+    /// device's default project. A switch of project leaves a sub project's Dashboard.
+    var projectID: String? {
+        didSet {
+            if projectID != oldValue {
+                subProjectDashboardID = nil
+            }
+        }
+    }
     /// The selected sidebar section. Selecting a section, the selected one included, leaves the
-    /// Global Memories view (docs/memories.md › Global Memories view).
+    /// Global Memories view (docs/memories.md › Global Memories view) and a sub project's
+    /// Dashboard (docs/ui.md › Sidebar).
     var section: ProjectSection = .dashboard {
         didSet {
             showsGlobalMemories = false
+            subProjectDashboardID = nil
         }
     }
-    /// The centre column shows the Global Memories view; no sidebar row is selected.
-    var showsGlobalMemories = false
+    /// The centre column shows the Global Memories view; no sidebar row is selected. Showing it
+    /// leaves a sub project's Dashboard.
+    var showsGlobalMemories = false {
+        didSet {
+            if showsGlobalMemories {
+                subProjectDashboardID = nil
+            }
+        }
+    }
+    /// The sub project whose Dashboard the centre column shows from the sidebar, without
+    /// activating it; nil otherwise. Only its sidebar row is selected (docs/ui.md › Sidebar).
+    var subProjectDashboardID: String?
     var sidebarVisible = true
     var inspectorVisible = true
     /// Inspector width in points.
@@ -75,9 +99,10 @@ final class WindowState: Identifiable {
         self.deviceID = deviceID
     }
 
-    /// The section the centre column shows: nil while it shows the Global Memories view.
+    /// The section the centre column shows: nil while it shows the Global Memories view or a sub
+    /// project's Dashboard.
     var shownSection: ProjectSection? {
-        showsGlobalMemories ? nil : section
+        showsGlobalMemories || subProjectDashboardID != nil ? nil : section
     }
 
     /// The key of the active project.
@@ -144,8 +169,8 @@ final class WindowState: Identifiable {
 
 extension WindowState: @MainActor Codable {
     enum CodingKeys: String, CodingKey {
-        case id, deviceID, projectID, section, showsGlobalMemories, sidebarVisible, inspectorVisible, inspectorWidth, projectStates,
-             globalMemoryStates, lastProjectByDevice, searchVisible, search, sheet, pendingTarget
+        case id, deviceID, projectID, section, showsGlobalMemories, subProjectDashboardID, sidebarVisible, inspectorVisible,
+             inspectorWidth, projectStates, globalMemoryStates, lastProjectByDevice, searchVisible, search, sheet, pendingTarget
     }
 
     /// One entry of `projectStates`.
@@ -162,6 +187,9 @@ extension WindowState: @MainActor Codable {
         section = try c.decodeIfPresent(ProjectSection.self, forKey: .section) ?? .dashboard
         // After the section, which leaves the view.
         showsGlobalMemories = try c.decodeIfPresent(Bool.self, forKey: .showsGlobalMemories) ?? false
+        // After the project, the section and the view, which leave the sub project's Dashboard. The
+        // window checks it once the device's projects are known (docs/ui.md › WindowState).
+        subProjectDashboardID = try c.decodeIfPresent(String.self, forKey: .subProjectDashboardID)
         sidebarVisible = try c.decodeIfPresent(Bool.self, forKey: .sidebarVisible) ?? true
         inspectorVisible = try c.decodeIfPresent(Bool.self, forKey: .inspectorVisible) ?? true
         inspectorWidth = try c.decodeIfPresent(Double.self, forKey: .inspectorWidth) ?? 380
@@ -192,6 +220,7 @@ extension WindowState: @MainActor Codable {
         try c.encodeIfPresent(projectID, forKey: .projectID)
         try c.encode(section, forKey: .section)
         try c.encode(showsGlobalMemories, forKey: .showsGlobalMemories)
+        try c.encodeIfPresent(subProjectDashboardID, forKey: .subProjectDashboardID)
         try c.encode(sidebarVisible, forKey: .sidebarVisible)
         try c.encode(inspectorVisible, forKey: .inspectorVisible)
         try c.encode(inspectorWidth, forKey: .inspectorWidth)

@@ -350,6 +350,7 @@ The view has the list, the memory editor, the MEMORY.md editor, the New Memory s
 | No memory and no `MEMORY.md`, or no folder | in place of both columns, under the header: the SF Symbol `brain`, the title `No Global Memories`, the text `Claude saves here what it learns that holds for every project.` and the button `New Memory…`. An editor with unsaved changes stays shown instead, with its banner |
 
 - Leaving the view while its editor has unsaved changes asks the prompt of [Saving](#saving): Save saves and goes on, a failed save or Cancel shows the view again, and Don't Save discards the changes.
+- A click on a row of the sidebar's Sub Projects category also leaves the view: it shows that sub project's Dashboard ([Sidebar](ui.md#sidebar)).
 - Switching project or device keeps the view: it then shows the global memories of the window's device. Each device keeps its own selection, editor and mode in the window, as the projects do in `projectStates`.
 - File ▸ Save (⌘S) saves the memory form or `MEMORY.md` of the view, as in the Memories section ([Menus and keyboard shortcuts](ui.md#menus-and-keyboard-shortcuts)).
 

@@ -119,15 +119,33 @@ struct SidebarSubProjectsTests {
         #expect(try categories(of: "DEMO", in: workspace).map(\.title) == ["Project"])
     }
 
-    @Test("A click on a row activates the sub project and selects the Dashboard section")
+    @Test("A click on a row shows the sub project's Dashboard without activating it; the window keeps its section")
     func click() {
         let window = WindowState(id: UUID(), deviceID: "device")
         window.activate(projectID: "DEMO")
         window.section = .tickets
         window.showSubProject("API")
-        #expect(window.projectID == "API")
-        #expect(window.section == .dashboard)
-        #expect(window.lastProjectByDevice["device"] == "API")
-        #expect(window.projectStates[ProjectKey(deviceID: "device", projectID: "API")] != nil)
+        #expect(window.projectID == "DEMO")
+        #expect(window.section == .tickets)
+        #expect(window.subProjectDashboardID == "API")
+        #expect(window.lastProjectByDevice["device"] == "DEMO")
+        #expect(window.projectStates[ProjectKey(deviceID: "device", projectID: "API")] == nil)
+    }
+
+    @Test("While a sub project's Dashboard shows, its row is the only selected row")
+    func selectedRow() {
+        let window = WindowState(id: UUID(), deviceID: "device")
+        window.activate(projectID: "DEMO")
+        window.section = .tickets
+        #expect(window.isRowSelected(.tickets) && !window.isRowSelected(subProject: "MUS"))
+        window.showSubProject("MUS")
+        #expect(window.isRowSelected(subProject: "MUS"))
+        #expect(!window.isRowSelected(subProject: "API") && !window.isRowSelected(subProject: "SHR"))
+        #expect(ProjectSection.allCases.allSatisfy { !window.isRowSelected($0) })
+        // Another row moves the selection; the Dashboard row selects the section again.
+        window.showSubProject("SHR")
+        #expect(window.isRowSelected(subProject: "SHR") && !window.isRowSelected(subProject: "MUS"))
+        window.section = .dashboard
+        #expect(window.isRowSelected(.dashboard) && !window.isRowSelected(subProject: "SHR"))
     }
 }

@@ -243,19 +243,35 @@ private struct APIExplorerState: Hashable {
     var isShown: Bool?
 }
 
-/// The centre column: the section the sidebar selects, once the project's data is loaded, or the
-/// Global Memories view, which needs no project data (docs/memories.md › Global Memories view).
+/// The centre column: the section the sidebar selects, once the project's data is loaded, the
+/// Global Memories view, which needs no project data (docs/memories.md › Global Memories view), or
+/// the Dashboard of a sub project shown from the sidebar, once its data is loaded
+/// (docs/dashboard.md › Section).
 private struct SectionContent: View {
     let state: WindowState
     let workspace: DeviceWorkspace
     let project: ProjectSummary
 
     var body: some View {
-        let projectID = project.id
         if state.showsGlobalMemories {
             GlobalMemoriesView(window: state, workspace: workspace)
                 .id("\(workspace.deviceID)/global")
-        } else if let error = workspace.projectLoadErrors[projectID] {
+        } else if let subProjectID = state.subProjectDashboardID, let subProject = workspace.project(subProjectID) {
+            loaded(subProject) {
+                DashboardView(window: state, workspace: workspace, projectID: subProjectID, showsHeader: true)
+            }
+        } else {
+            loaded(project) {
+                section(project.id)
+            }
+        }
+    }
+
+    /// The content once the project's data is loaded; its loading or failure state until then.
+    @ViewBuilder
+    private func loaded(_ project: ProjectSummary, @ViewBuilder content: () -> some View) -> some View {
+        let projectID = project.id
+        if let error = workspace.projectLoadErrors[projectID] {
             ProjectLoadFailedView(projectName: project.name, error: error) {
                 workspace.retryProjectLoad(projectID)
             }
@@ -265,36 +281,42 @@ private struct SectionContent: View {
                     workspace.ensureProjectLoaded(projectID)
                 }
         } else {
-            switch state.section {
-            case .dashboard:
-                DashboardView(window: state, workspace: workspace, projectID: projectID)
-            case .tickets:
-                TicketsSectionView(window: state, workspace: workspace, projectID: projectID)
-            case .bundles:
-                BundlesSectionView(window: state, workspace: workspace, projectID: projectID)
-            case .chats:
-                ChatsSectionView(window: state, workspace: workspace, projectID: projectID)
-            case .code:
-                CodeSectionView(window: state, workspace: workspace, projectID: projectID)
-            case .docs:
-                DocsSectionView(window: state, workspace: workspace, projectID: projectID)
-            case .web:
-                WebSectionView(window: state, workspace: workspace, projectID: projectID)
-            case .builds:
-                BuildsSectionView(window: state, workspace: workspace, projectID: projectID)
-                    .id("\(workspace.deviceID)/\(projectID)")
-            case .skills:
-                SkillsSectionView(window: state, workspace: workspace, projectID: projectID)
-            case .memories:
-                MemoriesSectionView(window: state, workspace: workspace, scope: .project(projectID))
-                    .id("\(workspace.deviceID)/\(projectID)")
-            case .costs:
-                CostsSectionView(window: state, workspace: workspace, projectID: projectID)
-            case .apiExplorer:
-                APIExplorerView(window: state, workspace: workspace, projectID: projectID)
-            case .settings:
-                ProjectSettingsView(window: state, workspace: workspace, projectID: projectID)
-            }
+            content()
+        }
+    }
+
+    /// The selected section of the active project.
+    @ViewBuilder
+    private func section(_ projectID: String) -> some View {
+        switch state.section {
+        case .dashboard:
+            DashboardView(window: state, workspace: workspace, projectID: projectID)
+        case .tickets:
+            TicketsSectionView(window: state, workspace: workspace, projectID: projectID)
+        case .bundles:
+            BundlesSectionView(window: state, workspace: workspace, projectID: projectID)
+        case .chats:
+            ChatsSectionView(window: state, workspace: workspace, projectID: projectID)
+        case .code:
+            CodeSectionView(window: state, workspace: workspace, projectID: projectID)
+        case .docs:
+            DocsSectionView(window: state, workspace: workspace, projectID: projectID)
+        case .web:
+            WebSectionView(window: state, workspace: workspace, projectID: projectID)
+        case .builds:
+            BuildsSectionView(window: state, workspace: workspace, projectID: projectID)
+                .id("\(workspace.deviceID)/\(projectID)")
+        case .skills:
+            SkillsSectionView(window: state, workspace: workspace, projectID: projectID)
+        case .memories:
+            MemoriesSectionView(window: state, workspace: workspace, scope: .project(projectID))
+                .id("\(workspace.deviceID)/\(projectID)")
+        case .costs:
+            CostsSectionView(window: state, workspace: workspace, projectID: projectID)
+        case .apiExplorer:
+            APIExplorerView(window: state, workspace: workspace, projectID: projectID)
+        case .settings:
+            ProjectSettingsView(window: state, workspace: workspace, projectID: projectID)
         }
     }
 }

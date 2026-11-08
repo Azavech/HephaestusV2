@@ -233,17 +233,35 @@ final class DashboardChanges {
     }
 }
 
-/// The Dashboard of the window's active project (docs/dashboard.md).
+/// The Dashboard of the shown project: the window's active project, or a sub project shown from
+/// the sidebar, under a pane header with its name (docs/dashboard.md › Section).
 struct DashboardView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
     let projectID: String
+    /// A sub project's Dashboard has a pane header with the project's name.
+    var showsHeader = false
 
     var body: some View {
-        DashboardSection(window: window, workspace: workspace, projectID: projectID)
-            // Edit mode ends when the window shows another project or device (docs/dashboard.md ›
-            // Edit mode).
-            .id("\(workspace.deviceID)/\(projectID)")
+        VStack(spacing: 0) {
+            if showsHeader {
+                // 36 pt like every header of the centre column (docs/ui.md › Pane headers).
+                HStack {
+                    Text(workspace.project(projectID)?.name ?? "")
+                        .font(.headline)
+                        .lineLimit(1)
+                        .accessibilityAddTraits(.isHeader)
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .paneHeaderBar()
+                Divider()
+            }
+            DashboardSection(window: window, workspace: workspace, projectID: projectID)
+        }
+        // Edit mode ends when the window shows another project or device, or leaves a sub
+        // project's Dashboard (docs/dashboard.md › Edit mode).
+        .id("\(workspace.deviceID)/\(projectID)")
     }
 }
 
