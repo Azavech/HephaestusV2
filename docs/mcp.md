@@ -161,13 +161,13 @@ The Claude process of a chat sends `POST /hooks/pre-tool-use` before each call o
 {"session_id":"3f2504e0-4f89-11d3-9a0c-0305e82c3301","transcript_path":"/Users/example/.claude/projects/-Users-example-Developer-HephaestusV2/3f2504e0-4f89-11d3-9a0c-0305e82c3301.jsonl","cwd":"/Users/example/Developer/HephaestusV2","permission_mode":"default","hook_event_name":"PreToolUse","tool_name":"mcp__hephaestus__close_chat","tool_input":{},"tool_use_id":"toolu_01A2B3C4D5E6F7G8H9J0K1L2"}
 ```
 
-- When `tool_name` is `mcp__hephaestus__close_chat` and `tool_input` is an object that names no other chat than the token's chat, its `chatIDs` being absent, `null`, or an array whose elements are all strings equal to the token's chat id ignoring case, the answer is 200 with `application/json` and the decision `allow`, so the call runs without a permission prompt in every permission mode:
+- When `tool_name` is `mcp__hephaestus__close_chat` and `tool_input` is an object that names no other chats than the token's chat and the chats it orchestrates, its `chatIDs` being absent, `null`, or an array whose elements are all strings that are, ignoring case, the token's chat id or the id of a chat whose `orchestrator` is the token's chat ([Chats](chats.md#close-chat-hook)), the answer is 200 with `application/json` and the decision `allow`, so the call runs without a permission prompt in every permission mode:
 
 ```json
 {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}
 ```
 
-- Otherwise the answer is 200 with the body `{}`, which makes no decision: the call follows the chat's permission mode, as a tool that is not pre-approved does ([Chats](chats.md#command-line)). This covers a `chatIDs` that names another chat or holds an element that is not a string, another tool, and a body that is not a JSON object. Default chosen at design time.
+- Otherwise the answer is 200 with the body `{}`, which makes no decision: the call follows the chat's permission mode, as a tool that is not pre-approved does ([Chats](chats.md#command-line)). This covers a `chatIDs` that names another chat, an unknown chat or an id that is not a UUID, or holds an element that is not a string, another tool, and a body that is not a JSON object. Default chosen at design time.
 - The request runs no engine method, emits no event and is not logged, unless it is rejected ([Logging](#logging)).
 
 ## JSON-RPC
@@ -2029,9 +2029,9 @@ Input schema:
 
 - **Engine call:** without `chatIDs`, chats.close with `chatID` = the calling chat ([Engine API](engine-api.md#chatsclose)). The chat closes when the current turn ends, so Claude can still finish its reply; Stop or an error in that turn cancels the close ([Chats](chats.md#closing-a-chat)).
 - **With `chatIDs`:** chats.close once per element, in list order, with that element as `chatID`. The calling chat's own id closes it as without `chatIDs`, when the current turn ends. Every other chat of the calling chat's project closes at once, unless a turn is in progress in it; a chat that is already closed stays unchanged. A refusal of one chat does not stop the others. An element that is not a UUID is not sent: it is refused as an unknown chat, with `Chat <element> not found.` Default chosen at design time.
-- **Rule:** Claude closes another chat only when the user asked it to close that chat, never on its own ([Workflow](workflow.md#project-and-feedback-chats)); the server cannot check it, the prompt carries it.
+- **Rule:** Claude closes another chat only when the user asked it to close that chat, never on its own, except an orchestrator, which closes the chats it orchestrates when its task is done ([Workflow](workflow.md#project-and-feedback-chats)); the server cannot check it, the prompt carries it.
 - **Availability:** chat tokens only. With the external token the call fails before argument validation with `Only the chat's own Claude can close its chat.`, the message of chats.close for that case. The tool is listed for every token. Default chosen at design time.
-- **Permission:** a call whose `chatIDs` is absent or names no other chat than the calling chat runs without a permission prompt in every permission mode. A call whose `chatIDs` names another chat follows the chat's permission mode, as the tools that are not pre-approved do: in Ask Every Time the user approves it ([Chats](chats.md#close-chat-hook)).
+- **Permission:** a call whose `chatIDs` is absent or names no other chats than the calling chat and the chats it orchestrates, those whose `orchestrator` is the calling chat, runs without a permission prompt in every permission mode. A call whose `chatIDs` names any other chat follows the chat's permission mode, as the tools that are not pre-approved do: in Ask Every Time the user approves it ([Chats](chats.md#close-chat-hook)).
 - **Result:** `{}` without `chatIDs`. With `chatIDs`, `{refused}`: an object whose `refused` array holds one element per element of `chatIDs` that chats.close refused, in list order, with `chatID`, the element as given, and `reason`, the message of the refusal; `refused` is empty when every listed chat closed, was already closed, or is the calling chat. Default chosen at design time.
 
 ```json
@@ -2050,7 +2050,7 @@ Input schema:
 Description:
 
 ```text
-Close the chat you run in, or with chatIDs chats of your project. Without chatIDs it closes the chat you run in: you can still finish your reply; when your turn ends, HephaestusV2 ends your session and the chat shows "This conversation is over" until the user reopens it. Call it when the user asks you to close the chat, or when the work of the chat is finished. chatIDs lists chats of your project to close at once; your own chat's id in it closes your chat as without chatIDs. Close another chat only when the user asked you to close it, never on your own. A listed chat whose turn is in progress, a chat of another project and an unknown id are not closed: the result lists each one in refused, with the reason. Only available in chats started by HephaestusV2.
+Close the chat you run in, or with chatIDs chats of your project. Without chatIDs it closes the chat you run in: you can still finish your reply; when your turn ends, HephaestusV2 ends your session and the chat shows "This conversation is over" until the user reopens it. Call it when the user asks you to close the chat, or when the work of the chat is finished. chatIDs lists chats of your project to close at once; your own chat's id in it closes your chat as without chatIDs. Close another chat only when the user asked you to close it, never on your own, except the ticket chats and CI chats you started as their orchestrator, which you close when your task is done. A listed chat whose turn is in progress, a chat of another project and an unknown id are not closed: the result lists each one in refused, with the reason. Only available in chats started by HephaestusV2.
 ```
 
 Input schema:
@@ -3468,7 +3468,7 @@ Unauthorized: missing or invalid bearer token.
 - R134: In a Swift application project, Claude asks the user to choose a keyboard shortcut with `ask_shortcut`: suggestions show as key caps, the user can record another combination and sees when macOS or the app already uses the selected one, then picks one, answers another way or skips.
 - R135: Claude asks the user to choose a font with `ask_font` and a sample text: the suggestions are drawn in their fonts, every font of the Mac and of the project can be searched, the user picks one, sets its weight and size and sees the sample in it, answers another way or skips.
 - R136: In a Swift application project, Claude asks the user to choose a SwiftUI animation with `ask_animation`: each suggestion plays in a lane, the user compares them, sets a preset and its parameters in a Custom row, picks one, answers another way or skips.
-- R137: Claude closes other chats of the project when the user asks it to, never on its own; a chat with a turn in progress is not closed.
+- R137: Claude closes other chats of the project when the user asks it to, never on its own, except an orchestrator, which closes the chats it started when its task is done; a chat with a turn in progress is not closed.
 - R140: A comment that mentions `@Claude` gets an answer from Claude as a new comment, made by a one-shot call without a chat; typing `@` in the comment composer suggests Claude, mentions are highlighted, Claude may change the ticket's title, description, links and status, a row shows while Claude replies and offers Retry when it could not, and the answers count in the project's costs.
 - R145: A chat started to implement a ticket asks the user no question until the user writes in it: it makes the choices itself, marks them in the docs and lists them, with the decisions it took, in its completion comment; the engine refuses its questions.
 - R150: Claude shows the user images in the chat with `show_image`: PNG, JPEG, GIF and WebP files are copied into the chat and shown, with an optional caption, at the place of the call, without a permission prompt, in local and remote windows; clicking one opens the image viewer.

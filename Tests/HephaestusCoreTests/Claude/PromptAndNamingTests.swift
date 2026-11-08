@@ -340,7 +340,8 @@ struct PromptAndNamingTests {
             + "then fast-forwarding main to it in the project root (git merge --ff-only <branch>)"))
         #expect(section.contains("ask the user with ask_questions whether to retry the ticket, skip it or stop the bundle; the other ticket chats keep running."))
         #expect(section.contains("Skip every ticket of the bundle that depends on it too"))
-        #expect(section.contains("start no other ticket chat and let the running ones finish; merge nothing, do not push, and keep every branch and worktree."))
+        #expect(section.contains("start no other ticket chat and let the running ones finish; merge nothing, do not push, keep every branch and worktree, "
+            + "and close none of the chats you started: a stopped bundle is not done."))
         #expect(section.contains("Then build and test main once"))
         #expect(section.contains("change the first line of each ticket's completion comment so that it names the hash of the ticket's commit on main."))
         #expect(section.contains("you commit on your branch without pushing"))
@@ -349,8 +350,9 @@ struct PromptAndNamingTests {
             + "and in step 6 of \"When the project is a Go service\" in a Go service project."))
         #expect(section.contains("After every ticket has reported back or been skipped, merge the branches not merged yet, in bundle order."))
         #expect(section.contains("When the build or the tests fail, do not push and ask the user with ask_questions how to proceed. Otherwise push once"))
+        #expect(section.contains("- Your task is then done: close the ticket chats and CI chats you started, then your own chat, as \"Closing chats\" describes."))
         #expect(section.contains("Your final reply lists each ticket with the hash of its commit on main, or with skipped and the reason, "
-            + "and names the conflicts you resolved."))
+            + "and names the conflicts you resolved and the chats that close_chat did not close."))
         #expect(section.contains("when the project has no remote, do not push. Then remove the worktree and the branch of each merged ticket"))
         #expect(section.contains("\" (not pushed: the bundle chat pushes at the end)\""))
         #expect(!section.contains("with its own commit, push, completion comment"))
@@ -391,7 +393,7 @@ struct PromptAndNamingTests {
         #expect(go.contains("5. Update each ticket's completion comment with update_comment: each Testing line gets its result, "
             + "and Notes lists each fix commit of that ticket with its short hash and subject."))
         #expect(go.contains("6. Set each ticket whose Claude tests have all passed to done, following \"Ticket status\"; set the other tickets to review. "
-            + "Then stop the test service. The bundle chat then closes its chat."))
+            + "Then stop the test service and close the chats you started, as \"Closing chats\" describes. The bundle chat then closes its chat."))
         #expect(go.contains("these are the exceptions to \"Do not implement the tickets yourself\" and \"Never set a ticket to done\""))
 
         // The other sections refer to it.
@@ -417,12 +419,12 @@ struct PromptAndNamingTests {
         // The implement messages.
         #expect(Prompts.text(.implementTicket).hasSuffix("\n\nIn a Go service project, follow \"When the project is a Go service\" after the push: "
             + "post the completion comment with the Claude tests waiting for the test service, wait for CI, run the test service and the checks, "
-            + "then update the completion comment and set the status."))
+            + "then update the completion comment, set the status and close the CI chats you started."))
         #expect(Prompts.text(.implementBundleTicket).hasSuffix("\n\nIn a Go service project, do not run the Claude tests: "
             + "they wait for the test service that the bundle chat runs after its push, and you set the ticket to review."))
         #expect(Prompts.text(.implementBundle).hasSuffix("\n\nIn a Go service project, follow \"When the project is a Go service\" after the push: "
             + "wait for CI, run the test service and every ticket's Claude tests, fixing what fails, update the completion comments, "
-            + "set the tickets to done or review, then close your chat."))
+            + "set the tickets to done or review, then close the chats you started and your own chat."))
     }
 
     @Test("Claude sets review after the completion comment, in a ticket chat and in each ticket chat of a bundle")
@@ -539,10 +541,10 @@ struct PromptAndNamingTests {
         #expect(GitHubPage.repository(of: "https://gitlab.com/owner/name") == nil)
     }
 
-    @Test("The common prompt lists close_chat and says when to call it, for other chats only when the user asks")
+    @Test("The common prompt lists close_chat and says when to call it, for other chats only when the user asks or for the chats an orchestrator started once its task is done")
     func closeChatPrompt() throws {
         let common = Prompts.text(.common)
-        #expect(common.contains("- Chats: list_chats, get_chat (a chat and its transcript, for example another chat of the same ticket), rename_chat, close_chat (closes the chat you run in, or chats of the project that the user asks you to close), watch_ci (starts a CI chat that follows the CI of a commit you pushed)."))
+        #expect(common.contains("- Chats: list_chats, get_chat (a chat and its transcript, for example another chat of the same ticket), rename_chat, close_chat (closes the chat you run in, the chats you started as their orchestrator, or chats of the project that the user asks you to close), watch_ci (starts a CI chat that follows the CI of a commit you pushed)."))
         let lower = try #require(common.range(of: "# Closing chats")).lowerBound
         let upper = try #require(common.range(of: "# When the project is HephaestusV2")).lowerBound
         let section = String(common[lower..<upper])
@@ -554,8 +556,22 @@ struct PromptAndNamingTests {
         #expect(section.contains("- in a feedback chat, once you have created its ticket."))
         #expect(section.contains("Close a project chat only when the user asks for it."))
         #expect(section.contains("To close other chats of the project, call close_chat with chatIDs"))
-        #expect(section.contains("Close another chat only when the user asks you to close it, never on your own."))
+        #expect(section.contains("Close another chat only when the user asks you to close it, never on your own, except the chats you orchestrate, below."))
         #expect(section.contains("Tell the user which chats were not closed and why."))
+        // An orchestrator closes the chats it started once its task is done (docs/workflow.md › Project and feedback chats).
+        #expect(section.contains("You orchestrate the chats whose orchestrator is the id of your chat: the ticket chats you start with implement_ticket "
+            + "from a bundle chat for the tickets of its bundle, and the CI chats you start with watch_ci; the results of these tools and list_chats show "
+            + "their orchestrator. When your task is done, close all of them on your own, "
+            + "with one close_chat call whose chatIDs lists their ids; HephaestusV2 runs it without a permission prompt, also when chatIDs lists your own chat's id:"))
+        #expect(section.contains("- in a bundle chat, after your push and, when you follow \"Waiting for CI\" or \"When the project is a Go service\", after them, "
+            + "just before you close your own chat; when the user decided to stop the bundle, it is not done: close none of them;"))
+        #expect(section.contains("- in a ticket chat that started CI chats, once you have set its ticket's status."))
+        #expect(section.contains("Name the chats that were not closed in your final reply."))
+        #expect(Prompts.text(.implementTicket).contains("set the ticket to done or review as \"Ticket status\" describes, "
+            + "close the CI chats you started as \"Closing chats\" describes, and end with a short final reply."))
+        #expect(Prompts.text(.implementBundle).contains("Once your task is done, close the ticket chats and CI chats you started, then your own chat, "
+            + "as \"Closing chats\" describes. End with a reply that lists each ticket with the hash of its commit on main, or with skipped and the reason, "
+            + "and names the conflicts you resolved and the chats that were not closed."))
     }
 
     @Test("Claude asks only true unknowns and decides evident points, in every chat kind and in comment answers")

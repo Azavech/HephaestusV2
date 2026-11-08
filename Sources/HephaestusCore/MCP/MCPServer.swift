@@ -28,6 +28,7 @@ public actor MCPServer {
     private weak var engine: Engine?
     private var engineCall: MCPEngineCall?
     private var hookCall: MCPHookCall?
+    private var closeChatHookCall: MCPHookCall?
     private var debugUI: (any MCPDebugUI)?
     private let stateStreams = StreamFanOut<MCPServerState>()
 
@@ -98,15 +99,19 @@ public actor MCPServer {
             return try await engine.dispatch(method: method, params: params, actor: actor)
         }, hookCall: { [weak engine] chatID, body in
             await engine?.linkedItemsHookAnswer(chatID: chatID, body: body) ?? LinkedItemsHook.answer(lines: [])
+        }, closeChatHookCall: { [weak engine] chatID, body in
+            await engine?.closeChatHookAnswer(chatID: chatID, body: body) ?? CloseChatHook.answer(chatID: chatID, body: body)
         })
     }
 
-    /// Starts with another engine call than `Engine.dispatch`, and another hook answer than the
+    /// Starts with another engine call than `Engine.dispatch`, and other hook answers than the
     /// engine's, for tests of the transport.
-    func start(port: Int, engineCall: @escaping MCPEngineCall, hookCall: MCPHookCall? = nil) async {
+    func start(port: Int, engineCall: @escaping MCPEngineCall, hookCall: MCPHookCall? = nil,
+               closeChatHookCall: MCPHookCall? = nil) async {
         guard !isStopped else { return }
         self.engineCall = engineCall
         self.hookCall = hookCall
+        self.closeChatHookCall = closeChatHookCall
         await listen(on: port)
     }
 
@@ -263,9 +268,11 @@ public actor MCPServer {
             throw EngineError(.unavailable, "\(method) is not available: the engine is not started.")
         }
         let hookCall = self.hookCall ?? { _, _ in LinkedItemsHook.answer(lines: []) }
+        let closeChatHookCall = self.closeChatHookCall ?? { chatID, body in CloseChatHook.answer(chatID: chatID, body: body) }
         return MCPRequestHandler(
             tokens: tokens, debugTools: debugTools, appVersion: appVersion, log: log,
-            tools: MCPToolHandlers(engineCall: engineCall, debugUI: debugUI, homeDirectory: homeDirectory), hookCall: hookCall
+            tools: MCPToolHandlers(engineCall: engineCall, debugUI: debugUI, homeDirectory: homeDirectory), hookCall: hookCall,
+            closeChatHookCall: closeChatHookCall
         )
     }
 }
@@ -286,8 +293,8 @@ private final class OnceFlag: @unchecked Sendable {
 
 // MARK: - Requests
 
-/// The answer of the linked items hook to a hook request body of a chat (docs/mcp.md › User prompt
-/// hook).
+/// The answer of the linked items hook or of the close chat hook to a hook request body of a chat
+/// (docs/mcp.md › User prompt hook, › Pre-tool-use hook).
 typealias MCPHookCall = @Sendable (_ chatID: ChatID, _ body: Data) async -> Data
 
 /// Who a request admitted by steps 2 to 6 is for: the MCP endpoint with the actor of a chat token,
@@ -307,6 +314,7 @@ struct MCPRequestHandler: Sendable {
     var log: LogSink
     var tools: MCPToolHandlers
     var hookCall: MCPHookCall
+    var closeChatHookCall: MCPHookCall
 
     /// Steps 2 to 6: Origin, path, method, authorization, declared size. The route of the bearer
     /// token, or the rejection: `/mcp` takes a chat token or the external token, the hook paths
@@ -355,7 +363,7 @@ struct MCPRequestHandler: Sendable {
         case .hook(let chatID):
             return .hook(await hookCall(chatID, body))
         case .closeChatHook(let chatID):
-            return .hook(CloseChatHook.answer(chatID: chatID, body: body))
+            return .hook(await closeChatHookCall(chatID, body))
         case .mcp(let routeActor, let ticketID):
             actor = routeActor
             answerTicketID = ticketID
