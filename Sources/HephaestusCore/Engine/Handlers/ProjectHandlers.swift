@@ -250,6 +250,9 @@ extension Engine {
         if let environments = params.environments {
             new.environments = try validated { try ProjectEnvironment.normalized(environments, keeping: old.environments) }
         }
+        if let widgets = params.dashboardWidgets {
+            new.dashboardWidgets = try validated { try DashboardWidget.normalized(widgets, keeping: old.dashboardWidgets ?? []) }
+        }
         guard new != old else { return projectDetail(id)! }
         let pagesBefore = githubPages()
         try saveProject(new)

@@ -29,6 +29,9 @@ public struct Project: Codable, Sendable, Hashable {
     /// The environments of a Go service, in the order they were added (docs/projects.md ›
     /// Environments).
     public var environments: [ProjectEnvironment]
+    /// The widgets of the project's Dashboard, in their order; nil when the project has no stored
+    /// list, which shows `DashboardWidget.defaultList` (docs/dashboard.md › Widgets).
+    public var dashboardWidgets: [DashboardWidget]?
     /// The costs of the deleted chats, in deletion order (docs/costs.md › Deleted chats).
     public var deletedChats: [DeletedChat]
     /// The costs of the comment answers, in the order the calls ended, deleted tickets' included
@@ -39,8 +42,8 @@ public struct Project: Codable, Sendable, Hashable {
     public init(schema: Int = 1, id: ProjectID, name: String, created: Date, type: ProjectType = .none, color: String? = nil, icon: String? = nil,
                 nextTicketNumber: Int = 1, nextBundleNumber: Int = 1, docsPath: String = "docs", githubPage: String? = nil,
                 useParentSettings: Bool = true, subprojects: [String] = [], webTabs: [WebTab] = [], skills: [String] = [],
-                chatDefaults: ChatSettings? = nil, environments: [ProjectEnvironment] = [], deletedChats: [DeletedChat] = [],
-                commentAnswers: [CommentAnswerCost] = [], unknownKeys: [String: JSONValue] = [:]) {
+                chatDefaults: ChatSettings? = nil, environments: [ProjectEnvironment] = [], dashboardWidgets: [DashboardWidget]? = nil,
+                deletedChats: [DeletedChat] = [], commentAnswers: [CommentAnswerCost] = [], unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
         self.id = id
         self.name = name
@@ -58,6 +61,7 @@ public struct Project: Codable, Sendable, Hashable {
         self.skills = skills
         self.chatDefaults = chatDefaults
         self.environments = environments
+        self.dashboardWidgets = dashboardWidgets
         self.deletedChats = deletedChats
         self.commentAnswers = commentAnswers
         self.unknownKeys = unknownKeys
@@ -67,7 +71,7 @@ public struct Project: Codable, Sendable, Hashable {
     static let knownKeys: Set<String> = [
         "schema", "id", "name", "created", "type", "color", "icon", "nextTicketNumber", "nextBundleNumber", "docsPath",
         "githubPage", "useParentSettings",
-        "subprojects", "webTabs", "skills", "chatDefaults", "environments", "deletedChats",
+        "subprojects", "webTabs", "skills", "chatDefaults", "environments", "dashboardWidgets", "deletedChats",
         "commentAnswers",
     ]
 
@@ -104,6 +108,7 @@ public struct Project: Codable, Sendable, Hashable {
         try c.checkAll("skills", skills, Identifiers.isSkillName, "skill name")
         chatDefaults = try c.optional("chatDefaults")
         environments = try c.value("environments", default: [])
+        dashboardWidgets = try c.optional("dashboardWidgets")
         deletedChats = try c.value("deletedChats", default: [])
         commentAnswers = try c.value("commentAnswers", default: [])
         unknownKeys = try c.unknownKeys(known: Self.knownKeys)
@@ -137,6 +142,10 @@ public struct Project: Codable, Sendable, Hashable {
         try c.encode(skills, "skills")
         try c.encodeOptional(chatDefaults, "chatDefaults")
         try c.encode(environments, "environments")
+        // Left out of the file when there is no stored list; `null` in the JSON form.
+        if dashboardWidgets != nil || !c.isYAML {
+            try c.encodeOptional(dashboardWidgets, "dashboardWidgets")
+        }
         try c.encode(deletedChats, "deletedChats")
         try c.encode(commentAnswers, "commentAnswers")
         try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
@@ -171,6 +180,7 @@ public struct Project: Codable, Sendable, Hashable {
         try ModelRules.noDuplicates(skills, field: "skills")
         try chatDefaults?.validate()
         _ = try ProjectEnvironment.normalized(environments)
+        _ = try DashboardWidget.normalized(dashboardWidgets ?? [])
         try ModelRules.noDuplicates(deletedChats.map(\.id), field: "deletedChats") { "Chat \($0.uuidString) is listed more than once." }
         for chat in deletedChats {
             try chat.validate()
@@ -178,6 +188,12 @@ public struct Project: Codable, Sendable, Hashable {
         for answer in commentAnswers {
             try answer.validate()
         }
+    }
+
+    /// The widgets the project's Dashboard shows: the stored list, or the default list when the
+    /// project has none (docs/dashboard.md › Widgets).
+    public var dashboardWidgetList: [DashboardWidget] {
+        dashboardWidgets ?? DashboardWidget.defaultList
     }
 
     /// The cost of the deleted chats (docs/costs.md › Project totals).

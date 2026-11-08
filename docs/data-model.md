@@ -39,7 +39,7 @@ HephaestusV2 stores everything in plain files: each project's `.hephaestus/` fol
 - The Required column of a field table says whether a file is invalid without the key. A key that is absent or `null` takes the value of the Default column; a required key that is absent or `null` makes the file invalid. Default chosen at design time.
 - The Default column values of `HostSettings` and `ChatSettings` are the product's default settings. The other Default column values only fill keys missing from a file, since the engine always writes every key. Default chosen at design time.
 - Key order is part of the contract for YAML files only. In JSON (`secrets.json`, transcripts, the engine API) key order is not significant.
-- Writing: the engine writes every known key in the order of the field table, `null` for an absent optional value, except the keys `color`, `icon` and `githubPage` of the [project file](#project-file), which are left out when they have no value, `[]` and `{}` for empty collections, then the unknown keys ([Unknown keys](#unknown-keys)). Mappings and non-empty sequences use block style. A nested mapping is indented by two spaces under its key; a sequence that is the value of a key is not indented: its `- ` items start at the key's column, and the keys of a mapping item are aligned after its `- `. This is the only layout the emitter, libyaml through Yams, writes, and the examples of this page use it. A string containing a line break uses literal block style (`|`, or `|-` when the string does not end with a line break). A string that YAML would read as another type, for example `true`, `null`, `12`, `1.5`, `2026-10-31`, `NO` or `ON`, is quoted. Every other layout detail is the emitter's (Yams); the contract is the decoded values and the key order. Default chosen at design time.
+- Writing: the engine writes every known key in the order of the field table, `null` for an absent optional value, except the keys `color`, `icon`, `githubPage` and `dashboardWidgets` of the [project file](#project-file), which are left out when they have no value, `[]` and `{}` for empty collections, then the unknown keys ([Unknown keys](#unknown-keys)). Mappings and non-empty sequences use block style. A nested mapping is indented by two spaces under its key; a sequence that is the value of a key is not indented: its `- ` items start at the key's column, and the keys of a mapping item are aligned after its `- `. This is the only layout the emitter, libyaml through Yams, writes, and the examples of this page use it. A string containing a line break uses literal block style (`|`, or `|-` when the string does not end with a line break). A string that YAML would read as another type, for example `true`, `null`, `12`, `1.5`, `2026-10-31`, `NO` or `ON`, is quoted. Every other layout detail is the emitter's (Yams); the contract is the decoded values and the key order. Default chosen at design time.
 - Reading: any YAML style is accepted, flow or block, quoted or plain. A key of Swift type `String` accepts any scalar, so an unquoted `NO` reads as the string `NO`. Booleans are `true` and `false`; the YAML 1.1 spellings `yes`, `no`, `on` and `off` are accepted too. A mapping with a duplicate key makes the file invalid. Default chosen at design time.
 
 ### Dates
@@ -132,7 +132,7 @@ The engine API sends these types as JSON objects with the same keys and value ru
 
 ## Project file
 
-`.hephaestus/project.yml` holds the project's identity, type, color, icon, counters, documentation folder, GitHub page, the use of its parent's settings, sub projects, web tabs, enabled skills, chat defaults, environments, the costs of its deleted chats and the costs of its comment answers. Swift type `Project`.
+`.hephaestus/project.yml` holds the project's identity, type, color, icon, counters, documentation folder, GitHub page, the use of its parent's settings, sub projects, web tabs, enabled skills, chat defaults, environments, the widgets of its Dashboard, the costs of its deleted chats and the costs of its comment answers. Swift type `Project`.
 
 | Swift name        | Key                 | Type                   | Required | Default | Rules                                                                                                                                                                                                                                                                                                                                                           |
 | ----------------- | ------------------- | ---------------------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -153,6 +153,7 @@ The engine API sends these types as JSON objects with the same keys and value ru
 | skills            | `skills`            | `[String]`             | no       | `[]`    | Names of library skills enabled in this project, in the order they were enabled, without duplicates. See [Enabled skills](#enabled-skills).                                                                                                                                                                                                                     |
 | chatDefaults      | `chatDefaults`      | `ChatSettings?`        | no       | `null`  | Settings of new chats of this project; `null` uses the host's `defaultChatSettings` ([Chat settings](#chat-settings)).                                                                                                                                                                                                                                          |
 | environments      | `environments`      | `[ProjectEnvironment]` | no       | `[]`    | The environments of a Go service, in the order they were added; names are unique. See [Project environment](#project-environment).                                                                                                                                                                                                                              |
+| dashboardWidgets  | `dashboardWidgets`  | `[DashboardWidget]?`   | no       | `null`  | The widgets of the project's [Dashboard](dashboard.md#widgets), in their order. See [Dashboard widget](#dashboard-widget). `null` shows the default list and `[]` no widget. Left out of the file when the project has no stored list; `null` in the JSON form. Default chosen at design time.                                                                  |
 | deletedChats      | `deletedChats`      | `[DeletedChat]`        | no       | `[]`    | The costs of the project's deleted chats, in deletion order. See [Deleted chat](#deleted-chat).                                                                                                                                                                                                                                                                 |
 | commentAnswers    | `commentAnswers`    | `[CommentAnswerCost]`  | no       | `[]`    | The costs of the project's comment answers, in the order the calls ended, deleted tickets' included. See [Comment answer cost](#comment-answer-cost).                                                                                                                                                                                                           |
 | unknownKeys       | —                   | `[String: JSONValue]`  | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                                                                                                                                                                                                                                                                  |
@@ -245,6 +246,29 @@ Swift type `CommentAnswerCost`, one element of the key `commentAnswers` of the p
 
 The keys and their rules are design-time choices. Default chosen at design time.
 
+### Dashboard widget
+
+Swift type `DashboardWidget`, one element of the key `dashboardWidgets` of the project file: a widget of the project's [Dashboard](dashboard.md#widgets) with its [settings](dashboard.md#settings). The list changes only through `projects.update`, which the Dashboard calls in [edit mode](dashboard.md#edit-mode).
+
+| Swift name         | Key                  | Type                      | Required | Default  | Rules                                                                                                                                            |
+| ------------------ | -------------------- | ------------------------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| id                 | `id`                 | `UUID`                    | yes      | —        | Unique within the list.                                                                                                                          |
+| kind               | `kind`               | `DashboardWidgetKind`     | yes      | —        | `project`, `tickets`, `recentChats` or `cost` ([Widgets](dashboard.md#widgets)). Any other value makes the file invalid.                         |
+| title              | `title`              | `String`                  | no       | `""`     | The `Title` setting: single line, at most 100 characters, trimmed; empty means the title of the kind.                                            |
+| fields             | `fields`             | `[DashboardProjectField]` | no       | all four | Project widgets: the fields shown, among `name`, `identifier`, `type` and `folder`. At least one, each once.                                     |
+| statuses           | `statuses`           | `[TicketStatus]`          | no       | all four | Tickets widgets: the counts shown, among the [statuses](#ticket-file) `todo`, `in_progress`, `review` and `done`. At least one, each once.       |
+| includeSubprojects | `includeSubprojects` | `Bool`                    | no       | `true`   | Tickets and Cost widgets: whether the counts or the total include the loaded descendants.                                                        |
+| chatCount          | `chatCount`          | `Int`                     | no       | `5`      | Recent Chats widgets: the most chats listed, 1–20.                                                                                               |
+| chatKinds          | `chatKinds`          | `[ChatKind]`              | no       | all four | Recent Chats widgets: the [kinds](#chat-kinds) of the chats listed, among `project`, `ticket`, `bundle` and `feedback`. At least one, each once. |
+| unknownKeys        | —                    | `[String: JSONValue]`     | —        | `[:]`    | [Unknown keys](#unknown-keys).                                                                                                                   |
+
+- A widget has the keys `id`, `kind` and `title`, then the keys of its kind only: `fields` for `project`; `statuses` and `includeSubprojects` for `tickets`; `chatCount` and `chatKinds` for `recentChats`; `includeSubprojects` for `cost`. The engine writes all of them, in the order of the table. A key of another kind is an unknown key of the widget and is kept as it is ([Unknown keys](#unknown-keys)).
+- `DashboardWidgetKind` and `DashboardProjectField` are string enumerations of the values above. `all four` is the list of the four values in the order of the Rules column, the order in which the Dashboard shows them whatever the order of the list; a checkbox of the settings writes its list in that order, and the other changes keep the order of the stored list.
+- The default list, which the Dashboard shows while the key is absent or `null`, holds four widgets with an empty title and the defaults of the table: `project` with the id `00000000-0000-0000-0000-000000000001`, then `tickets` with `00000000-0000-0000-0000-000000000002`, `recentChats` with `00000000-0000-0000-0000-000000000003` and `cost` with `00000000-0000-0000-0000-000000000004`. The first change made in edit mode stores the list with these ids.
+- `projects.update` checks the rules of the table on each widget the call adds or changes, in the list's order; a widget equal to a stored widget is written back as it is ([Write rules](#write-rules)), as many times as the stored list holds it, and a further copy of it is a widget the call adds.
+
+The widget kinds and their settings come from the user; the keys, the values, the ids of the default list and the length limit of the title are design-time choices. Default chosen at design time.
+
 ### Project file examples
 
 A complete project file:
@@ -285,6 +309,32 @@ chatDefaults:
   permissionMode: manual
   ultracode: false
 environments: []
+dashboardWidgets:
+- id: 00000000-0000-0000-0000-000000000001
+  kind: project
+  title: ''
+  fields:
+  - name
+  - identifier
+  - folder
+- id: 00000000-0000-0000-0000-000000000002
+  kind: tickets
+  title: Own tickets
+  statuses:
+  - todo
+  - in_progress
+  - review
+  includeSubprojects: false
+- id: 9B2F4C1D-3E5A-4F6B-8C7D-0E1F2A3B4C5D
+  kind: recentChats
+  title: Ticket chats
+  chatCount: 3
+  chatKinds:
+  - ticket
+- id: 00000000-0000-0000-0000-000000000004
+  kind: cost
+  title: ''
+  includeSubprojects: true
 deletedChats:
 - id: 5B8C2D4E-6F7A-4B9C-8D1E-2F3A4B5C6D7E
   title: Plan the release
@@ -300,7 +350,7 @@ commentAnswers:
   date: 2026-10-31T12:21:40Z
 ```
 
-A minimal project file; every other key takes its default, so its type is `none`, it has no color, no icon and no typed GitHub page, and it uses its parent's settings once it is a sub project:
+A minimal project file; every other key takes its default, so its type is `none`, it has no color, no icon and no typed GitHub page, its Dashboard shows the default widgets, and it uses its parent's settings once it is a sub project:
 
 ```yaml
 # .hephaestus/project.yml
@@ -1597,7 +1647,7 @@ Every other rule of the field tables (lengths, ranges, single-line values, uniqu
 
 The engine keeps the keys it does not know, so a file written by a newer version or extended by hand keeps them when this version rewrites it.
 
-- These types keep unknown keys in `unknownKeys`: `Project`, `ProjectEnvironment`, `WebTab`, `ChatSettings`, `Ticket`, `Comment`, `TicketLink`, `Attachment`, `TicketBundle`, `ChatMeta`, `DeviceRecord`, `Registry`, `HostSettings`, `Secrets`, `RemotesFile`, `RemoteDevice`, `PlanUsage`. `SkillFrontmatter` keeps them in `extraFrontmatter`. Chat items do not keep unknown keys: transcripts are never rewritten.
+- These types keep unknown keys in `unknownKeys`: `Project`, `ProjectEnvironment`, `DashboardWidget`, `WebTab`, `ChatSettings`, `Ticket`, `Comment`, `TicketLink`, `Attachment`, `TicketBundle`, `ChatMeta`, `DeviceRecord`, `Registry`, `HostSettings`, `Secrets`, `RemotesFile`, `RemoteDevice`, `PlanUsage`. `SkillFrontmatter` keeps them in `extraFrontmatter`. Chat items do not keep unknown keys: transcripts are never rewritten.
 - Decoding stores every key of the mapping that is not in the type's table, with its value converted to `JSONValue`.
 - Encoding writes them after the known keys, sorted by key in Unicode code point order, nested values as decoded.
 - A mutation changes known fields only; `unknownKeys` stays as read.
@@ -1804,3 +1854,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R159: A locked web tab goes back to its original page each time the user comes back to it.
 - R161: After an implementation is pushed in a project with a GitHub page, a CI chat follows CI and reports to the orchestrator, which asks the user how to proceed when CI fails and finishes only once CI is green or the user decides so.
 - R162: Each environment of a Go service names its Kubernetes context, namespace, deployment, Argo CD application and kubeconfig, which Claude receives and uses through HephaestusV2's Kubernetes and Argo CD tools.
+- R170: The user adds, removes, moves and configures the widgets of each project's Dashboard.

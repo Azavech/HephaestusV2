@@ -89,11 +89,14 @@ public enum ProjectsUpdate: EngineMethod {
         /// Replaces all environments, in the given order; the MCP tool `update_project` never
         /// sends it.
         public var environments: [ProjectEnvironment]?
+        /// Replaces the widgets of the project's Dashboard, in the given order; only the
+        /// Dashboard's edit mode sends it (docs/dashboard.md › Edit mode).
+        public var dashboardWidgets: [DashboardWidget]?
 
         public init(projectID: ProjectID, name: String? = nil, type: ProjectType? = nil, color: Patch<String> = .keep,
                     icon: Patch<String> = .keep, docsPath: String? = nil, githubPage: Patch<String> = .keep,
                     useParentSettings: Bool? = nil, chatDefaults: Patch<ChatSettings> = .keep,
-                    environments: [ProjectEnvironment]? = nil) {
+                    environments: [ProjectEnvironment]? = nil, dashboardWidgets: [DashboardWidget]? = nil) {
             self.projectID = projectID
             self.name = name
             self.type = type
@@ -104,6 +107,7 @@ public enum ProjectsUpdate: EngineMethod {
             self.useParentSettings = useParentSettings
             self.chatDefaults = chatDefaults
             self.environments = environments
+            self.dashboardWidgets = dashboardWidgets
         }
     }
     public typealias Result = ProjectDetail
