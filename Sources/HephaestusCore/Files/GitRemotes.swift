@@ -62,14 +62,17 @@ extension Engine {
 
     /// A read ended: keeps a value that changed and emits `project.updated` for the project at the
     /// root, then for every other project whose GitHub page changed; runs `ssh -G` for the SSH host
-    /// alias of the origin, then the read asked for meanwhile (docs/projects.md › GitHub page).
+    /// alias of the origin, checks the GitHub tabs, then runs the read asked for meanwhile
+    /// (docs/projects.md › GitHub page, docs/web-tabs.md › Keeping the GitHub tabs).
     private func gitRemoteURLRead(root: String, url: String?) {
         let again = files.gitRemoteReads.removeValue(forKey: root) ?? false
         guard !hasStopped else { return }
         guard let id = domain.projectID(atRoot: root) else {
             files.gitRemoteURLs[root] = nil
+            files.gitRemoteReadRoots.remove(root)
             return
         }
+        files.gitRemoteReadRoots.insert(root)
         if files.gitRemoteURLs[root] != url {
             let pagesBefore = githubPages()
             files.gitRemoteURLs[root] = url
@@ -77,6 +80,7 @@ extension Engine {
             emitGithubPageChanges(since: pagesBefore, except: [id], origin: .system)
         }
         refreshSSHHostName(remoteURL: url, root: root)
+        keepGitHubTabs(origin: .system)
         if again {
             refreshGitRemoteURL(root: root)
         }

@@ -2171,13 +2171,13 @@ Input schema:
 ### list_web_tabs
 
 - **Engine call:** webTabs.list with `projectID`.
-- **Result:** the `[WebTab]` array ([Data model](data-model.md#web-tab)): each tab with its `id`, `title`, `url`, `locked` and `originalURL`, the URL a locked tab goes back to each time the user comes back to it, `null` for an unlocked tab ([Original URL](web-tabs.md#original-url)).
+- **Result:** the `[WebTab]` array ([Data model](data-model.md#web-tab)): each tab with its `id`, `title`, `url`, `locked`, `originalURL`, the URL a locked tab goes back to each time the user comes back to it, `null` for an unlocked tab ([Original URL](web-tabs.md#original-url)), and `githubTab`, `page` and `ci` for the two [GitHub tabs](web-tabs.md#github-tabs) that a project with a GitHub page keeps first, `null` for the other tabs.
 - **Errors:** Those of webTabs.list: unknown project (`notFound`).
 
 Description:
 
 ```text
-List a project's web tabs in tab order with their URL, title and lock state. A locked tab also has its original URL, the page it goes back to each time the user comes back to it.
+List a project's web tabs in tab order with their URL, title and lock state. A locked tab also has its original URL, the page it goes back to each time the user comes back to it. githubTab marks the two tabs that HephaestusV2 keeps first in a project with a GitHub page: page, its GitHub page, and ci, its CI page; they cannot be closed, unlocked or moved.
 ```
 
 Input schema:
@@ -2287,12 +2287,12 @@ Input schema:
 
 - **Engine call:** webTabs.move with `projectID`, `tabID` and `toIndex`.
 - **Result:** the `[WebTab]` array in the new order.
-- **Errors:** Those of webTabs.move ([Engine API](engine-api.md#webtabsmove)): unknown project or tab (`notFound`).
+- **Errors:** Those of webTabs.move ([Engine API](engine-api.md#webtabsmove)): unknown project or tab (`notFound`), a [GitHub tab](web-tabs.md#github-tabs) or a position before the GitHub tabs (`forbidden`, `This tab is locked.`).
 
 Description:
 
 ```text
-Move a web tab of a project to another position of its tab strip; 0 is the first position.
+Move a web tab of a project to another position of its tab strip; 0 is the first position. The GitHub tabs (githubTab page and ci) cannot be moved, and no tab can be moved before them.
 ```
 
 Input schema:
@@ -2324,7 +2324,7 @@ Input schema:
 
 - **Engine call:** webTabs.close with `projectID` and `tabID`.
 - **Result:** `{}`.
-- **Errors:** Those of webTabs.close ([Engine API](engine-api.md#webtabsclose)): unknown project or tab (`notFound`), a locked tab (`forbidden`, `This tab is locked.`).
+- **Errors:** Those of webTabs.close ([Engine API](engine-api.md#webtabsclose)): unknown project or tab (`notFound`), a locked tab, the [GitHub tabs](web-tabs.md#github-tabs) included (`forbidden`, `This tab is locked.`).
 
 Description:
 
@@ -3480,3 +3480,4 @@ Unauthorized: missing or invalid bearer token.
 - R159: A locked web tab goes back to its original page each time the user comes back to it.
 - R161: After an implementation is pushed in a project with a GitHub page, a CI chat follows CI and reports to the orchestrator, which asks the user how to proceed when CI fails and finishes only once CI is green or the user decides so.
 - R162: Each environment of a Go service names its Kubernetes context, namespace, deployment, Argo CD application and kubeconfig, which Claude receives and uses through HephaestusV2's Kubernetes and Argo CD tools.
+- R172: A project with a GitHub page always has two locked web tabs, its GitHub page and its CI page, first in the tab strip.

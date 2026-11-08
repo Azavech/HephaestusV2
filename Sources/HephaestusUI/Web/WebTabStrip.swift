@@ -1,6 +1,6 @@
 // OWNER: ui-web-search — the tab strip of the Web section: labels, lock icons, close buttons,
 // widths, selection, reordering, context menus and the locked-tab label (docs/web-tabs.md › Tab
-// strip, › Context menu, › Closing tabs).
+// strip, › Context menu, › Closing tabs, › GitHub tabs).
 import HephaestusCore
 import SwiftUI
 
@@ -92,7 +92,7 @@ struct WebTabStrip: View {
     private func tab(_ item: WebStripItem, width: CGFloat) -> some View {
         let isSelected = selection == .item(item.id)
         let isDragged: Bool = {
-            if case .stored(let tab) = item, drag?.tabID == tab.id { return true }
+            if case .stored(let tab) = item, activeDrag?.tabID == tab.id { return true }
             return false
         }()
         return WebTabView(label: Self.label(of: item), locked: Self.isLocked(item), isSelected: isSelected,
@@ -101,7 +101,7 @@ struct WebTabStrip: View {
                           close: { closeButton(item) })
             .offset(x: offset(of: item, width: width))
             .zIndex(isDragged ? 1 : 0)
-            .gesture(dragGesture(item, width: width), including: Self.isStored(item) ? .all : .subviews)
+            .gesture(dragGesture(item, width: width), including: Self.isDraggable(item) ? .all : .subviews)
             .contextMenu {
                 contextMenu(item)
             }
@@ -146,8 +146,10 @@ struct WebTabStrip: View {
         return false
     }
 
-    static func isStored(_ item: WebStripItem) -> Bool {
-        if case .stored = item { return true }
+    /// A stored tab other than a GitHub tab: the placeholder, the popups and the GitHub tabs cannot
+    /// be dragged (docs/web-tabs.md › Tab strip, Reordering).
+    static func isDraggable(_ item: WebStripItem) -> Bool {
+        if case .stored(let tab) = item { return tab.githubTab == nil }
         return false
     }
 
@@ -167,9 +169,11 @@ struct WebTabStrip: View {
     private func contextMenu(_ item: WebStripItem) -> some View {
         switch item {
         case .stored(let tab):
+            // A GitHub tab cannot be unlocked (docs/web-tabs.md › GitHub tabs).
             Button(tab.locked ? "Unlock" : "Lock") {
                 controller.setLocked(tab, !tab.locked)
             }
+            .disabled(tab.githubTab != nil)
             Button("Duplicate") {
                 controller.duplicate(tab)
             }
@@ -191,16 +195,29 @@ struct WebTabStrip: View {
 
     // MARK: Reordering
 
+    /// The drag in progress, unless its tab became a GitHub tab meanwhile, which ends it.
+    private var activeDrag: (tabID: UUID, translation: CGFloat)? {
+        guard let drag, storedTabs.contains(where: { $0.id == drag.tabID && $0.githubTab == nil }) else { return nil }
+        return drag
+    }
+
     /// The position among the stored tabs where the dragged tab would drop.
     private func dropIndex(width: CGFloat) -> Int? {
-        guard let drag, let from = storedTabs.firstIndex(where: { $0.id == drag.tabID }), width > 0 else { return nil }
+        guard let drag = activeDrag, let from = storedTabs.firstIndex(where: { $0.id == drag.tabID }), width > 0 else { return nil }
         let steps = Int((drag.translation / width).rounded())
-        return min(max(from + steps, 0), storedTabs.count - 1)
+        return Self.dropIndex(from: from, steps: steps, tabs: storedTabs)
+    }
+
+    /// The position among the stored `tabs` where a tab dragged from `from` by `steps` tab widths
+    /// drops: inside the strip, and right after the GitHub tabs for a tab dropped before them
+    /// (docs/web-tabs.md › Tab strip, Reordering).
+    static func dropIndex(from: Int, steps: Int, tabs: [WebTab]) -> Int {
+        min(max(from + steps, GitHubTabs.count(in: tabs)), tabs.count - 1)
     }
 
     /// The dragged tab follows the pointer; the stored tabs it passes make room for it.
     private func offset(of item: WebStripItem, width: CGFloat) -> CGFloat {
-        guard let drag, case .stored(let tab) = item else { return 0 }
+        guard let drag = activeDrag, case .stored(let tab) = item else { return 0 }
         if tab.id == drag.tabID { return drag.translation }
         guard let from = storedTabs.firstIndex(where: { $0.id == drag.tabID }),
               let index = storedTabs.firstIndex(where: { $0.id == tab.id }), let to = dropIndex(width: width) else { return 0 }
@@ -210,15 +227,18 @@ struct WebTabStrip: View {
     }
 
     /// Dragging a stored tab within the strip; on drop the client calls `webTabs.move`. The
-    /// placeholder and popups cannot be dragged, and no tab leaves the strip.
+    /// placeholder, popups and GitHub tabs cannot be dragged, and no tab leaves the strip.
     private func dragGesture(_ item: WebStripItem, width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 4)
             .onChanged { value in
-                guard case .stored(let tab) = item else { return }
+                guard case .stored(let tab) = item, tab.githubTab == nil else { return }
                 drag = (tab.id, value.translation.width)
             }
             .onEnded { value in
-                guard case .stored(let tab) = item else { return }
+                guard case .stored(let tab) = item, tab.githubTab == nil else {
+                    drag = nil
+                    return
+                }
                 drag = (tab.id, value.translation.width)
                 let target = dropIndex(width: width)
                 drag = nil

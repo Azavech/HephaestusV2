@@ -136,7 +136,8 @@ struct GitHubPageTests {
             #expect(typed.project.githubPage == "https://github.com/other/repo")
             #expect(typed.githubPage == "https://github.com/other/repo")
             #expect(typed.originGithubPage == "https://github.com/owner/name")
-            #expect(await events.wait(for: ProjectUpdatedEvent.name) == ["project.updated"])
+            // Then its GitHub tabs follow the page (docs/web-tabs.md › Keeping the GitHub tabs).
+            #expect(await events.wait(for: ProjectUpdatedEvent.name, count: 2) == ["project.updated", "webTabs.updated", "project.updated"])
             let folder = ProjectFolder(root: URL(fileURLWithPath: h.path("Repo")))
             #expect(try readFile(folder.projectFile).contains("githubPage: https://github.com/other/repo\n"))
 
@@ -186,7 +187,8 @@ struct GitHubPageTests {
             sub = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "SUB", useParentSettings: false))
             #expect(!sub.project.useParentSettings)
             #expect(sub.githubPage == "https://github.com/owner/typed")
-            #expect(await events.wait(for: ProjectUpdatedEvent.name) == ["project.updated"])
+            // Then its GitHub tabs take its own page (docs/web-tabs.md › Keeping the GitHub tabs).
+            #expect(await events.wait(for: ProjectUpdatedEvent.name, count: 2) == ["project.updated", "webTabs.updated", "project.updated"])
             #expect(try readFile(ProjectFolder(root: URL(fileURLWithPath: h.path("Parent/sub"))).projectFile)
                 .contains("useParentSettings: false\n"))
             sub = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "SUB", githubPage: .clear))
@@ -237,20 +239,24 @@ struct GitHubPageTests {
             let events = await DomainEventRecorder.make(h)
             let page = "https://github.com/owner/top"
             _ = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "TOP", githubPage: .set(page)))
-            let received = await events.wait { Self.pages($0, "LEAF").count == 1 }
-            #expect(received.map(\.name) == ["project.updated", "project.updated", "project.updated"])
-            #expect(Self.pages(received, "TOP") == [page])
-            #expect(Self.pages(received, "MID") == [page])
-            #expect(Self.pages(received, "LEAF") == [page])
-            #expect(await events.settle().count == 3)
+            // The page changes, then the GitHub tabs of each project that has it
+            // (docs/web-tabs.md › Keeping the GitHub tabs).
+            let received = await events.wait { Self.pages($0, "LEAF").count == 2 }
+            #expect(received.map(\.name) == ["project.updated", "project.updated", "project.updated",
+                                             "webTabs.updated", "project.updated", "webTabs.updated", "project.updated",
+                                             "webTabs.updated", "project.updated"])
+            #expect(Self.pages(received, "TOP") == [page, page])
+            #expect(Self.pages(received, "MID") == [page, page])
+            #expect(Self.pages(received, "LEAF") == [page, page])
+            #expect(await events.settle().count == 9)
             #expect(received.allSatisfy { $0.origin == .user(deviceID: h.engine.deviceID) })
 
             // Turning the checkbox of MID off changes the page of MID and LEAF.
             events.clear()
             _ = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "MID", useParentSettings: false))
-            let off = await events.wait { Self.pages($0, "LEAF").count == 1 }
-            #expect(Self.pages(off, "MID") == [nil])
-            #expect(Self.pages(off, "LEAF") == [nil])
+            let off = await events.wait { Self.pages($0, "LEAF").count == 2 }
+            #expect(Self.pages(off, "MID") == [nil, nil])
+            #expect(Self.pages(off, "LEAF") == [nil, nil])
             #expect(Self.pages(off, "TOP").isEmpty && Self.pages(off, "OWN").isEmpty)
 
             // A change outside the app is followed the same way, with origin system.
@@ -259,9 +265,9 @@ struct GitHubPageTests {
             let text = try readFile(file).replacingOccurrences(of: "useParentSettings: false", with: "useParentSettings: true")
             try writeFile(text, to: file)
             await h.engine.projectDataFilesChanged(projectID: "MID", paths: [".hephaestus/project.yml"])
-            let reloaded = await events.wait { Self.pages($0, "LEAF").count == 1 }
-            #expect(Self.pages(reloaded, "MID") == [page])
-            #expect(Self.pages(reloaded, "LEAF") == [page])
+            let reloaded = await events.wait { Self.pages($0, "LEAF").count == 2 }
+            #expect(Self.pages(reloaded, "MID") == [page, page])
+            #expect(Self.pages(reloaded, "LEAF") == [page, page])
             #expect(reloaded.allSatisfy { $0.origin == .system })
         }
     }
@@ -279,9 +285,11 @@ struct GitHubPageTests {
             #expect(try await h.connection.call(ProjectsGet.self, .init(projectID: "SUB")).githubPage == "https://github.com/owner/top")
             let events = await DomainEventRecorder.make(h)
             _ = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "TOP", githubPage: .clear))
-            let received = await events.wait { Self.pages($0, "SUB").count == 1 }
-            #expect(Self.pages(received, "TOP") == [nil])
-            #expect(Self.pages(received, "SUB") == [nil])
+            // The page changes, then both lose their GitHub tabs (docs/web-tabs.md › Keeping the
+            // GitHub tabs).
+            let received = await events.wait { Self.pages($0, "SUB").count == 2 }
+            #expect(Self.pages(received, "TOP") == [nil, nil])
+            #expect(Self.pages(received, "SUB") == [nil, nil])
             // A change that leaves every page as it is emits nothing for the others.
             events.clear()
             _ = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "TOP", name: "Main"))
@@ -299,8 +307,11 @@ struct GitHubPageTests {
                           to: h.projects.appendingPathComponent("Mono/.hephaestus/project.yml"))
             let events = await DomainEventRecorder.make(h)
             _ = try await h.connection.call(ProjectsOpen.self, .init(rootPath: h.path("Mono")))
-            let received = await events.wait(for: ProjectsChangedEvent.name)
-            #expect(received == ["project.updated", "project.updated", "projects.changed"])
+            // Then MONO gets its GitHub tabs and those of APP take its page (docs/web-tabs.md ›
+            // Keeping the GitHub tabs).
+            let received = await events.wait(for: ProjectUpdatedEvent.name, count: 4)
+            #expect(received == ["project.updated", "project.updated", "projects.changed",
+                                 "webTabs.updated", "project.updated", "webTabs.updated", "project.updated"])
             let adopted = events.all.compactMap { try? $0.payload(ProjectUpdatedEvent.self) }.first { $0.project.id == "APP" }
             #expect(adopted?.parentID == "MONO")
             #expect(adopted?.githubPage == "https://github.com/owner/mono")

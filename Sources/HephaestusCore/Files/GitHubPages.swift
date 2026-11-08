@@ -136,7 +136,7 @@ extension Engine {
     }
 
     /// A run ended: keeps a host name that changed and emits `project.updated` for the projects
-    /// whose page changed, then starts the run asked for meanwhile.
+    /// whose page changed, checks the GitHub tabs, then starts the run asked for meanwhile.
     private func sshHostNameRead(alias: String, hostName: String?, root: String) {
         let again = files.sshHostNameReads.removeValue(forKey: alias) ?? false
         guard !hasStopped else { return }
@@ -146,8 +146,77 @@ extension Engine {
             files.sshHostNames[alias] = value
             emitGithubPageChanges(since: pagesBefore, origin: .system)
         }
+        keepGitHubTabs(origin: .system)
         if again {
             refreshSSHHostName(alias: alias, root: root)
         }
+    }
+}
+
+/// What the engine knows of a project's GitHub page when it checks its GitHub tabs
+/// (docs/web-tabs.md › Keeping the GitHub tabs, step 1).
+enum GitHubTabsPage: Equatable {
+    /// The page depends on the origin of `root`, which is not read yet, or on an SSH host alias
+    /// whose first `ssh -G` run has not ended.
+    case unknown(root: String)
+    /// The project's GitHub page, nil for none.
+    case known(String?)
+}
+
+// The GitHub tabs of the projects (docs/web-tabs.md › Keeping the GitHub tabs).
+extension Engine {
+    /// The GitHub page of a loaded project as its GitHub tabs follow it: unknown while it depends
+    /// on an origin that is not read yet or on an SSH host alias that is not resolved yet.
+    func githubTabsPage(of id: ProjectID) -> GitHubTabsPage {
+        guard let source = githubPageSource(of: id), let loaded = domain.projects[source] else { return .known(nil) }
+        if let page = loaded.project.githubPage ?? originGithubPage(root: loaded.rootPath) {
+            return .known(page)
+        }
+        return originGithubPageIsKnown(root: loaded.rootPath) ? .known(nil) : .unknown(root: loaded.rootPath)
+    }
+
+    /// Whether the origin of the project at `root` gives no page for good: once the tools are
+    /// looked up, without `git`, or once the origin was read, and once the SSH host alias it uses
+    /// had its first `ssh -G` run, or without `ssh`.
+    private func originGithubPageIsKnown(root: String) -> Bool {
+        guard files.toolsKnown else { return false }
+        guard files.tools.git != nil else { return true }
+        guard files.gitRemoteReadRoots.contains(root) else { return false }
+        guard let url = files.gitRemoteURLs[root], let remote = GitHubRemote(remoteURL: url), remote.isSSH,
+              !remote.isGitHubHost else { return true }
+        return files.tools.ssh == nil || files.sshHostNames[remote.host] != nil
+    }
+
+    /// Gives every loaded project whose GitHub page is known the GitHub tabs of that page, or
+    /// removes them from a project without a page; writes each project whose tabs change and
+    /// emits `webTabs.updated`, then `project.updated`, with `origin`. A page that depends on an
+    /// origin never read starts its first read, after which the tabs are checked again.
+    func keepGitHubTabs(origin: Actor) {
+        guard !hasStopped else { return }
+        for id in domain.loadedProjectIDs() {
+            switch githubTabsPage(of: id) {
+            case .unknown(let root):
+                if !files.gitRemoteReadRoots.contains(root), files.gitRemoteReads[root] == nil {
+                    refreshGitRemoteURL(root: root)
+                }
+            case .known(let page):
+                guard var project = domain.project(id) else { continue }
+                let tabs = GitHubTabs.kept(project.webTabs, page: page)
+                guard tabs != project.webTabs, projectFileIsLoaded(id) else { continue }
+                project.webTabs = tabs
+                // A failed write is logged by saveProject and leaves the tabs for the next check.
+                guard (try? saveProject(project)) != nil else { continue }
+                emitWebTabsUpdated(id, origin: origin)
+                emitProjectUpdated(id, origin: origin)
+            }
+        }
+    }
+
+    /// True when the project.yml on disk holds the loaded project: a file changed outside the
+    /// engine and not reloaded yet, or invalid, is not overwritten by the check, which runs again
+    /// after the reload (docs/web-tabs.md › Keeping the GitHub tabs, step 4).
+    private func projectFileIsLoaded(_ id: ProjectID) -> Bool {
+        guard let loaded = domain.projects[id], let stored = try? ProjectFileStore.readProject(loaded.folder) else { return false }
+        return stored == loaded.project
     }
 }

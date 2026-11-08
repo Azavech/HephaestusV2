@@ -601,20 +601,23 @@ public struct WebTab: Codable, Sendable, Hashable, Identifiable {
     /// The URL a locked tab goes back to each time the user comes back to it; nil for an unlocked
     /// tab (docs/web-tabs.md › Original URL).
     public var originalURL: String?
+    /// The GitHub tab the tab is; nil for any other tab (docs/web-tabs.md › GitHub tabs).
+    public var githubTab: GitHubTab?
     public var unknownKeys: [String: JSONValue]
 
     /// A locked tab without `originalURL` takes its `url`; an unlocked tab has none.
     public init(id: UUID, title: String = "", url: String, locked: Bool = false, originalURL: String? = nil,
-                unknownKeys: [String: JSONValue] = [:]) {
+                githubTab: GitHubTab? = nil, unknownKeys: [String: JSONValue] = [:]) {
         self.id = id
         self.title = title
         self.url = url
         self.locked = locked
         self.originalURL = locked ? originalURL ?? url : nil
+        self.githubTab = githubTab
         self.unknownKeys = unknownKeys
     }
 
-    static let knownKeys: Set<String> = ["id", "title", "url", "locked", "originalURL"]
+    static let knownKeys: Set<String> = ["id", "title", "url", "locked", "originalURL", "githubTab"]
 
     /// docs/data-model.md › Web tab: a locked tab read without `originalURL` takes its `url`; an
     /// unlocked tab is read without one, whatever URL the file holds.
@@ -626,6 +629,7 @@ public struct WebTab: Codable, Sendable, Hashable, Identifiable {
         locked = try c.value("locked", default: false)
         let original: String? = try c.optional("originalURL")
         originalURL = locked ? original ?? url : nil
+        githubTab = try c.optional("githubTab")
         unknownKeys = try c.unknownKeys(known: Self.knownKeys)
     }
 
@@ -636,6 +640,10 @@ public struct WebTab: Codable, Sendable, Hashable, Identifiable {
         try c.encode(url, "url")
         try c.encode(locked, "locked")
         try c.encodeOptional(originalURL, "originalURL")
+        // Left out of the file for a tab that is not a GitHub tab; `null` in the JSON form.
+        if githubTab != nil || !c.isYAML {
+            try c.encodeOptional(githubTab, "githubTab")
+        }
         try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
     }
 

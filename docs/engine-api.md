@@ -384,7 +384,7 @@ Steps:
 | conflict | The identifier is used by another project (`Identifier HEPH is already used by Hephaestus V2.`); the folder already contains `.hephaestus/project.yml` (`<rootPath> already contains a project; open it instead.`).                                                                                                                                                                        |
 | internal | The folder or a file cannot be created or written.                                                                                                                                                                                                                                                                                                                                         |
 
-Events: project.updated (the new project), project.updated (the parent, for a sub project), projects.changed.
+Events: project.updated (the new project), project.updated (the parent, for a sub project), projects.changed; then webTabs.updated and project.updated for the new project when it gets its [GitHub tabs](web-tabs.md#github-tabs).
 
 ### projects.open
 
@@ -413,7 +413,7 @@ Steps:
 | conflict | An identifier of the project or of a descendant is used by another loaded project (`Identifier HEPH is already used by Hephaestus V2.`); rootPath is the root of a hidden project (`HephaestusV2 is hidden. Show it in Settings ▸ General.`).                                                                 |
 | internal | registry.yml or the parent's project.yml cannot be written.                                                                                                                                                                                                                                                   |
 
-Events: project.updated (the parent, when the project becomes a sub project), project.updated (the opened project), project.updated for every other project whose [GitHub page](projects.md#github-page) changed, a top-level project the opened project now has as a sub project, projects.changed, then memories.changed for every watched project among the top-level projects it now has as sub projects and their descendants whose inherited memory folders changed ([Live updates](memories.md#live-updates)).
+Events: project.updated (the parent, when the project becomes a sub project), project.updated (the opened project), project.updated for every other project whose [GitHub page](projects.md#github-page) changed, a top-level project the opened project now has as a sub project, projects.changed, then memories.changed for every watched project among the top-level projects it now has as sub projects and their descendants whose inherited memory folders changed ([Live updates](memories.md#live-updates)); then webTabs.updated and project.updated for every project whose [GitHub tabs](web-tabs.md#github-tabs) changed.
 
 ### projects.update
 
@@ -433,7 +433,7 @@ Swift type `ProjectsUpdate` · actors: user, claude · result: [ProjectDetail](#
 | environments      | [ProjectEnvironment] | no            | Replaces all [environments](data-model.md#project-environment) of the project, in the given order. Each environment the call adds or changes has its name, URL and Kubernetes fields trimmed, an empty Kubernetes field becoming null, and is checked; one equal to a stored environment is written back as it is ([Write rules](data-model.md#write-rules)). The MCP tool `update_project` never sends it ([Environments](projects.md#environments)). |
 | dashboardWidgets  | [DashboardWidget]    | no            | Replaces the project's [Dashboard widgets](data-model.md#dashboard-widget), in the given order. Each widget the call adds or changes has its title trimmed and is checked; one equal to a stored widget is written back as it is. Sent by the Dashboard in [edit mode](dashboard.md#edit-mode), as the user; the MCP tool `update_project` never sends it.                                                                                             |
 
-An absent param leaves its value unchanged. The identifier, `created`, the counters, `subprojects`, `webTabs` and `skills` change only through their own methods.
+An absent param leaves its value unchanged. The identifier, `created`, the counters, `subprojects`, `webTabs` and `skills` change only through their own methods, except the [GitHub tabs](web-tabs.md#github-tabs), which follow the GitHub page.
 
 | Error     | When                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -441,7 +441,7 @@ An absent param leaves its value unchanged. The identifier, `created`, the count
 | invalid   | projectID is malformed; name, type, docsPath or chatDefaults fail validation ([Data model](data-model.md#project-file)); docsPath breaks the path rules or is inside `.hephaestus`; color is not `#` followed by six hex digits (`color: use a color of the form #RRGGBB.`); the trimmed icon is neither empty nor a name of the main device's symbol catalogue (`<name> is not an SF Symbol of this Mac.`); githubPage is not a page of the form `https://github.com/<owner>/<name>` (`githubPage: use a page of the form https://github.com/<owner>/<name>.`); an environment the call adds or changes breaks the rules of [Project environment](data-model.md#project-environment): a name that is not 1 to 100 characters on one line after trimming (`environments[1]: use a name of 1 to 100 characters on one line.`), a URL that is not an absolute `http` or `https` URL with a host (`environments[1]: use an absolute http or https URL.`), a port outside 1–65535 (`environments[1]: use a port from 1 to 65535.`), a kubectl context, a namespace or a deployment that is not one line (`environments[1]: use a kubectl context on one line.`, `environments[1]: use a namespace on one line.`, `environments[1]: use a deployment on one line.`), an Argo CD application of another form (`environments[1]: use an Argo CD application as <name> or <namespace>/<name>.`), a kubeconfig file that is not one line, absolute or starting with `~/` (`environments[1]: use a kubeconfig file as an absolute path or a path starting with ~/.`), the name of another environment of the list (`An environment named “local” already exists.`); a widget the call adds or changes breaks the rules of [Dashboard widget](data-model.md#dashboard-widget): a title that is not one line of at most 100 characters after trimming (`dashboardWidgets[1]: use a title of at most 100 characters on one line.`), a `fields`, `statuses` or `chatKinds` list that is empty or lists a value twice (`dashboardWidgets[1]: use at least one field, each once.`, with `status` or `chat kind` for the other lists), a `chatCount` outside 1–20 (`dashboardWidgets[1]: use a number of chats from 1 to 20.`), the id of another widget of the list (`Widget <id> is listed more than once.`). |
 | forbidden | The actor is claude and chatDefaults is present (`Claude cannot change chat defaults.`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
-Events: project.updated; then project.updated for every other project whose [GitHub page](projects.md#github-page) changed, the sub projects that use its settings; projects.changed when the name, the type, the color or the icon changed.
+Events: project.updated; then project.updated for every other project whose [GitHub page](projects.md#github-page) changed, the sub projects that use its settings; projects.changed when the name, the type, the color or the icon changed; then webTabs.updated and project.updated for every project whose [GitHub tabs](web-tabs.md#github-tabs) changed.
 
 The environment messages other than the duplicate name, which comes from the user, and the widget messages are design-time texts. Default chosen at design time.
 
@@ -466,6 +466,8 @@ Unregisters the project and all its descendants. No file inside their folders is
 | forbidden | The project is the HephaestusV2 project or one of its ancestors, for every actor (`“<project name>” cannot be removed: it is the HephaestusV2 project. Hide it in Settings ▸ General instead.`, where `<project name>` is the name of the HephaestusV2 project; [Removing a project](projects.md#removing-a-project)); the actor is claude and the project holds the calling chat or is one of its ancestors (`A chat cannot remove the project it belongs to.`). The first rule is checked first. |
 
 Events: project.removed for the project and for each descendant (depth-first order), project.updated (the parent, for a sub project), projects.changed.
+
+The projects that load because an identifier became free get their [GitHub tabs](web-tabs.md#github-tabs) afterwards: webTabs.updated and project.updated for each one whose tabs change.
 
 ### projects.ensureHephaestus
 
@@ -2082,7 +2084,7 @@ Events: none.
 
 ## Web tabs
 
-Web tabs are project data stored in project.yml ([Data model](data-model.md#web-tab)); browsing, locking and the tab strip are in [Web tabs](web-tabs.md).
+Web tabs are project data stored in project.yml ([Data model](data-model.md#web-tab)); browsing, locking and the tab strip are in [Web tabs](web-tabs.md). The engine also changes the [GitHub tabs](web-tabs.md#github-tabs) of a project by itself when its GitHub page changes, with `webTabs.updated` and `project.updated` ([Keeping the GitHub tabs](web-tabs.md#keeping-the-github-tabs)); the methods below keep them locked and first.
 
 ### webTabs.list
 
@@ -2113,7 +2115,7 @@ Swift type `WebTabsOpen` · actors: user, claude · result: [WebTab](data-model.
 | locked    | Bool      | no       | Default false. A tab opened locked takes `url` as its original URL.               |
 | index     | Int       | no       | Position of the new tab, clamped to 0 through the number of tabs; absent appends. |
 
-Adds a tab with a new UUID. Its `originalURL` is `url` when it is locked and `null` otherwise ([Original URL](web-tabs.md#original-url)). Default chosen at design time (http and https only, host as title, clamped index).
+Adds a tab with a new UUID. Its `originalURL` is `url` when it is locked and `null` otherwise ([Original URL](web-tabs.md#original-url)). While the project has its [GitHub tabs](web-tabs.md#github-tabs), `index` is 2 at least, so that they stay first. Default chosen at design time (http and https only, host as title, clamped index).
 
 | Error    | When                                                                                                          |
 | -------- | ------------------------------------------------------------------------------------------------------------- |
@@ -2134,13 +2136,14 @@ Swift type `WebTabsUpdate` · actors: user, claude · result: [WebTab](data-mode
 | title     | String    | no       | New title ([Data model](data-model.md#web-tab)). |
 | locked    | Bool      | no       | Lock or unlock the tab.                          |
 
-A locked tab can be updated: navigated, renamed and unlocked. Its `originalURL` changes only with `locked` ([Original URL](web-tabs.md#original-url)): `locked` true on an unlocked tab sets it to the tab's `url` after the update, `url` of this call included; `locked` false sets it to `null`; a new `url` on a locked tab, and `locked` true on a locked tab, leave it unchanged.
+A locked tab can be updated: navigated, renamed and unlocked, except a [GitHub tab](web-tabs.md#github-tabs), which cannot be unlocked; for claude, the rule of [Rules for Claude](#rules-for-claude) refuses `locked` false first. Its `originalURL` changes only with `locked` ([Original URL](web-tabs.md#original-url)): `locked` true on an unlocked tab sets it to the tab's `url` after the update, `url` of this call included; `locked` false sets it to `null`; a new `url` on a locked tab, and `locked` true on a locked tab, leave it unchanged.
 
 | Error     | When                                                                                   |
 | --------- | -------------------------------------------------------------------------------------- |
 | invalid   | projectID is malformed; tabID is not a UUID; url is not an absolute http or https URL. |
 | notFound  | No loaded project has this identifier; no tab with this id in it.                      |
 | forbidden | The actor is claude and locked is false (`Only the user can unlock a tab.`).           |
+| forbidden | locked is false and the tab is a GitHub tab (`This tab is locked.`).                   |
 
 Events: webTabs.updated, project.updated.
 
@@ -2157,7 +2160,7 @@ Swift type `WebTabsClose` · actors: user, claude · result: [Empty](#empty)
 | --------- | ----------------------------------------------------------------- |
 | invalid   | projectID is malformed; tabID is not a UUID.                      |
 | notFound  | No loaded project has this identifier; no tab with this id in it. |
-| forbidden | The tab is locked (`This tab is locked.`).                        |
+| forbidden | The tab is locked or is a GitHub tab (`This tab is locked.`).     |
 
 Events: webTabs.updated, project.updated.
 
@@ -2171,10 +2174,13 @@ Swift type `WebTabsMove` · actors: user, claude · result: [WebTab](data-model.
 | tabID     | UUID      | yes      | Tab id.                                                                                         |
 | toIndex   | Int       | yes      | Final position, clamped to 0 through the number of tabs minus 1. Default chosen at design time. |
 
-| Error    | When                                                              |
-| -------- | ----------------------------------------------------------------- |
-| invalid  | projectID is malformed; tabID is not a UUID.                      |
-| notFound | No loaded project has this identifier; no tab with this id in it. |
+A [GitHub tab](web-tabs.md#github-tabs) cannot be moved, and no tab moves before the GitHub tabs: while the project has them, the final position is 2 at least.
+
+| Error     | When                                                                                                               |
+| --------- | ------------------------------------------------------------------------------------------------------------------ |
+| invalid   | projectID is malformed; tabID is not a UUID.                                                                       |
+| notFound  | No loaded project has this identifier; no tab with this id in it.                                                  |
+| forbidden | The tab is a GitHub tab; the project has its GitHub tabs and the final position is 0 or 1 (`This tab is locked.`). |
 
 Events: webTabs.updated, project.updated.
 
@@ -3811,7 +3817,7 @@ A memory folder that a project inherits from one of its ancestors ([Inherited me
   "data": {
     "projectID": "HEPH",
     "tabs": [
-      {"id": "7C9E6679-7425-40DE-944B-E07FC1F90AE7", "locked": true, "originalURL": "https://github.com/", "title": "GitHub", "url": "https://github.com/"}
+      {"githubTab": null, "id": "7C9E6679-7425-40DE-944B-E07FC1F90AE7", "locked": true, "originalURL": "https://github.com/", "title": "GitHub", "url": "https://github.com/"}
     ]
   },
   "name": "webTabs.updated",
@@ -4070,3 +4076,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R167: A sub project's chats always receive the memories of its parent projects, which its Memories section lists read-only.
 - R169: Claude keeps global memories that every chat of every project receives; the user shows and edits them with View ▸ Global Memories.
 - R170: The user adds, removes, moves and configures the widgets of each project's Dashboard.
+- R172: A project with a GitHub page always has two locked web tabs, its GitHub page and its CI page, first in the tab strip.

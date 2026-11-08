@@ -1180,7 +1180,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "list_web_tabs",
             description: #"""
-            List a project's web tabs in tab order with their URL, title and lock state. A locked tab also has its original URL, the page it goes back to each time the user comes back to it.
+            List a project's web tabs in tab order with their URL, title and lock state. A locked tab also has its original URL, the page it goes back to each time the user comes back to it. githubTab marks the two tabs that HephaestusV2 keeps first in a project with a GitHub page: page, its GitHub page, and ci, its CI page; they cannot be closed, unlocked or moved.
             """#,
             inputSchema: schema(#"""
             {
@@ -1274,7 +1274,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "move_web_tab",
             description: #"""
-            Move a web tab of a project to another position of its tab strip; 0 is the first position.
+            Move a web tab of a project to another position of its tab strip; 0 is the first position. The GitHub tabs (githubTab page and ci) cannot be moved, and no tab can be moved before them.
             """#,
             inputSchema: schema(#"""
             {

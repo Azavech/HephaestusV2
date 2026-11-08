@@ -106,6 +106,8 @@ extension Engine {
             emitProjectUpdated(parentID, origin: actor)
         }
         emitProjectsChanged(origin: actor)
+        // A sub project that uses its parent's page gets its GitHub tabs.
+        keepGitHubTabs(origin: actor)
         updateFileWatching()
         return projectDetail(identifier)!
     }
@@ -178,6 +180,7 @@ extension Engine {
         // A top-level project it adopts as a sub project may now use its page.
         emitGithubPageChanges(since: pagesBefore, except: Set([project.id, parentID].compactMap { $0 }), origin: actor)
         emitProjectsChanged(origin: actor)
+        keepGitHubTabs(origin: actor)
         updateFileWatching()
         let detail = projectDetail(project.id)!
         // The top-level projects it adopts, and their descendants, may inherit other memory folders
@@ -262,6 +265,8 @@ extension Engine {
         if new.name != old.name || new.type != old.type || new.color != old.color || new.icon != old.icon {
             emitProjectsChanged(origin: actor)
         }
+        // The GitHub tabs follow the pages that changed (docs/web-tabs.md › Keeping the GitHub tabs).
+        keepGitHubTabs(origin: actor)
         return projectDetail(id)!
     }
 
@@ -310,6 +315,8 @@ extension Engine {
         }
         terminateChatProcesses(inProjects: unloaded.projectIDs)
         updateFileWatching()
+        // The projects loaded again get their GitHub tabs.
+        keepGitHubTabs(origin: actor)
         return Empty()
     }
 

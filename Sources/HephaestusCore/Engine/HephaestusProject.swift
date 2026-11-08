@@ -321,6 +321,7 @@ extension Engine {
         emitProjectUpdated(id, origin: .system)
         emitProjectsChanged(origin: .system)
         updateFileWatching()
+        keepGitHubTabs(origin: .system)
     }
 }
 

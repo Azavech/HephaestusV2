@@ -226,6 +226,7 @@ extension Engine {
             loadRegisteredProjects()
             emitProjectsChanged(origin: .system)
             terminateChatProcesses(inProjects: unloaded.projectIDs)
+            keepGitHubTabs(origin: .system)
         case .data(let data):
             let new: Project
             do {
@@ -275,6 +276,9 @@ extension Engine {
             if listChanged || projectSummaries() != summariesBefore {
                 emitProjectsChanged(origin: .system)
             }
+            // The GitHub tabs follow the pages that changed, and come back when the edit removed
+            // or moved them (docs/web-tabs.md › Keeping the GitHub tabs).
+            keepGitHubTabs(origin: .system)
         }
     }
 
@@ -308,6 +312,7 @@ extension Engine {
             recordApplied(ProjectFolder(root: URL(fileURLWithPath: root)).projectFile.standardizedFileURL.path, data)
         }
         emitProjectsChanged(origin: .system)
+        keepGitHubTabs(origin: .system)
     }
 
     /// The skills plugin of a project is regenerated when its `skills` changed
@@ -445,5 +450,6 @@ extension Engine {
         emitProjectsChanged(origin: .system)
         terminateChatProcesses(inProjects: removedIDs)
         updateFileWatching()
+        keepGitHubTabs(origin: .system)
     }
 }

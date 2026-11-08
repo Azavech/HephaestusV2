@@ -11,6 +11,9 @@ extension Engine {
         let loaded = loadRegisteredProjects()
         domain.startupLoadDone = true
         log.info(.engine, "loaded \(loaded.count) project(s)")
+        // The pages known at load, typed in a GitHub page field, give their GitHub tabs
+        // (docs/web-tabs.md › Keeping the GitHub tabs).
+        keepGitHubTabs(origin: .system)
     }
 
     /// Loads, in registry order and depth first in `subprojects` order, every registered folder
@@ -138,6 +141,9 @@ extension Engine {
         for projectID in ids {
             if let removed = domain.remove(projectID) {
                 chatIDs += removed.chats.keys.sorted { $0.uuidString < $1.uuidString }
+                // Loaded again, its origin is not known until it is read again
+                // (docs/web-tabs.md › Keeping the GitHub tabs).
+                files.gitRemoteReadRoots.remove(removed.rootPath)
                 log.info(.storage, "unloaded project \(projectID) at \(removed.rootPath)")
             }
         }

@@ -27,8 +27,8 @@ extension Engine {
     }
 
     /// docs/engine-api.md › webTabs.open: a new tab with a new UUID, the URL's host as default
-    /// title, unlocked by default, at `index` clamped to the tab range or appended. A tab opened
-    /// locked takes its URL as original URL.
+    /// title, unlocked by default, at `index` clamped to the tab range or appended, after the
+    /// GitHub tabs. A tab opened locked takes its URL as original URL.
     func webTabsOpen(_ params: WebTabsOpen.Params, _ actor: Actor) async throws -> WebTab {
         let id = try loadedProjectID(params.projectID)
         let url = try validated { try ModelRules.webTabURL(params.url) }
@@ -36,15 +36,18 @@ extension Engine {
         let locked = params.locked ?? false
         let tab = WebTab(id: UUID(), title: title, url: url, locked: locked, originalURL: locked ? url : nil)
         var project = loaded(id).project
-        let index = min(max(params.index ?? project.webTabs.count, 0), project.webTabs.count)
+        // The GitHub tabs stay first (docs/web-tabs.md › GitHub tabs).
+        let first = GitHubTabs.count(in: project.webTabs)
+        let index = min(max(params.index ?? project.webTabs.count, first), project.webTabs.count)
         project.webTabs.insert(tab, at: index)
         try saveWebTabs(project, origin: actor)
         return tab
     }
 
-    /// docs/engine-api.md › webTabs.update: a locked tab can be navigated, renamed and unlocked;
-    /// Claude never unlocks a tab. Locking takes the tab's URL after the update as original URL,
-    /// unlocking removes it, and a new URL keeps it (docs/web-tabs.md › Original URL).
+    /// docs/engine-api.md › webTabs.update: a locked tab can be navigated, renamed and unlocked,
+    /// except a GitHub tab, which nobody unlocks; Claude never unlocks a tab. Locking takes the
+    /// tab's URL after the update as original URL, unlocking removes it, and a new URL keeps it
+    /// (docs/web-tabs.md › Original URL).
     func webTabsUpdate(_ params: WebTabsUpdate.Params, _ actor: Actor) async throws -> WebTab {
         try ActorRules.requireNoUnlock(params.locked, actor)
         let id = try loadedProjectID(params.projectID)
@@ -53,6 +56,9 @@ extension Engine {
             throw Self.webTabNotFound(params.tabID)
         }
         let old = project.webTabs[index]
+        guard params.locked != false || old.githubTab == nil else {
+            throw Self.lockedTab
+        }
         var tab = old
         if let url = params.url {
             tab.url = try validated { try ModelRules.webTabURL(url) }
@@ -74,15 +80,16 @@ extension Engine {
         return tab
     }
 
-    /// docs/engine-api.md › webTabs.close: a locked tab cannot be closed, whoever calls.
+    /// docs/engine-api.md › webTabs.close: a locked tab or a GitHub tab cannot be closed, whoever
+    /// calls.
     func webTabsClose(_ params: WebTabsClose.Params, _ actor: Actor) async throws -> Empty {
         let id = try loadedProjectID(params.projectID)
         var project = loaded(id).project
         guard let index = project.webTabs.firstIndex(where: { $0.id == params.tabID }) else {
             throw Self.webTabNotFound(params.tabID)
         }
-        guard !project.webTabs[index].locked else {
-            throw EngineError(.forbidden, "This tab is locked.")
+        guard !project.webTabs[index].locked, project.webTabs[index].githubTab == nil else {
+            throw Self.lockedTab
         }
         project.webTabs.remove(at: index)
         try saveWebTabs(project, origin: actor)
@@ -90,7 +97,7 @@ extension Engine {
     }
 
     /// docs/engine-api.md › webTabs.move: `toIndex` is the final position, clamped to the tab
-    /// range.
+    /// range. A GitHub tab cannot be moved, and no tab moves before the GitHub tabs.
     func webTabsMove(_ params: WebTabsMove.Params, _ actor: Actor) async throws -> [WebTab] {
         let id = try loadedProjectID(params.projectID)
         var project = loaded(id).project
@@ -98,6 +105,9 @@ extension Engine {
             throw Self.webTabNotFound(params.tabID)
         }
         let target = min(max(params.toIndex, 0), project.webTabs.count - 1)
+        guard project.webTabs[index].githubTab == nil, target >= GitHubTabs.count(in: project.webTabs) else {
+            throw Self.lockedTab
+        }
         guard target != index else { return project.webTabs }
         let tab = project.webTabs.remove(at: index)
         project.webTabs.insert(tab, at: target)
@@ -124,5 +134,11 @@ extension Engine {
     /// `notFound` `Web tab <id> not found.`
     static func webTabNotFound(_ id: UUID) -> EngineError {
         EngineError.notFound("Web tab", id.uuidString)
+    }
+
+    /// `forbidden` `This tab is locked.`: closing a locked tab, unlocking or moving a GitHub tab,
+    /// moving a tab before the GitHub tabs.
+    static var lockedTab: EngineError {
+        EngineError(.forbidden, "This tab is locked.")
     }
 }

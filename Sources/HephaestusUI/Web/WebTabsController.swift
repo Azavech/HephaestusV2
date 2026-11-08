@@ -343,8 +343,9 @@ final class WebTabsController: SectionCommandHandler {
     // MARK: Strip and selection
 
     /// The window's tab strip: the stored tabs in order (a dragged tab at its drop position until
-    /// the move comes back), each followed by the popups it opened, newest first; popups whose
-    /// opener is gone; then the placeholder.
+    /// the move comes back), each followed by the popups it opened, newest first, except that the
+    /// popups of the GitHub tabs follow the CI tab; popups whose opener is gone; then the
+    /// placeholder.
     func stripItems(tabs: [WebTab]) -> [WebStripItem] {
         var ordered = tabs
         if let move = pendingMove, move.tabs == tabs, let from = ordered.firstIndex(where: { $0.id == move.tabID }) {
@@ -367,9 +368,18 @@ final class WebTabsController: SectionCommandHandler {
                 appendChildren(of: child.localID)
             }
         }
-        for tab in ordered {
+        // The GitHub tabs stay first: their popups come after the last of them (docs/web-tabs.md ›
+        // GitHub tabs).
+        let first = GitHubTabs.count(in: ordered)
+        for (index, tab) in ordered.enumerated() {
             items.append(.stored(tab))
-            appendChildren(of: pages[tab.id]?.localID)
+            if index >= first {
+                appendChildren(of: pages[tab.id]?.localID)
+            } else if index == first - 1 {
+                for githubTab in ordered.prefix(first) {
+                    appendChildren(of: pages[githubTab.id]?.localID)
+                }
+            }
         }
         for popup in popups where !placed.contains(popup.localID) {
             placed.insert(popup.localID)

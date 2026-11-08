@@ -446,6 +446,29 @@ struct ModelCodingTests {
                                   argoCDApplication: "orders-staging"))
     }
 
+    @Test("A web tab's githubTab is written after originalURL, left out of the file for any other tab and null in JSON")
+    func webTabGitHubTab() throws {
+        let tab = "id: 7C9E6679-7425-40DE-944B-E07FC1F90AE7\nurl: https://github.com/owner/name/actions\nlocked: true\n"
+        let ci = try YAMLCoding.decode(WebTab.self, from: tab + "originalURL: https://github.com/owner/name/actions\ngithubTab: ci\n")
+        #expect(ci.githubTab == .ci && ci.unknownKeys.isEmpty)
+        #expect(try YAMLCoding.decode(WebTab.self, from: tab + "githubTab: page\n").githubTab == .page)
+        #expect(try YAMLCoding.decode(WebTab.self, from: tab + "githubTab: null\n").githubTab == nil)
+        #expect(throws: (any Error).self) {
+            try YAMLCoding.decode(WebTab.self, from: tab + "githubTab: pulls\n")
+        }
+
+        let yaml = try YAMLCoding.encode(ci)
+        #expect(yaml.hasSuffix("locked: true\noriginalURL: https://github.com/owner/name/actions\ngithubTab: ci\n"))
+        #expect(try YAMLCoding.decode(WebTab.self, from: yaml) == ci)
+        let other = WebTab(id: UUID(), url: "https://example.com/", locked: true)
+        #expect(try !YAMLCoding.encode(other).contains("githubTab"))
+        let json = try JSONDecoder().decode(JSONValue.self, from: try EngineJSON.encode(other))
+        #expect(json.objectValue?["githubTab"] == .null)
+        let ciJSON = try JSONDecoder().decode(JSONValue.self, from: try EngineJSON.encode(ci))
+        #expect(ciJSON.objectValue?["githubTab"] == .string("ci"))
+        #expect(try EngineJSON.decode(WebTab.self, from: try EngineJSON.encode(ci)) == ci)
+    }
+
     @Test("Booleans accept the YAML 1.1 spellings")
     func booleanSpellings() throws {
         for (text, value) in [("yes", true), ("no", false), ("on", true), ("off", false), ("True", true), ("FALSE", false)] {

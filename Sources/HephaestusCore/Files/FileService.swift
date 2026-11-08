@@ -11,6 +11,9 @@ final class FileService {
     var tools = FileTools.notLookedUp
     /// True once a test set the tools: the lookup of the engine start does not replace them.
     var toolsSetByTest = false
+    /// True once the tools are looked up or set by a test: from then on a missing `git` or `ssh`
+    /// is known to be missing (docs/web-tabs.md › Keeping the GitHub tabs).
+    var toolsKnown = false
     /// Where `files.trash` and `moveItemToTrash` move items.
     var trash = FileTrash.system
     /// docs/engine-api.md › files.write, step 2: a formatter running longer writes the text
@@ -22,6 +25,8 @@ final class FileService {
     /// The last `gitRemoteURL` read for each project root; no entry before the first read and
     /// for a root without remote.
     var gitRemoteURLs: [String: String] = [:]
+    /// The roots whose remote was read at least once (docs/web-tabs.md › Keeping the GitHub tabs).
+    var gitRemoteReadRoots: Set<String> = []
     /// The roots whose remote is being read; true when another read was asked for meanwhile.
     var gitRemoteReads: [String: Bool] = [:]
 
@@ -166,7 +171,9 @@ extension Engine {
         let tools = await FileTools.lookUp(environment: environment, log: log)
         guard !files.toolsSetByTest else { return }
         files.tools = tools
+        files.toolsKnown = true
         refreshGitRemoteURLs()
+        keepGitHubTabs(origin: .system)
         ensureHephaestusProject()
     }
 
@@ -174,7 +181,9 @@ extension Engine {
     func useFileTools(_ tools: FileTools) {
         files.tools = tools
         files.toolsSetByTest = true
+        files.toolsKnown = true
         refreshGitRemoteURLs()
+        keepGitHubTabs(origin: .system)
     }
 
     /// Sets the formatter timeout, for tests.
