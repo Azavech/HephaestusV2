@@ -80,6 +80,8 @@ final class ChatManager {
     var reportedStates: [ChatID: ChatState] = [:]
     /// The last `backgroundWork` reported by `chat.updated`, per chat.
     var reportedBackgroundWork: [ChatID: Bool] = [:]
+    /// The last `compactingSince` reported by `chat.updated`, per chat.
+    var reportedCompactingSince: [ChatID: Date] = [:]
     /// The number of the latest notification event of each chat; a summary of an older one is
     /// dropped (docs/chats.md › Notification events).
     var latestNotifications: [ChatID: Int] = [:]
@@ -118,6 +120,13 @@ final class ChatManager {
     func backgroundWork(of chatID: ChatID) -> Bool {
         guard let process = runtimes[chatID]?.process, !process.exited else { return false }
         return process.background.isRunning
+    }
+
+    /// While the chat's process compacts the conversation, the time the compaction started
+    /// (docs/chats.md › Compaction); an exited process compacts nothing.
+    func compactingSince(of chatID: ChatID) -> Date? {
+        guard let process = runtimes[chatID]?.process, !process.exited else { return nil }
+        return process.compactingSince
     }
 
     /// The device id of the user that last drove the chat since the engine started; `ui.open`
@@ -227,6 +236,9 @@ final class ChatProcess {
     var turns = TurnTracker()
     /// The background work the CLI reports for the process.
     var background = BackgroundWorkTracker()
+    /// The time the engine read the `status` line that started the running compaction; nil while
+    /// none runs (docs/chats.md › Compaction).
+    var compactingSince: Date?
     var nextRequestNumber = 1
     var pendingControl: [String: (purpose: ControlPurpose, timer: Task<Void, Never>?)] = [:]
     var permissions: [String: PendingPermission] = [:]

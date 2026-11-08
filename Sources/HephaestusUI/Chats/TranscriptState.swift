@@ -40,6 +40,9 @@ struct TranscriptState {
     private var stepCounts: [String: Int] = [:]
     /// The `toolUseID`s of the `toolUse` items.
     private var toolUseIDs: Set<String> = []
+    /// The number of compaction lines, which the tooltip of the context indicator gives
+    /// (docs/chats.md › Context indicator).
+    private(set) var compactionCount = 0
 
     init(items: [ChatItem] = [], generation: Int = 0) {
         self.generation = generation
@@ -209,6 +212,7 @@ struct TranscriptState {
     // MARK: Indexes
 
     private mutating func index(_ item: ChatItem) {
+        if CompactionLine.isCompactionLine(item) { compactionCount += 1 }
         switch item {
         case .toolUse(let use):
             toolUseIDs.insert(use.toolUseID)
@@ -225,6 +229,7 @@ struct TranscriptState {
     }
 
     private mutating func unindex(_ item: ChatItem) {
+        if CompactionLine.isCompactionLine(item) { compactionCount -= 1 }
         switch item {
         case .toolUse(let use):
             toolUseIDs.remove(use.toolUseID)

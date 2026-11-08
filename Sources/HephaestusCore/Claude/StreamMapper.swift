@@ -48,6 +48,15 @@ enum MapperOutput: Sendable, Hashable {
     case commandState(uuid: String, state: String)
     /// A `system/status` line with `permissionMode`: the CLI value.
     case permissionModeReported(String)
+    /// A `system/status` line whose `status` is `compacting` while no compaction runs: a
+    /// compaction starts (docs/chats.md › Compaction).
+    case compactionStarted
+    /// The next `system/status` line, or a `result` line, while a compaction runs: the compaction
+    /// ends. Before the `result` item of a `result` line.
+    case compactionEnded
+    /// A `system/compact_boundary` line that added a compaction line, which comes before: the
+    /// engine asks for the context usage (docs/chats.md › Context usage).
+    case compacted
     /// A `system/background_tasks_changed` line: the `task_id` of every background task still
     /// running (docs/chats.md › Background work).
     case backgroundTasks([String])
@@ -99,6 +108,9 @@ struct StreamMapper {
     var newID: () -> String = { RandomIDs.uuidString() }
 
     private(set) var sawInit = false
+    /// A compaction runs: a `status` line `compacting` was read, and no later `status` or
+    /// `result` line (docs/chats.md › Compaction).
+    private(set) var compacting = false
 
     /// A block of a message: opened by `content_block_start`, or recorded when an `assistant`
     /// line carries a block that was not streamed.
@@ -193,8 +205,28 @@ struct StreamMapper {
             outputs.append(.cliTurnOpened)
             return outputs
         }
-        if subtype == "status", let mode = line["permissionMode"]?.stringValue {
-            return [.permissionModeReported(mode)]
+        if subtype == "status" {
+            var outputs: [MapperOutput] = []
+            if let mode = line["permissionMode"]?.stringValue {
+                outputs.append(.permissionModeReported(mode))
+            }
+            // docs/chats.md › Compaction, rules 1 and 2.
+            if line["status"]?.stringValue == "compacting" {
+                if !compacting {
+                    compacting = true
+                    outputs.append(.compactionStarted)
+                }
+            } else if compacting {
+                compacting = false
+                outputs.append(.compactionEnded)
+            }
+            return outputs.isEmpty ? [.ignored("ignored system/status")] : outputs
+        }
+        // docs/chats.md › Compaction line.
+        if subtype == "compact_boundary", let metadata = line["compact_metadata"]?.objectValue,
+           let trigger = metadata["trigger"]?.stringValue, let preTokens = metadata["pre_tokens"]?.claudeInt, preTokens >= 0 {
+            let text = CompactionLine.text(trigger: trigger, preTokens: preTokens)
+            return [.item(.system(SystemItem(id: newID(), created: now(), text: text, level: .info))), .compacted]
         }
         // docs/chats.md › Background work: an entry without a `task_id` string is skipped.
         if subtype == "background_tasks_changed", let tasks = line["tasks"]?.arrayValue {
@@ -520,6 +552,11 @@ struct StreamMapper {
     /// docs/chats.md › Turn result.
     private mutating func mapResult(_ line: [String: JSONValue]) -> [MapperOutput] {
         var outputs = finalize().map(MapperOutput.item)
+        // docs/chats.md › Compaction, rule 3.
+        if compacting {
+            compacting = false
+            outputs.insert(.compactionEnded, at: 0)
+        }
         let isError = line["is_error"]?.claudeBool ?? false
         var summary: String?
         if isError {

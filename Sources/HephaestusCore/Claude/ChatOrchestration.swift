@@ -80,6 +80,7 @@ extension Engine {
         let previous = chats.reportedStates[meta.id]
         chats.reportedStates[meta.id] = meta.state
         chats.reportedBackgroundWork[meta.id] = meta.backgroundWork
+        chats.reportedCompactingSince[meta.id] = meta.compactingSince
         let wasInTurn = previous.map { Engine.turnStates.contains($0) } ?? false
         let startsTurn = !wasInTurn && Engine.turnStates.contains(meta.state)
         if startsTurn {

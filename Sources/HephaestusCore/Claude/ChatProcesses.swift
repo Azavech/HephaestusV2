@@ -302,6 +302,15 @@ extension Engine {
             }
         case .permissionModeReported(let mode):
             applyCLIPermissionMode(mode, chatID: chatID, process: process)
+        case .compactionStarted:
+            // docs/chats.md › Compaction, rules 1 and 4.
+            process.compactingSince = ISODate.now()
+            reportChatState(chatID)
+        case .compactionEnded:
+            process.compactingSince = nil
+            reportChatState(chatID)
+        case .compacted:
+            askContextUsage(chatID, process: process)
         case .backgroundTasks(let taskIDs):
             // docs/chats.md › Background work, rules 1 and 2.
             process.background.tasksChanged(taskIDs)

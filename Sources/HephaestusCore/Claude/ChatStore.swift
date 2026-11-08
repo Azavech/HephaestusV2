@@ -11,6 +11,7 @@ extension Engine {
         guard var meta = domain.chat(chatID) else { return nil }
         meta.state = chats.state(of: chatID)
         meta.backgroundWork = chats.backgroundWork(of: chatID)
+        meta.compactingSince = chats.compactingSince(of: chatID)
         meta.costUSD = chats.costs[chatID]?.costUSD
         meta.mentionedIDs = chats.mentions[chatID]?.ids ?? []
         return meta
@@ -47,6 +48,7 @@ extension Engine {
         }
         meta.state = chats.state(of: meta.id)
         meta.backgroundWork = chats.backgroundWork(of: meta.id)
+        meta.compactingSince = chats.compactingSince(of: meta.id)
         meta.costUSD = chats.costs[meta.id]?.costUSD
         meta.mentionedIDs = chats.mentions[meta.id]?.ids ?? []
         domain.upsertChat(meta)
@@ -64,11 +66,12 @@ extension Engine {
         }
     }
 
-    /// Emits `chat.updated` when the chat's state or `backgroundWork` differs from the last one
-    /// reported.
+    /// Emits `chat.updated` when the chat's state, `backgroundWork` or `compactingSince` differs
+    /// from the last one reported.
     func reportChatState(_ chatID: ChatID, origin: Actor = .system) {
         guard !chats.deleting.contains(chatID), let meta = chatMeta(chatID) else { return }
         guard chats.reportedStates[chatID] != meta.state || chats.reportedBackgroundWork[chatID, default: false] != meta.backgroundWork
+            || chats.reportedCompactingSince[chatID] != meta.compactingSince
         else { return }
         recordReportedState(meta)
         emit(ChatUpdatedEvent.self, meta, origin: origin)

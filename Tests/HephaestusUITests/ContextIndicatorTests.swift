@@ -6,7 +6,8 @@ import UpdaterCore
 @testable import HephaestusUI
 
 /// docs/chats.md › Context indicator: `<n>% left`, the colour thresholds at 20 and 10, the
-/// tooltip, and the controls row that keeps the ring and drops the text once its menus fold.
+/// tooltip and its line of compactions, the ring that fades during a compaction, and the controls
+/// row that keeps the ring and drops the text once its menus fold.
 @MainActor
 @Suite("Context indicator")
 struct ContextIndicatorTests {
@@ -52,6 +53,48 @@ struct ContextIndicatorTests {
         // A buffer that is not below the window shows no indicator.
         let broken = ContextUsage(usedTokens: 1, windowTokens: 1000, bufferTokens: 1000, received: Self.received)
         #expect(ContextIndicatorPresentation(usage: broken) == nil)
+    }
+
+    @Test("After the first compaction line the tooltip has a second line: Compacted once, Compacted <n> times")
+    func compactionsLine() throws {
+        let usage = Self.usage(left: 948_446)
+        let first = "18.6K of 1M tokens used · 948.4K left before compaction"
+        #expect(ContextIndicatorPresentation(usage: usage, compactions: 0)?.tooltip == first)
+        #expect(ContextIndicatorPresentation(usage: usage, compactions: 1)?.tooltip == first + "\nCompacted once")
+        #expect(ContextIndicatorPresentation(usage: usage, compactions: 2)?.tooltip == first + "\nCompacted 2 times")
+        #expect(ContextIndicatorPresentation.compactionsLine(12) == "Compacted 12 times")
+    }
+
+    @Test("The transcript counts its compaction lines: system items with level info that start with Conversation compacted (")
+    func compactionCount() {
+        let date = Self.received
+        func system(_ id: String, _ text: String, _ level: SystemLevel = .info) -> ChatItem {
+            .system(SystemItem(id: id, created: date, text: text, level: level))
+        }
+        var state = TranscriptState(items: [
+            system("S", "Session started · Haiku 5.5 · effort low · Allow all"),
+            system("C1", "Conversation compacted (manual, 24.6K tokens before)"),
+            system("W", "Conversation compacted (manual, 24.6K tokens before)", .warning),
+        ])
+        #expect(state.compactionCount == 1)
+        state.upsert(system("C2", "Conversation compacted (automatic, 967K tokens before)"))
+        #expect(state.compactionCount == 2)
+        // Replacing an item with the same id counts it once.
+        state.upsert(system("C2", "Conversation compacted (automatic, 967K tokens before)"))
+        #expect(state.compactionCount == 2)
+        #expect(TranscriptState().compactionCount == 0)
+    }
+
+    @Test("During a compaction the ring fades from full opacity to 30% and back, 1 s per cycle")
+    func compactingOpacity() {
+        #expect(abs(ContextIndicatorPresentation.compactingOpacity(elapsed: 0) - 1) < 1e-9)
+        #expect(abs(ContextIndicatorPresentation.compactingOpacity(elapsed: 0.5) - 0.3) < 1e-9)
+        #expect(abs(ContextIndicatorPresentation.compactingOpacity(elapsed: 1) - 1) < 1e-9)
+        #expect(abs(ContextIndicatorPresentation.compactingOpacity(elapsed: 2.5) - 0.3) < 1e-9)
+        for step in 0...20 {
+            let opacity = ContextIndicatorPresentation.compactingOpacity(elapsed: Double(step) * 0.05)
+            #expect(opacity >= 0.3 - 1e-9 && opacity <= 1 + 1e-9)
+        }
     }
 
     /// Records the preference of the shown controls row.

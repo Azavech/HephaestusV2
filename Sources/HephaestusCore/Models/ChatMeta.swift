@@ -39,6 +39,11 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     /// (docs/chats.md › Background work). Never written to the file and ignored when read from
     /// it; always present in the engine API.
     public var backgroundWork: Bool
+    /// Runtime only: while the chat's Claude process compacts the conversation, the time the
+    /// engine read the `status` line that started the compaction; nil otherwise (docs/chats.md ›
+    /// Compaction). Never written to the file and ignored when read from it; always present in the
+    /// engine API.
+    public var compactingSince: Date?
     /// Runtime only: the chat's cost in US dollars (docs/costs.md › Chat cost); nil without a
     /// cost. Never written to the file and ignored when read from it; always present in the
     /// engine API.
@@ -56,8 +61,8 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
                 ticketID: TicketID? = nil, bundleID: BundleID? = nil, orchestratorChatID: ChatID? = nil, created: Date, updated: Date? = nil,
                 settings: ChatSettings = ChatSettings(), sessionStarted: Bool = false, closed: Bool = false, questionsBlocked: Bool = false,
                 contextUsage: ContextUsage? = nil, projectID: ProjectID = "",
-                state: ChatState = .idle, backgroundWork: Bool = false, costUSD: Double? = nil, mentionedIDs: [String] = [],
-                unknownKeys: [String: JSONValue] = [:]) {
+                state: ChatState = .idle, backgroundWork: Bool = false, compactingSince: Date? = nil, costUSD: Double? = nil,
+                mentionedIDs: [String] = [], unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
         self.id = id
         self.title = title
@@ -75,6 +80,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         self.projectID = projectID
         self.state = state
         self.backgroundWork = backgroundWork
+        self.compactingSince = compactingSince
         self.costUSD = costUSD
         self.mentionedIDs = mentionedIDs
         self.unknownKeys = unknownKeys
@@ -84,7 +90,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         "schema", "id", "title", "kind", "ticket", "bundle", "orchestrator", "created", "updated", "settings", "sessionStarted", "closed",
         "questionsBlocked", "contextUsage",
     ]
-    static let runtimeKeys: Set<String> = ["projectID", "state", "backgroundWork", "costUSD", "mentionedIDs"]
+    static let runtimeKeys: Set<String> = ["projectID", "state", "backgroundWork", "compactingSince", "costUSD", "mentionedIDs"]
 
     public init(from decoder: Decoder) throws {
         let c = try ModelDecodingContainer(decoder)
@@ -108,12 +114,14 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
             projectID = ""
             state = .idle
             backgroundWork = false
+            compactingSince = nil
             costUSD = nil
             mentionedIDs = []
         } else {
             projectID = try c.value("projectID", default: "")
             state = try c.value("state", default: .idle)
             backgroundWork = try c.value("backgroundWork", default: false)
+            compactingSince = try c.optionalDate("compactingSince")
             costUSD = try c.optional("costUSD")
             mentionedIDs = try c.value("mentionedIDs", default: [])
         }
@@ -147,6 +155,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
             try c.encode(projectID, "projectID")
             try c.encode(state, "state")
             try c.encode(backgroundWork, "backgroundWork")
+            try c.encodeOptionalDate(compactingSince, "compactingSince")
             try c.encodeOptional(costUSD, "costUSD")
             try c.encode(mentionedIDs, "mentionedIDs")
         }

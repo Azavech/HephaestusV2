@@ -109,7 +109,8 @@ struct ComposerView: View {
             menus()
             Spacer(minLength: 8)
             if let usage = model.meta?.contextUsage {
-                ComposerContextIndicator(usage: usage, showsText: indicatorShowsText)
+                ComposerContextIndicator(usage: usage, compactions: model.transcriptState?.compactionCount ?? 0,
+                                         compacting: model.meta?.compactingSince != nil, showsText: indicatorShowsText)
             }
             if model.state.isChatRunning, model.chatID != nil {
                 Button {
@@ -150,16 +151,34 @@ struct ContextIndicatorPresentation: Equatable {
     /// The used part of `window` − `buffer`, to which the ring is filled.
     let fraction: Double
     let level: Level
-    /// `<used> of <window> tokens used · <left> left before compaction`.
+    /// `<used> of <window> tokens used · <left> left before compaction`, followed after the chat's
+    /// first compaction by the line of `compactionsLine`.
     let tooltip: String
 
-    /// nil, and no indicator, when `bufferTokens` is not below `windowTokens`.
-    init?(usage: ContextUsage) {
+    /// nil, and no indicator, when `bufferTokens` is not below `windowTokens`. `compactions` is the
+    /// number of compaction lines in the chat's transcript.
+    init?(usage: ContextUsage, compactions: Int = 0) {
         guard let percentLeft = usage.percentLeft, let fraction = usage.usedFraction else { return nil }
         self.percentLeft = percentLeft
         self.fraction = min(max(fraction, 0), 1)
         level = Self.level(percentLeft: percentLeft)
-        tooltip = usage.tooltip
+        tooltip = [usage.tooltip, Self.compactionsLine(compactions)].compactMap { $0 }.joined(separator: "\n")
+    }
+
+    /// `Compacted once`, `Compacted <n> times`; nil before the first compaction.
+    static func compactionsLine(_ compactions: Int) -> String? {
+        switch compactions {
+        case ..<1: return nil
+        case 1: return "Compacted once"
+        default: return "Compacted \(compactions) times"
+        }
+    }
+
+    /// The ring's opacity `elapsed` seconds into a compaction: from 1 down to 0.3 and back, 1 s per
+    /// cycle.
+    static func compactingOpacity(elapsed: TimeInterval) -> Double {
+        let low = 0.3
+        return low + (1 - low) * (1 + cos(2 * Double.pi * elapsed)) / 2
     }
 
     /// `<n>% left`.
@@ -181,15 +200,18 @@ struct ContextIndicatorPresentation: Equatable {
 }
 
 /// The context indicator of the controls row: the ring followed by `<n>% left`, which the folded
-/// row hides; the tooltip, also the accessibility label, gives the numbers.
+/// row hides; the tooltip, also the accessibility label, gives the numbers and the number of
+/// compactions. The ring fades while a compaction runs.
 struct ComposerContextIndicator: View {
     let usage: ContextUsage
+    let compactions: Int
+    let compacting: Bool
     let showsText: Bool
 
     var body: some View {
-        if let presentation = ContextIndicatorPresentation(usage: usage) {
+        if let presentation = ContextIndicatorPresentation(usage: usage, compactions: compactions) {
             HStack(spacing: 5) {
-                UsageRing(fraction: presentation.fraction, color: presentation.color)
+                ring(presentation)
                 if showsText {
                     Text(presentation.text)
                         .lineLimit(1)
@@ -200,6 +222,28 @@ struct ComposerContextIndicator: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(presentation.tooltip)
             .preference(key: ContextIndicatorTextShown.self, value: showsText)
+        }
+    }
+
+    @ViewBuilder private func ring(_ presentation: ContextIndicatorPresentation) -> some View {
+        let ring = UsageRing(fraction: presentation.fraction, color: presentation.color)
+        if compacting {
+            CompactingRing(ring: ring)
+        } else {
+            ring
+        }
+    }
+}
+
+/// The ring during a compaction: its opacity follows `compactingOpacity` from the moment the view
+/// appears.
+private struct CompactingRing: View {
+    let ring: UsageRing
+    @State private var start = Date()
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            ring.opacity(ContextIndicatorPresentation.compactingOpacity(elapsed: context.date.timeIntervalSince(start)))
         }
     }
 }

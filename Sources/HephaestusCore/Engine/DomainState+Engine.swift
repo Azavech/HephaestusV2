@@ -295,11 +295,12 @@ extension Engine {
     }
 
     /// A ChatMeta as the API returns it: with `projectID` and the runtime `state`,
-    /// `backgroundWork`, `costUSD` and `mentionedIDs`.
+    /// `backgroundWork`, `compactingSince`, `costUSD` and `mentionedIDs`.
     func apiChatMeta(_ meta: ChatMeta) -> ChatMeta {
         var copy = meta
         copy.state = chats.state(of: meta.id)
         copy.backgroundWork = chats.backgroundWork(of: meta.id)
+        copy.compactingSince = chats.compactingSince(of: meta.id)
         copy.costUSD = chats.costs[meta.id]?.costUSD
         copy.mentionedIDs = chats.mentions[meta.id]?.ids ?? []
         return copy

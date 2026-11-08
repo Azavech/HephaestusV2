@@ -7,8 +7,8 @@ import Observation
 /// Keeps `DeviceWorkspace.transcripts` for the chats shown in views: opening a chat calls
 /// `chats.get` under the replay rule, a reconnect loads it again, and the state is dropped when
 /// the last view of the chat closes. It also records when this client saw each chat become
-/// running (the `m:ss` of the status line) and removes the streaming bubbles when a chat becomes
-/// idle, waitingAnswers or error.
+/// running and each compaction start (the `m:ss` of the status line) and removes the streaming
+/// bubbles when a chat becomes idle, waitingAnswers or error.
 @MainActor @Observable
 final class ChatTranscriptStore {
     static let shared = ChatTranscriptStore()
@@ -29,6 +29,9 @@ final class ChatTranscriptStore {
     private(set) var phases: [Key: Phase] = [:]
     /// When this client saw each chat become running.
     private(set) var runningSince: [Key: Date] = [:]
+    /// When this client saw the running compaction of each chat start (docs/chats.md › Chat
+    /// states), by the chat's `compactingSince`.
+    private(set) var compactionsSeen: [Key: (compactingSince: Date, seen: Date)] = [:]
 
     @ObservationIgnored private var viewers: [Key: Int] = [:]
     @ObservationIgnored private var loadedGenerations: [Key: Int] = [:]
@@ -46,6 +49,13 @@ final class ChatTranscriptStore {
 
     func runningSince(_ chatID: String, in workspace: DeviceWorkspace) -> Date? {
         runningSince[key(chatID, workspace)]
+    }
+
+    /// When this client saw the compaction `compactingSince` of the chat start; nil when it has
+    /// not seen that compaction yet.
+    func compactionSeen(_ chatID: String, compactingSince: Date, in workspace: DeviceWorkspace) -> Date? {
+        guard let entry = compactionsSeen[key(chatID, workspace)], entry.compactingSince == compactingSince else { return nil }
+        return entry.seen
     }
 
     // MARK: Views
@@ -147,6 +157,7 @@ final class ChatTranscriptStore {
                     let key = Key(workspace: id, chatID: payload.chatID.uuidString)
                     self.lastStates[key] = nil
                     self.runningSince[key] = nil
+                    self.compactionsSeen[key] = nil
                 default:
                     break
                 }
@@ -160,11 +171,12 @@ final class ChatTranscriptStore {
         for key in Array(lastStates.keys) where key.workspace == id {
             lastStates[key] = nil
             runningSince[key] = nil
+            compactionsSeen[key] = nil
         }
     }
 
-    /// Follows a chat's state: `m:ss` counts from the moment this client saw it become running;
-    /// idle, waitingAnswers and error remove every streaming bubble.
+    /// Follows a chat's state: `m:ss` counts from the moment this client saw it become running,
+    /// or saw its compaction start; idle, waitingAnswers and error remove every streaming bubble.
     private func observe(_ meta: ChatMeta, key: Key, workspace: DeviceWorkspace) {
         let previous = lastStates[key]
         lastStates[key] = meta.state
@@ -172,6 +184,13 @@ final class ChatTranscriptStore {
             runningSince[key] = Date()
         } else if meta.state != .running, runningSince[key] != nil {
             runningSince[key] = nil
+        }
+        if let compactingSince = meta.compactingSince {
+            if compactionsSeen[key]?.compactingSince != compactingSince {
+                compactionsSeen[key] = (compactingSince, Date())
+            }
+        } else if compactionsSeen[key] != nil {
+            compactionsSeen[key] = nil
         }
         switch meta.state {
         case .idle, .waitingAnswers, .error:

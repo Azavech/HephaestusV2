@@ -499,6 +499,7 @@ extension Engine {
         chats.hasTextMessage[chatID] = nil
         chats.reportedStates[chatID] = nil
         chats.reportedBackgroundWork[chatID] = nil
+        chats.reportedCompactingSince[chatID] = nil
         forgetAgents(chatID)
         try unlinkChat(chatID, origin: actor)
         try moveChatItemToTrash(folder.chatMetaFile(chatID))

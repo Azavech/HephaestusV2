@@ -394,11 +394,27 @@ private struct TranscriptLoadFailedView: View {
 
 /// The line above the composer (docs/chats.md › Chat states): hidden for idle, `Starting Claude…`,
 /// `Claude is working… m:ss`, `Waiting for your permission`, `Waiting for your answers`, or
-/// `Claude stopped with an error` in red.
+/// `Claude stopped with an error` in red; `Compacting the conversation… m:ss` in place of them
+/// while a compaction runs.
 struct ChatStatusLine: View {
     let model: ChatViewModel
 
     var body: some View {
+        Group {
+            if let compactingSince = model.meta?.compactingSince {
+                let start = model.chatID.flatMap {
+                    ChatTranscriptStore.shared.compactionSeen($0, compactingSince: compactingSince, in: model.workspace)
+                } ?? Date()
+                TimelineView(.periodic(from: start, by: 1)) { context in
+                    line("Compacting the conversation… " + ChatFormat.elapsed(since: start, now: context.date))
+                }
+            } else {
+                stateLine
+            }
+        }
+    }
+
+    private var stateLine: some View {
         Group {
             switch model.state {
             case .idle:
