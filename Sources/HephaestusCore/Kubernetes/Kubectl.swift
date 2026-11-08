@@ -336,7 +336,79 @@ extension Kubectl {
                          readyContainers: statuses.filter { KubeJSON.value($0.objectValue, "ready") == .bool(true) }.count,
                          containers: KubeJSON.array(object, "spec", "containers")?.count ?? 0,
                          restarts: statuses.reduce(0) { $0 + (KubeJSON.int($1.objectValue, "restartCount") ?? 0) },
+                         status: kubectlStatus(object),
                          age: age(from: created, to: now), created: created, node: KubeJSON.string(object, "spec", "nodeName"))
+    }
+
+    /// docs/engine-api.md › Pod STATUS: the STATUS that `kubectl get pods` shows, computed from the
+    /// pod's JSON as kubectl computes it: the phase, the pod's reason or `SchedulingGated`; then the
+    /// first init container that has not finished; then the containers, the first one winning; then
+    /// the deletion.
+    static func kubectlStatus(_ pod: [String: JSONValue]) -> String {
+        let phase = KubeJSON.string(pod, "status", "phase") ?? "Unknown"
+        var status = nonEmpty(KubeJSON.string(pod, "status", "reason")) ?? phase
+        let conditions = (KubeJSON.array(pod, "status", "conditions") ?? []).compactMap(\.objectValue)
+        if conditions.contains(where: { KubeJSON.string($0, "type") == "PodScheduled" && KubeJSON.string($0, "reason") == "SchedulingGated" }) {
+            status = "SchedulingGated"
+        }
+        let initContainers = KubeJSON.array(pod, "spec", "initContainers") ?? []
+        // Init containers that keep running beside the containers.
+        let sidecars = Set(initContainers.compactMap { value -> String? in
+            guard let container = value.objectValue, KubeJSON.string(container, "restartPolicy") == "Always" else { return nil }
+            return KubeJSON.string(container, "name")
+        })
+        var initializing = false
+        for (index, value) in (KubeJSON.array(pod, "status", "initContainerStatuses") ?? []).enumerated() {
+            let container = value.objectValue
+            let terminated = KubeJSON.object(container, "state", "terminated")
+            if let terminated, (KubeJSON.int(terminated, "exitCode") ?? 0) == 0 { continue }
+            if let name = KubeJSON.string(container, "name"), sidecars.contains(name),
+               KubeJSON.value(container, "started") == .bool(true) { continue }
+            if let terminated {
+                status = "Init:" + terminationText(terminated)
+            } else if let reason = nonEmpty(KubeJSON.string(container, "state", "waiting", "reason")), reason != "PodInitializing" {
+                status = "Init:" + reason
+            } else {
+                status = "Init:\(index)/\(initContainers.count)"
+            }
+            initializing = true
+            break
+        }
+        func isTrue(_ type: String) -> Bool {
+            conditions.contains { KubeJSON.string($0, "type") == type && KubeJSON.string($0, "status") == "True" }
+        }
+        if !initializing || isTrue("Initialized") {
+            var hasRunning = false
+            for value in (KubeJSON.array(pod, "status", "containerStatuses") ?? []).reversed() {
+                let container = value.objectValue
+                if let reason = nonEmpty(KubeJSON.string(container, "state", "waiting", "reason")) {
+                    status = reason
+                } else if let terminated = KubeJSON.object(container, "state", "terminated") {
+                    status = terminationText(terminated)
+                } else if KubeJSON.value(container, "ready") == .bool(true), KubeJSON.object(container, "state", "running") != nil {
+                    hasRunning = true
+                }
+            }
+            if status == "Completed", hasRunning {
+                status = isTrue("Ready") ? "Running" : "NotReady"
+            }
+        }
+        if KubeJSON.value(pod, "metadata", "deletionTimestamp") != nil {
+            if KubeJSON.string(pod, "status", "reason") == "NodeLost" {
+                status = "Unknown"
+            } else if phase != "Succeeded", phase != "Failed" {
+                status = "Terminating"
+            }
+        }
+        return status
+    }
+
+    /// A terminated state as kubectl writes it: its reason, else `Signal:<signal>`, else
+    /// `ExitCode:<exit code>`.
+    private static func terminationText(_ terminated: [String: JSONValue]) -> String {
+        if let reason = nonEmpty(KubeJSON.string(terminated, "reason")) { return reason }
+        if let signal = KubeJSON.int(terminated, "signal"), signal != 0 { return "Signal:\(signal)" }
+        return "ExitCode:\(KubeJSON.int(terminated, "exitCode") ?? 0)"
     }
 }
 

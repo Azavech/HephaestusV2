@@ -163,6 +163,38 @@ struct DashboardWidgetCodingTests {
         }
     }
 
+    @Test("An Instances widget has the keys id, kind and title only; a key of another kind stays as an unknown key")
+    func instances() throws {
+        let id = UUID(uuidString: "3C4D5E6F-7A8B-4C9D-8E0F-1A2B3C4D5E6F")!
+        let widget = DashboardWidget(id: id, kind: .instances, title: "Pods")
+        let project = Project(id: "API", name: "Orders", created: Self.created, type: .goService, dashboardWidgets: [widget])
+        let yaml = try YAMLCoding.encode(project)
+        #expect(yaml.contains("""
+            dashboardWidgets:
+            - id: 3C4D5E6F-7A8B-4C9D-8E0F-1A2B3C4D5E6F
+              kind: instances
+              title: Pods
+            deletedChats: []
+
+            """))
+        #expect(try YAMLCoding.decode(Project.self, from: yaml) == project)
+        #expect(try EngineJSON.decode(Project.self, from: try EngineJSON.encode(project)) == project)
+        let json = try JSONDecoder().decode(JSONValue.self, from: try EngineJSON.encode(widget))
+        #expect(json.objectValue.map { Set($0.keys) } == ["id", "kind", "title"])
+
+        let edited = try Self.project(widgets: """
+            - id: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f
+              kind: instances
+              includeSubprojects: false
+            """)
+        let decoded = try #require(edited.dashboardWidgets?.first)
+        #expect(decoded.kind == .instances)
+        #expect(decoded.title.isEmpty)
+        #expect(decoded.unknownKeys == ["includeSubprojects": false])
+        #expect(try YAMLCoding.encode(edited).contains("  kind: instances\n  title: ''\n  includeSubprojects: false\n"))
+        #expect(try DashboardWidget.normalized([widget, DashboardWidget(kind: .instances, title: " Pods ")]).map(\.title) == ["Pods", "Pods"])
+    }
+
     @Test("The write rules: a title of at most 100 characters on one line, lists of at least one value each once, 1 to 20 chats, unique ids")
     func writeRules() throws {
         func message(_ widgets: [DashboardWidget], keeping stored: [DashboardWidget] = []) -> String? {

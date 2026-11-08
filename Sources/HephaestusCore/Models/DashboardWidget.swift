@@ -47,10 +47,11 @@ public struct DashboardWidget: Codable, Sendable, Hashable, Identifiable {
     }
 
     /// The list a project without a stored list shows: Project, Tickets, Recent Chats and Cost,
-    /// with fixed ids, an empty title and the default settings.
-    public static let defaultList: [DashboardWidget] = DashboardWidgetKind.allCases.enumerated().map { index, kind in
-        DashboardWidget(id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index + 1))!, kind: kind)
-    }
+    /// with fixed ids, an empty title and the default settings; Instances is not in it.
+    public static let defaultList: [DashboardWidget] = [DashboardWidgetKind.project, .tickets, .recentChats, .cost].enumerated()
+        .map { index, kind in
+            DashboardWidget(id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index + 1))!, kind: kind)
+        }
 
     /// The keys a widget of the kind has after `id`, `kind` and `title`, in the order of the
     /// field table.
@@ -60,6 +61,7 @@ public struct DashboardWidget: Codable, Sendable, Hashable, Identifiable {
         case .tickets: return ["statuses", "includeSubprojects"]
         case .recentChats: return ["chatCount", "chatKinds"]
         case .cost: return ["includeSubprojects"]
+        case .instances: return []
         }
     }
 
@@ -114,7 +116,7 @@ public struct DashboardWidget: Codable, Sendable, Hashable, Identifiable {
                 throw ValidationError.invalid(field, "use a number of chats from 1 to 20")
             }
             try Self.checkList(chatKinds, field: field, item: "chat kind")
-        case .cost:
+        case .cost, .instances:
             break
         }
         return copy
@@ -160,6 +162,9 @@ public enum DashboardWidgetKind: String, Codable, Sendable, Hashable, CaseIterab
     case tickets
     case recentChats
     case cost
+    /// The pods of the current working environment of a Go service (docs/dashboard.md ›
+    /// Instances widget).
+    case instances
 
     public init(from decoder: Decoder) throws {
         self = try APIEnumCoding.decode(decoder)
@@ -173,7 +178,14 @@ public enum DashboardWidgetKind: String, Codable, Sendable, Hashable, CaseIterab
         case .tickets: return "Tickets"
         case .recentChats: return "Recent Chats"
         case .cost: return "Cost"
+        case .instances: return "Instances"
         }
+    }
+
+    /// The kinds the Add Widget menu lists for a project of this type, in this order: Instances,
+    /// last, only for a Go service (docs/dashboard.md › Edit mode).
+    public static func addable(for type: ProjectType) -> [DashboardWidgetKind] {
+        allCases.filter { $0 != .instances || type == .goService }
     }
 }
 

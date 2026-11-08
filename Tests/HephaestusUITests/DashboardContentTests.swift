@@ -67,6 +67,66 @@ struct DashboardContentTests {
         #expect(DashboardContent.statuses(of: DashboardWidget(kind: .tickets, statuses: [.done, .todo, .done])) == [.todo, .done])
         #expect(DashboardContent.fields(of: DashboardWidget(kind: .project, fields: [])).isEmpty)
     }
+
+    @Test("Two columns when each is at least 320 points wide and every widget fits in one at its ideal width, one column otherwise")
+    func layoutColumns() {
+        let layout = DashboardColumnsLayout(spacing: 16)
+        #expect(layout.columns([300, 320], width: 656) == 2)
+        #expect(layout.columns([300], width: 656) == 2)
+        #expect(layout.columns([], width: 656) == 2)
+        #expect(layout.columns([300, 321], width: 656) == 1)
+        // A lone last widget too wide for a column puts every widget in one column.
+        #expect(layout.columns([200, 200, 580], width: 656) == 1)
+        #expect(layout.columns([200, 200, 580], width: 1200) == 2)
+        #expect(layout.columns([100], width: 655) == 1)
+    }
+}
+
+/// docs/dashboard.md › Instances widget: its columns and the colour of the dot before each STATUS.
+@MainActor
+@Suite("Instances widget")
+struct DashboardInstancesTests {
+    func pod(_ status: String, ready: Int = 1, containers: Int = 1) -> PodStatus {
+        PodStatus(name: "orders-api-1", phase: "Running", readyContainers: ready, containers: containers, restarts: 0, status: status, age: "5m")
+    }
+
+    @Test("The column headers of kubectl get pods -o wide, and Ready as ready containers over containers")
+    func columns() {
+        #expect(DashboardInstances.headers == ["Name", "Ready", "Status", "Restarts", "Age", "Node"])
+        #expect(DashboardInstances.ready(pod("Running", ready: 1, containers: 2)) == "1/2")
+        #expect(DashboardInstances.interval == .seconds(10))
+        #expect(DashboardInstances.noEnvironmentMessage == "Add an environment in Project Settings.")
+        #expect(KubernetesPods.noDeploymentMessage(environment: "staging") == "Environment “staging” has no deployment.")
+    }
+
+    @Test("Green when running with every container ready, orange while it starts or stops, red when it fails, grey otherwise")
+    func dots() {
+        #expect(DashboardInstances.dot(pod("Running")) == .green)
+        #expect(DashboardInstances.dot(pod("Running", ready: 2, containers: 2)) == .green)
+        #expect(DashboardInstances.dot(pod("Running", ready: 1, containers: 2)) == .orange)
+        #expect(DashboardInstances.dot(pod("Running", ready: 0, containers: 1)) == .orange)
+        for status in ["Pending", "ContainerCreating", "PodInitializing", "Init:0/2", "Init:1/2", "Init:12/13", "Terminating"] {
+            #expect(DashboardInstances.dot(pod(status, ready: 0)) == .orange, "\(status)")
+        }
+        for status in ["Failed", "Error", "CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull", "CreateContainerConfigError", "OOMKilled",
+                       "Evicted", "Init:CrashLoopBackOff", "Init:Error", "Init:ImagePullBackOff", "Init:OOMKilled"] {
+            #expect(DashboardInstances.dot(pod(status, ready: 0)) == .red, "\(status)")
+        }
+        for status in ["Completed", "Succeeded", "Unknown", "NotReady", "SchedulingGated", "ExitCode:2", "Init:ExitCode:3", "Init:/2", "Init:a/2",
+                       "Init:1/", "running"] {
+            #expect(DashboardInstances.dot(pod(status, ready: 0)) == .gray, "\(status)")
+        }
+    }
+
+    @Test("The Add Widget menu lists Instances after Cost in a Go service only; the default list has no Instances widget")
+    func addable() {
+        #expect(DashboardWidgetKind.addable(for: .goService) == [.project, .tickets, .recentChats, .cost, .instances])
+        #expect(DashboardWidgetKind.addable(for: .swiftApplication) == [.project, .tickets, .recentChats, .cost])
+        #expect(DashboardWidgetKind.addable(for: .none) == [.project, .tickets, .recentChats, .cost])
+        #expect(!DashboardWidget.defaultList.contains { $0.kind == .instances })
+        #expect(DashboardContent.title(of: DashboardWidget(kind: .instances)) == "Instances")
+        #expect(DashboardContent.title(of: DashboardWidget(kind: .instances, title: "Pods")) == "Pods")
+    }
 }
 
 /// docs/dashboard.md › Edit mode and Settings: the changes of the widget list.

@@ -2682,13 +2682,13 @@ Every tool of the table follows these rules, in this order, rules 4 to 9 only wh
 
 - **Engine call:** kubernetes.status with `chatID` and `environment` ([Engine API](engine-api.md#kubernetesstatus)).
 - **kubectl:** `kubectl … get deployment/<deployment> -o json`, then `kubectl … get pods -l <selector> -o json`, `<selector>` being the deployment's label selector ([Label selector](engine-api.md#label-selector)).
-- **Result:** the [DeploymentStatus](engine-api.md#deploymentstatus): the desired, ready, updated and available replicas, the images and the conditions of the deployment, and its pods with their phase, ready containers, restarts, age and node.
+- **Result:** the [DeploymentStatus](engine-api.md#deploymentstatus): the desired, ready, updated and available replicas, the images and the conditions of the deployment, and its pods with their phase, their `status`, the STATUS that `kubectl get pods` shows ([Pod STATUS](engine-api.md#pod-status)), ready containers, restarts, age and node.
 - **Errors:** those of the [rules](#rules-of-the-kubernetes-tools).
 
 Description:
 
 ```text
-Get the state of the Kubernetes deployment of an environment of this Go service project: its desired, ready, updated and available replicas, its container images and conditions, and its pods with their phase, ready containers, restarts, age and node. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubeconfig file and namespace. Only available in projects of type Go service, in chats started by HephaestusV2.
+Get the state of the Kubernetes deployment of an environment of this Go service project: its desired, ready, updated and available replicas, its container images and conditions, and its pods with their phase, status as kubectl get pods shows it, ready containers, restarts, age and node. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubeconfig file and namespace. Only available in projects of type Go service, in chats started by HephaestusV2.
 ```
 
 Input schema:

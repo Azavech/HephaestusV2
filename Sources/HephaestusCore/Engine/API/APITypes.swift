@@ -1379,6 +1379,9 @@ public struct PodStatus: Codable, Sendable, Hashable {
     public var containers: Int
     /// The sum of the restart counts of its containers.
     public var restarts: Int
+    /// The STATUS that `kubectl get pods` shows, for example `Running` or `CrashLoopBackOff`
+    /// (docs/engine-api.md › Pod STATUS).
+    public var status: String
     /// The time since `created`, as kubectl shows it (docs/engine-api.md › Pod age).
     public var age: String
     /// `metadata.creationTimestamp`.
@@ -1386,13 +1389,14 @@ public struct PodStatus: Codable, Sendable, Hashable {
     /// `spec.nodeName`; nil while the pod is not scheduled.
     public var node: String?
 
-    public init(name: String, phase: String, readyContainers: Int, containers: Int, restarts: Int, age: String,
+    public init(name: String, phase: String, readyContainers: Int, containers: Int, restarts: Int, status: String, age: String,
                 created: Date? = nil, node: String? = nil) {
         self.name = name
         self.phase = phase
         self.readyContainers = readyContainers
         self.containers = containers
         self.restarts = restarts
+        self.status = status
         self.age = age
         self.created = created
         self.node = node

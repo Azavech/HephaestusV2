@@ -215,6 +215,7 @@ The first column lists every engine method; it is the list the docs conformance 
 | `kubernetes.check`               | KubernetesCheck               | projectID, kubeconfig                                      | Empty            | user         |
 | `kubernetes.namespaces`          | KubernetesNamespaces          | projectID, kubeconfig                                      | [String]         | user         |
 | `kubernetes.deployments`         | KubernetesDeployments         | projectID, kubeconfig, namespace?                          | [String]         | user         |
+| `kubernetes.pods`                | KubernetesPods                | projectID, environment                                     | [PodStatus]      | user         |
 | `tickets.list`                   | TicketsList                   | projectID, includeSubprojects?                             | [Ticket]         | user, claude |
 | `tickets.get`                    | TicketsGet                    | ticketID                                                   | Ticket           | user, claude |
 | `tickets.create`                 | TicketsCreate                 | projectID, title?, description, attachments?               | Ticket           | user, claude |
@@ -516,9 +517,9 @@ Params: none. Errors: dispatcher errors only. Events: once the attempt succeeds,
 
 ## Kubernetes and Argo CD
 
-The methods behind the [Kubernetes and Argo CD tools](mcp.md#kubernetes-and-argo-cd-tools): each runs kubectl on the main device for an environment of the calling chat's project, an inherited one with the project's changes included ([Project environment](data-model.md#project-environment), [Inherited environments](projects.md#inherited-environments)), and `kubernetes.forward` keeps a kubectl process running for the chat. Only the chat's own Claude calls them, through these tools, which fill `chatID` from their token. The kubectl commands of each method, their arguments, their process and their failures are those of the tool, in [MCP server](mcp.md#rules-of-the-kubernetes-tools). Three more methods, the [kubeconfig methods](#kubeconfig-methods), run kubectl on the main device with a kubeconfig file for the Environments section of Project Settings, in the windows of every device. The methods emit no events: their results go to the caller only. The method names and their result types are Default chosen at design time.
+The methods behind the [Kubernetes and Argo CD tools](mcp.md#kubernetes-and-argo-cd-tools): each runs kubectl on the main device for an environment of the calling chat's project, an inherited one with the project's changes included ([Project environment](data-model.md#project-environment), [Inherited environments](projects.md#inherited-environments)), and `kubernetes.forward` keeps a kubectl process running for the chat. Only the chat's own Claude calls them, through these tools, which fill `chatID` from their token. The kubectl commands of each method, their arguments, their process and their failures are those of the tool, in [MCP server](mcp.md#rules-of-the-kubernetes-tools). Three more methods, the [kubeconfig methods](#kubeconfig-methods), run kubectl on the main device with a kubeconfig file for the Environments section of Project Settings, in the windows of every device, and [kubernetes.pods](#kubernetespods) reads the pods of an environment's deployment for the [Instances widget](dashboard.md#instances-widget) of the Dashboard, in the windows of every device too. The methods emit no events: their results go to the caller only. The method names and their result types are Default chosen at design time.
 
-Every method with a `chatID` param makes these checks, in this order, and fails at the first one that fails; checks 4 and 5 apply to the methods with an `environment` param. The [kubeconfig methods](#kubeconfig-methods) make their own.
+Every method with a `chatID` param makes these checks, in this order, and fails at the first one that fails; checks 4 and 5 apply to the methods with an `environment` param. The [kubeconfig methods](#kubeconfig-methods) and [kubernetes.pods](#kubernetespods) make their own.
 
 | Check | Error       | Message                                                                                                                                                                                                                                          |
 | ----- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -541,6 +542,15 @@ The pods and the ReplicaSets of a deployment are found with its label selector, 
 
 The age of a pod is the time from its `created` to the call, written as kubectl's `get pods` writes it: whole seconds below 2 minutes (`95s`); minutes and seconds below 10 minutes (`7m12s`); minutes below 3 hours (`47m`); hours and minutes below 8 hours (`5h3m`); hours below 2 days (`30h`); days and hours below 8 days (`3d4h`); days below 2 years (`42d`); years and days below 8 years (`2y30d`); years beyond (`9y`). A last part that is 0 is left out (`7m`, `5h`, `3d`, `2y`), and a `created` in the future gives `0s`.
 
+### Pod STATUS
+
+The `status` of a pod is the STATUS that `kubectl get pods` shows, computed from the pod's JSON as kubectl computes it, in these steps, each later step replacing the text of the earlier ones when it applies:
+
+1. The pod's `status.phase`, `Unknown` when it is absent; then its `status.reason` when it is not empty, for example `Evicted`; then `SchedulingGated` when a condition of `status.conditions` has the type `PodScheduled` and the reason `SchedulingGated`.
+2. The init containers: the first entry of `status.initContainerStatuses`, in their order, that is neither terminated with the exit code 0 nor a started sidecar (an init container whose `restartPolicy` in `spec.initContainers` is `Always`, with `started` true) gives `Init:<reason>` when it is terminated with a reason; `Init:Signal:<signal>` or `Init:ExitCode:<exit code>` when it is terminated without one; `Init:<reason>` when it waits with a reason other than `PodInitializing`; otherwise `Init:<n>/<m>`, `<n>` being its position from 0 and `<m>` the number of `spec.initContainers`. Such an entry means that the pod is initializing.
+3. The containers, when the pod is not initializing or its `Initialized` condition is `True`: each entry of `status.containerStatuses`, from the last to the first, so that the first one wins, gives its waiting reason when it is not empty, else its terminated reason when it is not empty, else `Signal:<signal>` or `ExitCode:<exit code>` when it is terminated without a reason, for example `CrashLoopBackOff`, `ContainerCreating`, `ImagePullBackOff`, `Error`, `OOMKilled` or `Completed`. `Completed` becomes `Running` when a container is ready and running and the pod's `Ready` condition is `True`, and `NotReady` when a container is ready and running and that condition is not `True`.
+4. Deletion, when the pod has a `metadata.deletionTimestamp`: `Unknown` when its `status.reason` is `NodeLost`; otherwise `Terminating` unless its phase is `Succeeded` or `Failed`.
+
 ### kubernetes.status
 
 Swift type `KubernetesStatus` · actors: claude (the chat's own Claude only) · result: [DeploymentStatus](#deploymentstatus)
@@ -550,7 +560,7 @@ Swift type `KubernetesStatus` · actors: claude (the chat's own Claude only) · 
 | chatID      | ChatID | yes      | Chat id; must be the actor's chatID.          |
 | environment | String | yes      | Name of an environment of the chat's project. |
 
-Reads the environment's deployment, then the pods of its [label selector](#label-selector) ([k8s_status](mcp.md#k8s_status)), and returns their state; a pod's `age` is computed when the call runs. Errors: the [checks](#kubernetes-and-argo-cd), with the field `deployment`.
+Reads the environment's deployment, then the pods of its [label selector](#label-selector) ([k8s_status](mcp.md#k8s_status)), and returns their state; a pod's `age` is computed when the call runs, and its `status` is kubectl's STATUS ([Pod STATUS](#pod-status)). Errors: the [checks](#kubernetes-and-argo-cd), with the field `deployment`.
 
 Events: none.
 
@@ -725,6 +735,33 @@ Swift type `KubernetesDeployments` · actors: user · result: String array
 Runs `kubectl --kubeconfig=<file> --namespace=<namespace> get deployments -o json`, without `--namespace` when `namespace` is absent, and returns the `metadata.name` of each item, in kubectl's order; an item without a name is left out. Errors: the [checks](#kubeconfig-methods); a standard output without an `items` array fails with `internal` and `Unexpected output from <command>.`, and a cluster that refuses to list the deployments fails with check 5.
 
 Events: none.
+
+### kubernetes.pods
+
+Swift type `KubernetesPods` · actors: user · result: [PodStatus](#podstatus) array
+
+| Param       | Type      | Required | Description                                                                                                                   |
+| ----------- | --------- | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| projectID   | ProjectID | yes      | Project identifier.                                                                                                           |
+| environment | String    | yes      | The name of one of the project's environments as they apply, inherited ones included, compared exactly, letter case included. |
+
+The windows of every device call it for the [Instances widget](dashboard.md#instances-widget) of the Dashboard, with the project's [current working environment](projects.md#current-working-environment). It reads the environment's deployment, then the pods of its [label selector](#label-selector), with the commands of `k8s_status`: `kubectl … get deployment/<deployment> -o json`, then `kubectl … get pods -l <selector> -o json` ([k8s_status](mcp.md#k8s_status)), and returns the pods as [kubernetes.status](#kubernetesstatus) returns them, in kubectl's order, each `age` computed when the call runs. kubectl runs on the main device with the rules 6 to 9 of the tools ([Rules of the Kubernetes tools](mcp.md#rules-of-the-kubernetes-tools)): every command starts with the environment's `--kubeconfig=<file>` and `--namespace=<namespace>`, and kubectl uses the current context of the file.
+
+The method makes these checks, in this order, and fails at the first one that fails:
+
+| Check | Error       | Message                                                                                                                                                                                                                                                |
+| ----- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1     | invalid     | `projectID` is not 2 to 8 letters: `projectID: use 2 to 8 letters A–Z.`                                                                                                                                                                                |
+| 2     | notFound    | No loaded project has this identifier: `Project <projectID> not found.`                                                                                                                                                                                |
+| 3     | invalid     | No environment of the project, inherited ones included, has the name `environment`, letter case included, which is always the case for a project whose type is not `goService`: `environment: <project identifier> has no environment named “<name>”.` |
+| 4     | invalid     | The environment has no `deployment`: `Environment “<name>” has no deployment.`                                                                                                                                                                         |
+| 5     | invalid     | No executable file named `kubectl` is in the `PATH` of the login-shell environment: `kubectl was not found in the PATH of the login shell.`                                                                                                            |
+| 6     | unavailable | A kubectl command exits with a non-zero status or runs longer than 60 seconds: `<command> exited with code <n>: <standard error>`, `<command> exited with code <n>.`, `<command> did not finish within 60 seconds.`                                    |
+| 6     | internal    | The standard output of a kubectl command is not the JSON object the method reads, or the deployment's selector gives no part: `Unexpected output from <command>.`                                                                                      |
+
+Events: none.
+
+The method, its user-only actor, its params and its checks are design-time choices. Default chosen at design time.
 
 ## Tickets
 
@@ -3202,8 +3239,8 @@ The state of a Kubernetes Deployment and its pods, the result of [kubernetes.sta
   "images": ["registry.example.com/orders-api:1.8.2"],
   "namespace": "orders",
   "pods": [
-    {"age": "5m12s", "containers": 1, "created": "2026-10-31T13:57:48Z", "name": "orders-api-7d9f8c6b5-2x4zq", "node": "node-a", "phase": "Running", "readyContainers": 1, "restarts": 0},
-    {"age": "4m40s", "containers": 1, "created": "2026-10-31T13:58:20Z", "name": "orders-api-7d9f8c6b5-9kmwd", "node": "node-b", "phase": "Running", "readyContainers": 1, "restarts": 1}
+    {"age": "5m12s", "containers": 1, "created": "2026-10-31T13:57:48Z", "name": "orders-api-7d9f8c6b5-2x4zq", "node": "node-a", "phase": "Running", "readyContainers": 1, "restarts": 0, "status": "Running"},
+    {"age": "4m40s", "containers": 1, "created": "2026-10-31T13:58:20Z", "name": "orders-api-7d9f8c6b5-9kmwd", "node": "node-b", "phase": "Running", "readyContainers": 1, "restarts": 1, "status": "Running"}
   ],
   "readyReplicas": 2,
   "updatedReplicas": 2
@@ -3229,6 +3266,7 @@ The state of a Kubernetes Deployment and its pods, the result of [kubernetes.sta
 | readyContainers | Int    | yes      | The containers of `status.containerStatuses` whose `ready` is true.                              |
 | containers      | Int    | yes      | The containers of the pod (`spec.containers`).                                                   |
 | restarts        | Int    | yes      | The sum of the `restartCount` of its containers.                                                 |
+| status          | String | yes      | The STATUS that `kubectl get pods` shows, for example `Running` ([Pod STATUS](#pod-status)).     |
 | age             | String | yes      | The time since `created`, as kubectl shows it ([Pod age](#pod-age)); `0s` without `created`.     |
 | created         | Date   | no       | `metadata.creationTimestamp`.                                                                    |
 | node            | String | no       | `spec.nodeName`; absent while the pod is not scheduled.                                          |
@@ -4438,3 +4476,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R172: A project with a GitHub page always has two locked web tabs, its GitHub page and its CI page, first in the tab strip.
 - R174: A sub project that uses its parent's settings inherits its parent's environments and changes their URL, port, deployment and Argo CD application.
 - R176: The Environments section of a Go service's Project Settings edits each environment in place, picks its kubeconfig file in a file panel, shows whether its cluster can be reached and offers the cluster's namespaces and deployments.
+- R178: The Dashboard of a Go service can show an Instances widget listing the pods of the current working environment with their status.

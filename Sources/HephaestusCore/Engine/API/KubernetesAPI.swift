@@ -3,7 +3,8 @@ import Foundation
 // docs/engine-api.md › Kubernetes and Argo CD: the methods behind the Kubernetes and Argo CD tools
 // of the MCP server (docs/mcp.md › Kubernetes and Argo CD tools), each acting for the chat
 // `chatID`, which must be the actor's; and the kubeconfig methods that the Environments section of
-// Project Settings calls (docs/engine-api.md › Kubeconfig methods).
+// Project Settings calls (docs/engine-api.md › Kubeconfig methods), and the method that the
+// Dashboard's Instances widget calls (docs/engine-api.md › kubernetes.pods).
 
 /// `kubernetes.status`: the state of the Deployment of an environment and of its pods. Actors:
 /// claude (the chat's own Claude only).
@@ -235,4 +236,28 @@ public enum KubernetesDeployments: EngineMethod {
         }
     }
     public typealias Result = [String]
+}
+
+/// `kubernetes.pods`: the pods of the Deployment of an environment of a project, for the
+/// Dashboard's Instances widget. Actors: user.
+public enum KubernetesPods: EngineMethod {
+    public static let name = "kubernetes.pods"
+    public struct Params: Codable, Sendable, Hashable {
+        /// Project identifier.
+        public var projectID: ProjectID
+        /// Name of an environment of the project as they apply, inherited ones included.
+        public var environment: String
+
+        public init(projectID: ProjectID, environment: String) {
+            self.projectID = projectID
+            self.environment = environment
+        }
+    }
+    public typealias Result = [PodStatus]
+
+    /// The message of an environment without a deployment, which the Instances widget also shows
+    /// without calling the method (docs/dashboard.md › Instances widget).
+    public static func noDeploymentMessage(environment: String) -> String {
+        "Environment “\(environment)” has no deployment."
+    }
 }

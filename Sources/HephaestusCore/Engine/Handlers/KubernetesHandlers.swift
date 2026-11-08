@@ -53,6 +53,11 @@ extension Engine {
         register(KubernetesDeployments.self, actors: [.user]) { [unowned self] params, _ in
             try await self.kubernetesDeployments(params)
         }
+        // docs/engine-api.md › kubernetes.pods: for the Dashboard's Instances widget, in the windows
+        // of every device.
+        register(KubernetesPods.self, actors: [.user]) { [unowned self] params, _ in
+            try await self.kubernetesPods(params)
+        }
     }
 
     // MARK: Kubernetes
@@ -61,6 +66,28 @@ extension Engine {
     /// selector; the pods' ages are computed when the call runs.
     func kubernetesStatus(_ params: KubernetesStatus.Params, _ actor: Actor) async throws -> DeploymentStatus {
         let target = try await kubernetesTarget(params.chatID, environment: params.environment, actor, tool: "k8s_status")
+        return try await deploymentStatus(target)
+    }
+
+    /// `kubernetes.pods` (docs/engine-api.md › kubernetes.pods): the pods of the Deployment of a
+    /// project's environment, read as `kubernetes.status` reads them, for the Dashboard's
+    /// Instances widget.
+    func kubernetesPods(_ params: KubernetesPods.Params) async throws -> [PodStatus] {
+        let processEnvironment = await childProcessEnvironment()
+        let id = try fileProjectID(params.projectID)
+        guard let root = domain.projectRoot(id) else {
+            throw EngineError.notFound("Project", id)
+        }
+        guard let environment = resolvedEnvironments(of: id).environments.first(where: { $0.name == params.environment }) else {
+            throw EngineError.invalid("environment", "\(id) has no environment named “\(params.environment)”")
+        }
+        let target = KubernetesTarget(environment: environment, root: root, processEnvironment: processEnvironment)
+        return try await deploymentStatus(target).pods
+    }
+
+    /// The Deployment of the target's environment, then the pods of its label selector, with check
+    /// 5 and check 6 first; the pods' ages are computed when the call runs.
+    private func deploymentStatus(_ target: KubernetesTarget) async throws -> DeploymentStatus {
         let name = try Self.requireDeployment(target.environment)
         let invocation = try kubectlInvocation(target)
         let kubectl = self.kubectl
@@ -307,7 +334,7 @@ extension Engine {
     /// Check 5 for the methods that act on the Deployment: the environment's `deployment`.
     static func requireDeployment(_ environment: ProjectEnvironment) throws -> String {
         guard let deployment = environment.deployment else {
-            throw EngineError(.invalid, "Environment “\(environment.name)” has no deployment.")
+            throw EngineError(.invalid, KubernetesPods.noDeploymentMessage(environment: environment.name))
         }
         return deployment
     }

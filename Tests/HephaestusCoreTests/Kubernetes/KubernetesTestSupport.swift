@@ -242,11 +242,12 @@ enum KubernetesFixtures {
                                 lastTransition: ISODate.date(from: "2026-10-31T13:58:02Z")),
         ],
         pods: [
-            PodStatus(name: "orders-api-7d9f8c6b5-2x4zq", phase: "Running", readyContainers: 1, containers: 1, restarts: 0, age: "5m12s",
-                      created: ISODate.date(from: "2026-10-31T13:57:48Z"), node: "node-a"),
-            PodStatus(name: "orders-api-7d9f8c6b5-9kmwd", phase: "Running", readyContainers: 1, containers: 1, restarts: 1, age: "4m40s",
-                      created: ISODate.date(from: "2026-10-31T13:58:20Z"), node: "node-b"),
-            PodStatus(name: "orders-api-7d9f8c6b5-h8x2p", phase: "Unknown", readyContainers: 1, containers: 2, restarts: 5, age: "0s"),
+            PodStatus(name: "orders-api-7d9f8c6b5-2x4zq", phase: "Running", readyContainers: 1, containers: 1, restarts: 0, status: "Running",
+                      age: "5m12s", created: ISODate.date(from: "2026-10-31T13:57:48Z"), node: "node-a"),
+            PodStatus(name: "orders-api-7d9f8c6b5-9kmwd", phase: "Running", readyContainers: 1, containers: 1, restarts: 1, status: "Running",
+                      age: "4m40s", created: ISODate.date(from: "2026-10-31T13:58:20Z"), node: "node-b"),
+            PodStatus(name: "orders-api-7d9f8c6b5-h8x2p", phase: "Unknown", readyContainers: 1, containers: 2, restarts: 5, status: "Unknown",
+                      age: "0s"),
         ])
 
     /// The current ReplicaSet of `deployment`, an older one of a Deployment of the same name that was

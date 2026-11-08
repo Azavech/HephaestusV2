@@ -68,6 +68,55 @@ enum DashboardContent {
     }
 }
 
+/// What an Instances widget shows (docs/dashboard.md › Instances widget).
+enum DashboardInstances {
+    /// The colour of the dot before a pod's STATUS.
+    enum Dot: Equatable {
+        case green, orange, red, gray
+    }
+
+    /// The column headers of `kubectl get pods -o wide`, in their order.
+    static let headers = ["Name", "Ready", "Status", "Restarts", "Age", "Node"]
+    /// The time from the end of a read to the start of the next one.
+    static let interval: Duration = .seconds(10)
+    static let noEnvironmentMessage = "Add an environment in Project Settings."
+
+    /// The STATUS texts of a pod that starts or stops; `Init:<n>/<m>` and `Running` with a container
+    /// not ready are too.
+    static let changingStatuses: Set<String> = ["Pending", "ContainerCreating", "PodInitializing", "Terminating"]
+    /// The STATUS texts of a pod that fails, also after `Init:`.
+    static let failedStatuses: Set<String> = ["Failed", "Error", "CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull",
+                                              "CreateContainerConfigError", "OOMKilled", "Evicted"]
+
+    /// `<ready containers>/<containers>`.
+    static func ready(_ pod: PodStatus) -> String {
+        "\(pod.readyContainers)/\(pod.containers)"
+    }
+
+    /// Green for a pod running with every container ready, orange while it starts or stops, red
+    /// when it fails, grey otherwise.
+    static func dot(_ pod: PodStatus) -> Dot {
+        let status = pod.status
+        if status == "Running" {
+            return pod.readyContainers == pod.containers ? .green : .orange
+        }
+        if changingStatuses.contains(status) || isInitProgress(status) {
+            return .orange
+        }
+        if failedStatuses.contains(status) || (status.hasPrefix("Init:") && failedStatuses.contains(String(status.dropFirst(5)))) {
+            return .red
+        }
+        return .gray
+    }
+
+    /// `Init:<n>/<m>`, the init containers still running.
+    static func isInitProgress(_ status: String) -> Bool {
+        guard status.hasPrefix("Init:") else { return false }
+        let parts = status.dropFirst(5).split(separator: "/", omittingEmptySubsequences: false)
+        return parts.count == 2 && parts.allSatisfy { !$0.isEmpty && $0.allSatisfy(\.isASCII) && $0.allSatisfy(\.isNumber) }
+    }
+}
+
 /// A widget of a list: its id and its rank among the widgets that have that id, which only a file
 /// edited by hand repeats (docs/dashboard.md › Widgets). It identifies the widget's view and the
 /// widget an edit applies to.
@@ -308,7 +357,7 @@ private struct DashboardSection: View {
                 Spacer(minLength: 0)
                 if editing {
                     Menu("Add Widget") {
-                        ForEach(DashboardWidgetKind.allCases, id: \.self) { kind in
+                        ForEach(DashboardWidgetKind.addable(for: workspace.project(projectID)?.type ?? ProjectType.none), id: \.self) { kind in
                             Button(kind.title) {
                                 change { DashboardEdits.appending(kind, to: $0) }
                             }
@@ -326,32 +375,12 @@ private struct DashboardSection: View {
         .padding(.top, 12)
     }
 
-    @ViewBuilder
     private func grid(_ project: ProjectSummary) -> some View {
         let list = widgets
         let items = zip(DashboardSlot.slots(of: list), list).map { DashboardItem(slot: $0, widget: $1) }
-        let rows = stride(from: 0, to: items.count, by: 2).map { Array(items[$0..<min($0 + 2, items.count)]) }
-        // Two columns when both fit at 320 points or more, one column otherwise.
-        ViewThatFits(in: .horizontal) {
-            Grid(alignment: .topLeading, horizontalSpacing: 16, verticalSpacing: 16) {
-                ForEach(rows.indices, id: \.self) { index in
-                    GridRow {
-                        ForEach(rows[index], id: \.slot) { item in
-                            card(item, project)
-                        }
-                        if rows[index].count == 1 {
-                            // The empty cell keeps the last widget of an odd list in the first column.
-                            Color.clear
-                                .frame(maxWidth: .infinity, maxHeight: 0)
-                        }
-                    }
-                }
-            }
-            .frame(minWidth: 656)
-            VStack(alignment: .leading, spacing: 16) {
-                ForEach(items, id: \.slot) { item in
-                    card(item, project)
-                }
+        return DashboardColumnsLayout(spacing: 16) {
+            ForEach(items, id: \.slot) { item in
+                card(item, project)
             }
         }
     }
@@ -406,6 +435,52 @@ private struct DashboardSection: View {
                      done: { message in
                          failure = message
                      })
+    }
+}
+
+/// The widgets in two columns of equal width, filled row by row, when each column is at least
+/// `minimumColumn` wide and every widget fits in a column at its ideal width; otherwise in one
+/// column (docs/dashboard.md › Layout). The last widget of an odd list stays in the first column,
+/// and each widget is as high as its content, at the top of its row.
+struct DashboardColumnsLayout: Layout {
+    var spacing: CGFloat
+    var minimumColumn: CGFloat = 320
+
+    /// 2 or 1.
+    func columns(_ idealWidths: [CGFloat], width: CGFloat) -> Int {
+        let column = (width - spacing) / 2
+        return column >= minimumColumn && idealWidths.allSatisfy({ $0 <= column }) ? 2 : 1
+    }
+
+    /// The frame of each widget from the top-left corner of the layout.
+    private func frames(_ subviews: Subviews, width: CGFloat) -> [CGRect] {
+        let count = columns(subviews.map { $0.sizeThatFits(.unspecified).width }, width: width)
+        let column = count == 2 ? (width - spacing) / 2 : width
+        var frames: [CGRect] = []
+        var y: CGFloat = 0
+        for start in stride(from: 0, to: subviews.count, by: count) {
+            let row = start..<min(start + count, subviews.count)
+            let heights = row.map { subviews[$0].sizeThatFits(ProposedViewSize(width: column, height: nil)).height }
+            for (offset, index) in row.enumerated() {
+                frames.append(CGRect(x: CGFloat(index - start) * (column + spacing), y: y, width: column, height: heights[offset]))
+            }
+            y += (heights.max() ?? 0) + spacing
+        }
+        return frames
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard !subviews.isEmpty else { return .zero }
+        let width = proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
+        let height = frames(subviews, width: width).map(\.maxY).max() ?? 0
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for (subview, frame) in zip(subviews, frames(subviews, width: bounds.width)) {
+            subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
+                          proposal: ProposedViewSize(width: frame.width, height: frame.height))
+        }
     }
 }
 
@@ -488,6 +563,7 @@ private struct DashboardWidgetCard: View {
         case .tickets: ticketsContent
         case .recentChats: recentChatsContent
         case .cost: costContent
+        case .instances: InstancesWidgetContent(window: window, workspace: workspace, projectID: project.id)
         }
     }
 
@@ -587,6 +663,115 @@ private struct DashboardWidgetCard: View {
                 Text("Sub projects included")
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+}
+
+/// The pods of the project's current working environment, read with `kubernetes.pods` when the
+/// widget appears, 10 seconds after the end of each read, and at once when the environment or its
+/// fields change (docs/dashboard.md › Instances widget, Live updates).
+private struct InstancesWidgetContent: View {
+    let window: WindowState
+    let workspace: DeviceWorkspace
+    let projectID: String
+
+    /// The pods of the last read that succeeded; nil until the first read of the environment ends.
+    @State private var pods: [PodStatus]?
+    /// The engine's message when the last read failed, until a read succeeds.
+    @State private var failure: String?
+
+    var body: some View {
+        if let environment = workspace.details[projectID]?.currentWorkingEnvironment {
+            if environment.deployment == nil {
+                Text(KubernetesPods.noDeploymentMessage(environment: environment.name))
+                    .foregroundStyle(.secondary)
+            } else {
+                readContent
+                    .task(id: environment) {
+                        await read(environment)
+                    }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(DashboardInstances.noEnvironmentMessage)
+                    .foregroundStyle(.secondary)
+                Button("Project Settings…") {
+                    window.section = .settings
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var readContent: some View {
+        if let failure {
+            FieldMessage(text: failure)
+        } else if let pods {
+            table(pods)
+        } else {
+            ProgressView()
+                .controlSize(.small)
+        }
+    }
+
+    private func table(_ pods: [PodStatus]) -> some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 6) {
+            GridRow {
+                ForEach(DashboardInstances.headers, id: \.self) { header in
+                    Text(header)
+                }
+            }
+            .foregroundStyle(.secondary)
+            ForEach(pods, id: \.name) { pod in
+                GridRow {
+                    Text(pod.name)
+                        .truncationMode(.middle)
+                    Text(DashboardInstances.ready(pod))
+                        .monospacedDigit()
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(Self.color(DashboardInstances.dot(pod)))
+                            .frame(width: 8, height: 8)
+                        Text(pod.status)
+                    }
+                    Text(String(pod.restarts))
+                        .monospacedDigit()
+                    Text(pod.age)
+                        .monospacedDigit()
+                    Text(pod.node ?? "")
+                }
+            }
+        }
+        .font(.callout)
+        .lineLimit(1)
+    }
+
+    static func color(_ dot: DashboardInstances.Dot) -> Color {
+        switch dot {
+        case .green: return Color(nsColor: .systemGreen)
+        case .orange: return Color(nsColor: .systemOrange)
+        case .red: return Color(nsColor: .systemRed)
+        case .gray: return Color(nsColor: .systemGray)
+        }
+    }
+
+    /// Reads the pods of `environment` until the task is cancelled: the widget goes away, or the
+    /// environment or its fields change, which starts over with the spinner.
+    private func read(_ environment: ProjectEnvironment) async {
+        pods = nil
+        failure = nil
+        let params = KubernetesPods.Params(projectID: projectID, environment: environment.name)
+        while !Task.isCancelled {
+            do {
+                let result = try await workspace.call(KubernetesPods.self, params)
+                guard !Task.isCancelled else { return }
+                pods = result
+                failure = nil
+            } catch {
+                guard !Task.isCancelled else { return }
+                failure = errorMessage(error)
+            }
+            try? await Task.sleep(for: DashboardInstances.interval)
         }
     }
 }
@@ -722,6 +907,9 @@ private struct DashboardWidgetSettings: View {
                 }
             case .cost:
                 includeSubprojectsRow
+            case .instances:
+                // The Title setting only.
+                EmptyView()
             }
         }
         .padding(16)
