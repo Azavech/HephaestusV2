@@ -26,9 +26,10 @@ enum WindowCapture {
 
     /// Steps 1 to 5: the frame view of the window (title bar, toolbar and content) rendered with
     /// `cacheDisplay` at the backing scale, every visible `WKWebView` snapshotted and drawn at its
-    /// area, the window's sheets drawn over it, then encoded as PNG; again at 1 pixel per point
-    /// when the PNG is too large. A sheet, or the background window of an alert sheet, is
-    /// captured as the window it is attached to.
+    /// area, the toolbar window of a window in full screen and the window's sheets drawn over it,
+    /// then encoded as PNG; again at 1 pixel per point when the PNG is too large. A sheet, the
+    /// background window of an alert sheet, or the toolbar window of a window in full screen, is
+    /// captured as the window it belongs to.
     static func capture(_ requested: NSWindow) async throws -> Image {
         let window = hostWindow(of: requested)
         guard let root = window.contentView?.superview ?? window.contentView, !root.bounds.isEmpty else {
@@ -52,12 +53,16 @@ enum WindowCapture {
         return image
     }
 
-    // MARK: Sheets
+    // MARK: Sheets and full screen
 
     /// The window a sheet is attached to, through every level of sheets; for the background
-    /// window of an alert sheet (a child window of the sheet), the window of that sheet.
+    /// window of an alert sheet (a child window of the sheet), the window of that sheet; for the
+    /// toolbar window of a window in full screen, that window.
     static func hostWindow(of window: NSWindow) -> NSWindow {
         var host = window
+        if let owner = NSApp.windows.first(where: { $0 !== host && fullScreenToolbarWindow(of: $0) === host }) {
+            host = owner
+        }
         if host.sheetParent == nil, let parent = host.parent, parent.sheetParent != nil {
             host = parent
         }
@@ -81,6 +86,22 @@ enum WindowCapture {
         return result
     }
 
+    /// Step 4: the window that holds the title bar and the toolbar of a window in full screen,
+    /// which macOS moves out of the window's frame view: the visible window, other than the window
+    /// itself, of its close button or else of the view of one of its toolbar items. Nil when the
+    /// window is not in full screen.
+    static func fullScreenToolbarWindow(of window: NSWindow) -> NSWindow? {
+        guard window.styleMask.contains(.fullScreen) else { return nil }
+        let holders = [window.standardWindowButton(.closeButton)?.window] + (window.toolbar?.items ?? []).map { $0.view?.window }
+        return holders.lazy.compactMap { $0 }.first { $0 !== window && $0.isVisible }
+    }
+
+    /// Step 4: where a window drawn over the captured window goes in its bitmap, in points from
+    /// the bottom-left corner of the captured window: at its place on screen.
+    static func placement(of overlay: NSRect, in window: NSRect) -> NSRect {
+        NSRect(x: overlay.minX - window.minX, y: overlay.minY - window.minY, width: overlay.width, height: overlay.height)
+    }
+
     // MARK: Rendering
 
     private struct WebSnapshot {
@@ -93,7 +114,7 @@ enum WindowCapture {
     private static func render(_ root: NSView, of window: NSWindow, onePixelPerPoint: Bool) -> Image? {
         guard let bitmap = bitmap(of: root, onePixelPerPoint: onePixelPerPoint) else { return nil }
         let panes = frostedPanes(in: root)
-        let overlays = overlayWindows(of: window)
+        let overlays = [fullScreenToolbarWindow(of: window)].compactMap { $0 } + overlayWindows(of: window)
         if !panes.isEmpty || !overlays.isEmpty, let context = NSGraphicsContext(bitmapImageRep: bitmap) {
             NSGraphicsContext.saveGraphicsState()
             NSGraphicsContext.current = context
@@ -102,8 +123,7 @@ enum WindowCapture {
                 guard let overlayRoot = overlay.contentView?.superview ?? overlay.contentView, !overlayRoot.bounds.isEmpty,
                       let image = Self.bitmap(of: overlayRoot, onePixelPerPoint: onePixelPerPoint)
                 else { continue }
-                let rect = NSRect(x: overlay.frame.minX - window.frame.minX, y: overlay.frame.minY - window.frame.minY,
-                                  width: overlay.frame.width, height: overlay.frame.height)
+                let rect = placement(of: overlay.frame, in: window.frame)
                 image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
             }
             NSGraphicsContext.restoreGraphicsState()
