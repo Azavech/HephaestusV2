@@ -185,43 +185,46 @@ Swift type `ProjectType`, key `type` of the project file: a string enumeration w
 
 Swift type `ProjectEnvironment`, one element of the key `environments` of the project file: a place where a Go service runs, which the Contract view sends its requests to when it has a URL ([Environments](projects.md#environments), [Environment](openapi.md#environment)), with the Kubernetes resources it runs on, which Claude inspects and operates with the [Kubernetes and Argo CD tools](mcp.md#kubernetes-and-argo-cd-tools). Project Settings shows the environments of a project whose type is `goService` only; the key is kept when the type changes.
 
-| Swift name        | Key                 | Type                  | Required | Default | Rules                                                                                                                                                                                                                                                                           |
-| ----------------- | ------------------- | --------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| name              | `name`              | `String`              | yes      | —       | Single line, 1–100 characters, trimmed. Unique within the project, compared letter case included.                                                                                                                                                                               |
-| url               | `url`               | `String?`             | no       | `null`  | The address of the environment's API Access: an absolute `http` or `https` URL with a host, read and written trimmed; an empty value is `null`, and an environment without a URL has no base URL.                                                                               |
-| port              | `port`              | `Int?`                | no       | `null`  | 1–65535. When set, it replaces the URL's port in the base URL; `null` keeps the URL's own port.                                                                                                                                                                                 |
-| namespace         | `namespace`         | `String?`             | no       | `null`  | The Kubernetes namespace of the deployment; `null` uses the namespace of the kubeconfig file's current context.                                                                                                                                                                 |
-| deployment        | `deployment`        | `String?`             | no       | `null`  | The name of the Kubernetes Deployment that runs the service.                                                                                                                                                                                                                    |
-| argoCDApplication | `argoCDApplication` | `String?`             | no       | `null`  | The Argo CD Application that deploys the service: `<name>`, in the namespace `argocd`, or `<namespace>/<name>`; one `/` at most, the parts not empty, no white space.                                                                                                           |
-| kubeconfig        | `kubeconfig`        | `String?`             | no       | `null`  | The kubeconfig file on the main device: an absolute path, or a path starting with `~/` for the home folder of the user running the app; `null` uses kubectl's default, the variable `KUBECONFIG` of the [login-shell environment](chats.md#environment), else `~/.kube/config`. |
-| unknownKeys       | —                   | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                                                                                                                                                                                  |
+| Swift name               | Key                        | Type                  | Required | Default | Rules                                                                                                                                                                                                                                                                           |
+| ------------------------ | -------------------------- | --------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| name                     | `name`                     | `String`              | yes      | —       | Single line, 1–100 characters, trimmed. Unique within the project, compared letter case included.                                                                                                                                                                               |
+| url                      | `url`                      | `String?`             | no       | `null`  | The address of the environment's API Access: an absolute `http` or `https` URL with a host, read and written trimmed; an empty value is `null`, and an environment without a URL has no base URL.                                                                               |
+| port                     | `port`                     | `Int?`                | no       | `null`  | 1–65535. When set, it replaces the URL's port in the base URL; `null` keeps the URL's own port.                                                                                                                                                                                 |
+| allowInvalidCertificates | `allowInvalidCertificates` | `Bool`                | no       | `false` | When `true`, the requests the Contract view sends to the environment accept any invalid server certificate ([Sending a request](openapi.md#sending-a-request)).                                                                                                                 |
+| namespace                | `namespace`                | `String?`             | no       | `null`  | The Kubernetes namespace of the deployment; `null` uses the namespace of the kubeconfig file's current context.                                                                                                                                                                 |
+| deployment               | `deployment`               | `String?`             | no       | `null`  | The name of the Kubernetes Deployment that runs the service.                                                                                                                                                                                                                    |
+| argoCDApplication        | `argoCDApplication`        | `String?`             | no       | `null`  | The Argo CD Application that deploys the service: `<name>`, in the namespace `argocd`, or `<namespace>/<name>`; one `/` at most, the parts not empty, no white space.                                                                                                           |
+| kubeconfig               | `kubeconfig`               | `String?`             | no       | `null`  | The kubeconfig file on the main device: an absolute path, or a path starting with `~/` for the home folder of the user running the app; `null` uses kubectl's default, the variable `KUBECONFIG` of the [login-shell environment](chats.md#environment), else `~/.kube/config`. |
+| unknownKeys              | —                          | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                                                                                                                                                                                  |
 
-The base URL of an environment is its `url` with the port replaced by `port` when it is set, without a trailing `/`; an environment without `url` has none ([Environments](projects.md#environments)). `projects.update` checks these rules on the environments it adds or changes; an environment it receives unchanged is written back as it is, as [Write rules](#write-rules) says. The keys come from the user; the letter case rule is a design-time choice. Default chosen at design time.
+The base URL of an environment is its `url` with the port replaced by `port` when it is set, without a trailing `/`; an environment without `url` has none ([Environments](projects.md#environments)). `allowInvalidCertificates` is `false` for an environment written before the key existed ([Environments](projects.md#environments)). `projects.update` checks these rules on the environments it adds or changes; an environment it receives unchanged is written back as it is, as [Write rules](#write-rules) says. The keys come from the user; the letter case rule is a design-time choice. Default chosen at design time.
 
 - The four Kubernetes keys, `namespace`, `deployment`, `argoCDApplication` and `kubeconfig`, are single lines. They are read and written trimmed, and an empty value is `null`. Their only other rules are the forms of `argoCDApplication` and `kubeconfig` given in the table: kubectl checks the names when a tool uses them ([Kubernetes and Argo CD tools](mcp.md#kubernetes-and-argo-cd-tools)).
 - kubectl always uses the current context of the kubeconfig file. A `context` key, the kubectl context that earlier versions stored, is not in the table: it is kept as an unknown key and no longer used ([Unknown keys](#unknown-keys)).
 - An Argo CD application `<name>` stands for `argocd/<name>`: the Application `<name>` in the namespace `argocd`, Argo CD's default. It lives in that namespace, not in the environment's `namespace`.
 
-The meaning of the four keys and the two forms, the optional URL and the current context used without a key come from the user; the key names, the trimming, the rule against white space in `argoCDApplication` and the `~/` form of `kubeconfig` are design-time choices. Default chosen at design time.
+The meaning of the four keys and the two forms, the optional URL, the current context used without a key and the setting that accepts invalid certificates, off by default, come from the user; the key names, the trimming, the rule against white space in `argoCDApplication` and the `~/` form of `kubeconfig` are design-time choices. Default chosen at design time.
 
 ### Environment override
 
 Swift type `EnvironmentOverride`, one value of the key `environmentOverrides` of the project file, under the name of the environment it changes: the change a sub project makes to an environment it inherits from its parent ([Inherited environments](projects.md#inherited-environments)). A key that has a value replaces the parent's value; `null` keeps the parent's value.
 
-| Swift name        | Key                 | Type                  | Required | Default | Rules                                                                                                                           |
-| ----------------- | ------------------- | --------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| url               | `url`               | `String?`             | no       | `null`  | Replaces the parent's URL: an absolute `http` or `https` URL with a host, stored as entered after trimming.                     |
-| port              | `port`              | `Int?`                | no       | `null`  | Replaces the parent's port: 1–65535.                                                                                            |
-| deployment        | `deployment`        | `String?`             | no       | `null`  | Replaces the parent's deployment.                                                                                               |
-| argoCDApplication | `argoCDApplication` | `String?`             | no       | `null`  | Replaces the parent's Argo CD application: `<name>` or `<namespace>/<name>`, as in [Project environment](#project-environment). |
-| unknownKeys       | —                   | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                                  |
+| Swift name               | Key                        | Type                  | Required | Default | Rules                                                                                                                           |
+| ------------------------ | -------------------------- | --------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| url                      | `url`                      | `String?`             | no       | `null`  | Replaces the parent's URL: an absolute `http` or `https` URL with a host, stored as entered after trimming.                     |
+| port                     | `port`                     | `Int?`                | no       | `null`  | Replaces the parent's port: 1–65535.                                                                                            |
+| allowInvalidCertificates | `allowInvalidCertificates` | `Bool?`               | no       | `null`  | Replaces the parent's `allowInvalidCertificates`.                                                                               |
+| deployment               | `deployment`               | `String?`             | no       | `null`  | Replaces the parent's deployment.                                                                                               |
+| argoCDApplication        | `argoCDApplication`        | `String?`             | no       | `null`  | Replaces the parent's Argo CD application: `<name>` or `<namespace>/<name>`, as in [Project environment](#project-environment). |
+| unknownKeys              | —                          | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                                  |
 
 - The three string keys are single lines, read and written trimmed, an empty value being `null`, as the URL and the Kubernetes keys of [Project environment](#project-environment).
 - A change cannot remove a value of the parent, for example its port: `null` always keeps the parent's value.
+- The Environments section stores `allowInvalidCertificates` only while it differs from the parent's value, and `null` once it is the parent's value again ([Inherited environments](projects.md#inherited-environments)).
 - The names under `environmentOverrides` are compared with the names of the inherited environments exactly, letter case included. A change whose environment the parent no longer has, after a rename or a removal, stays in the file and applies again when an inherited environment has its name.
 - `projects.update` checks these rules on the changes it adds or changes; a change equal to the stored change of the same name is written back as it is ([Write rules](#write-rules)).
 
-The four values come from the user; the key `environmentOverrides`, the mapping by name, the trimming and `null` for the parent's value are design-time choices. Default chosen at design time.
+The four values and the setting that accepts invalid certificates come from the user; the key `environmentOverrides`, the mapping by name, the trimming and `null` for the parent's value are design-time choices. Default chosen at design time.
 
 ### Web tab
 
@@ -395,7 +398,7 @@ name: Website
 created: 2026-10-31T09:30:00Z
 ```
 
-A Go service with two [environments](#project-environment): `local` replaces the URL's port with 8080 and runs on this Mac, and `staging` keeps the URL's own port and runs on Kubernetes, deployed by the Argo CD Application `orders-staging` of the namespace `argocd`:
+A Go service with two [environments](#project-environment): `local` replaces the URL's port with 8080 and runs on this Mac, and `staging` keeps the URL's own port, accepts invalid certificates and runs on Kubernetes, deployed by the Argo CD Application `orders-staging` of the namespace `argocd`:
 
 ```yaml
 # .hephaestus/project.yml
@@ -408,6 +411,7 @@ environments:
 - name: local
   url: http://127.0.0.1
   port: 8080
+  allowInvalidCertificates: false
   namespace: null
   deployment: null
   argoCDApplication: null
@@ -415,13 +419,14 @@ environments:
 - name: staging
   url: https://staging.example.com
   port: null
+  allowInvalidCertificates: true
   namespace: orders
   deployment: orders-api
   argoCDApplication: argocd/orders-staging
   kubeconfig: ~/.kube/staging.yaml
 ```
 
-A Go service sub project of `API` that uses its parent's settings ([Inherited environments](projects.md#inherited-environments)): it runs the inherited `local` on port 8081, and the inherited `staging` at its own URL as the deployment `orders-worker` of the Argo CD Application `orders-worker-staging`, and adds an environment of its own, `replay`. Its environments are `local`, `staging` and `replay`, in this order; `staging` keeps the namespace and the kubeconfig file of `API`:
+A Go service sub project of `API` that uses its parent's settings ([Inherited environments](projects.md#inherited-environments)): it runs the inherited `local` on port 8081, and the inherited `staging` at its own URL, checking its certificate, as the deployment `orders-worker` of the Argo CD Application `orders-worker-staging`, and adds an environment of its own, `replay`. Its environments are `local`, `staging` and `replay`, in this order; `staging` keeps the namespace and the kubeconfig file of `API`:
 
 ```yaml
 # .hephaestus/project.yml
@@ -435,6 +440,7 @@ environments:
 - name: replay
   url: http://127.0.0.1
   port: 9090
+  allowInvalidCertificates: false
   namespace: null
   deployment: null
   argoCDApplication: null
@@ -443,11 +449,13 @@ environmentOverrides:
   local:
     url: null
     port: 8081
+    allowInvalidCertificates: null
     deployment: null
     argoCDApplication: null
   staging:
     url: https://worker.staging.example.com
     port: null
+    allowInvalidCertificates: false
     deployment: orders-worker
     argoCDApplication: argocd/orders-worker-staging
 ```
@@ -1964,3 +1972,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R172: A project with a GitHub page always has two locked web tabs, its GitHub page and its CI page, first in the tab strip.
 - R174: A sub project that uses its parent's settings inherits its parent's environments and changes their URL, port, deployment and Argo CD application.
 - R178: The Dashboard of a Go service can show an Instances widget listing the pods of the current working environment with their status.
+- R182: Each environment of a Go service has an `Allow invalid certificates` setting, off by default and changeable by a sub project that inherits the environment, with which the Contract view's requests to it accept any invalid server certificate.

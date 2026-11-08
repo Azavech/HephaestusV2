@@ -121,11 +121,11 @@ struct PromptAndNamingTests {
     }
 
     /// The environments of the `{{environments}}` example of docs/chats.md › Rendered blocks: one
-    /// without any Kubernetes field, one with every field and the kubectl context of an earlier
-    /// version, which the block leaves out, and one without a URL.
+    /// without any Kubernetes field, one that allows invalid certificates with every field and the
+    /// kubectl context of an earlier version, which the block leaves out, and one without a URL.
     static let exampleEnvironments = [
         ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
-        ProjectEnvironment(name: "staging", url: "https://staging.example.com/", namespace: "orders",
+        ProjectEnvironment(name: "staging", url: "https://staging.example.com/", allowInvalidCertificates: true, namespace: "orders",
                            deployment: "orders-api", argoCDApplication: "argocd/orders-staging", kubeconfig: "~/.kube/staging.yaml",
                            unknownKeys: ["context": "staging-eks"]),
         ProjectEnvironment(name: "preview", port: 8080, namespace: "orders-preview", kubeconfig: "/Users/example/.kube/preview.yaml"),
@@ -165,6 +165,23 @@ struct PromptAndNamingTests {
             + (lines + ["The current working environment is prod: use it when the user names no environment."]).joined(separator: "\n"))
     }
 
+    @Test("{{environments}}: `; invalid certificates allowed` after the base URL of an environment that allows them, before its Kubernetes fields; none without a URL or with the setting off")
+    func environmentsInvalidCertificates() {
+        let environments = [
+            ProjectEnvironment(name: "prod", url: "https://10.0.0.5:443/orders/", allowInvalidCertificates: true, deployment: "orders-api"),
+            ProjectEnvironment(name: "lab", url: "https://lab.example.com", allowInvalidCertificates: true),
+            ProjectEnvironment(name: "qa", url: "https://qa.example.com", allowInvalidCertificates: false),
+            ProjectEnvironment(name: "draft", allowInvalidCertificates: true, namespace: "orders"),
+        ]
+        #expect(Prompts.environments(environments, current: "prod", type: .goService) == "\n\n\(Self.environmentsHeader)\n" + [
+            "- prod: https://10.0.0.5:443/orders; invalid certificates allowed; deployment: orders-api",
+            "- lab: https://lab.example.com; invalid certificates allowed",
+            "- qa: https://qa.example.com",
+            "- draft; namespace: orders",
+            "The current working environment is prod: use it when the user names no environment.",
+        ].joined(separator: "\n"))
+    }
+
     @Test("{{environments}}: the none line for a Go service without environments; empty for the other types, environments or not")
     func environmentsNoneAndOtherTypes() {
         #expect(Prompts.environments([], current: nil, type: .goService) == "\n\n\(Self.environmentsHeader)\n- none: the user adds them in Project Settings")
@@ -186,7 +203,7 @@ struct PromptAndNamingTests {
             "The project's type is Go service.\n",
             Self.environmentsHeader,
             "- local: http://127.0.0.1:8080",
-            "- staging: https://staging.example.com; namespace: orders; deployment: orders-api; "
+            "- staging: https://staging.example.com; invalid certificates allowed; namespace: orders; deployment: orders-api; "
                 + "Argo CD application: argocd/orders-staging; kubeconfig file: ~/.kube/staging.yaml",
             "- preview; namespace: orders-preview; kubeconfig file: /Users/example/.kube/preview.yaml",
             "The current working environment is staging: use it when the user names no environment.\n",

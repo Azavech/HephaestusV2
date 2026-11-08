@@ -41,14 +41,16 @@ public enum OpenAPIHTTPClient {
     }()
 
     /// Sends a request; `rewrite` changes the URL of the request and of each redirect (the localhost
-    /// rewrite of windows that show a remote device). Throws the session's error, or
+    /// rewrite of windows that show a remote device). With `allowInvalidCertificates`, the request
+    /// accepts any server certificate, on every server it reaches. Throws the session's error, or
     /// `CancellationError` when the task is cancelled.
-    public static func send(_ request: URLRequest, rewrite: (@Sendable (URL) -> URL)? = nil) async throws -> OpenAPIHTTPResponse {
+    public static func send(_ request: URLRequest, rewrite: (@Sendable (URL) -> URL)? = nil,
+                            allowInvalidCertificates: Bool = false) async throws -> OpenAPIHTTPResponse {
         var request = request
         if let rewrite, let url = request.url {
             request.url = rewrite(url)
         }
-        let delegate = RedirectRewriter(rewrite: rewrite)
+        let delegate = TaskDelegate(rewrite: rewrite, allowInvalidCertificates: allowInvalidCertificates)
         let clock = ContinuousClock()
         let start = clock.now
         let (data, response) = try await session.data(for: request, delegate: delegate)
@@ -66,12 +68,33 @@ public enum OpenAPIHTTPClient {
                                    contentType: http.value(forHTTPHeaderField: "Content-Type"))
     }
 
-    /// Applies the rewrite to every redirect.
-    private final class RedirectRewriter: NSObject, URLSessionTaskDelegate, Sendable {
-        let rewrite: (@Sendable (URL) -> URL)?
+    /// How a request answers a server trust challenge: with `allowInvalidCertificates`, it trusts
+    /// the server's certificate whatever it is; otherwise, and for every other challenge, the
+    /// system's default handling applies (docs/openapi.md › Sending a request).
+    static func trustDecision(authenticationMethod: String, serverTrust: SecTrust?, allowInvalidCertificates: Bool)
+        -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        guard allowInvalidCertificates, authenticationMethod == NSURLAuthenticationMethodServerTrust, let serverTrust else {
+            return (.performDefaultHandling, nil)
+        }
+        return (.useCredential, URLCredential(trust: serverTrust))
+    }
 
-        init(rewrite: (@Sendable (URL) -> URL)?) {
+    /// Applies the rewrite to every redirect, and answers the server trust challenges of the
+    /// request and of its redirects.
+    private final class TaskDelegate: NSObject, URLSessionTaskDelegate, Sendable {
+        let rewrite: (@Sendable (URL) -> URL)?
+        let allowInvalidCertificates: Bool
+
+        init(rewrite: (@Sendable (URL) -> URL)?, allowInvalidCertificates: Bool) {
             self.rewrite = rewrite
+            self.allowInvalidCertificates = allowInvalidCertificates
+        }
+
+        func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge)
+            async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+            OpenAPIHTTPClient.trustDecision(authenticationMethod: challenge.protectionSpace.authenticationMethod,
+                                            serverTrust: challenge.protectionSpace.serverTrust,
+                                            allowInvalidCertificates: allowInvalidCertificates)
         }
 
         func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,

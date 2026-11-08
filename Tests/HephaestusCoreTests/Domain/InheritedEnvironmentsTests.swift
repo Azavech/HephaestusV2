@@ -73,17 +73,58 @@ struct InheritedEnvironmentsTests {
                   local:
                     url: null
                     port: 8081
+                    allowInvalidCertificates: null
                     deployment: null
                     argoCDApplication: null
                   staging:
                     url: https://worker.staging.example.com
                     port: null
+                    allowInvalidCertificates: null
                     deployment: orders-worker
                     argoCDApplication: argocd/orders-worker-staging
                 deletedChats: []
 
                 """))
             #expect(try readFile(Self.projectFile(h, "Api")).contains("environmentOverrides: {}\n"))
+        }
+    }
+
+    @Test("An inherited environment allows invalid certificates as its parent does, unless the sub project's change sets it")
+    func inheritedCertificateSetting() async throws {
+        try await withDomainEngine { h in
+            try await Self.makeTree(h)
+            var worker = try await Self.detail(h, "WRK")
+            #expect(worker.environments.map(\.allowInvalidCertificates) == [false, false])
+
+            // Without a change, the parent's value applies.
+            var trusting = Self.staging
+            trusting.allowInvalidCertificates = true
+            _ = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "API", environments: [Self.local, trusting]))
+            worker = try await Self.detail(h, "WRK")
+            #expect(worker.environments.map(\.allowInvalidCertificates) == [false, true])
+            #expect(worker.inheritedEnvironments.map(\.allowInvalidCertificates) == [false, true])
+
+            // A change replaces it, in both directions, and keeps the parent's other values.
+            worker = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "WRK", environmentOverrides: [
+                "local": EnvironmentOverride(allowInvalidCertificates: true),
+                "staging": EnvironmentOverride(allowInvalidCertificates: false),
+            ]))
+            #expect(worker.environments.map(\.allowInvalidCertificates) == [true, false])
+            #expect(worker.environments.map(\.baseURL) == ["http://127.0.0.1:8080", "https://staging.example.com"])
+            #expect(worker.inheritedEnvironments.map(\.allowInvalidCertificates) == [false, true])
+            #expect(try await Self.detail(h, "API").environments.map(\.allowInvalidCertificates) == [false, true])
+            #expect(try readFile(Self.projectFile(h, "Api/worker")).contains("""
+                  staging:
+                    url: null
+                    port: null
+                    allowInvalidCertificates: false
+                    deployment: null
+
+                """))
+
+            // Without the change, the parent's value applies again.
+            worker = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "WRK", environmentOverrides: [:]))
+            #expect(worker.environments.map(\.allowInvalidCertificates) == [false, true])
         }
     }
 

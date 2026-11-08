@@ -401,6 +401,7 @@ struct ProjectsTests {
                 - name: staging
                   url: https://staging.example.com/
                   port: null
+                  allowInvalidCertificates: false
                   namespace: orders
                   deployment: orders-api
                   argoCDApplication: argocd/orders-staging
@@ -408,6 +409,7 @@ struct ProjectsTests {
                 - name: local
                   url: http://127.0.0.1
                   port: 8080
+                  allowInvalidCertificates: false
                   namespace: null
                   deployment: null
                   argoCDApplication: null
@@ -415,6 +417,7 @@ struct ProjectsTests {
                 - name: preview
                   url: null
                   port: null
+                  allowInvalidCertificates: false
                   namespace: orders-preview
                   deployment: null
                   argoCDApplication: null

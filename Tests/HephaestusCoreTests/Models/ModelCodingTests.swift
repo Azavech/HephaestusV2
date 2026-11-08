@@ -286,7 +286,7 @@ struct ModelCodingTests {
     func projectEnvironments() throws {
         let project = Project(id: "API", name: "Orders API", created: Self.created, type: .goService, environments: [
             ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
-            ProjectEnvironment(name: "staging", url: "https://staging.example.com", namespace: "orders",
+            ProjectEnvironment(name: "staging", url: "https://staging.example.com", allowInvalidCertificates: true, namespace: "orders",
                                deployment: "orders-api", argoCDApplication: "argocd/orders-staging", kubeconfig: "~/.kube/staging.yaml"),
             ProjectEnvironment(name: "preview", kubeconfig: "~/.kube/preview.yaml"),
         ])
@@ -297,6 +297,7 @@ struct ModelCodingTests {
             - name: local
               url: http://127.0.0.1
               port: 8080
+              allowInvalidCertificates: false
               namespace: null
               deployment: null
               argoCDApplication: null
@@ -304,6 +305,7 @@ struct ModelCodingTests {
             - name: staging
               url: https://staging.example.com
               port: null
+              allowInvalidCertificates: true
               namespace: orders
               deployment: orders-api
               argoCDApplication: argocd/orders-staging
@@ -311,6 +313,7 @@ struct ModelCodingTests {
             - name: preview
               url: null
               port: null
+              allowInvalidCertificates: false
               namespace: null
               deployment: null
               argoCDApplication: null
@@ -326,6 +329,7 @@ struct ModelCodingTests {
             #expect(json?[key] == .null, "\(key)")
         }
         #expect(json?["context"] == nil)
+        #expect(json?["allowInvalidCertificates"] == .bool(false))
         #expect(try EngineJSON.jsonValue(project.environments[2]).objectValue?["url"] == .null)
         #expect(try YAMLCoding.encode(Project(id: "WEB", name: "Website", created: Self.created)).contains("environments: []\n"))
         #expect(try YAMLCoding.decode(Project.self, from: "id: WEB\nname: W\ncreated: 2026-10-31T09:30:00Z\n").environments.isEmpty)
@@ -340,7 +344,9 @@ struct ModelCodingTests {
               region: eu-west-1
 
             """)
+        // An environment written before allowInvalidCertificates existed reads it as false.
         #expect(extended.environments == [ProjectEnvironment(name: "local", url: "http://127.0.0.1", unknownKeys: ["region": "eu-west-1"])])
+        #expect(extended.environments[0].allowInvalidCertificates == false)
         #expect(extended.unknownKeys.isEmpty)
         extended.environments[0].name = "dev"
         let rewritten = try YAMLCoding.encode(extended)
@@ -349,7 +355,8 @@ struct ModelCodingTests {
 
         for invalid in ["- url: http://127.0.0.1", "- name: local\n  url: http://127.0.0.1\n  port: high",
                         "- name: local\n  url: [http]",
-                        "- name: local\n  url: http://127.0.0.1\n  namespace: [orders]"] {
+                        "- name: local\n  url: http://127.0.0.1\n  namespace: [orders]",
+                        "- name: local\n  allowInvalidCertificates: maybe"] {
             #expect(throws: (any Error).self) {
                 try YAMLCoding.decode(Project.self, from: "id: API\nname: A\ncreated: 2026-10-31T10:00:00Z\nenvironments:\n\(invalid)\n")
             }
@@ -360,7 +367,7 @@ struct ModelCodingTests {
     func environmentOverrides() throws {
         let project = Project(id: "WRK", name: "Worker", created: Self.created, type: .goService, environmentOverrides: [
             "staging": EnvironmentOverride(url: "https://worker.example.com", deployment: "orders-worker"),
-            "local": EnvironmentOverride(port: 8081),
+            "local": EnvironmentOverride(port: 8081, allowInvalidCertificates: true),
             "Zeta": EnvironmentOverride(argoCDApplication: "argocd/z"),
         ])
         let yaml = try YAMLCoding.encode(project)
@@ -370,16 +377,19 @@ struct ModelCodingTests {
               Zeta:
                 url: null
                 port: null
+                allowInvalidCertificates: null
                 deployment: null
                 argoCDApplication: argocd/z
               local:
                 url: null
                 port: 8081
+                allowInvalidCertificates: true
                 deployment: null
                 argoCDApplication: null
               staging:
                 url: https://worker.example.com
                 port: null
+                allowInvalidCertificates: null
                 deployment: orders-worker
                 argoCDApplication: null
             deletedChats: []
@@ -390,6 +400,8 @@ struct ModelCodingTests {
         #expect(try EngineJSON.decode(Project.self, from: try EngineJSON.encode(project)) == project)
         let json = try EngineJSON.jsonValue(project).objectValue?["environmentOverrides"]?.objectValue
         #expect(json?["local"]?.objectValue?["url"] == .null)
+        #expect(json?["local"]?.objectValue?["allowInvalidCertificates"] == .bool(true))
+        #expect(json?["staging"]?.objectValue?["allowInvalidCertificates"] == .null)
         #expect(try YAMLCoding.encode(Project(id: "WEB", name: "Website", created: Self.created))
             .contains("environments: []\nenvironmentOverrides: {}\n"))
         #expect(try YAMLCoding.decode(Project.self, from: "id: WEB\nname: W\ncreated: 2026-10-31T09:30:00Z\n").environmentOverrides.isEmpty)
@@ -413,7 +425,7 @@ struct ModelCodingTests {
         #expect(rewritten.contains("    argoCDApplication: argocd/w\n    region: eu-west-1\n"))
         #expect(try YAMLCoding.decode(Project.self, from: rewritten).environmentOverrides["staging"]?.unknownKeys == ["region": "eu-west-1"])
 
-        for invalid in ["  staging:\n    port: high", "  staging:\n    url: [a]", "  - staging"] {
+        for invalid in ["  staging:\n    port: high", "  staging:\n    url: [a]", "  staging:\n    allowInvalidCertificates: maybe", "  - staging"] {
             #expect(throws: (any Error).self) {
                 try YAMLCoding.decode(Project.self, from: "id: WRK\nname: W\ncreated: 2026-10-31T10:00:00Z\nenvironmentOverrides:\n\(invalid)\n")
             }

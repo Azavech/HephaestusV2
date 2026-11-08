@@ -8,8 +8,9 @@ import SwiftUI
 /// `Environments` heading, then the rows of the selected environment, which edit it in place. Its
 /// rows join the grid of the form, so that they use its label column. Each field applies on its
 /// own; `+` and `−` apply at once (docs/projects.md › Environments). For an environment the
-/// project inherits, Deployment, URL and Port change it for the project only, and the other
-/// fields show the parent's values, disabled (docs/projects.md › Inherited environments).
+/// project inherits, Deployment, URL, Port and `Allow invalid certificates` change it for the
+/// project only, and the other fields show the parent's values, disabled (docs/projects.md ›
+/// Inherited environments).
 struct ProjectEnvironmentsSection: View {
     let workspace: DeviceWorkspace
     let detail: ProjectDetail
@@ -36,6 +37,7 @@ struct ProjectEnvironmentsSection: View {
     @State private var deploymentMessage: String?
     @State private var urlMessage: String?
     @State private var portMessage: String?
+    @State private var certificatesMessage: String?
     @State private var connection = KubeconfigConnection.none
     @State private var namespaces: [String] = []
     @State private var deployments: [String] = []
@@ -160,6 +162,7 @@ struct ProjectEnvironmentsSection: View {
             listFailure = nil
             namespaceMessage = nil
             deploymentMessage = nil
+            certificatesMessage = nil
         }
         .task(id: ConnectionKey(identity: identity, kubeconfig: environment?.kubeconfig)) {
             await checkConnection(environment?.kubeconfig)
@@ -229,6 +232,9 @@ struct ProjectEnvironmentsSection: View {
                 .id(identity)
             }
         }
+        certificatesRow(isOn: environment.allowInvalidCertificates) { on in
+            await applyOwn(name) { $0.allowInvalidCertificates = on }
+        }
     }
 
     /// The rows of an inherited environment: Name, Kubeconfig file and Namespace show the parent's
@@ -285,6 +291,25 @@ struct ProjectEnvironmentsSection: View {
                 .frame(width: 80)
                 .id(identity)
             }
+        }
+        certificatesRow(isOn: change?.allowInvalidCertificates ?? parent.allowInvalidCertificates) { on in
+            await applyOverride(name) {
+                $0.allowInvalidCertificates = ProjectRules.allowInvalidCertificatesChange(on, parent: parent.allowInvalidCertificates)
+            }
+        }
+    }
+
+    /// The `Allow invalid certificates` checkbox, on its own line in the field column under API
+    /// Access; it applies at once when toggled, and an engine failure shows under it.
+    private func certificatesRow(isOn: Bool, apply: @escaping (Bool) async -> String?) -> some View {
+        row("", message: certificatesMessage) {
+            Toggle("Allow invalid certificates", isOn: Binding(get: { isOn }, set: { on in
+                guard on != isOn else { return }
+                Task {
+                    certificatesMessage = await apply(on)
+                }
+            }))
+            .toggleStyle(.checkbox)
         }
     }
 

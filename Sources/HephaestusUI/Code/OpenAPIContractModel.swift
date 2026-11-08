@@ -368,7 +368,7 @@ final class OpenAPIContractModel {
         let rewrite: (@Sendable (URL) -> URL)? = LocalhostRewrite.deviceAddress(of: buffer?.window).map { address in
             { url in URL(string: LocalhostRewrite.forward(url.absoluteString, deviceAddress: address)) ?? url }
         }
-        form(operation).send(request, rewrite: rewrite)
+        form(operation).send(request, rewrite: rewrite, allowInvalidCertificates: environment?.allowInvalidCertificates ?? false)
     }
 }
 
@@ -392,7 +392,7 @@ final class OpenAPIOperationForm {
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var sendCount = 0
 
-    func send(_ request: URLRequest, rewrite: (@Sendable (URL) -> URL)?) {
+    func send(_ request: URLRequest, rewrite: (@Sendable (URL) -> URL)?, allowInvalidCertificates: Bool) {
         task?.cancel()
         sendCount += 1
         let token = sendCount
@@ -400,7 +400,8 @@ final class OpenAPIOperationForm {
         task = Task { [weak self] in
             let outcome: Result?
             do {
-                let response = try await OpenAPIHTTPClient.send(request, rewrite: rewrite)
+                let response = try await OpenAPIHTTPClient.send(request, rewrite: rewrite,
+                                                                allowInvalidCertificates: allowInvalidCertificates)
                 let body = await Task.detached { OpenAPIResponseBody(response) }.value
                 outcome = .response(response, body)
             } catch is CancellationError {

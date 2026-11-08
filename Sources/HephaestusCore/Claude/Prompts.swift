@@ -58,7 +58,8 @@ enum Prompts {
     // MARK: Rendered blocks (docs/chats.md › Rendered blocks)
 
     /// `{{environments}}`, for a project whose type is `goService`: a blank line, the line that
-    /// introduces the environments, then `- <name>: <base URL>`, or `- <name>` without a URL, per
+    /// introduces the environments, then `- <name>: <base URL>`, with `; invalid certificates
+    /// allowed` when the environment accepts invalid certificates, or `- <name>` without a URL, per
     /// environment in their order, followed by `; <field>: <value>` for each Kubernetes field it
     /// sets, as stored, then the line that names the current working environment, `current`;
     /// `- none: the user adds them in Project Settings` without environments. Empty for the other
@@ -70,7 +71,8 @@ enum Prompts {
             let fields = [("namespace", environment.namespace), ("deployment", environment.deployment),
                           ("Argo CD application", environment.argoCDApplication), ("kubeconfig file", environment.kubeconfig)]
             let details = fields.compactMap { label, value in value.map { "; \(label): \($0)" } }
-            return "- \(environment.name)" + (environment.baseURL.map { ": \($0)" } ?? "") + details.joined()
+            let address = environment.baseURL.map { ": \($0)" + (environment.allowInvalidCertificates ? "; invalid certificates allowed" : "") }
+            return "- \(environment.name)" + (address ?? "") + details.joined()
         }
         let currentLine = lines.isEmpty ? nil : (current ?? environments.first?.name).map(currentEnvironmentLine)
         return "\n\nThe project's environments, where the Go service runs; the Kubernetes and Argo CD tools take an environment's name:\n"

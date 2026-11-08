@@ -203,6 +203,28 @@ struct ProjectEnvironmentsTests {
             == ["staging": EnvironmentOverride(argoCDApplication: "argocd/w", unknownKeys: ["region": "eu-west-1"]), "gone": gone])
     }
 
+    @Test func certificateCheckboxOfAnInheritedEnvironment() {
+        // The checkbox is kept in the change only while it differs from the parent's value.
+        #expect(ProjectRules.allowInvalidCertificatesChange(true, parent: false) == true)
+        #expect(ProjectRules.allowInvalidCertificatesChange(false, parent: true) == false)
+        #expect(ProjectRules.allowInvalidCertificatesChange(true, parent: true) == nil)
+        #expect(ProjectRules.allowInvalidCertificatesChange(false, parent: false) == nil)
+
+        let checked = ProjectRules.environmentOverrides([:], changing: "staging") {
+            $0.allowInvalidCertificates = ProjectRules.allowInvalidCertificatesChange(true, parent: false)
+        }
+        #expect(checked == ["staging": EnvironmentOverride(allowInvalidCertificates: true)])
+        // Back to the parent's value: the key leaves the change, and a change that sets nothing else is removed.
+        let unchecked = ProjectRules.environmentOverrides(checked, changing: "staging") {
+            $0.allowInvalidCertificates = ProjectRules.allowInvalidCertificatesChange(false, parent: false)
+        }
+        #expect(unchecked == [:])
+        let withPort = ["staging": EnvironmentOverride(port: 8081, allowInvalidCertificates: true)]
+        #expect(ProjectRules.environmentOverrides(withPort, changing: "staging") {
+            $0.allowInvalidCertificates = ProjectRules.allowInvalidCertificatesChange(false, parent: false)
+        } == ["staging": EnvironmentOverride(port: 8081)])
+    }
+
     @Test func contractEnvironmentsAreTheEnvironmentsThatApply() async throws {
         let own = ProjectEnvironment(name: "replay", url: "http://127.0.0.1", port: 9090)
         let (workspace, buffer, model) = try await contractModel(type: .goService, environments: [own])

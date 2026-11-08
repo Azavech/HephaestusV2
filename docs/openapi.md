@@ -259,10 +259,10 @@ The sample values are design-time choices. Default chosen at design time.
 5. **Headers**, in this order: the header parameters with a value that is not empty; `Cookie` with the cookie parameters and the API keys sent in a cookie that have a value, as `name=value` joined with `; `; the API keys sent in a header; `Authorization: Basic <base64 of username:password>` when the username or the password is not empty; `Authorization: Bearer <token>` when the token is not empty; `Content-Type: <media type>` when a body is sent; then the added headers whose name is not empty, each replacing a header of the same name (compared case-insensitively).
 6. **Body.** When the operation has a request body and the selected media type's body is not empty, its UTF-8 bytes.
 7. **Remote windows.** In a window that shows a remote device, the URL gets the [forward localhost rewrite](remote.md#forward-rewrite) of web tabs, and so does the URL of every redirect.
-8. **Client.** The request runs on the Mac that shows the window, with `URLSession` and an ephemeral configuration without cookie storage, cache or credential storage: the browser's CORS rules do not apply, and nothing is kept between requests. Redirects are followed and the response shown is the last one. The system's request timeout applies (60 s without data). App Transport Security allows plain `http` ([CI › Info.plist keys](ci.md#infoplist-keys)).
+8. **Client.** The request runs on the Mac that shows the window, with `URLSession` and an ephemeral configuration without cookie storage, cache or credential storage: the browser's CORS rules do not apply, and nothing is kept between requests. Redirects are followed and the response shown is the last one. The system's request timeout applies (60 s without data). App Transport Security allows plain `http` ([CI › Info.plist keys](ci.md#infoplist-keys)). When the selected environment has `Allow invalid certificates` on ([Environments](projects.md#environments)), the request accepts any invalid server certificate, for example self-signed, issued by an unknown or private CA, expired, or issued for another host name such as a certificate that does not name the IP address of the URL; this applies to every server the request reaches, the servers of redirects to other hosts included. With the setting off, the system's default certificate check applies.
 9. **Duration.** From the start of the request to the last byte of the response body, in milliseconds.
 
-The ephemeral session and redirect following are design-time choices. Default chosen at design time.
+The certificates accepted with `Allow invalid certificates` on come from the user. The ephemeral session and redirect following are design-time choices. Default chosen at design time.
 
 ## Response
 
@@ -275,7 +275,7 @@ The ephemeral session and redirect following are design-time choices. Default ch
 
 - Pretty-printed JSON has 2-space indentation and keeps the members in the received order; it is highlighted with the JSON rules of [Code editor](code-editor.md#json). A body larger than 2 MB is not highlighted.
 - `<size>` is a file-style byte count, as in [Large and binary files](code-editor.md#large-and-binary-files). `Quick Look` writes the body to `<temporary folder>/HephaestusV2/Files/<UUID>/response.<extension>` on the Mac that shows the window, the extension coming from the media type (`response` alone when it has none), and opens it in Quick Look.
-- When the request fails without a response (no network, refused connection, timeout, invalid URL), the response area shows `The request failed.` and the error's localized description.
+- When the request fails without a response (no network, refused connection, timeout, invalid URL, a server certificate that the system does not trust while the environment's `Allow invalid certificates` is off), the response area shows `The request failed.` and the error's localized description.
 - The last response of each operation stays while the tab is open; responses are never stored.
 
 The 300 pt height is Default chosen at design time.
@@ -369,3 +369,4 @@ OAuth2, OpenID Connect and mutual TLS credentials, multipart and file bodies, ed
 - R157: A Go service project declares its environments in Project Settings, and the Contract view sends requests to the environment chosen in its Environment pop-up.
 - R174: A sub project that uses its parent's settings inherits its parent's environments and changes their URL, port, deployment and Argo CD application.
 - R177: Each Go service project has a current working environment, chosen in the sidebar under the project identifier and shared by every device, which the Contract view, Project Settings and Claude use.
+- R182: Each environment of a Go service has an `Allow invalid certificates` setting, off by default and changeable by a sub project that inherits the environment, with which the Contract view's requests to it accept any invalid server certificate.

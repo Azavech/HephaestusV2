@@ -448,6 +448,9 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
     public var url: String?
     /// Replaces the URL's port in the base URL; nil keeps the URL's own port.
     public var port: Int?
+    /// Whether the Contract view's requests to the environment accept any invalid server
+    /// certificate (docs/openapi.md › Sending a request).
+    public var allowInvalidCertificates: Bool
     /// The Kubernetes namespace of the deployment; nil uses the namespace of the kubeconfig file's
     /// current context, which kubectl always uses.
     public var namespace: String?
@@ -461,12 +464,13 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
     public var kubeconfig: String?
     public var unknownKeys: [String: JSONValue]
 
-    public init(name: String, url: String? = nil, port: Int? = nil, namespace: String? = nil,
-                deployment: String? = nil, argoCDApplication: String? = nil, kubeconfig: String? = nil,
-                unknownKeys: [String: JSONValue] = [:]) {
+    public init(name: String, url: String? = nil, port: Int? = nil, allowInvalidCertificates: Bool = false,
+                namespace: String? = nil, deployment: String? = nil, argoCDApplication: String? = nil,
+                kubeconfig: String? = nil, unknownKeys: [String: JSONValue] = [:]) {
         self.name = name
         self.url = url
         self.port = port
+        self.allowInvalidCertificates = allowInvalidCertificates
         self.namespace = namespace
         self.deployment = deployment
         self.argoCDApplication = argoCDApplication
@@ -476,7 +480,8 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
 
     /// A `context` key, the kubectl context of earlier versions, is not known: it is kept as an
     /// unknown key and no longer used (docs/data-model.md › Project environment).
-    static let knownKeys: Set<String> = ["name", "url", "port", "namespace", "deployment", "argoCDApplication", "kubeconfig"]
+    static let knownKeys: Set<String> = ["name", "url", "port", "allowInvalidCertificates", "namespace", "deployment",
+                                         "argoCDApplication", "kubeconfig"]
 
     public init(from decoder: Decoder) throws {
         let c = try ModelDecodingContainer(decoder)
@@ -485,6 +490,7 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
         // (docs/data-model.md › Project environment).
         url = ModelRules.trimmedOrNil(try c.optional("url", String.self))
         port = try c.optional("port")
+        allowInvalidCertificates = try c.value("allowInvalidCertificates", default: false)
         namespace = ModelRules.trimmedOrNil(try c.optional("namespace", String.self))
         deployment = ModelRules.trimmedOrNil(try c.optional("deployment", String.self))
         argoCDApplication = ModelRules.trimmedOrNil(try c.optional("argoCDApplication", String.self))
@@ -497,6 +503,7 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
         try c.encode(name, "name")
         try c.encodeOptional(url, "url")
         try c.encodeOptional(port, "port")
+        try c.encode(allowInvalidCertificates, "allowInvalidCertificates")
         try c.encodeOptional(namespace, "namespace")
         try c.encodeOptional(deployment, "deployment")
         try c.encodeOptional(argoCDApplication, "argoCDApplication")
@@ -587,27 +594,30 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
 public struct EnvironmentOverride: Codable, Sendable, Hashable {
     public var url: String?
     public var port: Int?
+    public var allowInvalidCertificates: Bool?
     public var deployment: String?
     /// `<name>` or `<namespace>/<name>`, as `ProjectEnvironment.argoCDApplication`.
     public var argoCDApplication: String?
     public var unknownKeys: [String: JSONValue]
 
-    public init(url: String? = nil, port: Int? = nil, deployment: String? = nil, argoCDApplication: String? = nil,
-                unknownKeys: [String: JSONValue] = [:]) {
+    public init(url: String? = nil, port: Int? = nil, allowInvalidCertificates: Bool? = nil, deployment: String? = nil,
+                argoCDApplication: String? = nil, unknownKeys: [String: JSONValue] = [:]) {
         self.url = url
         self.port = port
+        self.allowInvalidCertificates = allowInvalidCertificates
         self.deployment = deployment
         self.argoCDApplication = argoCDApplication
         self.unknownKeys = unknownKeys
     }
 
-    static let knownKeys: Set<String> = ["url", "port", "deployment", "argoCDApplication"]
+    static let knownKeys: Set<String> = ["url", "port", "allowInvalidCertificates", "deployment", "argoCDApplication"]
 
     /// The three string keys are read trimmed, an empty value being null.
     public init(from decoder: Decoder) throws {
         let c = try ModelDecodingContainer(decoder)
         url = ModelRules.trimmedOrNil(try c.optional("url", String.self))
         port = try c.optional("port")
+        allowInvalidCertificates = try c.optional("allowInvalidCertificates")
         deployment = ModelRules.trimmedOrNil(try c.optional("deployment", String.self))
         argoCDApplication = ModelRules.trimmedOrNil(try c.optional("argoCDApplication", String.self))
         unknownKeys = try c.unknownKeys(known: Self.knownKeys)
@@ -617,6 +627,7 @@ public struct EnvironmentOverride: Codable, Sendable, Hashable {
         var c = ModelEncodingContainer(encoder)
         try c.encodeOptional(url, "url")
         try c.encodeOptional(port, "port")
+        try c.encodeOptional(allowInvalidCertificates, "allowInvalidCertificates")
         try c.encodeOptional(deployment, "deployment")
         try c.encodeOptional(argoCDApplication, "argoCDApplication")
         try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
@@ -624,7 +635,7 @@ public struct EnvironmentOverride: Codable, Sendable, Hashable {
 
     /// True when the change replaces none of the parent's values.
     public var isEmpty: Bool {
-        url == nil && port == nil && deployment == nil && argoCDApplication == nil
+        url == nil && port == nil && allowInvalidCertificates == nil && deployment == nil && argoCDApplication == nil
     }
 
     /// The parent's environment with the values this change sets; the other fields, its name
@@ -636,6 +647,9 @@ public struct EnvironmentOverride: Codable, Sendable, Hashable {
         }
         if let port {
             result.port = port
+        }
+        if let allowInvalidCertificates {
+            result.allowInvalidCertificates = allowInvalidCertificates
         }
         if let deployment {
             result.deployment = deployment

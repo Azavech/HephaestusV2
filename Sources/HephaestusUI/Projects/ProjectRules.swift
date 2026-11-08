@@ -285,6 +285,13 @@ enum ProjectRules {
         return result
     }
 
+    /// The `allowInvalidCertificates` of the change the checkbox of an inherited environment
+    /// applies: the checkbox's value while it differs from the parent's, else nil, which keeps the
+    /// parent's value.
+    static func allowInvalidCertificatesChange(_ value: Bool, parent: Bool) -> Bool? {
+        value == parent ? nil : value
+    }
+
     /// An empty field, which removes the page, or `https://github.com/<owner>/<name>`, a trailing
     /// `/` removed (docs/projects.md › Project settings, › GitHub page).
     static func githubPageMessage(_ text: String) -> String? {

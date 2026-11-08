@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import Testing
 @testable import HephaestusCore
 
@@ -444,6 +445,42 @@ struct OpenAPIRequestTests {
     func statusText() {
         #expect(OpenAPIHTTPResponse(status: 200, headers: [], body: Data(), milliseconds: 1, contentType: nil).statusText == "200 OK")
         #expect(OpenAPIHTTPResponse(status: 299, headers: [], body: Data(), milliseconds: 1, contentType: nil).statusText == "299")
+    }
+
+    /// A self-signed certificate for `localhost`, which no system trusts.
+    static let selfSignedCertificate = """
+        MIIBGDCBvgIJAI/vKkl67OMlMAoGCCqGSM49BAMCMBQxEjAQBgNVBAMMCWxvY2FsaG9zdDAeFw0yNjExMDgxMzU1MjlaFw0zNjEx\
+        MDUxMzU1MjlaMBQxEjAQBgNVBAMMCWxvY2FsaG9zdDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABALaZSWMwouaHSWKtr+AA+Ry\
+        uKbXdNfXMNikBQZzoifvEF1SWCgtktMqnu4Wp/n16bNfbrktGAiHRN/QnG7GI3swCgYIKoZIzj0EAwIDSQAwRgIhANS3LoFZIel1\
+        hv+wt844KpNKKktuzDK+2T0RamadXj7kAiEAwjQbUSO7/1AUkahOcKgAlLRccqNtJPbRbctMofZa+gQ=
+        """
+
+    @Test("With Allow invalid certificates, a server trust challenge trusts the server; without it, and for other challenges, the default handling applies")
+    func trustDecision() throws {
+        let data = try #require(Data(base64Encoded: Self.selfSignedCertificate))
+        let certificate = try #require(SecCertificateCreateWithData(nil, data as CFData))
+        var trust: SecTrust?
+        #expect(SecTrustCreateWithCertificates(certificate, SecPolicyCreateSSL(true, "10.0.0.5" as CFString), &trust) == errSecSuccess)
+        let serverTrust = try #require(trust)
+        #expect(!SecTrustEvaluateWithError(serverTrust, nil))
+
+        let accepted = OpenAPIHTTPClient.trustDecision(authenticationMethod: NSURLAuthenticationMethodServerTrust,
+                                                       serverTrust: serverTrust, allowInvalidCertificates: true)
+        #expect(accepted.0 == .useCredential)
+        #expect(accepted.1 != nil)
+
+        let checked = OpenAPIHTTPClient.trustDecision(authenticationMethod: NSURLAuthenticationMethodServerTrust,
+                                                      serverTrust: serverTrust, allowInvalidCertificates: false)
+        #expect(checked.0 == .performDefaultHandling)
+        #expect(checked.1 == nil)
+
+        for method in [NSURLAuthenticationMethodHTTPBasic, NSURLAuthenticationMethodClientCertificate] {
+            let other = OpenAPIHTTPClient.trustDecision(authenticationMethod: method, serverTrust: serverTrust, allowInvalidCertificates: true)
+            #expect(other.0 == .performDefaultHandling, "\(method)")
+            #expect(other.1 == nil, "\(method)")
+        }
+        #expect(OpenAPIHTTPClient.trustDecision(authenticationMethod: NSURLAuthenticationMethodServerTrust, serverTrust: nil,
+                                                allowInvalidCertificates: true).0 == .performDefaultHandling)
     }
 }
 
