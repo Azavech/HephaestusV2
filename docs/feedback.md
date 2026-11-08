@@ -209,7 +209,7 @@ Example params, with a 1 × 1 pixel PNG standing in for a real screenshot:
   4. reply with the ticket id and a short summary of the ticket.
 - Permission prompts for these tool calls follow the chat's permission mode ([Chats](chats.md)).
 - Claude implements the ticket in the feedback chat only when the user asks ([Workflow](workflow.md)).
-- The chat is listed in the Chats section of the HephaestusV2 project, in the Feedback group, where Send shows it. Selecting another chat, or closing the main window or a chat window opened with Open in New Window, does not stop the chat.
+- The chat is listed in the Chats section of the HephaestusV2 project, in its one list with the project chats, its row the same as theirs, where Send shows it ([Where chats appear](chats.md#where-chats-appear)). Selecting another chat, or closing the main window or a chat window opened with Open in New Window, does not stop the chat.
 
 Example `.hephaestus/chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301.yml` after the ticket was created:
 
@@ -308,3 +308,4 @@ Every feedback ticket belongs to the HephaestusV2 project, a clone of the app's 
 - R123: Implement, Implement All and the feedback sheet let the user choose the model, the effort and the permission mode of the chat they start; the ticket chats that a bundle chat starts take its settings.
 - R144: The chat that writes a ticket settles every decision of its implementation with the user before it creates the ticket or rewrites its description, and writes the answers into the description; a feedback chat creates its ticket, and closes, only after every decision is answered.
 - R155: Each device always has the HephaestusV2 project, cloned from the app's repository when it is missing; it cannot be removed, receives all feedback, and can be hidden, which turns feedback off.
+- R179: The Chats section lists, in one list, only the chats the user starts in the project (project and feedback chats) and the chats whose ticket or bundle was deleted; ticket, bundle and CI chats show only on their ticket or bundle.

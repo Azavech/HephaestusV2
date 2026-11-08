@@ -24,14 +24,14 @@ struct ChatsSelectionTests {
         return workspace
     }
 
-    @Test("Chats come in list order: by kind Project, Ticket, Bundle, Feedback, each newest updated first")
+    @Test("Chats come in list order: newest updated first, whatever their kind")
     func listOrder() {
         let oldProject = chat(.project, title: "Old project", minutes: 0)
         let newProject = chat(.project, title: "New project", minutes: 5)
         let ticket = chat(.ticket, title: "Ticket", ticketID: "DEMO-1", minutes: 9)
-        let feedback = chat(.feedback, title: "Feedback", minutes: 10)
+        let feedback = chat(.feedback, title: "Feedback", minutes: 7)
         let ordered = ChatsSectionView.inListOrder([feedback, ticket, oldProject, newProject])
-        #expect(ordered.map(\.title) == ["New project", "Old project", "Ticket", "Feedback"])
+        #expect(ordered.map(\.title) == ["Ticket", "Feedback", "New project", "Old project"])
     }
 
     @Test("A selection made in the list holds only the chats it lists")
@@ -40,7 +40,7 @@ struct ChatsSelectionTests {
         let second = chat(.project, title: "Second", minutes: 1)
         let hidden = chat(.project, title: "Hidden", closed: true, minutes: 2)
         let all = workspace([first, second, hidden])
-        let listed = ChatsSectionView.groups(Array(all.chats.values), hidesClosed: true, workspace: all).flatMap(\.chats)
+        let listed = ChatsSectionView.listedChats(Array(all.chats.values), hidesClosed: true, workspace: all)
         #expect(Set(listed.map(\.title)) == ["First", "Second"])
 
         // ⌘-click after Close: the closed chats left the list, so they leave the selection.
@@ -100,12 +100,12 @@ struct ChatsSelectionTests {
         var state = ProjectViewState()
         state.selectedChatIDs = [ticket.id.uuidString, older.id.uuidString, newer.id.uuidString]
         let items = LinkedItems.linked(state: state, section: .chats, tickets: [:], bundles: [:], chats: workspace.chats, webTabs: [])
-        #expect(items.map(\.name) == ["Newer plan", "Older plan", "Fix the login"])
+        #expect(items.map(\.name) == ["Fix the login", "Newer plan", "Older plan"])
 
         let window = WindowState(deviceID: "device")
         window.projectID = "DEMO"
         window.section = .chats
         window.viewState = state
-        #expect(FeedbackController.selectedItem(of: window, in: workspace, projectID: "DEMO") == "Newer plan")
+        #expect(FeedbackController.selectedItem(of: window, in: workspace, projectID: "DEMO") == "Fix the login")
     }
 }

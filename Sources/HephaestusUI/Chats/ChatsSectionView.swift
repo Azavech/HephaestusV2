@@ -3,8 +3,9 @@ import AppKit
 import HephaestusCore
 import SwiftUI
 
-/// The chats of the active project grouped by kind, and the selected chat's view, or `<n> Chats
-/// Selected` with Close while several are selected (`ProjectViewState.selectedChatIDs`).
+/// The chats the active project lists in its Chats section, in one list, and the selected chat's
+/// view, or `<n> Chats Selected` with Close while several are selected
+/// (`ProjectViewState.selectedChatIDs`).
 struct ChatsSectionView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -18,29 +19,22 @@ struct ChatsSectionView: View {
     @FocusState private var renameFocused: Bool
     @Environment(AppModel.self) private var app
 
-    /// The groups in the order Project, Ticket, Bundle, Feedback, CI, each newest `updated` first,
-    /// without the closed chats while the filter hides them; a group with no chat left is not
-    /// shown (docs/chats.md › Where chats appear).
-    private var groups: [(kind: ChatKind, chats: [ChatMeta])] {
-        Self.groups(workspace.chats(of: projectID), hidesClosed: ChatListFilter.hidesClosedChats(in: window, projectID: projectID),
-                    workspace: workspace)
+    /// The listed chats, without the closed ones while the filter hides them.
+    private var listedChats: [ChatMeta] {
+        Self.listedChats(workspace.chats(of: projectID), hidesClosed: ChatListFilter.hidesClosedChats(in: window, projectID: projectID),
+                         workspace: workspace)
     }
 
-    static func groups(_ all: [ChatMeta], hidesClosed: Bool, workspace: DeviceWorkspace) -> [(kind: ChatKind, chats: [ChatMeta])] {
-        let chats = hidesClosed ? all.filter { !workspace.isClosed($0) } : all
-        return ChatKind.allCases.compactMap { kind in
-            let members = chats.filter { $0.kind == kind }.sorted { $0.updated > $1.updated }
-            return members.isEmpty ? nil : (kind, members)
-        }
+    /// The chats of the list, newest `updated` first: the project chats, the feedback chats, and
+    /// the ticket, bundle and CI chats whose ticket or bundle no longer exists, without the closed
+    /// ones while the filter hides them (docs/chats.md › Where chats appear).
+    static func listedChats(_ all: [ChatMeta], hidesClosed: Bool, workspace: DeviceWorkspace) -> [ChatMeta] {
+        inListOrder(all.filter { workspace.listedPlace(of: $0) == .chatsSection && !(hidesClosed && workspace.isClosed($0)) })
     }
 
-    /// Chats in the order of the list: by kind in the order Project, Ticket, Bundle, Feedback, CI,
-    /// each newest `updated` first.
+    /// Chats in the order of the list: newest `updated` first.
     static func inListOrder(_ chats: [ChatMeta]) -> [ChatMeta] {
         chats.sorted { a, b in
-            let kindA = ChatKind.allCases.firstIndex(of: a.kind) ?? 0
-            let kindB = ChatKind.allCases.firstIndex(of: b.kind) ?? 0
-            if kindA != kindB { return kindA < kindB }
             if a.updated != b.updated { return a.updated > b.updated }
             return a.id.uuidString < b.id.uuidString
         }
@@ -68,10 +62,6 @@ struct ChatsSectionView: View {
         return selectedChatAgent.map { [$0.tag] } ?? selection
     }
 
-    private var listedChats: [ChatMeta] {
-        groups.flatMap(\.chats)
-    }
-
     /// The workflow or agent shown in place of the chat view while its chat is the only selected
     /// chat (docs/chats.md › Where chats appear).
     private var selectedChatAgent: ChatAgentSelection? {
@@ -87,7 +77,8 @@ struct ChatsSectionView: View {
 
     var body: some View {
         Group {
-            if workspace.chats(of: projectID).isEmpty, draft == nil, selection.isEmpty {
+            if Self.listedChats(workspace.chats(of: projectID), hidesClosed: false, workspace: workspace).isEmpty, draft == nil,
+               selection.isEmpty {
                 VStack(spacing: 12) {
                     Text("No chats yet")
                         .font(.title3)
@@ -132,7 +123,7 @@ struct ChatsSectionView: View {
             .padding(.horizontal, 10)
             .paneHeaderBar()
             Divider()
-            if groups.isEmpty {
+            if listedChats.isEmpty {
                 // Every chat is closed and hidden by the filter (docs/chats.md › Where chats appear).
                 VStack(spacing: 12) {
                     Text(ChatListFilter.noOpenChats)
@@ -153,21 +144,16 @@ struct ChatsSectionView: View {
         // Click, ⌘-click and ⇧-click; ⌘A selects every listed chat (docs/chats.md › Where chats
         // appear).
         List(selection: Binding(get: { listedSelection }, set: select)) {
-            ForEach(groups, id: \.kind) { group in
-                // Titled with the kind's name, as the kind chip (docs/chats.md › Where chats appear).
-                Section(ChatFormat.kindTitle(group.kind)) {
-                    // Each chat followed by its workflows and agents (docs/chats.md › Where chats
-                    // appear), one row per element.
-                    ForEach(listRows(group.chats)) { listRow in
-                        switch listRow {
-                        case .chat(let meta):
-                            row(meta)
-                                .tag(listRow.id)
-                        case .agent(let agentRow):
-                            ChatAgentRowView(row: agentRow)
-                                .tag(listRow.id)
-                        }
-                    }
+            // One list without group titles, each chat followed by its workflows and agents
+            // (docs/chats.md › Where chats appear), one row per element.
+            ForEach(listRows(listedChats)) { listRow in
+                switch listRow {
+                case .chat(let meta):
+                    row(meta)
+                        .tag(listRow.id)
+                case .agent(let agentRow):
+                    ChatAgentRowView(row: agentRow)
+                        .tag(listRow.id)
                 }
             }
         }
@@ -236,7 +222,7 @@ struct ChatsSectionView: View {
         }
     }
 
-    /// The rows of a group: each chat followed by the rows of its workflows and agents.
+    /// The rows of the list: each chat followed by the rows of its workflows and agents.
     private func listRows(_ chats: [ChatMeta]) -> [ChatListRow] {
         chats.flatMap { meta in [ChatListRow.chat(meta)] + agentRows(meta).map(ChatListRow.agent) }
     }

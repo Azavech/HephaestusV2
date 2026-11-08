@@ -2547,7 +2547,7 @@ Input schema:
 
 - **Engine call:** ui.open with `target`, the NavigationTarget ([Engine API](engine-api.md#navigationtarget)). `deviceID` is never sent: for a chat token the engine sends the `ui.open` event to the chat's driving device ([Engine API](engine-api.md#chat-metadata-in-the-api)), and to every client when that device is unknown or the token is the external one ([Engine API](engine-api.md#uiopen)).
 - **Target rules:** after argument validation, the target's properties are checked against its kind ([Target kinds](#target-kinds)).
-- **Result:** `{}`. A client that receives the event navigates one of its windows as described in [UI](ui.md#navigation). A locked web tab that the navigation shows again goes back to its original URL ([Original URL](web-tabs.md#original-url)).
+- **Result:** `{}`. A client that receives the event navigates one of its windows as described in [UI](ui.md#navigation). A `chat` target shows the chat where it is listed: in the Chats tab of its ticket or bundle for a ticket, bundle or CI chat whose ticket or bundle exists, otherwise in the Chats section ([Resolving a target](ui.md#resolving-a-target)). A locked web tab that the navigation shows again goes back to its original URL ([Original URL](web-tabs.md#original-url)).
 - **Errors:**
   - A target rule fails (`invalid`, messages below).
   - Those of ui.open ([Engine API](engine-api.md#uiopen)): malformed id or path (`invalid`), an item or file that does not exist, or a folder named by a `file` target with `line` (`notFound`). A `file` target without `line` may name a folder.

@@ -70,36 +70,26 @@ struct ClosedChatsFilterTests {
         #expect(workspace.isClosed(closedTicketChat))
     }
 
-    @Test("The Chats section hides closed chats and the groups with no chat left while the filter is on")
-    func sectionGroups() {
+    @Test("The Chats section hides its closed chats while the filter is on")
+    func sectionList() {
         let open = chat(.project, minutes: 0)
         let closed = chat(.project, closed: true, minutes: 1)
         let doneTicketChat = chat(.ticket, ticketID: "DEMO-1", minutes: 2)
         let closedFeedback = chat(.feedback, ticketID: "DEMO-1", minutes: 3)
-        let all = [open, closed, doneTicketChat, closedFeedback]
+        let closedOrphan = chat(.ticket, ticketID: "DEMO-9", closed: true, minutes: 4)
+        let openOrphanCI = chat(.ci, bundleID: "DEMO-B9", orchestrator: UUID(), minutes: 5)
+        let all = [open, closed, doneTicketChat, closedFeedback, closedOrphan, openOrphanCI]
         let workspace = workspace(all, tickets: [Ticket(id: "DEMO-1", title: "Done", status: .done, created: created)])
+        workspace.bundles["DEMO"] = [:]
 
-        let filtered = ChatsSectionView.groups(all, hidesClosed: true, workspace: workspace)
-        #expect(filtered.map(\.kind) == [.project])
-        #expect(filtered.first?.chats.map(\.id) == [open.id])
+        // The ticket chat of DEMO-1 is on its ticket, never in the section; the others are listed,
+        // newest first, the closed ones only while the filter is off.
+        #expect(ChatsSectionView.listedChats(all, hidesClosed: true, workspace: workspace).map(\.id) == [openOrphanCI.id, open.id])
+        #expect(ChatsSectionView.listedChats(all, hidesClosed: false, workspace: workspace).map(\.id)
+            == [openOrphanCI.id, closedOrphan.id, closedFeedback.id, closed.id, open.id])
 
-        let unfiltered = ChatsSectionView.groups(all, hidesClosed: false, workspace: workspace)
-        #expect(unfiltered.map(\.kind) == [.project, .ticket, .feedback])
-        #expect(unfiltered.first?.chats.map(\.id) == [closed.id, open.id])
-
-        // CI chats form the last group, titled CI; one whose ticket is done is closed.
-        let openCI = chat(.ci, bundleID: "DEMO-B1", orchestrator: UUID(), minutes: 4)
-        let doneCI = chat(.ci, ticketID: "DEMO-1", orchestrator: UUID(), minutes: 5)
-        let withCI = all + [openCI, doneCI]
-        let ciWorkspace = self.workspace(withCI, tickets: [Ticket(id: "DEMO-1", title: "Done", status: .done, created: created)])
-        #expect(ChatsSectionView.groups(withCI, hidesClosed: false, workspace: ciWorkspace).map(\.kind) == [.project, .ticket, .feedback, .ci])
-        #expect(ChatsSectionView.groups(withCI, hidesClosed: true, workspace: ciWorkspace).map(\.kind) == [.project, .ci])
-        #expect(ChatsSectionView.groups(withCI, hidesClosed: true, workspace: ciWorkspace).last?.chats.map(\.id) == [openCI.id])
-        #expect(ciWorkspace.isClosed(doneCI) && !ciWorkspace.isClosed(openCI))
-        #expect(ChatFormat.kindTitle(.ci) == "CI")
-
-        // Every chat closed: no group is left, and the list shows `No open chats`.
-        #expect(ChatsSectionView.groups([closed, doneTicketChat], hidesClosed: true, workspace: workspace).isEmpty)
+        // Every listed chat closed: the list shows `No open chats`.
+        #expect(ChatsSectionView.listedChats([closed, doneTicketChat, closedFeedback], hidesClosed: true, workspace: workspace).isEmpty)
         #expect(ChatListFilter.noOpenChats == "No open chats")
     }
 

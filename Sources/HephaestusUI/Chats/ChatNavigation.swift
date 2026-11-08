@@ -94,6 +94,31 @@ enum ChatNavigator {
         app.openMainWindow(state)
     }
 
+    // MARK: Chat targets (docs/ui.md › Resolving a target)
+
+    /// Where a `chat` target shows the chat: where it is listed (docs/chats.md › Where chats
+    /// appear), decided once the tickets and bundles of its ticket's or bundle's project are
+    /// loaded. Waits for them at most 10 seconds; a ticket or a bundle still not known then counts
+    /// as existing. A chat whose metadata the workspace does not hold shows in the Chats section.
+    static func place(ofChat chatID: String, in workspace: DeviceWorkspace) async -> ChatListPlace {
+        guard let meta = workspace.chats[chatID] else { return .chatsSection }
+        if meta.kind != .project, meta.kind != .feedback {
+            let ticketProjects = [meta.ticketID].compactMap { $0.flatMap(Identifiers.projectID(of:)) }
+            let bundleProjects = [meta.bundleID].compactMap { $0.flatMap(Identifiers.projectID(of:)) }
+            for projectID in ticketProjects + bundleProjects {
+                workspace.ensureProjectLoaded(projectID)
+            }
+            for _ in 0..<200 {
+                let loaded = ticketProjects.allSatisfy { workspace.tickets[$0] != nil }
+                    && bundleProjects.allSatisfy { workspace.bundles[$0] != nil }
+                let failed = (ticketProjects + bundleProjects).contains { workspace.projectLoadErrors[$0] != nil }
+                if loaded || failed || !workspace.isConnected { break }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+        }
+        return workspace.chats[chatID].map(workspace.listedPlace(of:)) ?? .chatsSection
+    }
+
     // MARK: Links (docs/chats.md › Links, images and files)
 
     /// The click on a transcript link: a ticket or bundle id opens the ticket or the bundle; an

@@ -110,7 +110,7 @@ The settings button of a widget opens a popover with the settings of its kind. E
 
 ## Actions
 
-Out of edit mode, a click on a row of a Recent Chats widget opens the chat in the Chats section of its project ([Navigation](ui.md#navigation), target `chat`): on a sub project's Dashboard, the window activates the sub project and selects the chat in its Chats section. The other widgets have no action: a click on a row of an Instances widget does nothing. In edit mode the actions are those of [Edit mode](#edit-mode).
+Out of edit mode, a click on a row of a Recent Chats widget opens the chat where it is listed ([Navigation](ui.md#navigation), target `chat`): in the Chats tab of its ticket or bundle for a ticket, bundle or CI chat whose ticket or bundle exists, otherwise in the Chats section of its project ([Resolving a target](ui.md#resolving-a-target)); on a sub project's Dashboard, the window activates the sub project and selects the chat there. The other widgets have no action: a click on a row of an Instances widget does nothing. In edit mode the actions are those of [Edit mode](#edit-mode).
 
 ## Live updates
 

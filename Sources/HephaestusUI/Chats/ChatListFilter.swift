@@ -1,7 +1,17 @@
-// OWNER: ui-chats — the filter of the chat lists that hides closed chats (docs/chats.md › Where
-// chats appear).
+// OWNER: ui-chats — the list where each chat is listed, and the filter of the chat lists that hides
+// closed chats (docs/chats.md › Where chats appear).
 import HephaestusCore
 import SwiftUI
+
+/// The list where a chat is listed (docs/chats.md › Where chats appear).
+enum ChatListPlace: Hashable {
+    /// The Chats tab of the ticket.
+    case ticket(TicketID)
+    /// The Chats tab of the bundle.
+    case bundle(BundleID)
+    /// The Chats section of the chat's project.
+    case chatsSection
+}
 
 extension DeviceWorkspace {
     /// Whether a chat is closed: its `closed` is true, or its linked ticket (`ticket` of a ticket
@@ -11,6 +21,36 @@ extension DeviceWorkspace {
         if meta.closed { return true }
         guard let ticketID = meta.ticketID, let projectID = Identifiers.projectID(of: ticketID) else { return false }
         return tickets[projectID]?[ticketID]?.status == .done
+    }
+
+    /// Where a chat is listed: a ticket chat in its ticket's Chats tab, a bundle chat in its
+    /// bundle's, a CI chat in that of its ticket or bundle, while that ticket or bundle exists;
+    /// project chats, feedback chats and the chats whose ticket or bundle was deleted in the Chats
+    /// section. A ticket or a bundle whose project's tickets or bundles are not loaded yet counts as
+    /// existing (docs/chats.md › Where chats appear).
+    func listedPlace(of meta: ChatMeta) -> ChatListPlace {
+        switch meta.kind {
+        case .project, .feedback:
+            return .chatsSection
+        case .ticket:
+            return ticketPlace(meta.ticketID)
+        case .bundle:
+            return bundlePlace(meta.bundleID)
+        case .ci:
+            return meta.ticketID != nil ? ticketPlace(meta.ticketID) : bundlePlace(meta.bundleID)
+        }
+    }
+
+    private func ticketPlace(_ ticketID: TicketID?) -> ChatListPlace {
+        guard let ticketID, let projectID = Identifiers.projectID(of: ticketID) else { return .chatsSection }
+        guard let projectTickets = tickets[projectID] else { return .ticket(ticketID) }
+        return projectTickets[ticketID] != nil ? .ticket(ticketID) : .chatsSection
+    }
+
+    private func bundlePlace(_ bundleID: BundleID?) -> ChatListPlace {
+        guard let bundleID, let projectID = Identifiers.projectID(of: bundleID) else { return .chatsSection }
+        guard let projectBundles = bundles[projectID] else { return .bundle(bundleID) }
+        return projectBundles[bundleID] != nil ? .bundle(bundleID) : .chatsSection
     }
 }
 

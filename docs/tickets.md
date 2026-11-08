@@ -556,6 +556,8 @@ Chats and tickets:
 - Bundle chats belong to their bundle and are not listed in the bundle's tickets.
 - An orchestrated ticket chat belongs to its ticket and is in its ticket's `chats`; the bundle's `chats` list only its bundle chats and their CI chats.
 - A CI chat started by a ticket chat is in the ticket's `chats`, and one started by a bundle chat in the bundle's `chats` ([CI chats](chats.md#ci-chats)).
+- While the ticket exists, its ticket chats and the CI chats linked to it are listed only in its Chats tab, not in the Chats section; once the ticket is deleted, they are listed in the Chats section ([Where chats appear](chats.md#where-chats-appear), [Deleting](#deleting)). A feedback chat is listed in the Chats section, and in the Chats tab of the ticket it created.
+- A navigation to a ticket chat, or to a CI chat linked to the ticket, from a search result, `open_in_app`, the status bar's chats popover, a notification, the Dashboard, the Costs section or a link, selects the ticket in the Tickets section, its Chats tab and the chat in it ([Resolving a target](ui.md#resolving-a-target)).
 
 ### Implement sheet
 
@@ -622,6 +624,8 @@ The Bundles section (⌘3) shows the bundles of the selected project in a list o
 
 The layout, actions and texts of this table are defaults. Default chosen at design time.
 
+While the bundle exists, its bundle chats and the CI chats linked to it are listed only in its Chats tab, not in the Chats section, and a navigation to one of them selects the bundle in the Bundles section, its Chats tab and the chat in it; once the bundle is deleted, they are listed in the Chats section ([Where chats appear](chats.md#where-chats-appear), [Resolving a target](ui.md#resolving-a-target)). The ticket chats a bundle chat orchestrates stay listed in their ticket's Chats tab too.
+
 ### Segmented progress bar
 
 The Progress column of the bundle list and the header of the bundle detail show a bundle's progress with the same bar.
@@ -673,6 +677,8 @@ The workflows and agents of the bundle chat show under its row, and those of eac
 | Comment (`tickets.deleteComment`)              | `Delete this comment?`                                                                                                                | The comment's answer stops when it is running, the comment is removed and its attachment files move to the Trash. Emits `ticket.updated`.                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 The confirmation texts, and keeping the chats of a deleted ticket or bundle, are defaults. Default chosen at design time.
+
+- The kept chats of a deleted ticket, its ticket chats and the CI chats linked to it, and those of a deleted bundle, its bundle chats and the CI chats linked to it, are listed in the Chats section from then on ([Where chats appear](chats.md#where-chats-appear)). A feedback chat linked to a deleted ticket stays in the Chats section, and a ticket chat orchestrated by a chat of a deleted bundle stays in its ticket's Chats tab.
 
 - Files are moved to the Trash, never deleted. When the Trash cannot be used (for example on a volume without one), the operation fails with `unavailable` and `<path> cannot be moved to the Trash: <reason>.`; the changes made before the move stay ([Data model](data-model.md#changes-that-touch-several-files)). Default chosen at design time.
 - Claude deletes tickets with `delete_ticket`, bundles with `delete_bundle`, comments with `delete_comment` and ticket attachments with `remove_attachment`. No confirmation is shown; the tool calls follow the chat's permission mode ([Chats](chats.md)).
@@ -808,3 +814,4 @@ Shortcuts of this document. All global shortcuts are listed in [UI](ui.md).
 - R161: After an implementation is pushed in a project with a GitHub page, a CI chat follows CI and reports to the orchestrator, which asks the user how to proceed when CI fails and finishes only once CI is green or the user decides so.
 - R168: The header bars at the top of the panes of the main window's centre column, and the inspector's header, are all 36 points high, so that their bottom separators lie on one line.
 - R175: Ticket descriptions and comments draw the SF Symbol, color, font, shortcut, sound and animation markers, and Claude writes them there when it names one.
+- R179: The Chats section lists, in one list, only the chats the user starts in the project (project and feedback chats) and the chats whose ticket or bundle was deleted; ticket, bundle and CI chats show only on their ticket or bundle.

@@ -131,11 +131,22 @@ extension WindowState {
         } else {
             workspace.ensureProjectLoaded(resolvedProjectID)
         }
+        // A chat target shows the chat where it is listed: the Chats tab of its ticket or bundle,
+        // or the Chats section (docs/ui.md › Resolving a target).
+        var chatPlace = ChatListPlace.chatsSection
+        if case .chat(let chatID) = target {
+            chatPlace = await ChatNavigator.place(ofChat: chatID.uuidString, in: workspace)
+        }
         switch target {
         case .project: break
         case .ticket: section = .tickets
         case .bundle: section = .bundles
-        case .chat: section = .chats
+        case .chat:
+            switch chatPlace {
+            case .ticket: section = .tickets
+            case .bundle: section = .bundles
+            case .chatsSection: section = .chats
+            }
         case .doc: section = .docs
         case .file: section = .code
         case .skill: section = .skills
@@ -154,22 +165,29 @@ extension WindowState {
         case .project, .section:
             break
         case .ticket(let ticketID):
-            let ticket = workspace.tickets[resolvedProjectID]?[ticketID]
-            let projectName = workspace.project(resolvedProjectID)?.name ?? ""
-            updateViewState {
-                $0.selectedTicketIDs = [ticketID]
-                $0.ticketList.clearFilters(hiding: ticket, projectName: projectName)
-            }
+            selectTicket(ticketID, projectID: resolvedProjectID, workspace: workspace)
         case .bundle(let bundleID):
-            let bundle = workspace.bundles[resolvedProjectID]?[bundleID]
-            updateViewState {
-                $0.selectedBundleID = bundleID
-                $0.bundleList.clearFilter(hiding: bundle)
-            }
+            selectBundle(bundleID, projectID: resolvedProjectID, workspace: workspace)
         case .chat(let chatID):
-            updateViewState {
-                $0.selectedChatIDs = [chatID.uuidString]
-                $0.selectedChatAgent = nil
+            switch chatPlace {
+            case .ticket(let ticketID):
+                // The ticket as by a ticket target, its Chats tab and the chat's view in it.
+                let ticketProjectID = Identifiers.projectID(of: ticketID) ?? resolvedProjectID
+                selectTicket(ticketID, projectID: ticketProjectID, workspace: workspace)
+                updateViewState(of: ticketProjectID) { $0.ticketTab = .chats }
+                LinkedChatsView.select(chatID.uuidString, draft: false, owner: .ticket(ticketID), window: self,
+                                       projectID: ticketProjectID)
+            case .bundle(let bundleID):
+                let bundleProjectID = Identifiers.projectID(of: bundleID) ?? resolvedProjectID
+                selectBundle(bundleID, projectID: bundleProjectID, workspace: workspace)
+                updateViewState(of: bundleProjectID) { $0.bundleTab = .chats }
+                LinkedChatsView.select(chatID.uuidString, draft: false, owner: .bundle(bundleID), window: self,
+                                       projectID: bundleProjectID)
+            case .chatsSection:
+                updateViewState {
+                    $0.selectedChatIDs = [chatID.uuidString]
+                    $0.selectedChatAgent = nil
+                }
             }
         case .doc(_, let path, let fragment):
             if viewState.selectedDocPath != path {
@@ -191,6 +209,25 @@ extension WindowState {
         case .webTab(_, let tabID):
             WebTabsController.willSelectByNavigation(in: self, projectID: resolvedProjectID)
             updateViewState { $0.selectedWebTabID = tabID.uuidString }
+        }
+    }
+
+    /// Selects a ticket in the Tickets section, clearing the list filters that hide it.
+    private func selectTicket(_ ticketID: String, projectID: String, workspace: DeviceWorkspace) {
+        let ticket = workspace.tickets[projectID]?[ticketID]
+        let projectName = workspace.project(projectID)?.name ?? ""
+        updateViewState(of: projectID) {
+            $0.selectedTicketIDs = [ticketID]
+            $0.ticketList.clearFilters(hiding: ticket, projectName: projectName)
+        }
+    }
+
+    /// Selects a bundle in the Bundles section, turning the done filter off when it hides it.
+    private func selectBundle(_ bundleID: String, projectID: String, workspace: DeviceWorkspace) {
+        let bundle = workspace.bundles[projectID]?[bundleID]
+        updateViewState(of: projectID) {
+            $0.selectedBundleID = bundleID
+            $0.bundleList.clearFilter(hiding: bundle)
         }
     }
 
