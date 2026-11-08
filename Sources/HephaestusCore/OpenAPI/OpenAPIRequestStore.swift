@@ -39,8 +39,6 @@ public struct OpenAPIStoredContract: Codable, Sendable, Equatable {
     public var deviceID: String
     public var projectID: String
     public var path: String
-    /// The name of the selected environment; nil before a choice (docs/openapi.md › Environment).
-    public var environment: String?
     /// By scheme name.
     public var credentials: [String: OpenAPIStoredCredential] = [:]
     public var headers: [OpenAPIHeader] = []
@@ -58,9 +56,9 @@ public struct OpenAPIStoredContract: Codable, Sendable, Equatable {
         deviceID = try c.decode(String.self, forKey: .deviceID)
         projectID = try c.decode(String.self, forKey: .projectID)
         path = try c.decode(String.self, forKey: .path)
-        // The keys server, usesCustomURL, customURL and serverVariables of an earlier version are
-        // ignored, and left out at the next write.
-        environment = try c.decodeIfPresent(String.self, forKey: .environment)
+        // The keys environment, server, usesCustomURL, customURL and serverVariables of an earlier
+        // version are ignored, and left out at the next write: every Contract view uses the
+        // project's current working environment (docs/openapi.md › Stored values).
         credentials = try c.decodeIfPresent([String: OpenAPIStoredCredential].self, forKey: .credentials) ?? [:]
         headers = try c.decodeIfPresent([OpenAPIHeader].self, forKey: .headers) ?? []
         operations = try c.decodeIfPresent([String: OpenAPIStoredOperation].self, forKey: .operations) ?? [:]

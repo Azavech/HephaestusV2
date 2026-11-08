@@ -35,6 +35,21 @@ struct SidebarSectionsTests {
         #expect(ProjectSection.builds.shortcut.modifiers == .command)
     }
 
+    @Test("The footer's pop-up lists the environments of a Go service in their order; another type and a Go service without environments show none")
+    func footerEnvironments() {
+        let environments = [ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080), ProjectEnvironment(name: "staging")]
+        func detail(_ type: ProjectType, _ environments: [ProjectEnvironment]) -> ProjectDetail {
+            ProjectDetail(project: Project(id: "API", name: "API", created: Date(), type: type, environments: environments),
+                          rootPath: "/Users/example/api", environments: environments, currentEnvironment: environments.last?.name)
+        }
+        #expect(SidebarView.footerEnvironments(detail(.goService, environments)) == environments)
+        #expect(SidebarView.footerEnvironments(detail(.goService, [])).isEmpty)
+        #expect(SidebarView.footerEnvironments(detail(.none, environments)).isEmpty)
+        #expect(SidebarView.footerEnvironments(detail(.swiftApplication, environments)).isEmpty)
+        #expect(SidebarView.footerEnvironments(nil).isEmpty)
+        #expect(detail(.goService, environments).currentWorkingEnvironment?.name == "staging")
+    }
+
     @Test("The Builds section links no item")
     func buildsLinkNothing() {
         var state = ProjectViewState()

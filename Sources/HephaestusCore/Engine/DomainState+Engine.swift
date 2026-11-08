@@ -154,6 +154,14 @@ extension Engine {
         domain.registry = registry
     }
 
+    /// Writes current-environments.yml and keeps it in memory (docs/data-model.md › Current
+    /// environments file).
+    func saveCurrentEnvironments(_ value: CurrentEnvironments) throws {
+        let directory = dataDirectory
+        try record(directory.currentEnvironmentsFile) { try DeviceFileStore.write(value, to: directory) }
+        currentEnvironments = value
+    }
+
     /// Writes `.hephaestus/.gitignore` with the line `chats/`, or appends the line when the file
     /// lacks it (docs/data-model.md › Project folder layout).
     func ensureGitignore(in folder: ProjectFolder) throws {
@@ -218,7 +226,8 @@ extension Engine {
         return ProjectDetail(project: loaded.project, rootPath: loaded.rootPath, parentID: loaded.parentID,
                              subprojects: subprojects, gitRemoteURL: remoteURL, githubPage: githubPage(of: id),
                              originGithubPage: originGithubPage(root: loaded.rootPath),
-                             environments: environments.environments, inheritedEnvironments: environments.inherited)
+                             environments: environments.environments, inheritedEnvironments: environments.inherited,
+                             currentEnvironment: currentEnvironment(of: id, in: environments.environments))
     }
 
     /// `project.updated` with the current ProjectDetail.

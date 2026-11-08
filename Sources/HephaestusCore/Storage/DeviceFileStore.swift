@@ -10,18 +10,21 @@ public struct DeviceFiles: Sendable, Hashable {
     public var remotes: RemotesFile
     /// nil when `plan-usage.yml` is missing or was invalid.
     public var planUsage: PlanUsage?
+    /// Empty when `current-environments.yml` is missing or was invalid.
+    public var currentEnvironments = CurrentEnvironments()
 }
 
 /// Loading and writing of `device.yml`, `secrets.json`, `settings.yml`, `registry.yml`,
-/// `remotes.yml` and `plan-usage.yml` (docs/data-model.md › Loading, step 2).
+/// `remotes.yml`, `plan-usage.yml` and `current-environments.yml` (docs/data-model.md › Loading,
+/// step 2).
 public enum DeviceFileStore {
     /// Reads the device files in the order of docs/data-model.md › Loading. A missing
     /// file is created with its defaults (a new device id, a new pairing code and external
     /// token, empty lists). An invalid file is renamed to `<file>.invalid`, replacing an older
     /// one, logged as an error, and recreated with its defaults. `secrets.json` gets the mode
     /// 0600 when its mode differs, and is written again when its pairing code or external
-    /// token was missing. `plan-usage.yml` is not created: a missing or invalid one gives no
-    /// plan usage.
+    /// token was missing. `plan-usage.yml` and `current-environments.yml` are not created: a
+    /// missing or invalid one gives no plan usage, or no current working environment chosen.
     public static func loadAll(_ directory: DataDirectory, log: LogSink?) throws -> DeviceFiles {
         let device = try loadYAML(DeviceRecord.self, at: directory.deviceFile, in: directory, log: log,
                                   makeDefault: DeviceRecord.newDevice)
@@ -35,9 +38,11 @@ public enum DeviceFileStore {
         }
         let remotes = try loadYAML(RemotesFile.self, at: directory.remotesFile, in: directory, log: log,
                                    makeDefault: { RemotesFile() })
-        let planUsage = try loadPlanUsage(directory, log: log)
+        let planUsage = try loadOptionalYAML(PlanUsage.self, at: directory.planUsageFile, in: directory, log: log)
+        let currentEnvironments = try loadOptionalYAML(CurrentEnvironments.self, at: directory.currentEnvironmentsFile,
+                                                       in: directory, log: log) ?? CurrentEnvironments()
         return DeviceFiles(device: device, secrets: secrets, settings: settings, registry: registry, remotes: remotes,
-                           planUsage: planUsage)
+                           planUsage: planUsage, currentEnvironments: currentEnvironments)
     }
 
     // MARK: Writing
@@ -65,6 +70,11 @@ public enum DeviceFileStore {
     @discardableResult
     public static func write(_ planUsage: PlanUsage, to directory: DataDirectory) throws -> String {
         try ProjectFileStore.writeYAML(planUsage, to: directory.planUsageFile)
+    }
+
+    @discardableResult
+    public static func write(_ currentEnvironments: CurrentEnvironments, to directory: DataDirectory) throws -> String {
+        try ProjectFileStore.writeYAML(currentEnvironments, to: directory.currentEnvironmentsFile)
     }
 
     /// Writes `secrets.json` with mode 0600.
@@ -105,10 +115,17 @@ public enum DeviceFileStore {
     /// Reads `plan-usage.yml`: nil when it is missing; an invalid file is set aside as
     /// `plan-usage.yml.invalid`, logged, and gives nil.
     public static func loadPlanUsage(_ directory: DataDirectory, log: LogSink?) throws -> PlanUsage? {
-        let url = directory.planUsageFile
+        try loadOptionalYAML(PlanUsage.self, at: directory.planUsageFile, in: directory, log: log)
+    }
+
+    /// Reads a YAML device file that is never created at launch, `plan-usage.yml` or
+    /// `current-environments.yml`: nil when it is missing; an invalid file is set aside as
+    /// `<file>.invalid`, logged, and gives nil.
+    public static func loadOptionalYAML<T: Codable>(_ type: T.Type, at url: URL, in directory: DataDirectory,
+                                                    log: LogSink?) throws -> T? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         do {
-            return try ProjectFileStore.decodeYAML(PlanUsage.self, at: url)
+            return try ProjectFileStore.decodeYAML(type, at: url)
         } catch let error as StorageError {
             guard case .invalidFile = error else { throw error }
             try setAside(url, in: directory, reason: error.reason, log: log, recreated: false)

@@ -192,7 +192,7 @@ extension Engine {
             "deviceName": deviceInfo.name,
             "docsPath": project.docsPath,
             "projectType": project.type.label,
-            "environments": Prompts.environments(resolvedEnvironments(of: project.id, project: project).environments, type: project.type),
+            "environments": environmentsBlock(of: project),
             "globalMemories": globalMemories,
         ]
         switch meta.kind {
@@ -233,6 +233,13 @@ extension Engine {
             values["githubRepository"] = githubPage(of: project.id).flatMap(GitHubPage.repository(of:)) ?? "none"
         }
         return Prompts.systemPrompt(kind: meta.kind, values: values)
+    }
+
+    /// `{{environments}}` of a project: its environments as they apply and its current working
+    /// environment (docs/chats.md › Rendered blocks).
+    func environmentsBlock(of project: Project) -> String {
+        let environments = resolvedEnvironments(of: project.id, project: project).environments
+        return Prompts.environments(environments, current: currentEnvironment(of: project.id, in: environments), type: project.type)
     }
 
     /// `{{ticket}}` of a ticket, listing its chats other than `chatID` that have metadata.

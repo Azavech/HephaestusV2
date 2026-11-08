@@ -138,10 +138,10 @@ struct PromptAndNamingTests {
     func environmentsBlock() throws {
         let blocks = MarkdownSource.fencedBlocks(in: try Repository.doc("chats.md"))
         let documented = try #require(blocks.first { $0.text.hasPrefix(Self.environmentsHeader + "\n") })
-        #expect(Prompts.environments(Self.exampleEnvironments, type: .goService) == "\n\n" + documented.text)
+        #expect(Prompts.environments(Self.exampleEnvironments, current: "staging", type: .goService) == "\n\n" + documented.text)
     }
 
-    @Test("{{environments}}: the base URL, or the name alone without URL, then each Kubernetes field set, in the documented order and as stored; an Argo CD application <name> stays <name>")
+    @Test("{{environments}}: the base URL, or the name alone without URL, then each Kubernetes field set, in the documented order and as stored; an Argo CD application <name> stays <name>; then the current working environment, the first without one")
     func environmentsFields() {
         let environments = [
             ProjectEnvironment(name: "prod", url: "https://api.example.com:8443/v1/", port: 9000, deployment: "orders-api",
@@ -159,15 +159,18 @@ struct PromptAndNamingTests {
             "- New Environment",
             "- qa; deployment: orders-api",
         ]
-        #expect(Prompts.environments(environments, type: .goService) == "\n\n\(Self.environmentsHeader)\n" + lines.joined(separator: "\n"))
+        #expect(Prompts.environments(environments, current: "dev", type: .goService) == "\n\n\(Self.environmentsHeader)\n"
+            + (lines + ["The current working environment is dev: use it when the user names no environment."]).joined(separator: "\n"))
+        #expect(Prompts.environments(environments, current: nil, type: .goService) == "\n\n\(Self.environmentsHeader)\n"
+            + (lines + ["The current working environment is prod: use it when the user names no environment."]).joined(separator: "\n"))
     }
 
     @Test("{{environments}}: the none line for a Go service without environments; empty for the other types, environments or not")
     func environmentsNoneAndOtherTypes() {
-        #expect(Prompts.environments([], type: .goService) == "\n\n\(Self.environmentsHeader)\n- none: the user adds them in Project Settings")
+        #expect(Prompts.environments([], current: nil, type: .goService) == "\n\n\(Self.environmentsHeader)\n- none: the user adds them in Project Settings")
         for type in [ProjectType.none, .swiftApplication] {
-            #expect(Prompts.environments(Self.exampleEnvironments, type: type) == "", "\(type)")
-            #expect(Prompts.environments([], type: type) == "", "\(type)")
+            #expect(Prompts.environments(Self.exampleEnvironments, current: "local", type: type) == "", "\(type)")
+            #expect(Prompts.environments([], current: nil, type: type) == "", "\(type)")
         }
     }
 
@@ -175,7 +178,8 @@ struct PromptAndNamingTests {
     func environmentsInCommonPrompt() {
         var values = ["projectName": "Orders", "projectID": "ORD", "projectRoot": "/Users/example/Developer/orders",
                       "workingDirectory": "It is your working directory.", "deviceName": "Studio", "docsPath": "docs",
-                      "projectType": "Go service", "environments": Prompts.environments(Self.exampleEnvironments, type: .goService),
+                      "projectType": "Go service",
+                      "environments": Prompts.environments(Self.exampleEnvironments, current: "staging", type: .goService),
                       "parentMemories": ""]
         let go = Prompts.render(Prompts.text(.common), values)
         let block = [
@@ -184,17 +188,18 @@ struct PromptAndNamingTests {
             "- local: http://127.0.0.1:8080",
             "- staging: https://staging.example.com; namespace: orders; deployment: orders-api; "
                 + "Argo CD application: argocd/orders-staging; kubeconfig file: ~/.kube/staging.yaml",
-            "- preview; namespace: orders-preview; kubeconfig file: /Users/example/.kube/preview.yaml\n",
+            "- preview; namespace: orders-preview; kubeconfig file: /Users/example/.kube/preview.yaml",
+            "The current working environment is staging: use it when the user names no environment.\n",
             "These rules apply in every chat.",
         ].joined(separator: "\n")
         #expect(go.contains(block))
 
-        values["environments"] = Prompts.environments([], type: .goService)
+        values["environments"] = Prompts.environments([], current: nil, type: .goService)
         #expect(Prompts.render(Prompts.text(.common), values).contains("The project's type is Go service.\n\n\(Self.environmentsHeader)\n"
             + "- none: the user adds them in Project Settings\n\nThese rules apply in every chat."))
 
         values["projectType"] = "None"
-        values["environments"] = Prompts.environments(Self.exampleEnvironments, type: .none)
+        values["environments"] = Prompts.environments(Self.exampleEnvironments, current: "local", type: .none)
         let none = Prompts.render(Prompts.text(.common), values)
         #expect(none.contains("The project's type is None.\n\nThese rules apply in every chat."))
         #expect(!none.contains(Self.environmentsHeader))

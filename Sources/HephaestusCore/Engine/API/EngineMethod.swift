@@ -89,7 +89,7 @@ public enum EngineMethods {
     public static let all: [any EngineMethod.Type] = [
         DeviceInfoMethod.self, SnapshotGet.self,
         ProjectsList.self, ProjectsGet.self, ProjectsCreate.self, ProjectsOpen.self, ProjectsUpdate.self,
-        ProjectsRemove.self, ProjectsEnsureHephaestus.self,
+        ProjectsSetCurrentEnvironment.self, ProjectsRemove.self, ProjectsEnsureHephaestus.self,
         KubernetesStatus.self, KubernetesLogs.self, KubernetesEvents.self, KubernetesRestart.self, KubernetesScale.self,
         KubernetesForward.self, KubernetesStopForward.self, ArgoCDStatus.self, ArgoCDSync.self,
         KubernetesCheck.self, KubernetesNamespaces.self, KubernetesDeployments.self,

@@ -574,7 +574,7 @@ struct ChatInteractionTests {
         }
     }
 
-    @Test("The system prompt of a Go service chat lists the project's environments after its type; a project of another type lists none")
+    @Test("The system prompt of a Go service chat lists the project's environments after its type, then its current working environment; a project of another type lists none")
     func environmentsInSystemPrompt() async throws {
         try await withChatEngine { bed in
             func systemPrompt(_ chat: ChatMeta, _ index: Int) async throws -> String {
@@ -596,15 +596,25 @@ struct ChatInteractionTests {
 
             _ = try await bed.connection.call(ProjectsUpdate.self, .init(projectID: "DEMO", type: .goService))
             let go = try await systemPrompt(try await bed.createChat(message: "Plan"), 1)
-            #expect(go.contains("The project's type is Go service.\n\n\(header)\n- local: http://127.0.0.1:8080\n"
+            let lines = "The project's type is Go service.\n\n\(header)\n- local: http://127.0.0.1:8080\n"
                 + "- staging: https://staging.example.com; namespace: orders; deployment: orders-api; "
-                + "Argo CD application: orders-staging; kubeconfig file: ~/.kube/staging.yaml\n\nThese rules apply in every chat."))
+                + "Argo CD application: orders-staging; kubeconfig file: ~/.kube/staging.yaml\n"
+            #expect(go.contains(lines + "The current working environment is local: use it when the user names no environment.\n\n"
+                + "These rules apply in every chat."))
             #expect(!go.contains("{{"))
 
+            // A chat started after a change of the current working environment names the new one.
+            _ = try await bed.connection.call(ProjectsSetCurrentEnvironment.self, .init(projectID: "DEMO", environment: "staging"))
+            let current = try await systemPrompt(try await bed.createChat(message: "Plan"), 2)
+            #expect(current.contains(lines + "The current working environment is staging: use it when the user names no environment.\n\n"
+                + "These rules apply in every chat."))
+
+            // Without environments, the line is left out.
             _ = try await bed.connection.call(ProjectsUpdate.self, .init(projectID: "DEMO", environments: []))
-            let empty = try await systemPrompt(try await bed.createChat(message: "Plan"), 2)
+            let empty = try await systemPrompt(try await bed.createChat(message: "Plan"), 3)
             #expect(empty.contains("The project's type is Go service.\n\n\(header)\n- none: the user adds them in Project Settings\n\n"
                 + "These rules apply in every chat."))
+            #expect(!empty.contains("The current working environment"))
         }
     }
 
@@ -629,7 +639,8 @@ struct ChatInteractionTests {
             let prompt = try #require(process.request.arguments.firstIndex(of: "--append-system-prompt").map { process.request.arguments[$0 + 1] })
             #expect(prompt.contains("The project's type is Go service.\n\n\(header)\n- local: http://127.0.0.1:8080\n"
                 + "- staging: https://staging.example.com; deployment: orders-worker\n"
-                + "- replay: http://127.0.0.1:9090\n\nThese rules apply in every chat."))
+                + "- replay: http://127.0.0.1:9090\n"
+                + "The current working environment is local: use it when the user names no environment.\n\nThese rules apply in every chat."))
         }
     }
 

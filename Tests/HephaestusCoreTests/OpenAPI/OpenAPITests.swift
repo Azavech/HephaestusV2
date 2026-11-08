@@ -456,8 +456,6 @@ struct OpenAPIRequestStoreTests {
             let store = OpenAPIRequestStore(file: file)
             var contract = store.contract(deviceID: "D1", projectID: "DEMO", path: "api/openapi.yaml")
             #expect(contract.operations.isEmpty)
-            #expect(contract.environment == nil)
-            contract.environment = "staging"
             contract.credentials["bearerAuth"] = OpenAPIStoredCredential(token: "secret")
             contract.headers = [OpenAPIHeader(name: "X-Tenant", value: "demo")]
             var operation = OpenAPIStoredOperation()
@@ -485,33 +483,33 @@ struct OpenAPIRequestStoreTests {
             try Data("not json".utf8).write(to: file)
             let store = OpenAPIRequestStore(file: file)
             var contract = store.contract(deviceID: "D", projectID: "P", path: "a.yaml")
-            contract.environment = "local"
+            contract.headers = [OpenAPIHeader(name: "X-Tenant", value: "demo")]
             store.set(contract)
             try store.save()
-            #expect(OpenAPIRequestStore(file: file).contract(deviceID: "D", projectID: "P", path: "a.yaml").environment == "local")
+            #expect(OpenAPIRequestStore(file: file).contract(deviceID: "D", projectID: "P", path: "a.yaml").headers
+                == [OpenAPIHeader(name: "X-Tenant", value: "demo")])
         }
     }
 
-    @Test("The server keys of an earlier version are ignored and left out at the next write")
+    @Test("The environment and server keys of an earlier version are ignored and left out at the next write")
     func earlierServerKeys() throws {
         try withTemporaryDirectory { folder in
             let file = folder.appendingPathComponent(OpenAPIRequestStore.fileName)
             try Data(#"""
-                {"contracts": [{"deviceID": "D", "projectID": "P", "path": "a.yaml",
+                {"contracts": [{"deviceID": "D", "projectID": "P", "path": "a.yaml", "environment": "staging",
                   "server": "https://{region}.example.com/v1", "usesCustomURL": true, "customURL": "http://localhost:3000",
                   "serverVariables": {"https://{region}.example.com/v1": {"region": "us"}},
                   "headers": [{"name": "X-Tenant", "value": "demo"}]}]}
                 """#.utf8).write(to: file)
             let store = OpenAPIRequestStore(file: file)
             var contract = store.contract(deviceID: "D", projectID: "P", path: "a.yaml")
-            #expect(contract.environment == nil)
             #expect(contract.headers == [OpenAPIHeader(name: "X-Tenant", value: "demo")])
-            contract.environment = "local"
+            contract.headers.append(OpenAPIHeader(name: "X-Trace", value: "1"))
             store.set(contract)
             try store.save()
             let text = try String(contentsOf: file, encoding: .utf8)
-            #expect(text.contains(#""environment" : "local""#))
-            for key in ["server", "usesCustomURL", "customURL", "serverVariables"] {
+            #expect(text.contains(#""X-Trace""#))
+            for key in ["environment", "server", "usesCustomURL", "customURL", "serverVariables"] {
                 #expect(!text.contains("\"\(key)\""), "\(key)")
             }
         }
@@ -526,7 +524,6 @@ struct OpenAPIRequestStoreTests {
             try Data(block.text.utf8).write(to: file)
             let contract = OpenAPIRequestStore(file: file)
                 .contract(deviceID: "6F1C2D3E-4A5B-4C6D-8E7F-901A2B3C4D5E", projectID: "DEMO", path: "api/openapi.yaml")
-            #expect(contract.environment == "local")
             #expect(contract.credentials["bearerAuth"]?.token == "example-token")
             #expect(contract.headers == [OpenAPIHeader(name: "X-Tenant", value: "demo")])
             #expect(contract.operations["GET /pets/{petId}"]?.parameters["path:petId"] == "42")

@@ -161,12 +161,17 @@ public struct ProjectDetail: Codable, Sendable, Hashable {
     /// The environments the project inherits, as its parent resolves them, without the project's
     /// changes: the first elements of `environments` before the changes apply.
     public var inheritedEnvironments: [ProjectEnvironment]
+    /// The name of the project's current working environment: the one the main device keeps for
+    /// it, else the first of `environments`; absent without environments (docs/projects.md ›
+    /// Current working environment).
+    public var currentEnvironment: String?
 
     /// Without `environments`, the project's own environments apply, as a project that inherits
     /// none has them.
     public init(project: Project, rootPath: String, parentID: ProjectID? = nil, subprojects: [ProjectSummary] = [],
                 gitRemoteURL: String? = nil, githubPage: String? = nil, originGithubPage: String? = nil,
-                environments: [ProjectEnvironment]? = nil, inheritedEnvironments: [ProjectEnvironment] = []) {
+                environments: [ProjectEnvironment]? = nil, inheritedEnvironments: [ProjectEnvironment] = [],
+                currentEnvironment: String? = nil) {
         self.project = project
         self.rootPath = rootPath
         self.parentID = parentID
@@ -176,11 +181,12 @@ public struct ProjectDetail: Codable, Sendable, Hashable {
         self.originGithubPage = originGithubPage
         self.environments = environments ?? Self.ownEnvironments(of: project)
         self.inheritedEnvironments = inheritedEnvironments
+        self.currentEnvironment = currentEnvironment
     }
 
     private enum CodingKeys: String, CodingKey {
         case project, rootPath, parentID, subprojects, gitRemoteURL, githubPage, originGithubPage, environments,
-             inheritedEnvironments
+             inheritedEnvironments, currentEnvironment
     }
 
     /// An engine of an earlier version sends neither `environments` nor `inheritedEnvironments`:
@@ -196,6 +202,14 @@ public struct ProjectDetail: Codable, Sendable, Hashable {
         originGithubPage = try c.decodeIfPresent(String.self, forKey: .originGithubPage)
         environments = try c.decodeIfPresent([ProjectEnvironment].self, forKey: .environments) ?? Self.ownEnvironments(of: project)
         inheritedEnvironments = try c.decodeIfPresent([ProjectEnvironment].self, forKey: .inheritedEnvironments) ?? []
+        currentEnvironment = try c.decodeIfPresent(String.self, forKey: .currentEnvironment)
+    }
+
+    /// The current working environment as it applies: the one `currentEnvironment` names, else the
+    /// first environment, which an engine of an earlier version, without `currentEnvironment`,
+    /// gives (docs/engine-api.md › ProjectDetail).
+    public var currentWorkingEnvironment: ProjectEnvironment? {
+        currentEnvironment.flatMap { name in environments.first { $0.name == name } } ?? environments.first
     }
 
     /// The environments of a project that inherits none: its own for a Go service, none otherwise.

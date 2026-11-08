@@ -18,6 +18,9 @@ extension Engine {
         register(ProjectsUpdate.self, actors: [.user, .claude]) { [unowned self] params, actor in
             try await self.projectsUpdate(params, actor)
         }
+        register(ProjectsSetCurrentEnvironment.self, actors: [.user]) { [unowned self] params, actor in
+            try await self.projectsSetCurrentEnvironment(params, actor)
+        }
         register(ProjectsRemove.self, actors: [.user, .claude]) { [unowned self] params, actor in
             try await self.projectsRemove(params, actor)
         }
@@ -166,6 +169,7 @@ extension Engine {
         guard domain.projectID(atRoot: rootPath) == project.id else {
             throw EngineError(.internal, "Internal error: \(folder.projectFile.path) cannot be loaded.")
         }
+        keepCurrentEnvironments(since: settingsBefore)
         // 7. Top-level entries now loaded as descendants of the opened project leave registry.yml.
         let descendantRoots = Set(domain.descendants(of: project.id).compactMap { domain.projects[$0]?.rootPath })
         var registry = domain.registry
@@ -267,6 +271,10 @@ extension Engine {
         guard new != old else { return projectDetail(id)! }
         let settingsBefore = inheritedSettings()
         try saveProject(new)
+        // A renamed environment stays current; one that no longer applies gives way to the first
+        // (docs/projects.md › Current working environment).
+        keepCurrentEnvironments(since: settingsBefore,
+                                renamed: Self.renamedEnvironments(from: old.environments, to: new.environments))
         emitProjectUpdated(id, origin: actor)
         // The sub projects that use its settings follow (docs/projects.md › GitHub page, › Inherited
         // environments).
@@ -276,6 +284,26 @@ extension Engine {
         }
         // The GitHub tabs follow the pages that changed (docs/web-tabs.md › Keeping the GitHub tabs).
         keepGitHubTabs(origin: actor)
+        return projectDetail(id)!
+    }
+
+    /// docs/engine-api.md › projects.setCurrentEnvironment: the main device keeps the choice outside
+    /// `project.yml`, even for the environment that was current as the first one.
+    func projectsSetCurrentEnvironment(_ params: ProjectsSetCurrentEnvironment.Params, _ actor: Actor) async throws -> ProjectDetail {
+        let id = try loadedProjectID(params.projectID)
+        let environments = resolvedEnvironments(of: id).environments
+        guard environments.contains(where: { $0.name == params.environment }) else {
+            throw EngineError.invalid("environment", "\(id) has no environment named “\(params.environment)”")
+        }
+        let before = currentEnvironment(of: id, in: environments)
+        if currentEnvironments.projects[id] != params.environment {
+            var changed = currentEnvironments
+            changed.projects[id] = params.environment
+            try saveCurrentEnvironments(changed)
+        }
+        if before != params.environment {
+            emitProjectUpdated(id, origin: actor)
+        }
         return projectDetail(id)!
     }
 
@@ -302,6 +330,7 @@ extension Engine {
             }
         }
         let unloaded = unloadTree(id)
+        forgetCurrentEnvironments(of: unloaded.projectIDs)
         // The comment answers of their tickets stop (docs/engine-api.md › projects.remove).
         stopCommentAnswers(projectIDs: Set(unloaded.projectIDs))
         emitProjectsRemoved(unloaded.projectIDs, origin: actor)

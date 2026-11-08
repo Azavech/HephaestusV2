@@ -40,6 +40,9 @@ public actor Engine {
     /// The newest plan usage known, `plan-usage.yml` at launch, hidden once its reset time has
     /// passed (Claude/PlanUsageUpdates.swift).
     var planUsage: PlanUsage?
+    /// `current-environments.yml`: the current working environment chosen for each project
+    /// (Engine/DomainState+Environments.swift).
+    var currentEnvironments: CurrentEnvironments
     /// The engine's own writes, recognized by the file watchers (docs/data-model.md › External
     /// changes).
     let ownWrites = OwnWrites()
@@ -139,6 +142,7 @@ public actor Engine {
         self.computerName = Engine.readComputerName()
         self.settings = files.settings
         self.planUsage = files.planUsage
+        self.currentEnvironments = files.currentEnvironments
         self.domain = DomainState(registry: files.registry)
         self.titleNamer = HaikuTitleNamer()
         self.notificationSummarizer = HaikuNotificationSummarizer()

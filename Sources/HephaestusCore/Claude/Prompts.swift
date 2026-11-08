@@ -63,11 +63,11 @@ enum Prompts {
     /// `{{environments}}`, for a project whose type is `goService`: a blank line, the line that
     /// introduces the environments, then `- <name>: <base URL>`, or `- <name>` without a URL, per
     /// environment in their order, followed by `; <field>: <value>` for each Kubernetes field it
-    /// sets, as stored;
+    /// sets, as stored, then the line that names the current working environment, `current`;
     /// `- none: the user adds them in Project Settings` without environments. Empty for the other
     /// types. The common prompt writes it at the end of its first paragraph, right after the
     /// project's type, so its blank line starts a paragraph of its own.
-    static func environments(_ environments: [ProjectEnvironment], type: ProjectType) -> String {
+    static func environments(_ environments: [ProjectEnvironment], current: String?, type: ProjectType) -> String {
         guard type == .goService else { return "" }
         let lines = environments.map { environment in
             let fields = [("namespace", environment.namespace), ("deployment", environment.deployment),
@@ -75,8 +75,15 @@ enum Prompts {
             let details = fields.compactMap { label, value in value.map { "; \(label): \($0)" } }
             return "- \(environment.name)" + (environment.baseURL.map { ": \($0)" } ?? "") + details.joined()
         }
+        let currentLine = lines.isEmpty ? nil : (current ?? environments.first?.name).map(currentEnvironmentLine)
         return "\n\nThe project's environments, where the Go service runs; the Kubernetes and Argo CD tools take an environment's name:\n"
-            + (lines.isEmpty ? "- none: the user adds them in Project Settings" : lines.joined(separator: "\n"))
+            + (lines.isEmpty ? "- none: the user adds them in Project Settings" : (lines + [currentLine].compactMap { $0 }).joined(separator: "\n"))
+    }
+
+    /// The line of `{{environments}}` that names the current working environment
+    /// (docs/projects.md › Current working environment).
+    static func currentEnvironmentLine(_ name: String) -> String {
+        "The current working environment is \(name): use it when the user names no environment."
     }
 
     /// The most lines and characters of `MEMORY.md` that `{{globalMemories}}` keeps: the limits of

@@ -28,7 +28,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "get_project",
             description: #"""
-            Get a project: its .hephaestus/project.yml settings (name, type, color, icon, docs folder, GitHub page, use parent settings, sub projects, web tabs, enabled skills, chat defaults, own environments, changes to inherited environments), root folder, parent, sub projects, git remote URL, GitHub page (githubPage: its parent's for a sub project that uses its parent's settings, else the page set in Project Settings, else the page of its origin remote on GitHub) and environments (environments: those that apply, for a sub project that uses its parent's settings its parent's environments with its changes first, then its own; inheritedEnvironments: the parent's environments it inherits).
+            Get a project: its .hephaestus/project.yml settings (name, type, color, icon, docs folder, GitHub page, use parent settings, sub projects, web tabs, enabled skills, chat defaults, own environments, changes to inherited environments), root folder, parent, sub projects, git remote URL, GitHub page (githubPage: its parent's for a sub project that uses its parent's settings, else the page set in Project Settings, else the page of its origin remote on GitHub) and environments (environments: those that apply, for a sub project that uses its parent's settings its parent's environments with its changes first, then its own; inheritedEnvironments: the parent's environments it inherits; currentEnvironment: the name of the current working environment, to use when the user names no environment).
             """#,
             inputSchema: schema(#"""
             {

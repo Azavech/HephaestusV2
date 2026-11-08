@@ -118,6 +118,24 @@ public enum ProjectsUpdate: EngineMethod {
     public typealias Result = ProjectDetail
 }
 
+/// `projects.setCurrentEnvironment`: makes an environment the project's current working
+/// environment, kept by the main device outside `project.yml` (docs/projects.md › Current working
+/// environment). Actors: user.
+public enum ProjectsSetCurrentEnvironment: EngineMethod {
+    public static let name = "projects.setCurrentEnvironment"
+    public struct Params: Codable, Sendable, Hashable {
+        public var projectID: ProjectID
+        /// The name of one of the project's environments as they apply.
+        public var environment: String
+
+        public init(projectID: ProjectID, environment: String) {
+            self.projectID = projectID
+            self.environment = environment
+        }
+    }
+    public typealias Result = ProjectDetail
+}
+
 /// `projects.remove`: unregisters the project and its descendants. Actors: user, claude.
 public enum ProjectsRemove: EngineMethod {
     public static let name = "projects.remove"

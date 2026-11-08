@@ -54,14 +54,15 @@ struct ProjectEnvironmentsSection: View {
 
     private var inheritedNames: Set<String> { Set(current.inheritedEnvironments.map(\.name)) }
 
-    /// The selected environment: the one of `selection`, else the pending one, else the first.
+    /// The selected environment: the one of `selection`, else the pending one, else the project's
+    /// current working environment, which the section opens on.
     private var selected: ProjectEnvironment? {
         for name in [selection, pending?.name].compactMap({ $0 }) {
             if let match = environments.first(where: { $0.name == name }) {
                 return match
             }
         }
-        return environments.first
+        return current.currentWorkingEnvironment
     }
 
     private func isInherited(_ environment: ProjectEnvironment) -> Bool {
@@ -312,7 +313,9 @@ struct ProjectEnvironmentsSection: View {
     // MARK: Selection
 
     /// Keeps the selection on an environment the project has: the pending one once it is there,
-    /// else the first one when the selected one was removed or renamed elsewhere.
+    /// else the first one when the selected one was removed or renamed elsewhere. The section
+    /// opens on the project's current working environment; the pop-up does not change it
+    /// (docs/projects.md › Environments).
     private func syncSelection() {
         if let pending, names.contains(pending.name) {
             selection = pending.name
@@ -329,8 +332,10 @@ struct ProjectEnvironmentsSection: View {
         if let selection, names.contains(selection) { return }
         if selection != nil {
             identity = UUID()
+            selection = names.first
+        } else {
+            selection = current.currentWorkingEnvironment?.name
         }
-        selection = names.first
     }
 
     /// An environment chosen in the pop-up.

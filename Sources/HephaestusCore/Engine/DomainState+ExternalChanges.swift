@@ -259,6 +259,9 @@ extension Engine {
                     loadRegisteredProjects()
                 }
             }
+            // A current working environment that no longer applies gives way to the first; a rename
+            // outside the app counts as a removal (docs/projects.md › Current working environment).
+            keepCurrentEnvironments(since: settingsBefore)
             emitProjectUpdated(id, origin: .system)
             // The sub projects that use its settings follow (docs/projects.md › GitHub page, ›
             // Inherited environments).

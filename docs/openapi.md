@@ -156,13 +156,13 @@ The form of an operation has, in this order: Environment, Parameters, Credential
 ### Environment
 
 - A pop-up lists the environments of the contract's project in their order, for a sub project that inherits environments its parent's first, with its changes ([Environments](projects.md#environments), [Inherited environments](projects.md#inherited-environments)), each item showing the environment's name and its base URL as `<name> · <base URL>`, for example `local · http://127.0.0.1:8080`, or the name alone for an environment without a URL, which has no base URL. It has no other item: the contract's `servers` do not choose the URL of the requests.
-- The pop-up starts on the environment stored for the contract ([Stored values](#stored-values)), else on the first environment. Choosing an environment stores its name for the contract.
-- The pop-up follows the project's environments live: an environment added, edited or removed in Project Settings, on any device, shows at once, and so does a change of the environments a sub project inherits from its parent. When the selected environment is renamed or removed, the pop-up shows the first environment.
+- The pop-up is the project's [current working environment](projects.md#current-working-environment): it shows it, and the requests go to it. Choosing an environment makes it the project's current working environment with [projects.setCurrentEnvironment](engine-api.md#projectssetcurrentenvironment), so that the sidebar footer, every other Contract view of the project and the windows of every device follow ([Sidebar](ui.md#sidebar)). A failed call shows no message, and the pop-up keeps showing the current working environment.
+- The pop-up follows the project's environments and its current working environment live: an environment added, edited or removed in Project Settings, on any device, shows at once, and so does a change of the environments a sub project inherits from its parent or a current working environment chosen elsewhere. When the current working environment is removed, the pop-up shows the first environment, which becomes current; a rename in Project Settings keeps it current under its new name.
 - A project whose type is not `goService` has no environment here, even when its `project.yml` still lists environments from an earlier type ([Environments](projects.md#environments)).
 - When the project has no environment, which is always the case for a project whose type is not `goService`, the pop-up is empty and disabled, and under it the form shows `Add an environment in Project Settings.` with a `Project Settings…` button that selects the window's [Project Settings](projects.md#project-settings) section.
 - While an environment without a URL is selected, Send is disabled, and under the pop-up the form shows `Set the API Access of this environment in Project Settings.` with a `Project Settings…` button that selects the window's [Project Settings](projects.md#project-settings) section, where the [Environments section](projects.md#environments) sets the URL and the port.
 
-An environment without a URL listed by its name, with Send disabled, its message and its `Project Settings…` button come from the user. The item text `<name> · <base URL>` is a design-time choice. Default chosen at design time.
+An environment without a URL listed by its name, with Send disabled, its message and its `Project Settings…` button come from the user, as does the pop-up that shows and changes the current working environment. The item text `<name> · <base URL>` and the failed call without message are design-time choices. Default chosen at design time.
 
 ### Parameters
 
@@ -284,9 +284,9 @@ The 300 pt height is Default chosen at design time.
 
 The values typed in the request forms are kept per project on the Mac that shows the window, in `<data dir>/openapi-requests.json` of that Mac's own data directory ([Architecture](architecture.md#device-data-directory)). The file has mode 0600, like `secrets.json`, because it holds credentials. It is read when a Contract view first needs it, and written atomically ([Data model](data-model.md#atomic-writes)) 500 ms after the last change. A missing, unreadable or invalid file counts as empty; an invalid file is replaced at the next write.
 
-| Kept per contract file                                                                  | Kept per operation (`<METHOD> <path>`)                                                                |
-| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| The name of the selected environment, the credentials of each scheme, the added headers | The values of the parameters, the selected media type and the body of each media type that was edited |
+| Kept per contract file                            | Kept per operation (`<METHOD> <path>`)                                                                |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| The credentials of each scheme, the added headers | The values of the parameters, the selected media type and the body of each media type that was edited |
 
 ```json
 {
@@ -295,7 +295,6 @@ The values typed in the request forms are kept per project on the Mac that shows
       "deviceID": "6F1C2D3E-4A5B-4C6D-8E7F-901A2B3C4D5E",
       "projectID": "DEMO",
       "path": "api/openapi.yaml",
-      "environment": "local",
       "credentials": {
         "bearerAuth": { "token": "example-token" },
         "basicAuth": { "username": "user", "password": "example-password" },
@@ -315,8 +314,8 @@ The values typed in the request forms are kept per project on the Mac that shows
 
 - A contract is identified by the device id of the window, the project id and the file's project path, so a window that shows a remote device keeps its values on this Mac under the remote device's id. A renamed or moved contract starts with empty values.
 - Parameters are keyed `<in>:<name>`; credentials by the scheme's name in `components.securitySchemes`.
-- The environment is kept by its name, under `environment`, which is absent until the user chooses an environment in the pop-up and changes only with that choice. A stored name that no environment of the project has, after a rename or a removal, selects the first environment.
-- The keys `server`, `usesCustomURL`, `customURL` and `serverVariables` of a file written by an earlier version are ignored and left out at the next write.
+- No environment is kept per contract file: every Contract view of a project uses the project's current working environment, which the main device keeps ([Environment](#environment), [Current working environment](projects.md#current-working-environment)).
+- The keys `environment`, `server`, `usesCustomURL`, `customURL` and `serverVariables` of a file written by an earlier version are ignored and left out at the next write.
 - The mode of the tab, the selected row and the responses are not stored.
 - The Code section tabs of a contract file, in every window of this Mac, and the [API Explorer](#api-explorer) for `openapi/contract.yaml` show and change the same values. A change applies to the latest stored values of the contract, so it keeps what another Contract view changed meanwhile; a Contract view takes the latest values, the stored bodies of its body editors included, when it appears and, while it is shown, after each change made in another one. Default chosen at design time.
 
@@ -324,7 +323,7 @@ The file name and its format are design-time choices. Default chosen at design t
 
 ## Remote windows
 
-In a window that shows a remote device ([Remote devices](remote.md#remote-windows)), the contract and the files its refs name are read through the engine of the main device, like every file of the Code section, and the environments are those of the project on the main device; the requests still run on the Mac that shows the window, with the [localhost rewrite](remote.md#localhost-rewrite), so a request to an environment whose host is `localhost`, `127.0.0.1` or `::1` reaches a server running on the main device; the values typed in the forms are stored on the Mac that shows the window.
+In a window that shows a remote device ([Remote devices](remote.md#remote-windows)), the contract and the files its refs name are read through the engine of the main device, like every file of the Code section, and the environments and the current working environment are those of the project on the main device; the requests still run on the Mac that shows the window, with the [localhost rewrite](remote.md#localhost-rewrite), so a request to an environment whose host is `localhost`, `127.0.0.1` or `::1` reaches a server running on the main device; the values typed in the forms are stored on the Mac that shows the window.
 
 ## API Explorer
 
@@ -369,3 +368,4 @@ OAuth2, OpenID Connect and mutual TLS credentials, multipart and file bodies, ed
 - R171: A Go service whose code holds `openapi/contract.yaml` shows it in an API Explorer section of the Go Service category, where the user views and queries it.
 - R157: A Go service project declares its environments in Project Settings, and the Contract view sends requests to the environment chosen in its Environment pop-up.
 - R174: A sub project that uses its parent's settings inherits its parent's environments and changes their URL, port, deployment and Argo CD application.
+- R177: Each Go service project has a current working environment, chosen in the sidebar under the project identifier and shared by every device, which the Contract view, Project Settings and Claude use.

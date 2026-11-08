@@ -5,7 +5,7 @@ import Testing
 
 /// docs/projects.md › Environments and docs/openapi.md › Environment: the messages of the fields
 /// of the Environments section and the lists they apply, and the Environment pop-up of a
-/// contract's request form with the environment stored for the contract.
+/// contract's request form, which is the project's current working environment.
 @MainActor @Suite("Project environments")
 struct ProjectEnvironmentsTests {
     static let created = Date(timeIntervalSince1970: 1_793_448_000)
@@ -117,34 +117,46 @@ struct ProjectEnvironmentsTests {
         #expect(ProjectRules.environments([local, staging], removing: "dev") == nil)
     }
 
-    @Test func popUpStartsOnTheStoredEnvironmentElseTheFirst() async throws {
-        let (workspace, buffer, model) = try await contractModel(type: .goService, environments: [local, staging])
+    @Test func popUpIsTheCurrentWorkingEnvironment() async throws {
+        let connection = RecordingConnection()
+        let (workspace, buffer, model) = try await contractModel(type: .goService, environments: [local, staging], connection: connection)
         defer { buffer.detach() }
         let contract = try #require(model.contract)
         let operation = try #require(contract.operations.first)
         #expect(model.environments == [local, staging])
+        // Without a choice, the first environment is current.
         #expect(model.environment == local)
-        #expect(model.stored?.environment == nil)
         #expect(model.canSend)
         #expect(model.requestInput(operation, contract: contract).baseURL == "http://127.0.0.1:8080")
 
+        // Choosing an environment makes it the project's current working environment.
         model.selectEnvironment("staging")
-        #expect(model.stored?.environment == "staging")
+        let deadline = ContinuousClock.now + .seconds(10)
+        while connection.calls.isEmpty, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(connection.calls == [ProjectsSetCurrentEnvironment.name])
+        #expect(connection.currentEnvironmentParams == [ProjectsSetCurrentEnvironment.Params(projectID: "API", environment: "staging")])
+        // The pop-up follows the ProjectDetail that project.updated brings, from any window or device.
+        #expect(model.environment == local)
+        var detail = try #require(workspace.details["API"])
+        detail.currentEnvironment = "staging"
+        workspace.details["API"] = detail
         #expect(model.environment == staging)
         #expect(model.requestInput(operation, contract: contract).baseURL == "https://staging.example.com")
+        #expect(model.stored == OpenAPIStoredContract(deviceID: "device", projectID: "API", path: "api/openapi.yaml"))
 
-        // Renamed in Project Settings: the stored name is kept and the first environment shows. The
-        // engine's ProjectDetail gives the environments that apply with the project's own.
-        var detail = try #require(workspace.details["API"])
+        // Renamed in Project Settings: the engine keeps it current under its new name.
         detail.project.environments[1].name = "stage"
         detail.environments = detail.project.environments
+        detail.currentEnvironment = "stage"
         workspace.details["API"] = detail
-        #expect(model.environment == local)
-        #expect(model.stored?.environment == "staging")
+        #expect(model.environment?.name == "stage")
 
         // Removed: no environment is left, Send is disabled.
         detail.project.environments = []
         detail.environments = []
+        detail.currentEnvironment = nil
         workspace.details["API"] = detail
         #expect(model.environment == nil)
         #expect(!model.canSend)
@@ -218,9 +230,11 @@ struct ProjectEnvironmentsTests {
         #expect(model.environment == replay)
         #expect(!model.canSend)
         #expect(model.requestInput(operation, contract: contract).baseURL == "")
-        model.selectEnvironment("local")
+        // Once `local` is the current working environment, Send is enabled.
+        var detail = try #require(workspace.details["API"])
+        detail.currentEnvironment = "local"
+        workspace.details["API"] = detail
         #expect(model.canSend)
-        #expect(workspace.details["API"] != nil)
     }
 
     @Test func environmentWrittenByHandWithAnInvalidURLCannotSend() async throws {
@@ -234,9 +248,10 @@ struct ProjectEnvironmentsTests {
 
     /// The Contract view model of a contract tab of the project `API` in an offline workspace,
     /// once the contract is parsed. Without a window, the stored values stay in memory.
-    private func contractModel(type: ProjectType, environments: [ProjectEnvironment]) async throws
+    private func contractModel(type: ProjectType, environments: [ProjectEnvironment],
+                               connection: any EngineConnection = OfflineConnection()) async throws
         -> (DeviceWorkspace, EditorBuffer, OpenAPIContractModel) {
-        let workspace = DeviceWorkspace(deviceID: "device", connection: OfflineConnection(), isLocal: true)
+        let workspace = DeviceWorkspace(deviceID: "device", connection: connection, isLocal: true)
         let project = Project(id: "API", name: "Api", created: Self.created, type: type, environments: environments)
         workspace.details["API"] = ProjectDetail(project: project, rootPath: "/Users/example/Api")
         let buffer = EditorBuffer(path: "api/openapi.yaml")
@@ -250,4 +265,32 @@ struct ProjectEnvironmentsTests {
         try #require(model.contract != nil)
         return (workspace, buffer, model)
     }
+}
+
+/// A connection that never connects, records the names of the calls and the params of
+/// `projects.setCurrentEnvironment`, and refuses every call.
+final class RecordingConnection: EngineConnection, @unchecked Sendable {
+    private let lock = NSLock()
+    private var names: [String] = []
+    private var params: [ProjectsSetCurrentEnvironment.Params] = []
+
+    var calls: [String] { lock.withLock { names } }
+    var currentEnvironmentParams: [ProjectsSetCurrentEnvironment.Params] { lock.withLock { params } }
+
+    var deviceInfo: DeviceInfo? { nil }
+    var state: ConnectionState { .connecting }
+    var stateUpdates: AsyncStream<ConnectionState> { AsyncStream { $0.finish() } }
+    var events: AsyncStream<EngineEventEnvelope> { AsyncStream { $0.finish() } }
+    func call<M: EngineMethod>(_ method: M.Type, _ params: M.Params) async throws -> M.Result {
+        lock.withLock {
+            // The Contract view also reads the files its refs name.
+            guard method.name != FilesRead.name else { return }
+            names.append(method.name)
+            if let set = params as? ProjectsSetCurrentEnvironment.Params {
+                self.params.append(set)
+            }
+        }
+        throw EngineError(.unavailable, "Offline.")
+    }
+    func close() {}
 }

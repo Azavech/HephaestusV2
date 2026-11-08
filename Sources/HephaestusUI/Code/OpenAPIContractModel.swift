@@ -235,29 +235,36 @@ final class OpenAPIContractModel {
 
     // MARK: Environment (docs/openapi.md › Environment)
 
+    /// The detail of the contract's project when its type is `goService`. Read live from the
+    /// window's workspace, which holds the detail of the project its sections show, so the pop-up
+    /// follows `project.updated`.
+    private var goServiceDetail: ProjectDetail? {
+        guard let buffer, let projectID = buffer.projectID,
+              let detail = buffer.workspace?.details[projectID], detail.project.type == .goService else { return nil }
+        return detail
+    }
+
     /// The environments of the contract's project as they apply, in their order, the inherited
     /// ones with the project's changes first: none for a project whose type is not `goService`
-    /// (docs/projects.md › Environments, › Inherited environments). Read live from the window's
-    /// workspace, which holds the detail of the project its sections show, so the pop-up follows
-    /// `project.updated`.
+    /// (docs/projects.md › Environments, › Inherited environments).
     var environments: [ProjectEnvironment] {
-        guard let buffer, let projectID = buffer.projectID,
-              let detail = buffer.workspace?.details[projectID], detail.project.type == .goService else { return [] }
-        return detail.environments
+        goServiceDetail?.environments ?? []
     }
 
-    /// The selected environment: the one stored for the contract, else the first, also when the
-    /// stored name no longer exists.
+    /// The selected environment: the project's current working environment (docs/projects.md ›
+    /// Current working environment).
     var environment: ProjectEnvironment? {
-        if let name = stored?.environment, let match = environments.first(where: { $0.name == name }) {
-            return match
-        }
-        return environments.first
+        goServiceDetail?.currentWorkingEnvironment
     }
 
-    /// Choosing an environment stores its name for the contract.
+    /// Choosing an environment makes it the project's current working environment; every window
+    /// follows the `project.updated` it emits. A failed call shows no message.
     func selectEnvironment(_ name: String) {
-        update { $0.environment = name }
+        guard let buffer, let workspace = buffer.workspace, let projectID = buffer.projectID else { return }
+        Task {
+            _ = try? await workspace.call(ProjectsSetCurrentEnvironment.self,
+                                          ProjectsSetCurrentEnvironment.Params(projectID: projectID, environment: name))
+        }
     }
 
     /// Whether Send is enabled: an environment is selected, it has a URL, and its URL and port keep

@@ -265,15 +265,49 @@ struct SidebarView: View {
         return count > 0 ? String(count) : nil
     }
 
-    /// The active project's identifier.
+    /// The active project's identifier, then, for a Go service with environments, the pop-up of its
+    /// current working environment (docs/ui.md › Sidebar).
     private var footer: some View {
-        HStack {
-            Text(project.id)
-                .font(.system(.body, design: .monospaced))
-                .foregroundStyle(.secondary)
-            Spacer()
+        let detail = workspace.details[project.id]
+        let environments = Self.footerEnvironments(detail)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(project.id)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .frame(height: 30)
+            if let detail, !environments.isEmpty {
+                Picker("Environment", selection: Binding(get: { detail.currentWorkingEnvironment?.name },
+                                                         set: { name in if let name { selectEnvironment(name) } })) {
+                    ForEach(Array(environments.enumerated()), id: \.offset) { _, environment in
+                        Text(environment.name).tag(Optional(environment.name))
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .controlSize(.small)
+                .padding(.bottom, 8)
+            }
         }
         .padding(.horizontal, 12)
-        .frame(height: 30)
+    }
+
+    /// The environments the footer's pop-up lists: those of a Go service as they apply, in their
+    /// order; none for a project of another type, which shows nothing under the identifier.
+    static func footerEnvironments(_ detail: ProjectDetail?) -> [ProjectEnvironment] {
+        guard let detail, detail.project.type == .goService else { return [] }
+        return detail.environments
+    }
+
+    /// Choosing an item makes it the current working environment; the pop-up follows the
+    /// `project.updated` the engine emits. A failed call shows no message.
+    private func selectEnvironment(_ name: String) {
+        let projectID = project.id
+        Task {
+            _ = try? await workspace.call(ProjectsSetCurrentEnvironment.self,
+                                          ProjectsSetCurrentEnvironment.Params(projectID: projectID, environment: name))
+        }
     }
 }

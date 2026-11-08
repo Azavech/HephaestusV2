@@ -23,11 +23,13 @@ struct ResolvedEnvironments: Equatable, Sendable {
 }
 
 /// What a loaded project takes from its parent while it uses its parent's settings
-/// (docs/projects.md › Sub projects): taken for every project before a change, so that the
-/// projects whose GitHub page or environments the change alters get `project.updated`.
+/// (docs/projects.md › Sub projects), with the current working environment that follows its
+/// environments: taken for every project before a change, so that the projects whose GitHub page,
+/// environments or current working environment the change alters get `project.updated`.
 struct InheritedSettings: Equatable, Sendable {
     var githubPage: String?
     var environments: ResolvedEnvironments
+    var currentEnvironment: String?
 }
 
 extension Engine {
@@ -56,9 +58,13 @@ extension Engine {
     /// `emitInheritedSettingsChanges(since:except:origin:)` finds the projects whose settings it
     /// changed.
     func inheritedSettings() -> [ProjectID: InheritedSettings] {
-        Dictionary(domain.loadedProjectIDs().map { id in
-            (id, InheritedSettings(githubPage: githubPage(of: id), environments: resolvedEnvironments(of: id)))
-        }, uniquingKeysWith: { first, _ in first })
+        Dictionary(domain.loadedProjectIDs().map { id in (id, inheritedSettings(of: id)) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    private func inheritedSettings(of id: ProjectID) -> InheritedSettings {
+        let environments = resolvedEnvironments(of: id)
+        return InheritedSettings(githubPage: githubPage(of: id), environments: environments,
+                                 currentEnvironment: currentEnvironment(of: id, in: environments.environments))
     }
 
     /// Emits `project.updated` for every project loaded before a change whose GitHub page or
@@ -66,9 +72,67 @@ extension Engine {
     /// change announces itself (docs/projects.md › GitHub page, › Inherited environments).
     func emitInheritedSettingsChanges(since before: [ProjectID: InheritedSettings], except: Set<ProjectID> = [], origin: Actor) {
         for id in domain.loadedProjectIDs() where !except.contains(id) {
-            guard let old = before[id],
-                  InheritedSettings(githubPage: githubPage(of: id), environments: resolvedEnvironments(of: id)) != old else { continue }
+            guard let old = before[id], inheritedSettings(of: id) != old else { continue }
             emitProjectUpdated(id, origin: origin)
         }
+    }
+
+    // MARK: Current working environment (docs/projects.md › Current working environment)
+
+    /// The name of a loaded project's current working environment among its environments as they
+    /// apply: the one chosen for it, else the first; nil without environments.
+    func currentEnvironment(of id: ProjectID, in environments: [ProjectEnvironment]) -> String? {
+        if let name = currentEnvironments.projects[id], environments.contains(where: { $0.name == name }) {
+            return name
+        }
+        return environments.first?.name
+    }
+
+    /// The environments a change of `environments` renames, old name to new name: those whose name
+    /// changed at the same position of the list, the list keeping its length.
+    static func renamedEnvironments(from old: [ProjectEnvironment], to new: [ProjectEnvironment]) -> [String: String] {
+        guard old.count == new.count else { return [:] }
+        var renamed: [String: String] = [:]
+        for (before, after) in zip(old, new) where before.name != after.name {
+            renamed[before.name] = after.name
+        }
+        return renamed
+    }
+
+    /// After a change, for every project whose environments it changed since `before`: a chosen
+    /// environment that `renamed` renamed and the project now has under its new name stays chosen
+    /// under that name; one the project no longer has is forgotten, so that the first environment
+    /// is current. A failed write is logged and the choices stay in memory.
+    func keepCurrentEnvironments(since before: [ProjectID: InheritedSettings], renamed: [String: String] = [:]) {
+        var kept = currentEnvironments
+        for (id, name) in currentEnvironments.projects {
+            guard let old = before[id], domain.isLoaded(id) else { continue }
+            let environments = resolvedEnvironments(of: id)
+            guard environments != old.environments else { continue }
+            let names = Set(environments.environments.map(\.name))
+            if let newName = renamed[name], names.contains(newName) {
+                kept.projects[id] = newName
+            } else if !names.contains(name) {
+                kept.projects[id] = nil
+            }
+        }
+        storeCurrentEnvironments(kept)
+    }
+
+    /// Forgets the choices of the projects that `projects.remove` unregistered.
+    func forgetCurrentEnvironments(of ids: [ProjectID]) {
+        var kept = currentEnvironments
+        for id in ids where domain.projects[id] == nil {
+            kept.projects[id] = nil
+        }
+        storeCurrentEnvironments(kept)
+    }
+
+    /// Keeps the choices in memory and writes them when they changed; a failed write is logged.
+    private func storeCurrentEnvironments(_ kept: CurrentEnvironments) {
+        guard kept != currentEnvironments else { return }
+        currentEnvironments = kept
+        // `saveCurrentEnvironments` logs a failed write.
+        try? saveCurrentEnvironments(kept)
     }
 }
