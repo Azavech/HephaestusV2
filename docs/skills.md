@@ -35,7 +35,7 @@ Skills/
 ```
 
 - Reading: `skills.list` and `skills.get` read the library from disk at every call.
-- Watching: the engine watches the library folder recursively with FSEvents and emits `skills.changed` 300 ms after the last change it sees. Default chosen at design time. Changes inside the target of a symbolically linked skill folder are not watched; the next read sees them.
+- Watching: the engine watches the library folder recursively with FSEvents and emits `skills.changed` 300 ms after the last change it sees. It emits nothing when the library's files and folders, with their sizes and modification dates, are then the same as when it last emitted or started watching, as after the engine's writes made just before it started watching, which FSEvents can still report. Default chosen at design time. Changes inside the target of a symbolically linked skill folder are not watched; the next read sees them.
 
 ## Skill names
 
@@ -378,7 +378,7 @@ Parameters, results and errors are in [Engine API](engine-api.md#skills). All mu
 - When a skill's library entry is a symbolic link, `skills.delete` moves the link to the Trash and leaves its target untouched.
 - For an [internal skill](#internal-skills), `skills.update` with a `newName` other than its name, `skills.delete` and `skills.setEnabled` with `enabled: false` fail with `forbidden` and `<name> is an internal skill of HephaestusV2: it cannot be renamed.`, `… it cannot be moved to the Trash.` or `… it is always enabled.`; `skills.setEnabled` with `enabled: true` changes nothing and returns the project; `skills.create` fails with `conflict`. A claude actor whose chat is not a chat of the HephaestusV2 project gets `skills.list` without the internal skills, and `skills.get`, `skills.update` and `skills.delete` fail for them with `notFound`, as for a skill that does not exist.
 - In the engine, `SkillsLibrary` (`Sources/HephaestusCore/Skills/`) reads and writes the library and runs its watcher, and the protocol `SkillsPluginProvider`, implemented by `SkillsPluginGenerator`, prepares the [generated plugin](#generated-plugin) for chat launches and the `skills.*` methods, so that tests can provide another implementation. Default chosen at design time.
-- `skills.changed` carries the whole library, sorted by name. API mutations emit it when they complete, and the library watcher emits it for every change it sees, changes inside a skill and the engine's own writes included, so one change can produce two events. Clients replace their skill list with the event data and re-fetch, with `skills.get`, the skill they show.
+- `skills.changed` carries the whole library, sorted by name. API mutations emit it when they complete, and the library watcher emits it for every change it sees ([Library](#library)), changes inside a skill and the engine's own writes included, so one change can produce two events. Clients replace their skill list with the event data and re-fetch, with `skills.get`, the skill they show.
 
 ## Per-project enablement
 
