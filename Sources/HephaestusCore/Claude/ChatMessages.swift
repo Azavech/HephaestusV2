@@ -180,9 +180,9 @@ extension Engine {
 
     /// The value of `--append-system-prompt` for a launch (docs/chats.md › Composition and
     /// rendering): rendered at every launch with the current project, ticket and bundle data, and
-    /// the inherited memory folders of the project.
+    /// the inherited memory folders of the project and the `{{globalMemories}}` block of the launch.
     func chatSystemPrompt(meta: ChatMeta, project: Project, root: URL, workingDirectory: ChatWorkingDirectory,
-                          items: [ChatItem], parentMemories: [Prompts.ParentMemoryFolder] = []) -> String {
+                          items: [ChatItem], parentMemories: [Prompts.ParentMemoryFolder] = [], globalMemories: String) -> String {
         var values: [String: String] = [
             "projectName": project.name,
             "projectID": project.id,
@@ -193,6 +193,7 @@ extension Engine {
             "docsPath": project.docsPath,
             "projectType": project.type.label,
             "environments": Prompts.environments(project.environments, type: project.type),
+            "globalMemories": globalMemories,
         ]
         switch meta.kind {
         case .project:

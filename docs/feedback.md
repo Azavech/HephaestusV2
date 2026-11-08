@@ -117,8 +117,8 @@ The client fills the [FeedbackContext](engine-api.md#feedbackcontext) from the c
 | `deviceName`     | name of the device that captured                                                                                                                     |
 | `mainDeviceName` | name of the receiving device; equal to `deviceName` unless the captured window is a remote window                                                    |
 | `projectID`      | main window: the project selected in the breadcrumb, the sub project when one is selected; chat window: the chat's project; absent for other windows |
-| `section`        | main window with an active project: its section; chat window: `chats`; absent for other windows                                                      |
-| `item`           | the selected item, table below; absent when nothing is selected and for Settings, About and other windows                                            |
+| `section`        | main window with an active project: its section, absent while it shows the Global Memories view; chat window: `chats`; absent for other windows      |
+| `item`           | the selected item, table below; absent when nothing is selected, while the Global Memories view shows, and for Settings, About and other windows     |
 
 | Section or window | `item`                                                                        |
 | ----------------- | ----------------------------------------------------------------------------- |
@@ -135,7 +135,7 @@ The client fills the [FeedbackContext](engine-api.md#feedbackcontext) from the c
 | `settings`        | absent                                                                        |
 | chat window       | title of the window's chat                                                    |
 
-A chat window counts as the `chats` section of its project. Default chosen at design time.
+A chat window counts as the `chats` section of its project. Default chosen at design time. While a main window shows the Global Memories view ([Global Memories view](memories.md#global-memories-view)), the context has no `section` and no `item`; the screenshot shows the view. Default chosen at design time.
 
 Example, captured in a remote window of the MacBook showing the device Studio, with the GitHub tab selected:
 

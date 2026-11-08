@@ -16,8 +16,10 @@ enum ClaudeCommandLine {
     /// The argv of a chat process, the CLI path first; no shell is involved. `readFolders` are the
     /// inherited memory folders that `{{parentMemories}}` names, each followed by its path with
     /// its symbolic links resolved, as written on disk and in NFC, when they differ.
+    /// `globalMemoriesFolder` is the global memories folder when it exists (docs/memories.md › In
+    /// chats).
     static func chat(cliPath: String, chatID: ChatID, sessionStarted: Bool, settings: ChatSettings, mcpPort: Int, mcpConfigPath: String,
-                     systemPrompt: String, pluginDirectory: String?, readFolders: [String] = []) -> [String] {
+                     systemPrompt: String, pluginDirectory: String?, readFolders: [String] = [], globalMemoriesFolder: String?) -> [String] {
         var argv = [cliPath, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
                     "--include-partial-messages"]
         argv += [sessionStarted ? "--resume" : "--session-id", chatID.uuidString]
@@ -34,6 +36,10 @@ enum ClaudeCommandLine {
             argv += ["--plugin-dir", pluginDirectory]
         }
         argv += ["--settings", chatSettings(ultracode: settings.ultracode, mcpPort: mcpPort, readFolders: readFolders)]
+        // Row 19: the global memories folder as a working directory.
+        if let globalMemoriesFolder {
+            argv += ["--add-dir", globalMemoriesFolder]
+        }
         return argv
     }
 

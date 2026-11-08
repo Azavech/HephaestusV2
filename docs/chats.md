@@ -72,7 +72,7 @@ When candidate 1 or 2 is set but is not an executable file, the CLI is unavailab
 
 ### Environment
 
-After the engine starts, it runs `/bin/zsh -lic 'env -0'` once, with a timeout of 10 s, and splits the output on NUL characters; every part of the form `NAME=VALUE` becomes a variable and other parts are skipped. When the command fails or times out, or when its output holds no variable, the engine uses its own process environment, so that no child starts without `PATH`. Every Claude process the engine starts (chat processes, naming and summary calls, and comment answer calls) gets this environment without any `HEPHAESTUS_*` variable, plus `MCP_TOOL_TIMEOUT=1800000`; a chat process also gets `HEPHAESTUS_HOOK_TOKEN`, the hook token of its launch ([Linked items hook](#linked-items-hook)). Process groups and signals follow [Architecture](architecture.md#child-processes). The memory folders of the projects use the `CLAUDE_CONFIG_DIR` of this environment, as the chat processes do ([Resolution](memories.md#resolution)).
+After the engine starts, it runs `/bin/zsh -lic 'env -0'` once, with a timeout of 10 s, and splits the output on NUL characters; every part of the form `NAME=VALUE` becomes a variable and other parts are skipped. When the command fails or times out, or when its output holds no variable, the engine uses its own process environment, so that no child starts without `PATH`. Every Claude process the engine starts (chat processes, naming and summary calls, and comment answer calls) gets this environment without any `HEPHAESTUS_*` variable, plus `MCP_TOOL_TIMEOUT=1800000`; a chat process also gets `HEPHAESTUS_HOOK_TOKEN`, the hook token of its launch ([Linked items hook](#linked-items-hook)). Process groups and signals follow [Architecture](architecture.md#child-processes). The memory folders of the projects and the global memories folder use the `CLAUDE_CONFIG_DIR` of this environment, as the chat processes do ([Resolution](memories.md#resolution), [Global memories](memories.md#global-memories)).
 
 ### Version and status
 
@@ -130,7 +130,7 @@ The name of a CLI model id, such as the `model` of `system/init` or of an `assis
 A process starts when a message has to be delivered to a chat that has no live process. A chat has at most one process; the number of chats with a live process is not limited. The engine:
 
 1. Takes the chat's stored `settings` ([Chat settings](#chat-settings)).
-2. Writes the MCP configuration file ([MCP configuration file](#mcp-configuration-file)), issues the hook token ([Linked items hook](#linked-items-hook)) and prepares the skills plugin ([Skills](skills.md#generation)).
+2. Writes the MCP configuration file ([MCP configuration file](#mcp-configuration-file)), issues the hook token ([Linked items hook](#linked-items-hook)), prepares the skills plugin ([Skills](skills.md#generation)) and the global memories folder, which it creates when it is missing ([In chats](memories.md#in-chats)).
 3. Renders the system prompt ([System prompts](#system-prompts)).
 4. Spawns the CLI with the arguments below, the working directory set to the chat's working directory (the project root, or the worktree of an orchestrated ticket chat, [Working directory](#working-directory)) and the environment above, with pipes on stdin, stdout and stderr.
 5. Writes the `initialize` control request, then the user message, without waiting for any answer. The state becomes starting.
@@ -163,10 +163,12 @@ Every row is one or two argv elements, in this order; no shell is involved.
 | 16  | `--append-system-prompt` `<rendered system prompt>`      | always                                                                                 |
 | 17  | `--plugin-dir` `<data dir>/Runtime/plugins/<project id>` | the project enables at least one skill of the library ([Skills](skills.md#generation)) |
 | 18  | `--settings` `<settings JSON>`                           | always                                                                                 |
+| 19  | `--add-dir` `<global memories folder>`                   | the folder exists or was created ([In chats](memories.md#in-chats))                    |
 
 - Rows 14 and 15 let `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font`, `ask_animation`, `show_image`, the read-only `hephaestus` tools and the tools that create and edit tickets, comments and bundles (`create_ticket`, `update_ticket`, `set_ticket_status`, `add_comment`, `update_comment`, `create_bundle` and `update_bundle`) run in every permission mode, and keep Claude from using the CLI's own question tool. The tools that delete (`delete_ticket`, `delete_comment`, `remove_attachment` and `delete_bundle`) are not pre-approved, so in Ask Every Time the user approves each call. `close_chat` is not in row 14 either: the [close chat hook](#close-chat-hook) of row 18 approves, in every permission mode, a call that names no other chat than the calling chat, and a call that names other chats follows the chat's permission mode. Of the [Kubernetes and Argo CD tools](mcp.md#kubernetes-and-argo-cd-tools), the four that read, `k8s_status`, `k8s_logs`, `k8s_events` and `argocd_status`, are in row 14; the five that change a cluster or open a port of the Mac are not. Default chosen at design time, except for `ask_symbol`, `ask_color`, `ask_shortcut`, `ask_font`, `ask_animation`, `show_image`, `close_chat`, the ticket, comment and bundle tools and the Kubernetes and Argo CD tools, which the user chose.
 - `<pre-approved tools>` is this single argument: `mcp__hephaestus__ask_questions,mcp__hephaestus__ask_symbol,mcp__hephaestus__ask_color,mcp__hephaestus__ask_sound,mcp__hephaestus__ask_shortcut,mcp__hephaestus__ask_font,mcp__hephaestus__ask_animation,mcp__hephaestus__show_image,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__create_ticket,mcp__hephaestus__update_ticket,mcp__hephaestus__set_ticket_status,mcp__hephaestus__add_comment,mcp__hephaestus__update_comment,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__create_bundle,mcp__hephaestus__update_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat,mcp__hephaestus__k8s_status,mcp__hephaestus__k8s_logs,mcp__hephaestus__k8s_events,mcp__hephaestus__argocd_status`. Every other tool, the other `hephaestus` tools included, follows the chat's permission mode.
 - `--permission-mode` takes `manual` for Ask Every Time; the control request `set_permission_mode` takes `default` for the same mode ([Permission mode](#permission-mode)).
+- Row 19 gives the chat the device's [global memories folder](memories.md#global-memories) as a working directory: Claude reads and writes its files with its own file tools, under the chat's permission mode, as the files of the project. The engine creates the folder before the launch when it is missing; when it cannot, the row is left out ([In chats](memories.md#in-chats)). Default chosen at design time.
 - `<settings JSON>` is this single argument, which holds the `UserPromptSubmit` hook of the [linked items hook](#linked-items-hook) and the `PreToolUse` hook of the [close chat hook](#close-chat-hook): `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"http","url":"http://127.0.0.1:<port>/hooks/user-prompt-submit","headers":{"Authorization":"Bearer $HEPHAESTUS_HOOK_TOKEN"},"allowedEnvVars":["HEPHAESTUS_HOOK_TOKEN"],"timeout":10}]}],"PreToolUse":[{"matcher":"mcp__hephaestus__close_chat","hooks":[{"type":"http","url":"http://127.0.0.1:<port>/hooks/pre-tool-use","headers":{"Authorization":"Bearer $HEPHAESTUS_HOOK_TOKEN"},"allowedEnvVars":["HEPHAESTUS_HOOK_TOKEN"],"timeout":10}]}]}}`. When `settings.ultracode` is true, it starts with `{"ultracode":true,` in place of `{`. When the [`{{parentMemories}}`](#rendered-blocks) block of the chat names memory folders, `"permissions":{"allow":[<rules>]},` comes before `"hooks"`: one rule `Read(/<folder>/**)` per named folder, in the order of the block, `<folder>` being the folder's absolute path, so that the rule starts with the `//` of an absolute path, followed by the same rule for the folder's path with its symbolic links resolved, as written on disk and in Unicode normalization form C, each when it differs from the paths before it, since the CLI checks a read against all these paths. These rules let Claude read the files of the inherited folders with its file tools, without prompt in every permission mode, and give no write access ([Inherited memories](memories.md#inherited-memories)). A path that holds `*`, `?`, `[`, `\` or a control character, which the CLI's path matching reads as a pattern, or that ends with white space (Unicode white space or U+FEFF), which it drops, gets no rule: Claude then asks before reading that folder, as for any folder outside its working directory. When no named folder gets a rule, the `permissions` key is left out. The `permissions` key, the rule of the resolved path and the folders without rule are Default chosen at design time. `<port>` is the port of the [MCP configuration file](#mcp-configuration-file). The CLI replaces `$HEPHAESTUS_HOOK_TOKEN` with the variable of its environment, so the token is not part of the arguments. The timeouts of 10 s: Default chosen at design time.
 
 Example, for a ticket chat that resumes its session in a project with enabled skills and ultracode on, with shell quoting and the prompt abbreviated:
@@ -181,7 +183,8 @@ claude -p --input-format stream-json --output-format stream-json --verbose --inc
   --disallowedTools AskUserQuestion \
   --append-system-prompt "You are Claude, working inside HephaestusV2, …" \
   --plugin-dir "$HOME/Library/Application Support/HephaestusV2/Runtime/plugins/HEPH" \
-  --settings '{"ultracode":true,"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"http","url":"http://127.0.0.1:47820/hooks/user-prompt-submit","headers":{"Authorization":"Bearer $HEPHAESTUS_HOOK_TOKEN"},"allowedEnvVars":["HEPHAESTUS_HOOK_TOKEN"],"timeout":10}]}],"PreToolUse":[{"matcher":"mcp__hephaestus__close_chat","hooks":[{"type":"http","url":"http://127.0.0.1:47820/hooks/pre-tool-use","headers":{"Authorization":"Bearer $HEPHAESTUS_HOOK_TOKEN"},"allowedEnvVars":["HEPHAESTUS_HOOK_TOKEN"],"timeout":10}]}]}}'
+  --settings '{"ultracode":true,"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"http","url":"http://127.0.0.1:47820/hooks/user-prompt-submit","headers":{"Authorization":"Bearer $HEPHAESTUS_HOOK_TOKEN"},"allowedEnvVars":["HEPHAESTUS_HOOK_TOKEN"],"timeout":10}]}],"PreToolUse":[{"matcher":"mcp__hephaestus__close_chat","hooks":[{"type":"http","url":"http://127.0.0.1:47820/hooks/pre-tool-use","headers":{"Authorization":"Bearer $HEPHAESTUS_HOOK_TOKEN"},"allowedEnvVars":["HEPHAESTUS_HOOK_TOKEN"],"timeout":10}]}]}}' \
+  --add-dir "$HOME/.claude/memory"
 ```
 
 ### MCP configuration file
@@ -1551,7 +1554,7 @@ A new permission mode chosen during a turn applies within that turn: the CLI dec
 
 ### Linked items
 
-The composer of the inspector's chat, or of its draft, shows the items open in the centre column of its window ([Inspector](ui.md#inspector)) as linked item chips. Chat windows, the Chats section and the Chats tabs of tickets and bundles link nothing.
+The composer of the inspector's chat, or of its draft, shows the items open in the centre column of its window ([Inspector](ui.md#inspector)) as linked item chips. Chat windows, the Chats section and the Chats tabs of tickets and bundles link nothing, and so does the inspector while its window shows the Global Memories view.
 
 | Item      | `kind`     | Chip symbol                               | Short name              | `<item>`                                                              |
 | --------- | ---------- | ----------------------------------------- | ----------------------- | --------------------------------------------------------------------- |
@@ -2355,6 +2358,7 @@ The Claude integration lives in `Sources/HephaestusCore/Claude/`. The type names
 | `{{docsPath}}`         | the project's `docsPath`, relative to the project root                                                                                         | docs                                                                                                                                             | common, comment-answer                                            |
 | `{{projectType}}`      | the name shown for the project's [type](projects.md#project-types): `None`, `Go service` or `Swift application`; Default chosen at design time | Go service                                                                                                                                       | common                                                            |
 | `{{environments}}`     | the environments of a project whose type is `goService` ([Rendered blocks](#rendered-blocks)); empty for the other types                       | The project's environments, where the Go service runs; …                                                                                         | common                                                            |
+| `{{globalMemories}}`   | the global memories folder and the lines of its `MEMORY.md` ([Rendered blocks](#rendered-blocks))                                              | The global memories folder is /Users/example/.claude/memory. Its MEMORY.md:                                                                      | common                                                            |
 | `{{ticketID}}`         | id of the chat's ticket, or of the answered comment's ticket                                                                                   | HEPH-12                                                                                                                                          | ticket, implement-ticket, implement-bundle-ticket, comment-answer |
 | `{{ticketTitle}}`      | title of that ticket                                                                                                                           | Locked web tabs close with Command-W                                                                                                             | implement-ticket, implement-bundle-ticket                         |
 | `{{ticket}}`           | that ticket ([Rendered blocks](#rendered-blocks))                                                                                              | ID: HEPH-12 …                                                                                                                                    | ticket                                                            |
@@ -2383,6 +2387,19 @@ The project's environments, where the Go service runs; the Kubernetes and Argo C
 - local: http://127.0.0.1:8080
 - staging: https://staging.example.com; kubectl context: staging-eks; namespace: orders; deployment: orders-api; Argo CD application: argocd/orders-staging; kubeconfig file: ~/.kube/staging.yaml
 ```
+
+`{{globalMemories}}`: the device's global memories folder, resolved and created at the launch, and the lines of its `MEMORY.md` ([In chats](memories.md#in-chats)): the line `The global memories folder is <folder>. Its MEMORY.md:`, followed by the text of `MEMORY.md` with CR LF and lone CR converted to LF and trimmed of white space and line breaks at both ends.
+
+```
+The global memories folder is /Users/example/.claude/memory. Its MEMORY.md:
+- [Short answers](answer-style.md) — the user wants short answers in every project
+- [No force push](no-force-push.md) — never force-push, in any repository
+```
+
+- When `MEMORY.md` is missing or its trimmed text is empty, `{{globalMemories}}` is the single line `The global memories folder is <folder>. Its MEMORY.md has no line yet.` A `MEMORY.md` that is larger than 20 MiB, is not valid UTF-8 or cannot be read counts as missing, and `engine.log` gets the warning `<path> cannot be read: <reason>`.
+- The text keeps at most 200 lines and 25,000 characters, the limits of the Claude CLI for a `MEMORY.md` (checked with Claude Code 2.1.309): a text of more than 200 lines keeps its first 200 lines; a text still longer than 25,000 characters keeps its lines up to the last line break before 25,000 characters, none when its first line is longer. A cut text is followed by the line `[Truncated: read <folder>/MEMORY.md for the other lines.]`.
+- `<folder>` is the absolute path of the folder on the main device, without final `/`.
+- A CI chat has no `{{globalMemories}}`, its system prompt being the ci prompt alone ([CI chats](#ci-chats)); it still gets the folder with row 19 of the [command line](#command-line) ([In chats](memories.md#in-chats)).
 
 `{{ticket}}`: the ticket's current data, with attachment paths made absolute (`<project root>/.hephaestus/<path>`), as [get_ticket](mcp.md#get_ticket) returns them:
 
@@ -2470,9 +2487,10 @@ When the chat's bundle no longer exists, `{{bundle}}` is `This bundle was delete
 - The first line of a part is `Memories of the project <name> (identifier <id>), in the folder <folder>:`, with the name and the identifier of the ancestor that gave the folder and the folder's absolute path.
 - The lines of the folder's `MEMORY.md` follow: its text without byte order mark, with CR LF and lone CR converted to LF and its leading and trailing white space and line breaks removed, limited as the CLI limits its own `MEMORY.md` (checked with Claude Code 2.1.309). A text of more than 200 lines keeps its first 200 lines; a text then longer than 25,000 UTF-16 code units keeps what comes before its last line break at an offset of at most 25,000 units, other than a line break that starts it, or, without such a line break, the characters that fit in 25,000 units. A cut text is followed by the line `[Truncated: read <folder>/MEMORY.md for the rest.]`.
 - When the folder has no `MEMORY.md`, or one that is empty after this cleanup, larger than 20 MiB, not valid UTF-8 or that cannot be read, the line `This folder has no MEMORY.md.` follows instead; a file that cannot be read is logged in `engine.log`.
+- The intro, the paragraph that starts the block, tells Claude to save a new memory in its own memory folder or, when it holds for every project, in the global memories folder that [`{{globalMemories}}`](#rendered-blocks) names, never in an inherited folder ([In chats](memories.md#in-chats)). Naming the global memories folder in it is Default chosen at design time.
 
 ```
-This project is a sub project: besides your own memories, you have the memories that Claude saved for its parent projects, listed below nearest parent first. Read a memory file of these folders with your file tools when it is relevant, as you read your own memories. Never write in these folders: save every new memory in your own memory folder.
+This project is a sub project: besides your own memories, you have the memories that Claude saved for its parent projects, listed below nearest parent first. Read a memory file of these folders with your file tools when it is relevant, as you read your own memories. Never write in these folders: save every new memory in your own memory folder or, when it holds for every project, in the global memories folder.
 
 Memories of the project Suite (identifier SUITE), in the folder /Users/example/.claude/projects/-Users-example-Developer-Suite/memory:
 - [User role](user-role.md) — The user is a backend developer who is new to SwiftUI
@@ -2767,6 +2785,14 @@ When the project's type is Swift application (get_project gives it) and you need
 # Images
 
 Whenever you show the user an image, for example one you rendered, a screenshot or an image of the project, call show_image with the paths of the image files and an optional caption in Markdown: HephaestusV2 copies the images into this chat and shows them at the place of the call, so they stay visible after the files are deleted. Never show an image with a Markdown image in your reply or by attaching it to a ticket comment only so that the user can see it. show_image accepts PNG, JPEG, GIF and WebP files; save an image in one of these formats before you show it. show_image asks the user nothing: after it returns, continue your work.
+
+# Global memories
+
+Besides the memory folder of this project, which the Claude CLI gives you, you have global memories: memories that hold for every project of this device, which every chat of every project receives. Their files have the format of your project memories: one .md file per memory, with name, description and metadata.type in its frontmatter, and one line per memory in the folder's MEMORY.md.
+
+{{globalMemories}}
+
+Decide per memory where you save it: a memory that holds for every project goes to the global memories folder, with its line in the global MEMORY.md; the other memories go to the project's memory folder. When a line of the global MEMORY.md concerns your work, read that memory's file.
 
 # When the project is a Go service
 
@@ -3110,3 +3136,4 @@ In a Go service project, follow "When the project is a Go service" after the pus
 - R164: The main button of the pinned questions card reads `Submit` only when pressing it sends the answers to Claude, and `Next` on the other questions of the set.
 - R167: A sub project's chats always receive the memories of its parent projects, which its Memories section lists read-only.
 - R168: The header bars at the top of the panes of the main window's centre column, and the inspector's header, are all 36 points high, so that their bottom separators lie on one line.
+- R169: Claude keeps global memories that every chat of every project receives; the user shows and edits them with View ▸ Global Memories.

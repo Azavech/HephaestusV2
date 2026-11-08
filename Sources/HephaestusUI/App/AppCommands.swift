@@ -216,8 +216,15 @@ private struct ViewCommands: View {
             .keyboardShortcut(section.shortcut)
             .disabled(!hasProject)
         }
+        // docs/memories.md › Global Memories view: enabled in a main window whose device is
+        // connected, with or without project.
+        Button("Global Memories") {
+            window?.showsGlobalMemories = true
+        }
+        .keyboardShortcut("m", modifiers: [.command, .shift])
+        .disabled(!(window?.isConnected ?? false))
         Divider()
-        let showsDoc = window?.section == .docs && window?.viewState.selectedDocPath != nil
+        let showsDoc = window?.shownSection == .docs && window?.viewState.selectedDocPath != nil
         Menu("Doc Mode") {
             ForEach(Array(DocMode.allCases.enumerated()), id: \.element) { index, mode in
                 Button(mode.title) {
@@ -280,7 +287,7 @@ private struct NavigateCommands: View {
             window?.pendingSectionCommand = .openLocation
         }
         .keyboardShortcut("l", modifiers: [.command, .option])
-        .disabled(window?.section != .web || window?.projectID == nil)
+        .disabled(window?.shownSection != .web || window?.projectID == nil)
         Divider()
         Button("Show Previous Tab") {
             handler?.showPreviousTab()

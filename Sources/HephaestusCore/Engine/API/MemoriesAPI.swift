@@ -1,15 +1,17 @@
 import Foundation
 
-// docs/engine-api.md › Memories.
+// docs/engine-api.md › Memories. Every method takes the `projectID` of a loaded project, or none for
+// the device's global memories folder (docs/memories.md › Global memories).
 
-/// `memories.list`: the project's memory folder with its memories sorted by name, then by file
-/// name. Actors: user.
+/// `memories.list`: the project's memory folder, or the global memories folder, with its memories
+/// sorted by name, then by file name. Actors: user.
 public enum MemoriesList: EngineMethod {
     public static let name = "memories.list"
     public struct Params: Codable, Sendable, Hashable {
-        public var projectID: ProjectID
+        /// The project; nil for the global memories folder.
+        public var projectID: ProjectID?
 
-        public init(projectID: ProjectID) {
+        public init(projectID: ProjectID? = nil) {
             self.projectID = projectID
         }
     }
@@ -20,11 +22,12 @@ public enum MemoriesList: EngineMethod {
 public enum MemoriesGet: EngineMethod {
     public static let name = "memories.get"
     public struct Params: Codable, Sendable, Hashable {
-        public var projectID: ProjectID
+        /// The project; nil for the global memories folder.
+        public var projectID: ProjectID?
         /// File name of the memory, for example `user-role.md`.
         public var file: String
 
-        public init(projectID: ProjectID, file: String) {
+        public init(projectID: ProjectID? = nil, file: String) {
             self.projectID = projectID
             self.file = file
         }
@@ -36,7 +39,8 @@ public enum MemoriesGet: EngineMethod {
 public enum MemoriesCreate: EngineMethod {
     public static let name = "memories.create"
     public struct Params: Codable, Sendable, Hashable {
-        public var projectID: ProjectID
+        /// The project; nil for the global memories folder.
+        public var projectID: ProjectID?
         /// Memory name; the file is `<name>.md`.
         public var name: String
         /// Frontmatter `description`, at least 1 character.
@@ -44,7 +48,7 @@ public enum MemoriesCreate: EngineMethod {
         /// Frontmatter `metadata.type`.
         public var type: MemoryType
 
-        public init(projectID: ProjectID, name: String, description: String, type: MemoryType) {
+        public init(projectID: ProjectID? = nil, name: String, description: String, type: MemoryType) {
             self.projectID = projectID
             self.name = name
             self.description = description
@@ -58,7 +62,8 @@ public enum MemoriesCreate: EngineMethod {
 public enum MemoriesUpdate: EngineMethod {
     public static let name = "memories.update"
     public struct Params: Codable, Sendable, Hashable {
-        public var projectID: ProjectID
+        /// The project; nil for the global memories folder.
+        public var projectID: ProjectID?
         /// File name of the memory.
         public var file: String
         /// New name: renames the file to `<name>.md` and writes the frontmatter `name`.
@@ -67,7 +72,7 @@ public enum MemoriesUpdate: EngineMethod {
         public var type: MemoryType?
         public var body: String?
 
-        public init(projectID: ProjectID, file: String, name: String? = nil, description: String? = nil,
+        public init(projectID: ProjectID? = nil, file: String, name: String? = nil, description: String? = nil,
                     type: MemoryType? = nil, body: String? = nil) {
             self.projectID = projectID
             self.file = file
@@ -85,11 +90,12 @@ public enum MemoriesUpdate: EngineMethod {
 public enum MemoriesDelete: EngineMethod {
     public static let name = "memories.delete"
     public struct Params: Codable, Sendable, Hashable {
-        public var projectID: ProjectID
+        /// The project; nil for the global memories folder.
+        public var projectID: ProjectID?
         /// File name of the memory.
         public var file: String
 
-        public init(projectID: ProjectID, file: String) {
+        public init(projectID: ProjectID? = nil, file: String) {
             self.projectID = projectID
             self.file = file
         }
@@ -101,9 +107,10 @@ public enum MemoriesDelete: EngineMethod {
 public enum MemoriesReadIndex: EngineMethod {
     public static let name = "memories.readIndex"
     public struct Params: Codable, Sendable, Hashable {
-        public var projectID: ProjectID
+        /// The project; nil for the global memories folder.
+        public var projectID: ProjectID?
 
-        public init(projectID: ProjectID) {
+        public init(projectID: ProjectID? = nil) {
             self.projectID = projectID
         }
     }
@@ -114,11 +121,12 @@ public enum MemoriesReadIndex: EngineMethod {
 public enum MemoriesWriteIndex: EngineMethod {
     public static let name = "memories.writeIndex"
     public struct Params: Codable, Sendable, Hashable {
-        public var projectID: ProjectID
+        /// The project; nil for the global memories folder.
+        public var projectID: ProjectID?
         /// Complete content of `MEMORY.md`.
         public var text: String
 
-        public init(projectID: ProjectID, text: String) {
+        public init(projectID: ProjectID? = nil, text: String) {
             self.projectID = projectID
             self.text = text
         }

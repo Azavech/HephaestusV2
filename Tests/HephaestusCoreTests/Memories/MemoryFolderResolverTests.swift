@@ -216,6 +216,29 @@ struct MemoryFolderResolverTests {
         }
     }
 
+    @Test("The global memories folder is <config folder>/memory: CLAUDE_CONFIG_DIR when set and not empty, a relative one from the home folder, else ~/.claude; autoMemoryDirectory does not move it")
+    func globalFolder() throws {
+        try withTemporaryDirectory { folder in
+            let base = URL(fileURLWithPath: real(folder))
+            let home = base.appendingPathComponent("home").path
+            let resolver = resolver(base)
+            #expect(resolver.globalMemoryFolder(environment: [:]) == home + "/.claude/memory")
+            #expect(resolver.globalMemoryFolder(environment: ["CLAUDE_CONFIG_DIR": ""]) == home + "/.claude/memory")
+            #expect(resolver.globalMemoryFolder(environment: ["CLAUDE_CONFIG_DIR": "/Users/example/claude-config/"])
+                == "/Users/example/claude-config/memory")
+            #expect(resolver.globalMemoryFolder(environment: ["CLAUDE_CONFIG_DIR": "claude-config"]) == home + "/claude-config/memory")
+            #expect(resolver.globalMemoryFolder(environment: ["CLAUDE_CONFIG_DIR": "../shared/./claude"]) == base.path + "/shared/claude/memory")
+            // autoMemoryDirectory names the memory folder of the projects only.
+            try write(#"{"autoMemoryDirectory": "~/notes"}"#, to: URL(fileURLWithPath: home + "/.claude/settings.json"))
+            #expect(resolver.memoryFolder(projectRoot: base.path, environment: [:]) == home + "/notes")
+            #expect(resolver.globalMemoryFolder(environment: [:]) == home + "/.claude/memory")
+            // The config folder of a test resolver replaces CLAUDE_CONFIG_DIR and ~/.claude.
+            let config = base.appendingPathComponent("Claude").path
+            #expect(self.resolver(base, configDirectory: config).globalMemoryFolder(environment: ["CLAUDE_CONFIG_DIR": "/elsewhere"])
+                == config + "/memory")
+        }
+    }
+
     @Test("The test configuration resolves under folders next to the data directory, never ~/.claude")
     func testConfiguration() async throws {
         try await withTestEngine { engine, _, folder in

@@ -1,43 +1,41 @@
-// OWNER: ui-memories — the Memories section: list and editor, with the read-only groups of the
-// inherited folders (docs/memories.md › Memories section).
+// OWNER: ui-memories — the Memories section and the Global Memories view: list and editor, with
+// the read-only groups of the inherited folders (docs/memories.md › Memories section, › Global
+// Memories view).
 import HephaestusCore
 import SwiftUI
 
-/// The memories of the active project (`ProjectViewState.selectedMemoryFile`, `memoryEditor`): the
-/// list and the editor of the selected row, in two columns (docs/memories.md › Memories section).
+/// The memories of the active project (`ProjectViewState.selectedMemoryFile`, `memoryEditor`), or
+/// the global memories of the window's device (`MemoryViewState`): the list and the editor of the
+/// selected row, in two columns (docs/memories.md › Memories section, › Global Memories view).
 struct MemoriesSectionView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
-    let projectID: String
+    let scope: MemoryScope
 
     @State private var commands = MemoriesSectionCommands()
     @State private var filter = ""
     /// The message of a failed `memories.list`.
     @State private var listError: String?
 
-    private var key: ProjectKey {
-        ProjectKey(deviceID: workspace.deviceID, projectID: projectID)
-    }
-
-    private var viewState: ProjectViewState? {
-        window.projectStates[key]
+    private var viewState: MemoryViewState {
+        window.memoryViewState(scope, deviceID: workspace.deviceID)
     }
 
     private var selectedFile: String? {
-        viewState?.selectedMemoryFile
+        viewState.selectedMemoryFile
     }
 
     private var folder: MemoryFolder? {
-        workspace.memoryFolders[projectID]
+        workspace.memoryFolder(scope)
     }
 
     var body: some View {
         Group {
             if let folder, showsEmptyState(folder) {
-                MemoriesEmptyView(window: window, workspace: workspace, projectID: projectID, folder: folder)
+                MemoriesEmptyView(window: window, workspace: workspace, scope: scope, folder: folder)
             } else {
                 HSplitView {
-                    MemoryList(window: window, workspace: workspace, projectID: projectID, filter: $filter, listError: listError)
+                    MemoryList(window: window, workspace: workspace, scope: scope, filter: $filter, listError: listError)
                         .frame(minWidth: 220, idealWidth: 260, maxWidth: 420, maxHeight: .infinity)
                     editorColumn
                         .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
@@ -47,7 +45,8 @@ struct MemoriesSectionView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             commands.window = window
-            commands.key = key
+            commands.scope = scope
+            commands.deviceID = workspace.deviceID
             window.sectionCommands = commands
             ensureEditor()
         }
@@ -59,13 +58,13 @@ struct MemoriesSectionView: View {
             // On appearing and after every reconnection: the list, then the shown row
             // (docs/remote.md › After a reconnect).
             await loadList()
-            await viewState?.memoryEditor?.refresh()
+            await viewState.memoryEditor?.refresh()
         }
         .task {
             for await event in workspace.events() {
-                guard case .memoriesChanged(let changed) = event.event, changed.projectID == projectID else { continue }
+                guard case .memoriesChanged(let changed) = event.event, MemoryScope(projectID: changed.projectID) == scope else { continue }
                 listError = nil
-                await viewState?.memoryEditor?.refresh()
+                await viewState.memoryEditor?.refresh()
             }
         }
     }
@@ -73,7 +72,7 @@ struct MemoriesSectionView: View {
     /// `No Memories`: the folder has no memory and no `MEMORY.md`, and no inherited folder lists a
     /// memory; an editor with unsaved changes stays shown, with its banner.
     private func showsEmptyState(_ folder: MemoryFolder) -> Bool {
-        MemoryGroups.showsEmptyState(folder, listError: listError, hasUnsavedChanges: viewState?.memoryEditor?.hasUnsavedChanges == true)
+        MemoryGroups.showsEmptyState(folder, listError: listError, hasUnsavedChanges: viewState.memoryEditor?.hasUnsavedChanges == true)
     }
 
     // MARK: Editor column
@@ -81,7 +80,7 @@ struct MemoriesSectionView: View {
     @ViewBuilder
     private var editorColumn: some View {
         if let file = selectedFile {
-            if let editor = viewState?.memoryEditor, editor.selection == file {
+            if let editor = viewState.memoryEditor, editor.selection == file {
                 if editor.isMissing || MemoryActions.isNoLongerInherited(editor.target, in: folder) {
                     if editor.target == .index {
                         NotFoundView(kind: "File", id: MemoryActions.indexFileName)
@@ -93,9 +92,9 @@ struct MemoriesSectionView: View {
                 } else if editor.hasLoaded {
                     switch editor.target {
                     case .memory, .inherited:
-                        MemoryEditorView(editor: editor, form: editor.form, window: window, workspace: workspace, projectID: projectID)
+                        MemoryEditorView(editor: editor, form: editor.form, window: window, workspace: workspace, scope: scope)
                     case .index:
-                        MemoryIndexEditorView(editor: editor, workspace: workspace, projectID: projectID)
+                        MemoryIndexEditorView(editor: editor, workspace: workspace, scope: scope)
                     }
                 } else if let error = editor.loadError {
                     MemoryLoadFailedView(message: error.message) {
@@ -120,18 +119,19 @@ struct MemoriesSectionView: View {
 
     // MARK: Loading
 
-    /// `memories.list` as a seeding call under the replay rule (docs/memories.md › Live updates);
-    /// its failure shows the error message in place of the list.
+    /// `memories.list` as a seeding call under the replay rule, without `projectID` for the global
+    /// memories (docs/memories.md › Live updates); its failure shows the error message in place of
+    /// the list.
     private func loadList() async {
-        let projectID = self.projectID
+        let scope = self.scope
         do {
             try await workspace.seed({
-                try await workspace.call(MemoriesList.self, .init(projectID: projectID))
+                try await workspace.call(MemoriesList.self, .init(projectID: scope.projectID))
             }, replace: { folder in
-                workspace.memoryFolders[projectID] = folder
+                workspace.setMemoryFolder(folder, for: scope)
             }, replay: { event in
-                if case .memoriesChanged(let folder) = event.event, folder.projectID == projectID {
-                    workspace.memoryFolders[projectID] = folder
+                if case .memoriesChanged(let folder) = event.event, MemoryScope(projectID: folder.projectID) == scope {
+                    workspace.setMemoryFolder(folder, for: scope)
                 }
             })
             listError = nil
@@ -142,38 +142,55 @@ struct MemoriesSectionView: View {
 
     /// Keeps the editor on the selected row: a selection kept from earlier gets its editor here.
     private func ensureEditor() {
-        guard var state = viewState else { return }
+        let state = viewState
         state.memoryEditor?.attach(window: window, workspace: workspace)
         guard let file = state.selectedMemoryFile else {
             if state.memoryEditor != nil {
-                state.memoryEditor = nil
-                window.projectStates[key] = state
+                window.updateMemoryViewState(scope, deviceID: workspace.deviceID) { $0.memoryEditor = nil }
             }
             return
         }
         guard state.memoryEditor?.selection != file else { return }
-        let editor = MemoryEditorState(target: MemoryActions.target(of: file), projectID: projectID, bodyMode: state.memoryBodyMode)
+        let editor = MemoryEditorState(target: MemoryActions.target(of: file), scope: scope, bodyMode: state.memoryBodyMode)
         editor.attach(window: window, workspace: workspace)
-        state.memoryEditor = editor
-        window.projectStates[key] = state
+        window.updateMemoryViewState(scope, deviceID: workspace.deviceID) { $0.memoryEditor = editor }
         Task {
             await editor.refresh()
         }
     }
 
-    /// Leaving the section with unsaved changes asks `Do you want to save the changes to
-    /// “<name>”?`; Cancel, or a failed save, shows the Memories section again and Don't Save
-    /// discards the changes (docs/memories.md › Saving). Switching project or device keeps the
-    /// editor in the window's state, as every unsaved editor of a project (docs/ui.md ›
-    /// WindowState).
+    /// The window still shows this view: the project's Memories section, or the Global Memories
+    /// view.
+    private var isShown: Bool {
+        switch scope {
+        case .project: return window.shownSection == .memories
+        case .global: return window.showsGlobalMemories
+        }
+    }
+
+    /// Cancel of the unsaved changes prompt shows the view again.
+    private func showAgain() {
+        switch scope {
+        case .project(let projectID):
+            if window.projectID == projectID {
+                window.section = .memories
+            }
+        case .global:
+            window.showsGlobalMemories = true
+        }
+    }
+
+    /// Leaving the section, or the Global Memories view, with unsaved changes asks `Do you want to
+    /// save the changes to “<name>”?`; Cancel, or a failed save, shows it again and Don't Save
+    /// discards the changes (docs/memories.md › Saving, › Global Memories view). Switching project
+    /// or device keeps the editor in the window's state, as every unsaved editor of a project
+    /// (docs/ui.md › WindowState).
     private func sectionDidDisappear() {
         if window.sectionCommands === commands {
             window.sectionCommands = nil
         }
-        guard window.section != .memories, window.app?.windows[window.id] != nil,
-              let editor = viewState?.memoryEditor, !editor.unsavedEditors.isEmpty else { return }
-        let window = window
-        let projectID = projectID
+        guard !isShown, window.app?.windows[window.id] != nil,
+              let editor = viewState.memoryEditor, !editor.unsavedEditors.isEmpty else { return }
         Task {
             let unsaved = editor.unsavedEditors
             guard !unsaved.isEmpty else { return }
@@ -181,23 +198,24 @@ struct MemoriesSectionView: View {
                 if !editor.unsavedEditors.isEmpty {
                     editor.discardChanges()
                 }
-            } else if window.projectID == projectID {
-                window.section = .memories
+            } else {
+                showAgain()
             }
         }
     }
 }
 
-/// File ▸ Save (⌘S) in the Memories section: the memory form or `MEMORY.md` when it has changes
-/// (docs/ui.md › Menus and keyboard shortcuts, Save).
+/// File ▸ Save (⌘S) in the Memories section and the Global Memories view: the memory form or
+/// `MEMORY.md` when it has changes (docs/ui.md › Menus and keyboard shortcuts, Save).
 @MainActor @Observable
 final class MemoriesSectionCommands: SectionCommandHandler {
     @ObservationIgnored weak var window: WindowState?
-    @ObservationIgnored var key: ProjectKey?
+    @ObservationIgnored var scope: MemoryScope?
+    @ObservationIgnored var deviceID: String?
 
     private var editor: MemoryEditorState? {
-        guard let window, let key else { return nil }
-        return window.projectStates[key]?.memoryEditor
+        guard let window, let scope, let deviceID else { return nil }
+        return window.memoryViewState(scope, deviceID: deviceID).memoryEditor
     }
 
     var canSave: Bool {
@@ -255,20 +273,16 @@ private struct MemoryLoadFailedView: View {
 private struct MemoryList: View {
     let window: WindowState
     let workspace: DeviceWorkspace
-    let projectID: String
+    let scope: MemoryScope
     @Binding var filter: String
     let listError: String?
 
-    private var key: ProjectKey {
-        ProjectKey(deviceID: workspace.deviceID, projectID: projectID)
-    }
-
     private var selectedFile: String? {
-        window.projectStates[key]?.selectedMemoryFile
+        window.memoryViewState(scope, deviceID: workspace.deviceID).selectedMemoryFile
     }
 
     private var folder: MemoryFolder? {
-        workspace.memoryFolders[projectID]
+        workspace.memoryFolder(scope)
     }
 
     /// The selected row when it is a memory of the project's own folder: not `MEMORY.md` nor an
@@ -356,7 +370,7 @@ private struct MemoryList: View {
         Binding(get: { selectedFile }, set: { file in
             guard file != selectedFile else { return }
             Task {
-                await MemoryActions.select(file, window: window, workspace: workspace, projectID: projectID)
+                await MemoryActions.select(file, window: window, workspace: workspace, scope: scope)
             }
         })
     }
@@ -366,7 +380,7 @@ private struct MemoryList: View {
     private var bottomBar: some View {
         HStack(spacing: 2) {
             Button {
-                Task { await MemoryActions.openNewMemorySheet(window: window, workspace: workspace, projectID: projectID) }
+                Task { await MemoryActions.openNewMemorySheet(window: window, workspace: workspace, scope: scope) }
             } label: {
                 Image(systemName: "plus")
                     .frame(width: 22, height: 20)
@@ -393,7 +407,7 @@ private struct MemoryList: View {
 
     private func trash(_ file: String) {
         Task {
-            await MemoryActions.trashMemory(file, window: window, workspace: workspace, projectID: projectID)
+            await MemoryActions.trashMemory(file, window: window, workspace: workspace, scope: scope)
         }
     }
 }
@@ -416,28 +430,41 @@ private struct MemoryRow: View {
     }
 }
 
-/// `No Memories`: where Claude saves memories, and `New Memory…` (docs/memories.md › Empty and
-/// error states).
+/// `No Memories`: where Claude saves memories, and `New Memory…`; `No Global Memories` for the
+/// global memories (docs/memories.md › Empty and error states, › Global Memories view).
 private struct MemoriesEmptyView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
-    let projectID: String
+    let scope: MemoryScope
     let folder: MemoryFolder
+
+    private var title: String {
+        scope == .global ? "No Global Memories" : "No Memories"
+    }
+
+    private var text: String {
+        switch scope {
+        case .project:
+            return "Claude saves what it learns about you and this project in \(MemoryActions.displayPath(folder.path, in: workspace))."
+        case .global:
+            return "Claude saves here what it learns that holds for every project."
+        }
+    }
 
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: "brain")
                 .font(.system(size: 36))
                 .foregroundStyle(.secondary)
-            Text("No Memories")
+            Text(title)
                 .font(.title2)
-            Text("Claude saves what it learns about you and this project in \(MemoryActions.displayPath(folder.path, in: workspace)).")
+            Text(text)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .textSelection(.enabled)
                 .frame(maxWidth: 440)
             Button("New Memory…") {
-                Task { await MemoryActions.openNewMemorySheet(window: window, workspace: workspace, projectID: projectID) }
+                Task { await MemoryActions.openNewMemorySheet(window: window, workspace: workspace, scope: scope) }
             }
             .padding(.top, 4)
         }

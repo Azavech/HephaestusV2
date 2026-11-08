@@ -703,12 +703,15 @@ extension WindowSheet {
     var projectID: String? {
         switch self {
         case .newSubProject(let projectID), .newTicket(let projectID),
-             .ticketPicker(let projectID, _, _), .newSkill(let projectID), .newMemory(let projectID), .newDoc(let projectID, _),
+             .ticketPicker(let projectID, _, _), .newSkill(let projectID), .newDoc(let projectID, _),
              .renameDoc(let projectID, _), .newFile(let projectID, _, _), .renameFile(let projectID, _),
              .environment(let projectID, _):
             return projectID
         case .implementTicket(let id), .implementBundle(let id), .addLink(let id):
             return Identifiers.projectID(of: id)
+        case .newMemory(let projectID):
+            // nil for the global memories folder, which belongs to no project.
+            return projectID
         case .newProject, .newProjectInFolder, .openProjectFolder, .addDevice, .feedback, .newSkillFile, .webPageDialog:
             return nil
         }

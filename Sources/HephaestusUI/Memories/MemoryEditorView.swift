@@ -12,7 +12,7 @@ struct MemoryEditorView: View {
     @Bindable var form: MemoryForm
     let window: WindowState
     let workspace: DeviceWorkspace
-    let projectID: String
+    let scope: MemoryScope
 
     private var file: String {
         editor.selection
@@ -45,7 +45,7 @@ struct MemoryEditorView: View {
                 .padding(16)
             }
             Divider()
-            MemoryFooter(target: editor.target, workspace: workspace, projectID: projectID)
+            MemoryFooter(target: editor.target, workspace: workspace, scope: scope)
         }
     }
 
@@ -70,7 +70,7 @@ struct MemoryEditorView: View {
                     .disabled(!editor.canSave)
                 }
             }
-            if !editor.isReadOnly, let message = form.nameMessage(folder: workspace.memoryFolders[projectID], file: file) {
+            if !editor.isReadOnly, let message = form.nameMessage(folder: workspace.memoryFolder(scope), file: file) {
                 ValidationMessage(text: message)
             }
         }
@@ -139,7 +139,7 @@ struct MemoryEditorView: View {
 struct MemoryIndexEditorView: View {
     let editor: MemoryEditorState
     let workspace: DeviceWorkspace
-    let projectID: String
+    let scope: MemoryScope
 
     var body: some View {
         VStack(spacing: 0) {
@@ -169,7 +169,7 @@ struct MemoryIndexEditorView: View {
                 .padding(16)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             Divider()
-            MemoryFooter(target: .index, workspace: workspace, projectID: projectID)
+            MemoryFooter(target: .index, workspace: workspace, scope: scope)
         }
     }
 }
@@ -197,11 +197,11 @@ struct MemoryTypePicker: View {
 private struct MemoryFooter: View {
     let target: MemoryEditorState.Target
     let workspace: DeviceWorkspace
-    let projectID: String
+    let scope: MemoryScope
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(MemoryActions.displayPath(of: target, in: workspace, projectID: projectID))
+            Text(MemoryActions.displayPath(of: target, in: workspace, scope: scope))
                 .font(.system(.callout, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -210,7 +210,7 @@ private struct MemoryFooter: View {
             Spacer(minLength: 8)
             if workspace.isLocal {
                 Button("Reveal in Finder") {
-                    MemoryActions.reveal(target, in: workspace, projectID: projectID)
+                    MemoryActions.reveal(target, in: workspace, scope: scope)
                 }
                 .controlSize(.small)
             }

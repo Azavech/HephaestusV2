@@ -2,12 +2,13 @@
 import HephaestusCore
 import SwiftUI
 
-/// New Memory: Name, Description and Type; Create calls `memories.create`, then selects the new
-/// memory and focuses its body in Edit mode (docs/memories.md › New Memory sheet).
+/// New Memory: Name, Description and Type; Create calls `memories.create` in the project's memory
+/// folder or in the global memories folder, then selects the new memory and focuses its body in
+/// Edit mode (docs/memories.md › New Memory sheet, › Global Memories view).
 struct NewMemorySheet: View {
     let window: WindowState
     let workspace: DeviceWorkspace
-    let projectID: String
+    let scope: MemoryScope
     @Environment(\.dismiss) private var dismiss
 
     @State private var name = ""
@@ -22,7 +23,7 @@ struct NewMemorySheet: View {
     @FocusState private var nameFocused: Bool
 
     private var nameMessage: String? {
-        MemoryValidation.nameMessage(name, folder: workspace.memoryFolders[projectID])
+        MemoryValidation.nameMessage(name, folder: workspace.memoryFolder(scope))
     }
 
     private var descriptionMessage: String? {
@@ -117,15 +118,15 @@ struct NewMemorySheet: View {
         Task {
             let memory: Memory
             do {
-                memory = try await workspace.call(MemoriesCreate.self, .init(projectID: projectID, name: name, description: description,
-                                                                             type: type))
+                memory = try await workspace.call(MemoriesCreate.self, .init(projectID: scope.projectID, name: name,
+                                                                             description: description, type: type))
             } catch {
                 failure = errorMessage(error)
                 isCreating = false
                 return
             }
             dismiss()
-            await MemoryActions.select(memory.file, window: window, workspace: workspace, projectID: projectID, startEditing: true)
+            await MemoryActions.select(memory.file, window: window, workspace: workspace, scope: scope, startEditing: true)
         }
     }
 }

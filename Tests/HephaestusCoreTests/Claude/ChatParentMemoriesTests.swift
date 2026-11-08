@@ -33,6 +33,10 @@ import Testing
             let resolved = ClaudeMemoryFolderResolver.realPath(parentFolder)
             let rules = ([parentFolder] + (resolved == parentFolder ? [] : [resolved])).map { #""Read(/"# + $0 + #"/**)""# }
             #expect(settings.hasPrefix(#"{"permissions":{"allow":["# + rules.joined(separator: ",") + #"]},"hooks":"#))
+            // The global memories come with them: their section of the common prompt, and row 19 after the rules of row 18.
+            let global = bed.dataDirectory.url.deletingLastPathComponent().appendingPathComponent("Claude/memory").path
+            #expect(prompt.contains("\n\n# Global memories\n\n") && prompt.contains("The global memories folder is \(global)."))
+            #expect(Array(arguments.suffix(3)) == [settings, "--add-dir", global])
 
             let parentChat = try await bed.createChat(message: "Hello")
             let parentProcess = try #require(await ChatWorktreeTests.process(bed, parentChat.id))

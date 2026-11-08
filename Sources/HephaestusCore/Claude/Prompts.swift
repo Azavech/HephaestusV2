@@ -79,6 +79,43 @@ enum Prompts {
             + (lines.isEmpty ? "- none: the user adds them in Project Settings" : lines.joined(separator: "\n"))
     }
 
+    /// The most lines and characters of `MEMORY.md` that `{{globalMemories}}` keeps: the limits of
+    /// the Claude CLI for a `MEMORY.md` (Claude Code 2.1.309).
+    static let globalMemoriesLineLimit = 200
+    static let globalMemoriesCharacterLimit = 25_000
+
+    /// `{{globalMemories}}`: the global memories folder and the text of its `MEMORY.md`, line breaks
+    /// converted to LF and trimmed of white space and line breaks at both ends, at most 200 lines and
+    /// 25,000 characters; nil `index` for a `MEMORY.md` that is missing or cannot be read
+    /// (docs/chats.md › Rendered blocks).
+    static func globalMemories(folder: String, index: String?) -> String {
+        let text = ModelRules.normalizedLineBreaks(index ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            return "The global memories folder is \(folder). Its MEMORY.md has no line yet."
+        }
+        var lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        var truncated = false
+        if lines.count > globalMemoriesLineLimit {
+            lines = Array(lines.prefix(globalMemoriesLineLimit))
+            truncated = true
+        }
+        var kept = lines.joined(separator: "\n")
+        if kept.count > globalMemoriesCharacterLimit {
+            // Cut at the last line break before the limit.
+            let limit = kept.index(kept.startIndex, offsetBy: globalMemoriesCharacterLimit)
+            kept = kept[..<limit].lastIndex(of: "\n").map { String(kept[..<$0]) } ?? ""
+            truncated = true
+        }
+        var block = "The global memories folder is \(folder). Its MEMORY.md:"
+        if !kept.isEmpty {
+            block += "\n" + kept
+        }
+        if truncated {
+            block += "\n[Truncated: read \(folder)/MEMORY.md for the other lines.]"
+        }
+        return block
+    }
+
     /// The text of `{{ticket}}` when the chat's ticket no longer exists.
     static let deletedTicket = "This ticket was deleted."
     /// The text of `{{bundle}}` when the chat's bundle no longer exists.
@@ -219,11 +256,12 @@ enum Prompts {
         var index: String?
     }
 
-    /// The paragraph that starts `{{parentMemories}}`.
+    /// The paragraph that starts `{{parentMemories}}`; it names the global memories folder of
+    /// `{{globalMemories}}` as the other folder where Claude saves a memory.
     static let parentMemoriesIntro = "This project is a sub project: besides your own memories, you have the memories that Claude "
         + "saved for its parent projects, listed below nearest parent first. Read a memory file of these folders with your file "
         + "tools when it is relevant, as you read your own memories. Never write in these folders: save every new memory in your "
-        + "own memory folder."
+        + "own memory folder or, when it holds for every project, in the global memories folder."
     /// The line of a folder without usable `MEMORY.md`.
     static let noMemoryIndex = "This folder has no MEMORY.md."
     /// The CLI loads at most this many lines of its own `MEMORY.md` (Claude Code 2.1.309).

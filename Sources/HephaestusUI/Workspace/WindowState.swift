@@ -20,14 +20,24 @@ final class WindowState: Identifiable {
     /// The active project; nil when the device has no project or while the window waits for its
     /// device's default project.
     var projectID: String?
-    /// The selected sidebar section.
-    var section: ProjectSection = .dashboard
+    /// The selected sidebar section. Selecting a section, the selected one included, leaves the
+    /// Global Memories view (docs/memories.md › Global Memories view).
+    var section: ProjectSection = .dashboard {
+        didSet {
+            showsGlobalMemories = false
+        }
+    }
+    /// The centre column shows the Global Memories view; no sidebar row is selected.
+    var showsGlobalMemories = false
     var sidebarVisible = true
     var inspectorVisible = true
     /// Inspector width in points.
     var inspectorWidth: Double = 380
     /// View state of every project this window showed.
     var projectStates: [ProjectKey: ProjectViewState] = [:]
+    /// The Global Memories view's selected row, editor and mode for each device the window showed,
+    /// by device id.
+    var globalMemoryStates: [String: MemoryViewState] = [:]
     /// Last active project per device in this window.
     var lastProjectByDevice: [String: String] = [:]
     /// Search panel shown.
@@ -59,6 +69,11 @@ final class WindowState: Identifiable {
         self.deviceID = deviceID
     }
 
+    /// The section the centre column shows: nil while it shows the Global Memories view.
+    var shownSection: ProjectSection? {
+        showsGlobalMemories ? nil : section
+    }
+
     /// The key of the active project.
     var activeProjectKey: ProjectKey? {
         projectID.map { ProjectKey(deviceID: deviceID, projectID: $0) }
@@ -82,15 +97,22 @@ final class WindowState: Identifiable {
         projectStates[key] = state
     }
 
-    /// The editors of this window with unsaved changes, in every project it showed
-    /// (docs/ui.md › Unsaved changes and quitting).
+    /// The editors of this window with unsaved changes, in every project it showed, then those of
+    /// its Global Memories view for each device, which belong to no project (docs/ui.md › Unsaved
+    /// changes and quitting).
     func unsavedEditors(deviceID: String? = nil, projectIDs: Set<String>? = nil) -> [any UnsavedEditor] {
-        projectStates
+        let projects = projectStates
             .filter { key, _ in
                 (deviceID == nil || key.deviceID == deviceID) && (projectIDs == nil || projectIDs!.contains(key.projectID))
             }
             .sorted { ($0.key.deviceID, $0.key.projectID) < ($1.key.deviceID, $1.key.projectID) }
             .flatMap { $0.value.unsavedEditors }
+        guard projectIDs == nil else { return projects }
+        let global = globalMemoryStates
+            .filter { deviceID == nil || $0.key == deviceID }
+            .sorted { $0.key < $1.key }
+            .flatMap { $0.value.memoryEditor?.unsavedEditors ?? [] }
+        return projects + global
     }
 
     /// The `@SceneStorage` value: the persisted properties as JSON (docs/ui.md › Persistence).
@@ -116,8 +138,8 @@ final class WindowState: Identifiable {
 
 extension WindowState: @MainActor Codable {
     enum CodingKeys: String, CodingKey {
-        case id, deviceID, projectID, section, sidebarVisible, inspectorVisible, inspectorWidth, projectStates,
-             lastProjectByDevice, searchVisible, search, sheet, pendingTarget
+        case id, deviceID, projectID, section, showsGlobalMemories, sidebarVisible, inspectorVisible, inspectorWidth, projectStates,
+             globalMemoryStates, lastProjectByDevice, searchVisible, search, sheet, pendingTarget
     }
 
     /// One entry of `projectStates`.
@@ -132,10 +154,13 @@ extension WindowState: @MainActor Codable {
         self.init(id: try c.decode(UUID.self, forKey: .id), deviceID: try c.decode(String.self, forKey: .deviceID))
         projectID = try c.decodeIfPresent(String.self, forKey: .projectID)
         section = try c.decodeIfPresent(ProjectSection.self, forKey: .section) ?? .dashboard
+        // After the section, which leaves the view.
+        showsGlobalMemories = try c.decodeIfPresent(Bool.self, forKey: .showsGlobalMemories) ?? false
         sidebarVisible = try c.decodeIfPresent(Bool.self, forKey: .sidebarVisible) ?? true
         inspectorVisible = try c.decodeIfPresent(Bool.self, forKey: .inspectorVisible) ?? true
         inspectorWidth = try c.decodeIfPresent(Double.self, forKey: .inspectorWidth) ?? 380
         lastProjectByDevice = try c.decodeIfPresent([String: String].self, forKey: .lastProjectByDevice) ?? [:]
+        globalMemoryStates = try c.decodeIfPresent([String: MemoryViewState].self, forKey: .globalMemoryStates) ?? [:]
         if c.contains(.projectStates) {
             var entries = try c.nestedUnkeyedContainer(forKey: .projectStates)
             while !entries.isAtEnd {
@@ -160,6 +185,7 @@ extension WindowState: @MainActor Codable {
         try c.encode(deviceID, forKey: .deviceID)
         try c.encodeIfPresent(projectID, forKey: .projectID)
         try c.encode(section, forKey: .section)
+        try c.encode(showsGlobalMemories, forKey: .showsGlobalMemories)
         try c.encode(sidebarVisible, forKey: .sidebarVisible)
         try c.encode(inspectorVisible, forKey: .inspectorVisible)
         try c.encode(inspectorWidth, forKey: .inspectorWidth)
@@ -179,6 +205,8 @@ extension WindowState: @MainActor Codable {
                 try entry.encode(state, forKey: .state)
             }
         }
+        // Persisted: the entry of the window's device only (docs/ui.md › WindowState).
+        try c.encode(persistedOnly ? globalMemoryStates.filter { $0.key == deviceID } : globalMemoryStates, forKey: .globalMemoryStates)
         try c.encode(lastProjectByDevice, forKey: .lastProjectByDevice)
         guard !persistedOnly else { return }
         try c.encode(searchVisible, forKey: .searchVisible)
@@ -360,6 +388,71 @@ extension ProjectViewState: @MainActor Codable {
             try c.encodeIfPresent(selectedChatAgent, forKey: .selectedChatAgent)
             try c.encode(chatsTabAgentSelection, forKey: .chatsTabAgentSelection)
             try c.encode(expandedAgentChats.sorted(), forKey: .expandedAgentChats)
+        }
+    }
+}
+
+// MARK: - Memories views
+
+/// The state of the Global Memories view for one device (docs/ui.md › WindowState): the fields of
+/// the same names of `ProjectViewState`. Only `selectedMemoryFile` is encoded.
+struct MemoryViewState {
+    /// Selected row: a memory's file name, or `MEMORY.md`.
+    var selectedMemoryFile: String?
+    /// The memory form or the `MEMORY.md` text shown, with its unsaved changes.
+    var memoryEditor: MemoryEditorState?
+    /// The mode of the editors, kept when the editor closes.
+    var memoryBodyMode: DocMode = .preview
+}
+
+extension MemoryViewState: Codable {
+    enum CodingKeys: String, CodingKey {
+        case selectedMemoryFile
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        selectedMemoryFile = try c.decodeIfPresent(String.self, forKey: .selectedMemoryFile)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(selectedMemoryFile, forKey: .selectedMemoryFile)
+    }
+}
+
+extension WindowState {
+    /// The state of a memories view of this window on a device: the Memories section of a project,
+    /// from its entry of `projectStates`, or the Global Memories view, from `globalMemoryStates`.
+    func memoryViewState(_ scope: MemoryScope, deviceID: String) -> MemoryViewState {
+        switch scope {
+        case .project(let projectID):
+            guard let state = projectStates[ProjectKey(deviceID: deviceID, projectID: projectID)] else { return MemoryViewState() }
+            return MemoryViewState(selectedMemoryFile: state.selectedMemoryFile, memoryEditor: state.memoryEditor,
+                                   memoryBodyMode: state.memoryBodyMode)
+        case .global:
+            return globalMemoryStates[deviceID] ?? MemoryViewState()
+        }
+    }
+
+    /// Changes the state of a memories view of this window on a device, creating its entry when
+    /// needed.
+    func updateMemoryViewState(_ scope: MemoryScope, deviceID: String, _ change: (inout MemoryViewState) -> Void) {
+        switch scope {
+        case .project(let projectID):
+            let key = ProjectKey(deviceID: deviceID, projectID: projectID)
+            var state = projectStates[key] ?? ProjectViewState()
+            var memories = MemoryViewState(selectedMemoryFile: state.selectedMemoryFile, memoryEditor: state.memoryEditor,
+                                           memoryBodyMode: state.memoryBodyMode)
+            change(&memories)
+            state.selectedMemoryFile = memories.selectedMemoryFile
+            state.memoryEditor = memories.memoryEditor
+            state.memoryBodyMode = memories.memoryBodyMode
+            projectStates[key] = state
+        case .global:
+            var state = globalMemoryStates[deviceID] ?? MemoryViewState()
+            change(&state)
+            globalMemoryStates[deviceID] = state
         }
     }
 }

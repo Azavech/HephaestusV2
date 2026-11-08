@@ -83,6 +83,9 @@ final class DeviceWorkspace {
     /// The memory folders of the projects whose Memories section a window showed, by project id,
     /// from `memories.list` and `memories.changed` (docs/memories.md › Live updates).
     var memoryFolders: [String: MemoryFolder] = [:]
+    /// The device's global memories folder, once a window showed the Global Memories view, from
+    /// `memories.list` and `memories.changed` without `projectID` (docs/memories.md › Live updates).
+    var globalMemories: MemoryFolder?
     /// One transcript state per chat shown in a view, by chat id.
     var transcripts: [String: TranscriptState] = [:]
     /// The workflows and agents of every chat of every project, by chat id (docs/chats.md › UI
@@ -342,5 +345,26 @@ final class DeviceWorkspace {
     /// Reconnect Now of the reconnect view (docs/remote.md › Phases).
     func reconnectNow() {
         remoteConnection?.reconnectNow()
+    }
+}
+
+// MARK: - Memory folders (docs/memories.md › Live updates)
+
+extension DeviceWorkspace {
+    /// The listed memory folder of a scope: the project's entry of `memoryFolders`, or
+    /// `globalMemories`.
+    func memoryFolder(_ scope: MemoryScope) -> MemoryFolder? {
+        switch scope {
+        case .project(let projectID): return memoryFolders[projectID]
+        case .global: return globalMemories
+        }
+    }
+
+    /// Replaces the listed memory folder of a scope.
+    func setMemoryFolder(_ folder: MemoryFolder, for scope: MemoryScope) {
+        switch scope {
+        case .project(let projectID): memoryFolders[projectID] = folder
+        case .global: globalMemories = folder
+        }
     }
 }

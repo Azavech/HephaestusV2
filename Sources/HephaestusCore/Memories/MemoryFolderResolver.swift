@@ -9,6 +9,10 @@ public protocol MemoryFolderResolving: Sendable {
     /// `environment` is the login-shell environment that chat processes get
     /// (docs/chats.md › Environment).
     func memoryFolder(projectRoot: String, environment: [String: String]) -> String
+
+    /// The device's global memories folder, `<config folder>/memory`, absolute, standardized and
+    /// without final `/` (docs/memories.md › Global memories).
+    func globalMemoryFolder(environment: [String: String]) -> String
 }
 
 /// The resolution of the Claude CLI, checked with Claude Code 2.1.309.
@@ -46,6 +50,13 @@ public struct ClaudeMemoryFolderResolver: MemoryFolderResolving {
             return folder
         }
         return Self.nfc(Self.join(config, "projects", Self.folderName(of: base), "memory"))
+    }
+
+    /// `<config folder>/memory`. A relative `CLAUDE_CONFIG_DIR` is relative to the home folder, since
+    /// the folder belongs to no project root; `autoMemoryDirectory` does not move it.
+    public func globalMemoryFolder(environment: [String: String]) -> String {
+        let home = Self.standardized(homeDirectory)
+        return Self.nfc(Self.standardized(Self.join(configFolder(environment: environment, projectRoot: home), "memory")))
     }
 
     /// `CLAUDE_CONFIG_DIR` when it is set and not empty, used as written (a relative value is

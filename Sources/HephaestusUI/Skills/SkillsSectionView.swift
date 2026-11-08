@@ -161,7 +161,7 @@ struct SkillsSectionView: View {
         if window.sectionCommands === commands {
             window.sectionCommands = nil
         }
-        guard window.section != .skills, window.app?.windows[window.id] != nil,
+        guard window.shownSection != .skills, window.app?.windows[window.id] != nil,
               let editor = viewState?.skillEditor, !editor.unsavedEditors.isEmpty else { return }
         let window = window
         let projectID = projectID

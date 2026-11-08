@@ -55,8 +55,8 @@ extension DeviceWorkspace {
         case .skillsChanged(let list):
             skills = list
         case .memoriesChanged(let folder):
-            if memoryFolders[folder.projectID] != nil {
-                memoryFolders[folder.projectID] = folder
+            if memoryFolder(MemoryScope(projectID: folder.projectID)) != nil {
+                setMemoryFolder(folder, for: MemoryScope(projectID: folder.projectID))
             }
         case .settingsUpdated(let newSettings):
             settings = newSettings

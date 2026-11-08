@@ -3,7 +3,8 @@ import Foundation
 
 extension Engine {
     /// docs/engine-api.md › Memories, served by `MemoryStore` and the configuration's
-    /// `MemoryFolderResolving`. Only the user actor calls these methods.
+    /// `MemoryFolderResolving`. Only the user actor calls these methods; without `projectID`, they
+    /// work on the global memories folder.
     func registerMemoryHandlers() {
         register(MemoriesList.self, actors: [.user]) { [unowned self] params, actor in
             try await self.memoriesList(params, actor)
@@ -28,18 +29,18 @@ extension Engine {
         }
     }
 
-    /// `memories.list`: the project's memory folder, read from disk; the folder is watched for the
-    /// project from then on.
+    /// `memories.list`: the project's memory folder with the folders it inherits, or the global
+    /// memories folder, read from disk; the folders are watched for that scope from then on.
     func memoriesList(_ params: MemoriesList.Params, _ actor: Actor) async throws -> MemoryFolder {
         let target = try await memoryFolder(of: params.projectID)
         // Watched before the folders are read, so that a change made meanwhile is reported.
-        watchMemoryFolder(target.folder, inherited: target.inherited, for: target.projectID)
-        return try memoryListing(projectID: target.projectID, folder: target.folder, inherited: target.inherited)
+        watchMemoryFolder(target.folder, inherited: target.inherited, for: target.scope)
+        return try memoryListing(scope: target.scope, folder: target.folder, inherited: target.inherited)
     }
 
     /// `memories.get`.
     func memoriesGet(_ params: MemoriesGet.Params, _ actor: Actor) async throws -> Memory {
-        _ = try Self.checkedProjectID(params.projectID)
+        try Self.checkMemoryProjectID(params.projectID)
         let file = try Self.checkedMemoryFile(params.file)
         let folder = try await memoryFolder(of: params.projectID).folder
         return try existingMemory(file, in: folder).memory
@@ -48,7 +49,7 @@ extension Engine {
     /// `memories.create`: `<name>.md` with `name`, `description` and `metadata.type` and an empty
     /// body, then its line appended to `MEMORY.md` (docs/memories.md › Rename, create and delete).
     func memoriesCreate(_ params: MemoriesCreate.Params, _ actor: Actor) async throws -> Memory {
-        _ = try Self.checkedProjectID(params.projectID)
+        try Self.checkMemoryProjectID(params.projectID)
         let name = try Self.checkedMemoryName(params.name)
         let description = try Self.checkedMemoryDescription(params.description)
         let target = try await memoryFolder(of: params.projectID)
@@ -82,7 +83,7 @@ extension Engine {
     /// of `MEMORY.md`, then the `[[name]]` links of the other memories, in file name order
     /// (docs/memories.md › Rename, create and delete).
     func memoriesUpdate(_ params: MemoriesUpdate.Params, _ actor: Actor) async throws -> Memory {
-        _ = try Self.checkedProjectID(params.projectID)
+        try Self.checkMemoryProjectID(params.projectID)
         let file = try Self.checkedMemoryFile(params.file)
         let newName = try params.name.map { try Self.checkedMemoryName($0) }
         let description = try params.description.map { try Self.checkedMemoryDescription($0) }
@@ -152,7 +153,7 @@ extension Engine {
     /// `memories.delete`: removes the lines of `MEMORY.md` that link to the file, then moves the
     /// file to the Trash.
     func memoriesDelete(_ params: MemoriesDelete.Params, _ actor: Actor) async throws -> Empty {
-        _ = try Self.checkedProjectID(params.projectID)
+        try Self.checkMemoryProjectID(params.projectID)
         let file = try Self.checkedMemoryFile(params.file)
         let target = try await memoryFolder(of: params.projectID)
         let folder = target.folder
@@ -188,7 +189,7 @@ extension Engine {
     /// `memories.writeIndex`: the text written atomically as UTF-8, as sent, creating the folder
     /// when missing.
     func memoriesWriteIndex(_ params: MemoriesWriteIndex.Params, _ actor: Actor) async throws -> Empty {
-        _ = try Self.checkedProjectID(params.projectID)
+        try Self.checkMemoryProjectID(params.projectID)
         let data = Data(params.text.utf8)
         // docs/engine-api.md › memories.writeIndex, errors
         guard data.count <= MemoryFiles.maximumSize else {
@@ -207,6 +208,14 @@ extension Engine {
     }
 
     // MARK: Checks (docs/engine-api.md › Memories, errors)
+
+    /// A `projectID` that is absent, for the global memories folder, or well formed, else
+    /// `invalid`.
+    static func checkMemoryProjectID(_ value: ProjectID?) throws {
+        if let value {
+            _ = try checkedProjectID(value)
+        }
+    }
 
     /// A well-formed project identifier, else `invalid`.
     static func checkedProjectID(_ value: ProjectID) throws -> ProjectID {

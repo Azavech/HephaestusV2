@@ -6,10 +6,11 @@ import HephaestusCore
 import Observation
 import SwiftUI
 
-/// The edited row of a window's Memories section (`ProjectViewState.memoryEditor`): a memory's
-/// form (name, description, type, body) or the text of `MEMORY.md`, with their unsaved changes
-/// (docs/memories.md › Saving). It lives in the window's state, so returning to the project
-/// restores it, unsaved changes included (docs/ui.md › WindowState).
+/// The edited row of a window's Memories section (`ProjectViewState.memoryEditor`) or Global
+/// Memories view (`MemoryViewState.memoryEditor`): a memory's form (name, description, type, body)
+/// or the text of `MEMORY.md`, with their unsaved changes (docs/memories.md › Saving). It lives in
+/// the window's state, so returning to the project or to the view restores it, unsaved changes
+/// included (docs/ui.md › WindowState).
 @MainActor @Observable
 final class MemoryEditorState {
     /// What the editor shows.
@@ -24,7 +25,8 @@ final class MemoryEditorState {
     }
 
     private(set) var target: Target
-    let projectID: String
+    /// The folder of the memory: a project's memory folder or the global memories folder.
+    let scope: MemoryScope
     /// The mode of the body and of `MEMORY.md`: Edit, Preview or Split; it starts as Preview and
     /// is kept when the window selects another row of the project (docs/memories.md › Memory
     /// editor).
@@ -56,9 +58,9 @@ final class MemoryEditorState {
     /// Discards the answers of fetches overtaken by a newer one.
     @ObservationIgnored private var fetchGeneration = 0
 
-    init(target: Target, projectID: String, bodyMode: DocMode = .preview) {
+    init(target: Target, scope: MemoryScope, bodyMode: DocMode = .preview) {
         self.target = target
-        self.projectID = projectID
+        self.scope = scope
         self.bodyMode = bodyMode
         form = MemoryForm()
         index = EditorBuffer(path: MemoryActions.indexFileName)
@@ -88,11 +90,12 @@ final class MemoryEditorState {
         self.workspace = workspace
     }
 
-    /// The mode chosen with the mode picker, kept in `ProjectViewState.memoryBodyMode` so that
-    /// the next editor of the project starts in it.
+    /// The mode chosen with the mode picker, kept in `memoryBodyMode` of the view's state so that
+    /// the next editor of the project, or of the Global Memories view, starts in it.
     func setBodyMode(_ mode: DocMode) {
         bodyMode = mode
-        window?.updateViewState(of: projectID) { $0.memoryBodyMode = mode }
+        guard let deviceID = workspace?.deviceID else { return }
+        window?.updateMemoryViewState(scope, deviceID: deviceID) { $0.memoryBodyMode = mode }
     }
 
     /// The memory's saved name, or `MEMORY.md`: the name of the prompt.
@@ -154,11 +157,11 @@ final class MemoryEditorState {
         do {
             switch target {
             case .memory(let file):
-                let memory = try await workspace.call(MemoriesGet.self, .init(projectID: projectID, file: file))
+                let memory = try await workspace.call(MemoriesGet.self, .init(projectID: scope.projectID, file: file))
                 guard generation == fetchGeneration, target == self.target, !isSaving else { return }
                 apply(memory)
             case .index:
-                let content = try await workspace.call(MemoriesReadIndex.self, .init(projectID: projectID))
+                let content = try await workspace.call(MemoriesReadIndex.self, .init(projectID: scope.projectID))
                 guard generation == fetchGeneration, target == self.target, !isSaving else { return }
                 applyIndex(content.text)
             case .inherited(let ancestorID, let file):
@@ -251,7 +254,7 @@ final class MemoryEditorState {
     var canSave: Bool {
         guard !isSaving, hasUnsavedChanges else { return false }
         switch target {
-        case .memory(let file): return form.isValid(folder: workspace?.memoryFolders[projectID], file: file)
+        case .memory(let file): return form.isValid(folder: workspace?.memoryFolder(scope), file: file)
         case .index: return true
         case .inherited: return false
         }
@@ -271,10 +274,10 @@ final class MemoryEditorState {
             guard let workspace else { throw EngineError(.unavailable, "The memory cannot be saved: its window is closed.") }
             switch target {
             case .memory(let file):
-                if let message = form.firstValidationMessage(folder: workspace.memoryFolders[projectID], file: file) {
+                if let message = form.firstValidationMessage(folder: workspace.memoryFolder(scope), file: file) {
                     throw EngineError(.invalid, message)
                 }
-                var params = MemoriesUpdate.Params(projectID: projectID, file: file)
+                var params = MemoriesUpdate.Params(projectID: scope.projectID, file: file)
                 if form.name != form.savedName { params.name = form.name }
                 if form.description != form.savedDescription { params.description = form.description }
                 if let type = form.type, type.rawValue != form.savedType { params.type = type }
@@ -290,7 +293,7 @@ final class MemoryEditorState {
                 loadError = nil
                 conflict = nil
                 if memory.file != file {
-                    window?.updateViewState(of: projectID) {
+                    window?.updateMemoryViewState(scope, deviceID: workspace.deviceID) {
                         if $0.selectedMemoryFile == file {
                             $0.selectedMemoryFile = memory.file
                         }
@@ -301,7 +304,7 @@ final class MemoryEditorState {
                 fetchGeneration += 1
                 isSaving = true
                 defer { isSaving = false }
-                _ = try await workspace.call(MemoriesWriteIndex.self, .init(projectID: projectID, text: text))
+                _ = try await workspace.call(MemoriesWriteIndex.self, .init(projectID: scope.projectID, text: text))
                 index.diskText = text
                 loadError = nil
                 conflict = nil

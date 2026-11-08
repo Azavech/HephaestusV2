@@ -38,7 +38,7 @@ struct ProjectChatPanel: View {
     /// The items open in the centre column that the user did not unlink (docs/ui.md › Inspector);
     /// the selected tickets include those of the descendants the Tickets section lists.
     private var linkedItems: [LinkedItem] {
-        LinkedItems.linked(state: viewState, section: window.section,
+        LinkedItems.linked(state: viewState, section: window.shownSection,
                            tickets: TicketListProjects(projectID: projectID, workspace: workspace).tickets(in: workspace),
                            bundles: workspace.bundles[projectID] ?? [:], chats: workspace.chats,
                            webTabs: workspace.webTabs[projectID] ?? [])

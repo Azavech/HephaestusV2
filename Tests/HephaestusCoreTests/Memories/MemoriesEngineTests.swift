@@ -130,6 +130,44 @@ struct MemoriesEngineTests {
         }
     }
 
+    // MARK: Global memories
+
+    @Test("Without projectID, the methods work on the global memories folder <config folder>/memory, and memories.changed has no projectID")
+    func globalScope() async throws {
+        try await withMemoriesEngine { bed in
+            let global = bed.folder.appendingPathComponent("Claude").appendingPathComponent("memory")
+            #expect(try await bed.connection.call(MemoriesList.self, .init())
+                == MemoryFolder(projectID: nil, path: global.path, hasIndex: false, memories: []))
+
+            let events = bed.connection.events
+            let user = Actor.user(deviceID: bed.engine.deviceID)
+            let created = try await bed.connection.call(MemoriesCreate.self, .init(name: "short-answers", description: "Short answers",
+                                                                                   type: .feedback))
+            #expect(created.file == "short-answers.md")
+            #expect(try read("MEMORY.md", in: global) == "- [short-answers](short-answers.md) — Short answers\n")
+            let event = try #require(await firstElement(of: events) { $0.name == MemoriesChangedEvent.name && $0.origin == user })
+            let changed = try event.payload(MemoriesChangedEvent.self)
+            #expect(changed == MemoryFolder(projectID: nil, path: global.path, hasIndex: true,
+                                            memories: [MemorySummary(file: "short-answers.md", name: "short-answers", description: "Short answers",
+                                                                     type: "feedback")]))
+            // The Memories section of a project does not list the global memories.
+            #expect(try await bed.connection.call(MemoriesList.self, .init(projectID: "MEM")).memories.isEmpty)
+
+            _ = try await bed.connection.call(MemoriesUpdate.self, .init(file: "short-answers.md", name: "answers", body: "\nShort.\n"))
+            #expect(try await bed.connection.call(MemoriesGet.self, .init(file: "answers.md")).body == "\nShort.\n")
+            #expect(try await bed.connection.call(MemoriesReadIndex.self, .init()).text == "- [short-answers](answers.md) — Short answers\n")
+            _ = try await bed.connection.call(MemoriesWriteIndex.self, .init(text: "- [answers](answers.md) — A\n- [x](x.md) — X\n"))
+            _ = try await bed.connection.call(MemoriesDelete.self, .init(file: "answers.md"))
+            #expect(try read("MEMORY.md", in: global) == "- [x](x.md) — X\n")
+            #expect(!FileManager.default.fileExists(atPath: global.appendingPathComponent("answers.md").path))
+            #expect(await engineError { try await bed.connection.call(MemoriesGet.self, .init(file: "answers.md")) }
+                == EngineError(.notFound, "Memory answers.md not found."))
+            #expect(await engineError {
+                try await bed.engine.call(MemoriesList.self, .init(), actor: .claude(chatID: "external"))
+            }?.code == .forbidden)
+        }
+    }
+
     // MARK: Create
 
     @Test("memories.create writes <name>.md and appends its MEMORY.md line, creating the folder, and emits memories.changed")
@@ -520,6 +558,29 @@ struct MemoriesEngineTests {
             for error in errors {
                 #expect(error?.code == .forbidden)
             }
+        }
+    }
+
+    @Test("A change made outside the engine in the watched global memories folder emits memories.changed without projectID", .fsEvents)
+    func globalWatcher() async throws {
+        try await withMemoriesEngine { bed in
+            let global = URL(fileURLWithPath: try await bed.connection.call(MemoriesList.self, .init()).path, isDirectory: true)
+            let events = bed.connection.events
+            let primer = Task {
+                for _ in 0..<10 {
+                    try write("primer.md", in: global, memory("primer", type: "user"))
+                    try await Task.sleep(for: .seconds(2))
+                }
+            }
+            let primed = await firstElement(of: events, timeout: waitLimit) {
+                $0.name == MemoriesChangedEvent.name && $0.origin == .system
+                    && (try? $0.payload(MemoriesChangedEvent.self))?.projectID == nil
+            }
+            primer.cancel()
+            _ = await primer.result
+            let folder = try #require(try primed?.payload(MemoriesChangedEvent.self))
+            #expect(folder.path == global.path)
+            #expect(folder.memories.map(\.name) == ["primer"])
         }
     }
 

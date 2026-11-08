@@ -201,6 +201,44 @@ struct PromptAndNamingTests {
             + "mcp__hephaestus__k8s_events,mcp__hephaestus__argocd_status"))
     }
 
+    @Test("{{globalMemories}}: the folder and the trimmed text of MEMORY.md, at most 200 lines and 25,000 characters")
+    func globalMemoriesBlock() {
+        let folder = "/Users/example/.claude/memory"
+        let header = "The global memories folder is /Users/example/.claude/memory. Its MEMORY.md:"
+        let truncated = "[Truncated: read /Users/example/.claude/memory/MEMORY.md for the other lines.]"
+        // The example of docs/chats.md › Rendered blocks, from a file with CR LF and blank lines around.
+        #expect(Prompts.globalMemories(folder: folder, index: "\n- [Short answers](answer-style.md) — the user wants short answers in every project\r\n"
+            + "- [No force push](no-force-push.md) — never force-push, in any repository\n\n")
+            == header + "\n- [Short answers](answer-style.md) — the user wants short answers in every project\n"
+            + "- [No force push](no-force-push.md) — never force-push, in any repository")
+        let none = "The global memories folder is /Users/example/.claude/memory. Its MEMORY.md has no line yet."
+        #expect(Prompts.globalMemories(folder: folder, index: nil) == none)
+        #expect(Prompts.globalMemories(folder: folder, index: " \r\n\n") == none)
+        // 201 lines keep the first 200.
+        let lines = (1...201).map { "- [m\($0)](m\($0).md) — memory \($0)" }
+        #expect(Prompts.globalMemories(folder: folder, index: lines.joined(separator: "\n") + "\n")
+            == header + "\n" + lines.prefix(200).joined(separator: "\n") + "\n" + truncated)
+        #expect(Prompts.globalMemories(folder: folder, index: lines.prefix(200).joined(separator: "\n"))
+            == header + "\n" + lines.prefix(200).joined(separator: "\n"))
+        // More than 25,000 characters: cut at the last line break before the limit.
+        let first = String(repeating: "a", count: 24_990)
+        #expect(Prompts.globalMemories(folder: folder, index: first + "\n" + String(repeating: "b", count: 20))
+            == header + "\n" + first + "\n" + truncated)
+        let exact = String(repeating: "c", count: 25_000)
+        #expect(Prompts.globalMemories(folder: folder, index: exact) == header + "\n" + exact)
+        #expect(Prompts.globalMemories(folder: folder, index: exact + "c") == header + "\n" + truncated)
+    }
+
+    @Test("Prompt: common states the global memories rule after the global memories block")
+    func globalMemoriesRule() throws {
+        let common = Prompts.text(.common)
+        let section = String(common[common.range(of: "# Global memories")!.lowerBound..<common.range(of: "# When the project is a Go service")!.lowerBound])
+        let block = try #require(section.range(of: "\n\n{{globalMemories}}\n\n"))
+        let rule = try #require(section.range(of: "a memory that holds for every project goes to the global memories folder, with its line in the global "
+            + "MEMORY.md; the other memories go to the project's memory folder."))
+        #expect(block.upperBound <= rule.lowerBound)
+    }
+
     @Test("Rendering replaces each placeholder in one pass")
     func render() {
         #expect(Prompts.render("{{a}} and {{b}}", ["a": "{{b}}", "b": "B"]) == "{{b}} and B")
@@ -219,6 +257,7 @@ struct PromptAndNamingTests {
             "ticketTitle": "Locked web tabs close with Command-W", "ticket": "ID: HEPH-12", "bundleID": "HEPH-B2",
             "bundleTitle": "Web tab polish", "bundleTicketIDs": "HEPH-12, HEPH-13", "bundle": "ID: HEPH-B2", "feedbackContext": "- App: X",
             "screenshotPath": "/Users/example/s.png", "githubRepository": "Azavech/HephaestusV2", "parentMemories": "",
+            "globalMemories": "The global memories folder is /Users/example/.claude/memory. Its MEMORY.md has no line yet.",
         ]
         for name in Prompts.Name.allCases {
             let text = Prompts.text(name)

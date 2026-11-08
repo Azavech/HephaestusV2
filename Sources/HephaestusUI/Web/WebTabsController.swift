@@ -221,6 +221,7 @@ final class WebTabsController: SectionCommandHandler {
         _ = window.deviceID
         _ = window.sheet
         _ = window.section
+        _ = window.showsGlobalMemories
         guard let projectID = window.projectID else { return }
         _ = window.projectStates[ProjectKey(deviceID: window.deviceID, projectID: projectID)]?.selectedWebTabID
         if let workspace = window.workspace {
@@ -578,7 +579,7 @@ final class WebTabsController: SectionCommandHandler {
     /// The stored tab whose page the window shows: its Web section shows the bound project with a
     /// stored tab selected. ⌘T waiting for the Web section shows the placeholder.
     private var visibleTabID: UUID? {
-        guard let window, let key, window.section == .web, window.activeProjectKey == key,
+        guard let window, let key, window.shownSection == .web, window.activeProjectKey == key,
               window.pendingSectionCommand != .newWebTab,
               case .item(.stored(let tabID)) = currentSelection else { return nil }
         return tabID
@@ -1025,7 +1026,7 @@ final class WebTabsController: SectionCommandHandler {
     /// The window shows this controller's project in its Web section.
     private var isShown: Bool {
         guard let window, let key, !isTornDown else { return false }
-        return window.section == .web && window.activeProjectKey == key && window.sheet == nil
+        return window.shownSection == .web && window.activeProjectKey == key && window.sheet == nil
             && (window.workspace?.isConnected ?? false)
     }
 

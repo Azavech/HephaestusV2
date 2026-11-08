@@ -177,7 +177,8 @@ struct SidebarView: View {
     }
 
     private func row(_ section: ProjectSection) -> some View {
-        let selected = window.section == section
+        // No row is selected while the Global Memories view shows (docs/ui.md › Sidebar).
+        let selected = window.shownSection == section
         return Button {
             window.section = section
         } label: {

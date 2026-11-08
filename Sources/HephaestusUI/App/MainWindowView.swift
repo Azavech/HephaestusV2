@@ -124,7 +124,13 @@ private struct MainWindowColumns: View {
             } else if !workspace.hasSnapshot {
                 LoadingStateView(text: "Loading \(workspace.deviceName)…")
             } else if workspace.projects.isEmpty {
-                WelcomeView(window: state, workspace: workspace)
+                // The Global Memories view takes the welcome view's place (docs/ui.md › Welcome view).
+                if state.showsGlobalMemories {
+                    GlobalMemoriesView(window: state, workspace: workspace)
+                        .id("\(workspace.deviceID)/global")
+                } else {
+                    WelcomeView(window: state, workspace: workspace)
+                }
             } else if let projectID = state.projectID, let project = workspace.project(projectID) {
                 ProjectColumns(state: state, workspace: workspace, project: project)
             } else {
@@ -184,8 +190,8 @@ private struct ProjectColumns: View {
         }
         // An item unlinked from the inspector chat is linked again once it is no longer open,
         // whether the inspector is shown or not (docs/ui.md › Inspector).
-        .onChange(of: state.viewState.openItems(in: state.section)) {
-            state.updateViewState(of: project.id) { $0.forgetClosedUnlinkedItems(in: state.section) }
+        .onChange(of: state.viewState.openItems(in: state.shownSection)) {
+            state.updateViewState(of: project.id) { $0.forgetClosedUnlinkedItems(in: state.shownSection) }
         }
         // The descendants' tickets, for the Tickets section: loaded at once, then for each
         // descendant added or opened, and again once the device is connected (docs/ui.md ›
@@ -203,7 +209,8 @@ private struct DescendantsLoad: Hashable {
     var isConnected: Bool
 }
 
-/// The centre column: the section the sidebar selects, once the project's data is loaded.
+/// The centre column: the section the sidebar selects, once the project's data is loaded, or the
+/// Global Memories view, which needs no project data (docs/memories.md › Global Memories view).
 private struct SectionContent: View {
     let state: WindowState
     let workspace: DeviceWorkspace
@@ -211,7 +218,10 @@ private struct SectionContent: View {
 
     var body: some View {
         let projectID = project.id
-        if let error = workspace.projectLoadErrors[projectID] {
+        if state.showsGlobalMemories {
+            GlobalMemoriesView(window: state, workspace: workspace)
+                .id("\(workspace.deviceID)/global")
+        } else if let error = workspace.projectLoadErrors[projectID] {
             ProjectLoadFailedView(projectName: project.name, error: error) {
                 workspace.retryProjectLoad(projectID)
             }
@@ -239,7 +249,7 @@ private struct SectionContent: View {
             case .skills:
                 SkillsSectionView(window: state, workspace: workspace, projectID: projectID)
             case .memories:
-                MemoriesSectionView(window: state, workspace: workspace, projectID: projectID)
+                MemoriesSectionView(window: state, workspace: workspace, scope: .project(projectID))
                     .id("\(workspace.deviceID)/\(projectID)")
             case .costs:
                 CostsSectionView(window: state, workspace: workspace, projectID: projectID)

@@ -2,14 +2,17 @@ import Darwin
 import Foundation
 
 /// The memory folders the engine watches: the projects whose memories a client listed since the
-/// engine started, with their folders and the folders they inherit, and one watcher per folder
-/// (docs/memories.md › Live updates). Used only on the engine actor.
+/// engine started, with their folders and the folders they inherit, the global memories folder
+/// once a client listed it, and one watcher per folder (docs/memories.md › Live updates). Used
+/// only on the engine actor.
 final class MemoryStore {
     /// The memory folder of each watched project.
     var folders: [ProjectID: String] = [:]
     /// The folders each watched project inherits, nearest parent first.
     var inherited: [ProjectID: [InheritedFolder]] = [:]
-    /// The watcher of each folder of `folders` and `inherited`.
+    /// The global memories folder, watched once a client listed or changed it.
+    var globalFolder: String?
+    /// The watcher of each folder of `folders`, `inherited` and `globalFolder`.
     var watchers: [String: MemoryFolderWatcher] = [:]
     /// True once the engine shut down: nothing is watched any more.
     var stopped = false
@@ -24,10 +27,10 @@ struct InheritedFolder: Hashable, Sendable {
     var path: String
 }
 
-/// The memory folders of a `memories.*` call: the project, its own folder and the folders it
-/// inherits.
+/// The memory folders of a `memories.*` call: its scope, the scope's folder and the folders a
+/// project inherits, none for the global memories folder.
 struct MemoryFolders {
-    var projectID: ProjectID
+    var scope: MemoryScope
     var folder: URL
     var inherited: [InheritedFolder]
 }
@@ -43,10 +46,20 @@ struct MemoryEntry {
 extension Engine {
     // MARK: Folders (docs/memories.md › Memory folder)
 
-    /// The project of a `memories.*` call, its memory folder and the folders it inherits, resolved
-    /// again at every call from the login-shell environment: `invalid` for a malformed identifier,
-    /// `notFound` for a project that is not loaded.
-    func memoryFolder(of value: ProjectID) async throws -> MemoryFolders {
+    /// The scope of a `memories.*` call, its folder and the folders a project inherits, resolved
+    /// again at every call from the login-shell environment: the project's memory folder and its
+    /// inherited folders, or the global memories folder without `projectID`, which inherits none;
+    /// `invalid` for a malformed identifier, `notFound` for a project that is not loaded.
+    func memoryFolder(of value: ProjectID?) async throws -> MemoryFolders {
+        guard let value else {
+            let environment = await childProcessEnvironment()
+            let folder = URL(fileURLWithPath: configuration.memoryFolders.globalMemoryFolder(environment: environment), isDirectory: true)
+            // The watched global folder moves with CLAUDE_CONFIG_DIR.
+            if memories.globalFolder != nil {
+                watchMemoryFolder(folder, inherited: [], for: .global)
+            }
+            return MemoryFolders(scope: .global, folder: folder, inherited: [])
+        }
         // docs/engine-api.md › Memories, errors; › Identifiers
         guard let projectID = Identifiers.normalizedProjectID(value) else {
             throw EngineError.invalid("projectID", "use 2 to 8 letters A–Z")
@@ -64,9 +77,9 @@ extension Engine {
         let folder = URL(fileURLWithPath: path, isDirectory: true)
         // A watched project whose folders changed is watched at its new folders.
         if memories.folders[projectID] != nil {
-            watchMemoryFolder(folder, inherited: inherited, for: projectID)
+            watchMemoryFolder(folder, inherited: inherited, for: .project(projectID))
         }
-        return MemoryFolders(projectID: projectID, folder: folder, inherited: inherited)
+        return MemoryFolders(scope: .project(projectID), folder: folder, inherited: inherited)
     }
 
     /// The folders a project inherits (docs/memories.md › Inherited memories): the memory folder of
@@ -177,9 +190,10 @@ extension Engine {
     }
 
     /// The `memories.list` result: the folder's path, whether `MEMORY.md` exists, and every
-    /// memory sorted by name, then by file name, then the inherited folders with their memories.
-    func memoryListing(projectID: ProjectID, folder: URL, inherited: [InheritedFolder]) throws -> MemoryFolder {
-        MemoryFolder(projectID: projectID, path: folder.path, hasIndex: indexExists(in: folder), memories: try memorySummaries(in: folder),
+    /// memory sorted by name, then by file name, then the inherited folders with their memories; no
+    /// `projectID` and no inherited folder for the global memories folder.
+    func memoryListing(scope: MemoryScope, folder: URL, inherited: [InheritedFolder]) throws -> MemoryFolder {
+        MemoryFolder(projectID: scope.projectID, path: folder.path, hasIndex: indexExists(in: folder), memories: try memorySummaries(in: folder),
                      inherited: inherited.map(inheritedListing))
     }
 
@@ -260,15 +274,21 @@ extension Engine {
 
     // MARK: Watching and events (docs/memories.md › Live updates)
 
-    /// Watches `folder` and the inherited folders for the project from now on: a project whose
-    /// folders changed moves to its new folders, and a folder no project uses any more is no
-    /// longer watched.
-    func watchMemoryFolder(_ folder: URL, inherited: [InheritedFolder], for projectID: ProjectID) {
+    /// Watches `folder` for the project, with the folders it inherits, or as the global memories
+    /// folder, from now on: a scope whose folders changed moves to its new folders, and a folder
+    /// no scope uses any more is no longer watched.
+    func watchMemoryFolder(_ folder: URL, inherited: [InheritedFolder], for scope: MemoryScope) {
         guard !memories.stopped else { return }
         let path = folder.path
-        guard memories.folders[projectID] != path || memories.inherited[projectID] != inherited else { return }
-        memories.folders[projectID] = path
-        memories.inherited[projectID] = inherited
+        switch scope {
+        case .project(let projectID):
+            guard memories.folders[projectID] != path || memories.inherited[projectID] != inherited else { return }
+            memories.folders[projectID] = path
+            memories.inherited[projectID] = inherited
+        case .global:
+            guard memories.globalFolder != path else { return }
+            memories.globalFolder = path
+        }
         updateMemoryWatchers()
     }
 
@@ -290,6 +310,7 @@ extension Engine {
         memories.stopped = true
         memories.folders.removeAll()
         memories.inherited.removeAll()
+        memories.globalFolder = nil
         updateMemoryWatchers()
     }
 
@@ -310,12 +331,16 @@ extension Engine {
         }
         guard !changed.isEmpty, !memories.stopped else { return }
         updateMemoryWatchers()
-        emitMemoriesChanged(projectIDs: changed, origin: origin)
+        emitMemoriesChanged(scopes: changed.map(MemoryScope.project), origin: origin)
     }
 
-    /// One watcher per folder of the watched projects, their inherited folders included.
+    /// One watcher per folder of the watched projects, their inherited folders included, and of the
+    /// watched global memories folder.
     private func updateMemoryWatchers() {
-        let used = Set(memories.folders.values).union(memories.inherited.values.flatMap { $0.map(\.path) })
+        var used = Set(memories.folders.values).union(memories.inherited.values.flatMap { $0.map(\.path) })
+        if let globalFolder = memories.globalFolder {
+            used.insert(globalFolder)
+        }
         for (path, watcher) in memories.watchers where !used.contains(path) {
             watcher.stop()
             memories.watchers[path] = nil
@@ -337,30 +362,48 @@ extension Engine {
     }
 
     /// The watcher saw changes in a folder: `memories.changed` with origin `system` for every
-    /// watched project of that folder and every watched project that inherits it.
+    /// watched project of that folder and every watched project that inherits it, and without
+    /// `projectID` when it is the watched global memories folder.
     private func memoryFolderChangedOnDisk(_ path: String) {
         guard memories.watchers[path] != nil else { return }
-        emitMemoriesChanged(projectIDs: watchedProjects(using: path), origin: .system)
+        emitMemoriesChanged(scopes: watchedScopes(using: path), origin: .system)
     }
 
-    /// After a mutation: `memories.changed` for the calling project, for every other watched
-    /// project whose folder is the same and for every watched project that inherits it; the
-    /// calling project is watched from then on.
+    /// The watched scopes of a folder: the projects whose own folder it is, then those that inherit
+    /// it, then the global memories folder when it is that folder.
+    private func watchedScopes(using path: String) -> [MemoryScope] {
+        var scopes = watchedProjects(using: path).map(MemoryScope.project)
+        if memories.globalFolder == path {
+            scopes.append(.global)
+        }
+        return scopes
+    }
+
+    /// After a mutation: `memories.changed` for the calling scope, for every other watched project
+    /// whose folder is the same, for every watched project that inherits it and for the watched
+    /// global memories folder when it is that folder; the calling scope is watched from then on.
     func memoriesDidChange(_ target: MemoryFolders, origin: Actor) {
-        watchMemoryFolder(target.folder, inherited: target.inherited, for: target.projectID)
-        let others = watchedProjects(using: target.folder.path).filter { $0 != target.projectID }
-        emitMemoriesChanged(projectIDs: [target.projectID] + others, origin: origin)
+        watchMemoryFolder(target.folder, inherited: target.inherited, for: target.scope)
+        let others = watchedScopes(using: target.folder.path).filter { $0 != target.scope }
+        emitMemoriesChanged(scopes: [target.scope] + others, origin: origin)
     }
 
-    /// Emits the listing of each watched, loaded project, its folders read once per emission. A
-    /// project whose own folder cannot be read emits nothing; an inherited folder that cannot be
-    /// read has no memories.
-    private func emitMemoriesChanged(projectIDs: [ProjectID], origin: Actor) {
+    /// Emits the listing of each watched scope: the global memories folder, and each loaded
+    /// project, its folders read once per emission. A scope whose own folder cannot be read emits
+    /// nothing; an inherited folder that cannot be read has no memories.
+    private func emitMemoriesChanged(scopes: [MemoryScope], origin: Actor) {
         var ownListings: [String: (hasIndex: Bool, memories: [MemorySummary])] = [:]
         var unreadable: Set<String> = []
         var inheritedListings: [InheritedFolder: InheritedMemoryFolder] = [:]
-        for projectID in projectIDs where domain.isLoaded(projectID) {
-            guard let path = memories.folders[projectID], !unreadable.contains(path) else { continue }
+        for scope in scopes {
+            let watchedPath: String?
+            switch scope {
+            case .project(let projectID):
+                watchedPath = domain.isLoaded(projectID) ? memories.folders[projectID] : nil
+            case .global:
+                watchedPath = memories.globalFolder
+            }
+            guard let path = watchedPath, !unreadable.contains(path) else { continue }
             let folder = URL(fileURLWithPath: path, isDirectory: true)
             if ownListings[path] == nil {
                 do {
@@ -372,13 +415,13 @@ extension Engine {
                 }
             }
             guard let listing = ownListings[path] else { continue }
-            let inherited = (memories.inherited[projectID] ?? []).map { folder in
+            let inherited = (scope.projectID.flatMap { memories.inherited[$0] } ?? []).map { folder in
                 if let listed = inheritedListings[folder] { return listed }
                 let listed = inheritedListing(folder)
                 inheritedListings[folder] = listed
                 return listed
             }
-            emit(MemoriesChangedEvent.self, MemoryFolder(projectID: projectID, path: path, hasIndex: listing.hasIndex,
+            emit(MemoriesChangedEvent.self, MemoryFolder(projectID: scope.projectID, path: path, hasIndex: listing.hasIndex,
                                                          memories: listing.memories, inherited: inherited),
                  origin: origin)
         }

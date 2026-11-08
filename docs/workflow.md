@@ -693,6 +693,14 @@ Whenever Claude shows the user an image, for example one it rendered, a screensh
 - `show_image` accepts PNG, JPEG, GIF and WebP files; Claude saves an image in one of these formats before it shows it. A call with another file or a missing path fails as a whole and shows nothing ([Image rules](mcp.md#image-rules)).
 - `show_image` asks the user nothing and needs no permission: Claude continues its work after it returns, also in an implement chat that the user has not written in yet.
 
+## Global memories
+
+Besides the memory folder of its project, which the Claude CLI gives it, every chat receives the device's global memories folder: the common prompt names the folder and the lines of its `MEMORY.md`, and Claude reads and writes the folder's files with its own file tools ([Global memories](memories.md#global-memories), [In chats](memories.md#in-chats)).
+
+- Claude decides per memory where it saves it: a memory that holds for every project goes to the global memories folder, with its line in the global `MEMORY.md`; the other memories go to the project's memory folder.
+- When a line of the global `MEMORY.md` concerns its work, Claude reads that memory's file.
+- In a chat of a sub project, the common prompt also names the memory folders inherited from the parent projects, which Claude reads and never writes in: it saves every new memory in its project's memory folder or in the global memories folder ([Inherited memories](memories.md#inherited-memories)).
+
 ## Self-update loop
 
 When the project is HephaestusV2 itself (the HephaestusV2 project: the project `HEPH` whose origin names the repository `Azavech/HephaestusV2`, whose URL is hardcoded in the app, [HephaestusV2 project](projects.md#hephaestusv2-project)), a pushed change reaches the running app without manual steps:
@@ -892,3 +900,4 @@ Notes
 - R161: After an implementation is pushed in a project with a GitHub page, a CI chat follows CI and reports to the orchestrator, which asks the user how to proceed when CI fails and finishes only once CI is green or the user decides so.
 - R162: Each environment of a Go service names its Kubernetes context, namespace, deployment, Argo CD application and kubeconfig, which Claude receives and uses through HephaestusV2's Kubernetes and Argo CD tools.
 - R164: The main button of the pinned questions card reads `Submit` only when pressing it sends the answers to Claude, and `Next` on the other questions of the set.
+- R169: Claude keeps global memories that every chat of every project receives; the user shows and edits them with View ▸ Global Memories.

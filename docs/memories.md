@@ -1,6 +1,6 @@
 # Memories
 
-The Claude CLI saves what it learns about the user and about a project as memories: Markdown files in a memory folder of the CLI's configuration folder, one folder per repository, listed in an index file, `MEMORY.md`, that the CLI reads at the start of the project's sessions. The Memories section of the sidebar shows the memories of the window's active project. The user reads, edits, creates, renames and deletes them there, and the engine keeps `MEMORY.md` and the `[[name]]` links between memories in step. A sub project also inherits the memories of its parent projects that are in other memory folders: its chats receive them and its Memories section lists them read-only. Claude keeps writing memories with its own file tools: no MCP tool reads or writes them. The engine watches the folders, so the section follows the changes that chats and other apps make, on This Mac and in remote windows.
+The Claude CLI saves what it learns about the user and about a project as memories: Markdown files in a memory folder of the CLI's configuration folder, one folder per repository, listed in an index file, `MEMORY.md`, that the CLI reads at the start of the project's sessions. What holds for every project goes to the device's global memories folder instead, which the engine gives to the chats of every project. The Memories section of the sidebar shows the memories of the window's active project, and View ▸ Global Memories the global memories. The user reads, edits, creates, renames and deletes them there, and the engine keeps `MEMORY.md` and the `[[name]]` links between memories in step. A sub project also inherits the memories of its parent projects that are in other memory folders: its chats receive them and its Memories section lists them read-only. Claude keeps writing memories with its own file tools: no MCP tool reads or writes them. The engine watches the folders, so the section and the view follow the changes that chats and other apps make, on This Mac and in remote windows.
 
 ## Section
 
@@ -11,7 +11,7 @@ The Claude CLI saves what it learns about the user and about a project as memori
 | SF Symbol   | `brain`                                                                                          |
 | Shortcut    | ⌘9 ([Menus and keyboard shortcuts](ui.md#menus-and-keyboard-shortcuts))                          |
 | Sidebar row | in the Project category, after Skills and before Costs, without badge ([Sidebar](ui.md#sidebar)) |
-| Shows       | the memories of the window's active project, and read-only those it inherits                     |
+| Shows       | the memories of the window's active project, read-only those it inherits; not the global ones    |
 
 ## Memory folder
 
@@ -86,7 +86,45 @@ What uses the inherited folders:
 | Memories section of the project                  | one read-only group per inherited folder, after the project's own groups ([List](#list))                                                                                                                                                                             |
 
 - A chat computes the inherited folders when its process launches, as it renders its system prompt, so a resumed chat gets the current memories of its ancestors.
-- A memory that a chat of the sub project saves goes to the sub project's own folder, where the CLI writes ([Memory folder](#memory-folder)): the prompt tells Claude never to write in the inherited folders, and the permission rule grants reading only. An inherited memory is changed in the Memories section of its ancestor.
+- A memory that a chat of the sub project saves goes to the sub project's own folder, where the CLI writes ([Memory folder](#memory-folder)), or, when it holds for every project, to the global memories folder ([Global memories](#global-memories)): the prompt tells Claude never to write in the inherited folders, and the permission rule grants reading only. An inherited memory is changed in the Memories section of its ancestor.
+
+## Global memories
+
+Each device has one global memories folder, for the memories that hold for every project. Every chat of every project of the device receives it, besides the memory folder of its own project and, in a sub project, the folders it inherits read-only ([Inherited memories](#inherited-memories)); Claude decides per memory which of the two folders it writes to, the project's or the global one ([In chats](#in-chats)).
+
+| Property | Value                                                                                                                                                                                                            |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Path     | `<config folder>/memory`, the config folder of [Resolution](#resolution), step 5: `CLAUDE_CONFIG_DIR` of the chat environment when it is set and not empty, otherwise `~/.claude`                                |
+| Files    | memory files and a `MEMORY.md` index, with the format and the rules of a project's memory folder ([Memory files](#memory-files), [MEMORY.md](#memorymd), [Rename, create and delete](#rename-create-and-delete)) |
+| Device   | the engine's own device; remote windows reach it through the engine ([Remote windows](#remote-windows))                                                                                                          |
+| Shown    | in the [Global Memories view](#global-memories-view); the Memories section of a project does not list it                                                                                                         |
+
+- A relative `CLAUDE_CONFIG_DIR` is taken relative to the home folder, since the folder belongs to no project root. Default chosen at design time.
+- `autoMemoryDirectory` does not move the global memories folder: it names the memory folder of the projects only ([Resolution](#resolution), step 6).
+- The engine resolves the folder again at each `memories.*` call without `projectID` and at each chat launch.
+
+Examples:
+
+| `CLAUDE_CONFIG_DIR` of the chat environment | Global memories folder                |
+| ------------------------------------------- | ------------------------------------- |
+| unset or empty                              | `~/.claude/memory`                    |
+| `/Users/example/claude-config`              | `/Users/example/claude-config/memory` |
+| `claude-config`                             | `~/claude-config/memory`              |
+
+### In chats
+
+At every launch of a chat process, whatever the chat's kind and project ([Launch](chats.md#launch)), the engine:
+
+1. resolves the global memories folder with the chat environment ([Environment](chats.md#environment)) and creates it, with its missing parent folders, when it is missing;
+2. reads its `MEMORY.md`, then names the folder and the lines of `MEMORY.md` in the system prompt, in the block `{{globalMemories}}` of the common prompt ([Rendered blocks](chats.md#rendered-blocks));
+3. passes the folder to the CLI with `--add-dir` ([Command line](chats.md#command-line)): Claude reads and writes its files with its own file tools, under the chat's permission mode, as the files of the project.
+
+- The common prompt states the rule Claude follows for each memory it saves: a memory that holds for every project goes to the global memories folder, with its line in the global `MEMORY.md`; the other memories go to the project's memory folder, which the CLI gives ([Prompt: common](chats.md#prompt-common)).
+- When the folder cannot be created, the chat starts without `--add-dir` and its prompt still names the folder; `engine.log` gets the warning `the global memories folder <path> cannot be created: <reason>`. Default chosen at design time.
+- A comment answer gets no global memories: its system prompt has no common prompt ([Comment answers](chats.md#comment-answers)).
+- A CI chat gets the folder with `--add-dir`, as every chat process, but no `{{globalMemories}}`: its system prompt is the ci prompt alone, without the common prompt ([CI chats](chats.md#ci-chats)). Default chosen at design time.
+- A chat of a sub project gets both the global memories and the memories it inherits, which `{{parentMemories}}` names at the end of the first paragraph of the common prompt, with their `Read` rules ([Inherited memories](#inherited-memories)). The intro of `{{parentMemories}}` tells Claude to save a new memory in the project's own folder or, when it holds for every project, in the global memories folder, never in an inherited folder ([Rendered blocks](chats.md#rendered-blocks)). Naming the global memories folder there is Default chosen at design time.
+- `--add-dir`, the permission mode for the files of the folder and the creation of the folder at launch are Default chosen at design time.
 
 ## Memory files
 
@@ -184,19 +222,19 @@ Parameters, results and errors are in [Engine API](engine-api.md#memories). All 
 | `memories.readIndex`  | the text of `MEMORY.md`                                                                           | none               |
 | `memories.writeIndex` | replaces the text of `MEMORY.md`, creating the folder when missing                                | `memories.changed` |
 
-- Each call resolves the project's memory folder again ([Resolution](#resolution)); `memories.list` also computes its inherited folders again and returns them, nearest parent first, each with its memories sorted by name, then by file name ([Inherited memories](#inherited-memories)). An inherited folder that does not exist or cannot be read has no memories; one that cannot be read is logged in `engine.log`. Default chosen at design time.
-- The other methods act on the project's own folder only. The section reads an inherited memory with `memories.get` and the `projectID` of the ancestor that gave its folder, whose own folder it is.
-- `memories.changed` carries the complete `memories.list` result of one project ([MemoryFolder](engine-api.md#memoryfolder)). A mutation emits it, when it completes, for the calling project, for every other loaded project whose memory folder is the same, which the engine watches, and for every watched project that inherits the folder ([Live updates](#live-updates)).
-- In the engine, `MemoryStore` (`Sources/HephaestusCore/Memories/`) reads and writes memory folders and runs their watcher, and the protocol `MemoryFolderResolving`, implemented by `ClaudeMemoryFolderResolver`, gives the memory folder of a project root, so that tests use a temporary folder in place of `~/.claude` ([Engine configuration](architecture.md#engine-configuration)). Default chosen at design time.
+- Each call takes the `projectID` of a loaded project, whose memory folder it resolves again ([Resolution](#resolution)), or no `projectID`, for the global memories folder, which it resolves again too ([Global memories](#global-memories)). With a `projectID`, `memories.list` also computes the project's inherited folders again and returns them, nearest parent first, each with its memories sorted by name, then by file name ([Inherited memories](#inherited-memories)); the global memories folder inherits none. An inherited folder that does not exist or cannot be read has no memories; one that cannot be read is logged in `engine.log`. Default chosen at design time.
+- The other methods act on the project's own folder only, or on the global memories folder. The section reads an inherited memory with `memories.get` and the `projectID` of the ancestor that gave its folder, whose own folder it is.
+- `memories.changed` carries the complete `memories.list` result of one project, or of the global memories folder without `projectID` ([MemoryFolder](engine-api.md#memoryfolder)). A mutation emits it, when it completes, for the calling project, or for the global memories folder, for every other watched project whose memory folder is the same, for every watched project that inherits the folder, and without `projectID` when the global memories folder is that folder and the engine watches it ([Live updates](#live-updates)).
+- In the engine, `MemoryStore` (`Sources/HephaestusCore/Memories/`) reads and writes memory folders and runs their watcher, and the protocol `MemoryFolderResolving`, implemented by `ClaudeMemoryFolderResolver`, gives the memory folder of a project root and the global memories folder, so that tests use a temporary folder in place of `~/.claude` ([Engine configuration](architecture.md#engine-configuration)). Default chosen at design time.
 
 ## Live updates
 
-- The engine watches the memory folder of every project whose memories a client listed or changed with a `memories.*` call since the engine started, and the folders that project inherits ([Inherited memories](#inherited-memories)), recursively, with FSEvents, also while a folder does not exist yet. 300 ms after the last change it sees in a folder, the engine emits `memories.changed`, with origin `system`, for every watched project of that folder and every watched project that inherits it: changes made by chats, by other apps and by the engine itself, so one change can produce two events. Default chosen at design time.
-- A watched project whose folder changes at a later `memories.*` call, for example after `autoMemoryDirectory` changed, is watched at its new folder; its inherited folders are computed again at each of its `memories.*` calls, and the folders they no longer include are no longer watched for it. A project that is removed or unloaded is no longer watched.
+- The engine watches the memory folder of every project whose memories a client listed or changed with a `memories.*` call since the engine started, with the folders that project inherits ([Inherited memories](#inherited-memories)), and the global memories folder once a client listed or changed it, recursively, with FSEvents, also while a folder does not exist yet. 300 ms after the last change it sees in a folder, the engine emits `memories.changed`, with origin `system`, for every watched project of that folder and every watched project that inherits it, and without `projectID` when it is the watched global memories folder: changes made by chats, by other apps and by the engine itself, so one change can produce two events. Default chosen at design time.
+- A watched project whose folder changes at a later `memories.*` call, for example after `autoMemoryDirectory` changed, is watched at its new folder, and so is the global memories folder after `CLAUDE_CONFIG_DIR` changed. A project's inherited folders are computed again at each of its `memories.*` calls, and the folders they no longer include are no longer watched for it. A project that is removed or unloaded is no longer watched.
 - When `projects.open` makes loaded top-level projects sub projects of the opened project ([Opening an existing project](projects.md#opening-an-existing-project)), the engine computes again the inherited folders of the watched projects among them and their descendants, and emits `memories.changed`, with the call's origin, for each one whose inherited folders changed, after `projects.changed`. Other changes of the project tree give no project new ancestors. Default chosen at design time.
-- The `memories.changed` of a project reads its folders when it is emitted. A failure to read the project's own folder emits nothing and is logged; an inherited folder that cannot be read has no memories ([Engine API](#engine-api)).
-- The Memories section loads its list with `memories.list` as a seeding call, when it appears and after every reconnection, under the replay rule ([Seeding calls and the replay rule](remote.md#seeding-calls-and-the-replay-rule)): the `memories.changed` events of the project that arrive while the call is in flight are applied after its result.
-- The list is the project's entry of `DeviceWorkspace.memoryFolders` ([DeviceWorkspace](ui.md#deviceworkspace)), shared by the windows that show the device. On `memories.changed` for the project, the workspace replaces it with the event's data; the section then fetches the shown memory again with `memories.get`, or the text of `MEMORY.md` with `memories.readIndex`, as in [Saving](#saving).
+- The `memories.changed` of a project, or of the global memories folder, reads its folders when it is emitted. A failure to read the project's own folder, or the global memories folder, emits nothing and is logged; an inherited folder that cannot be read has no memories ([Engine API](#engine-api)).
+- The Memories section loads its list with `memories.list` as a seeding call, and the Global Memories view with `memories.list` without `projectID`, when they appear and after every reconnection, under the replay rule ([Seeding calls and the replay rule](remote.md#seeding-calls-and-the-replay-rule)): the `memories.changed` events of the project, or without `projectID` for the view, that arrive while the call is in flight are applied after its result.
+- The list is the project's entry of `DeviceWorkspace.memoryFolders` ([DeviceWorkspace](ui.md#deviceworkspace)), or `DeviceWorkspace.globalMemories` for the Global Memories view, shared by the windows that show the device. On `memories.changed` for the project, or without `projectID` for the global memories, the workspace replaces it with the event's data; the section or the view then fetches the shown memory again with `memories.get`, or the text of `MEMORY.md` with `memories.readIndex`, as in [Saving](#saving).
 
 ## Memories section
 
@@ -290,13 +328,42 @@ In the memory editor, a field is checked when its value differs from the saved o
 
 The symbol of the empty state, its place in place of both columns and the editor kept while it has unsaved changes are Default chosen at design time.
 
+## Global Memories view
+
+View ▸ Global Memories (⇧⌘M, [Menus and keyboard shortcuts](ui.md#menus-and-keyboard-shortcuts)), enabled in a main window whose device is connected, shows the global memories of the window's device ([Global memories](#global-memories)) in the centre column of the window.
+
+| Property  | Value                                                                                                                                                                                                                                                   |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Title     | `Global Memories`, in a pane header 36 points high at the top of the view, above its columns or its empty state ([Pane headers](ui.md#pane-headers))                                                                                                    |
+| Place     | the centre column, in place of the selected section ([Main window layout](ui.md#main-window-layout)); in a window whose device has no project, the place of the welcome view                                                                            |
+| Sidebar   | keeps its rows, none of them selected ([Sidebar](ui.md#sidebar))                                                                                                                                                                                        |
+| Inspector | stays; its composer links no item while the view is shown ([Inspector](ui.md#inspector))                                                                                                                                                                |
+| Left by   | anything that selects a section: a sidebar row, a section shortcut (View ▸ Dashboard ⌘1 to Costs ⌘0, Project ▸ Project Settings… ⇧⌘,), File ▸ New Web Tab (⌘T), the status bar's Costs item, a navigation to a section ([Navigation](ui.md#navigation)) |
+| State     | `WindowState.showsGlobalMemories`, and the view's selected row, editor and mode for each device in `WindowState.globalMemoryStates` ([WindowState](ui.md#windowstate))                                                                                  |
+
+In a window whose device has no project, nothing selects a section: the view keeps the welcome view's place, and the actions of the welcome view stay in the File menu, New Project… (⇧⌘N) and Open Project… (⌘O). Once the window has an active project, the sidebar shows with no row selected, and choosing a row leaves the view.
+
+The view has the list, the memory editor, the MEMORY.md editor, the New Memory sheet, Move to Trash, the filter, the field validation, the saving rules, the keyboard and the live updates of the [Memories section](#memories-section), with the same texts, on the global memories folder: its `memories.*` calls have no `projectID`, and its list is `DeviceWorkspace.globalMemories` ([Live updates](#live-updates)). The global memories folder inherits no folder, so the list has no inherited group. Its empty state differs:
+
+| State                                      | Content                                                                                                                                                                                                                                                                        |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| No memory and no `MEMORY.md`, or no folder | in place of both columns, under the header: the SF Symbol `brain`, the title `No Global Memories`, the text `Claude saves here what it learns that holds for every project.` and the button `New Memory…`. An editor with unsaved changes stays shown instead, with its banner |
+
+- Leaving the view while its editor has unsaved changes asks the prompt of [Saving](#saving): Save saves and goes on, a failed save or Cancel shows the view again, and Don't Save discards the changes.
+- Switching project or device keeps the view: it then shows the global memories of the window's device. Each device keeps its own selection, editor and mode in the window, as the projects do in `projectStates`.
+- File ▸ Save (⌘S) saves the memory form or `MEMORY.md` of the view, as in the Memories section ([Menus and keyboard shortcuts](ui.md#menus-and-keyboard-shortcuts)).
+
+The header, the symbol of the empty state, the place in a window whose device has no project and leaving it there through a project, leaving the view by anything that selects a section, and keeping it when the window switches project or device are Default chosen at design time.
+
 ## Remote windows
 
-- A remote window shows and edits the memories of the main device through the same methods: the files are read and written on the main device, in the memory folder of the main device's CLI ([Remote devices](remote.md)). The inherited groups come from the engine too, with `memories.list`, and an inherited memory with `memories.get` and the `projectID` of its ancestor.
-- `Reveal in Finder` is hidden in remote windows.
+- A remote window shows and edits the memories of the main device through the same methods: the files are read and written on the main device, in the memory folder of the main device's CLI ([Remote devices](remote.md)). The inherited groups come from the engine too, with `memories.list`, and an inherited memory with `memories.get` and the `projectID` of its ancestor. Its Global Memories view shows and edits the global memories folder of the main device, with the same methods without `projectID`.
+- `Reveal in Finder` is hidden in remote windows, in the Memories section and in the Global Memories view.
 - `memories.list` gives the absolute paths of the folder and of the inherited folders on the main device. On This Mac, the home folder is written `~`; in a remote window, a path under `/Users/<name>` is written with `~`, as in [Skills › Remote windows](skills.md#remote-windows).
 
 ## Requirements covered
 
 - R160: The user can show, edit, create, rename and delete the memories Claude saves for a project, in a Memories section of the sidebar.
 - R167: A sub project's chats always receive the memories of its parent projects, which its Memories section lists read-only.
+- R168: The header bars at the top of the panes of the main window's centre column, and the inspector's header, are all 36 points high, so that their bottom separators lie on one line.
+- R169: Claude keeps global memories that every chat of every project receives; the user shows and edits them with View ▸ Global Memories.

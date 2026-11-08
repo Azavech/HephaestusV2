@@ -66,7 +66,8 @@ struct ClaudeProtocolTests {
             settings: ChatSettings(model: "opus", effort: .high, permissionMode: .manual, ultracode: true), mcpPort: 47820,
             mcpConfigPath: "/Users/example/Library/Application Support/HephaestusV2/Runtime/mcp/3F2504E0-4F89-11D3-9A0C-0305E82C3301.json",
             systemPrompt: "You are Claude, working inside HephaestusV2, …",
-            pluginDirectory: "/Users/example/Library/Application Support/HephaestusV2/Runtime/plugins/HEPH")
+            pluginDirectory: "/Users/example/Library/Application Support/HephaestusV2/Runtime/plugins/HEPH",
+            globalMemoriesFolder: "/Users/example/.claude/memory")
         #expect(argv == [
             "claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
             "--resume", "3F2504E0-4F89-11D3-9A0C-0305E82C3301",
@@ -80,14 +81,16 @@ struct ClaudeProtocolTests {
             "--plugin-dir", "/Users/example/Library/Application Support/HephaestusV2/Runtime/plugins/HEPH",
             "--settings",
             #"{"ultracode":true,"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"http","url":"http://127.0.0.1:47820/hooks/user-prompt-submit","headers":{"Authorization":"Bearer $HEPHAESTUS_HOOK_TOKEN"},"allowedEnvVars":["HEPHAESTUS_HOOK_TOKEN"],"timeout":10}]}],"PreToolUse":[{"matcher":"mcp__hephaestus__close_chat","hooks":[{"type":"http","url":"http://127.0.0.1:47820/hooks/pre-tool-use","headers":{"Authorization":"Bearer $HEPHAESTUS_HOOK_TOKEN"},"allowedEnvVars":["HEPHAESTUS_HOOK_TOKEN"],"timeout":10}]}]}}"#,
+            "--add-dir", "/Users/example/.claude/memory",
         ])
     }
 
-    @Test("A new session uses --session-id; no plugin folder leaves row 17 out; without ultracode row 18 holds the hook alone")
+    @Test("A new session uses --session-id; no plugin folder leaves row 17 out; without ultracode row 18 holds the hook alone; no global memories folder leaves row 19 out")
     func newSessionCommandLine() {
         let argv = ClaudeCommandLine.chat(cliPath: "/fake/claude", chatID: Self.chatID, sessionStarted: false,
                                           settings: ChatSettings(permissionMode: .bypassPermissions), mcpPort: 50123, mcpConfigPath: "/m.json",
-                                          systemPrompt: "P", pluginDirectory: nil)
+                                          systemPrompt: "P", pluginDirectory: nil, globalMemoriesFolder: nil)
+        #expect(!argv.contains("--add-dir"))
         #expect(Array(argv[8...9]) == ["--session-id", "3F2504E0-4F89-11D3-9A0C-0305E82C3301"])
         #expect(Array(argv[10...15]) == ["--model", "default", "--effort", "high", "--permission-mode", "bypassPermissions"])
         #expect(!argv.contains("--plugin-dir"))
@@ -132,8 +135,15 @@ struct ClaudeProtocolTests {
             #expect(ClaudeCommandLine.readRule(path) == "Read(/\(path)/**)", "\(path)")
         }
         let argv = ClaudeCommandLine.chat(cliPath: "/fake/claude", chatID: Self.chatID, sessionStarted: false, settings: ChatSettings(),
-                                          mcpPort: 47820, mcpConfigPath: "/m.json", systemPrompt: "P", pluginDirectory: nil, readFolders: [folder])
+                                          mcpPort: 47820, mcpConfigPath: "/m.json", systemPrompt: "P", pluginDirectory: nil, readFolders: [folder],
+                                          globalMemoriesFolder: nil)
         #expect(argv.last == ClaudeCommandLine.chatSettings(ultracode: false, mcpPort: 47820, readFolders: [folder]))
+        // A sub project's chat with the global memories folder: row 19 follows the rules of row 18.
+        let both = ClaudeCommandLine.chat(cliPath: "/fake/claude", chatID: Self.chatID, sessionStarted: false, settings: ChatSettings(),
+                                          mcpPort: 47820, mcpConfigPath: "/m.json", systemPrompt: "P", pluginDirectory: nil, readFolders: [folder],
+                                          globalMemoriesFolder: "/Users/example/.claude/memory")
+        #expect(Array(both.suffix(4)) == ["--settings", ClaudeCommandLine.chatSettings(ultracode: false, mcpPort: 47820, readFolders: [folder]),
+                                          "--add-dir", "/Users/example/.claude/memory"])
     }
 
     @Test("close_chat is not pre-approved by --allowedTools: the close chat hook approves a call that names no other chat")

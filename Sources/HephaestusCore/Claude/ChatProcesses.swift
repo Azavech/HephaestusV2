@@ -109,15 +109,19 @@ extension Engine {
         if case .failed(let message) = mcpState {
             addSystemItem("Hephaestus MCP server unavailable: \(message)", level: .warning, chatID: chatID)
         }
+        // The global memories folder, created when missing, and its MEMORY.md (docs/memories.md ›
+        // In chats).
+        let globalMemories = globalMemoriesForLaunch(environment: context.environment)
         // An orchestrated ticket chat works in its worktree (docs/chats.md › Working directory).
         let workingDirectory = chatWorkingDirectory(meta, root: root)
         // The inherited memory folders, named in the prompt and readable (docs/memories.md › Inherited memories).
         let parentMemories = parentMemoryFolders(of: meta.projectID, root: root, environment: context.environment)
         let systemPrompt = chatSystemPrompt(meta: meta, project: project, root: root, workingDirectory: workingDirectory, items: items,
-                                            parentMemories: parentMemories)
+                                            parentMemories: parentMemories, globalMemories: globalMemories.block)
         let argv = ClaudeCommandLine.chat(cliPath: context.path, chatID: chatID, sessionStarted: meta.sessionStarted, settings: meta.settings,
                                           mcpPort: port, mcpConfigPath: configURL.path, systemPrompt: systemPrompt,
-                                          pluginDirectory: pluginDirectory, readFolders: readableFolders(parentMemories))
+                                          pluginDirectory: pluginDirectory, readFolders: readableFolders(parentMemories),
+                                          globalMemoriesFolder: globalMemories.exists ? globalMemories.folder : nil)
         let logFile = AppendFile(url: dataDirectory.claudeLogFile(chatID: chatID), emptyAbove: AppendFile.rotationSize)
         logFile.appendLine(ClaudeCommandLine.launchLogLine(argv: argv, date: Date()))
         // The hook token of the linked items hook (docs/chats.md › Environment).

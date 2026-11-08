@@ -83,11 +83,11 @@ struct MemoriesSectionTests {
 
     // MARK: Inherited memories (docs/memories.md › Inherited memories)
 
-    /// A connection that records the projects of its `memories.get` calls and answers them with
-    /// `memory`.
+    /// A connection that records the projects of its `memories.get` calls, nil for the global
+    /// memories folder, and answers them with `memory`.
     final class InheritedConnection: EngineConnection, @unchecked Sendable {
         private let lock = NSLock()
-        private var recorded: [String] = []
+        private var recorded: [ProjectID?] = []
         private var answer: Memory
 
         init(memory: Memory) {
@@ -99,7 +99,7 @@ struct MemoriesSectionTests {
             set { lock.withLock { answer = newValue } }
         }
 
-        var projects: [String] { lock.withLock { recorded } }
+        var projects: [ProjectID?] { lock.withLock { recorded } }
         var deviceInfo: DeviceInfo? { nil }
         var state: ConnectionState { .connecting }
         var stateUpdates: AsyncStream<ConnectionState> { AsyncStream { $0.finish() } }
@@ -162,7 +162,7 @@ struct MemoriesSectionTests {
         #expect(MemoryActions.target(of: "MEMORY.md") == .index)
         #expect(MemoryActions.target(of: "own.md") == .memory(file: "own.md"))
         #expect(MemoryActions.target(of: "APP/a.md") == .inherited(projectID: "APP", file: "a.md"))
-        #expect(MemoryEditorState(target: .inherited(projectID: "APP", file: "a.md"), projectID: "SUB").selection == "APP/a.md")
+        #expect(MemoryEditorState(target: .inherited(projectID: "APP", file: "a.md"), scope: .project("SUB")).selection == "APP/a.md")
         #expect(MemoryActions.ownMemoryFile(of: "own.md") == "own.md")
         #expect(MemoryActions.ownMemoryFile(of: "APP/a.md") == nil)
         #expect(MemoryActions.ownMemoryFile(of: "MEMORY.md") == nil)
@@ -173,11 +173,11 @@ struct MemoriesSectionTests {
     func inheritedPaths() {
         let workspace = DeviceWorkspace(deviceID: "device", connection: OfflineConnection(), isLocal: false)
         workspace.memoryFolders["SUB"] = Self.subFolder
-        #expect(MemoryActions.displayPath(of: .inherited(projectID: "APP", file: "a.md"), in: workspace, projectID: "SUB")
+        #expect(MemoryActions.displayPath(of: .inherited(projectID: "APP", file: "a.md"), in: workspace, scope: .project("SUB"))
             == "~/.claude/projects/app/memory/a.md")
-        #expect(MemoryActions.displayPath(of: .memory(file: "own.md"), in: workspace, projectID: "SUB") == "~/.claude/projects/sub/memory/own.md")
-        #expect(MemoryActions.displayPath(of: .index, in: workspace, projectID: "SUB") == "~/.claude/projects/sub/memory/MEMORY.md")
-        #expect(MemoryActions.displayPath(of: .inherited(projectID: "NONE", file: "a.md"), in: workspace, projectID: "SUB") == "a.md")
+        #expect(MemoryActions.displayPath(of: .memory(file: "own.md"), in: workspace, scope: .project("SUB")) == "~/.claude/projects/sub/memory/own.md")
+        #expect(MemoryActions.displayPath(of: .index, in: workspace, scope: .project("SUB")) == "~/.claude/projects/sub/memory/MEMORY.md")
+        #expect(MemoryActions.displayPath(of: .inherited(projectID: "NONE", file: "a.md"), in: workspace, scope: .project("SUB")) == "a.md")
         // A selection whose folder is no longer inherited shows as not found.
         #expect(!MemoryActions.isNoLongerInherited(.inherited(projectID: "APP", file: "a.md"), in: Self.subFolder))
         #expect(MemoryActions.isNoLongerInherited(.inherited(projectID: "NONE", file: "a.md"), in: Self.subFolder))
@@ -196,7 +196,7 @@ struct MemoriesSectionTests {
         let workspace = DeviceWorkspace(deviceID: "device", connection: connection, isLocal: true)
         workspace.memoryFolders["SUB"] = Self.subFolder
         let window = WindowState(deviceID: "device")
-        let editor = MemoryEditorState(target: .inherited(projectID: "APP", file: "a.md"), projectID: "SUB", bodyMode: .edit)
+        let editor = MemoryEditorState(target: .inherited(projectID: "APP", file: "a.md"), scope: .project("SUB"), bodyMode: .edit)
         editor.attach(window: window, workspace: workspace)
         #expect(editor.isReadOnly)
         #expect(editor.displayName == "a")
@@ -213,7 +213,7 @@ struct MemoriesSectionTests {
         // Go to Line and Toggle Comment never act on its body, even with the focus in Edit mode.
         editor.form.body.hasEditorFocus = true
         #expect(editor.focusedEditor == nil)
-        let own = MemoryEditorState(target: .memory(file: "own.md"), projectID: "SUB", bodyMode: .edit)
+        let own = MemoryEditorState(target: .memory(file: "own.md"), scope: .project("SUB"), bodyMode: .edit)
         own.form.body.hasEditorFocus = true
         #expect(own.focusedEditor === own.form.body)
         connection.memory = Memory(file: "a.md", name: "answer-style", description: "D2", type: "feedback", body: "B2")
@@ -221,7 +221,7 @@ struct MemoriesSectionTests {
         #expect(editor.conflict == nil)
         #expect(editor.form.description == "D2")
         #expect(editor.form.body.text == "B2")
-        #expect(!MemoryEditorState(target: .memory(file: "own.md"), projectID: "SUB").isReadOnly)
+        #expect(!MemoryEditorState(target: .memory(file: "own.md"), scope: .project("SUB")).isReadOnly)
     }
 
     @Test("Paths are written with ~: This Mac's home folder locally, a folder under /Users/<name> in a remote window")

@@ -1710,7 +1710,7 @@ Files change without the engine: git checkouts and merges, text editors, another
 - A change of a `.git/config` file inside a watched root reads the origins of the projects of that repository again ([ProjectDetail](engine-api.md#projectdetail)). Default chosen at design time.
 - One FSEvents stream on the data directory for `settings.yml` and `registry.yml`. `device.yml`, `secrets.json`, `remotes.yml` and `plan-usage.yml` are read at launch only; a change made to one of them while the app runs is overwritten by the engine's next write of that file. Default chosen at design time.
 - The skills library is watched as defined in [Skills](skills.md).
-- The memory folders of the projects are watched as defined in [Memories](memories.md#live-updates).
+- The memory folders of the projects and the global memories folder are watched as defined in [Memories](memories.md#live-updates).
 - Attachment files and temporary files are not reloaded as data.
 
 ### Processing a change

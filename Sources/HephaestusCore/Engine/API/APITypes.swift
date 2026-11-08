@@ -975,10 +975,11 @@ public struct MemorySummary: Codable, Sendable, Hashable {
     }
 }
 
-/// The memory folder of a project: the `memories.list` result and the data of
-/// `memories.changed` (docs/engine-api.md › MemoryFolder).
+/// The memory folder of a project, or the global memories folder: the `memories.list` result and
+/// the data of `memories.changed` (docs/engine-api.md › MemoryFolder).
 public struct MemoryFolder: Codable, Sendable, Hashable {
-    public var projectID: ProjectID
+    /// The project; nil for the global memories folder.
+    public var projectID: ProjectID?
     /// Absolute path of the folder on the main device, without final `/`.
     public var path: String
     /// `MEMORY.md` exists in the folder.
@@ -986,10 +987,10 @@ public struct MemoryFolder: Codable, Sendable, Hashable {
     /// Every memory of the folder, sorted by name, then by file name.
     public var memories: [MemorySummary]
     /// The folders the project inherits from its ancestors, nearest parent first
-    /// (docs/memories.md › Inherited memories).
+    /// (docs/memories.md › Inherited memories); none for the global memories folder.
     public var inherited: [InheritedMemoryFolder]
 
-    public init(projectID: ProjectID, path: String, hasIndex: Bool, memories: [MemorySummary],
+    public init(projectID: ProjectID?, path: String, hasIndex: Bool, memories: [MemorySummary],
                 inherited: [InheritedMemoryFolder] = []) {
         self.projectID = projectID
         self.path = path
@@ -1002,10 +1003,11 @@ public struct MemoryFolder: Codable, Sendable, Hashable {
         case projectID, path, hasIndex, memories, inherited
     }
 
-    /// An engine of an earlier version omits `inherited`: it reads as empty.
+    /// An engine of an earlier version omits `inherited`: it reads as empty. The global memories
+    /// folder has no `projectID`.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        projectID = try c.decode(ProjectID.self, forKey: .projectID)
+        projectID = try c.decodeIfPresent(ProjectID.self, forKey: .projectID)
         path = try c.decode(String.self, forKey: .path)
         hasIndex = try c.decode(Bool.self, forKey: .hasIndex)
         memories = try c.decode([MemorySummary].self, forKey: .memories)

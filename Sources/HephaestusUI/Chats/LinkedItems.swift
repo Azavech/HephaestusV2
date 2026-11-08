@@ -76,8 +76,10 @@ struct LinkedItem: Hashable, Identifiable {
 extension ProjectViewState {
     /// The items open in the centre column while `section` is shown (docs/ui.md › Inspector):
     /// every selected ticket in ticket number order, every selected chat (put in list order by
-    /// `LinkedItems.linked`), or the section's selected item.
-    func openItems(in section: ProjectSection) -> [LinkedItemRef] {
+    /// `LinkedItems.linked`), or the section's selected item; none without section, while the
+    /// Global Memories view shows.
+    func openItems(in section: ProjectSection?) -> [LinkedItemRef] {
+        guard let section else { return [] }
         switch section {
         case .tickets:
             return selectedTicketIDs
@@ -102,7 +104,7 @@ extension ProjectViewState {
 
     /// Drops from `unlinkedItems` the items that are no longer open, so that they are linked again
     /// the next time they are opened.
-    mutating func forgetClosedUnlinkedItems(in section: ProjectSection) {
+    mutating func forgetClosedUnlinkedItems(in section: ProjectSection?) {
         let open = Set(openItems(in: section).map(\.key))
         if !unlinkedItems.isSubset(of: open) {
             unlinkedItems.formIntersection(open)
@@ -114,7 +116,7 @@ enum LinkedItems {
     /// The linked items of a project's view state: its open items that the user did not unlink,
     /// resolved from the workspace's data; a ticket, bundle, chat or web tab it does not hold is
     /// left out. Chats come in the order of the Chats section's list.
-    static func linked(state: ProjectViewState, section: ProjectSection, tickets: [String: Ticket],
+    static func linked(state: ProjectViewState, section: ProjectSection?, tickets: [String: Ticket],
                        bundles: [String: TicketBundle], chats: [String: ChatMeta], webTabs: [WebTab]) -> [LinkedItem] {
         let items = state.openItems(in: section)
             .filter { !state.unlinkedItems.contains($0.key) }

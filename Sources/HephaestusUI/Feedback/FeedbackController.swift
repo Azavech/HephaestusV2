@@ -168,7 +168,9 @@ final class FeedbackController {
             var result = context(receiving: state.deviceID)
             if let projectID = state.projectID {
                 result.projectID = projectID
-                result.section = state.section
+                // No section and no item while the Global Memories view shows (docs/feedback.md ›
+                // Feedback context).
+                result.section = state.shownSection
                 if let workspace = app.workspaces[state.deviceID] {
                     result.item = Self.selectedItem(of: state, in: workspace, projectID: projectID)
                 }
@@ -191,7 +193,8 @@ final class FeedbackController {
     /// The selected item of a main window's section; nil when nothing is selected.
     static func selectedItem(of state: WindowState, in workspace: DeviceWorkspace, projectID: String) -> String? {
         let view = state.projectStates[ProjectKey(deviceID: workspace.deviceID, projectID: projectID)] ?? ProjectViewState()
-        switch state.section {
+        guard let section = state.shownSection else { return nil }
+        switch section {
         case .tickets:
             let projects = TicketListProjects(projectID: projectID, workspace: workspace)
             return firstTicketInListOrder(view.selectedTicketIDs, tickets: projects.tickets(in: workspace),

@@ -1,6 +1,6 @@
 # Engine API
 
-The engine API is the single interface to everything a device's engine owns: projects, sub projects, tickets, bundles, chats, files, docs, web tabs, skills, the memories the Claude CLI saves for the projects, host settings and the Claude plan usage. Local windows, remote devices and Claude (through the MCP server) call the same named methods with JSON params and JSON results, and all of them receive the same stream of named events, so every client sees every change live wherever it was made, and a remote window works as if it were the main device itself. This document is the contract for every method (params, result, errors, allowed actors, events emitted), every event, every API-only type, the JSON conventions and the Swift shape of the API. Persisted types (Project, WebTab, ChatSettings, Ticket, Comment, TicketLink, Attachment, TicketBundle, ChatMeta, ChatItem, Question, HostSettings, PlanUsage) are defined in [Data model](data-model.md); the transports are described in [Remote devices](remote.md) and [MCP server](mcp.md).
+The engine API is the single interface to everything a device's engine owns: projects, sub projects, tickets, bundles, chats, files, docs, web tabs, skills, the memories the Claude CLI saves for the projects and the device's global memories, host settings and the Claude plan usage. Local windows, remote devices and Claude (through the MCP server) call the same named methods with JSON params and JSON results, and all of them receive the same stream of named events, so every client sees every change live wherever it was made, and a remote window works as if it were the main device itself. This document is the contract for every method (params, result, errors, allowed actors, events emitted), every event, every API-only type, the JSON conventions and the Swift shape of the API. Persisted types (Project, WebTab, ChatSettings, Ticket, Comment, TicketLink, Attachment, TicketBundle, ChatMeta, ChatItem, Question, HostSettings, PlanUsage) are defined in [Data model](data-model.md); the transports are described in [Remote devices](remote.md) and [MCP server](mcp.md).
 
 ## Overview
 
@@ -293,13 +293,13 @@ The first column lists every engine method; it is the list the docs conformance 
 | `skills.writeFile`          | SkillsWriteFile          | name, path, text                                           | Empty            | user         |
 | `skills.deleteFile`         | SkillsDeleteFile         | name, path                                                 | Empty            | user         |
 | `skills.setEnabled`         | SkillsSetEnabled         | projectID, name, enabled                                   | ProjectDetail    | user, claude |
-| `memories.list`             | MemoriesList             | projectID                                                  | MemoryFolder     | user         |
-| `memories.get`              | MemoriesGet              | projectID, file                                            | Memory           | user         |
-| `memories.create`           | MemoriesCreate           | projectID, name, description, type                         | Memory           | user         |
-| `memories.update`           | MemoriesUpdate           | projectID, file, name?, description?, type?, body?         | Memory           | user         |
-| `memories.delete`           | MemoriesDelete           | projectID, file                                            | Empty            | user         |
-| `memories.readIndex`        | MemoriesReadIndex        | projectID                                                  | MemoryIndex      | user         |
-| `memories.writeIndex`       | MemoriesWriteIndex       | projectID, text                                            | Empty            | user         |
+| `memories.list`             | MemoriesList             | projectID?                                                 | MemoryFolder     | user         |
+| `memories.get`              | MemoriesGet              | projectID?, file                                           | Memory           | user         |
+| `memories.create`           | MemoriesCreate           | projectID?, name, description, type                        | Memory           | user         |
+| `memories.update`           | MemoriesUpdate           | projectID?, file, name?, description?, type?, body?        | Memory           | user         |
+| `memories.delete`           | MemoriesDelete           | projectID?, file                                           | Empty            | user         |
+| `memories.readIndex`        | MemoriesReadIndex        | projectID?                                                 | MemoryIndex      | user         |
+| `memories.writeIndex`       | MemoriesWriteIndex       | projectID?, text                                           | Empty            | user         |
 | `settings.get`              | SettingsGet              | none                                                       | HostSettings     | user         |
 | `settings.update`           | SettingsUpdate           | any HostSettings key (partial)                             | HostSettings     | user         |
 | `ui.open`                   | UIOpen                   | target, deviceID?                                          | Empty            | user, claude |
@@ -2369,17 +2369,17 @@ Events: project.updated when the project's list changed.
 
 ## Memories
 
-The memory folder, the memory files, `MEMORY.md` and the Memories section are in [Memories](memories.md). Every method takes the `projectID` of a loaded project and resolves the project's memory folder again ([Resolution](memories.md#resolution)); `file` is the file name of a memory in that folder, for example `user-role.md`. Only `memories.list` returns the folders the project inherits from its ancestors ([Inherited memories](memories.md#inherited-memories)); the other methods act on the project's own folder, and an inherited memory is read with `memories.get` and the `projectID` of the ancestor whose folder it is. Only the user actor calls these methods: Claude writes memories with its own file tools.
+The memory folder, the global memories folder, the memory files, `MEMORY.md`, the Memories section and the Global Memories view are in [Memories](memories.md). Every method takes the `projectID` of a loaded project and resolves the project's memory folder again ([Resolution](memories.md#resolution)), or, without `projectID`, works on the device's global memories folder, which it resolves again too ([Global memories](memories.md#global-memories)); `file` is the file name of a memory in that folder, for example `user-role.md`. Only `memories.list` returns the folders a project inherits from its ancestors ([Inherited memories](memories.md#inherited-memories)); the other methods act on the project's own folder, and an inherited memory is read with `memories.get` and the `projectID` of the ancestor whose folder it is. Only the user actor calls these methods: Claude writes memories with its own file tools.
 
 ### memories.list
 
 Swift type `MemoriesList` · actors: user · result: [MemoryFolder](#memoryfolder)
 
-Returns the project's memory folder: its path, whether `MEMORY.md` exists, and every memory sorted by name, then by file name, then the folders the project inherits, nearest parent first, each with its memories in the same order, read from disk at every call ([Inherited memories](memories.md#inherited-memories)). A folder that does not exist has no memory and no `MEMORY.md`. A file that cannot be read is skipped and logged ([Memory files](memories.md#memory-files)); an inherited folder that cannot be read has no memories and is logged. From this call on, the engine watches the folder and the inherited folders for the project ([Live updates](memories.md#live-updates)).
+Returns the project's memory folder, or the global memories folder: its path, whether `MEMORY.md` exists, and every memory sorted by name, then by file name, then, for a project, the folders it inherits, nearest parent first, each with its memories in the same order, read from disk at every call ([Inherited memories](memories.md#inherited-memories)); the global memories folder inherits none. A folder that does not exist has no memory and no `MEMORY.md`. A file that cannot be read is skipped and logged ([Memory files](memories.md#memory-files)); an inherited folder that cannot be read has no memories and is logged. From this call on, the engine watches the folder and the inherited folders for the project, or the folder as the global memories folder ([Live updates](memories.md#live-updates)).
 
-| Param     | Type      | Required | Description         |
-| --------- | --------- | -------- | ------------------- |
-| projectID | ProjectID | yes      | Project identifier. |
+| Param     | Type      | Required | Description                                                |
+| --------- | --------- | -------- | ---------------------------------------------------------- |
+| projectID | ProjectID | no       | Project identifier; absent for the global memories folder. |
 
 | Error       | When                                                                                                        |
 | ----------- | ----------------------------------------------------------------------------------------------------------- |
@@ -2393,10 +2393,10 @@ Events: none.
 
 Swift type `MemoriesGet` · actors: user · result: [Memory](#memory)
 
-| Param     | Type      | Required | Description                                          |
-| --------- | --------- | -------- | ---------------------------------------------------- |
-| projectID | ProjectID | yes      | Project identifier.                                  |
-| file      | String    | yes      | File name of the memory, for example `user-role.md`. |
+| Param     | Type      | Required | Description                                                |
+| --------- | --------- | -------- | ---------------------------------------------------------- |
+| projectID | ProjectID | no       | Project identifier; absent for the global memories folder. |
+| file      | String    | yes      | File name of the memory, for example `user-role.md`.       |
 
 | Error       | When                                                                                                                                                                                                                                                                                                    |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -2412,7 +2412,7 @@ Swift type `MemoriesCreate` · actors: user · result: [Memory](#memory)
 
 | Param       | Type                      | Required | Description                                                                      |
 | ----------- | ------------------------- | -------- | -------------------------------------------------------------------------------- |
-| projectID   | ProjectID                 | yes      | Project identifier.                                                              |
+| projectID   | ProjectID                 | no       | Project identifier; absent for the global memories folder.                       |
 | name        | String                    | yes      | Memory name ([Memory files](memories.md#memory-files)); the file is `<name>.md`. |
 | description | String                    | yes      | Frontmatter `description`, at least 1 character.                                 |
 | type        | [MemoryType](#memorytype) | yes      | Frontmatter `metadata.type`.                                                     |
@@ -2435,7 +2435,7 @@ Swift type `MemoriesUpdate` · actors: user · result: [Memory](#memory)
 
 | Param       | Type                      | Required | Description                                                                                                                                                                                                          |
 | ----------- | ------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| projectID   | ProjectID                 | yes      | Project identifier.                                                                                                                                                                                                  |
+| projectID   | ProjectID                 | no       | Project identifier; absent for the global memories folder.                                                                                                                                                           |
 | file        | String                    | yes      | File name of the memory.                                                                                                                                                                                             |
 | name        | String                    | no       | New name: renames the file to `<name>.md`, writes the frontmatter `name` and updates `MEMORY.md` and the `[[name]]` links of the other memories ([Rename, create and delete](memories.md#rename-create-and-delete)). |
 | description | String                    | no       | New description, at least 1 character.                                                                                                                                                                               |
@@ -2458,10 +2458,10 @@ Events: memories.changed.
 
 Swift type `MemoriesDelete` · actors: user · result: [Empty](#empty)
 
-| Param     | Type      | Required | Description              |
-| --------- | --------- | -------- | ------------------------ |
-| projectID | ProjectID | yes      | Project identifier.      |
-| file      | String    | yes      | File name of the memory. |
+| Param     | Type      | Required | Description                                                |
+| --------- | --------- | -------- | ---------------------------------------------------------- |
+| projectID | ProjectID | no       | Project identifier; absent for the global memories folder. |
+| file      | String    | yes      | File name of the memory.                                   |
 
 Removes from `MEMORY.md` every line that links to the file, then moves the file to the Trash ([MEMORY.md](memories.md#memorymd)). `[[<name>]]` links in other memories stay.
 
@@ -2478,9 +2478,9 @@ Events: memories.changed.
 
 Swift type `MemoriesReadIndex` · actors: user · result: [MemoryIndex](#memoryindex)
 
-| Param     | Type      | Required | Description         |
-| --------- | --------- | -------- | ------------------- |
-| projectID | ProjectID | yes      | Project identifier. |
+| Param     | Type      | Required | Description                                                |
+| --------- | --------- | -------- | ---------------------------------------------------------- |
+| projectID | ProjectID | no       | Project identifier; absent for the global memories folder. |
 
 | Error    | When                                                                                                                  |
 | -------- | --------------------------------------------------------------------------------------------------------------------- |
@@ -2493,10 +2493,10 @@ Events: none.
 
 Swift type `MemoriesWriteIndex` · actors: user · result: [Empty](#empty)
 
-| Param     | Type      | Required | Description                      |
-| --------- | --------- | -------- | -------------------------------- |
-| projectID | ProjectID | yes      | Project identifier.              |
-| text      | String    | yes      | Complete content of `MEMORY.md`. |
+| Param     | Type      | Required | Description                                                |
+| --------- | --------- | -------- | ---------------------------------------------------------- |
+| projectID | ProjectID | no       | Project identifier; absent for the global memories folder. |
+| text      | String    | yes      | Complete content of `MEMORY.md`.                           |
 
 Writes the text atomically as UTF-8, creating the folder when missing. A text equal to the file's writes nothing and emits no event.
 
@@ -2614,7 +2614,7 @@ Every event travels as an [EngineEventEnvelope](#engineeventenvelope) `{name, or
 | files.changed     | FilesChangedEvent     | {projectID, paths [String]}                                      | Files changed under a project root.                                                                                                                                                                                                            |
 | webTabs.updated   | WebTabsUpdatedEvent   | {projectID, tabs [WebTab]}                                       | A project's web tabs changed.                                                                                                                                                                                                                  |
 | skills.changed    | SkillsChangedEvent    | [SkillSummary]: the complete `skills.list` result                | The skills library changed, including files inside a skill.                                                                                                                                                                                    |
-| memories.changed  | MemoriesChangedEvent  | MemoryFolder: the complete `memories.list` result of one project | A project's memory folder or one it inherits changed: a memory or `MEMORY.md` was created, changed, renamed or deleted by a `memories.*` call, a chat or any app, or its inherited folders changed ([Live updates](memories.md#live-updates)). |
+| memories.changed  | MemoriesChangedEvent  | MemoryFolder: the complete `memories.list` result for one folder | A project's own memory folder, one it inherits or the global memories folder changed: a memory or `MEMORY.md` was created, changed, renamed or deleted by an app, or its inherited folders changed ([Live updates](memories.md#live-updates)). |
 | settings.updated  | SettingsUpdatedEvent  | HostSettings                                                     | Host settings changed.                                                                                                                                                                                                                         |
 | claude.updated    | ClaudeUpdatedEvent    | {status ClaudeStatus, models [ClaudeModel]}                      | The Claude CLI status or the model list changed.                                                                                                                                                                                               |
 | planUsage.updated | PlanUsageUpdatedEvent | PlanUsage                                                        | The engine's plan usage was replaced ([Plan usage](#plan-usage)).                                                                                                                                                                              |
@@ -2669,7 +2669,7 @@ chat.delta events are flushed at most every 50 ms per chat, so a chat emits at m
 
 ### Changes made outside the engine
 
-- The engine watches every loaded project root, the skills library folder and the memory folders of the projects whose memories a client listed or changed, with the folders they inherit, with FSEvents, debounced 300 ms, at most 2 s after the first change of a batch for project roots ([Data model](data-model.md#processing-a-change)). Changes it did not make itself (an editor, `git pull`, Claude editing files) produce the events an API call would emit, with origin `system`. The reload rules and reactions for project, ticket and bundle files are in [Data model](data-model.md#external-changes); the library watcher is in [Skills](skills.md#library), the memory folder watcher in [Memories](memories.md#live-updates).
+- The engine watches every loaded project root, the skills library folder and the memory folders of the projects whose memories a client listed or changed, with the folders they inherit, and the global memories folder once a client listed or changed it, with FSEvents, debounced 300 ms, at most 2 s after the first change of a batch for project roots ([Data model](data-model.md#processing-a-change)). Changes it did not make itself (an editor, `git pull`, Claude editing files) produce the events an API call would emit, with origin `system`. The reload rules and reactions for project, ticket and bundle files are in [Data model](data-model.md#external-changes); the library watcher is in [Skills](skills.md#library), the memory folder watcher in [Memories](memories.md#live-updates).
 - Not reloaded: `.hephaestus/chats/`, whose only writer is the engine, and the device files of the data directory, which are read at launch only ([Data model](data-model.md#watching)).
 - A change of a `.git/config` file inside a watched project root reads the origins that may have changed again ([ProjectDetail](#projectdetail)). Default chosen at design time.
 - files.changed is emitted for every change under a loaded project root except inside `.git/` and `.hephaestus/chats/`, changes made by the engine included. Both are skipped at any depth: a `.git` component anywhere in the path (the repository of a sub project or of a nested work tree) and the chats folder of a sub project add no paths. Default chosen at design time.
@@ -3720,12 +3720,12 @@ String enum of the memory types the engine writes: `user`, `feedback`, `project`
 
 ### MemoryFolder
 
-The `memories.list` result and the data of `memories.changed`.
+The `memories.list` result and the data of `memories.changed`: a project's memory folder, or the global memories folder, which has no `projectID` and an empty `inherited`.
 
 | Field     | Type                    | Required | Description                                                                                                                       |
 | --------- | ----------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| projectID | ProjectID               | yes      | The project.                                                                                                                      |
-| path      | String                  | yes      | Absolute path of the project's memory folder on the main device, without final `/` ([Memory folder](memories.md#memory-folder)).  |
+| projectID | ProjectID               | no       | The project; absent for the global memories folder ([Global memories](memories.md#global-memories)).                              |
+| path      | String                  | yes      | Absolute path of the folder on the main device, without final `/` ([Memory folder](memories.md#memory-folder)).                   |
 | hasIndex  | Bool                    | yes      | `MEMORY.md` exists in the folder.                                                                                                 |
 | memories  | [MemorySummary]         | yes      | Every memory of the folder, sorted by name, then by file name.                                                                    |
 | inherited | [InheritedMemoryFolder] | yes      | The folders the project inherits from its ancestors, nearest parent first ([Inherited memories](memories.md#inherited-memories)). |
@@ -4066,3 +4066,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R161: After an implementation is pushed in a project with a GitHub page, a CI chat follows CI and reports to the orchestrator, which asks the user how to proceed when CI fails and finishes only once CI is green or the user decides so.
 - R162: Each environment of a Go service names its Kubernetes context, namespace, deployment, Argo CD application and kubeconfig, which Claude receives and uses through HephaestusV2's Kubernetes and Argo CD tools.
 - R167: A sub project's chats always receive the memories of its parent projects, which its Memories section lists read-only.
+- R169: Claude keeps global memories that every chat of every project receives; the user shows and edits them with View ▸ Global Memories.
