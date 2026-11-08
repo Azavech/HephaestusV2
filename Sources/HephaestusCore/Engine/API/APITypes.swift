@@ -473,6 +473,7 @@ public enum ProjectSection: String, Codable, Sendable, Hashable, CaseIterable {
     case docs
     case web
     case skills
+    case memories
     case costs
     case settings
 
@@ -990,6 +991,94 @@ public struct Skill: Codable, Sendable, Hashable {
         self.body = body
         self.extraFrontmatter = extraFrontmatter
         self.files = files
+    }
+}
+
+/// The memory types the engine writes in `metadata.type` (docs/engine-api.md › MemoryType).
+public enum MemoryType: String, Codable, Sendable, Hashable, CaseIterable {
+    case user
+    case feedback
+    case project
+    case reference
+
+    public init(from decoder: Decoder) throws {
+        self = try APIEnumCoding.decode(decoder)
+    }
+}
+
+/// A memory of a project's memory folder, as listed (docs/engine-api.md › MemorySummary).
+public struct MemorySummary: Codable, Sendable, Hashable {
+    /// File name of the memory in its folder, for example `user-role.md`.
+    public var file: String
+    /// Frontmatter `name`; the file name without `.md` when it is missing, empty or not a string.
+    public var name: String
+    /// Frontmatter `description`; empty when it is missing or not a string.
+    public var description: String
+    /// `metadata.type`, or a top-level `type` when `metadata` has none, as written; nil when it is
+    /// not a string.
+    public var type: String?
+
+    public init(file: String, name: String, description: String, type: String? = nil) {
+        self.file = file
+        self.name = name
+        self.description = description
+        self.type = type
+    }
+}
+
+/// The memory folder of a project: the `memories.list` result and the data of
+/// `memories.changed` (docs/engine-api.md › MemoryFolder).
+public struct MemoryFolder: Codable, Sendable, Hashable {
+    public var projectID: ProjectID
+    /// Absolute path of the folder on the main device, without final `/`.
+    public var path: String
+    /// `MEMORY.md` exists in the folder.
+    public var hasIndex: Bool
+    /// Every memory of the folder, sorted by name, then by file name.
+    public var memories: [MemorySummary]
+
+    public init(projectID: ProjectID, path: String, hasIndex: Bool, memories: [MemorySummary]) {
+        self.projectID = projectID
+        self.path = path
+        self.hasIndex = hasIndex
+        self.memories = memories
+    }
+}
+
+/// A memory with its frontmatter and body (docs/engine-api.md › Memory).
+public struct Memory: Codable, Sendable, Hashable {
+    public var file: String
+    public var name: String
+    public var description: String
+    public var type: String?
+    /// Frontmatter keys other than `name` and `description`, with `metadata` without its `type`; a
+    /// `metadata` left empty is left out.
+    public var extraFrontmatter: [String: JSONValue]
+    /// Markdown after the frontmatter, verbatim; the whole file when it has no frontmatter.
+    public var body: String
+
+    public init(file: String, name: String, description: String, type: String? = nil,
+                extraFrontmatter: [String: JSONValue] = [:], body: String) {
+        self.file = file
+        self.name = name
+        self.description = description
+        self.type = type
+        self.extraFrontmatter = extraFrontmatter
+        self.body = body
+    }
+
+    /// The summary of the memory, as `memories.list` gives it.
+    public var summary: MemorySummary {
+        MemorySummary(file: file, name: name, description: description, type: type)
+    }
+}
+
+/// The content of `MEMORY.md` (docs/engine-api.md › MemoryIndex).
+public struct MemoryIndex: Codable, Sendable, Hashable {
+    public var text: String
+
+    public init(text: String) {
+        self.text = text
     }
 }
 

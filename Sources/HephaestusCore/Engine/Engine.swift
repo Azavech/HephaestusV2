@@ -65,6 +65,8 @@ public actor Engine {
     let skillsLibrary = SkillsLibrary()
     /// Generated skills plugin folders (Skills/SkillsPlugin.swift).
     let skillsPlugins: any SkillsPluginProvider
+    /// The watched memory folders of the projects (Memories/MemoryStore.swift).
+    let memories = MemoryStore()
     /// files.*, docs.list, fs.browse, FSEvents and the Trash (Files/FileService.swift).
     let files = FileService()
     /// search.query (Search/SearchService.swift).
@@ -175,6 +177,7 @@ public actor Engine {
         stopDeviceBrowsing()
         await stopFileWatching()
         await stopSkillsLibraryWatching()
+        stopMemoryWatching()
         await beforeClosingLog()
 
         for continuation in subscribers.values {
@@ -345,6 +348,7 @@ public actor Engine {
         registerWebTabHandlers()
         registerSearchHandlers()
         registerSkillHandlers()
+        registerMemoryHandlers()
         registerSettingsHandlers()
         registerUIHandlers()
     }

@@ -258,6 +258,9 @@ private struct SectionContent: View {
                 WebSectionView(window: state, workspace: workspace, projectID: projectID)
             case .skills:
                 SkillsSectionView(window: state, workspace: workspace, projectID: projectID)
+            case .memories:
+                MemoriesSectionView(window: state, workspace: workspace, projectID: projectID)
+                    .id("\(workspace.deviceID)/\(projectID)")
             case .costs:
                 CostsSectionView(window: state, workspace: workspace, projectID: projectID)
             case .settings:

@@ -28,10 +28,13 @@ public struct EngineConfiguration: Sendable {
     /// The HephaestusV2 project (docs/projects.md › HephaestusV2 project); nil turns it off: no
     /// launch check, no clone, `HEPH` is an ordinary identifier and nothing is hidden.
     public var hephaestusProject: HephaestusProjectConfiguration?
+    /// Gives the memory folder of a project root (docs/memories.md › Resolution).
+    public var memoryFolders: any MemoryFolderResolving
 
     public init(dataDirectory: URL, mcpPort: Int?, syncPort: Int?, syncInterface: SyncInterface, advertisesBonjour: Bool,
                 debugTools: Bool, claudePath: String?, claudeLauncher: any ClaudeProcessLauncher, appVersion: String, build: Int,
-                hephaestusProject: HephaestusProjectConfiguration? = nil) {
+                hephaestusProject: HephaestusProjectConfiguration? = nil,
+                memoryFolders: any MemoryFolderResolving = ClaudeMemoryFolderResolver(homeDirectory: NSHomeDirectory())) {
         self.dataDirectory = dataDirectory
         self.mcpPort = mcpPort
         self.syncPort = syncPort
@@ -43,6 +46,7 @@ public struct EngineConfiguration: Sendable {
         self.appVersion = appVersion
         self.build = build
         self.hephaestusProject = hephaestusProject
+        self.memoryFolders = memoryFolders
     }
 
     /// The app's configuration: the values of the launch environment, all interfaces, Bonjour
@@ -62,16 +66,21 @@ public struct EngineConfiguration: Sendable {
             claudeLauncher: claudeLauncher,
             appVersion: appVersion,
             build: build,
-            hephaestusProject: HephaestusProjectConfiguration(cloneURL: HephaestusRepository.url)
+            hephaestusProject: HephaestusProjectConfiguration(cloneURL: HephaestusRepository.url),
+            memoryFolders: ClaudeMemoryFolderResolver(homeDirectory: homeDirectory)
         )
     }
 
     /// A test configuration: the given temporary data directory, ports 0, the sync server on
-    /// the loopback interface, no Bonjour advertising, no Claude path, version `0.0.0`, build 0 and
-    /// no HephaestusV2 project unless the test gives one.
+    /// the loopback interface, no Bonjour advertising, no Claude path, version `0.0.0`, build 0,
+    /// no HephaestusV2 project unless the test gives one, and memory folders under the folders
+    /// `Claude` (config folder) and `Home` next to the data directory, without managed settings,
+    /// unless the test gives a resolver: no test reads or writes `~/.claude`.
     public static func test(dataDirectory: URL, debugTools: Bool = false, claudeLauncher: any ClaudeProcessLauncher,
-                            hephaestusProject: HephaestusProjectConfiguration? = nil) -> EngineConfiguration {
-        EngineConfiguration(
+                            hephaestusProject: HephaestusProjectConfiguration? = nil,
+                            memoryFolders: (any MemoryFolderResolving)? = nil) -> EngineConfiguration {
+        let testFolder = dataDirectory.deletingLastPathComponent()
+        return EngineConfiguration(
             dataDirectory: dataDirectory,
             mcpPort: 0,
             syncPort: 0,
@@ -82,7 +91,11 @@ public struct EngineConfiguration: Sendable {
             claudeLauncher: claudeLauncher,
             appVersion: "0.0.0",
             build: 0,
-            hephaestusProject: hephaestusProject
+            hephaestusProject: hephaestusProject,
+            memoryFolders: memoryFolders ?? ClaudeMemoryFolderResolver(
+                homeDirectory: testFolder.appendingPathComponent("Home", isDirectory: true).path,
+                configDirectory: testFolder.appendingPathComponent("Claude", isDirectory: true).path,
+                managedSettingsPath: nil)
         )
     }
 

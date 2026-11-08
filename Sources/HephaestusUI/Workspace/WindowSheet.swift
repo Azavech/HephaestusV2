@@ -39,6 +39,8 @@ public enum WindowSheet: Codable, Hashable, Sendable, Identifiable {
     case newSkill(projectID: String)
     /// New File sheet of a skill's extra files (docs/skills.md › Editor).
     case newSkillFile(skillName: String)
+    /// New Memory sheet (docs/memories.md › New Memory sheet).
+    case newMemory(projectID: String)
     /// New Doc sheet (docs/documentation-viewer.md › New Doc).
     case newDoc(projectID: String, folder: String)
     /// Rename sheet of the docs tree (docs/documentation-viewer.md › Rename).
@@ -92,6 +94,8 @@ struct WindowSheetView: View {
             NewSkillSheet(window: window, workspace: workspace, projectID: projectID)
         case .newSkillFile(let skillName):
             NewSkillFileSheet(window: window, workspace: workspace, skillName: skillName)
+        case .newMemory(let projectID):
+            NewMemorySheet(window: window, workspace: workspace, projectID: projectID)
         case .newDoc(let projectID, let folder):
             NewDocSheet(window: window, workspace: workspace, projectID: projectID, folder: folder)
         case .renameDoc(let projectID, let path):

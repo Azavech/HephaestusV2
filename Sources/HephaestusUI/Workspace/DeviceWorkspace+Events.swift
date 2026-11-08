@@ -54,6 +54,10 @@ extension DeviceWorkspace {
             }
         case .skillsChanged(let list):
             skills = list
+        case .memoriesChanged(let folder):
+            if memoryFolders[folder.projectID] != nil {
+                memoryFolders[folder.projectID] = folder
+            }
         case .runStarted(let info):
             let id = info.runID.uuidString
             if runs[id] == nil {
@@ -114,6 +118,7 @@ extension DeviceWorkspace {
             tickets[projectID] = nil
             bundles[projectID] = nil
             webTabs[projectID] = nil
+            memoryFolders[projectID] = nil
             loadedProjectIDs.remove(projectID)
             loadingProjectIDs.remove(projectID)
             projectLoadErrors[projectID] = nil

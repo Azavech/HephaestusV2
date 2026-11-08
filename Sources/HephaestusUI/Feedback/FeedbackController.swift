@@ -211,6 +211,8 @@ final class FeedbackController {
             return workspace.webTabs[projectID]?.first { $0.id.uuidString == tabID.uppercased() }?.url
         case .skills:
             return view.selectedSkillName
+        case .memories:
+            return MemoryActions.selectedItemName(of: view, in: workspace, projectID: projectID)
         case .dashboard, .costs, .settings:
             return nil
         }

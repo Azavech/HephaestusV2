@@ -1,6 +1,6 @@
 # Engine API
 
-The engine API is the single interface to everything a device's engine owns: projects, sub projects, tickets, bundles, chats, files, docs, web tabs, skills, runs, host settings and the Claude plan usage. Local windows, remote devices and Claude (through the MCP server) call the same named methods with JSON params and JSON results, and all of them receive the same stream of named events, so every client sees every change live wherever it was made, and a remote window works as if it were the main device itself. This document is the contract for every method (params, result, errors, allowed actors, events emitted), every event, every API-only type, the JSON conventions and the Swift shape of the API. Persisted types (Project, ProjectCommands, WebTab, ChatSettings, Ticket, Comment, TicketLink, Attachment, TicketBundle, ChatMeta, ChatItem, Question, HostSettings, PlanUsage) are defined in [Data model](data-model.md); the transports are described in [Remote devices](remote.md) and [MCP server](mcp.md).
+The engine API is the single interface to everything a device's engine owns: projects, sub projects, tickets, bundles, chats, files, docs, web tabs, skills, the memories the Claude CLI saves for the projects, runs, host settings and the Claude plan usage. Local windows, remote devices and Claude (through the MCP server) call the same named methods with JSON params and JSON results, and all of them receive the same stream of named events, so every client sees every change live wherever it was made, and a remote window works as if it were the main device itself. This document is the contract for every method (params, result, errors, allowed actors, events emitted), every event, every API-only type, the JSON conventions and the Swift shape of the API. Persisted types (Project, ProjectCommands, WebTab, ChatSettings, Ticket, Comment, TicketLink, Attachment, TicketBundle, ChatMeta, ChatItem, Question, HostSettings, PlanUsage) are defined in [Data model](data-model.md); the transports are described in [Remote devices](remote.md) and [MCP server](mcp.md).
 
 ## Overview
 
@@ -40,7 +40,7 @@ every connection ◄────────────────────
 | Binary data      | Standard base64 with padding and without line breaks (RFC 4648 section 4), in fields whose name ends in `Base64`.                                                                                                                                                                                                                                                                                                                                                                                             |
 | Enums            | String raw values, case-sensitive: status `in_progress`, never `In Progress`.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Numbers          | Integers are JSON numbers without fraction.                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Text             | UTF-8. Multi-line values of the data model (descriptions, comment texts, message texts) are stored with CR LF and lone CR converted to LF ([Data model](data-model.md#text)); the text of `files.write` and `skills.writeFile` is written as sent.                                                                                                                                                                                                                                                            |
+| Text             | UTF-8. Multi-line values of the data model (descriptions, comment texts, message texts) are stored with CR LF and lone CR converted to LF ([Data model](data-model.md#text)); the text of `files.write`, `skills.writeFile` and `memories.writeIndex` is written as sent.                                                                                                                                                                                                                                     |
 
 ### Identifiers
 
@@ -80,6 +80,7 @@ every connection ◄────────────────────
 | Attachments                                        | 20 MiB (20,971,520 bytes) per file once decoded, and 20 MiB for all the attachments of one request together ([Tickets and bundles](tickets.md#storage-and-limits)).                                                                                                                                                                                                                                                                                                                        |
 | Content returned by files.read and skills.readFile | 20 MiB; a larger file is returned without content. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                                                                                          |
 | Text of files.write and skills.writeFile           | 20 MiB of UTF-8. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Memory files and MEMORY.md                         | 20 MiB: a larger memory file is skipped and is not read, a larger `MEMORY.md` is not read, the text of memories.writeIndex is at most 20 MiB of UTF-8, and memories.update refuses to write a larger memory file (`body: use at most 20 MiB of UTF-8.`) ([Memories](memories.md#memory-files)). Default chosen at design time.                                                                                                                                                             |
 | Remote message                                     | 32 MiB per message, set by the transport ([Remote devices](remote.md)).                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | outputTail of a RunResult                          | The last 200 lines, at most 20,000 characters. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                                                                                              |
 | run.output events                                  | At most one per run every 100 ms. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -99,7 +100,7 @@ The 20 MiB limits keep a base64-encoded file under the 32 MiB message size, so a
 - A call that leaves the stored data unchanged writes nothing, emits no event and returns the current object. Default chosen at design time.
 - Concurrent edits follow "last write wins". The only optimistic check is `files.write` with `expectedModified`. Default chosen at design time.
 - Every write of a ticket, bundle or chat metadata file sets its `updated` ([Data model](data-model.md)).
-- What the API removes goes to the Trash of the main device and is never deleted: tickets, bundles, ticket and comment attachments ([Tickets and bundles](tickets.md#deleting)), chats ([Chats](chats.md#persistence)), files of a project (`files.trash`), skills and skill files ([Skills](skills.md)). When the Trash cannot be used, the call fails with `unavailable` and `<path> cannot be moved to the Trash: <reason>.`, `<path>` being the absolute path of the item on the main device; the writes that come before the move in [Data model](data-model.md#changes-that-touch-several-files) stay, with their events (a failed `tickets.delete` leaves the ticket out of its bundles). `projects.remove` only unregisters.
+- What the API removes goes to the Trash of the main device and is never deleted: tickets, bundles, ticket and comment attachments ([Tickets and bundles](tickets.md#deleting)), chats ([Chats](chats.md#persistence)), files of a project (`files.trash`), skills and skill files ([Skills](skills.md)), memories ([Memories](memories.md)). When the Trash cannot be used, the call fails with `unavailable` and `<path> cannot be moved to the Trash: <reason>.`, `<path>` being the absolute path of the item on the main device; the writes that come before the move in [Data model](data-model.md#changes-that-touch-several-files) stay, with their events (a failed `tickets.delete` leaves the ticket out of its bundles). `projects.remove` only unregisters.
 - Events are emitted after the write they describe succeeded. Counters (`nextTicketNumber`, `nextBundleNumber`) are written before the object they number, so a failure can skip a number but never reuse one.
 
 ## Actors
@@ -153,11 +154,11 @@ A failed call returns an [EngineError](#engineerror) `{code, message}`.
 
 | Code        | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| notFound    | The method, or an object named by the params, does not exist: project, ticket, bundle, chat, comment, attachment, run, file, directory, skill, web tab, question set, symbol request, color request, sound request, shortcut request, font request, animation request, sound, permission request, workflow or agent.                                                                                                       |
+| notFound    | The method, or an object named by the params, does not exist: project, ticket, bundle, chat, comment, attachment, run, file, directory, skill, memory, web tab, question set, symbol request, color request, sound request, shortcut request, font request, animation request, sound, permission request, workflow or agent.                                                                                               |
 | invalid     | The params do not decode or break a validation rule.                                                                                                                                                                                                                                                                                                                                                                       |
 | conflict    | The call clashes with the current state: an id or a file already exists, a file changed since `expectedModified`, a run is already running, a question set, a symbol request, a color request, a sound request, a shortcut request, a font request or an animation request is waiting or already answered, a ticket to implement is done, a bundle to implement is in progress or done, a workflow to stop is not running. |
 | forbidden   | The actor may not do this: a method or param not open to the actor, a ticket or bundle status rule, a locked web tab, a protected path.                                                                                                                                                                                                                                                                                    |
-| unavailable | A required service is missing: the Claude CLI, the Trash, the skills library folder, or the connection to the device.                                                                                                                                                                                                                                                                                                      |
+| unavailable | A required service is missing: the Claude CLI, the Trash, the skills library folder, a memory folder, or the connection to the device.                                                                                                                                                                                                                                                                                     |
 | internal    | Unexpected failure: file system error, process start failure, encoding failure.                                                                                                                                                                                                                                                                                                                                            |
 
 ### Dispatcher errors
@@ -284,6 +285,13 @@ The first column lists every engine method; it is the list the docs conformance 
 | `skills.writeFile`          | SkillsWriteFile          | name, path, text                                           | Empty            | user         |
 | `skills.deleteFile`         | SkillsDeleteFile         | name, path                                                 | Empty            | user         |
 | `skills.setEnabled`         | SkillsSetEnabled         | projectID, name, enabled                                   | ProjectDetail    | user, claude |
+| `memories.list`             | MemoriesList             | projectID                                                  | MemoryFolder     | user         |
+| `memories.get`              | MemoriesGet              | projectID, file                                            | Memory           | user         |
+| `memories.create`           | MemoriesCreate           | projectID, name, description, type                         | Memory           | user         |
+| `memories.update`           | MemoriesUpdate           | projectID, file, name?, description?, type?, body?         | Memory           | user         |
+| `memories.delete`           | MemoriesDelete           | projectID, file                                            | Empty            | user         |
+| `memories.readIndex`        | MemoriesReadIndex        | projectID                                                  | MemoryIndex      | user         |
+| `memories.writeIndex`       | MemoriesWriteIndex       | projectID, text                                            | Empty            | user         |
 | `settings.get`              | SettingsGet              | none                                                       | HostSettings     | user         |
 | `settings.update`           | SettingsUpdate           | any HostSettings key (partial)                             | HostSettings     | user         |
 | `ui.open`                   | UIOpen                   | target, deviceID?                                          | Empty            | user, claude |
@@ -2219,6 +2227,147 @@ Enabling requires the skill to exist; a name that is no longer in the library ca
 
 Events: project.updated when the project's list changed.
 
+## Memories
+
+The memory folder, the memory files, `MEMORY.md` and the Memories section are in [Memories](memories.md). Every method takes the `projectID` of a loaded project and resolves the project's memory folder again ([Resolution](memories.md#resolution)); `file` is the file name of a memory in that folder, for example `user-role.md`. Only the user actor calls these methods: Claude writes memories with its own file tools.
+
+### memories.list
+
+Swift type `MemoriesList` · actors: user · result: [MemoryFolder](#memoryfolder)
+
+Returns the project's memory folder: its path, whether `MEMORY.md` exists, and every memory sorted by name, then by file name, read from disk at every call. A folder that does not exist has no memory and no `MEMORY.md`. A file that cannot be read is skipped and logged ([Memory files](memories.md#memory-files)). From this call on, the engine watches the folder for the project ([Live updates](memories.md#live-updates)).
+
+| Param     | Type      | Required | Description         |
+| --------- | --------- | -------- | ------------------- |
+| projectID | ProjectID | yes      | Project identifier. |
+
+| Error       | When                                                                                                        |
+| ----------- | ----------------------------------------------------------------------------------------------------------- |
+| invalid     | projectID is malformed.                                                                                     |
+| notFound    | No loaded project has this identifier.                                                                      |
+| unavailable | The folder exists and cannot be read (`The memory folder <path> cannot be read: <localized description>.`). |
+
+Events: none.
+
+### memories.get
+
+Swift type `MemoriesGet` · actors: user · result: [Memory](#memory)
+
+| Param     | Type      | Required | Description                                          |
+| --------- | --------- | -------- | ---------------------------------------------------- |
+| projectID | ProjectID | yes      | Project identifier.                                  |
+| file      | String    | yes      | File name of the memory, for example `user-role.md`. |
+
+| Error       | When                                                                                                                                                                                                                                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid     | projectID is malformed; file is not the name of a `.md` file of the folder (`file: use the name of a .md file of the memory folder.`) or names `MEMORY.md` (`Use memories.readIndex and memories.writeIndex for MEMORY.md.`); the file is not a memory file (`<file> is not a memory file: <reason>.`). |
+| notFound    | No loaded project has this identifier; no such memory (`Memory <file> not found.`).                                                                                                                                                                                                                     |
+| unavailable | The folder exists and cannot be read (`The memory folder <path> cannot be read: <localized description>.`).                                                                                                                                                                                             |
+
+Events: none.
+
+### memories.create
+
+Swift type `MemoriesCreate` · actors: user · result: [Memory](#memory)
+
+| Param       | Type                      | Required | Description                                                                      |
+| ----------- | ------------------------- | -------- | -------------------------------------------------------------------------------- |
+| projectID   | ProjectID                 | yes      | Project identifier.                                                              |
+| name        | String                    | yes      | Memory name ([Memory files](memories.md#memory-files)); the file is `<name>.md`. |
+| description | String                    | yes      | Frontmatter `description`, at least 1 character.                                 |
+| type        | [MemoryType](#memorytype) | yes      | Frontmatter `metadata.type`.                                                     |
+
+Writes `<name>.md` with `name`, `description` and `metadata.type` and an empty body, then appends `- [<name>](<name>.md) — <description>` to `MEMORY.md`, creating the folder and `MEMORY.md` when missing ([MEMORY.md](memories.md#memorymd)).
+
+| Error       | When                                                                                                                                                                                                                                                                                         |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid     | projectID is malformed; name breaks the name rule (`name: use at most 64 lowercase letters, digits and single hyphens between them.`) or is `memory` (`name: memory names the index MEMORY.md.`); description is empty (`description: use at least 1 character.`); type is not a MemoryType. |
+| notFound    | No loaded project has this identifier.                                                                                                                                                                                                                                                       |
+| conflict    | The name is taken (`A memory named <name> already exists.`, [Rename, create and delete](memories.md#rename-create-and-delete)).                                                                                                                                                              |
+| internal    | The folder, the file or `MEMORY.md` cannot be written, or `MEMORY.md` cannot be read (`<path> cannot be read: <reason>.`, before any write).                                                                                                                                                 |
+| unavailable | The folder exists and cannot be read (`The memory folder <path> cannot be read: <localized description>.`).                                                                                                                                                                                  |
+
+Events: memories.changed.
+
+### memories.update
+
+Swift type `MemoriesUpdate` · actors: user · result: [Memory](#memory)
+
+| Param       | Type                      | Required | Description                                                                                                                                                                                                          |
+| ----------- | ------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| projectID   | ProjectID                 | yes      | Project identifier.                                                                                                                                                                                                  |
+| file        | String                    | yes      | File name of the memory.                                                                                                                                                                                             |
+| name        | String                    | no       | New name: renames the file to `<name>.md`, writes the frontmatter `name` and updates `MEMORY.md` and the `[[name]]` links of the other memories ([Rename, create and delete](memories.md#rename-create-and-delete)). |
+| description | String                    | no       | New description, at least 1 character.                                                                                                                                                                               |
+| type        | [MemoryType](#memorytype) | no       | New `metadata.type`.                                                                                                                                                                                                 |
+| body        | String                    | no       | New body.                                                                                                                                                                                                            |
+
+Changes the given fields that differ from the file and keeps every other frontmatter key ([Writing a memory file](memories.md#writing-a-memory-file)).
+
+| Error       | When                                                                                                                                                                                                                                                                                                                                             |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| invalid     | projectID or file is malformed, as for memories.get; name, description or type breaks its rule, as for memories.create; type is given and the file's `metadata` is not a mapping (`type: the metadata of <file> is not a mapping.`); the file would be larger than 20 MiB (`body: use at most 20 MiB of UTF-8.`); the file is not a memory file. |
+| notFound    | No loaded project has this identifier; no such memory.                                                                                                                                                                                                                                                                                           |
+| conflict    | The new name is taken (`A memory named <name> already exists.`).                                                                                                                                                                                                                                                                                 |
+| internal    | A file cannot be renamed or written; for a rename, `MEMORY.md` cannot be read (`<path> cannot be read: <reason>.`, before any write).                                                                                                                                                                                                            |
+| unavailable | The folder exists and cannot be read (`The memory folder <path> cannot be read: <localized description>.`).                                                                                                                                                                                                                                      |
+
+Events: memories.changed.
+
+### memories.delete
+
+Swift type `MemoriesDelete` · actors: user · result: [Empty](#empty)
+
+| Param     | Type      | Required | Description              |
+| --------- | --------- | -------- | ------------------------ |
+| projectID | ProjectID | yes      | Project identifier.      |
+| file      | String    | yes      | File name of the memory. |
+
+Removes from `MEMORY.md` every line that links to the file, then moves the file to the Trash ([MEMORY.md](memories.md#memorymd)). `[[<name>]]` links in other memories stay.
+
+| Error       | When                                                                                           |
+| ----------- | ---------------------------------------------------------------------------------------------- |
+| invalid     | projectID or file is malformed, as for memories.get.                                           |
+| notFound    | No loaded project has this identifier; no such file.                                           |
+| unavailable | The folder exists and cannot be read; the file cannot be moved to the Trash.                   |
+| internal    | `MEMORY.md` cannot be read (`<path> cannot be read: <reason>.`, before any change) or written. |
+
+Events: memories.changed.
+
+### memories.readIndex
+
+Swift type `MemoriesReadIndex` · actors: user · result: [MemoryIndex](#memoryindex)
+
+| Param     | Type      | Required | Description         |
+| --------- | --------- | -------- | ------------------- |
+| projectID | ProjectID | yes      | Project identifier. |
+
+| Error    | When                                                                                                                  |
+| -------- | --------------------------------------------------------------------------------------------------------------------- |
+| invalid  | projectID is malformed; `MEMORY.md` is larger than 20 MiB or not valid UTF-8 (`MEMORY.md cannot be read: <reason>.`). |
+| notFound | No loaded project has this identifier; the folder has no `MEMORY.md` (`File MEMORY.md not found.`).                   |
+
+Events: none.
+
+### memories.writeIndex
+
+Swift type `MemoriesWriteIndex` · actors: user · result: [Empty](#empty)
+
+| Param     | Type      | Required | Description                      |
+| --------- | --------- | -------- | -------------------------------- |
+| projectID | ProjectID | yes      | Project identifier.              |
+| text      | String    | yes      | Complete content of `MEMORY.md`. |
+
+Writes the text atomically as UTF-8, creating the folder when missing. A text equal to the file's writes nothing and emits no event.
+
+| Error    | When                                                                                       |
+| -------- | ------------------------------------------------------------------------------------------ |
+| invalid  | projectID is malformed; text is larger than 20 MiB (`text: use at most 20 MiB of UTF-8.`). |
+| notFound | No loaded project has this identifier.                                                     |
+| internal | The folder or the file cannot be written.                                                  |
+
+Events: memories.changed.
+
 ## Settings
 
 ### settings.get
@@ -2307,32 +2456,33 @@ Every event travels as an [EngineEventEnvelope](#engineeventenvelope) `{name, or
 
 ### Event list
 
-| Event             | Swift type            | Data                                                  | Emitted when                                                                                                                                                                                                                                  |
-| ----------------- | --------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| projects.changed  | ProjectsChangedEvent  | [ProjectSummary]: the complete `projects.list` result | The result of `projects.list` changed: a project was created, opened, removed, renamed, loaded or unloaded, its type, color or icon changed, its sub projects changed, ticket counts, costs or the number of running comment answers changed. |
-| project.updated   | ProjectUpdatedEvent   | ProjectDetail                                         | A project's project.yml was written or reloaded, its `gitRemoteURL` changed, or its GitHub page changed ([ProjectDetail](#projectdetail)).                                                                                                    |
-| project.removed   | ProjectRemovedEvent   | {projectID}                                           | A project was unregistered or its project.yml disappeared.                                                                                                                                                                                    |
-| ticket.updated    | TicketUpdatedEvent    | Ticket                                                | A ticket was created, changed or reloaded, or its `inverseLinks` or the `answer` of one of its comments changed.                                                                                                                              |
-| ticket.deleted    | TicketDeletedEvent    | {projectID, ticketID}                                 | A ticket was deleted or its file disappeared.                                                                                                                                                                                                 |
-| bundle.updated    | BundleUpdatedEvent    | TicketBundle                                          | A bundle was created, changed or reloaded.                                                                                                                                                                                                    |
-| bundle.deleted    | BundleDeletedEvent    | {projectID, bundleID}                                 | A bundle was deleted or its file disappeared.                                                                                                                                                                                                 |
-| chat.updated      | ChatUpdatedEvent      | ChatMeta, with `projectID` and `state`                | A chat was created, or its metadata, state or `backgroundWork` changed.                                                                                                                                                                       |
-| chat.deleted      | ChatDeletedEvent      | {projectID, chatID}                                   | A chat was deleted.                                                                                                                                                                                                                           |
-| chat.item         | ChatItemEvent         | {chatID, item ChatItem}                               | A transcript item was added, or replaced (same `id`).                                                                                                                                                                                         |
-| chat.delta        | ChatDeltaEvent        | {chatID, itemID, kind, append, model, effort}         | Claude streams text, thinking or tool input. Not persisted.                                                                                                                                                                                   |
-| chat.agents       | ChatAgentsEvent       | ChatAgents                                            | A chat's workflows or agents changed: one was created or its state, title, phase, summary or run id changed ([Agents](chats.md#agents)).                                                                                                      |
-| chat.agentItem    | ChatAgentItemEvent    | {chatID, agentID, item ChatItem}                      | An item was added to the transcript of one of a chat's agents ([Agents](chats.md#agents)).                                                                                                                                                    |
-| files.changed     | FilesChangedEvent     | {projectID, paths [String]}                           | Files changed under a project root.                                                                                                                                                                                                           |
-| webTabs.updated   | WebTabsUpdatedEvent   | {projectID, tabs [WebTab]}                            | A project's web tabs changed.                                                                                                                                                                                                                 |
-| skills.changed    | SkillsChangedEvent    | [SkillSummary]: the complete `skills.list` result     | The skills library changed, including files inside a skill.                                                                                                                                                                                   |
-| run.started       | RunStartedEvent       | RunInfo                                               | A run started; the origin is the actor that started it.                                                                                                                                                                                       |
-| run.output        | RunOutputEvent        | {runID, projectID, text}                              | A run produced output.                                                                                                                                                                                                                        |
-| run.finished      | RunFinishedEvent      | {runID, projectID, exitCode}                          | A run ended.                                                                                                                                                                                                                                  |
-| settings.updated  | SettingsUpdatedEvent  | HostSettings                                          | Host settings changed.                                                                                                                                                                                                                        |
-| claude.updated    | ClaudeUpdatedEvent    | {status ClaudeStatus, models [ClaudeModel]}           | The Claude CLI status or the model list changed.                                                                                                                                                                                              |
-| planUsage.updated | PlanUsageUpdatedEvent | PlanUsage                                             | The engine's plan usage was replaced ([Plan usage](#plan-usage)).                                                                                                                                                                             |
-| ui.open           | UIOpenEvent           | {target NavigationTarget, deviceID?}                  | `ui.open` was called.                                                                                                                                                                                                                         |
-| chat.notification | ChatNotificationEvent | {chatID, projectID, kind, stage, detail}              | A chat needs the user or a turn finished ([Chats › Notifications](chats.md#notifications)): once at once, then once after the summary call.                                                                                                   |
+| Event             | Swift type            | Data                                                             | Emitted when                                                                                                                                                                                                                                   |
+| ----------------- | --------------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| projects.changed  | ProjectsChangedEvent  | [ProjectSummary]: the complete `projects.list` result            | The result of `projects.list` changed: a project was created, opened, removed, renamed, loaded or unloaded, its type, color or icon changed, its sub projects changed, ticket counts, costs or the number of running comment answers changed.  |
+| project.updated   | ProjectUpdatedEvent   | ProjectDetail                                                    | A project's project.yml was written or reloaded, its `gitRemoteURL` changed, or its GitHub page changed ([ProjectDetail](#projectdetail)).                                                                                                     |
+| project.removed   | ProjectRemovedEvent   | {projectID}                                                      | A project was unregistered or its project.yml disappeared.                                                                                                                                                                                     |
+| ticket.updated    | TicketUpdatedEvent    | Ticket                                                           | A ticket was created, changed or reloaded, or its `inverseLinks` or the `answer` of one of its comments changed.                                                                                                                               |
+| ticket.deleted    | TicketDeletedEvent    | {projectID, ticketID}                                            | A ticket was deleted or its file disappeared.                                                                                                                                                                                                  |
+| bundle.updated    | BundleUpdatedEvent    | TicketBundle                                                     | A bundle was created, changed or reloaded.                                                                                                                                                                                                     |
+| bundle.deleted    | BundleDeletedEvent    | {projectID, bundleID}                                            | A bundle was deleted or its file disappeared.                                                                                                                                                                                                  |
+| chat.updated      | ChatUpdatedEvent      | ChatMeta, with `projectID` and `state`                           | A chat was created, or its metadata, state or `backgroundWork` changed.                                                                                                                                                                        |
+| chat.deleted      | ChatDeletedEvent      | {projectID, chatID}                                              | A chat was deleted.                                                                                                                                                                                                                            |
+| chat.item         | ChatItemEvent         | {chatID, item ChatItem}                                          | A transcript item was added, or replaced (same `id`).                                                                                                                                                                                          |
+| chat.delta        | ChatDeltaEvent        | {chatID, itemID, kind, append, model, effort}                    | Claude streams text, thinking or tool input. Not persisted.                                                                                                                                                                                    |
+| chat.agents       | ChatAgentsEvent       | ChatAgents                                                       | A chat's workflows or agents changed: one was created or its state, title, phase, summary or run id changed ([Agents](chats.md#agents)).                                                                                                       |
+| chat.agentItem    | ChatAgentItemEvent    | {chatID, agentID, item ChatItem}                                 | An item was added to the transcript of one of a chat's agents ([Agents](chats.md#agents)).                                                                                                                                                     |
+| files.changed     | FilesChangedEvent     | {projectID, paths [String]}                                      | Files changed under a project root.                                                                                                                                                                                                            |
+| webTabs.updated   | WebTabsUpdatedEvent   | {projectID, tabs [WebTab]}                                       | A project's web tabs changed.                                                                                                                                                                                                                  |
+| skills.changed    | SkillsChangedEvent    | [SkillSummary]: the complete `skills.list` result                | The skills library changed, including files inside a skill.                                                                                                                                                                                    |
+| memories.changed  | MemoriesChangedEvent  | MemoryFolder: the complete `memories.list` result of one project | A project's memory folder changed: a memory or `MEMORY.md` was created, changed, renamed or deleted, by a `memories.*` call, a chat or another app; emitted for each watched project of the folder ([Live updates](memories.md#live-updates)). |
+| run.started       | RunStartedEvent       | RunInfo                                                          | A run started; the origin is the actor that started it.                                                                                                                                                                                        |
+| run.output        | RunOutputEvent        | {runID, projectID, text}                                         | A run produced output.                                                                                                                                                                                                                         |
+| run.finished      | RunFinishedEvent      | {runID, projectID, exitCode}                                     | A run ended.                                                                                                                                                                                                                                   |
+| settings.updated  | SettingsUpdatedEvent  | HostSettings                                                     | Host settings changed.                                                                                                                                                                                                                         |
+| claude.updated    | ClaudeUpdatedEvent    | {status ClaudeStatus, models [ClaudeModel]}                      | The Claude CLI status or the model list changed.                                                                                                                                                                                               |
+| planUsage.updated | PlanUsageUpdatedEvent | PlanUsage                                                        | The engine's plan usage was replaced ([Plan usage](#plan-usage)).                                                                                                                                                                              |
+| ui.open           | UIOpenEvent           | {target NavigationTarget, deviceID?}                             | `ui.open` was called.                                                                                                                                                                                                                          |
+| chat.notification | ChatNotificationEvent | {chatID, projectID, kind, stage, detail}                         | A chat needs the user or a turn finished ([Chats › Notifications](chats.md#notifications)): once at once, then once after the summary call.                                                                                                    |
 
 ### Event payloads
 
@@ -2388,7 +2538,7 @@ chat.delta events are flushed at most every 50 ms per chat, so a chat emits at m
 
 ### Changes made outside the engine
 
-- The engine watches every loaded project root and the skills library folder with FSEvents, debounced 300 ms, at most 2 s after the first change of a batch for project roots ([Data model](data-model.md#processing-a-change)). Changes it did not make itself (an editor, `git pull`, Claude editing files) produce the events an API call would emit, with origin `system`. The reload rules and reactions for project, ticket and bundle files are in [Data model](data-model.md#external-changes); the library watcher is in [Skills](skills.md#library).
+- The engine watches every loaded project root, the skills library folder and the memory folders of the projects whose memories a client listed or changed with FSEvents, debounced 300 ms, at most 2 s after the first change of a batch for project roots ([Data model](data-model.md#processing-a-change)). Changes it did not make itself (an editor, `git pull`, Claude editing files) produce the events an API call would emit, with origin `system`. The reload rules and reactions for project, ticket and bundle files are in [Data model](data-model.md#external-changes); the library watcher is in [Skills](skills.md#library), the memory folder watcher in [Memories](memories.md#live-updates).
 - Not reloaded: `.hephaestus/chats/`, whose only writer is the engine, and the device files of the data directory, which are read at launch only ([Data model](data-model.md#watching)).
 - A change of a `.git/config` file inside a watched project root reads the origins that may have changed again ([ProjectDetail](#projectdetail)). Default chosen at design time.
 - files.changed is emitted for every change under a loaded project root except inside `.git/` and `.hephaestus/chats/`, changes made by the engine included. Both are skipped at any depth: a `.git` component anywhere in the path (the repository of a sub project or of a nested work tree) and the chats folder of a sub project add no paths. Default chosen at design time.
@@ -2890,7 +3040,7 @@ public enum NavigationTarget: Codable, Sendable, Hashable {
 
 ### ProjectSection
 
-String enum of the sidebar sections: `dashboard`, `tickets`, `bundles`, `chats`, `code`, `docs`, `web`, `skills`, `costs`, `settings` ([Sidebar](ui.md#sidebar)). The Swift name avoids SwiftUI's `Section`. Default chosen at design time.
+String enum of the sidebar sections: `dashboard`, `tickets`, `bundles`, `chats`, `code`, `docs`, `web`, `skills`, `memories`, `costs`, `settings` ([Sidebar](ui.md#sidebar)). The Swift name avoids SwiftUI's `Section`. Default chosen at design time.
 
 ### AttachmentUpload
 
@@ -3200,15 +3350,15 @@ An animation request posted by `chats.postAnimation` ([Chats](chats.md#animation
 
 Where the feedback was taken; the client fills it from the captured window ([Feedback](feedback.md#feedback-context)), and the engine renders it into the feedback chat's first message ([Chats](chats.md#feedback-message)).
 
-| Field          | Type           | Required | Description                                                                                                                            |
-| -------------- | -------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| appVersion     | String         | yes      | Version of the app that took the screenshot, for example `0.4.0`.                                                                      |
-| build          | Int            | yes      | Build number of that app, for example 57; 0 for a local development build.                                                             |
-| deviceName     | String         | yes      | Name of the device that took the screenshot.                                                                                           |
-| mainDeviceName | String         | yes      | Name of the device whose projects the window showed; equal to `deviceName` unless the window is a remote window.                       |
-| projectID      | ProjectID      | no       | The window's project or sub project; for a chat window, the chat's project.                                                            |
-| section        | ProjectSection | no       | The window's section; `chats` for a chat window.                                                                                       |
-| item           | String         | no       | The selected item, by section: ticket id, bundle id, chat title, file path followed by `:<line>`, doc path, web tab URL or skill name. |
+| Field          | Type           | Required | Description                                                                                                                                                         |
+| -------------- | -------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| appVersion     | String         | yes      | Version of the app that took the screenshot, for example `0.4.0`.                                                                                                   |
+| build          | Int            | yes      | Build number of that app, for example 57; 0 for a local development build.                                                                                          |
+| deviceName     | String         | yes      | Name of the device that took the screenshot.                                                                                                                        |
+| mainDeviceName | String         | yes      | Name of the device whose projects the window showed; equal to `deviceName` unless the window is a remote window.                                                    |
+| projectID      | ProjectID      | no       | The window's project or sub project; for a chat window, the chat's project.                                                                                         |
+| section        | ProjectSection | no       | The window's section; `chats` for a chat window.                                                                                                                    |
+| item           | String         | no       | The selected item, by section: ticket id, bundle id, chat title, file path followed by `:<line>`, doc path, web tab URL, skill name, or memory name or `MEMORY.md`. |
 
 The field set is a design-time choice. Default chosen at design time.
 
@@ -3307,6 +3457,74 @@ The field set is a design-time choice. Default chosen at design time.
 }
 ```
 
+### MemoryType
+
+String enum of the memory types the engine writes: `user`, `feedback`, `project`, `reference` ([Memory files](memories.md#memory-files)).
+
+### MemorySummary
+
+| Field       | Type   | Required | Description                                                                                                                                                                  |
+| ----------- | ------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| file        | String | yes      | File name of the memory in its folder, for example `user-role.md`.                                                                                                           |
+| name        | String | yes      | Frontmatter `name`; the file name without `.md` when it is missing, empty or not a string.                                                                                   |
+| description | String | yes      | Frontmatter `description`; empty when it is missing or not a string.                                                                                                         |
+| type        | String | no       | `metadata.type`, or a top-level `type` when `metadata` has none, when it is a string, as written; absent otherwise. Any value other than a MemoryType makes an Other memory. |
+
+### MemoryFolder
+
+The `memories.list` result and the data of `memories.changed`.
+
+| Field     | Type            | Required | Description                                                                                                                      |
+| --------- | --------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| projectID | ProjectID       | yes      | The project.                                                                                                                     |
+| path      | String          | yes      | Absolute path of the project's memory folder on the main device, without final `/` ([Memory folder](memories.md#memory-folder)). |
+| hasIndex  | Bool            | yes      | `MEMORY.md` exists in the folder.                                                                                                |
+| memories  | [MemorySummary] | yes      | Every memory of the folder, sorted by name, then by file name.                                                                   |
+
+```json
+{
+  "hasIndex": true,
+  "memories": [
+    {"description": "Answer in short sentences", "file": "feedback_style.md", "name": "answer-style", "type": "feedback"},
+    {"description": "The user is a backend developer who is new to SwiftUI", "file": "user-role.md", "name": "user-role", "type": "user"}
+  ],
+  "path": "/Users/example/.claude/projects/-Users-example-Developer-HephaestusV2/memory",
+  "projectID": "HEPH"
+}
+```
+
+### Memory
+
+| Field            | Type                | Required | Description                                                                                                                                               |
+| ---------------- | ------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| file             | String              | yes      | File name of the memory.                                                                                                                                  |
+| name             | String              | yes      | As in [MemorySummary](#memorysummary).                                                                                                                    |
+| description      | String              | yes      | As in MemorySummary.                                                                                                                                      |
+| type             | String              | no       | As in MemorySummary.                                                                                                                                      |
+| extraFrontmatter | {String: JSONValue} | yes      | Frontmatter keys other than `name` and `description`, with `metadata` without its `type`; a `metadata` left empty is left out. Kept by `memories.update`. |
+| body             | String              | yes      | Markdown after the frontmatter, verbatim; the whole file when it has no frontmatter.                                                                      |
+
+```json
+{
+  "body": "\nAnswer in short sentences.\n",
+  "description": "Answer in short sentences",
+  "extraFrontmatter": {"metadata": {"node_type": "memory"}},
+  "file": "feedback_style.md",
+  "name": "answer-style",
+  "type": "feedback"
+}
+```
+
+### MemoryIndex
+
+| Field | Type   | Required | Description                 |
+| ----- | ------ | -------- | --------------------------- |
+| text  | String | yes      | The content of `MEMORY.md`. |
+
+```json
+{"text": "- [answer-style](feedback_style.md) — Answer in short sentences\n"}
+```
+
 ### EngineEventEnvelope
 
 | Field  | Type      | Required | Description                                                      |
@@ -3332,19 +3550,19 @@ The field set is a design-time choice. Default chosen at design time.
 
 ### Files
 
-| Path (under Sources/HephaestusCore/Engine/) | Content                                                                                                                                                                                                                                                                          |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Engine.swift                                | The `Engine` actor, its dispatcher and its event subscriptions.                                                                                                                                                                                                                  |
-| Actor.swift                                 | `Actor`, `ActorKind`.                                                                                                                                                                                                                                                            |
-| EngineError.swift                           | `EngineError`.                                                                                                                                                                                                                                                                   |
-| EngineConnection.swift                      | `EngineConnection`, `ConnectionState`.                                                                                                                                                                                                                                           |
-| LocalEngineConnection.swift                 | The in-process connection.                                                                                                                                                                                                                                                       |
-| API/EngineMethod.swift                      | `EngineMethod`, `EngineEvent`, `Empty`, `Patch`.                                                                                                                                                                                                                                 |
-| API/EngineJSON.swift                        | The JSON encoder and decoder of the API.                                                                                                                                                                                                                                         |
-| API/APITypes.swift                          | The other types of [API types](#api-types).                                                                                                                                                                                                                                      |
-| API/(Area)API.swift                         | The method declarations of one area: `DeviceAPI` (device.info, snapshot.get), `ProjectsAPI`, `TicketsAPI`, `AttachmentsAPI`, `BundlesAPI`, `ChatsAPI`, `SoundsAPI`, `ClaudeAPI`, `FilesAPI`, `DocsAPI`, `FSAPI`, `WebTabsAPI`, `SearchAPI`, `SkillsAPI`, `SettingsAPI`, `UIAPI`. |
-| API/Events.swift                            | One `EngineEvent` type per event, with the payload types.                                                                                                                                                                                                                        |
-| Handlers/(Area)Handlers.swift               | `register<Area>Handlers()` and the handlers of one area.                                                                                                                                                                                                                         |
+| Path (under Sources/HephaestusCore/Engine/) | Content                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Engine.swift                                | The `Engine` actor, its dispatcher and its event subscriptions.                                                                                                                                                                                                                                 |
+| Actor.swift                                 | `Actor`, `ActorKind`.                                                                                                                                                                                                                                                                           |
+| EngineError.swift                           | `EngineError`.                                                                                                                                                                                                                                                                                  |
+| EngineConnection.swift                      | `EngineConnection`, `ConnectionState`.                                                                                                                                                                                                                                                          |
+| LocalEngineConnection.swift                 | The in-process connection.                                                                                                                                                                                                                                                                      |
+| API/EngineMethod.swift                      | `EngineMethod`, `EngineEvent`, `Empty`, `Patch`.                                                                                                                                                                                                                                                |
+| API/EngineJSON.swift                        | The JSON encoder and decoder of the API.                                                                                                                                                                                                                                                        |
+| API/APITypes.swift                          | The other types of [API types](#api-types).                                                                                                                                                                                                                                                     |
+| API/(Area)API.swift                         | The method declarations of one area: `DeviceAPI` (device.info, snapshot.get), `ProjectsAPI`, `TicketsAPI`, `AttachmentsAPI`, `BundlesAPI`, `ChatsAPI`, `SoundsAPI`, `ClaudeAPI`, `FilesAPI`, `DocsAPI`, `FSAPI`, `WebTabsAPI`, `SearchAPI`, `SkillsAPI`, `MemoriesAPI`, `SettingsAPI`, `UIAPI`. |
+| API/Events.swift                            | One `EngineEvent` type per event, with the payload types.                                                                                                                                                                                                                                       |
+| Handlers/(Area)Handlers.swift               | `register<Area>Handlers()` and the handlers of one area.                                                                                                                                                                                                                                        |
 
 `RemoteEngineConnection` lives in `Sources/HephaestusCore/Sync/` ([Remote devices](remote.md)); the MCP server in `Sources/HephaestusCore/MCP/` ([MCP server](mcp.md)).
 
@@ -3474,7 +3692,7 @@ public actor Engine {
 4. Run the handler with the decoded params and the actor. An `EngineError` is rethrown as is; any other error becomes `internal` and is logged.
 5. Encode the result with `EngineJSON.encoder()`.
 
-The handlers are registered at engine start by `registerDeviceHandlers()`, `registerProjectHandlers()`, `registerTicketHandlers()`, `registerAttachmentHandlers()`, `registerBundleHandlers()`, `registerChatHandlers()`, `registerClaudeHandlers()`, `registerFileHandlers()`, `registerDocHandlers()`, `registerFSHandlers()`, `registerWebTabHandlers()`, `registerSearchHandlers()`, `registerSkillHandlers()`, `registerSettingsHandlers()` and `registerUIHandlers()`. The `actors` set of each registration is the Actors column of the [Method index](#method-index). Parameter-level rules for Claude ([Rules for Claude](#rules-for-claude)) are checked by the handlers.
+The handlers are registered at engine start by `registerDeviceHandlers()`, `registerProjectHandlers()`, `registerTicketHandlers()`, `registerAttachmentHandlers()`, `registerBundleHandlers()`, `registerChatHandlers()`, `registerClaudeHandlers()`, `registerFileHandlers()`, `registerDocHandlers()`, `registerFSHandlers()`, `registerWebTabHandlers()`, `registerSearchHandlers()`, `registerSkillHandlers()`, `registerMemoryHandlers()`, `registerSettingsHandlers()` and `registerUIHandlers()`. The `actors` set of each registration is the Actors column of the [Method index](#method-index). Parameter-level rules for Claude ([Rules for Claude](#rules-for-claude)) are checked by the handlers.
 
 `emit` encodes the envelope once with `EngineJSON.encoder()` and yields the same bytes to every subscriber: each `LocalEngineConnection` and each remote device session.
 
@@ -3573,3 +3791,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R157: A Go service project declares its environments in Project Settings, and the Contract view sends requests to the environment chosen in its Environment pop-up.
 - R158: A project has a GitHub page, taken from its origin remote unless set in Project Settings; a sub project can use its parent's settings.
 - R159: A locked web tab goes back to its original page each time the user comes back to it.
+- R160: The user can show, edit, create, rename and delete the memories Claude saves for a project, in a Memories section of the sidebar.

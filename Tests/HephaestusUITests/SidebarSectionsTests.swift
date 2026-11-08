@@ -9,22 +9,33 @@ import Testing
 @MainActor
 @Suite("Sidebar sections")
 struct SidebarSectionsTests {
-    @Test("The listed rows are Dashboard to Costs; Project Settings is pinned apart")
+    @Test("The listed rows are Dashboard to Costs, Memories after Skills; Project Settings is pinned apart")
     func listedAndPinned() {
-        #expect(ProjectSection.listed == [.dashboard, .tickets, .bundles, .chats, .code, .docs, .web, .skills, .costs])
+        #expect(ProjectSection.listed == [.dashboard, .tickets, .bundles, .chats, .code, .docs, .web, .skills, .memories, .costs])
         #expect(ProjectSection.allCases.last == .settings)
         #expect(ProjectSection.settings.title == "Project Settings")
         #expect(ProjectSection.settings.symbol == "gearshape")
+        #expect(ProjectSection.memories.title == "Memories")
+        #expect(ProjectSection.memories.symbol == "brain")
     }
 
-    @Test("⌘1 to ⌘9 select the listed sections and ⇧⌘, selects Project Settings")
+    @Test("⌘1 to ⌘9, then ⌘0, select the listed sections and ⇧⌘, selects Project Settings")
     func shortcuts() {
         for (index, section) in ProjectSection.listed.enumerated() {
-            #expect(section.shortcut.key == KeyEquivalent(Character(String(index + 1))))
+            #expect(section.shortcut.key == KeyEquivalent(Character(String((index + 1) % 10))))
             #expect(section.shortcut.modifiers == .command)
         }
+        #expect(ProjectSection.memories.shortcut.key == KeyEquivalent("9"))
+        #expect(ProjectSection.costs.shortcut.key == KeyEquivalent("0"))
         #expect(ProjectSection.settings.shortcut.key == KeyEquivalent(","))
         #expect(ProjectSection.settings.shortcut.modifiers == [.command, .shift])
+    }
+
+    @Test("The Memories section links no item")
+    func memoriesLinkNothing() {
+        var state = ProjectViewState()
+        state.selectedMemoryFile = "user-role.md"
+        #expect(state.openItems(in: .memories).isEmpty)
     }
 
     @Test("The Project Settings section links no item")

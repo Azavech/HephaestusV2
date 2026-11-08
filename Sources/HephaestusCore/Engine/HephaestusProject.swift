@@ -134,6 +134,8 @@ extension Engine {
             return event.projectID
         case let event as WebTabsUpdatedEvent.Payload:
             return event.projectID
+        case let folder as MemoryFolder:
+            return folder.projectID
         case let run as RunInfo:
             return run.projectID
         case let event as RunOutputEvent.Payload:

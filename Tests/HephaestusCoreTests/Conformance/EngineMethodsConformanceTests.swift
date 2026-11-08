@@ -27,7 +27,7 @@ struct EngineMethodsConformanceTests {
     @Test("The documented method names equal Engine.registeredMethods")
     func registeredMethods() async throws {
         let documented = Set(try Self.methodRows().map(\.name))
-        #expect(documented.count == 95)
+        #expect(documented.count == 102)
         try await withTestEngine { engine, _, _ in
             #expect(Set(await engine.registeredMethods) == documented)
         }
@@ -80,7 +80,7 @@ struct EngineMethodsConformanceTests {
             $0.header.first == "Event" && $0.header.count > 1 && $0.header[1] == "Swift type"
         })
         let documented = table.rows.map { ($0[0], $0[1]) }
-        #expect(documented.count == 24)
+        #expect(documented.count == 25)
         #expect(EngineEvents.all.map { $0.name } == documented.map(\.0))
         #expect(EngineEvents.all.map { String(describing: $0) } == documented.map(\.1))
     }

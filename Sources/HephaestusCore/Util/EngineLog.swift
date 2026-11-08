@@ -10,7 +10,7 @@ public enum LogLevel: String, Sendable, CaseIterable {
 /// Components of engine.log: the lowercase name of the HephaestusCore folder that logs, or `ui`
 /// for messages logged by HephaestusUI.
 public enum LogComponent: String, Sendable, CaseIterable {
-    case engine, storage, claude, mcp, sync, search, skills, files, settings, ui
+    case engine, storage, claude, mcp, sync, search, skills, memories, files, settings, ui
 }
 
 /// Something that receives log lines. Never pass tokens, pairing codes, the content of

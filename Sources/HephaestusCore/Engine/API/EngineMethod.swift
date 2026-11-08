@@ -114,6 +114,8 @@ public enum EngineMethods {
         SearchQuery.self,
         SkillsList.self, SkillsGet.self, SkillsCreate.self, SkillsUpdate.self, SkillsDelete.self,
         SkillsReadFile.self, SkillsWriteFile.self, SkillsDeleteFile.self, SkillsSetEnabled.self,
+        MemoriesList.self, MemoriesGet.self, MemoriesCreate.self, MemoriesUpdate.self, MemoriesDelete.self,
+        MemoriesReadIndex.self, MemoriesWriteIndex.self,
         SettingsGet.self, SettingsUpdate.self,
         UIOpen.self,
     ]

@@ -82,6 +82,9 @@ final class DeviceWorkspace {
     var bundles: [String: [String: TicketBundle]] = [:]
     /// Web tabs of loaded projects, by project id.
     var webTabs: [String: [WebTab]] = [:]
+    /// The memory folders of the projects whose Memories section a window showed, by project id,
+    /// from `memories.list` and `memories.changed` (docs/memories.md › Live updates).
+    var memoryFolders: [String: MemoryFolder] = [:]
     /// One transcript state per chat shown in a view, by chat id.
     var transcripts: [String: TranscriptState] = [:]
     /// The workflows and agents of every chat of every project, by chat id (docs/chats.md › UI

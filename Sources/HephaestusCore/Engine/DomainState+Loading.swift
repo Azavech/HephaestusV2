@@ -141,6 +141,7 @@ extension Engine {
                 log.info(.storage, "unloaded project \(projectID) at \(removed.rootPath)")
             }
         }
+        forgetMemoryProjects(ids)
         return (ids, chatIDs)
     }
 

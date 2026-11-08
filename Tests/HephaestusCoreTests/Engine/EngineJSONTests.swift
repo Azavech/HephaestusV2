@@ -85,6 +85,9 @@ struct EngineJSONTests {
         "### ClaudeStatus": roundTrip([ClaudeStatus].self),
         "### PlanUsageState": roundTrip([PlanUsageState].self),
         "### Skill": roundTrip(Skill.self),
+        "### MemoryFolder": roundTrip(MemoryFolder.self),
+        "### Memory": roundTrip(Memory.self),
+        "### MemoryIndex": roundTrip(MemoryIndex.self),
         "### EngineEventEnvelope": roundTrip(EngineEventEnvelope.self),
     ]
 

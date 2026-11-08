@@ -1593,7 +1593,7 @@ extension MCPToolCatalog {
                     "section": {
                       "type": "string",
                       "description": "Project section to show.",
-                      "enum": ["dashboard", "tickets", "bundles", "chats", "code", "docs", "web", "skills", "costs", "settings"]
+                      "enum": ["dashboard", "tickets", "bundles", "chats", "code", "docs", "web", "skills", "memories", "costs", "settings"]
                     }
                   },
                   "required": ["kind"],
@@ -1691,7 +1691,7 @@ extension MCPToolCatalog {
                     "section": {
                       "type": "string",
                       "description": "Project section to show.",
-                      "enum": ["dashboard", "tickets", "bundles", "chats", "code", "docs", "web", "skills", "costs", "settings"]
+                      "enum": ["dashboard", "tickets", "bundles", "chats", "code", "docs", "web", "skills", "memories", "costs", "settings"]
                     }
                   },
                   "required": ["kind"],

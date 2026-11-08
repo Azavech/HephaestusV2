@@ -204,6 +204,13 @@ public enum SkillsChangedEvent: EngineEvent {
     public typealias Payload = [SkillSummary]
 }
 
+/// `memories.changed`: the complete `memories.list` result of one project, whose memory folder
+/// changed (docs/memories.md › Live updates).
+public enum MemoriesChangedEvent: EngineEvent {
+    public static let name = "memories.changed"
+    public typealias Payload = MemoryFolder
+}
+
 /// `run.started`: a run started; the origin is the actor that started it.
 public enum RunStartedEvent: EngineEvent {
     public static let name = "run.started"
@@ -340,6 +347,7 @@ public enum EngineEvents {
         TicketUpdatedEvent.self, TicketDeletedEvent.self, BundleUpdatedEvent.self, BundleDeletedEvent.self,
         ChatUpdatedEvent.self, ChatDeletedEvent.self, ChatItemEvent.self, ChatDeltaEvent.self,
         ChatAgentsEvent.self, ChatAgentItemEvent.self, FilesChangedEvent.self, WebTabsUpdatedEvent.self, SkillsChangedEvent.self,
+        MemoriesChangedEvent.self,
         RunStartedEvent.self, RunOutputEvent.self, RunFinishedEvent.self,
         SettingsUpdatedEvent.self, ClaudeUpdatedEvent.self, PlanUsageUpdatedEvent.self, UIOpenEvent.self,
         ChatNotificationEvent.self,
@@ -366,6 +374,7 @@ public enum DecodedEngineEvent: Sendable, Hashable {
     case filesChanged(FilesChangedEvent.Payload)
     case webTabsUpdated(WebTabsUpdatedEvent.Payload)
     case skillsChanged([SkillSummary])
+    case memoriesChanged(MemoryFolder)
     case runStarted(RunInfo)
     case runOutput(RunOutputEvent.Payload)
     case runFinished(RunFinishedEvent.Payload)
@@ -398,6 +407,7 @@ extension EngineEventEnvelope {
         case FilesChangedEvent.name: return .filesChanged(try payload(FilesChangedEvent.self))
         case WebTabsUpdatedEvent.name: return .webTabsUpdated(try payload(WebTabsUpdatedEvent.self))
         case SkillsChangedEvent.name: return .skillsChanged(try payload(SkillsChangedEvent.self))
+        case MemoriesChangedEvent.name: return .memoriesChanged(try payload(MemoriesChangedEvent.self))
         case RunStartedEvent.name: return .runStarted(try payload(RunStartedEvent.self))
         case RunOutputEvent.name: return .runOutput(try payload(RunOutputEvent.self))
         case RunFinishedEvent.name: return .runFinished(try payload(RunFinishedEvent.self))

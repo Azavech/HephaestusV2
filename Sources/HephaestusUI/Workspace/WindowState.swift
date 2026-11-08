@@ -224,6 +224,8 @@ struct ProjectViewState {
     var docMode: DocMode = .preview
     var selectedWebTabID: String?
     var selectedSkillName: String?
+    /// Selected row of the Memories section: a memory's file name, or `MEMORY.md`.
+    var selectedMemoryFile: String?
     /// Run shown in the console drawer.
     var consoleRunID: String?
 
@@ -268,14 +270,21 @@ struct ProjectViewState {
     /// The skill form and the open extra file of the Skills section; never encoded
     /// (docs/skills.md › Editor).
     var skillEditor: SkillEditorState?
+    /// The memory form or the `MEMORY.md` text of the Memories section; never encoded
+    /// (docs/memories.md › Saving).
+    var memoryEditor: MemoryEditorState?
+    /// The mode of the Memories editors, kept when the editor closes (docs/memories.md › Memory
+    /// editor); not encoded.
+    var memoryBodyMode: DocMode = .preview
 
-    /// The editors of this project with unsaved changes: editor tabs in order, the doc buffer, then
-    /// the skill form and its open extra file.
+    /// The editors of this project with unsaved changes: editor tabs in order, the doc buffer, the
+    /// skill form and its open extra file, then the memory or `MEMORY.md`.
     @MainActor
     var unsavedEditors: [any UnsavedEditor] {
         var editors: [any UnsavedEditor] = editorTabs.map { $0.buffer }.filter { $0.hasUnsavedChanges }
         if let docBuffer, docBuffer.hasUnsavedChanges { editors.append(docBuffer) }
         editors += skillEditor?.unsavedEditors ?? []
+        editors += memoryEditor?.unsavedEditors ?? []
         return editors
     }
 }
@@ -283,7 +292,7 @@ struct ProjectViewState {
 extension ProjectViewState: @MainActor Codable {
     enum CodingKeys: String, CodingKey {
         case selectedTicketIDs, selectedBundleID, selectedChatIDs, inspectorChatID, inspectorShowsDraft, unlinkedItems, editorTabs,
-             selectedEditorPath, selectedDocPath, docMode, selectedWebTabID, selectedSkillName, consoleRunID,
+             selectedEditorPath, selectedDocPath, docMode, selectedWebTabID, selectedSkillName, selectedMemoryFile, consoleRunID,
              expandedCodeFolders, selectedTreePath, expandedDocFolders, ticketList, ticketTab, bundleList, bundleTab,
              chatsTabSelection, chatsTabDrafts, hidesClosedChats, commentDrafts, selectedChatAgent, chatsTabAgentSelection,
              expandedAgentChats
@@ -310,6 +319,7 @@ extension ProjectViewState: @MainActor Codable {
         docMode = try c.decodeIfPresent(DocMode.self, forKey: .docMode) ?? .preview
         selectedWebTabID = try c.decodeIfPresent(String.self, forKey: .selectedWebTabID)
         selectedSkillName = try c.decodeIfPresent(String.self, forKey: .selectedSkillName)
+        selectedMemoryFile = try c.decodeIfPresent(String.self, forKey: .selectedMemoryFile)
         consoleRunID = try c.decodeIfPresent(String.self, forKey: .consoleRunID)
         expandedCodeFolders = Set(try c.decodeIfPresent([String].self, forKey: .expandedCodeFolders) ?? [])
         selectedTreePath = try c.decodeIfPresent(String.self, forKey: .selectedTreePath)
@@ -342,6 +352,7 @@ extension ProjectViewState: @MainActor Codable {
         try c.encode(docMode, forKey: .docMode)
         try c.encodeIfPresent(selectedWebTabID, forKey: .selectedWebTabID)
         try c.encodeIfPresent(selectedSkillName, forKey: .selectedSkillName)
+        try c.encodeIfPresent(selectedMemoryFile, forKey: .selectedMemoryFile)
         try c.encodeIfPresent(consoleRunID, forKey: .consoleRunID)
         try c.encode(hidesClosedChats, forKey: .hidesClosedChats)
         if encoder.userInfo[WindowState.persistedOnlyKey] as? Bool != true {

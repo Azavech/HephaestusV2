@@ -1613,14 +1613,14 @@ chats: []
 
 ## Atomic writes
 
-Every YAML file, `secrets.json`, `SKILL.md`, `.hephaestus/.gitignore` and every attachment file is written in these steps:
+Every YAML file, `secrets.json`, `SKILL.md`, `.hephaestus/.gitignore`, every attachment file, and the memory files and `MEMORY.md` written by the `memories.*` methods ([Memories](memories.md)) are written in these steps:
 
 1. Encode the complete content in memory.
 2. Create the missing parent folders, mode 0755.
 3. Create a temporary file in the destination's folder named `.<file name>.<UUID>.tmp`, with `O_CREAT` and `O_EXCL`, and the mode of the file it replaces: 0644 for a new file, 0600 for `secrets.json`. This name is 42 UTF-8 bytes longer than the file name; a file name of the system is at most 255 bytes, so the stored names of attachments are kept at 213 bytes or fewer ([Attachments](#attachments)).
 4. Write all bytes, then `fsync`.
 5. `rename` the temporary file onto the destination. Within one volume the rename is atomic: readers see the old content or the new one, never a mix.
-6. Record the SHA-256 of the written bytes for the path ([External changes](#external-changes)). Writes and removals made by `files.write`, `files.create`, `files.rename` and `files.trash` are not recorded ([Engine API](engine-api.md#files)).
+6. Record the SHA-256 of the written bytes for the path ([External changes](#external-changes)). Writes and removals made by `files.write`, `files.create`, `files.rename`, `files.trash` and the `memories.*` methods are not recorded ([Engine API](engine-api.md#files)).
 
 When a step fails, the temporary file is deleted and the call fails with error `internal`, naming the path.
 
@@ -1632,25 +1632,28 @@ When a step fails, the temporary file is deleted and the call fails with error `
 
 ### Changes that touch several files
 
-The engine writes a file that is referenced before the files that reference it, and removes a reference before the file it references. A crash between two steps leaves at most an unreferenced file or a skipped number, never a reference to a missing file.
+The engine writes a file that is referenced before the files that reference it, and removes a reference before the file it references. A crash between two steps leaves at most an unreferenced file or a skipped number, never a reference to a missing file. The renames of a skill and of a memory are the exception: the renamed file comes first, so a crash between their steps can leave a reference to the old name.
 
-| Change                                | Order of the writes                                                                                                                                    |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Create a ticket                       | 1. project file (`nextTicketNumber`) 2. attachment files 3. ticket file                                                                                |
-| Create a bundle                       | 1. project file (`nextBundleNumber`) 2. bundle file                                                                                                    |
-| Add a comment or attachments          | 1. attachment files 2. ticket file                                                                                                                     |
-| Set a ticket's status                 | 1. ticket file 2. every bundle file whose status the [automatic rules](tickets.md#bundle-status-rules) change, in bundle number order                  |
-| Remove an attachment or a comment     | 1. ticket file 2. attachment files, moved to the Trash                                                                                                 |
-| Delete a ticket                       | 1. every bundle file listing it 2. every ticket file declaring a link to it 3. ticket file and folder `attachments/<TICKET-ID>/`, moved to the Trash   |
-| Create a ticket chat or a bundle chat | 1. chat metadata file 2. ticket or bundle file (`chats`)                                                                                               |
-| Create a ticket from a feedback chat  | 1. project file 2. attachment files 3. ticket file, with the chat in `chats` 4. chat metadata file (`ticket`)                                          |
-| Delete a chat                         | 1. ticket or bundle file (`chats`) 2. chat metadata file, transcript and folder `chats/<CHAT-ID>/`, moved to the Trash                                 |
-| Register a top-level project          | 1. the project's own files 2. registry file                                                                                                            |
-| Register a sub project                | 1. the sub project's own files 2. the parent's project file (`subprojects`)                                                                            |
-| Rename a skill                        | 1. the skill folder and its `SKILL.md` 2. every project file listing it                                                                                |
-| Delete a skill                        | 1. every project file listing it 2. the skill folder, moved to the Trash ([Skills](skills.md))                                                         |
-| Pair a device                         | 1. secrets file (`remoteSecrets`) 2. remotes file; when step 2 fails, the code of step 1 goes back to its previous value ([Remote devices](remote.md)) |
-| Remove a paired device                | 1. remotes file 2. secrets file (`remoteSecrets`)                                                                                                      |
+| Change                                | Order of the writes                                                                                                                                               |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Create a ticket                       | 1. project file (`nextTicketNumber`) 2. attachment files 3. ticket file                                                                                           |
+| Create a bundle                       | 1. project file (`nextBundleNumber`) 2. bundle file                                                                                                               |
+| Add a comment or attachments          | 1. attachment files 2. ticket file                                                                                                                                |
+| Set a ticket's status                 | 1. ticket file 2. every bundle file whose status the [automatic rules](tickets.md#bundle-status-rules) change, in bundle number order                             |
+| Remove an attachment or a comment     | 1. ticket file 2. attachment files, moved to the Trash                                                                                                            |
+| Delete a ticket                       | 1. every bundle file listing it 2. every ticket file declaring a link to it 3. ticket file and folder `attachments/<TICKET-ID>/`, moved to the Trash              |
+| Create a ticket chat or a bundle chat | 1. chat metadata file 2. ticket or bundle file (`chats`)                                                                                                          |
+| Create a ticket from a feedback chat  | 1. project file 2. attachment files 3. ticket file, with the chat in `chats` 4. chat metadata file (`ticket`)                                                     |
+| Delete a chat                         | 1. ticket or bundle file (`chats`) 2. chat metadata file, transcript and folder `chats/<CHAT-ID>/`, moved to the Trash                                            |
+| Register a top-level project          | 1. the project's own files 2. registry file                                                                                                                       |
+| Register a sub project                | 1. the sub project's own files 2. the parent's project file (`subprojects`)                                                                                       |
+| Rename a skill                        | 1. the skill folder and its `SKILL.md` 2. every project file listing it                                                                                           |
+| Delete a skill                        | 1. every project file listing it 2. the skill folder, moved to the Trash ([Skills](skills.md))                                                                    |
+| Create a memory                       | 1. memory file 2. `MEMORY.md` ([Memories](memories.md#rename-create-and-delete))                                                                                  |
+| Rename a memory                       | 1. memory file, renamed and written 2. `MEMORY.md` 3. the other memory files of the folder, in file name order ([Memories](memories.md#rename-create-and-delete)) |
+| Delete a memory                       | 1. `MEMORY.md` 2. memory file, moved to the Trash ([Memories](memories.md#rename-create-and-delete))                                                              |
+| Pair a device                         | 1. secrets file (`remoteSecrets`) 2. remotes file; when step 2 fails, the code of step 1 goes back to its previous value ([Remote devices](remote.md))            |
+| Remove a paired device                | 1. remotes file 2. secrets file (`remoteSecrets`)                                                                                                                 |
 
 When a step fails, the engine stops and the call fails. Files written by the earlier steps stay, except where the page that defines the change says otherwise, for example the attachment files of a ticket creation ([Tickets](tickets.md)).
 
@@ -1679,6 +1682,7 @@ Files change without the engine: git checkouts and merges, text editors, another
 - A change of a `.git/config` file inside a watched root reads the origins of the projects of that repository again ([ProjectDetail](engine-api.md#projectdetail)). Default chosen at design time.
 - One FSEvents stream on the data directory for `settings.yml` and `registry.yml`. `device.yml`, `secrets.json`, `remotes.yml` and `plan-usage.yml` are read at launch only; a change made to one of them while the app runs is overwritten by the engine's next write of that file. Default chosen at design time.
 - The skills library is watched as defined in [Skills](skills.md).
+- The memory folders of the projects are watched as defined in [Memories](memories.md#live-updates).
 - Attachment files and temporary files are not reloaded as data.
 
 ### Processing a change
