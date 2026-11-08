@@ -228,7 +228,7 @@ private struct ViewCommands: View {
         }
         .disabled(!showsDoc)
         Divider()
-        Button(window?.sidebarVisible ?? true ? "Hide Sidebar" : "Show Sidebar") {
+        Button(window?.sidebarToggleTitle ?? "Hide Sidebar") {
             window?.sidebarVisible.toggle()
         }
         .keyboardShortcut("s", modifiers: [.command, .control])

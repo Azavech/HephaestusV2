@@ -201,7 +201,7 @@ The type names of this table are Default chosen at design time.
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `App/`       | `AppModel`, scenes, menus and commands, window placement, the `MCPDebugUI` implementation, the chat notifications (`ChatNotifier`, UserNotifications).                         |
 | `Workspace/` | `DeviceWorkspace`, `WindowState`, navigation.                                                                                                                                  |
-| `Toolbar/`   | The `Device ▸ Project ▸ Sub project` selector and the trailing toolbar buttons.                                                                                                |
+| `Toolbar/`   | The Sidebar button, the `Device ▸ Project ▸ Sub project` selector and the trailing toolbar buttons.                                                                            |
 | `Sidebar/`   | Section list.                                                                                                                                                                  |
 | `StatusBar/` | Status bar, the Weekly usage item with its popover, the Update item, and the ladybug button.                                                                                   |
 | `Projects/`  | New, open and remove project flows, folder pickers, project settings ([Projects](projects.md)).                                                                                |

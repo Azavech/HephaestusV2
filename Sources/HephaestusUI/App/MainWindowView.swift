@@ -166,16 +166,16 @@ private struct ProjectColumns: View {
         HSplitView {
             if state.sidebarVisible {
                 SidebarView(window: state, workspace: workspace, project: project)
-                    .frame(minWidth: PaneWidths.Coordinator.minimumSidebarWidth, idealWidth: 200, maxWidth: 280,
-                           maxHeight: .infinity)
-                    .background(SidebarCollapseByDragging(state: state))
+                    .frame(minWidth: PaneWidthMemory.minimumSidebarWidth, idealWidth: PaneWidthMemory.defaultSidebarWidth,
+                           maxWidth: 280, maxHeight: .infinity)
             }
             SectionContent(state: state, workspace: workspace, project: project)
                 .frame(minWidth: 540, maxWidth: .infinity, maxHeight: .infinity)
-                .background(PaneWidths(state: state))
+                .background(PaneWidths(state: state, sidebarVisible: state.sidebarVisible,
+                                       inspectorVisible: state.inspectorVisible))
             if state.inspectorVisible {
                 ProjectChatPanel(window: state, workspace: workspace, projectID: project.id)
-                    .frame(minWidth: 300, maxWidth: 600, maxHeight: .infinity)
+                    .frame(minWidth: PaneWidthMemory.minimumInspectorWidth, maxWidth: 600, maxHeight: .infinity)
             }
         }
         // An item unlinked from the inspector chat is linked again once it is no longer open,
@@ -247,12 +247,17 @@ private struct SectionContent: View {
 }
 
 /// The widths of the sidebar and the inspector (docs/ui.md › Main window layout): a main window
-/// opens with the sidebar at 200 pt and the inspector at `inspectorWidth`, and a pane shown again
-/// takes its width back (the sidebar its last width in this window). Only a divider dragged by
-/// the user changes the widths, and only then is `inspectorWidth` stored. `HSplitView` ignores
-/// `idealWidth`, so the widths are set on its `NSSplitView`, found from the centre column.
+/// opens with the sidebar at its default width and the inspector at `inspectorWidth`, and a pane
+/// shown again takes its width back, the sidebar its last width in this window. Dragging the
+/// sidebar's divider to the window edge collapses the sidebar (docs/ui.md › Sidebar): its split
+/// view item may collapse, and a collapse that remains when the drag ends hides the sidebar
+/// (`sidebarVisible`, persisted per window). `HSplitView` ignores `idealWidth`, so the widths are
+/// set on its `NSSplitView`, found from the centre column.
 private struct PaneWidths: NSViewRepresentable {
     let state: WindowState
+    /// The shown panes: SwiftUI updates this view when they change, and the widths are applied.
+    let sidebarVisible: Bool
+    let inspectorVisible: Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -284,17 +289,13 @@ private struct PaneWidths: NSViewRepresentable {
 
     @MainActor
     final class Coordinator {
-        static let defaultSidebarWidth: CGFloat = 200
-        /// Wide enough for Project Settings on one line.
-        static let minimumSidebarWidth: CGFloat = 190
-
         weak var state: WindowState?
         private weak var probe: NSView?
         private weak var splitView: NSSplitView?
         private var observer: NSObjectProtocol?
         /// The panes (sidebar, inspector) whose widths were last applied.
         private var applied: [Bool]?
-        private var sidebarWidth = Coordinator.defaultSidebarWidth
+        private var memory = PaneWidthMemory()
         private var isApplying = false
         private var applyScheduled = false
 
@@ -313,9 +314,9 @@ private struct PaneWidths: NSViewRepresentable {
                 applied = nil
                 observer = NotificationCenter.default.addObserver(forName: NSSplitView.didResizeSubviewsNotification,
                                                                   object: found, queue: .main) { [weak self] note in
-                    let byUser = note.userInfo?["NSSplitViewDividerIndex"] != nil
+                    let divider = (note.userInfo?["NSSplitViewDividerIndex"] as? NSNumber)?.intValue
                     MainActor.assumeIsolated {
-                        self?.resized(byUser: byUser)
+                        self?.resized(divider: divider)
                     }
                 }
             }
@@ -344,6 +345,12 @@ private struct PaneWidths: NSViewRepresentable {
             return (sidebar, centre, inspector)
         }
 
+        /// The split view item of the sidebar pane: the split view of `HSplitView` is managed by
+        /// an `NSSplitViewController`, its delegate, and each pane wraps the view of its item.
+        private func sidebarItem(_ sidebar: NSView) -> NSSplitViewItem? {
+            (splitView?.delegate as? NSSplitViewController)?.splitViewItems.first { $0.viewController.view.isDescendant(of: sidebar) }
+        }
+
         private func scheduleApply(attempts: Int) {
             guard !applyScheduled else { return }
             applyScheduled = true
@@ -362,15 +369,22 @@ private struct PaneWidths: NSViewRepresentable {
             }
         }
 
-        /// Sets the sidebar and inspector widths; false when the split view is not ready yet.
+        /// Sets the sidebar and inspector widths, and makes the sidebar's item collapsible and
+        /// expanded; false when the split view is not ready yet.
         @discardableResult
         private func apply() -> Bool {
             guard let state, let splitView, let panes = panes() else { return false }
             isApplying = true
             defer { isApplying = false }
             splitView.layoutSubtreeIfNeeded()
-            if panes.sidebar != nil {
-                splitView.setPosition(sidebarWidth, ofDividerAt: panes.centre - 1)
+            if let sidebar = panes.sidebar {
+                if let item = sidebarItem(sidebar) {
+                    item.canCollapse = true
+                    if item.isCollapsed && memory.drag == nil {
+                        item.isCollapsed = false
+                    }
+                }
+                splitView.setPosition(memory.sidebarWidth, ofDividerAt: panes.centre - 1)
             }
             if panes.inspector != nil {
                 let position = splitView.bounds.width - CGFloat(state.inspectorWidth) - splitView.dividerThickness
@@ -380,114 +394,140 @@ private struct PaneWidths: NSViewRepresentable {
             return true
         }
 
-        /// A divider dragged by the user: the new widths are kept, `inspectorWidth` persisted.
-        private func resized(byUser: Bool) {
-            guard byUser, !isApplying, let state, let panes = panes() else { return }
-            if let sidebar = panes.sidebar, sidebar.frame.width >= Coordinator.minimumSidebarWidth {
-                sidebarWidth = sidebar.frame.width
+        /// The split view resized its panes, `divider` the index of the divider it names. Only
+        /// while the app handles a drag with the left mouse button in this window is it a divider
+        /// dragged by the user: the split view also names a divider when SwiftUI resizes the panes
+        /// while it adds or removes one.
+        private func resized(divider: Int?) {
+            guard !isApplying, let state, let splitView, let panes = panes() else { return }
+            let startsDrag = memory.drag == nil
+            let sidebarCollapsed = panes.sidebar.map { splitView.isSubviewCollapsed($0) } ?? false
+            let sidebar = panes.sidebar.map { PaneWidthMemory.Pane(divider: panes.centre - 1, width: $0.frame.width) }
+            let inspector = panes.inspector.map { PaneWidthMemory.Pane(divider: panes.centre, width: $0.frame.width) }
+            if let width = memory.splitViewResized(divider: divider, byUser: handlesLeftMouseDrag, sidebar: sidebar,
+                                                   sidebarCollapsed: sidebarCollapsed, inspector: inspector) {
+                state.inspectorWidth = Double(width)
             }
-            if let inspector = panes.inspector, inspector.frame.width >= 300 {
-                state.inspectorWidth = Double(inspector.frame.width)
-            }
-        }
-    }
-}
-
-/// Dragging the sidebar's divider to the window edge collapses the sidebar (docs/ui.md ›
-/// Sidebar): the split view item of the sidebar pane may collapse, and a collapse that remains
-/// when the drag ends hides the sidebar (`sidebarVisible`, persisted per window).
-private struct SidebarCollapseByDragging: NSViewRepresentable {
-    let state: WindowState
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    func makeNSView(context: Context) -> ProbeView {
-        let view = ProbeView()
-        view.coordinator = context.coordinator
-        return view
-    }
-
-    func updateNSView(_ view: ProbeView, context: Context) {
-        context.coordinator.state = state
-        view.attach()
-    }
-
-    static func dismantleNSView(_ view: ProbeView, coordinator: Coordinator) {
-        coordinator.detach()
-    }
-
-    /// Finds the split view item of the pane it is in once it is in a window.
-    final class ProbeView: NSView {
-        weak var coordinator: Coordinator?
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            attach()
-        }
-
-        func attach() {
-            guard window != nil else { return }
-            coordinator?.attach(to: self)
-        }
-    }
-
-    @MainActor
-    final class Coordinator {
-        weak var state: WindowState?
-        private weak var item: NSSplitViewItem?
-        private var observation: NSKeyValueObservation?
-        private var waitingForMouseUp = false
-
-        /// The `HSplitView` is an `NSSplitView` whose delegate is an `NSSplitViewController`; the
-        /// sidebar's item becomes collapsible.
-        func attach(to view: NSView) {
-            var current = view.superview
-            while let candidate = current, !(candidate is NSSplitView) {
-                current = candidate.superview
-            }
-            guard let splitView = current as? NSSplitView,
-                  let controller = splitView.delegate as? NSSplitViewController,
-                  let item = controller.splitViewItems.first(where: { view.isDescendant(of: $0.viewController.view) }) else { return }
-            guard item !== self.item else { return }
-            detach()
-            self.item = item
-            item.canCollapse = true
-            observation = item.observe(\.isCollapsed, options: [.new]) { [weak self] _, _ in
-                MainActor.assumeIsolated {
-                    self?.collapseChanged()
-                }
+            if startsDrag && memory.drag != nil {
+                waitForDragEnd()
             }
         }
 
-        func detach() {
-            observation?.invalidate()
-            observation = nil
-            item = nil
-        }
-
-        /// The divider moves past half the minimum width while the mouse is down; the sidebar is
-        /// hidden only when it is still collapsed once the drag ends.
-        private func collapseChanged() {
-            guard !waitingForMouseUp else { return }
-            waitingForMouseUp = true
-            checkAfterDrag()
-        }
-
-        private func checkAfterDrag() {
-            guard NSEvent.pressedMouseButtons & 1 == 0 else {
+        /// Once the drag is over, a sidebar still collapsed is hidden, and an inspector that a
+        /// collapse during the drag widened takes back its width.
+        private func waitForDragEnd() {
+            guard !handlesLeftMouseDrag else {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
                     MainActor.assumeIsolated {
-                        self?.checkAfterDrag()
+                        self?.waitForDragEnd()
                     }
                 }
                 return
             }
-            waitingForMouseUp = false
-            if item?.isCollapsed == true {
+            let panes = panes()
+            let collapsed = panes?.sidebar.map { splitView?.isSubviewCollapsed($0) == true } ?? false
+            switch memory.dragEnded(sidebarCollapsed: collapsed) {
+            case .hideSidebar:
                 state?.sidebarVisible = false
+            case .restoreInspector(let width):
+                guard let splitView, let panes, panes.inspector != nil else { return }
+                isApplying = true
+                defer { isApplying = false }
+                splitView.setPosition(splitView.bounds.width - width - splitView.dividerThickness, ofDividerAt: panes.centre)
+            case .none:
+                break
             }
         }
+
+        /// True while the app handles a drag with the left mouse button in this window. The split
+        /// view takes the events of a divider drag from the queue, so this holds while it handles
+        /// them, even after the button was released, and ends with the mouse up.
+        private var handlesLeftMouseDrag: Bool {
+            guard let event = NSApp.currentEvent, event.window === splitView?.window else { return false }
+            return event.type == .leftMouseDown || event.type == .leftMouseDragged
+        }
+    }
+}
+
+/// What a main window remembers of its pane widths (docs/ui.md › Main window layout): the
+/// sidebar's last width in this window, and the inspector width that its window stores in
+/// `inspectorWidth`. Only a divider dragged by the user changes them, and a drag that collapses
+/// the sidebar does not change its last width.
+struct PaneWidthMemory {
+    /// Wider than the toolbar's Sidebar button, which ends inside it, and wide enough for Project
+    /// Settings on one line.
+    static let minimumSidebarWidth: CGFloat = 190
+    static let defaultSidebarWidth: CGFloat = 200
+    static let minimumInspectorWidth: CGFloat = 300
+
+    /// A pane beside the centre column: the index of the divider between them, and its width.
+    struct Pane: Equatable {
+        var divider: Int
+        var width: CGFloat
+    }
+
+    /// A divider drag in progress.
+    struct Drag: Equatable {
+        /// The dragged divider: the first one the split view names during the drag. When the
+        /// sidebar collapses, the split view widens the inspector and names its divider too.
+        var divider: Int
+        /// The sidebar's last width when the drag started.
+        var sidebarWidth: CGFloat
+        /// The inspector's width when the drag started, when it is shown.
+        var inspectorWidth: CGFloat?
+        /// Whether the sidebar collapsed during the drag.
+        var sidebarCollapsed = false
+    }
+
+    /// What the end of a drag asks for.
+    enum DragEnd: Equatable {
+        case none
+        /// The sidebar is still collapsed: it is hidden.
+        case hideSidebar
+        /// The sidebar collapsed during the drag and is shown again: the inspector, which the
+        /// collapse widened, takes back this width.
+        case restoreInspector(CGFloat)
+    }
+
+    /// The sidebar's last width in this window.
+    private(set) var sidebarWidth = PaneWidthMemory.defaultSidebarWidth
+    /// The divider drag in progress; nil while no divider is dragged.
+    private(set) var drag: Drag?
+
+    /// The split view resized its panes, naming `divider`; `byUser` when the app was handling a
+    /// drag with the left mouse button then. `sidebar` and `inspector` are the shown panes.
+    /// Returns the inspector width to store when the user drags the inspector's divider.
+    mutating func splitViewResized(divider: Int?, byUser: Bool, sidebar: Pane?, sidebarCollapsed: Bool,
+                                   inspector: Pane?) -> CGFloat? {
+        guard let divider, byUser else { return nil }
+        if drag == nil {
+            drag = Drag(divider: divider, sidebarWidth: sidebarWidth, inspectorWidth: inspector?.width)
+        }
+        if sidebarCollapsed {
+            drag?.sidebarCollapsed = true
+        }
+        guard divider == drag?.divider else { return nil }
+        if let sidebar, !sidebarCollapsed, sidebar.divider == divider, sidebar.width >= Self.minimumSidebarWidth {
+            sidebarWidth = sidebar.width
+        }
+        if let inspector, inspector.divider == divider, inspector.width >= Self.minimumInspectorWidth {
+            return inspector.width
+        }
+        return nil
+    }
+
+    /// The drag is over, `sidebarCollapsed` when it left the sidebar collapsed, which keeps then
+    /// the last width it had before the drag.
+    mutating func dragEnded(sidebarCollapsed: Bool) -> DragEnd {
+        guard let drag else { return .none }
+        self.drag = nil
+        if sidebarCollapsed {
+            sidebarWidth = drag.sidebarWidth
+            return .hideSidebar
+        }
+        if drag.sidebarCollapsed, let width = drag.inspectorWidth {
+            return .restoreInspector(width)
+        }
+        return .none
     }
 }

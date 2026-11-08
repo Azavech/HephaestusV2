@@ -1,13 +1,21 @@
 // OWNER: ui-shell — the main window's toolbar (docs/ui.md › Toolbar).
 import SwiftUI
 
-/// The breadcrumb selector as principal item, Search, New Chat and Project Chat trailing. The
-/// toolbar shows no window title and no sidebar toggle, and cannot be customised.
+/// The Sidebar button leading, the breadcrumb selector as principal item, Search, New Chat and
+/// Project Chat trailing. The toolbar shows no window title and cannot be customised.
 struct MainToolbar: ToolbarContent {
     let state: WindowState
     let workspace: DeviceWorkspace?
 
     var body: some ToolbarContent {
+        ToolbarItemGroup(placement: .navigation) {
+            Button {
+                state.sidebarVisible.toggle()
+            } label: {
+                Label("Sidebar", systemImage: "sidebar.left")
+            }
+            .help("\(state.sidebarToggleTitle) (⌃⌘S)")
+        }
         ToolbarItem(placement: .principal) {
             BreadcrumbSelector(window: state, workspace: workspace)
         }
@@ -34,5 +42,13 @@ struct MainToolbar: ToolbarContent {
             .help(state.inspectorVisible ? "Hide Project Chat (⌥⌘0)" : "Show Project Chat (⌥⌘0)")
             .disabled(state.projectID == nil)
         }
+    }
+}
+
+extension WindowState {
+    /// `Hide Sidebar` while the sidebar is shown, `Show Sidebar` while it is hidden: the title of
+    /// View ▸ Show Sidebar / Hide Sidebar and the start of the Sidebar button's tooltip.
+    var sidebarToggleTitle: String {
+        sidebarVisible ? "Hide Sidebar" : "Show Sidebar"
     }
 }

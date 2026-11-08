@@ -39,7 +39,7 @@ The scene ids, the window titles and subtitles, the window sizes and the restora
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────┐
-│ ● ● ●                  [ This Mac ▸ Hephaestus ▸ Backend ] [Search] [+Chat] [Insp] │ toolbar
+│ ● ● ● [◧]              [ This Mac ▸ Hephaestus ▸ Backend ] [Search] [+Chat] [Insp] │ toolbar
 ├───────────────┬─────────────────────────────────────────────┬──────────────────────┤
 │ Project       │                                             │ Project chat         │
 │  Dashboard    │                                             │                      │
@@ -61,19 +61,21 @@ The scene ids, the window titles and subtitles, the window sizes and the restora
 └────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-| Region     | Position                        | Size (points)                 | Content                                                    | Specified in              |
-| ---------- | ------------------------------- | ----------------------------- | ---------------------------------------------------------- | ------------------------- |
-| Toolbar    | top, unified with the title bar | system height                 | breadcrumb selector, Search, New Chat, Project Chat toggle | [Toolbar](#toolbar)       |
-| Sidebar    | left column                     | width 190 to 280, default 200 | the eleven sections and the project footer                 | [Sidebar](#sidebar)       |
-| Content    | centre column                   | minimum width 540             | the selected section of the active project                 | the section's document    |
-| Inspector  | right column                    | width 300 to 600, default 380 | the project chat panel                                     | [Inspector](#inspector)   |
-| Status bar | bottom, full window width       | height 26                     | device state, remotes, MCP port, chats, ladybug            | [Status bar](#status-bar) |
+| Region     | Position                        | Size (points)                 | Content                                                                    | Specified in              |
+| ---------- | ------------------------------- | ----------------------------- | -------------------------------------------------------------------------- | ------------------------- |
+| Toolbar    | top, unified with the title bar | system height                 | Sidebar button, breadcrumb selector, Search, New Chat, Project Chat toggle | [Toolbar](#toolbar)       |
+| Sidebar    | left column                     | width 190 to 280, default 200 | the eleven sections and the project footer                                 | [Sidebar](#sidebar)       |
+| Content    | centre column                   | minimum width 540             | the selected section of the active project                                 | the section's document    |
+| Inspector  | right column                    | width 300 to 600, default 380 | the project chat panel                                                     | [Inspector](#inspector)   |
+| Status bar | bottom, full window width       | height 26                     | device state, remotes, MCP port, chats, ladybug                            | [Status bar](#status-bar) |
 
 The sizes are design-time values, except the 26-point status bar (Brief §9.1). Default chosen at design time.
 
-At its minimum width of 190 points, the sidebar holds the Project Settings row on one line.
+At its minimum width of 190 points, the sidebar is wider than the toolbar's leading item, the Sidebar button, which ends inside its width, and it holds the Project Settings row on one line.
 
 A main window opens with the sidebar at its default width and the inspector at `inspectorWidth` ([WindowState](#windowstate)), 380 in a new window. A pane shown again takes its width back: the inspector `inspectorWidth`, the sidebar its last width in this window, 200 at first. Only a divider dragged by the user changes these widths; the inspector's new width is then stored in `inspectorWidth`, while the sidebar's width is not persisted. Default chosen at design time.
+
+A drag that collapses the sidebar ([Sidebar](#sidebar)) does not change its last width.
 
 The sidebar, the centre column and the inspector are the three panes of one `NSSplitView` with plain panes (SwiftUI `HSplitView`, or an `NSSplitView` wrapped with `NSViewRepresentable`); ⌃⌘S, ⌥⌘0 and the widths of the table above act on these panes. `NavigationSplitView` and the `.inspector` modifier are not used: the in-process capture of [Screenshot capture](feedback.md#screenshot-capture) leaves a `NavigationSplitView` sidebar column transparent and draws the text of an `.inspector` column without its vibrancy, while `HSplitView` panes render as shown (checked on macOS 27.2). Default chosen at design time.
 
@@ -85,12 +87,13 @@ The welcome view and the reconnect view replace the sidebar, the content and the
 
 | Placement | Item                | SF Symbol         | Action                                                                     | Shortcut | Enabled when                                    | Tooltip                                                |
 | --------- | ------------------- | ----------------- | -------------------------------------------------------------------------- | -------- | ----------------------------------------------- | ------------------------------------------------------ |
+| Leading   | Sidebar             | `sidebar.left`    | Shows or hides the [sidebar](#sidebar).                                    | ⌃⌘S      | always                                          | `Show Sidebar (⌃⌘S)` or `Hide Sidebar (⌃⌘S)`           |
 | Principal | Breadcrumb selector | —                 | [Breadcrumb selector](#breadcrumb-selector)                                | —        | always                                          | —                                                      |
 | Trailing  | Search              | `magnifyingglass` | Opens or closes the search panel ([Search panel](search.md#search-panel)). | ⇧⌘F      | the device is connected                         | `Search (⇧⌘F)`                                         |
 | Trailing  | New Chat            | `plus.bubble`     | New Chat in the [inspector](#inspector).                                   | ⌥⌘N      | the device is connected and a project is active | `New Chat (⌥⌘N)`                                       |
 | Trailing  | Project Chat        | `sidebar.right`   | Shows or hides the [inspector](#inspector).                                | ⌥⌘0      | a project is active                             | `Show Project Chat (⌥⌘0)` or `Hide Project Chat (⌥⌘0)` |
 
-The toolbar shows no window title and no sidebar toggle button, and it cannot be customised. The symbols and the tooltips are design-time choices. Default chosen at design time.
+The leading item follows the window buttons. The toolbar shows no window title, and it cannot be customised. The symbols and the tooltips are design-time choices. Default chosen at design time.
 
 ## Breadcrumb selector
 
@@ -139,7 +142,7 @@ The segment icons, the dot in the Device title, the 240-point truncation and the
 - The categories follow the active project's `type` in the workspace's `projects`: changing the type, which emits `project.updated` and `projects.changed` ([projects.update](engine-api.md#projectsupdate)), or switching to a project of another type adds or removes the Go Service heading at once, on This Mac and on remote devices. The `settings` row is pinned to the bottom of the sidebar, outside the categories, under the free space below them and directly above the footer; it is selected like the other rows.
 - The row titles, Project Settings included, stay on one line at every sidebar width.
 - The sidebar footer shows the active project's identifier.
-- View ▸ Hide Sidebar (⌃⌘S) or dragging the divider to the window edge collapses the sidebar; its visibility persists per window.
+- The toolbar's Sidebar button and View ▸ Show Sidebar / Hide Sidebar (⌃⌘S) show and hide the sidebar ([Toolbar](#toolbar)). Dragging the divider to the window edge collapses it: when the mouse button is released with the sidebar collapsed, the sidebar is hidden, as with ⌃⌘S, and the Sidebar button and ⌃⌘S show it again at its last width ([Main window layout](#main-window-layout)). Its visibility (`sidebarVisible`) persists per window.
 
 The section symbols, the pinned `settings` row, the style of the category headings and the footer are design-time choices. Default chosen at design time. The `memories` row, its symbol `brain`, its place after Skills, its ⌘9 and the ⌘0 of Costs come from the user ([R160](requirements.md#requirements)).
 
@@ -838,3 +841,4 @@ A window chosen for a `ui.open` event is ordered front; it becomes key only when
 - R160: The user can show, edit, create, rename and delete the memories Claude saves for a project, in a Memories section of the sidebar.
 - R163: When the active project has sub projects, the sidebar lists them all in a Sub Projects category, indented by depth, each with its icon in its color, and a click on one shows its Dashboard.
 - R164: The main button of the pinned questions card reads `Submit` only when pressing it sends the answers to Claude, and `Next` on the other questions of the set.
+- R165: The main window's toolbar has a button that shows and hides the sidebar.
