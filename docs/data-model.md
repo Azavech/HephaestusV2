@@ -345,6 +345,7 @@ chatDefaults:
   effort: high
   permissionMode: manual
   ultracode: false
+  contextWindow: auto
 environments: []
 environmentOverrides: {}
 dashboardWidgets:
@@ -462,7 +463,7 @@ environmentOverrides:
 
 ## Chat settings
 
-Swift type `ChatSettings`: the model, effort, permission mode and Ultracode toggle of a chat.
+Swift type `ChatSettings`: the model, effort, permission mode, Ultracode toggle and context window of a chat.
 
 | Swift name     | Key              | Type                  | Required | Default   | Rules                                                                                                                                                                                               |
 | -------------- | ---------------- | --------------------- | -------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -470,6 +471,7 @@ Swift type `ChatSettings`: the model, effort, permission mode and Ultracode togg
 | effort         | `effort`         | `Effort`              | no       | `high`    | Effort level.                                                                                                                                                                                       |
 | permissionMode | `permissionMode` | `PermissionMode`      | no       | `manual`  | Permission mode.                                                                                                                                                                                    |
 | ultracode      | `ultracode`      | `Bool`                | no       | `false`   | Ultracode on or off.                                                                                                                                                                                |
+| contextWindow  | `contextWindow`  | `ContextWindow`       | no       | `auto`    | Context window ([Context window](chats.md#context-window)).                                                                                                                                         |
 | unknownKeys    | —                | `[String: JSONValue]` | —        | `[:]`     | [Unknown keys](#unknown-keys).                                                                                                                                                                      |
 
 `Effort`:
@@ -492,6 +494,14 @@ Swift type `ChatSettings`: the model, effort, permission mode and Ultracode togg
 | `auto`              | `.auto`              | Auto           |
 | `dontAsk`           | `.dontAsk`           | Don't Ask      |
 | `bypassPermissions` | `.bypassPermissions` | Allow All      |
+
+`ContextWindow`; the stored values are Default chosen at design time:
+
+| Value  | Swift case    | UI label |
+| ------ | ------------- | -------- |
+| `auto` | `.auto`       | Auto     |
+| `200k` | `.tokens200K` | 200K     |
+| `1m`   | `.tokens1M`   | 1M       |
 
 The values passed to the Claude CLI, and how a running chat applies a change, are defined in [Chats](chats.md).
 
@@ -924,6 +934,7 @@ settings:
   effort: high
   permissionMode: manual
   ultracode: false
+  contextWindow: auto
 sessionStarted: true
 closed: false
 contextUsage:
@@ -950,6 +961,7 @@ settings:
   effort: xhigh
   permissionMode: acceptEdits
   ultracode: true
+  contextWindow: 200k
 sessionStarted: true
 closed: false
 questionsBlocked: true
@@ -972,6 +984,7 @@ settings:
   effort: high
   permissionMode: bypassPermissions
   ultracode: false
+  contextWindow: auto
 sessionStarted: false
 closed: false
 ```
@@ -994,6 +1007,7 @@ settings:
   effort: high
   permissionMode: bypassPermissions
   ultracode: false
+  contextWindow: auto
 sessionStarted: true
 closed: false
 ```
@@ -1015,6 +1029,7 @@ settings:
   effort: high
   permissionMode: manual
   ultracode: false
+  contextWindow: auto
 sessionStarted: true
 closed: true
 ```
@@ -1560,24 +1575,24 @@ projects:
 
 `<data dir>/settings.yml` holds the host settings edited in the Settings window ([UI](ui.md)). Swift type `HostSettings`.
 
-| Swift name                 | Key                          | Type                  | Required | Default                                                                    | Rules                                                                                                                                                                                                                               |
-| -------------------------- | ---------------------------- | --------------------- | -------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| schema                     | `schema`                     | `Int`                 | no       | `1`                                                                        | See [Keys and values](#keys-and-values).                                                                                                                                                                                            |
-| claudePath                 | `claudePath`                 | `String?`             | no       | `null`                                                                     | Absolute path of the `claude` executable; a leading `~/` is expanded to the home folder when the value is used. Default chosen at design time. `null` detects the CLI ([Chats](chats.md)).                                          |
-| defaultChatSettings        | `defaultChatSettings`        | `ChatSettings`        | no       | model `default`, effort `high`, permissionMode `manual`, ultracode `false` | Settings of new chats of projects without `chatDefaults` ([Chat settings](#chat-settings)).                                                                                                                                         |
-| mcpPort                    | `mcpPort`                    | `Int`                 | no       | `47820`                                                                    | Port of the MCP server on 127.0.0.1 ([MCP](mcp.md)). 1024–65535, different from `syncPort`. Default chosen at design time.                                                                                                          |
-| syncEnabled                | `syncEnabled`                | `Bool`                | no       | `true`                                                                     | Whether the sync server accepts remote devices ([Remote devices](remote.md)).                                                                                                                                                       |
-| syncPort                   | `syncPort`                   | `Int`                 | no       | `47821`                                                                    | Port of the sync server. 1024–65535, different from `mcpPort`. Default chosen at design time.                                                                                                                                       |
-| skillsLibraryPath          | `skillsLibraryPath`          | `String?`             | no       | `null`                                                                     | Absolute path of the skills library folder, not inside `~/.claude`; a leading `~/` is expanded. Default chosen at design time. `null` is `<data dir>/Skills` ([Skills](skills.md)).                                                 |
-| autoUpdate                 | `autoUpdate`                 | `Bool`                | no       | `true`                                                                     | Install updates automatically ([Updater](updater.md)).                                                                                                                                                                              |
-| updateCheckIntervalMinutes | `updateCheckIntervalMinutes` | `Int`                 | no       | `30`                                                                       | Minutes between update checks. 5–1440. Default chosen at design time.                                                                                                                                                               |
-| formatGoOnSave             | `formatGoOnSave`             | `Bool`                | no       | `true`                                                                     | Format Go files with `gofmt` on save when `gofmt` is found ([Code editor](code-editor.md)).                                                                                                                                         |
-| formatSwiftOnSave          | `formatSwiftOnSave`          | `Bool`                | no       | `false`                                                                    | Format Swift files with `swift-format` on save when `swift-format` is found.                                                                                                                                                        |
-| notifyNeedsYou             | `notifyNeedsYou`             | `Bool`                | no       | `true`                                                                     | This Mac posts a notification when a chat needs the user ([UI › Notifications](ui.md#notifications)).                                                                                                                               |
-| notifyFinished             | `notifyFinished`             | `Bool`                | no       | `true`                                                                     | This Mac posts a notification when Claude finishes replying.                                                                                                                                                                        |
-| notifyAISummary            | `notifyAISummary`            | `Bool`                | no       | `true`                                                                     | This Mac posts the notifications with Haiku's summary; `false` posts them at once with the fallback detail ([Chats › Notifications](chats.md#notifications)).                                                                       |
-| showHephaestusProject      | `showHephaestusProject`      | `Bool`                | no       | `true`                                                                     | Whether the clients and Claude see the HephaestusV2 project and its sub projects; `false` hides them and the feedback entry points of this device ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)). |
-| unknownKeys                | —                            | `[String: JSONValue]` | —        | `[:]`                                                                      | [Unknown keys](#unknown-keys).                                                                                                                                                                                                      |
+| Swift name                 | Key                          | Type                  | Required | Default                                                                                          | Rules                                                                                                                                                                                                                               |
+| -------------------------- | ---------------------------- | --------------------- | -------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| schema                     | `schema`                     | `Int`                 | no       | `1`                                                                                              | See [Keys and values](#keys-and-values).                                                                                                                                                                                            |
+| claudePath                 | `claudePath`                 | `String?`             | no       | `null`                                                                                           | Absolute path of the `claude` executable; a leading `~/` is expanded to the home folder when the value is used. Default chosen at design time. `null` detects the CLI ([Chats](chats.md)).                                          |
+| defaultChatSettings        | `defaultChatSettings`        | `ChatSettings`        | no       | model `default`, effort `high`, permissionMode `manual`, ultracode `false`, contextWindow `auto` | Settings of new chats of projects without `chatDefaults` ([Chat settings](#chat-settings)).                                                                                                                                         |
+| mcpPort                    | `mcpPort`                    | `Int`                 | no       | `47820`                                                                                          | Port of the MCP server on 127.0.0.1 ([MCP](mcp.md)). 1024–65535, different from `syncPort`. Default chosen at design time.                                                                                                          |
+| syncEnabled                | `syncEnabled`                | `Bool`                | no       | `true`                                                                                           | Whether the sync server accepts remote devices ([Remote devices](remote.md)).                                                                                                                                                       |
+| syncPort                   | `syncPort`                   | `Int`                 | no       | `47821`                                                                                          | Port of the sync server. 1024–65535, different from `mcpPort`. Default chosen at design time.                                                                                                                                       |
+| skillsLibraryPath          | `skillsLibraryPath`          | `String?`             | no       | `null`                                                                                           | Absolute path of the skills library folder, not inside `~/.claude`; a leading `~/` is expanded. Default chosen at design time. `null` is `<data dir>/Skills` ([Skills](skills.md)).                                                 |
+| autoUpdate                 | `autoUpdate`                 | `Bool`                | no       | `true`                                                                                           | Install updates automatically ([Updater](updater.md)).                                                                                                                                                                              |
+| updateCheckIntervalMinutes | `updateCheckIntervalMinutes` | `Int`                 | no       | `30`                                                                                             | Minutes between update checks. 5–1440. Default chosen at design time.                                                                                                                                                               |
+| formatGoOnSave             | `formatGoOnSave`             | `Bool`                | no       | `true`                                                                                           | Format Go files with `gofmt` on save when `gofmt` is found ([Code editor](code-editor.md)).                                                                                                                                         |
+| formatSwiftOnSave          | `formatSwiftOnSave`          | `Bool`                | no       | `false`                                                                                          | Format Swift files with `swift-format` on save when `swift-format` is found.                                                                                                                                                        |
+| notifyNeedsYou             | `notifyNeedsYou`             | `Bool`                | no       | `true`                                                                                           | This Mac posts a notification when a chat needs the user ([UI › Notifications](ui.md#notifications)).                                                                                                                               |
+| notifyFinished             | `notifyFinished`             | `Bool`                | no       | `true`                                                                                           | This Mac posts a notification when Claude finishes replying.                                                                                                                                                                        |
+| notifyAISummary            | `notifyAISummary`            | `Bool`                | no       | `true`                                                                                           | This Mac posts the notifications with Haiku's summary; `false` posts them at once with the fallback detail ([Chats › Notifications](chats.md#notifications)).                                                                       |
+| showHephaestusProject      | `showHephaestusProject`      | `Bool`                | no       | `true`                                                                                           | Whether the clients and Claude see the HephaestusV2 project and its sub projects; `false` hides them and the feedback entry points of this device ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)). |
+| unknownKeys                | —                            | `[String: JSONValue]` | —        | `[:]`                                                                                            | [Unknown keys](#unknown-keys).                                                                                                                                                                                                      |
 
 - The engine writes the whole file when a setting changes; `settings.update` takes partial changes ([Engine API](engine-api.md)).
 - The environment variables `HEPHAESTUS_MCP_PORT` and `HEPHAESTUS_SYNC_PORT` change the ports in effect, never the file ([Architecture](architecture.md)).
@@ -1594,6 +1609,7 @@ defaultChatSettings:
   effort: high
   permissionMode: manual
   ultracode: false
+  contextWindow: auto
 mcpPort: 47820
 syncEnabled: true
 syncPort: 47821
@@ -1997,3 +2013,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R182: Each environment of a Go service has an `Allow invalid certificates` setting, off by default and changeable by a sub project that inherits the environment, with which the Contract view's requests to it accept any invalid server certificate.
 - R186: A chat shows how much of Claude's context window its conversation uses and what remains before compaction, as a ring and `<n>% left` in the composer that change after each Claude message and stay with the chat.
 - R187: A chat shows when Claude Code compacts its conversation: the status line and the context indicator while the compaction runs, a transcript line with its trigger and the size of the conversation before it when it ends, and the number of compactions in the indicator's tooltip.
+- R188: The user selects the context window of each chat, Auto, 200K or 1M; a running chat takes a new window once its turn and background work end.

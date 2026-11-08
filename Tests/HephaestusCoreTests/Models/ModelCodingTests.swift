@@ -207,6 +207,25 @@ struct ModelCodingTests {
         #expect(project.type == .none)
         let defaults = try YAMLCoding.decode(Project.self, from: "id: WEB\nname: W\ncreated: 2026-10-31T09:30:00Z\nchatDefaults:\n  model: opus\n")
         #expect(defaults.chatDefaults == ChatSettings(model: "opus"))
+        // Stored settings without `contextWindow` have the context window Auto (docs/chats.md ›
+        // Fields and defaults).
+        #expect(defaults.chatDefaults?.contextWindow == .auto)
+        #expect(settings.defaultChatSettings.contextWindow == .auto)
+    }
+
+    /// docs/data-model.md › Chat settings: `contextWindow` stores `auto`, `200k` or `1m` and
+    /// refuses other values.
+    @Test("The context window round-trips each value and refuses other values")
+    func contextWindow() throws {
+        for window in ContextWindow.allCases {
+            let settings = ChatSettings(contextWindow: window)
+            let yaml = try YAMLCoding.encode(settings)
+            #expect(yaml.contains("contextWindow: \(window.rawValue)\n"))
+            #expect(try YAMLCoding.decode(ChatSettings.self, from: yaml) == settings)
+        }
+        #expect(ContextWindow.allCases.map(\.rawValue) == ["auto", "200k", "1m"])
+        #expect(ContextWindow.allCases.map(\.label) == ["Auto", "200K", "1M"])
+        #expect(throws: (any Error).self) { try YAMLCoding.decode(ChatSettings.self, from: "contextWindow: 500k\n") }
     }
 
     @Test("The project type round-trips each value, is written after created and refuses other values")

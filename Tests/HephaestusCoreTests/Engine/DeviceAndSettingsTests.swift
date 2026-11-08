@@ -70,7 +70,8 @@ struct DeviceAndSettingsTests {
             let json = try jsonValue(String(decoding: try EngineJSON.encode(settings), as: UTF8.self))
             #expect(json == (try jsonValue("""
                 {"autoUpdate": true, "claudePath": null,
-                 "defaultChatSettings": {"effort": "high", "model": "default", "permissionMode": "manual", "ultracode": false},
+                 "defaultChatSettings": {"contextWindow": "auto", "effort": "high", "model": "default", "permissionMode": "manual",
+                                         "ultracode": false},
                  "formatGoOnSave": true, "formatSwiftOnSave": true, "mcpPort": 47830,
                  "notifyAISummary": true, "notifyFinished": true, "notifyNeedsYou": true, "schema": 1,
                  "showHephaestusProject": true, "skillsLibraryPath": null, "syncEnabled": true, "syncPort": 47821, "updateCheckIntervalMinutes": 30}

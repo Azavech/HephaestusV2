@@ -1,5 +1,6 @@
-// OWNER: ui-chats — the Model, Effort and Permissions menus of the composer, also used by Settings
-// > General for the default chat settings (docs/chats.md › Chat settings; docs/ui.md › General).
+// OWNER: ui-chats — the Model, Effort, Context and Permissions menus of the composer, also used by
+// Settings > General for the default chat settings (docs/chats.md › Chat settings; docs/ui.md ›
+// General).
 import AppKit
 import HephaestusCore
 import SwiftUI
@@ -43,6 +44,11 @@ struct ChatSettingsMenus {
     /// The Effort menu button: `Effort: <UI label>`.
     var effortTitle: String {
         "Effort: \(settings.effort.label)"
+    }
+
+    /// The Context menu button: `Context: <UI label>` (docs/chats.md › Context window).
+    var contextTitle: String {
+        "Context: \(settings.contextWindow.label)"
     }
 
     /// The selected model's effort values; nil when no entry matches the stored value, which
@@ -98,6 +104,20 @@ struct ChatSettingsMenus {
         return menu
     }
 
+    /// Auto, 200K and 1M, with a checkmark on the selected one.
+    func contextMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        for window in ContextWindow.allCases {
+            menu.addItem(ChatMenuItem(title: window.label, checked: window == settings.contextWindow) {
+                var new = settings
+                new.contextWindow = window
+                change(new)
+            })
+        }
+        return menu
+    }
+
     /// The six modes with their subtitles; `Allow All` is drawn in red.
     func permissionsMenu() -> NSMenu {
         let menu = NSMenu()
@@ -119,8 +139,8 @@ struct ChatSettingsMenus {
         return menu
     }
 
-    /// The menu of the narrow composer: the submenus Model (with its Ultracode toggle), Effort and
-    /// Permissions.
+    /// The menu of the narrow composer: the submenus Model (with its Ultracode toggle), Effort,
+    /// Context and Permissions.
     func combinedMenu() -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
@@ -132,10 +152,13 @@ struct ChatSettingsMenus {
         if effortDisabled {
             effort.toolTip = Self.noEffortHelp
         }
+        let context = NSMenuItem(title: "Context", action: nil, keyEquivalent: "")
+        context.submenu = contextMenu()
         let permissions = NSMenuItem(title: "Permissions", action: nil, keyEquivalent: "")
         permissions.submenu = permissionsMenu()
         menu.addItem(model)
         menu.addItem(effort)
+        menu.addItem(context)
         menu.addItem(permissions)
         return menu
     }
@@ -262,6 +285,18 @@ struct ChatEffortMenuButton: View {
         .disabled(menus.effortDisabled)
         .help(menus.effortDisabled ? ChatSettingsMenus.noEffortHelp : "")
         .accessibilityLabel("Effort")
+    }
+}
+
+/// The Context menu button: `Context: <UI label>` in every composer, at every width.
+struct ChatContextMenuButton: View {
+    let menus: ChatSettingsMenus
+
+    var body: some View {
+        ChatMenuButton(menu: menus.contextMenu) {
+            ChatMenuButtonLabel(title: menus.contextTitle)
+        }
+        .accessibilityLabel("Context")
     }
 }
 

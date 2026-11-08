@@ -9,7 +9,7 @@ import SwiftUI
 /// ```
 /// [☑ DEMO-12 ×] [image.png ×] [build.log ×]  linked and attachment chips
 /// Message Claude…                                 text, 1–10 lines
-/// (paperclip)  Opus 5.5 ▾   Effort: High ▾   Ask Every Time ▾   ■  ↑
+/// (paperclip)  Opus 5.5 ▾   Effort: High ▾   Context: Auto ▾   Ask Every Time ▾   ◔ 98% left   ■  ↑
 /// ```
 struct ComposerView: View {
     @Bindable var model: ChatViewModel
@@ -77,8 +77,8 @@ struct ComposerView: View {
         .padding(.top, 4)
     }
 
-    /// The controls row stays on one line: when the Model, Effort and Permissions menus do not
-    /// fit, one `slider.horizontal.3` menu replaces them, followed by the red `Allow All` capsule
+    /// The controls row stays on one line: when the Model, Effort, Context and Permissions menus do
+    /// not fit, one `slider.horizontal.3` menu replaces them, followed by the red `Allow All` capsule
     /// while that mode is selected, and the context indicator keeps only its ring.
     private var controls: some View {
         let menus = ChatSettingsMenus(settings: model.settings, models: model.workspace.models) { model.changeSettings($0) }
@@ -86,6 +86,7 @@ struct ComposerView: View {
             controlsRow(indicatorShowsText: true) {
                 ChatModelMenuButton(menus: menus)
                 ChatEffortMenuButton(menus: menus)
+                ChatContextMenuButton(menus: menus)
                 ChatPermissionsMenuButton(menus: menus)
             }
             controlsRow(indicatorShowsText: false) {

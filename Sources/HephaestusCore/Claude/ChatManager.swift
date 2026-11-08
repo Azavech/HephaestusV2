@@ -220,6 +220,8 @@ final class ChatProcess {
     let resumed: Bool
     /// The MCP port written in its configuration file.
     var mcpPort: Int
+    /// The context window it was launched with, which it keeps (docs/chats.md › Context window).
+    let contextWindow: ContextWindow
     var mapper: StreamMapper
     let log: AppendFile
     let stdoutCapture: AppendFile?
@@ -259,12 +261,13 @@ final class ChatProcess {
     var contextUsageAskedAgain = false
     var exited = false
 
-    init(handle: any ClaudeProcess, generation: Int, resumed: Bool, mcpPort: Int, mapper: StreamMapper, log: AppendFile,
-         stdoutCapture: AppendFile?) {
+    init(handle: any ClaudeProcess, generation: Int, resumed: Bool, mcpPort: Int, contextWindow: ContextWindow, mapper: StreamMapper,
+         log: AppendFile, stdoutCapture: AppendFile?) {
         self.handle = handle
         self.generation = generation
         self.resumed = resumed
         self.mcpPort = mcpPort
+        self.contextWindow = contextWindow
         self.mapper = mapper
         self.log = log
         self.stdoutCapture = stdoutCapture

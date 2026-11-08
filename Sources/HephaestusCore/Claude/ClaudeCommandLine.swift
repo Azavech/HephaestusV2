@@ -40,6 +40,10 @@ enum ClaudeCommandLine {
         if let globalMemoriesFolder {
             argv += ["--add-dir", globalMemoriesFolder]
         }
+        // Row 20: the context window, except Auto (docs/chats.md › Context window).
+        if let tokens = settings.contextWindow.autocompactTokens {
+            argv += ["--autocompact", String(tokens)]
+        }
         return argv
     }
 

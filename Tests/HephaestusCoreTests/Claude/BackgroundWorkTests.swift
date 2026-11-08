@@ -316,6 +316,31 @@ struct BackgroundWorkTests {
         }
     }
 
+    @Test("A context window change while background work runs ends the process only when that work ends")
+    func contextWindowChangeWaitsForBackgroundWork() async throws {
+        let launcher = FakeClaudeLauncher()
+        launcher.chatScript = FakeClaudeLauncher.silentChat()
+        try await withChatEngine(launcher: launcher) { bed in
+            let chat = try await bed.createChat(message: ChatTurnTests.messageA)
+            let process = try #require(await launcher.chatProcess())
+            _ = try #require(await ChatTurnTests.userLine(process, ChatTurnTests.messageA))
+            process.emit(FakeClaudeLauncher.initLine())
+            process.emit(#"{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"t1"}]}"#)
+            ChatTurnTests.emitReply(process, messageID: "msg_A", text: "A")
+            #expect(await eventually { await Self.reported(bed, chat.id).last == Pair(.idle, true) })
+            var settings = chat.settings
+            settings.contextWindow = .tokens200K
+            _ = try await bed.connection.call(ChatsUpdateSettings.self, .init(chatID: chat.id, settings: settings))
+            try await Task.sleep(for: Self.idleWait)
+            #expect(!process.isInputClosed)
+            // The task ends without a task_notification: the process ends at once.
+            process.emit(#"{"type":"system","subtype":"background_tasks_changed","tasks":[]}"#)
+            #expect(await eventually { process.isInputClosed })
+            _ = await process.waitForExit()
+            #expect(await bed.state(chat.id) == .idle)
+        }
+    }
+
     @Test("The exit of the process ends its background work")
     func exitEndsBackgroundWork() async throws {
         let launcher = FakeClaudeLauncher()

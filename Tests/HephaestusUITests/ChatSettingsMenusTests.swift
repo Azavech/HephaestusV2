@@ -3,8 +3,9 @@ import HephaestusCore
 import Testing
 @testable import HephaestusUI
 
-/// docs/chats.md › Changing settings: every choice of the Model, Effort and Permissions menus, and
-/// of the submenus of the `slider.horizontal.3` menu, calls `change` with the complete new settings.
+/// docs/chats.md › Changing settings: every choice of the Model, Effort, Context and Permissions
+/// menus, and of the submenus of the `slider.horizontal.3` menu, calls `change` with the complete
+/// new settings.
 @MainActor
 @Suite("Chat settings menus")
 struct ChatSettingsMenusTests {
@@ -62,15 +63,40 @@ struct ChatSettingsMenusTests {
         #expect(changes.values.map(\.permissionMode) == [.acceptEdits])
     }
 
+    /// docs/chats.md › Context window: Auto, 200K and 1M, with a checkmark on the selected one.
+    @Test func contextMenuListsTheWindows() {
+        let menus = ChatSettingsMenus(settings: ChatSettings(contextWindow: .tokens200K), models: models) { _ in }
+        let menu = menus.contextMenu()
+        #expect(menu.items.map(\.title) == ["Auto", "200K", "1M"])
+        #expect(menu.items.map(\.state) == [.off, .on, .off])
+    }
+
+    @Test func contextChoiceChangesTheWindow() {
+        let changes = Recorder()
+        choose("1M", in: menus(recording: changes).contextMenu())
+        #expect(changes.values.map(\.contextWindow) == [.tokens1M])
+    }
+
+    /// docs/chats.md › Context window: the button shows `Context: <UI label>` for every value.
+    @Test(arguments: ContextWindow.allCases)
+    func contextTitleNamesTheWindow(window: ContextWindow) {
+        let menus = ChatSettingsMenus(settings: ChatSettings(contextWindow: window), models: models) { _ in }
+        #expect(menus.contextTitle == "Context: \(window.label)")
+        #expect(ChatSettingsMenus(settings: ChatSettings(), models: models) { _ in }.contextTitle == "Context: Auto")
+    }
+
     @Test func combinedMenuSubmenusChangeTheSettings() throws {
         let changes = Recorder()
         let combined = menus(recording: changes).combinedMenu()
+        #expect(combined.items.map(\.title) == ["Model", "Effort", "Context", "Permissions"])
         choose("Opus", in: try #require(combined.item(withTitle: "Model")?.submenu))
         choose("Low", in: try #require(combined.item(withTitle: "Effort")?.submenu))
+        choose("200K", in: try #require(combined.item(withTitle: "Context")?.submenu))
         choose("Plan Only", in: try #require(combined.item(withTitle: "Permissions")?.submenu))
-        #expect(changes.values.map(\.model) == ["opus", "default", "default"])
-        #expect(changes.values.map(\.effort) == [.high, .low, .high])
-        #expect(changes.values.map(\.permissionMode) == [.manual, .manual, .plan])
+        #expect(changes.values.map(\.model) == ["opus", "default", "default", "default"])
+        #expect(changes.values.map(\.effort) == [.high, .low, .high, .high])
+        #expect(changes.values.map(\.contextWindow) == [.auto, .auto, .tokens200K, .auto])
+        #expect(changes.values.map(\.permissionMode) == [.manual, .manual, .manual, .plan])
     }
 
     /// docs/chats.md › Effort: the button shows `Effort: <UI label>` for every value.
@@ -82,7 +108,7 @@ struct ChatSettingsMenusTests {
 
     @Test func choiceKeepsTheOtherFields() {
         let changes = Recorder()
-        var settings = ChatSettings(model: "opus", effort: .max, permissionMode: .auto)
+        var settings = ChatSettings(model: "opus", effort: .max, permissionMode: .auto, contextWindow: .tokens1M)
         settings.ultracode = true
         let menus = ChatSettingsMenus(settings: settings, models: models) { changes.values.append($0) }
         choose("Medium", in: menus.effortMenu())

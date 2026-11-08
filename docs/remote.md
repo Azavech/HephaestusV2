@@ -482,7 +482,7 @@ Server to client, the first binary frame (s2c counter 0).
     "settings": {
       "autoUpdate": true,
       "claudePath": null,
-      "defaultChatSettings": {"effort": "high", "model": "default", "permissionMode": "manual", "ultracode": false},
+      "defaultChatSettings": {"contextWindow": "auto", "effort": "high", "model": "default", "permissionMode": "manual", "ultracode": false},
       "formatGoOnSave": true,
       "formatSwiftOnSave": false,
       "mcpPort": 47820,

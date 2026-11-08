@@ -1302,17 +1302,17 @@ Events: chat.item (pending requests denied, the `Stopped by` line) and chat.upda
 
 Swift type `ChatsUpdateSettings` · actors: user · result: [ChatMeta](data-model.md#chat-metadata-file)
 
-| Param    | Type         | Required | Description                                                                       |
-| -------- | ------------ | -------- | --------------------------------------------------------------------------------- |
-| chatID   | ChatID       | yes      | Chat id.                                                                          |
-| settings | ChatSettings | yes      | Complete settings replacing the chat's: model, effort, permissionMode, ultracode. |
+| Param    | Type         | Required | Description                                                                                      |
+| -------- | ------------ | -------- | ------------------------------------------------------------------------------------------------ |
+| chatID   | ChatID       | yes      | Chat id.                                                                                         |
+| settings | ChatSettings | yes      | Complete settings replacing the chat's: model, effort, permissionMode, ultracode, contextWindow. |
 
-Stored in the chat's metadata. When the chat has a live process, each changed field is applied at once, during a turn as well; otherwise at its next launch ([Chats](chats.md#changing-settings)). A new permission mode accepted by the CLI also approves the pending permission requests that it allows, with `decidedBy` the name of the actor's device ([Chats](chats.md#changing-settings)).
+Stored in the chat's metadata. When the chat has a live process, each changed field is applied at once, during a turn as well, except the context window: the engine ends the process once the chat has no turn in progress and the process has no background work running, and the next message starts Claude with the new window. Without a live process the change applies at the next launch ([Chats](chats.md#changing-settings)). A new permission mode accepted by the CLI also approves the pending permission requests that it allows, with `decidedBy` the name of the actor's device ([Chats](chats.md#changing-settings)).
 
-| Error    | When                                                                                                          |
-| -------- | ------------------------------------------------------------------------------------------------------------- |
-| invalid  | chatID is not a UUID; model is empty or contains white space; effort or permissionMode is not a listed value. |
-| notFound | No such chat.                                                                                                 |
+| Error    | When                                                                                                                         |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| invalid  | chatID is not a UUID; model is empty or contains white space; effort, permissionMode or contextWindow is not a listed value. |
+| notFound | No such chat.                                                                                                                |
 
 Events: chat.updated.
 
@@ -3169,7 +3169,7 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
   "settings": {
     "autoUpdate": true,
     "claudePath": null,
-    "defaultChatSettings": {"effort": "high", "model": "default", "permissionMode": "manual", "ultracode": false},
+    "defaultChatSettings": {"contextWindow": "auto", "effort": "high", "model": "default", "permissionMode": "manual", "ultracode": false},
     "formatGoOnSave": true,
     "formatSwiftOnSave": false,
     "mcpPort": 47820,
@@ -4501,3 +4501,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R178: The Dashboard of a Go service can show an Instances widget listing the pods of the current working environment with their status.
 - R186: A chat shows how much of Claude's context window its conversation uses and what remains before compaction, as a ring and `<n>% left` in the composer that change after each Claude message and stay with the chat.
 - R187: A chat shows when Claude Code compacts its conversation: the status line and the context indicator while the compaction runs, a transcript line with its trigger and the size of the conversation before it when it ends, and the number of compactions in the indicator's tooltip.
+- R188: The user selects the context window of each chat, Auto, 200K or 1M; a running chat takes a new window once its turn and background work end.

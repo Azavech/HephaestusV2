@@ -589,12 +589,13 @@ Implement and Implement All open this sheet on the main window, from the Chats t
 | Subtitle    | the title of the ticket or the bundle, on one line, truncated at its end                                      |
 | Model       | the composer's Model menu with its `Ultracode` toggle ([Model](chats.md#model))                               |
 | Effort      | the composer's Effort menu ([Effort](chats.md#effort))                                                        |
+| Context     | the composer's Context menu ([Context window](chats.md#context-window))                                       |
 | Permissions | the composer's Permissions menu, `Allow All` with its red badge ([Permission mode](chats.md#permission-mode)) |
 | Note        | for a bundle only: `The ticket chats that the bundle chat starts take its settings.`                          |
 | Error       | the error message of the last Start, when it failed                                                           |
 | Buttons     | `Cancel` (Escape) and `Start` (Return, default button)                                                        |
 
-- The three menu buttons stand in one row, in the composer's order.
+- The four menu buttons stand in one row, in the composer's order.
 - The menus open on the project's `chatDefaults`, or else the host's `defaultChatSettings` ([Fields and defaults](chats.md#fields-and-defaults)), each time the sheet opens. A choice in the sheet sets only the chat that this Start creates; nothing is saved.
 - Start is enabled while the window's device is connected and its Claude CLI is available (`ClaudeStatus.available`).
 - Start calls `chats.implementTicket` with the ticket id, or `chats.implementBundle` with the bundle id, and the chosen settings in `settings` ([Engine API](engine-api.md#chatsimplementticket)). While the call runs, Start shows a progress indicator and every control of the sheet, Cancel included, is disabled.
@@ -838,3 +839,4 @@ Shortcuts of this document. All global shortcuts are listed in [UI](ui.md).
 - R179: The Chats section lists, in one list, only the chats the user starts in the project (project and feedback chats) and the chats whose ticket or bundle was deleted; ticket, bundle and CI chats show only on their ticket or bundle.
 - R180: The detail of a ticket or a bundle lists, in a Mentioned In tab, the other chats of the device that mention it.
 - R181: Feedback, Implement and Implement All start their chat by calling the internal skills feedback, implement-ticket and implement-bundle, which, with finish-implementation, hold the instructions of these tasks, are always active in every project, and are shown and edited only in the HephaestusV2 project.
+- R188: The user selects the context window of each chat, Auto, 200K or 1M; a running chat takes a new window once its turn and background work end.

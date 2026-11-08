@@ -214,6 +214,7 @@ private struct ProjectSettingsForm: View {
                 HStack(spacing: 10) {
                     ChatModelMenuButton(menus: menus)
                     ChatEffortMenuButton(menus: menus)
+                    ChatContextMenuButton(menus: menus)
                     ChatPermissionsMenuButton(menus: menus)
                 }
                 .fixedSize()

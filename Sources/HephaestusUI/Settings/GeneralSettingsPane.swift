@@ -38,6 +38,10 @@ struct GeneralSettingsPane: View {
                 ChatEffortMenuButton(menus: menus)
                     .fixedSize()
             }
+            SettingsRow(label: "Default context window") {
+                ChatContextMenuButton(menus: menus)
+                    .fixedSize()
+            }
             SettingsRow(label: "Default permissions") {
                 ChatPermissionsMenuButton(menus: menus)
                     .fixedSize()

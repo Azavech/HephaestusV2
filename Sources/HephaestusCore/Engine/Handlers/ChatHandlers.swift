@@ -433,6 +433,7 @@ extension Engine {
         new.effort = params.settings.effort
         new.permissionMode = params.settings.permissionMode
         new.ultracode = params.settings.ultracode
+        new.contextWindow = params.settings.contextWindow
         guard new != old else { return meta }
         meta.settings = new
         let saved = try saveChatMeta(meta, origin: actor)

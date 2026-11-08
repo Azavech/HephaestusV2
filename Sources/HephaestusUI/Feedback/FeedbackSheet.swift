@@ -148,13 +148,15 @@ struct FeedbackSheet: View {
             .accessibilityLabel("Comment")
     }
 
-    /// The composer's Model, Effort and Permissions menus, in one row.
+    /// The composer's Model, Effort, Context and Permissions menus, in one row.
     private var settingsRow: some View {
         let menus = ChatSettingsMenus(settings: chatSettings, models: workspace?.models ?? []) { chosenSettings = $0 }
         return HStack(spacing: 8) {
             ChatModelMenuButton(menus: menus)
                 .fixedSize()
             ChatEffortMenuButton(menus: menus)
+                .fixedSize()
+            ChatContextMenuButton(menus: menus)
                 .fixedSize()
             ChatPermissionsMenuButton(menus: menus)
                 .fixedSize()

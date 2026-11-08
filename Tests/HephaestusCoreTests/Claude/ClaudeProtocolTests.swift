@@ -100,6 +100,25 @@ struct ClaudeProtocolTests {
         ])
     }
 
+    /// docs/chats.md › Context window: Auto passes no `--autocompact`; 200K and 1M pass row 20 last.
+    @Test("Row 20 passes --autocompact for 200K and 1M, and nothing for Auto", arguments: [
+        (ContextWindow.auto, nil), (.tokens200K, "200000"), (.tokens1M, "1000000"),
+    ] as [(ContextWindow, String?)])
+    func contextWindowCommandLine(window: ContextWindow, tokens: String?) {
+        for globalMemoriesFolder in [nil, "/Users/example/.claude/memory"] {
+            let argv = ClaudeCommandLine.chat(cliPath: "/fake/claude", chatID: Self.chatID, sessionStarted: true,
+                                              settings: ChatSettings(contextWindow: window), mcpPort: 47820, mcpConfigPath: "/m.json",
+                                              systemPrompt: "P", pluginDirectory: nil, globalMemoriesFolder: globalMemoriesFolder)
+            if let tokens {
+                #expect(Array(argv.suffix(2)) == ["--autocompact", tokens])
+                #expect(argv.filter { $0 == "--autocompact" }.count == 1)
+            } else {
+                #expect(!argv.contains("--autocompact"))
+                #expect(argv.last == (globalMemoriesFolder ?? ClaudeCommandLine.chatSettings(ultracode: false, mcpPort: 47820)))
+            }
+        }
+    }
+
     @Test("The settings JSON of row 18 is valid JSON holding the hook, with ultracode first when on")
     func chatSettingsJSON() throws {
         for ultracode in [false, true] {

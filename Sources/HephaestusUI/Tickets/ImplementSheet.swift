@@ -4,8 +4,8 @@ import AppKit
 import HephaestusCore
 import SwiftUI
 
-/// Implement or Implement All: the composer's Model, Effort and Permissions menus over the settings
-/// of the chat to start, opened on the project's `chatDefaults`, else the host's
+/// Implement or Implement All: the composer's Model, Effort, Context and Permissions menus over the
+/// settings of the chat to start, opened on the project's `chatDefaults`, else the host's
 /// `defaultChatSettings`; Start creates the chat with them.
 struct ImplementSheet: View {
     let window: WindowState
@@ -66,6 +66,8 @@ struct ImplementSheet: View {
                 ChatModelMenuButton(menus: menus)
                     .fixedSize()
                 ChatEffortMenuButton(menus: menus)
+                    .fixedSize()
+                ChatContextMenuButton(menus: menus)
                     .fixedSize()
                 ChatPermissionsMenuButton(menus: menus)
                     .fixedSize()

@@ -145,6 +145,7 @@ extension Engine {
         chats.nextGeneration += 1
         let capture = configuration.debugTools ? AppendFile(url: dataDirectory.claudeStdoutCaptureFile(chatID: chatID)) : nil
         let process = ChatProcess(handle: handle, generation: chats.nextGeneration, resumed: meta.sessionStarted, mcpPort: port,
+                                  contextWindow: meta.settings.contextWindow,
                                   mapper: StreamMapper(settings: meta.settings, models: claudeCLI.cachedModels),
                                   log: logFile, stdoutCapture: capture)
         runtime.process = process
@@ -409,8 +410,9 @@ extension Engine {
 
     /// The turn ends when no message is outstanding and no CLI turn is open (docs/chats.md › Turn
     /// tracking, step 5): the metadata is written, then the process ends when the chat closes
-    /// (docs/chats.md › Closing a chat) or an `mcpPort` change waits for the turn; otherwise the
-    /// idle timer starts when the process has no background work running.
+    /// (docs/chats.md › Closing a chat) or an `mcpPort` change waits for the turn; otherwise,
+    /// when the process has no background work running, it ends for a changed context window or
+    /// the idle timer starts.
     private func chatTurnEnded(_ chatID: ChatID, runtime: ChatRuntime, process: ChatProcess) {
         runtime.turnInProgress = false
         runtime.starting = false
@@ -455,11 +457,19 @@ extension Engine {
 
     /// docs/chats.md › Idle termination and quitting: the idle timer runs only while the chat has
     /// no turn in progress and its process has no background work running. It starts when the
-    /// later of the two ends and is cancelled when either starts.
+    /// later of the two ends and is cancelled when either starts. In that state a process whose
+    /// context window differs from the chat's ends at once instead (docs/chats.md › Changing
+    /// settings).
     private func updateIdleTimer(_ chatID: ChatID, runtime: ChatRuntime, process: ChatProcess) {
         if runtime.starting || runtime.turnInProgress || process.background.isRunning {
             runtime.idleTask?.cancel()
             runtime.idleTask = nil
+        } else if let meta = domain.chat(chatID), meta.settings.contextWindow != process.contextWindow {
+            runtime.idleTask?.cancel()
+            runtime.idleTask = nil
+            guard !process.exited, !process.terminatedByEngine else { return }
+            log.info(.claude, "chat \(chatID.uuidString): context window changed, Claude ends")
+            closeChatProcess(process)
         } else if runtime.idleTask == nil {
             startIdleTimer(chatID, process: process)
         }
@@ -632,9 +642,10 @@ extension Engine {
     }
 
     /// docs/chats.md › Changing settings: one control request per changed field while the chat
-    /// has a live process, during a turn as well.
+    /// has a live process, during a turn as well; a changed context window ends the process once
+    /// the chat has no turn in progress and the process no background work running.
     func applyChatSettingsLive(_ chatID: ChatID, old: ChatSettings, new: ChatSettings, origin: Actor) {
-        guard let process = chats.runtimes[chatID]?.liveProcess else { return }
+        guard let runtime = chats.runtimes[chatID], let process = runtime.liveProcess else { return }
         process.mapper.settings = new
         if old.model != new.model {
             sendControlRequest(.model, chatID: chatID, process: process) { ControlLines.setModel(id: $0, model: new.model) }
@@ -649,6 +660,9 @@ extension Engine {
         }
         if old.ultracode != new.ultracode {
             sendControlRequest(.ultracode, chatID: chatID, process: process) { ControlLines.applyUltracode(id: $0, on: new.ultracode) }
+        }
+        if old.contextWindow != new.contextWindow {
+            updateIdleTimer(chatID, runtime: runtime, process: process)
         }
     }
 

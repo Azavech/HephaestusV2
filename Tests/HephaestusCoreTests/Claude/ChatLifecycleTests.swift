@@ -178,6 +178,104 @@ struct ChatLifecycleTests {
         }
     }
 
+    @Test("chats.updateSettings refuses a contextWindow that is not auto, 200k or 1m")
+    func contextWindowValidation() async throws {
+        try await withChatEngine { bed in
+            let chat = try await bed.createChat()
+            func update(_ window: String) async -> EngineError? {
+                let params = #"{"chatID":"\#(chat.id.uuidString)","settings":{"model":"opus","effort":"high","permissionMode":"manual","#
+                    + #""ultracode":false,"contextWindow":"\#(window)"}}"#
+                return await engineError {
+                    try await bed.engine.dispatch(method: ChatsUpdateSettings.name, params: Data(params.utf8),
+                                                  actor: .user(deviceID: bed.engine.deviceID))
+                }
+            }
+            #expect(await update("500k")?.code == .invalid)
+            #expect(await update("200000")?.code == .invalid)
+            #expect(await update("200k") == nil)
+            #expect(await bed.engine.chatMeta(chat.id)?.settings.contextWindow == .tokens200K)
+        }
+    }
+
+    @Test("A context window change ends an idle process at once; the next message resumes the session with the new --autocompact")
+    func contextWindowChangeWhileIdle() async throws {
+        try await withChatEngine { bed in
+            let chat = try await bed.createChat(message: "One")
+            let first = try #require(await bed.launcher.chatProcess())
+            #expect(!first.request.arguments.contains("--autocompact"))
+            #expect(await bed.waitForState(chat.id, .idle))
+            let written = first.writtenLines.count
+            var settings = chat.settings
+            settings.contextWindow = .tokens200K
+            let updated = try await bed.connection.call(ChatsUpdateSettings.self, .init(chatID: chat.id, settings: settings))
+            #expect(updated.settings.contextWindow == .tokens200K)
+            // No control request but the context usage request of the turn's end; standard input
+            // closed: the fake exits.
+            _ = await first.waitForExit()
+            #expect(first.isInputClosed)
+            #expect(first.writtenLines.dropFirst(written).allSatisfy { $0.contains(#""subtype":"get_context_usage""#) })
+            let configFile = bed.dataDirectory.mcpConfigFile(chatID: chat.id).path
+            #expect(await eventually(timeout: waitLimit) { !FileManager.default.fileExists(atPath: configFile) })
+            try await bed.send(chat.id, "Two")
+            let second = try #require(await bed.launcher.chatProcess(1))
+            #expect(Array(second.request.arguments[7...8]) == ["--resume", chat.id.uuidString])
+            #expect(Array(second.request.arguments.suffix(2)) == ["--autocompact", "200000"])
+            #expect(await second.line { $0.contains(#""text":"Two""#) } != nil)
+            #expect(await bed.waitForState(chat.id, .idle))
+            #expect(try await bed.systemTexts(chat.id).filter { $0.hasPrefix("Claude exited") || $0.hasPrefix("Claude was terminated") }.isEmpty)
+            // Back to Auto: the next launch passes no --autocompact.
+            settings.contextWindow = .auto
+            _ = try await bed.connection.call(ChatsUpdateSettings.self, .init(chatID: chat.id, settings: settings))
+            _ = await second.waitForExit()
+            #expect(await eventually(timeout: waitLimit) { !FileManager.default.fileExists(atPath: configFile) })
+            try await bed.send(chat.id, "Three")
+            let third = try #require(await bed.launcher.chatProcess(2))
+            #expect(!third.request.arguments.contains("--autocompact"))
+            #expect(await bed.waitForState(chat.id, .idle))
+        }
+    }
+
+    @Test("A context window change during a turn keeps the process until the turn ends; a message sent meanwhile runs in it")
+    func contextWindowChangeDuringTurn() async throws {
+        let launcher = FakeClaudeLauncher()
+        launcher.chatScript = FakeClaudeLauncher.silentChat()
+        try await withChatEngine(launcher: launcher) { bed in
+            let chat = try await bed.createChat(message: ChatTurnTests.messageA)
+            let process = try #require(await launcher.chatProcess())
+            let a = try await ChatTurnTests.uuid(process, ChatTurnTests.messageA)
+            process.emit(FakeClaudeLauncher.lifecycleLine(a, "queued"))
+            process.emit(FakeClaudeLauncher.lifecycleLine(a, "started"))
+            process.emit(FakeClaudeLauncher.initLine())
+            #expect(await bed.waitForState(chat.id, .running))
+            var settings = chat.settings
+            settings.contextWindow = .tokens1M
+            _ = try await bed.connection.call(ChatsUpdateSettings.self, .init(chatID: chat.id, settings: settings))
+            try await bed.send(chat.id, ChatTurnTests.messageB)
+            let b = try await ChatTurnTests.uuid(process, ChatTurnTests.messageB)
+            process.emit(FakeClaudeLauncher.lifecycleLine(b, "queued"))
+            ChatTurnTests.emitReply(process, messageID: "msg_A", text: "A")
+            #expect(try await ChatTurnTests.waitForResults(bed, chat.id, 1))
+            ChatTurnTests.startSecondTurn(process, a: a, b: b)
+            try await Task.sleep(for: .milliseconds(300))
+            #expect(!process.isInputClosed)
+            #expect(launcher.chatProcesses.count == 1)
+            ChatTurnTests.emitReply(process, messageID: "msg_B", text: "B")
+            process.emit(FakeClaudeLauncher.lifecycleLine(b, "completed"))
+            #expect(await bed.waitForState(chat.id, .idle))
+            // The turn ended: the closing sequence of idle termination.
+            #expect(await eventually(timeout: waitLimit) { process.isInputClosed })
+            _ = await process.waitForExit()
+            #expect(process.receivedSignals == [SIGTERM])
+            let configFile = bed.dataDirectory.mcpConfigFile(chatID: chat.id).path
+            #expect(await eventually(timeout: waitLimit) { !FileManager.default.fileExists(atPath: configFile) })
+            #expect(try await bed.systemTexts(chat.id).filter { $0.hasPrefix("Claude exited") || $0.hasPrefix("Claude was terminated") }.isEmpty)
+            try await bed.send(chat.id, "Three")
+            let second = try #require(await launcher.chatProcess(1))
+            #expect(Array(second.request.arguments[7...8]) == ["--resume", chat.id.uuidString])
+            #expect(Array(second.request.arguments.suffix(2)) == ["--autocompact", "1000000"])
+        }
+    }
+
     @Test("chats.rename trims the title; an invalid title and an unknown chat fail")
     func rename() async throws {
         try await withChatEngine { bed in
