@@ -85,7 +85,7 @@ The engine computes `ClaudeStatus` {available, checking, path?, version?, error?
 | `--version` exits non-zero, times out or prints no version | false     | set  | null    | `<path> --version failed: <reason>.`                                               |
 | version found                                              | true      | set  | set     | null                                                                               |
 
-`<reason>` is `timeout` after the timeout; the system's error text when the CLI cannot be spawned; else the first non-empty line of stderr, trimmed and without its trailing periods; else `exit code <n>`, n being 128 + the signal number for a process killed by a signal, as in `run.finished`. Default chosen at design time.
+`<reason>` is `timeout` after the timeout; the system's error text when the CLI cannot be spawned; else the first non-empty line of stderr, trimmed and without its trailing periods; else `exit code <n>`, n being 128 + the signal number for a process killed by a signal. Default chosen at design time.
 
 `checking` is true in the first row and false in the others: from engine start, and after a change of `claudePath`, until the CLI has been located and `--version` has answered. Default chosen at design time. When the status differs from the previous one, the engine emits `claude.updated` {status, models}. Running chat processes keep running after a change of `claudePath`; later launches use the new path.
 
@@ -1959,11 +1959,11 @@ The commands, the deletion of a remaining folder, the timeout, the reasons and p
 
 #### Working directory
 
-- An orchestrated ticket chat works in its worktree: its Claude process starts there at every launch, a resume included ([Launch](#launch)), its system prompt names the worktree and the branch as its working directory (`{{workingDirectory}}`, [Placeholders](#placeholders)), and `run_project` called from it runs the project's command there ([MCP](mcp.md#run_project)).
+- An orchestrated ticket chat works in its worktree: its Claude process starts there at every launch, a resume included ([Launch](#launch)), and its system prompt names the worktree and the branch as its working directory (`{{workingDirectory}}`, [Placeholders](#placeholders)).
 - The folder of the worktree it works in is `<worktree>` when the project root is the top folder of its git repository (the folder that holds `.git`). For a project whose root is a subfolder of the repository, a sub project for example, it is the same subfolder of `<worktree>`. Default chosen at design time.
 - This holds at a launch while the chat's orchestrator chat exists, the chat is its ticket's newest orchestrated ticket chat (the last id of the ticket's `chats` whose chat has an `orchestrator`) and that folder exists. Otherwise the chat works in the project root, as the other chats do: after the bundle chat removed the worktree, or after a retry gave the worktree to a newer chat of the ticket. The condition on the orchestrator chat: Default chosen at design time.
 - The ticket chat commits on its branch and does not push. The orchestrator rebases the branch onto the project root's current branch, fast-forwards that branch to it, and removes the worktree and the branch after its push ([Claude workflow](workflow.md#bundles)).
-- The Run button and the chats that are not orchestrated ticket chats keep the project root.
+- The chats that are not orchestrated ticket chats keep the project root.
 
 #### Reports to the orchestrator
 
@@ -1981,7 +1981,7 @@ When the state of a chat with an `orchestrator` goes from `starting`, `running` 
 - The orchestrator receives the message in any state ([Chat states](#chat-states)): during one of its turns, the CLI runs it after that turn. A closed orchestrator chat is reopened by the message ([Closing a chat](#closing-a-chat)).
 - The turns of an orchestrated ticket chat post no "finished" notification, and a bundle chat posts one only for a turn that ends while none of the ticket chats it orchestrates is working; their "needs you" notifications are posted as for every chat ([Notifications](#notifications)).
 
-The other rules of this section are Default chosen at design time, except the message texts, the settings taken from the orchestrator, the branch, the worktree and its folder, the working directory, `run_project` in the worktree, the removal of an earlier branch and worktree, and the failure when they cannot be created, which the user chose.
+The other rules of this section are Default chosen at design time, except the message texts, the settings taken from the orchestrator, the branch, the worktree and its folder, the working directory, the removal of an earlier branch and worktree, and the failure when they cannot be created, which the user chose.
 
 ### Feedback message
 
@@ -2332,7 +2332,6 @@ The Claude integration lives in `Sources/HephaestusCore/Claude/`. The type names
 | `{{deviceName}}`       | name of the main device                                                                                                                        | Studio                                                                                                                                           | common, comment-answer                                            |
 | `{{docsPath}}`         | the project's `docsPath`, relative to the project root                                                                                         | docs                                                                                                                                             | common, comment-answer                                            |
 | `{{projectType}}`      | the name shown for the project's [type](projects.md#project-types): `None`, `Go service` or `Swift application`; Default chosen at design time | Go service                                                                                                                                       | common                                                            |
-| `{{projectCommands}}`  | the project's commands ([Rendered blocks](#rendered-blocks))                                                                                   | - build: make build                                                                                                                              | common                                                            |
 | `{{ticketID}}`         | id of the chat's ticket, or of the answered comment's ticket                                                                                   | HEPH-12                                                                                                                                          | ticket, implement-ticket, implement-bundle-ticket, comment-answer |
 | `{{ticketTitle}}`      | title of that ticket                                                                                                                           | Locked web tabs close with Command-W                                                                                                             | implement-ticket, implement-bundle-ticket                         |
 | `{{ticket}}`           | that ticket ([Rendered blocks](#rendered-blocks))                                                                                              | ID: HEPH-12 …                                                                                                                                    | ticket                                                            |
@@ -2351,14 +2350,6 @@ The formats of these blocks are Default chosen at design time.
 
 ```
 Your working directory is the git worktree /Users/example/Library/Application Support/HephaestusV2/Worktrees/HEPH/HEPH-12 of this project, on the branch HEPH-B2/HEPH-12: read, change, build, test and commit the project's files there, not in the project root.
-```
-
-`{{projectCommands}}`: one line per configured command, in the order build, run, test, as `- <kind>: <command>`; when no command is configured, the single line `- none: use the repository's own commands`.
-
-```
-- build: make build
-- run: make run
-- test: make test
 ```
 
 `{{ticket}}`: the ticket's current data, with attachment paths made absolute (`<project root>/.hephaestus/<path>`), as [get_ticket](mcp.md#get_ticket) returns them:
@@ -2447,16 +2438,13 @@ When the chat's bundle no longer exists, `{{bundle}}` is `This bundle was delete
 ```text
 You are Claude, working inside HephaestusV2, a macOS app that coordinates the work on many projects. The user talks to you in a chat of the project {{projectName}} (identifier {{projectID}}). The project's root folder is {{projectRoot}} on the device {{deviceName}}. {{workingDirectory}} Every path you read or write is on this device, even when the user writes from another device. The project's documentation is the set of Markdown files in the folder {{docsPath}} of the project. The project's type is {{projectType}}.
 
-The project's commands:
-{{projectCommands}}
-
 These rules apply in every chat. An explicit instruction of the user in this chat replaces a step of them, for example "do not push". The rules that HephaestusV2 enforces (the ticket template, the ticket status rules and the questions rules) cannot be replaced: when an instruction conflicts with one of them, tell the user that they have to do it themselves.
 
 # HephaestusV2 tools
 
 HephaestusV2 gives you the MCP server "hephaestus". Its tools appear to you as mcp__hephaestus__<name>:
 
-- Projects: list_projects, get_project, create_project, update_project, remove_project, run_project (runs the project's build, run or test command), stop_run (stops a run).
+- Projects: list_projects, get_project, create_project, update_project, remove_project.
 - Tickets: list_tickets, get_ticket, create_ticket, update_ticket, delete_ticket, set_ticket_status, add_comment, update_comment, delete_comment, remove_attachment, implement_ticket (starts a new chat that implements a ticket).
 - Bundles, groups of tickets implemented together: list_bundles, get_bundle, create_bundle, update_bundle, set_bundle_status, delete_bundle, implement_bundle (starts a new chat that implements a bundle).
 - Questions to the user: ask_questions, ask_symbol (asks the user to choose an SF Symbol), ask_color (asks the user to choose a color), ask_sound (asks the user to choose a sound, in a Swift application project), ask_shortcut (asks the user to choose a keyboard shortcut, in a Swift application project), ask_font (asks the user to choose a font), ask_animation (asks the user to choose a SwiftUI animation, in a Swift application project).
@@ -2574,7 +2562,7 @@ Follow these steps in this order.
 2. Read the ticket with get_ticket: its description, comments and attachments; view image attachments by reading the absolute paths that get_ticket gives. Read every docs section listed under Docs, the docs index (the README.md of the docs folder, when there is one) and the code involved. When anything is unknown, ask with ask_questions, end your turn, and continue when the answers arrive; in an implement chat, until the user writes in it, make the choice yourself instead, as "Never invent" says.
 3. Change the docs first. Change every affected docs section so that it describes the behaviour after the change completely, following the conventions of that docs folder. When the docs already describe the expected behaviour (a defect where the code differs from the docs), leave them unchanged and say so in the completion comment. When the project has no docs folder, ask whether to create one, recommending <docs folder>/<topic>.md; in an implement chat, until the user writes in it, decide yourself and state the decision under Notes of the completion comment.
 4. Then change the code until it does what the docs say. Where the project has tests, add or update tests for the changed behaviour.
-5. Build and test. When the project has build or test commands, run them with run_project, kind build then kind test, and wait for each. Otherwise run the repository's own commands with your shell tool: the Makefile targets build and test when they exist, otherwise swift build and swift test for a Swift package, or go build ./... and go test ./... for a Go module. When a command fails, fix the cause and run it again. Never commit while the build or the tests fail; when a failure also happens without your change, ask whether to commit anyway; in an implement chat, until the user writes in it, decide yourself and state the decision under Notes of the completion comment. When no build or test command exists, skip this step and say so in the completion comment. Do not start the project's run command unless the user asks for it.
+5. Build and test. Run the repository's own commands with your shell tool: the Makefile targets build and test when they exist, otherwise swift build and swift test for a Swift package, or go build ./... and go test ./... for a Go module. When a command fails, fix the cause and run it again. Never commit while the build or the tests fail; when a failure also happens without your change, ask whether to commit anyway; in an implement chat, until the user writes in it, decide yourself and state the decision under Notes of the completion comment. When no build or test command exists, skip this step and say so in the completion comment. Do not run the project itself (the Makefile target run, swift run or go run) unless the user asks for it.
 6. Commit, then push, as "Commits" and "Pushing" describe.
 7. Post the completion comment that "Completion comment" describes, with add_comment.
 8. Set the ticket to done or review with set_ticket_status, as "Ticket status" describes.
@@ -2756,7 +2744,7 @@ This is a project chat of {{projectName}} ({{projectID}}). The user plans and di
 
 - discuss and plan features, problems, designs and priorities;
 - create, update and delete tickets and bundles, and comment on tickets;
-- create, update and remove projects and sub projects, build, run and test them with run_project, and stop their runs with stop_run;
+- create, update and remove projects and sub projects;
 - read and change the docs and the code;
 - search, open web tabs and manage skills.
 

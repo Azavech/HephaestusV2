@@ -45,9 +45,6 @@ struct ModelCodingTests {
             id: HEPH
             name: Hephaestus V2
             created: 2026-10-31T12:00:00Z
-            commands:
-              build: make build
-              lint: make lint
             webTabs:
               - id: 7C9E6679-7425-40DE-944B-E07FC1F90AE7
                 url: https://github.com/
@@ -59,17 +56,42 @@ struct ModelCodingTests {
 
             """
         var project = try YAMLCoding.decode(Project.self, from: yaml)
-        #expect(project.commands.unknownKeys == ["lint": "make lint"])
         #expect(project.webTabs[0].unknownKeys == ["pinnedAt": "2026-10-31T12:00:00Z"])
         #expect(project.chatDefaults?.unknownKeys == ["temperature": .double(0.5)])
         #expect(project.unknownKeys == ["mascot": "hammer"])
         project.name = "Renamed"
         let again = try YAMLCoding.decode(Project.self, from: try YAMLCoding.encode(project))
         #expect(again.unknownKeys == project.unknownKeys)
-        #expect(again.commands.unknownKeys == project.commands.unknownKeys)
         #expect(again.webTabs[0].unknownKeys == project.webTabs[0].unknownKeys)
         #expect(again.chatDefaults?.unknownKeys == project.chatDefaults?.unknownKeys)
         #expect(again.name == "Renamed")
+    }
+
+    @Test("The commands key of earlier versions is an unknown key of the project file, written back after the known keys")
+    func commandsKeyIsUnknown() throws {
+        let yaml = """
+            schema: 1
+            id: HEPH
+            name: Hephaestus V2
+            created: 2026-10-31T12:00:00Z
+            docsPath: docs
+            commands:
+              build: make build
+            webTabs: []
+
+            """
+        var project = try YAMLCoding.decode(Project.self, from: yaml)
+        #expect(project.unknownKeys == ["commands": .object(["build": "make build"])])
+        project.name = "Renamed"
+        let encoded = try YAMLCoding.encode(project)
+        let keys = encoded.components(separatedBy: "\n").filter { !$0.hasPrefix(" ") && !$0.hasPrefix("-") && $0.contains(":") }
+            .map { String($0.prefix { $0 != ":" }) }
+        #expect(keys == ["schema", "id", "name", "created", "type", "nextTicketNumber", "nextBundleNumber", "docsPath",
+                         "useParentSettings", "subprojects", "webTabs", "skills", "chatDefaults", "environments", "deletedChats",
+                         "commentAnswers", "commands"])
+        #expect(try YAMLCoding.decode(Project.self, from: encoded) == project)
+        let json = try JSONDecoder().decode(JSONValue.self, from: try EngineJSON.encode(project))
+        #expect(json.objectValue?["commands"] == .object(["build": "make build"]))
     }
 
     @Test("YAML values become JSONValue by the conversion table")
@@ -181,7 +203,6 @@ struct ModelCodingTests {
         let project = try YAMLCoding.decode(Project.self, from: "id: WEB\nname: Website\ncreated: 2026-10-31T09:30:00Z\n")
         #expect(project.nextTicketNumber == 1)
         #expect(project.docsPath == "docs")
-        #expect(project.commands == ProjectCommands())
         #expect(project.chatDefaults == nil)
         #expect(project.type == .none)
         let defaults = try YAMLCoding.decode(Project.self, from: "id: WEB\nname: W\ncreated: 2026-10-31T09:30:00Z\nchatDefaults:\n  model: opus\n")

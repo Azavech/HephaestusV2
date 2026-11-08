@@ -239,15 +239,4 @@ extension Engine {
         guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDirectory), isDirectory.boolValue else { return projectRoot }
         return ChatWorkingDirectory(url: folder, worktree: worktree)
     }
-
-    /// The working directory of a run of `projectID` started by `actor` (docs/engine-api.md ›
-    /// projects.run): the worktree of the calling chat when it works in one, else the project
-    /// root.
-    func runWorkingDirectory(projectID: ProjectID, actor: Actor) -> ChatWorkingDirectory {
-        let root = URL(fileURLWithPath: loaded(projectID).rootPath, isDirectory: true)
-        guard let chatID = actor.chat, let meta = domain.chat(chatID), meta.projectID == projectID else {
-            return ChatWorkingDirectory(url: root)
-        }
-        return chatWorkingDirectory(meta, root: root)
-    }
 }

@@ -101,15 +101,6 @@ private struct ProjectSettingsForm: View {
                 row("GitHub page") {
                     githubPageField
                 }
-                row("Build command") {
-                    commandField(.build, placeholder: "make build")
-                }
-                row("Run command") {
-                    commandField(.run, placeholder: "make run")
-                }
-                row("Test command") {
-                    commandField(.test, placeholder: "make test")
-                }
                 row("Chat defaults") {
                     chatDefaults
                 }
@@ -193,36 +184,6 @@ private struct ProjectSettingsForm: View {
                 await update(ProjectsUpdate.Params(projectID: project.id, githubPage: page.isEmpty ? .clear : .set(page)))
             }
         }
-    }
-
-    /// A single-line command field in SF Mono; empty means not set. It applies the whole
-    /// `ProjectCommands` with the changed command and the two stored ones.
-    private func commandField(_ kind: RunKind, placeholder: String) -> some View {
-        ProjectSettingsTextField(title: placeholder, prompt: placeholder, monospaced: true,
-                                 value: Self.command(kind, of: project.commands) ?? "",
-                                 normalize: { ModelRules.normalizedCommand(Self.singleLine($0)) ?? "" }) { text in
-            var commands = ProjectCommands(build: project.commands.build, run: project.commands.run, test: project.commands.test)
-            let value = text.isEmpty ? nil : text
-            switch kind {
-            case .build: commands.build = value
-            case .run: commands.run = value
-            case .test: commands.test = value
-            }
-            return await update(ProjectsUpdate.Params(projectID: project.id, commands: commands))
-        }
-    }
-
-    private static func command(_ kind: RunKind, of commands: ProjectCommands) -> String? {
-        switch kind {
-        case .build: return commands.build
-        case .run: return commands.run
-        case .test: return commands.test
-        }
-    }
-
-    private static func singleLine(_ text: String) -> String {
-        text.replacingOccurrences(of: "\r\n", with: " ").replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "\r", with: " ")
     }
 
     /// The toggle and, when it is off, the chat settings menus; each change applies `chatDefaults`.

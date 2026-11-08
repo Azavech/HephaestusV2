@@ -23,7 +23,6 @@ public struct Project: Codable, Sendable, Hashable {
     /// effect for a top-level project (docs/projects.md › Sub projects).
     public var useParentSettings: Bool
     public var subprojects: [String]
-    public var commands: ProjectCommands
     public var webTabs: [WebTab]
     public var skills: [String]
     public var chatDefaults: ChatSettings?
@@ -39,8 +38,7 @@ public struct Project: Codable, Sendable, Hashable {
 
     public init(schema: Int = 1, id: ProjectID, name: String, created: Date, type: ProjectType = .none, color: String? = nil, icon: String? = nil,
                 nextTicketNumber: Int = 1, nextBundleNumber: Int = 1, docsPath: String = "docs", githubPage: String? = nil,
-                useParentSettings: Bool = true, subprojects: [String] = [],
-                commands: ProjectCommands = ProjectCommands(), webTabs: [WebTab] = [], skills: [String] = [],
+                useParentSettings: Bool = true, subprojects: [String] = [], webTabs: [WebTab] = [], skills: [String] = [],
                 chatDefaults: ChatSettings? = nil, environments: [ProjectEnvironment] = [], deletedChats: [DeletedChat] = [],
                 commentAnswers: [CommentAnswerCost] = [], unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
@@ -56,7 +54,6 @@ public struct Project: Codable, Sendable, Hashable {
         self.githubPage = githubPage
         self.useParentSettings = useParentSettings
         self.subprojects = subprojects
-        self.commands = commands
         self.webTabs = webTabs
         self.skills = skills
         self.chatDefaults = chatDefaults
@@ -66,10 +63,11 @@ public struct Project: Codable, Sendable, Hashable {
         self.unknownKeys = unknownKeys
     }
 
+    /// A `commands` key of earlier versions is an unknown key (docs/data-model.md › Project file).
     static let knownKeys: Set<String> = [
         "schema", "id", "name", "created", "type", "color", "icon", "nextTicketNumber", "nextBundleNumber", "docsPath",
         "githubPage", "useParentSettings",
-        "subprojects", "commands", "webTabs", "skills", "chatDefaults", "environments", "deletedChats",
+        "subprojects", "webTabs", "skills", "chatDefaults", "environments", "deletedChats",
         "commentAnswers",
     ]
 
@@ -101,7 +99,6 @@ public struct Project: Codable, Sendable, Hashable {
         }
         useParentSettings = try c.value("useParentSettings", default: true)
         subprojects = try c.value("subprojects", default: [])
-        commands = try c.value("commands", default: ProjectCommands())
         webTabs = try c.value("webTabs", default: [])
         skills = try c.value("skills", default: [])
         try c.checkAll("skills", skills, Identifiers.isSkillName, "skill name")
@@ -136,7 +133,6 @@ public struct Project: Codable, Sendable, Hashable {
         }
         try c.encode(useParentSettings, "useParentSettings")
         try c.encode(subprojects, "subprojects")
-        try c.encode(commands, "commands")
         try c.encode(webTabs, "webTabs")
         try c.encode(skills, "skills")
         try c.encodeOptional(chatDefaults, "chatDefaults")
@@ -398,48 +394,6 @@ public enum ProjectType: String, Codable, Sendable, Hashable, CaseIterable {
         case .goService: return "Go service"
         case .swiftApplication: return "Swift application"
         }
-    }
-}
-
-/// Build, Run and Test commands, the key `commands` of the project file.
-public struct ProjectCommands: Codable, Sendable, Hashable {
-    public var build: String?
-    public var run: String?
-    public var test: String?
-    public var unknownKeys: [String: JSONValue]
-
-    public init(build: String? = nil, run: String? = nil, test: String? = nil, unknownKeys: [String: JSONValue] = [:]) {
-        self.build = build
-        self.run = run
-        self.test = test
-        self.unknownKeys = unknownKeys
-    }
-
-    static let knownKeys: Set<String> = ["build", "run", "test"]
-
-    public init(from decoder: Decoder) throws {
-        let c = try ModelDecodingContainer(decoder)
-        build = try c.optional("build")
-        run = try c.optional("run")
-        test = try c.optional("test")
-        unknownKeys = try c.unknownKeys(known: Self.knownKeys)
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = ModelEncodingContainer(encoder)
-        try c.encodeOptional(build, "build")
-        try c.encodeOptional(run, "run")
-        try c.encodeOptional(test, "test")
-        try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
-    }
-
-    /// Each value trimmed, an empty string stored as `null`.
-    public func normalized() -> ProjectCommands {
-        var copy = self
-        copy.build = ModelRules.normalizedCommand(build)
-        copy.run = ModelRules.normalizedCommand(run)
-        copy.test = ModelRules.normalizedCommand(test)
-        return copy
     }
 }
 

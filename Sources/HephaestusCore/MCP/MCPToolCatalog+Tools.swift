@@ -5,7 +5,7 @@ import Foundation
 // docs/mcp.md; the docs conformance tests compare it with the docs.
 
 extension MCPToolCatalog {
-    /// The 42 tools of docs/mcp.md › Tool catalogue, in `tools/list` order.
+    /// The 49 tools of docs/mcp.md › Tool catalogue, in `tools/list` order.
     public static let tools: [MCPToolDefinition] = [
         MCPToolDefinition(
             name: "list_projects",
@@ -26,7 +26,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "get_project",
             description: #"""
-            Get a project: its .hephaestus/project.yml settings (name, type, color, icon, docs folder, GitHub page, use parent settings, build/run/test commands, sub projects, web tabs, enabled skills, chat defaults, environments), root folder, parent, sub projects, git remote URL and GitHub page (githubPage: its parent's for a sub project that uses its parent's settings, else the page set in Project Settings, else the page of its origin remote on GitHub).
+            Get a project: its .hephaestus/project.yml settings (name, type, color, icon, docs folder, GitHub page, use parent settings, sub projects, web tabs, enabled skills, chat defaults, environments), root folder, parent, sub projects, git remote URL and GitHub page (githubPage: its parent's for a sub project that uses its parent's settings, else the page set in Project Settings, else the page of its origin remote on GitHub).
             """#,
             inputSchema: schema(#"""
             {
@@ -87,7 +87,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "update_project",
             description: #"""
-            Change a project's name, type, color, icon, docs folder or commands. Omitted arguments are left unchanged. color is a hex color #RRGGBB, and an empty color removes it. icon is the name of an SF Symbol of this Mac, for example hammer, and an empty or null icon removes it. commands replaces all three commands: a command that is missing or empty is removed.
+            Change a project's name, type, color, icon or docs folder. Omitted arguments are left unchanged. color is a hex color #RRGGBB, and an empty color removes it. icon is the name of an SF Symbol of this Mac, for example hammer, and an empty or null icon removes it.
             """#,
             inputSchema: schema(#"""
             {
@@ -117,25 +117,6 @@ extension MCPToolCatalog {
                 "docsPath": {
                   "type": "string",
                   "description": "Docs folder relative to the project root, for example docs."
-                },
-                "commands": {
-                  "type": "object",
-                  "description": "Every command of the project; a command that is missing or empty is removed.",
-                  "properties": {
-                    "build": {
-                      "type": "string",
-                      "description": "Build command, run by the shell in the project root."
-                    },
-                    "run": {
-                      "type": "string",
-                      "description": "Run command, run by the shell in the project root."
-                    },
-                    "test": {
-                      "type": "string",
-                      "description": "Test command, run by the shell in the project root."
-                    }
-                  },
-                  "additionalProperties": false
                 }
               },
               "required": ["projectID"],
@@ -149,7 +130,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "remove_project",
             description: #"""
-            Remove a project and its sub projects from HephaestusV2 on this Mac. They are unregistered and their files are left untouched; their runs stop and the Claude processes of their chats end. A chat cannot remove the project it belongs to, and the HephaestusV2 project and its ancestors cannot be removed.
+            Remove a project and its sub projects from HephaestusV2 on this Mac. They are unregistered and their files are left untouched; the Claude processes of their chats end. A chat cannot remove the project it belongs to, and the HephaestusV2 project and its ancestors cannot be removed.
             """#,
             inputSchema: schema(#"""
             {
@@ -166,65 +147,6 @@ extension MCPToolCatalog {
             """#),
             isDebug: false,
             engineMethod: "projects.remove",
-            handling: .forward
-        ),
-        MCPToolDefinition(
-            name: "run_project",
-            description: #"""
-            Run a project's build, run or test command in its root folder, or in your git worktree when your chat works in one, as the app's Build, Run and Test actions do; the output also appears in the app's console. With wait (default: true for build and test, false for run) the call returns when the command exits or when timeoutSeconds (default 600) have passed, with the exit code and the end of the output; the timeout ends the wait, not the run.
-            """#,
-            inputSchema: schema(#"""
-            {
-              "type": "object",
-              "properties": {
-                "projectID": {
-                  "type": "string",
-                  "description": "Project identifier: 2 to 8 letters, for example HEPH."
-                },
-                "kind": {
-                  "type": "string",
-                  "description": "Command to run.",
-                  "enum": ["build", "run", "test"]
-                },
-                "wait": {
-                  "type": "boolean",
-                  "description": "Wait for the command to exit. Default: true for build and test, false for run."
-                },
-                "timeoutSeconds": {
-                  "type": "integer",
-                  "description": "Longest wait in seconds when wait is true. Default 600.",
-                  "minimum": 1,
-                  "maximum": 1700
-                }
-              },
-              "required": ["projectID", "kind"],
-              "additionalProperties": false
-            }
-            """#),
-            isDebug: false,
-            engineMethod: "projects.run",
-            handling: .runProject
-        ),
-        MCPToolDefinition(
-            name: "stop_run",
-            description: #"""
-            Stop a project run; runID is run.runID of the run_project result.
-            """#,
-            inputSchema: schema(#"""
-            {
-              "type": "object",
-              "properties": {
-                "runID": {
-                  "type": "string",
-                  "description": "Run id (a UUID): run.runID of the run_project result."
-                }
-              },
-              "required": ["runID"],
-              "additionalProperties": false
-            }
-            """#),
-            isDebug: false,
-            engineMethod: "projects.stopRun",
             handling: .forward
         ),
         MCPToolDefinition(

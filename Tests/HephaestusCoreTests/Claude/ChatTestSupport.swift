@@ -63,8 +63,8 @@ extension EngineEventEnvelope {
     var chatMeta: ChatMeta? { try? payload(ChatUpdatedEvent.self) }
 }
 
-/// A started test engine with the project DEMO (`Demo`, build command `make build`) registered
-/// on disk, the fake launcher, and short timings.
+/// A started test engine with the project DEMO (`Demo`) registered on disk, the fake launcher,
+/// and short timings.
 struct ChatTestBed {
     let engine: Engine
     let connection: LocalEngineConnection
@@ -198,8 +198,7 @@ func withChatEngine<T>(launcher: FakeClaudeLauncher = FakeClaudeLauncher(), debu
         let root = temporary.appendingPathComponent("Project", isDirectory: true).standardizedFileURL
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let folder = ProjectFolder(root: root)
-        try ProjectFileStore.write(Project(id: "DEMO", name: "Demo", created: ISODate.date(from: "2026-10-31T12:00:00Z")!,
-                                           commands: ProjectCommands(build: "make build")), to: folder)
+        try ProjectFileStore.write(Project(id: "DEMO", name: "Demo", created: ISODate.date(from: "2026-10-31T12:00:00Z")!), to: folder)
         try DeviceFileStore.write(Registry(projects: [folder.root.path]), to: data)
         if let settings { try DeviceFileStore.write(settings, to: data) }
         try prepare(folder, data)

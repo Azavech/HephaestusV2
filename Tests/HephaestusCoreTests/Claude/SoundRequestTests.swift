@@ -14,8 +14,8 @@ struct SoundRequestTests {
     /// A Swift application project, unless `type` says otherwise.
     static func prepare(type: ProjectType = .swiftApplication) -> (ProjectFolder, DataDirectory) throws -> Void {
         { folder, _ in
-            try ProjectFileStore.write(Project(id: "DEMO", name: "Demo", created: ISODate.date(from: "2026-10-31T12:00:00Z")!, type: type,
-                                               commands: ProjectCommands(build: "make build")), to: folder)
+            try ProjectFileStore.write(Project(id: "DEMO", name: "Demo", created: ISODate.date(from: "2026-10-31T12:00:00Z")!, type: type),
+                                       to: folder)
             let sounds = folder.root.appendingPathComponent("Sounds", isDirectory: true)
             try FileManager.default.createDirectory(at: sounds, withIntermediateDirectories: true)
             try Data("alert".utf8).write(to: sounds.appendingPathComponent("alert.caf"))

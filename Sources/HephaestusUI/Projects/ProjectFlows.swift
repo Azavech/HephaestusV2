@@ -79,7 +79,7 @@ enum ProjectFlows {
     }
 
     /// `The folder and its files stay on disk: <root path>.`, then the sub projects sentence, then
-    /// the running work sentence when the workspace knows running work among the projects.
+    /// the running chats sentence when the workspace knows a working chat among the projects.
     static func removalMessage(project: ProjectSummary, descendants: [ProjectSummary], workspace: DeviceWorkspace,
                                removedIDs: Set<String>) -> String {
         var sentences = ["The folder and its files stay on disk: \(project.rootPath)."]
@@ -88,12 +88,11 @@ enum ProjectFlows {
         } else if descendants.count > 1 {
             sentences.append("Its \(descendants.count) sub projects are removed with it.")
         }
-        let runningRun = workspace.runs.values.contains { removedIDs.contains($0.info.projectID) && $0.isRunning }
         let runningChat = workspace.chats.values.contains {
             removedIDs.contains($0.projectID) && $0.isWorking
         }
-        if runningRun || runningChat {
-            sentences.append("Running chats and runs of these projects are stopped.")
+        if runningChat {
+            sentences.append("Running chats of these projects are stopped.")
         }
         return sentences.joined(separator: " ")
     }

@@ -27,7 +27,7 @@ struct EngineMethodsConformanceTests {
     @Test("The documented method names equal Engine.registeredMethods")
     func registeredMethods() async throws {
         let documented = Set(try Self.methodRows().map(\.name))
-        #expect(documented.count == 102)
+        #expect(documented.count == 100)
         try await withTestEngine { engine, _, _ in
             #expect(Set(await engine.registeredMethods) == documented)
         }
@@ -59,7 +59,7 @@ struct EngineMethodsConformanceTests {
         }
     }
 
-    @Test("Claude may call exactly the 51 methods that MCP tools map to")
+    @Test("Claude may call exactly the 49 methods that MCP tools map to")
     func claudeMethodsAreTheToolMethods() async throws {
         try await withTestEngine { engine, _, _ in
             var claudeMethods: Set<String> = []
@@ -69,7 +69,7 @@ struct EngineMethodsConformanceTests {
                 }
             }
             let toolMethods = Set(MCPToolCatalog.tools.compactMap(\.engineMethod))
-            #expect(claudeMethods.count == 51)
+            #expect(claudeMethods.count == 49)
             #expect(claudeMethods == toolMethods)
         }
     }
@@ -80,7 +80,7 @@ struct EngineMethodsConformanceTests {
             $0.header.first == "Event" && $0.header.count > 1 && $0.header[1] == "Swift type"
         })
         let documented = table.rows.map { ($0[0], $0[1]) }
-        #expect(documented.count == 25)
+        #expect(documented.count == 22)
         #expect(EngineEvents.all.map { $0.name } == documented.map(\.0))
         #expect(EngineEvents.all.map { String(describing: $0) } == documented.map(\.1))
     }

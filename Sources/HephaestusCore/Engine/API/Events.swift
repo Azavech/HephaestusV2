@@ -211,46 +211,6 @@ public enum MemoriesChangedEvent: EngineEvent {
     public typealias Payload = MemoryFolder
 }
 
-/// `run.started`: a run started; the origin is the actor that started it.
-public enum RunStartedEvent: EngineEvent {
-    public static let name = "run.started"
-    public typealias Payload = RunInfo
-}
-
-/// `run.output`: a run produced output.
-public enum RunOutputEvent: EngineEvent {
-    public static let name = "run.output"
-    public struct Payload: Codable, Sendable, Hashable {
-        public var runID: UUID
-        public var projectID: ProjectID
-        /// Output produced since the previous run.output event, decoded as UTF-8.
-        public var text: String
-
-        public init(runID: UUID, projectID: ProjectID, text: String) {
-            self.runID = runID
-            self.projectID = projectID
-            self.text = text
-        }
-    }
-}
-
-/// `run.finished`: a run ended.
-public enum RunFinishedEvent: EngineEvent {
-    public static let name = "run.finished"
-    public struct Payload: Codable, Sendable, Hashable {
-        public var runID: UUID
-        public var projectID: ProjectID
-        /// Exit status, or 128 + the signal number.
-        public var exitCode: Int
-
-        public init(runID: UUID, projectID: ProjectID, exitCode: Int) {
-            self.runID = runID
-            self.projectID = projectID
-            self.exitCode = exitCode
-        }
-    }
-}
-
 /// `settings.updated`: host settings changed.
 public enum SettingsUpdatedEvent: EngineEvent {
     public static let name = "settings.updated"
@@ -348,7 +308,6 @@ public enum EngineEvents {
         ChatUpdatedEvent.self, ChatDeletedEvent.self, ChatItemEvent.self, ChatDeltaEvent.self,
         ChatAgentsEvent.self, ChatAgentItemEvent.self, FilesChangedEvent.self, WebTabsUpdatedEvent.self, SkillsChangedEvent.self,
         MemoriesChangedEvent.self,
-        RunStartedEvent.self, RunOutputEvent.self, RunFinishedEvent.self,
         SettingsUpdatedEvent.self, ClaudeUpdatedEvent.self, PlanUsageUpdatedEvent.self, UIOpenEvent.self,
         ChatNotificationEvent.self,
     ]
@@ -375,9 +334,6 @@ public enum DecodedEngineEvent: Sendable, Hashable {
     case webTabsUpdated(WebTabsUpdatedEvent.Payload)
     case skillsChanged([SkillSummary])
     case memoriesChanged(MemoryFolder)
-    case runStarted(RunInfo)
-    case runOutput(RunOutputEvent.Payload)
-    case runFinished(RunFinishedEvent.Payload)
     case settingsUpdated(HostSettings)
     case claudeUpdated(ClaudeUpdatedEvent.Payload)
     case planUsageUpdated(PlanUsage)
@@ -408,9 +364,6 @@ extension EngineEventEnvelope {
         case WebTabsUpdatedEvent.name: return .webTabsUpdated(try payload(WebTabsUpdatedEvent.self))
         case SkillsChangedEvent.name: return .skillsChanged(try payload(SkillsChangedEvent.self))
         case MemoriesChangedEvent.name: return .memoriesChanged(try payload(MemoriesChangedEvent.self))
-        case RunStartedEvent.name: return .runStarted(try payload(RunStartedEvent.self))
-        case RunOutputEvent.name: return .runOutput(try payload(RunOutputEvent.self))
-        case RunFinishedEvent.name: return .runFinished(try payload(RunFinishedEvent.self))
         case SettingsUpdatedEvent.name: return .settingsUpdated(try payload(SettingsUpdatedEvent.self))
         case ClaudeUpdatedEvent.name: return .claudeUpdated(try payload(ClaudeUpdatedEvent.self))
         case PlanUsageUpdatedEvent.name: return .planUsageUpdated(try payload(PlanUsageUpdatedEvent.self))

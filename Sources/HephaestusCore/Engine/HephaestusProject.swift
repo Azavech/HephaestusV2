@@ -136,12 +136,6 @@ extension Engine {
             return event.projectID
         case let folder as MemoryFolder:
             return folder.projectID
-        case let run as RunInfo:
-            return run.projectID
-        case let event as RunOutputEvent.Payload:
-            return event.projectID
-        case let event as RunFinishedEvent.Payload:
-            return event.projectID
         case let event as ChatNotificationEvent.Payload:
             return event.projectID
         case let event as UIOpenEvent.Payload:
@@ -163,8 +157,8 @@ extension Engine {
         }
     }
 
-    /// `showHephaestusProject` changed (docs/engine-api.md › settings.update). Hidden: the runs,
-    /// chat processes and comment answers of the projects stop as when a project is removed,
+    /// `showHephaestusProject` changed (docs/engine-api.md › settings.update). Hidden: the chat
+    /// processes and comment answers of the projects stop as when a project is removed,
     /// `project.removed` is emitted for each of them, depth first, then `projects.changed`.
     /// Shown: `projects.changed` lists them again.
     func hephaestusVisibilityDidChange(shown: Bool, origin: Actor) {
@@ -176,13 +170,9 @@ extension Engine {
         }
         let ids = [id] + domain.descendants(of: id)
         log.info(.engine, "the HephaestusV2 project \(id) is hidden with \(ids.count - 1) sub project(s)")
-        let stoppedRuns = runs.runningRuns().filter { ids.contains($0.projectID) }
         stopCommentAnswers(projectIDs: Set(ids))
         emitProjectsRemoved(ids, origin: origin)
         emitProjectsChanged(origin: origin)
-        for run in stoppedRuns {
-            stopRun(run.runID)
-        }
         terminateChatProcesses(inProjects: ids)
     }
 

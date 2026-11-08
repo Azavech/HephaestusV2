@@ -16,7 +16,7 @@ struct WorkspaceEvent: Sendable {
     /// The kind of the event for the replay rule (docs/remote.md › Event kinds).
     var kind: EventKind {
         switch event {
-        case .chatDelta, .runOutput: return .stream
+        case .chatDelta: return .stream
         case .uiOpen, .chatNotification, .unknown: return .action
         default: return .state
         }
@@ -70,8 +70,6 @@ final class DeviceWorkspace {
     /// Every project of the device, sub projects included, in `projects.list` order.
     var projects: [ProjectSummary] = []
     var skills: [SkillSummary] = []
-    /// Runs by run id (uppercase UUID string).
-    var runs: [String: RunState] = [:]
     /// The metadata of every chat of every project, by chat id (uppercase UUID string).
     var chats: [String: ChatMeta] = [:]
     /// Loaded projects, by id.
@@ -240,11 +238,6 @@ final class DeviceWorkspace {
         for key in agentTranscripts.keys where key.hasPrefix(chatID + "/") {
             agentTranscripts[key] = nil
         }
-    }
-
-    /// The runs of a project, newest first.
-    func runs(of projectID: String) -> [RunState] {
-        runs.values.filter { $0.info.projectID == projectID }.sorted { $0.info.started > $1.info.started }
     }
 
     // MARK: Calls

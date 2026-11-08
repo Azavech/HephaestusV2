@@ -9,7 +9,7 @@ extension DeviceWorkspace {
     func loadDeviceLevelData(afterReconnect: Bool) async {
         do {
             try await seed({ try await call(SnapshotGet.self) },
-                           replace: { applySnapshot($0, afterReconnect: afterReconnect) },
+                           replace: { applySnapshot($0) },
                            replay: { event in var event = event; apply(&event) })
         } catch {
             // The window keeps its loading state until the next connection (docs/ui.md › Empty
@@ -33,28 +33,14 @@ extension DeviceWorkspace {
         }
     }
 
-    /// Stores a snapshot (docs/ui.md › DeviceWorkspace, Loading steps 1 and 6). A run known as
-    /// running and absent from the new snapshot is marked as ended while disconnected.
-    func applySnapshot(_ snapshot: Snapshot, afterReconnect: Bool) {
+    /// Stores a snapshot (docs/ui.md › DeviceWorkspace, Loading steps 1 and 6).
+    func applySnapshot(_ snapshot: Snapshot) {
         deviceInfo = snapshot.device
         settings = snapshot.settings
         claudeStatus = snapshot.claude
         planUsage = snapshot.planUsage
         skills = snapshot.skills
         replaceProjects(snapshot.projects)
-        let running = Set(snapshot.runs.map(\.runID.uuidString))
-        for (id, run) in runs where run.isRunning {
-            if running.contains(id) {
-                if afterReconnect {
-                    runs[id]?.noteMissedOutput()
-                }
-            } else {
-                runs[id]?.markEndedWhileDisconnected()
-            }
-        }
-        for info in snapshot.runs where runs[info.runID.uuidString] == nil {
-            runs[info.runID.uuidString] = RunState(info: info, starter: nil, knownFromSnapshotAt: Date())
-        }
         hasSnapshot = true
         planUsageStored?()
     }

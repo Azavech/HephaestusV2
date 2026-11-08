@@ -62,7 +62,8 @@ struct ProjectsTests {
             }
             func type(_ projectID: ProjectID) async throws -> ProjectType {
                 let text = try await call("get_project", #"{"projectID":"\#(projectID)"}"#)
-                return try EngineJSON.decoder().decode(ProjectsGet.Result.self, from: Data(text.utf8)).project.type
+                let result = try EngineJSON.decoder().decode(ProjectsGet.Result.self, from: Data(text.utf8))
+                return result.project.type
             }
             _ = try await call("create_project", #"{"path":"\#(h.path("Api"))","name":"Api","identifier":"API","type":"goService"}"#)
             #expect(try await type("API") == .goService)
@@ -220,10 +221,8 @@ struct ProjectsTests {
             try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
             let events = await DomainEventRecorder.make(h)
             let detail = try await h.connection.call(ProjectsUpdate.self, .init(
-                projectID: "heph", docsPath: "documentation/", commands: ProjectCommands(build: "  make build ", run: "  ", test: nil),
-                chatDefaults: .set(ChatSettings(model: "opus", effort: .xhigh))))
+                projectID: "heph", docsPath: "documentation/", chatDefaults: .set(ChatSettings(model: "opus", effort: .xhigh))))
             #expect(detail.project.docsPath == "documentation")
-            #expect(detail.project.commands == ProjectCommands(build: "make build"))
             #expect(detail.project.chatDefaults == ChatSettings(model: "opus", effort: .xhigh))
             #expect(await events.wait(for: ProjectUpdatedEvent.name) == ["project.updated"])
             #expect(await events.settle() == ["project.updated"])
@@ -247,6 +246,24 @@ struct ProjectsTests {
             #expect(cleared.project.chatDefaults == nil)
             let stored = try ProjectFileStore.readProject(ProjectFolder(root: URL(fileURLWithPath: h.path("Heph"))))
             #expect(stored == cleared.project)
+        }
+    }
+
+    @Test("projects.update keeps the commands key that an earlier version wrote in project.yml")
+    func updateKeepsCommandsKey() async throws {
+        try await withDomainEngine(prepare: { directory, projects in
+            let root = projects.appendingPathComponent("Heph")
+            try writeFile(projectYAML(id: "HEPH", name: "Hephaestus V2", extra: "commands:\n  build: make build\n"),
+                          to: root.appendingPathComponent(".hephaestus/project.yml"))
+            try writeFile(registryYAML([root.path]), to: directory.registryFile)
+        }) { h in
+            let detail = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "HEPH", name: "Forge"))
+            #expect(detail.project.unknownKeys == ["commands": .object(["build": "make build"])])
+            let folder = ProjectFolder(root: URL(fileURLWithPath: h.path("Heph")))
+            let text = try String(contentsOf: folder.projectFile, encoding: .utf8)
+            #expect(text.contains("\nname: Forge\n"))
+            #expect(text.hasSuffix("\ncommands:\n  build: make build\n"))
+            #expect(try ProjectFileStore.readProject(folder) == detail.project)
         }
     }
 

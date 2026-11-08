@@ -163,12 +163,6 @@ public enum ModelRules {
 
     // MARK: Project parts
 
-    /// `ProjectCommands`: each value trimmed, an empty string stored as `null`.
-    public static func normalizedCommand(_ value: String?) -> String? {
-        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }
-        return trimmed
-    }
-
     /// Whether `value` is an absolute `http` or `https` URL with a host.
     public static func isHTTPURL(_ value: String) -> Bool {
         guard let components = URLComponents(string: value),

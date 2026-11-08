@@ -162,7 +162,7 @@ struct ChatTextEditor: NSViewRepresentable {
                 }
                 return true
             case #selector(NSResponder.cancelOperation(_:)):
-                // Escape stops a running chat; ⌘. is ignored (docs/ui.md › Shortcut conflict review).
+                // Escape stops a running chat; ⌘. is ignored (docs/chats.md › Composer).
                 if parent.isComposer, let event = NSApp.currentEvent, event.type == .keyDown, event.keyCode == 53,
                    event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty {
                     parent.onEscape()

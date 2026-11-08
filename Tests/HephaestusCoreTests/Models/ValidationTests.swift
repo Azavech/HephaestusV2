@@ -175,7 +175,6 @@ struct WriteRuleTests {
         project.skills = []
         project.chatDefaults = ChatSettings(model: "two words")
         #expect(throws: ValidationError.self) { try project.validate() }
-        #expect(ProjectCommands(build: "  make build ", run: "   ", test: nil).normalized() == ProjectCommands(build: "make build"))
         #expect(ModelRules.normalizedWebTabTitle("a\nb") == "a b")
         #expect(ModelRules.normalizedWebTabTitle(String(repeating: "x", count: 600)).count == 500)
     }

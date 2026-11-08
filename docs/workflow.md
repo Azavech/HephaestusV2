@@ -454,7 +454,7 @@ The steps, in order:
 1. `set_ticket_status` with `in_progress`.
 2. Read the ticket (`get_ticket`) and the docs it lists. Ask questions for anything unknown, then wait; an [implement chat](#implement-chats) asks none and makes the choices itself.
 3. Change the docs first, then change the code to match the docs.
-4. Build and test, with the project's commands or the repository's own commands.
+4. Build and test, with the repository's own commands.
 5. Commit with a conventional commit message `<type>: <summary> (<TICKET-ID>)`, then push.
 6. `add_comment` on the ticket with a summary of what changed, commit hash included.
 7. `set_ticket_status` with `done` when every Claude test of the ticket has passed and the user has said in the chat that every User test has passed; otherwise with `review`.
@@ -482,11 +482,10 @@ In a project whose type is Go service, the implement chat of a single ticket (Im
 
 ### Build and test
 
-- When project.yml defines `commands.build` or `commands.test`, Claude runs them with `run_project` (`kind` `build`, then `test`) and waits for each to finish. The output also appears in the Console of every window ([Projects](projects.md)).
-- Otherwise Claude runs the repository's own commands with its shell tool: the Makefile targets `build` and `test` when they exist, otherwise `swift build` and `swift test` for a Swift package, or `go build ./...` and `go test ./...` for a Go module. Default chosen at design time.
+- Claude runs the repository's own commands with its shell tool: the Makefile targets `build` and `test` when they exist, otherwise `swift build` and `swift test` for a Swift package, or `go build ./...` and `go test ./...` for a Go module. Default chosen at design time.
 - When a command fails, Claude fixes the cause and runs it again. It never commits while the build or the tests fail. When a failure also happens without Claude's change, Claude asks whether to commit anyway. Default chosen at design time. Until the user writes in it, an [implement chat](#implement-chats) decides itself whether to commit anyway and states the decision under Notes of the completion comment.
 - When no build or test command exists, Claude skips this step and says so in the completion comment. Default chosen at design time.
-- Claude does not start the project's `run` command unless the user asks for it. Default chosen at design time.
+- Claude does not run the project itself (the Makefile target `run`, `swift run` or `go run`) unless the user asks for it. Default chosen at design time.
 - When Claude checks the UI of HephaestusV2 itself, it uses a second, isolated instance and the debug MCP tools ([Development](development.md)), never the app the user is running. Default chosen at design time.
 
 ### Go service projects
@@ -636,7 +635,7 @@ The format of this comment is a default. Default chosen at design time.
 
 ## Project and feedback chats
 
-- In a project chat Claude plans and works freely. It creates, updates and deletes tickets and bundles, comments, creates and updates projects, runs builds, tests and runs, and edits skills, always following [Never invent](#never-invent), [Writing tickets](#writing-tickets) and [Ticket status](#ticket-status).
+- In a project chat Claude plans and works freely. It creates, updates and deletes tickets and bundles, comments, creates and updates projects, runs builds and tests, and edits skills, always following [Never invent](#never-invent), [Writing tickets](#writing-tickets) and [Ticket status](#ticket-status).
 - To implement tickets from a project chat, Claude calls `implement_ticket` or `implement_bundle`, which start dedicated chats. It implements in the project chat itself only when the user asks for that, and then follows the implementation workflow there. Default chosen at design time.
 - In a feedback chat ([Feedback](feedback.md)), Claude works out what the feedback means from the comment, the screenshot and the context, asking questions when it is unclear. It settles every decision of the ticket's implementation as [Writing tickets](#writing-tickets) describes, then calls `create_ticket` in the feedback project with the template and the screenshot path as an attachment, and summarizes the ticket.
 - Claude implements the new ticket in the feedback chat only when the user asks, and then follows the implementation workflow. Default chosen at design time.

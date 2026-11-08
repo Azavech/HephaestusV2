@@ -58,16 +58,6 @@ extension DeviceWorkspace {
             if memoryFolders[folder.projectID] != nil {
                 memoryFolders[folder.projectID] = folder
             }
-        case .runStarted(let info):
-            let id = info.runID.uuidString
-            if runs[id] == nil {
-                runs[id] = RunState(info: info, starter: event.origin)
-                forgetOldRuns(of: info.projectID)
-            }
-        case .runOutput(let payload):
-            runs[payload.runID.uuidString]?.append(payload.text)
-        case .runFinished(let payload):
-            runs[payload.runID.uuidString]?.finish(exitCode: payload.exitCode)
         case .settingsUpdated(let newSettings):
             settings = newSettings
         case .claudeUpdated(let payload):
@@ -85,8 +75,8 @@ extension DeviceWorkspace {
     }
 
     /// `projects.changed` and the snapshot: replaces `projects`; a project that disappeared is
-    /// dropped with its loaded data, its chats and its runs; a new project gets its `chats.list`
-    /// call. Returns the ids of the dropped chats.
+    /// dropped with its loaded data and its chats; a new project gets its `chats.list` call.
+    /// Returns the ids of the dropped chats.
     @discardableResult
     func replaceProjects(_ list: [ProjectSummary]) -> [String] {
         let oldIDs = Set(projects.map(\.id))
@@ -108,8 +98,8 @@ extension DeviceWorkspace {
         return removed
     }
 
-    /// Drops projects with their loaded data, chats, transcripts, drafts and runs; returns the ids
-    /// of the dropped chats.
+    /// Drops projects with their loaded data, chats, transcripts and drafts; returns the ids of the
+    /// dropped chats.
     @discardableResult
     func dropProjects(_ projectIDs: Set<String>) -> [String] {
         guard !projectIDs.isEmpty else { return [] }
@@ -131,18 +121,7 @@ extension DeviceWorkspace {
             drafts[chatID] = nil
             dropAgents(of: chatID)
         }
-        runs = runs.filter { !projectIDs.contains($0.value.info.projectID) }
         return chatIDs
-    }
-
-    /// The workspace keeps the 20 newest runs of each project; older finished runs are forgotten
-    /// (docs/projects.md › Console).
-    func forgetOldRuns(of projectID: String) {
-        let projectRuns = runs(of: projectID)
-        guard projectRuns.count > 20 else { return }
-        for run in projectRuns.dropFirst(20) where !run.isRunning {
-            runs[run.info.runID.uuidString] = nil
-        }
     }
 
     /// The nearest ancestor of a removed project that is still a project of the device.

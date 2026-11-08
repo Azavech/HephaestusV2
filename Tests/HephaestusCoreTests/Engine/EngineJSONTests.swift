@@ -61,7 +61,6 @@ struct EngineJSONTests {
         "### EngineError": roundTrip(EngineError.self),
         "### Patch": roundTrip(SettingsUpdate.Params.self),
         "### Snapshot": roundTrip(Snapshot.self),
-        "### RunResult": roundTrip(RunResult.self),
         "### FileEntry": roundTrip(FileEntry.self),
         "### FileContent": roundTrip(FileContent.self),
         "### FontFamily": roundTrip([FontFamily].self),

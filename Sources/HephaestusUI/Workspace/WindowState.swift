@@ -26,9 +26,6 @@ final class WindowState: Identifiable {
     var inspectorVisible = true
     /// Inspector width in points.
     var inspectorWidth: Double = 380
-    var consoleVisible = false
-    /// Console drawer height in points.
-    var consoleHeight: Double = 220
     /// View state of every project this window showed.
     var projectStates: [ProjectKey: ProjectViewState] = [:]
     /// Last active project per device in this window.
@@ -119,8 +116,8 @@ final class WindowState: Identifiable {
 
 extension WindowState: @MainActor Codable {
     enum CodingKeys: String, CodingKey {
-        case id, deviceID, projectID, section, sidebarVisible, inspectorVisible, inspectorWidth, consoleVisible,
-             consoleHeight, projectStates, lastProjectByDevice, searchVisible, search, sheet, pendingTarget
+        case id, deviceID, projectID, section, sidebarVisible, inspectorVisible, inspectorWidth, projectStates,
+             lastProjectByDevice, searchVisible, search, sheet, pendingTarget
     }
 
     /// One entry of `projectStates`.
@@ -138,8 +135,6 @@ extension WindowState: @MainActor Codable {
         sidebarVisible = try c.decodeIfPresent(Bool.self, forKey: .sidebarVisible) ?? true
         inspectorVisible = try c.decodeIfPresent(Bool.self, forKey: .inspectorVisible) ?? true
         inspectorWidth = try c.decodeIfPresent(Double.self, forKey: .inspectorWidth) ?? 380
-        consoleVisible = try c.decodeIfPresent(Bool.self, forKey: .consoleVisible) ?? false
-        consoleHeight = try c.decodeIfPresent(Double.self, forKey: .consoleHeight) ?? 220
         lastProjectByDevice = try c.decodeIfPresent([String: String].self, forKey: .lastProjectByDevice) ?? [:]
         if c.contains(.projectStates) {
             var entries = try c.nestedUnkeyedContainer(forKey: .projectStates)
@@ -168,8 +163,6 @@ extension WindowState: @MainActor Codable {
         try c.encode(sidebarVisible, forKey: .sidebarVisible)
         try c.encode(inspectorVisible, forKey: .inspectorVisible)
         try c.encode(inspectorWidth, forKey: .inspectorWidth)
-        try c.encode(consoleVisible, forKey: .consoleVisible)
-        try c.encode(consoleHeight, forKey: .consoleHeight)
         var entries = c.nestedUnkeyedContainer(forKey: .projectStates)
         let keys = projectStates.keys.sorted { ($0.deviceID, $0.projectID) < ($1.deviceID, $1.projectID) }
         for key in keys {
@@ -226,8 +219,6 @@ struct ProjectViewState {
     var selectedSkillName: String?
     /// Selected row of the Memories section: a memory's file name, or `MEMORY.md`.
     var selectedMemoryFile: String?
-    /// Run shown in the console drawer.
-    var consoleRunID: String?
 
     // Fields added by the section documents (docs/ui.md › WindowState, first rule).
 
@@ -292,7 +283,7 @@ struct ProjectViewState {
 extension ProjectViewState: @MainActor Codable {
     enum CodingKeys: String, CodingKey {
         case selectedTicketIDs, selectedBundleID, selectedChatIDs, inspectorChatID, inspectorShowsDraft, unlinkedItems, editorTabs,
-             selectedEditorPath, selectedDocPath, docMode, selectedWebTabID, selectedSkillName, selectedMemoryFile, consoleRunID,
+             selectedEditorPath, selectedDocPath, docMode, selectedWebTabID, selectedSkillName, selectedMemoryFile,
              expandedCodeFolders, selectedTreePath, expandedDocFolders, ticketList, ticketTab, bundleList, bundleTab,
              chatsTabSelection, chatsTabDrafts, hidesClosedChats, commentDrafts, selectedChatAgent, chatsTabAgentSelection,
              expandedAgentChats
@@ -320,7 +311,6 @@ extension ProjectViewState: @MainActor Codable {
         selectedWebTabID = try c.decodeIfPresent(String.self, forKey: .selectedWebTabID)
         selectedSkillName = try c.decodeIfPresent(String.self, forKey: .selectedSkillName)
         selectedMemoryFile = try c.decodeIfPresent(String.self, forKey: .selectedMemoryFile)
-        consoleRunID = try c.decodeIfPresent(String.self, forKey: .consoleRunID)
         expandedCodeFolders = Set(try c.decodeIfPresent([String].self, forKey: .expandedCodeFolders) ?? [])
         selectedTreePath = try c.decodeIfPresent(String.self, forKey: .selectedTreePath)
         expandedDocFolders = Set(try c.decodeIfPresent([String].self, forKey: .expandedDocFolders) ?? [])
@@ -353,7 +343,6 @@ extension ProjectViewState: @MainActor Codable {
         try c.encodeIfPresent(selectedWebTabID, forKey: .selectedWebTabID)
         try c.encodeIfPresent(selectedSkillName, forKey: .selectedSkillName)
         try c.encodeIfPresent(selectedMemoryFile, forKey: .selectedMemoryFile)
-        try c.encodeIfPresent(consoleRunID, forKey: .consoleRunID)
         try c.encode(hidesClosedChats, forKey: .hidesClosedChats)
         if encoder.userInfo[WindowState.persistedOnlyKey] as? Bool != true {
             try c.encode(expandedCodeFolders.sorted(), forKey: .expandedCodeFolders)

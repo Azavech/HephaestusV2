@@ -27,7 +27,7 @@ public enum ChildProcessError: Error, Equatable, Sendable, CustomStringConvertib
 /// the environment (already without `HEPHAESTUS_*`) and the working directory.
 public struct ChildProcessRequest: Sendable {
     public enum Input: Sendable { case null, pipe }
-    public enum Output: Sendable { case null, pipe, appendToFile(String) }
+    public enum Output: Sendable { case null, pipe }
 
     public var executable: String
     public var arguments: [String]
@@ -134,8 +134,6 @@ public final class ChildProcess: @unchecked Sendable {
                 switch output {
                 case .null:
                     posix_spawn_file_actions_addopen(&actions, target, "/dev/null", O_WRONLY, 0)
-                case .appendToFile(let path):
-                    posix_spawn_file_actions_addopen(&actions, target, path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
                 case .pipe:
                     let fds = try makePipe()
                     parentEnds.append(fds.read)

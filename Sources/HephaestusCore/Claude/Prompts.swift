@@ -58,15 +58,6 @@ enum Prompts {
 
     // MARK: Rendered blocks (docs/chats.md › Rendered blocks)
 
-    /// `{{projectCommands}}`: `- <kind>: <command>` per configured command in the order build,
-    /// run, test; `- none: use the repository's own commands` when none is configured.
-    static func projectCommands(_ commands: ProjectCommands) -> String {
-        let lines = [("build", commands.build), ("run", commands.run), ("test", commands.test)].compactMap { kind, command in
-            ModelRules.normalizedCommand(command).map { "- \(kind): \($0)" }
-        }
-        return lines.isEmpty ? "- none: use the repository's own commands" : lines.joined(separator: "\n")
-    }
-
     /// The text of `{{ticket}}` when the chat's ticket no longer exists.
     static let deletedTicket = "This ticket was deleted."
     /// The text of `{{bundle}}` when the chat's bundle no longer exists.

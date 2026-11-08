@@ -79,10 +79,10 @@ struct DispatcherTests {
                 == EngineError(.invalid, "Invalid params for projects.get: projectID: required."))
             #expect(await dispatch("projects.get", "[]")
                 == EngineError(.invalid, "Invalid params for projects.get: params: must be an object."))
-            #expect(await dispatch("projects.run", #"{"projectID": "HEPH", "kind": "deploy", "wait": true}"#)
-                == EngineError(.invalid, "Invalid params for projects.run: kind: must be one of build, run, test."))
-            #expect(await dispatch("projects.stopRun", #"{"runID": "not-a-uuid"}"#)
-                == EngineError(.invalid, "Invalid params for projects.stopRun: runID: must be a UUID."))
+            #expect(await dispatch("projects.update", #"{"projectID": "HEPH", "type": "rustCrate"}"#)
+                == EngineError(.invalid, "Invalid params for projects.update: type: must be one of none, goService, swiftApplication."))
+            #expect(await dispatch("chats.get", #"{"chatID": "not-a-uuid"}"#)
+                == EngineError(.invalid, "Invalid params for chats.get: chatID: must be a UUID."))
             #expect(await dispatch("chats.postQuestions",
                                    #"{"chatID": "3F2504E0-4F89-11D3-9A0C-0305E82C3301", "questions": [{"label": "A", "question": "Q?", "recommended": "x"}]}"#,
                                    .system)
@@ -225,6 +225,15 @@ struct DispatcherTests {
             #expect(await firstElement(of: raw) == nil)
             #expect(await firstElement(of: events) == nil)
             #expect(await firstElement(of: await engine.subscribe()) == nil)
+        }
+    }
+
+    @Test("Stopping the engine marks the project data stopped, so that later background answers are not written")
+    func shutdownStopsDomain() async throws {
+        try await withTestEngine { engine, _, _ in
+            #expect(await engine.testDomain.isStopped == false)
+            await engine.shutdown()
+            #expect(await engine.testDomain.isStopped)
         }
     }
 }

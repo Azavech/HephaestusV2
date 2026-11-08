@@ -14,7 +14,7 @@ HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server th
 | JSON-RPC methods  | `initialize`, `ping`, `tools/list`, `tools/call`; every notification is accepted and ignored                                                             |
 | Server name       | `hephaestus`, in `serverInfo` and as the server's key in Claude's MCP configuration, so Claude names the tools `mcp__hephaestus__<tool>`                 |
 | Authentication    | `Authorization: Bearer <token>` with a chat token, an answer token or the external token on `/mcp`, with a hook token on the hook paths                  |
-| Tools             | The 50 tools of the [tool catalogue](#tool-catalogue), plus 4 [debug tools](#debug-tools) when `HEPHAESTUS_DEBUG_TOOLS=1`                                |
+| Tools             | The 49 tools of the [tool catalogue](#tool-catalogue), plus 4 [debug tools](#debug-tools) when `HEPHAESTUS_DEBUG_TOOLS=1`                                |
 
 Every tool call runs an engine method ([Engine API](engine-api.md)) with the actor `claude`. The engine validates it exactly as it validates a call from the UI or from a remote device and emits the same events, so every client, local or remote, shows the change live.
 
@@ -107,7 +107,7 @@ The server never sends `Mcp-Session-Id` or any `Access-Control-*` header.
 
 - HTTP/1.1 connections are persistent: one connection carries any number of requests, handled one after the other, and separate connections are handled concurrently. A request in HTTP/1.0 is answered and its connection closed. Default chosen at design time.
 - The server closes a connection that sends nothing for 60 seconds while the server waits for a request or for the rest of one. Default chosen at design time.
-- Once its body is read, a request has no time limit: a `tools/call` lasts as long as its engine method, and `run_project` waits up to 1700 seconds. The Claude CLI gives up on a call after `MCP_TOOL_TIMEOUT`, 1 800 000 ms in every chat process ([Architecture](architecture.md#child-processes)).
+- Once its body is read, a request has no time limit: a `tools/call` lasts as long as its engine method. The Claude CLI gives up on a call after `MCP_TOOL_TIMEOUT`, 1 800 000 ms in every chat process ([Architecture](architecture.md#child-processes)).
 - When the client closes the connection while a `tools/call` runs, the engine method still completes, with its changes and events, and its result is dropped. Default chosen at design time.
 
 ### Statelessness
@@ -364,7 +364,7 @@ Validation stops at the first violation. Within each object: first the propertie
 
 ### Validation messages
 
-A path names the argument from the top level, indexes counting from 0: `projectID`, `commands.build`, `attachments[2]`, `questions[1].options[0].label`.
+A path names the argument from the top level, indexes counting from 0: `projectID`, `target.kind`, `attachments[2]`, `questions[1].options[0].label`.
 
 | Violation                    | Tool result text                                                                                           |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -429,59 +429,57 @@ The tools are not limited to the calling chat's project: a chat may read and cha
 
 The table lists every tool in the order of `tools/list`. "Required inputs" holds the names in the tool's `inputSchema.required` and "Optional inputs" its other top-level properties; `—` means none. The result types are defined in [Engine API](engine-api.md#api-types) and [Data model](data-model.md); `{}` is an empty result, `text` the plain text of [ask_questions](#ask_questions), [ask_symbol](#ask_symbol), [ask_color](#ask_color), [ask_sound](#ask_sound), [ask_shortcut](#ask_shortcut), [ask_font](#ask_font), [ask_animation](#ask_animation) and [show_image](#show_image), and `{refused}` the result of [close_chat](#close_chat): `{}` without `chatIDs`, the object that lists the refused chats with it. The [conformance test](#conformance) reads this table.
 
-| Tool                | Required inputs                                    | Optional inputs                                         | Engine method            | Result           |
-| ------------------- | -------------------------------------------------- | ------------------------------------------------------- | ------------------------ | ---------------- |
-| `list_projects`     | —                                                  | —                                                       | projects.list            | [ProjectSummary] |
-| `get_project`       | `projectID`                                        | —                                                       | projects.get             | ProjectDetail    |
-| `create_project`    | `path`, `name`, `identifier`                       | `parentID`                                              | projects.create          | ProjectDetail    |
-| `update_project`    | `projectID`                                        | `name`, `type`, `color`, `icon`, `docsPath`, `commands` | projects.update          | ProjectDetail    |
-| `remove_project`    | `projectID`                                        | —                                                       | projects.remove          | `{}`             |
-| `run_project`       | `projectID`, `kind`                                | `wait`, `timeoutSeconds`                                | projects.run             | RunResult        |
-| `stop_run`          | `runID`                                            | —                                                       | projects.stopRun         | `{}`             |
-| `list_tickets`      | `projectID`                                        | `status`                                                | tickets.list             | [Ticket]         |
-| `get_ticket`        | `ticketID`                                         | —                                                       | tickets.get              | Ticket           |
-| `create_ticket`     | `projectID`, `description`                         | `attachments`, `links`                                  | tickets.create           | Ticket           |
-| `update_ticket`     | `ticketID`                                         | `title`, `description`, `links`                         | tickets.update           | Ticket           |
-| `delete_ticket`     | `ticketID`                                         | —                                                       | tickets.delete           | `{}`             |
-| `set_ticket_status` | `ticketID`, `status`                               | —                                                       | tickets.setStatus        | Ticket           |
-| `add_comment`       | `ticketID`, `text`                                 | `attachments`                                           | tickets.addComment       | Ticket           |
-| `update_comment`    | `ticketID`, `commentID`, `text`                    | —                                                       | tickets.updateComment    | Ticket           |
-| `delete_comment`    | `ticketID`, `commentID`                            | —                                                       | tickets.deleteComment    | Ticket           |
-| `remove_attachment` | `ticketID`, `attachmentID`                         | —                                                       | tickets.removeAttachment | Ticket           |
-| `implement_ticket`  | `ticketID`                                         | —                                                       | chats.implementTicket    | ChatMeta         |
-| `list_bundles`      | `projectID`                                        | —                                                       | bundles.list             | [TicketBundle]   |
-| `get_bundle`        | `bundleID`                                         | —                                                       | bundles.get              | TicketBundle     |
-| `create_bundle`     | `projectID`, `ticketIDs`                           | `title`                                                 | bundles.create           | TicketBundle     |
-| `update_bundle`     | `bundleID`                                         | `title`, `ticketIDs`                                    | bundles.update           | TicketBundle     |
-| `set_bundle_status` | `bundleID`, `status`                               | —                                                       | bundles.setStatus        | TicketBundle     |
-| `delete_bundle`     | `bundleID`                                         | —                                                       | bundles.delete           | `{}`             |
-| `implement_bundle`  | `bundleID`                                         | —                                                       | chats.implementBundle    | ChatMeta         |
-| `ask_questions`     | `questions`                                        | —                                                       | chats.postQuestions      | text             |
-| `ask_symbol`        | `question`, `suggestions`, `recommended`           | —                                                       | chats.postSymbol         | text             |
-| `ask_color`         | `question`, `suggestions`, `recommended`           | `lightAndDark`                                          | chats.postColor          | text             |
-| `ask_sound`         | `question`, `suggestions`, `recommended`           | —                                                       | chats.postSound          | text             |
-| `ask_shortcut`      | `question`, `suggestions`, `recommended`, `inUse`  | —                                                       | chats.postShortcut       | text             |
-| `ask_font`          | `question`, `sample`, `suggestions`, `recommended` | —                                                       | chats.postFont           | text             |
-| `ask_animation`     | `question`, `suggestions`, `recommended`           | —                                                       | chats.postAnimation      | text             |
-| `show_image`        | `paths`                                            | `caption`                                               | chats.postImages         | text             |
-| `list_chats`        | `projectID`                                        | —                                                       | chats.list               | [ChatMeta]       |
-| `get_chat`          | `chatID`                                           | —                                                       | chats.get                | ChatTranscript   |
-| `rename_chat`       | `chatID`, `title`                                  | —                                                       | chats.rename             | ChatMeta         |
-| `close_chat`        | —                                                  | `chatIDs`                                               | chats.close              | `{refused}`      |
-| `search`            | `query`                                            | `scopes`, `projectID`                                   | search.query             | [SearchResult]   |
-| `list_docs`         | `projectID`                                        | —                                                       | docs.list                | [DocEntry]       |
-| `list_web_tabs`     | `projectID`                                        | —                                                       | webTabs.list             | [WebTab]         |
-| `open_web_tab`      | `projectID`, `url`                                 | `title`, `locked`                                       | webTabs.open             | WebTab           |
-| `update_web_tab`    | `projectID`, `tabID`                               | `url`, `title`, `locked`                                | webTabs.update           | WebTab           |
-| `move_web_tab`      | `projectID`, `tabID`, `toIndex`                    | —                                                       | webTabs.move             | [WebTab]         |
-| `close_web_tab`     | `projectID`, `tabID`                               | —                                                       | webTabs.close            | `{}`             |
-| `list_skills`       | —                                                  | —                                                       | skills.list              | [SkillSummary]   |
-| `get_skill`         | `name`                                             | —                                                       | skills.get               | Skill            |
-| `create_skill`      | `name`, `description`, `body`                      | —                                                       | skills.create            | Skill            |
-| `update_skill`      | `name`                                             | `newName`, `description`, `body`                        | skills.update            | Skill            |
-| `delete_skill`      | `name`                                             | —                                                       | skills.delete            | `{}`             |
-| `set_skill_enabled` | `projectID`, `name`, `enabled`                     | —                                                       | skills.setEnabled        | ProjectDetail    |
-| `open_in_app`       | `target`                                           | —                                                       | ui.open                  | `{}`             |
+| Tool                | Required inputs                                    | Optional inputs                             | Engine method            | Result           |
+| ------------------- | -------------------------------------------------- | ------------------------------------------- | ------------------------ | ---------------- |
+| `list_projects`     | —                                                  | —                                           | projects.list            | [ProjectSummary] |
+| `get_project`       | `projectID`                                        | —                                           | projects.get             | ProjectDetail    |
+| `create_project`    | `path`, `name`, `identifier`                       | `parentID`                                  | projects.create          | ProjectDetail    |
+| `update_project`    | `projectID`                                        | `name`, `type`, `color`, `icon`, `docsPath` | projects.update          | ProjectDetail    |
+| `remove_project`    | `projectID`                                        | —                                           | projects.remove          | `{}`             |
+| `list_tickets`      | `projectID`                                        | `status`                                    | tickets.list             | [Ticket]         |
+| `get_ticket`        | `ticketID`                                         | —                                           | tickets.get              | Ticket           |
+| `create_ticket`     | `projectID`, `description`                         | `attachments`, `links`                      | tickets.create           | Ticket           |
+| `update_ticket`     | `ticketID`                                         | `title`, `description`, `links`             | tickets.update           | Ticket           |
+| `delete_ticket`     | `ticketID`                                         | —                                           | tickets.delete           | `{}`             |
+| `set_ticket_status` | `ticketID`, `status`                               | —                                           | tickets.setStatus        | Ticket           |
+| `add_comment`       | `ticketID`, `text`                                 | `attachments`                               | tickets.addComment       | Ticket           |
+| `update_comment`    | `ticketID`, `commentID`, `text`                    | —                                           | tickets.updateComment    | Ticket           |
+| `delete_comment`    | `ticketID`, `commentID`                            | —                                           | tickets.deleteComment    | Ticket           |
+| `remove_attachment` | `ticketID`, `attachmentID`                         | —                                           | tickets.removeAttachment | Ticket           |
+| `implement_ticket`  | `ticketID`                                         | —                                           | chats.implementTicket    | ChatMeta         |
+| `list_bundles`      | `projectID`                                        | —                                           | bundles.list             | [TicketBundle]   |
+| `get_bundle`        | `bundleID`                                         | —                                           | bundles.get              | TicketBundle     |
+| `create_bundle`     | `projectID`, `ticketIDs`                           | `title`                                     | bundles.create           | TicketBundle     |
+| `update_bundle`     | `bundleID`                                         | `title`, `ticketIDs`                        | bundles.update           | TicketBundle     |
+| `set_bundle_status` | `bundleID`, `status`                               | —                                           | bundles.setStatus        | TicketBundle     |
+| `delete_bundle`     | `bundleID`                                         | —                                           | bundles.delete           | `{}`             |
+| `implement_bundle`  | `bundleID`                                         | —                                           | chats.implementBundle    | ChatMeta         |
+| `ask_questions`     | `questions`                                        | —                                           | chats.postQuestions      | text             |
+| `ask_symbol`        | `question`, `suggestions`, `recommended`           | —                                           | chats.postSymbol         | text             |
+| `ask_color`         | `question`, `suggestions`, `recommended`           | `lightAndDark`                              | chats.postColor          | text             |
+| `ask_sound`         | `question`, `suggestions`, `recommended`           | —                                           | chats.postSound          | text             |
+| `ask_shortcut`      | `question`, `suggestions`, `recommended`, `inUse`  | —                                           | chats.postShortcut       | text             |
+| `ask_font`          | `question`, `sample`, `suggestions`, `recommended` | —                                           | chats.postFont           | text             |
+| `ask_animation`     | `question`, `suggestions`, `recommended`           | —                                           | chats.postAnimation      | text             |
+| `show_image`        | `paths`                                            | `caption`                                   | chats.postImages         | text             |
+| `list_chats`        | `projectID`                                        | —                                           | chats.list               | [ChatMeta]       |
+| `get_chat`          | `chatID`                                           | —                                           | chats.get                | ChatTranscript   |
+| `rename_chat`       | `chatID`, `title`                                  | —                                           | chats.rename             | ChatMeta         |
+| `close_chat`        | —                                                  | `chatIDs`                                   | chats.close              | `{refused}`      |
+| `search`            | `query`                                            | `scopes`, `projectID`                       | search.query             | [SearchResult]   |
+| `list_docs`         | `projectID`                                        | —                                           | docs.list                | [DocEntry]       |
+| `list_web_tabs`     | `projectID`                                        | —                                           | webTabs.list             | [WebTab]         |
+| `open_web_tab`      | `projectID`, `url`                                 | `title`, `locked`                           | webTabs.open             | WebTab           |
+| `update_web_tab`    | `projectID`, `tabID`                               | `url`, `title`, `locked`                    | webTabs.update           | WebTab           |
+| `move_web_tab`      | `projectID`, `tabID`, `toIndex`                    | —                                           | webTabs.move             | [WebTab]         |
+| `close_web_tab`     | `projectID`, `tabID`                               | —                                           | webTabs.close            | `{}`             |
+| `list_skills`       | —                                                  | —                                           | skills.list              | [SkillSummary]   |
+| `get_skill`         | `name`                                             | —                                           | skills.get               | Skill            |
+| `create_skill`      | `name`, `description`, `body`                      | —                                           | skills.create            | Skill            |
+| `update_skill`      | `name`                                             | `newName`, `description`, `body`            | skills.update            | Skill            |
+| `delete_skill`      | `name`                                             | —                                           | skills.delete            | `{}`             |
+| `set_skill_enabled` | `projectID`, `name`, `enabled`                     | —                                           | skills.setEnabled        | ProjectDetail    |
+| `open_in_app`       | `target`                                           | —                                           | ui.open                  | `{}`             |
 
 ## Tools
 
@@ -518,7 +516,7 @@ Input schema:
 Description:
 
 ```text
-Get a project: its .hephaestus/project.yml settings (name, type, color, icon, docs folder, GitHub page, use parent settings, build/run/test commands, sub projects, web tabs, enabled skills, chat defaults, environments), root folder, parent, sub projects, git remote URL and GitHub page (githubPage: its parent's for a sub project that uses its parent's settings, else the page set in Project Settings, else the page of its origin remote on GitHub).
+Get a project: its .hephaestus/project.yml settings (name, type, color, icon, docs folder, GitHub page, use parent settings, sub projects, web tabs, enabled skills, chat defaults, environments), root folder, parent, sub projects, git remote URL and GitHub page (githubPage: its parent's for a sub project that uses its parent's settings, else the page set in Project Settings, else the page of its origin remote on GitHub).
 ```
 
 Input schema:
@@ -587,15 +585,15 @@ Input schema:
 
 ### update_project
 
-- **Engine call:** projects.update with `projectID` and the given `name`, `type`, `color`, `icon`, `docsPath` and `commands`. `color` is sent as given, and an empty `color` as `null`, which removes the project's color. `icon` is sent as given, and an `icon` that is `null` as `null`, which removes the project's icon as an empty `icon` does ([Null values](#null-values), [projects.update](engine-api.md#projectsupdate)). Default chosen at design time. `commands` replaces all run commands. `chatDefaults` is never sent: Claude cannot change chat defaults. `environments`, `githubPage` and `useParentSettings` are never sent either: only the user changes them, in [Project settings](projects.md#project-settings), the environments in its [Environments](projects.md#environments) part.
+- **Engine call:** projects.update with `projectID` and the given `name`, `type`, `color`, `icon` and `docsPath`. `color` is sent as given, and an empty `color` as `null`, which removes the project's color. `icon` is sent as given, and an `icon` that is `null` as `null`, which removes the project's icon as an empty `icon` does ([Null values](#null-values), [projects.update](engine-api.md#projectsupdate)). Default chosen at design time. `chatDefaults` is never sent: Claude cannot change chat defaults. `environments`, `githubPage` and `useParentSettings` are never sent either: only the user changes them, in [Project settings](projects.md#project-settings), the environments in its [Environments](projects.md#environments) part.
 - A call that changes nothing writes nothing and returns the project.
 - **Result:** the updated `ProjectDetail`.
-- **Errors:** Those of projects.update ([Engine API](engine-api.md#projectsupdate)): unknown project (`notFound`), invalid name, type, color, docs folder or command (`invalid`), an icon that is not an SF Symbol of the main device (`invalid`, `<name> is not an SF Symbol of this Mac.`).
+- **Errors:** Those of projects.update ([Engine API](engine-api.md#projectsupdate)): unknown project (`notFound`), invalid name, type, color or docs folder (`invalid`), an icon that is not an SF Symbol of the main device (`invalid`, `<name> is not an SF Symbol of this Mac.`).
 
 Description:
 
 ```text
-Change a project's name, type, color, icon, docs folder or commands. Omitted arguments are left unchanged. color is a hex color #RRGGBB, and an empty color removes it. icon is the name of an SF Symbol of this Mac, for example hammer, and an empty or null icon removes it. commands replaces all three commands: a command that is missing or empty is removed.
+Change a project's name, type, color, icon or docs folder. Omitted arguments are left unchanged. color is a hex color #RRGGBB, and an empty color removes it. icon is the name of an SF Symbol of this Mac, for example hammer, and an empty or null icon removes it.
 ```
 
 Input schema:
@@ -628,25 +626,6 @@ Input schema:
     "docsPath": {
       "type": "string",
       "description": "Docs folder relative to the project root, for example docs."
-    },
-    "commands": {
-      "type": "object",
-      "description": "Every command of the project; a command that is missing or empty is removed.",
-      "properties": {
-        "build": {
-          "type": "string",
-          "description": "Build command, run by the shell in the project root."
-        },
-        "run": {
-          "type": "string",
-          "description": "Run command, run by the shell in the project root."
-        },
-        "test": {
-          "type": "string",
-          "description": "Test command, run by the shell in the project root."
-        }
-      },
-      "additionalProperties": false
     }
   },
   "required": ["projectID"],
@@ -664,7 +643,7 @@ Input schema:
 Description:
 
 ```text
-Remove a project and its sub projects from HephaestusV2 on this Mac. They are unregistered and their files are left untouched; their runs stop and the Claude processes of their chats end. A chat cannot remove the project it belongs to, and the HephaestusV2 project and its ancestors cannot be removed.
+Remove a project and its sub projects from HephaestusV2 on this Mac. They are unregistered and their files are left untouched; the Claude processes of their chats end. A chat cannot remove the project it belongs to, and the HephaestusV2 project and its ancestors cannot be removed.
 ```
 
 Input schema:
@@ -679,83 +658,6 @@ Input schema:
     }
   },
   "required": ["projectID"],
-  "additionalProperties": false
-}
-```
-
-### run_project
-
-- **Engine call:** projects.run with `projectID`, `kind`, `wait` (the argument, or `kind != run` when it is omitted) and `timeoutSeconds` when given; projects.run applies its default of 600 seconds otherwise.
-- The maximum of 1700 seconds, below the engine's 1800, makes the answer arrive before the Claude CLI's `MCP_TOOL_TIMEOUT` of 1800 seconds ([Chats](chats.md)). Default chosen at design time.
-- Called from an orchestrated ticket chat that works in its worktree, the command runs in that worktree, and `RunInfo.worktree` names it; from every other caller it runs in the project root ([Orchestrated ticket chats](chats.md#working-directory), [Engine API](engine-api.md#projectsrun)).
-- The run is the same as one started from the toolbar: every client receives `run.started`, `run.output` and `run.finished` and shows the output in its console ([Projects](projects.md)).
-- **Result:** the `RunResult` `{run, exitCode?, outputTail}`; `exitCode` is absent when the command had not exited when the call returned ([Engine API](engine-api.md#projectsrun)).
-- **Errors:**
-  - `invalid`: `timeoutSeconds` outside 1 to 1700 ([argument validation](#argument-validation)).
-  - Those of projects.run ([Engine API](engine-api.md#projectsrun)): unknown project (`notFound`), no command for `kind` (`invalid`), a run of the same kind already running in the same working directory (`conflict`), process start failure (`internal`).
-
-Description:
-
-```text
-Run a project's build, run or test command in its root folder, or in your git worktree when your chat works in one, as the app's Build, Run and Test actions do; the output also appears in the app's console. With wait (default: true for build and test, false for run) the call returns when the command exits or when timeoutSeconds (default 600) have passed, with the exit code and the end of the output; the timeout ends the wait, not the run.
-```
-
-Input schema:
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "projectID": {
-      "type": "string",
-      "description": "Project identifier: 2 to 8 letters, for example HEPH."
-    },
-    "kind": {
-      "type": "string",
-      "description": "Command to run.",
-      "enum": ["build", "run", "test"]
-    },
-    "wait": {
-      "type": "boolean",
-      "description": "Wait for the command to exit. Default: true for build and test, false for run."
-    },
-    "timeoutSeconds": {
-      "type": "integer",
-      "description": "Longest wait in seconds when wait is true. Default 600.",
-      "minimum": 1,
-      "maximum": 1700
-    }
-  },
-  "required": ["projectID", "kind"],
-  "additionalProperties": false
-}
-```
-
-### stop_run
-
-- **Engine call:** projects.stopRun with `runID`.
-- The run's process group gets SIGINT, then SIGTERM and SIGKILL ([Engine API](engine-api.md#projectsstoprun)); the call returns once SIGINT is sent, and every client receives `run.finished` when the process has ended.
-- **Result:** `{}`.
-- **Errors:** Those of projects.stopRun ([Engine API](engine-api.md#projectsstoprun)): no running run with this id (`notFound`).
-
-Description:
-
-```text
-Stop a project run; runID is run.runID of the run_project result.
-```
-
-Input schema:
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "runID": {
-      "type": "string",
-      "description": "Run id (a UUID): run.runID of the run_project result."
-    }
-  },
-  "required": ["runID"],
   "additionalProperties": false
 }
 ```
@@ -3161,7 +3063,7 @@ Unauthorized: missing or invalid bearer token.
 - R4: The app coordinates the work on all the user's projects.
 - R19: The user sets the identifier when the project is created.
 - R28: A ticket's Claude chat has access to everything about the ticket.
-- R36: Claude can create, update and run projects.
+- R36: Claude can create and update projects.
 - R37: Claude can create, update and delete tickets.
 - R38: Claude can comment on tickets.
 - R39: Claude can run tickets.

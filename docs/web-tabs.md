@@ -133,7 +133,7 @@ A new tab has no URL until the user enters one, and the engine only stores `http
 | Reload ⟳  | `reload()`; while the page loads the button shows `xmark` and calls `stopLoading()`. ⇧⌘R reloads.                                                                                                                                                                                                                                                                                     |
 | URL field | Shows the selected tab's URL in its stored form, in full, while it does not have the focus; Return loads the typed address and, for a stored tab, moves the focus to the page; Escape restores the tab's URL and moves the focus to the page. In the placeholder's field, Escape empties a field with text and removes the placeholder when the field is empty ([New tab](#new-tab)). |
 
-The shortcuts are assigned in [UI](ui.md#menus-and-keyboard-shortcuts); ⌘R stays Run, as in Xcode.
+The shortcuts are assigned in [UI](ui.md#menus-and-keyboard-shortcuts).
 
 Find (⌘F) shows the find bar of the Docs preview above the page ([Modes](documentation-viewer.md#modes)).
 

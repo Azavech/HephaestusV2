@@ -2,7 +2,7 @@
 import HephaestusCore
 import SwiftUI
 
-/// The values of the Dashboard's lists, from the workspace's data (docs/dashboard.md › Cards).
+/// The list of the Recent chats card, from the workspace's data (docs/dashboard.md › Cards).
 enum DashboardContent {
     /// The number of chats of the Recent chats card.
     static let recentChatLimit = 5
@@ -13,15 +13,9 @@ enum DashboardContent {
             .sorted { $0.updated != $1.updated ? $0.updated > $1.updated : $0.id.uuidString < $1.id.uuidString }
             .prefix(recentChatLimit))
     }
-
-    /// The project's runs that are running, newest first.
-    static func runningRuns(_ runs: [RunState]) -> [RunState] {
-        runs.filter(\.isRunning).sorted { $0.info.started > $1.info.started }
-    }
 }
 
-/// The Dashboard of the window's active project: Project, Tickets, Recent chats, Running
-/// commands and Cost cards.
+/// The Dashboard of the window's active project: Project, Tickets, Recent chats and Cost cards.
 struct DashboardView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -39,11 +33,7 @@ struct DashboardView: View {
                         }
                         GridRow {
                             recentChatsCard
-                            runningCommandsCard
-                        }
-                        GridRow {
                             costCard(project)
-                            Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
                         }
                     }
                     .frame(minWidth: 656)
@@ -51,7 +41,6 @@ struct DashboardView: View {
                         projectCard(project)
                         ticketsCard(project.ticketCounts)
                         recentChatsCard
-                        runningCommandsCard
                         costCard(project)
                     }
                 }
@@ -132,29 +121,6 @@ struct DashboardView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private var runningCommandsCard: some View {
-        let runs = DashboardContent.runningRuns(workspace.runs(of: projectID))
-        return DashboardCard(title: "Running Commands") {
-            if runs.isEmpty {
-                Text("No command is running.")
-                    .foregroundStyle(.secondary)
-            }
-            ForEach(runs) { run in
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.mini)
-                    Text("\(run.info.kind.title) · \(run.info.command)")
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer(minLength: 8)
-                    Text(RunState.timeFormatter.string(from: run.info.started))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
             }
         }
     }

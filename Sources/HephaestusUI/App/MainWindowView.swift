@@ -170,7 +170,7 @@ private struct ProjectColumns: View {
                            maxHeight: .infinity)
                     .background(SidebarCollapseByDragging(state: state))
             }
-            CentreColumn(state: state, workspace: workspace, project: project)
+            SectionContent(state: state, workspace: workspace, project: project)
                 .frame(minWidth: 540, maxWidth: .infinity, maxHeight: .infinity)
                 .background(PaneWidths(state: state))
             if state.inspectorVisible {
@@ -199,31 +199,7 @@ private struct DescendantsLoad: Hashable {
     var isConnected: Bool
 }
 
-/// The selected section of the active project, with the console drawer under it
-/// (docs/ui.md › Console drawer).
-private struct CentreColumn: View {
-    let state: WindowState
-    let workspace: DeviceWorkspace
-    let project: ProjectSummary
-
-    var body: some View {
-        VSplitView {
-            SectionContent(state: state, workspace: workspace, project: project)
-                .frame(minHeight: 200, maxHeight: .infinity)
-            if state.consoleVisible {
-                ConsoleDrawer(window: state, workspace: workspace, projectID: project.id)
-                    .frame(minHeight: 120, idealHeight: state.consoleHeight, maxHeight: .infinity)
-                    .onGeometryChange(for: Double.self) { Double($0.size.height) } action: { height in
-                        if height >= 120 {
-                            state.consoleHeight = height
-                        }
-                    }
-            }
-        }
-    }
-}
-
-/// The section the sidebar selects, once the project's data is loaded.
+/// The centre column: the section the sidebar selects, once the project's data is loaded.
 private struct SectionContent: View {
     let state: WindowState
     let workspace: DeviceWorkspace
@@ -309,7 +285,7 @@ private struct PaneWidths: NSViewRepresentable {
     @MainActor
     final class Coordinator {
         static let defaultSidebarWidth: CGFloat = 200
-        /// Wider than the toolbar's Run and Stop, and wide enough for Project Settings on one line.
+        /// Wide enough for Project Settings on one line.
         static let minimumSidebarWidth: CGFloat = 190
 
         weak var state: WindowState?

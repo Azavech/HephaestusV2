@@ -2,9 +2,9 @@ import Foundation
 import SystemConfiguration
 
 /// The engine of one device: the only code that reads or writes project folders and the data
-/// directory, and that starts Claude processes and project runs (docs/architecture.md › Engine
-/// and client split). Every client calls `dispatch(method:params:actor:)` with JSON params and
-/// receives the JSON events of `subscribe()` (docs/engine-api.md › Dispatcher).
+/// directory, and that starts Claude processes (docs/architecture.md › Engine and client split).
+/// Every client calls `dispatch(method:params:actor:)` with JSON params and receives the JSON
+/// events of `subscribe()` (docs/engine-api.md › Dispatcher).
 ///
 /// Use: `let engine = try await Engine(configuration: configuration)`, then `await engine.start()`,
 /// then clients through `LocalEngineConnection(engine:)`; `await engine.shutdown()` at quit.
@@ -48,8 +48,6 @@ public actor Engine {
 
     /// Loaded projects, tickets, bundles and chat metadata (Engine/DomainState.swift).
     var domain: DomainState
-    /// Project runs (Engine/ProjectRunner.swift).
-    let runs = ProjectRunner()
     /// Claude CLI location, status and models (Claude/ClaudeCLI.swift).
     let claudeCLI = ClaudeCLI()
     /// Chat processes (Claude/ChatManager.swift).
@@ -157,20 +155,21 @@ public actor Engine {
         await startClaudeBackgroundTasks()
     }
 
-    /// docs/architecture.md › Shutdown, steps 1 to 3 and 5: the child processes end (SIGTERM, then
-    /// SIGKILL 3 s later, the quit items of the chats written first) and the engine waits for
-    /// them; then the MCP server, the sync server, Bonjour and the file watchers close; then
+    /// docs/architecture.md › Shutdown, steps 1 to 3 and 5: background work drops its results from
+    /// now on (`hasStopped`, `domain.isStopped`); the child processes end (SIGTERM, then SIGKILL
+    /// 3 s later, the quit items of the chats written first) and the engine waits for them; then
+    /// the MCP server, the sync server, Bonjour and the file watchers close; then
     /// `beforeClosingLog` runs (step 4, telling the Updater, belongs to `AppModel`); every
     /// subscription finishes; engine.log closes and the data directory lock is released. Calling
     /// it again does nothing.
     public func shutdown(beforeClosingLog: @Sendable () async -> Void = {}) async {
         guard lifecycle != .stopped else { return }
         lifecycle = .stopped
+        domain.isStopped = true
         async let chatProcesses: Void = stopChatProcesses()
-        async let projectRuns: Void = stopProjectRuns()
         async let claudeHelpers: Void = stopClaudeHelperProcesses()
         async let hephaestusClone: Void = stopHephaestusClone()
-        _ = await (chatProcesses, projectRuns, claudeHelpers, hephaestusClone)
+        _ = await (chatProcesses, claudeHelpers, hephaestusClone)
 
         await stopMCPServer()
         await stopSyncServer()

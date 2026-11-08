@@ -68,7 +68,6 @@ struct ChatLifecycleTests {
             let prompt = argv[26]
             #expect(prompt.contains("chat of the project Demo (identifier DEMO)"))
             #expect(prompt.contains("The project's root folder is \(bed.root.path) on the device"))
-            #expect(prompt.contains("- build: make build"))
             #expect(prompt.contains("\n\n# This chat\n\nThis is a project chat of Demo (DEMO)."))
             // initialize first, then the user message, without waiting.
             #expect(await process.line { Self.isUserLine($0) } != nil)

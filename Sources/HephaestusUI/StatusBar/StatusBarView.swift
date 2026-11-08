@@ -207,7 +207,7 @@ struct StatusBarView: View {
         return workspace?.project(projectID) != nil
     }
 
-    // MARK: Middle: running chats, waiting chats, run
+    // MARK: Middle: running chats, waiting chats
 
     @ViewBuilder
     private func middleGroup(_ window: WindowState) -> some View {
@@ -240,10 +240,6 @@ struct StatusBarView: View {
                 }
                 .buttonStyle(.plain)
             }
-            if let run = newestRun(window) {
-                if !running.isEmpty || !waiting.isEmpty { separator }
-                runItem(run, window: window)
-            }
         }
         .popover(isPresented: $chatsPopoverShown, arrowEdge: .top) {
             ChatsPopover(waiting: waiting, running: running) { chat in
@@ -257,53 +253,6 @@ struct StatusBarView: View {
 
     private func activeChats(_ isIncluded: (ChatMeta) -> Bool) -> [ChatMeta] {
         (workspace?.chats.values.filter(isIncluded) ?? []).sorted { $0.updated > $1.updated }
-    }
-
-    private func newestRun(_ window: WindowState) -> RunState? {
-        guard let projectID = window.projectID else { return nil }
-        return workspace?.runs(of: projectID).first
-    }
-
-    /// The Run item; a click shows the console drawer with that run selected, or hides it when it
-    /// already shows that run (docs/ui.md › Console drawer).
-    private func runItem(_ run: RunState, window: WindowState) -> some View {
-        Button {
-            if window.consoleVisible && window.consoleRun?.id == run.id {
-                window.consoleVisible = false
-            } else {
-                window.consoleVisible = true
-                window.updateViewState { $0.consoleRunID = run.id }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                let command = Self.truncatedMiddle(run.info.command, limit: 40)
-                if run.endMissed {
-                    Text("Ended while disconnected")
-                } else if let exitCode = run.exitCode {
-                    if exitCode == 0 {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                        Text(command)
-                    } else {
-                        Image(systemName: "xmark.octagon.fill")
-                            .foregroundStyle(.red)
-                        Text("\(command) · exit \(String(exitCode))")
-                    }
-                } else {
-                    Image(systemName: "play.fill")
-                    Text(command)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// A command longer than `limit` characters is truncated in the middle.
-    static func truncatedMiddle(_ text: String, limit: Int) -> String {
-        guard text.count > limit else { return text }
-        let head = (limit - 1) / 2
-        let tail = limit - 1 - head
-        return String(text.prefix(head)) + "…" + String(text.suffix(tail))
     }
 
     // MARK: Right: ladybug

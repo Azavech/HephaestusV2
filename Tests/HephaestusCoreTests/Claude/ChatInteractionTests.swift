@@ -560,13 +560,13 @@ struct ChatInteractionTests {
             }
             let none = try await bed.createChat(message: "Plan")
             let nonePrompt = try await systemPrompt(none, 0)
-            #expect(nonePrompt.contains(" of the project. The project's type is None.\n\nThe project's commands:\n"))
+            #expect(nonePrompt.contains(" of the project. The project's type is None.\n\nThese rules apply in every chat. "))
             #expect(nonePrompt.contains("\n\n# When the project is a Go service\n\nWhen the project's type is Go service, these rules apply too."))
 
             _ = try await bed.connection.call(ProjectsUpdate.self, .init(projectID: "DEMO", type: .goService))
             let go = try await bed.createChat(message: "Plan")
             let goPrompt = try await systemPrompt(go, 1)
-            #expect(goPrompt.contains(" of the project. The project's type is Go service.\n\nThe project's commands:\n"))
+            #expect(goPrompt.contains(" of the project. The project's type is Go service.\n\nThese rules apply in every chat. "))
             #expect(goPrompt.contains("\n\n# When the project is a Go service\n\nWhen the project's type is Go service, these rules apply too."))
             #expect(!goPrompt.contains("{{"))
         }

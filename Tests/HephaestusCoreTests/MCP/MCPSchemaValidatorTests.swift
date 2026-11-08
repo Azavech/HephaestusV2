@@ -3,7 +3,8 @@ import Testing
 @testable import HephaestusCore
 
 /// docs/mcp.md › Argument validation: the keywords, null values, the validation order and the
-/// exact messages, on the catalogue's own schemas.
+/// exact messages, on the catalogue's own schemas, and `maximum`, which none of them uses, on a
+/// schema of its own.
 @Suite("MCP argument validation")
 struct MCPSchemaValidatorTests {
     static func schema(_ tool: String) throws -> JSONValue {
@@ -12,7 +13,12 @@ struct MCPSchemaValidatorTests {
 
     /// The message of the first violation, nil when the arguments are valid.
     static func message(_ tool: String, _ arguments: String) throws -> String? {
-        let error = MCPSchemaValidator().validate(try jsonValue(arguments), against: try schema(tool))
+        try message(arguments, against: schema(tool))
+    }
+
+    /// The message of the first violation against `schema`, nil when the arguments are valid.
+    static func message(_ arguments: String, against schema: JSONValue) throws -> String? {
+        let error = MCPSchemaValidator().validate(try jsonValue(arguments), against: schema)
         if let error { #expect(error.code == .invalid) }
         return error?.message
     }
@@ -20,8 +26,8 @@ struct MCPSchemaValidatorTests {
     @Test("Valid arguments pass")
     func valid() throws {
         #expect(try Self.message("list_projects", "{}") == nil)
-        #expect(try Self.message("run_project", #"{"projectID":"HEPH","kind":"build","wait":true,"timeoutSeconds":1700}"#) == nil)
-        #expect(try Self.message("update_project", #"{"projectID":"HEPH","commands":{"build":"make"}}"#) == nil)
+        #expect(try Self.message("update_project", #"{"projectID":"HEPH","type":"goService","docsPath":"docs"}"#) == nil)
+        #expect(try Self.message("open_web_tab", #"{"projectID":"HEPH","url":"https://example.com","locked":true}"#) == nil)
         #expect(try Self.message("create_ticket", #"{"projectID":"HEPH","description":"d","attachments":["a","b"]}"#) == nil)
         #expect(try Self.message("move_web_tab", #"{"projectID":"HEPH","tabID":"x","toIndex":0}"#) == nil)
         #expect(try Self.message("debug_screenshot", #"{"window":4211}"#) == nil)
@@ -32,18 +38,18 @@ struct MCPSchemaValidatorTests {
         ("get_project", #"{"projectID":"HEPH","extra":1}"#, "extra: unknown argument."),
         ("get_project", "{}", "projectID: required."),
         ("get_project", #"{"projectID":12}"#, "projectID: must be a string."),
-        ("run_project", #"{"projectID":"HEPH","kind":"build","timeoutSeconds":"5"}"#, "timeoutSeconds: must be an integer."),
-        ("run_project", #"{"projectID":"HEPH","kind":"build","timeoutSeconds":1.5}"#, "timeoutSeconds: must be an integer."),
-        ("run_project", #"{"projectID":"HEPH","kind":"build","timeoutSeconds":true}"#, "timeoutSeconds: must be an integer."),
-        ("run_project", #"{"projectID":"HEPH","kind":"build","wait":1}"#, "wait: must be a boolean."),
-        ("run_project", #"{"projectID":"HEPH","kind":"deploy"}"#, "kind: must be one of build, run, test."),
-        ("run_project", #"{"projectID":"HEPH","kind":"run","timeoutSeconds":0}"#, "timeoutSeconds: must be at least 1."),
-        ("run_project", #"{"projectID":"HEPH","kind":"run","timeoutSeconds":1701}"#, "timeoutSeconds: must be at most 1700."),
+        ("move_web_tab", #"{"projectID":"HEPH","tabID":"x","toIndex":"5"}"#, "toIndex: must be an integer."),
+        ("move_web_tab", #"{"projectID":"HEPH","tabID":"x","toIndex":1.5}"#, "toIndex: must be an integer."),
+        ("move_web_tab", #"{"projectID":"HEPH","tabID":"x","toIndex":true}"#, "toIndex: must be an integer."),
+        ("open_web_tab", #"{"projectID":"HEPH","url":"https://example.com","locked":1}"#, "locked: must be a boolean."),
+        ("update_project", #"{"projectID":"HEPH","type":"rustCrate"}"#, "type: must be one of none, goService, swiftApplication."),
         ("move_web_tab", #"{"projectID":"HEPH","tabID":"x","toIndex":-1}"#, "toIndex: must be at least 0."),
+        ("ask_questions", #"{"questions":[{"label":"A","question":"q","kind":"multiple","options":[{"label":"x"},{"label":"y"}],"recommended":["x"],"minChoices":0}]}"#,
+         "questions[0].minChoices: must be at least 1."),
         ("set_ticket_status", #"{"ticketID":"HEPH-12","status":"finished"}"#, "status: must be one of todo, in_progress, review, done."),
-        ("update_project", #"{"projectID":"HEPH","commands":"make"}"#, "commands: must be an object."),
-        ("update_project", #"{"projectID":"HEPH","commands":{"deploy":"x"}}"#, "commands.deploy: unknown argument."),
-        ("update_project", #"{"projectID":"HEPH","commands":{"build":7}}"#, "commands.build: must be a string."),
+        ("open_in_app", #"{"target":"HEPH-12"}"#, "target: must be an object."),
+        ("open_in_app", #"{"target":{"kind":"ticket","ticketID":"HEPH-12","extra":1}}"#, "target.extra: unknown argument."),
+        ("open_in_app", #"{"target":{"kind":"ticket","ticketID":12}}"#, "target.ticketID: must be a string."),
         ("update_project", #"{"projectID":"HEPH","environments":[]}"#, "environments: unknown argument."),
         ("create_ticket", #"{"projectID":"HEPH","description":"d","attachments":"a"}"#, "attachments: must be an array."),
         ("create_ticket", #"{"projectID":"HEPH","description":"d","attachments":["a",2,"c"]}"#, "attachments[1]: must be a string."),
@@ -65,7 +71,8 @@ struct MCPSchemaValidatorTests {
 
     @Test("Null properties count as absent, at every depth")
     func nullValues() throws {
-        #expect(try Self.message("update_project", #"{"projectID":"HEPH","name":null,"commands":{"build":null}}"#) == nil)
+        #expect(try Self.message("update_project", #"{"projectID":"HEPH","name":null}"#) == nil)
+        #expect(try Self.message("open_in_app", #"{"target":{"kind":"ticket","ticketID":"HEPH-12","line":null}}"#) == nil)
         #expect(try Self.message("get_project", #"{"projectID":null}"#) == "projectID: required.")
         #expect(try Self.message("get_project", #"{"projectID":"HEPH","unknown":null}"#) == nil)
         #expect(MCPSchemaValidator.removingNulls(try jsonValue(#"{"a":null,"b":[null,{"c":null,"d":1}]}"#))
@@ -86,18 +93,19 @@ struct MCPSchemaValidatorTests {
 
     @Test("Present properties are checked in the order of properties, not of their names")
     func propertyOrder() throws {
-        // run_project lists projectID, kind, wait, timeoutSeconds.
-        #expect(try Self.message("run_project", #"{"projectID":1,"kind":2}"#) == "projectID: must be a string.")
-        #expect(try Self.message("run_project", #"{"projectID":"HEPH","kind":"build","wait":"x","timeoutSeconds":"y"}"#)
-            == "wait: must be a boolean.")
+        // create_project lists path, name, identifier, type, parentID.
+        #expect(try Self.message("create_project", #"{"path":1,"name":"Demo","identifier":2}"#) == "path: must be a string.")
+        // open_web_tab lists projectID, url, title, locked.
+        #expect(try Self.message("open_web_tab", #"{"projectID":"HEPH","url":"https://example.com","title":1,"locked":"y"}"#)
+            == "title: must be a string.")
         // ask_questions items list label, question, options, recommended.
         #expect(try Self.message("ask_questions", #"{"questions":[{"label":1,"question":"q","options":7,"recommended":2}]}"#)
             == "questions[0].label: must be a string.")
         #expect(try Self.message("ask_questions", #"{"questions":[{"label":"A","question":"q","options":7,"recommended":2}]}"#)
             == "questions[0].options: must be an array.")
         // A property is checked completely before the next one.
-        #expect(try Self.message("update_project", #"{"projectID":"HEPH","name":"n","docsPath":5,"commands":{"run":5}}"#)
-            == "docsPath: must be a string.")
+        #expect(try Self.message("create_ticket", #"{"projectID":"HEPH","description":"d","attachments":["a",2],"links":7}"#)
+            == "attachments[1]: must be a string.")
     }
 
     @Test("The property orders come from the schema texts")
@@ -113,11 +121,16 @@ struct MCPSchemaValidatorTests {
 
     @Test("Integral numbers are integers; their bounds are inclusive")
     func integers() throws {
-        #expect(try Self.message("run_project", #"{"projectID":"HEPH","kind":"run","timeoutSeconds":1}"#) == nil)
-        #expect(try Self.message("run_project", #"{"projectID":"HEPH","kind":"run","timeoutSeconds":1700.0}"#) == nil)
-        #expect(try Self.message("run_project", #"{"projectID":"HEPH","kind":"run","timeoutSeconds":1e3}"#) == nil)
-        #expect(try Self.message("run_project", #"{"projectID":"HEPH","kind":"run","timeoutSeconds":1e30}"#)
-            == "timeoutSeconds: must be at most 1700.")
+        #expect(try Self.message("move_web_tab", #"{"projectID":"HEPH","tabID":"x","toIndex":0}"#) == nil)
+        #expect(try Self.message("move_web_tab", #"{"projectID":"HEPH","tabID":"x","toIndex":3.0}"#) == nil)
+        #expect(try Self.message("move_web_tab", #"{"projectID":"HEPH","tabID":"x","toIndex":1e3}"#) == nil)
+        // No tool of the catalogue has a maximum.
+        let bounded = try jsonValue(#"{"type":"object","properties":{"count":{"type":"integer","minimum":1,"maximum":10}},"additionalProperties":false}"#)
+        #expect(try Self.message(#"{"count":10}"#, against: bounded) == nil)
+        #expect(try Self.message(#"{"count":10.0}"#, against: bounded) == nil)
+        #expect(try Self.message(#"{"count":11}"#, against: bounded) == "count: must be at most 10.")
+        #expect(try Self.message(#"{"count":1e30}"#, against: bounded) == "count: must be at most 10.")
+        #expect(try Self.message(#"{"count":0}"#, against: bounded) == "count: must be at least 1.")
         let normalized = MCPSchemaValidator.normalizingIntegers(.object(["toIndex": .double(3)]), schema: try Self.schema("move_web_tab"))
         #expect(normalized == .object(["toIndex": .int(3)]))
     }

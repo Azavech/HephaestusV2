@@ -78,18 +78,18 @@ extension AppModel {
         }
     }
 
-    /// The checks of quitting, in order: unsaved editors of every window, then running work, then
-    /// the savers of changed ticket descriptions (at most 5 seconds). Returns false when the user
-    /// cancels or a save fails. With `restartVersion` (for example `v0.5.0(61)`), the running work
-    /// alert is the restart alert of docs/updater.md › Restart rules.
+    /// The checks of quitting, in order: unsaved editors of every window, then running work (the
+    /// working chats of This Mac), then the savers of changed ticket descriptions (at most 5
+    /// seconds). Returns false when the user cancels or a save fails. With `restartVersion` (for
+    /// example `v0.5.0(61)`), the running work alert is the restart alert of docs/updater.md ›
+    /// Restart rules.
     func runQuitChecks(restartVersion: String?) async -> Bool {
         let frontWindow = frontmostAppWindow
         let editors = mainWindowsByKeyOrder.flatMap { $0.unsavedEditors() }
         guard await UnsavedChangesPrompt.confirm(editors, sheetOn: frontWindow) else { return false }
 
         let chats = workingChatCount
-        let runs = localWorkspace.runs.values.filter(\.isRunning).count
-        if chats + runs > 0 {
+        if chats > 0 {
             let alert = NSAlert()
             if let restartVersion {
                 alert.messageText = "Restart to install \(restartVersion)?"
@@ -98,7 +98,7 @@ extension AppModel {
                 alert.messageText = "Quit HephaestusV2?"
                 alert.addButton(withTitle: "Quit")
             }
-            alert.informativeText = Self.runningWorkMessage(chats: chats, runs: runs)
+            alert.informativeText = Self.runningWorkMessage(chats: chats)
             alert.addButton(withTitle: "Cancel").keyEquivalent = "\u{1b}"
             guard await AlertPresenter.present(alert, on: frontWindow) == .alertFirstButtonReturn else { return false }
         }
@@ -111,13 +111,9 @@ extension AppModel {
         localWorkspace.chats.values.filter(\.isWorking).count
     }
 
-    /// `<chats> and <runs> on This Mac will be stopped.`, a part whose count is 0 left out together
-    /// with `and`.
-    static func runningWorkMessage(chats: Int, runs: Int) -> String {
-        var parts: [String] = []
-        if chats > 0 { parts.append(chats == 1 ? "1 chat" : "\(chats) chats") }
-        if runs > 0 { parts.append(runs == 1 ? "1 run" : "\(runs) runs") }
-        return parts.joined(separator: " and ") + " on This Mac will be stopped."
+    /// `1 chat on This Mac will be stopped.` or `<n> chats on This Mac will be stopped.`
+    static func runningWorkMessage(chats: Int) -> String {
+        (chats == 1 ? "1 chat" : "\(chats) chats") + " on This Mac will be stopped."
     }
 
     /// Runs the quit savers and waits for them at most 5 seconds; a failure cancels the quit (the

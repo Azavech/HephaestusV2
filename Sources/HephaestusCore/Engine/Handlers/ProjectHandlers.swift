@@ -21,12 +21,6 @@ extension Engine {
         register(ProjectsRemove.self, actors: [.user, .claude]) { [unowned self] params, actor in
             try await self.projectsRemove(params, actor)
         }
-        register(ProjectsRun.self, actors: [.user, .claude]) { [unowned self] params, actor in
-            try await self.projectsRun(params, actor)
-        }
-        register(ProjectsStopRun.self, actors: [.user, .claude]) { [unowned self] params, actor in
-            try await self.projectsStopRun(params, actor)
-        }
         register(ProjectsEnsureHephaestus.self, actors: [.user]) { [unowned self] _, _ in
             await self.ensureHephaestusProject()
             return Empty()
@@ -237,11 +231,6 @@ extension Engine {
         if let useParentSettings = params.useParentSettings {
             new.useParentSettings = useParentSettings
         }
-        if let commands = params.commands {
-            var normalized = commands.normalized()
-            normalized.unknownKeys = old.commands.unknownKeys
-            new.commands = normalized
-        }
         switch params.chatDefaults {
         case .keep:
             break
@@ -292,7 +281,6 @@ extension Engine {
             }
         }
         let unloaded = unloadTree(id)
-        let stoppedRuns = runs.runningRuns().filter { unloaded.projectIDs.contains($0.projectID) }
         // The comment answers of their tickets stop (docs/engine-api.md › projects.remove).
         stopCommentAnswers(projectIDs: Set(unloaded.projectIDs))
         emitProjectsRemoved(unloaded.projectIDs, origin: actor)
@@ -302,9 +290,6 @@ extension Engine {
         // Identifiers became free: the projects skipped because of them are tried again.
         loadRegisteredProjects()
         emitProjectsChanged(origin: actor)
-        for run in stoppedRuns {
-            stopRun(run.runID)
-        }
         // docs/skills.md › Generation: projects.remove deletes Runtime/plugins/<projectID>/.
         for projectID in unloaded.projectIDs where domain.projects[projectID] == nil {
             let plugin = dataDirectory.pluginFolder(projectID: projectID)

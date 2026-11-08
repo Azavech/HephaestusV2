@@ -42,11 +42,11 @@ struct DeviceAndSettingsTests {
             #expect(snapshot.device == (try await connection.call(DeviceInfoMethod.self)))
             #expect(snapshot.projects.isEmpty)
             #expect(snapshot.skills.isEmpty)
-            #expect(snapshot.runs.isEmpty)
             #expect(snapshot.settings == HostSettings())
             #expect(snapshot.claude == ClaudeStatus.detecting)
             let json = try jsonValue(String(decoding: try EngineJSON.encode(snapshot), as: UTF8.self))
             #expect(json.objectValue?["claude"] == (try jsonValue(#"{"available": false, "checking": true}"#)))
+            #expect(Set(json.objectValue?.keys.map { $0 } ?? []) == ["device", "projects", "skills", "settings", "claude"])
         }
     }
 

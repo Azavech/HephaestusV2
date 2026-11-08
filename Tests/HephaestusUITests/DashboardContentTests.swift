@@ -3,7 +3,7 @@ import HephaestusCore
 import Testing
 @testable import HephaestusUI
 
-/// docs/dashboard.md › Cards: the Recent chats and Running commands lists.
+/// docs/dashboard.md › Cards: the list of the Recent chats card.
 @MainActor
 @Suite("Dashboard content")
 struct DashboardContentTests {
@@ -18,17 +18,5 @@ struct DashboardContentTests {
         let recent = DashboardContent.recentChats(of: "DEMO", in: chats.shuffled())
         #expect(recent.map(\.title) == ["Chat 6", "Chat 5", "Chat 4", "Chat 3", "Chat 2"])
         #expect(DashboardContent.recentChats(of: "NONE", in: chats).isEmpty)
-    }
-
-    @Test("Running commands: only the runs that are running, newest first")
-    func runningRuns() {
-        func run(_ kind: RunKind, _ offset: Double) -> RunState {
-            RunState(info: RunInfo(runID: UUID(), projectID: "DEMO", kind: kind, command: "make \(kind.rawValue)",
-                                   started: start.addingTimeInterval(offset)), starter: nil)
-        }
-        var finished = run(.test, 3)
-        finished.exitCode = 0
-        let running = DashboardContent.runningRuns([run(.build, 1), finished, run(.run, 2)])
-        #expect(running.map(\.info.kind) == [.run, .build])
     }
 }

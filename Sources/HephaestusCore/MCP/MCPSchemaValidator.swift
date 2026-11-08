@@ -165,7 +165,7 @@ public struct MCPSchemaValidator: Sendable {
         return lhs < rhs ? .orderedAscending : lhs > rhs ? .orderedDescending : .orderedSame
     }
 
-    /// A schema value as written in the schema: `1700`, `todo`.
+    /// A schema value as written in the schema: `1`, `todo`.
     private static func literal(_ value: JSONValue) -> String {
         switch value {
         case .int(let number): return String(number)
@@ -176,7 +176,7 @@ public struct MCPSchemaValidator: Sendable {
         }
     }
 
-    /// `commands.build`; a top-level property is named alone.
+    /// `target.kind`; a top-level property is named alone.
     private static func child(_ path: String, _ name: String) -> String {
         path.isEmpty ? name : "\(path).\(name)"
     }

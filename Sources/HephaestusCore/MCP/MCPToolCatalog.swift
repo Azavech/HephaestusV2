@@ -42,8 +42,6 @@ public enum MCPToolHandling: String, Sendable, Hashable, CaseIterable {
     /// `update_project`: an empty `color` is sent as `null`, which removes the color; an `icon`
     /// that is `null` is sent as `null`, which removes the icon.
     case updateProject
-    /// `run_project`: `wait` defaults to `kind != run`.
-    case runProject
     /// `list_tickets`: tickets.list with `includeSubprojects: true`, then the tickets with
     /// `status` when given.
     case listTickets

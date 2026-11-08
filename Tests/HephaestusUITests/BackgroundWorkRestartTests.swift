@@ -90,7 +90,7 @@ struct BackgroundWorkRestartTests {
                 app.localWorkspace.chats[meta.id.uuidString] = meta
             }
             #expect(app.workingChatCount == 3)
-            #expect(AppModel.runningWorkMessage(chats: app.workingChatCount, runs: 0) == "3 chats on This Mac will be stopped.")
+            #expect(AppModel.runningWorkMessage(chats: app.workingChatCount) == "3 chats on This Mac will be stopped.")
         }
     }
 
@@ -118,7 +118,7 @@ struct BackgroundWorkRestartTests {
         let meta = Self.chat(.idle, backgroundWork: true)
         workspace.chats[meta.id.uuidString] = meta
         #expect(ProjectFlows.removalMessage(project: project, descendants: [], workspace: workspace, removedIDs: ["DEMO"])
-            == "The folder and its files stay on disk: /Users/example/Demo. Running chats and runs of these projects are stopped.")
+            == "The folder and its files stay on disk: /Users/example/Demo. Running chats of these projects are stopped.")
         workspace.chats[meta.id.uuidString] = Self.chat(.idle, backgroundWork: false)
         #expect(ProjectFlows.removalMessage(project: project, descendants: [], workspace: workspace, removedIDs: ["DEMO"])
             == "The folder and its files stay on disk: /Users/example/Demo.")

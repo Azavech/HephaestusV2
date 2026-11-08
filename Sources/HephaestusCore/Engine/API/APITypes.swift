@@ -50,20 +50,17 @@ public struct Snapshot: Codable, Sendable, Hashable {
     public var skills: [SkillSummary]
     /// The `settings.get` result.
     public var settings: HostSettings
-    /// The running runs, ordered by `started`.
-    public var runs: [RunInfo]
     /// The current CLI status.
     public var claude: ClaudeStatus
     /// The plan usage; nil when none is known or its reset time has passed.
     public var planUsage: PlanUsage?
 
     public init(device: DeviceInfo, projects: [ProjectSummary], skills: [SkillSummary], settings: HostSettings,
-                runs: [RunInfo], claude: ClaudeStatus, planUsage: PlanUsage? = nil) {
+                claude: ClaudeStatus, planUsage: PlanUsage? = nil) {
         self.device = device
         self.projects = projects
         self.skills = skills
         self.settings = settings
-        self.runs = runs
         self.claude = claude
         self.planUsage = planUsage
     }
@@ -167,54 +164,6 @@ public struct ProjectDetail: Codable, Sendable, Hashable {
         self.gitRemoteURL = gitRemoteURL
         self.githubPage = githubPage
         self.originGithubPage = originGithubPage
-    }
-}
-
-/// The project command a run executes (docs/engine-api.md › RunKind).
-public enum RunKind: String, Codable, Sendable, Hashable, CaseIterable {
-    case build
-    case run
-    case test
-
-    public init(from decoder: Decoder) throws {
-        self = try APIEnumCoding.decode(decoder)
-    }
-}
-
-/// A running run (docs/engine-api.md › RunInfo).
-public struct RunInfo: Codable, Sendable, Hashable {
-    public var runID: UUID
-    public var projectID: ProjectID
-    public var kind: RunKind
-    /// The command line that runs.
-    public var command: String
-    public var started: Date
-    /// The folder of the worktree the run runs in; absent for a run in the project root
-    /// (docs/engine-api.md › projects.run).
-    public var worktree: String?
-
-    public init(runID: UUID, projectID: ProjectID, kind: RunKind, command: String, started: Date, worktree: String? = nil) {
-        self.runID = runID
-        self.projectID = projectID
-        self.kind = kind
-        self.command = command
-        self.started = started
-        self.worktree = worktree
-    }
-}
-
-/// The result of `projects.run` (docs/engine-api.md › RunResult).
-public struct RunResult: Codable, Sendable, Hashable {
-    public var run: RunInfo
-    /// Exit status, or 128 + the signal number; absent while the run is still running.
-    public var exitCode: Int?
-    /// The last 200 lines of output, at most 20,000 characters; `""` when `wait` was false.
-    public var outputTail: String
-
-    public init(run: RunInfo, exitCode: Int? = nil, outputTail: String = "") {
-        self.run = run
-        self.exitCode = exitCode
-        self.outputTail = outputTail
     }
 }
 

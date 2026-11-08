@@ -274,6 +274,23 @@ struct MCPServerHTTPTests {
         }
     }
 
+    @Test("run_project and stop_run are not tools: tools/list leaves them out and a call of one is an unknown tool")
+    func noRunTools() async throws {
+        try await withTestEngine(debugTools: true) { engine, _, _ in
+            let port = try await Self.port(engine)
+            let token = await engine.tokens.externalToken
+            let list = try await MCPHTTP.post(port: port, token: token, #"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#)
+            let names = try MCPHTTP.result(list)["tools"]?.arrayValue?.compactMap { $0.objectValue?["name"]?.stringValue } ?? []
+            #expect(names.contains("remove_project"))
+            #expect(!names.contains("run_project") && !names.contains("stop_run"))
+            for (id, tool, arguments) in [(2, "run_project", #"{"projectID":"HEPH","kind":"build"}"#), (3, "stop_run", #"{"runID":"x"}"#)] {
+                let reply = try await MCPHTTP.post(port: port, token: token, MCPHTTP.toolCall(id: id, tool, arguments))
+                #expect(reply.status == 200)
+                #expect(try reply.json() == jsonValue(#"{"jsonrpc":"2.0","id":\#(id),"error":{"code":-32602,"message":"Unknown tool: \#(tool)"}}"#))
+            }
+        }
+    }
+
     @Test("A tool result is byte for byte what Engine.dispatch returns for the token's actor")
     func engineResults() async throws {
         try await withTestEngine { engine, _, _ in

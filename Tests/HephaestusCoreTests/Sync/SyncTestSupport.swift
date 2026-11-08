@@ -463,5 +463,5 @@ func storePairing(on remote: Engine, deviceID: String, name: String = "Studio", 
 
 /// A snapshot for fake servers.
 func fakeSnapshot(device: DeviceInfo) -> Snapshot {
-    Snapshot(device: device, projects: [], skills: [], settings: HostSettings(), runs: [], claude: ClaudeStatus(available: false, checking: false))
+    Snapshot(device: device, projects: [], skills: [], settings: HostSettings(), claude: ClaudeStatus(available: false, checking: false))
 }

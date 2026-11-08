@@ -3,7 +3,7 @@ import Testing
 @testable import HephaestusCore
 
 /// docs/chats.md › Branch and worktree and › Working directory: the branch and the worktree of an
-/// orchestrated ticket chat, its working directory at launch and resume, and `run_project` in it.
+/// orchestrated ticket chat and its working directory at launch and resume.
 @Suite struct ChatWorktreeTests {
     /// Gives the engine the machine's git, makes the project root a git repository on `main` with
     /// one commit, and returns git; nil when the machine has no git.
@@ -94,7 +94,7 @@ import Testing
             #expect(other.request.currentDirectory == bed.root.path)
             #expect(Self.systemPrompt(other)?.contains("The project's root folder is \(bed.root.path) on the device "
                 + "\(await bed.engine.deviceInfo.name). It is your working directory.") == true)
-            #expect(try await Self.process(bed, orchestrator.id)?.request.currentDirectory == bed.root.path)
+            #expect(await Self.process(bed, orchestrator.id)?.request.currentDirectory == bed.root.path)
         }
     }
 
@@ -152,44 +152,6 @@ import Testing
             #expect(try ProjectFileStore.readTicket(at: bed.folder.ticketFile("DEMO-1"), projectID: "DEMO").chatIDs.isEmpty)
             // A ticket chat that is not orchestrated needs no worktree.
             #expect(try await bed.connection.call(ChatsImplementTicket.self, .init(ticketID: "DEMO-1")).orchestratorChatID == nil)
-        }
-    }
-
-    @Test("run_project from an orchestrated ticket chat runs in its worktree; one run per working directory and kind")
-    func runInWorktree() async throws {
-        let launcher = FakeClaudeLauncher()
-        launcher.chatScript = FakeClaudeLauncher.silentChat()
-        try await withChatEngine(launcher: launcher, prepare: { folder, _ in
-            try ProjectFileStore.write(Project(id: "DEMO", name: "Demo", created: ISODate.date(from: "2026-10-31T12:00:00Z")!,
-                                               commands: ProjectCommands(build: "pwd", run: "sleep 30")), to: folder)
-        }) { bed in
-            _ = try await Self.gitRepository(bed)
-            let orchestrator = try await Self.orchestrator(bed)
-            let chat = try await bed.engine.call(ChatsImplementTicket.self, .init(ticketID: "DEMO-1"),
-                                                 actor: .claude(chatID: orchestrator.id.uuidString))
-            let ticketChat = Actor.claude(chatID: chat.id.uuidString)
-            let worktree = bed.dataDirectory.worktree(projectID: "DEMO", ticketID: "DEMO-1")
-            let build = try await bed.engine.call(ProjectsRun.self, .init(projectID: "DEMO", kind: .build, wait: true), actor: ticketChat)
-            #expect(build.run.worktree == worktree.path)
-            #expect(build.outputTail == "\(Engine.realPath(worktree.path)!)\n" || build.outputTail == "\(worktree.path)\n")
-            // The user's runs and the bundle chat's runs keep the project root.
-            let root = try await bed.connection.call(ProjectsRun.self, .init(projectID: "DEMO", kind: .build, wait: true))
-            #expect(root.run.worktree == nil)
-            #expect(root.outputTail == "\(Engine.realPath(bed.root.path)!)\n" || root.outputTail == "\(bed.root.path)\n")
-            let bundleBuild = try await bed.engine.call(ProjectsRun.self, .init(projectID: "DEMO", kind: .build, wait: true),
-                                                        actor: .claude(chatID: orchestrator.id.uuidString))
-            #expect(bundleBuild.run.worktree == nil)
-            // A run in the worktree and one in the project root run side by side; a second one in
-            // the same working directory is refused.
-            let inWorktree = try await bed.engine.call(ProjectsRun.self, .init(projectID: "DEMO", kind: .run, wait: false), actor: ticketChat)
-            let inRoot = try await bed.connection.call(ProjectsRun.self, .init(projectID: "DEMO", kind: .run, wait: false))
-            #expect(await engineError { try await bed.engine.call(ProjectsRun.self, .init(projectID: "DEMO", kind: .run, wait: false), actor: ticketChat) }
-                == EngineError(.conflict, "A run of DEMO is already running."))
-            #expect(await engineError { try await bed.connection.call(ProjectsRun.self, .init(projectID: "DEMO", kind: .run, wait: false)) }
-                == EngineError(.conflict, "A run of DEMO is already running."))
-            for run in [inWorktree, inRoot] {
-                _ = try await bed.connection.call(ProjectsStopRun.self, .init(runID: run.run.runID))
-            }
         }
     }
 }

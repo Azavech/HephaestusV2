@@ -113,12 +113,8 @@ struct PromptAndNamingTests {
             "\n\nTicket 2 of 2: HEPH-13 Tab titles are cut too early (call get_ticket for its content)"))
     }
 
-    @Test("{{projectCommands}} and {{feedbackContext}}")
-    func smallBlocks() {
-        #expect(Prompts.projectCommands(ProjectCommands(build: "make build", run: "make run", test: "make test"))
-            == "- build: make build\n- run: make run\n- test: make test")
-        #expect(Prompts.projectCommands(ProjectCommands(test: "swift test")) == "- test: swift test")
-        #expect(Prompts.projectCommands(ProjectCommands()) == "- none: use the repository's own commands")
+    @Test("{{feedbackContext}}")
+    func feedbackContext() {
         #expect(Prompts.feedbackContext(fromFirstMessage: "Hi\n\nFeedback context:\n- App: X\n- Device: Y") == "- App: X\n- Device: Y")
         #expect(Prompts.feedbackContext(fromFirstMessage: "no context") == "- none")
         #expect(Prompts.feedbackContext(fromFirstMessage: nil) == "- none")
@@ -135,7 +131,7 @@ struct PromptAndNamingTests {
         let values = [
             "projectName": "Hephaestus V2", "projectID": "HEPH", "projectRoot": "/Users/example/Developer/HephaestusV2",
             "workingDirectory": "It is your working directory.",
-            "deviceName": "Studio", "docsPath": "docs", "projectType": "Go service", "projectCommands": "- build: make build", "ticketID": "HEPH-12",
+            "deviceName": "Studio", "docsPath": "docs", "projectType": "Go service", "ticketID": "HEPH-12",
             "ticketTitle": "Locked web tabs close with Command-W", "ticket": "ID: HEPH-12", "bundleID": "HEPH-B2",
             "bundleTitle": "Web tab polish", "bundleTicketIDs": "HEPH-12, HEPH-13", "bundle": "ID: HEPH-B2", "feedbackContext": "- App: X",
             "screenshotPath": "/Users/example/s.png",
@@ -149,7 +145,7 @@ struct PromptAndNamingTests {
         let prompt = Prompts.systemPrompt(kind: .ticket, values: values)
         #expect(prompt.hasPrefix("You are Claude, working inside HephaestusV2"))
         #expect(prompt.contains("The project's root folder is /Users/example/Developer/HephaestusV2 on the device Studio. It is your working directory. "))
-        #expect(prompt.contains("of the project. The project's type is Go service.\n\nThe project's commands:\n"))
+        #expect(prompt.contains("of the project. The project's type is Go service.\n\nThese rules apply in every chat. "))
         #expect(prompt.contains("\n\n# This chat\n\nThis is the chat of ticket HEPH-12"))
     }
 
@@ -325,7 +321,7 @@ struct PromptAndNamingTests {
     @Test("Claude asks only true unknowns and decides evident points, in every chat kind and in comment answers")
     func onlyTrueUnknowns() throws {
         let values = ["projectName": "Hephaestus V2", "projectID": "HEPH", "projectRoot": "/Users/example/Developer/HephaestusV2",
-                      "deviceName": "Studio", "docsPath": "docs", "projectCommands": "- build: make build"]
+                      "deviceName": "Studio", "docsPath": "docs"]
         let unknowns = "- Ask only true unknowns: points where several answers are reasonable and neither the user's messages, "
             + "the ticket with its comments, the docs, the code nor the answers already given settle them.\n"
         let evident = "- A point with one evident answer, one that follows from the user's request, the docs, the code or a decision "
@@ -357,7 +353,7 @@ struct PromptAndNamingTests {
         let rule = "# SF Symbols\n\nWhen you name an SF Symbol in a reply or in ask_questions, write it as ![](sf:<name>), "
             + "for example ![](sf:line.3.horizontal.decrease.circle): HephaestusV2 shows the symbol's icon followed by its name there.\n\n"
         let values = ["projectName": "Hephaestus V2", "projectID": "HEPH", "projectRoot": "/Users/example/Developer/HephaestusV2",
-                      "deviceName": "Studio", "docsPath": "docs", "projectCommands": "- build: make build"]
+                      "deviceName": "Studio", "docsPath": "docs"]
         let common = Prompts.render(Prompts.text(.common), values)
         let range = try #require(common.range(of: rule))
         #expect(common[range.upperBound...].hasPrefix("When you need the user to choose an SF Symbol, ask with ask_symbol"))
@@ -389,7 +385,7 @@ struct PromptAndNamingTests {
     @Test("The common prompt tells Claude to write colors as ![](color:<color>) and to ask for colors with ask_color")
     func askColorPrompt() throws {
         let values = ["projectName": "Hephaestus V2", "projectID": "HEPH", "projectRoot": "/Users/example/Developer/HephaestusV2",
-                      "deviceName": "Studio", "docsPath": "docs", "projectCommands": "- build: make build"]
+                      "deviceName": "Studio", "docsPath": "docs"]
         let common = Prompts.render(Prompts.text(.common), values)
         let lower = try #require(common.range(of: "# Colors\n\n")).lowerBound
         let upper = try #require(common.range(of: "# Sounds")).lowerBound
@@ -460,7 +456,7 @@ struct PromptAndNamingTests {
             + "request, a font request or an animation request of this chat still wait for their answers."))
         for kind in [ChatKind.project, .ticket, .bundle, .feedback] {
             let values = ["projectName": "App", "projectID": "APP", "projectRoot": "/Users/example/App", "workingDirectory": "",
-                          "deviceName": "Studio", "docsPath": "docs", "projectCommands": "- build: make build"]
+                          "deviceName": "Studio", "docsPath": "docs"]
             #expect(Prompts.systemPrompt(kind: kind, values: values).contains("ask with ask_font"), "\(kind)")
         }
     }

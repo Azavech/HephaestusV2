@@ -133,16 +133,12 @@ struct MCPToolHandlersTests {
         }
     }
 
-    @Test("run_project: wait defaults to true for build and test, false for run")
-    func runProject() async throws {
+    @Test("An integral number of an integer argument reaches the engine as an integer")
+    func integerArguments() async throws {
         let engine = RecordedEngine()
-        let handlers = Self.handlers(engine)
-        for (kind, wait) in [("build", true), ("test", true), ("run", false)] {
-            _ = try await Self.call(handlers, "run_project", #"{"projectID":"HEPH","kind":"\#(kind)"}"#)
-            #expect(engine.calls.last?.params == .object(["projectID": "HEPH", "kind": .string(kind), "wait": .bool(wait)]))
-        }
-        _ = try await Self.call(handlers, "run_project", #"{"projectID":"HEPH","kind":"run","wait":true,"timeoutSeconds":30.0}"#)
-        #expect(engine.calls.last?.params == .object(["projectID": "HEPH", "kind": "run", "wait": true, "timeoutSeconds": .int(30)]))
+        _ = try await Self.call(Self.handlers(engine), "move_web_tab", #"{"projectID":"HEPH","tabID":"x","toIndex":2.0}"#)
+        #expect(engine.calls.last?.method == "webTabs.move")
+        #expect(engine.calls.last?.params == .object(["projectID": "HEPH", "tabID": "x", "toIndex": .int(2)]))
     }
 
     static let ticketsJSON = """

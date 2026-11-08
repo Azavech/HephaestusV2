@@ -84,8 +84,6 @@ public enum ProjectsUpdate: EngineMethod {
         public var githubPage: Patch<String> = .keep
         /// Whether a sub project uses its parent's settings (docs/projects.md › Sub projects).
         public var useParentSettings: Bool?
-        /// Replaces all run commands.
-        public var commands: ProjectCommands?
         /// Clearable: null removes the project's chat defaults. Must be absent for claude.
         public var chatDefaults: Patch<ChatSettings> = .keep
         /// Replaces all environments, in the given order; the MCP tool `update_project` never
@@ -94,8 +92,8 @@ public enum ProjectsUpdate: EngineMethod {
 
         public init(projectID: ProjectID, name: String? = nil, type: ProjectType? = nil, color: Patch<String> = .keep,
                     icon: Patch<String> = .keep, docsPath: String? = nil, githubPage: Patch<String> = .keep,
-                    useParentSettings: Bool? = nil, commands: ProjectCommands? = nil,
-                    chatDefaults: Patch<ChatSettings> = .keep, environments: [ProjectEnvironment]? = nil) {
+                    useParentSettings: Bool? = nil, chatDefaults: Patch<ChatSettings> = .keep,
+                    environments: [ProjectEnvironment]? = nil) {
             self.projectID = projectID
             self.name = name
             self.type = type
@@ -104,7 +102,6 @@ public enum ProjectsUpdate: EngineMethod {
             self.docsPath = docsPath
             self.githubPage = githubPage
             self.useParentSettings = useParentSettings
-            self.commands = commands
             self.chatDefaults = chatDefaults
             self.environments = environments
         }
@@ -120,41 +117,6 @@ public enum ProjectsRemove: EngineMethod {
 
         public init(projectID: ProjectID) {
             self.projectID = projectID
-        }
-    }
-    public typealias Result = Empty
-}
-
-/// `projects.run`: runs one of the project's commands. Actors: user, claude.
-public enum ProjectsRun: EngineMethod {
-    public static let name = "projects.run"
-    public struct Params: Codable, Sendable, Hashable {
-        public var projectID: ProjectID
-        public var kind: RunKind
-        /// true: return when the run ends or after `timeoutSeconds`; false: as soon as it started.
-        public var wait: Bool
-        /// 1–1,800, default 600; used only when `wait` is true.
-        public var timeoutSeconds: Int?
-
-        public init(projectID: ProjectID, kind: RunKind, wait: Bool, timeoutSeconds: Int? = nil) {
-            self.projectID = projectID
-            self.kind = kind
-            self.wait = wait
-            self.timeoutSeconds = timeoutSeconds
-        }
-    }
-    public typealias Result = RunResult
-}
-
-/// `projects.stopRun`. Actors: user, claude.
-public enum ProjectsStopRun: EngineMethod {
-    public static let name = "projects.stopRun"
-    public struct Params: Codable, Sendable, Hashable {
-        /// `runID` of a RunInfo.
-        public var runID: UUID
-
-        public init(runID: UUID) {
-            self.runID = runID
         }
     }
     public typealias Result = Empty

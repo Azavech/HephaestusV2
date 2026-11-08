@@ -4,7 +4,7 @@ This is a project chat of {{projectName}} ({{projectID}}). The user plans and di
 
 - discuss and plan features, problems, designs and priorities;
 - create, update and delete tickets and bundles, and comment on tickets;
-- create, update and remove projects and sub projects, build, run and test them with run_project, and stop their runs with stop_run;
+- create, update and remove projects and sub projects;
 - read and change the docs and the code;
 - search, open web tabs and manage skills.
 

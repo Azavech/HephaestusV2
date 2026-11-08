@@ -238,11 +238,6 @@ private struct ViewCommands: View {
         }
         .keyboardShortcut("0", modifiers: [.command, .option])
         .disabled(!hasProject)
-        Button(window?.consoleVisible ?? false ? "Hide Console" : "Show Console") {
-            window?.consoleVisible.toggle()
-        }
-        .keyboardShortcut("y", modifiers: [.command, .shift])
-        .disabled(!hasProject)
         Divider()
     }
 }
@@ -309,26 +304,6 @@ private struct ProjectCommands: View {
     var body: some View {
         let window = actionable(focused)
         let project = window?.hasActiveProject ?? false
-        ForEach([RunKind.run, .build, .test], id: \.self) { kind in
-            Button(kind.title) {
-                window?.startRun(kind)
-            }
-            .keyboardShortcut(Self.shortcut(kind), modifiers: .command)
-            .disabled(!project || window?.command(kind) == nil)
-        }
-        Button("Stop") {
-            window?.stopRuns()
-        }
-        .keyboardShortcut(".", modifiers: .command)
-        .disabled(window?.rootRunningRuns.isEmpty ?? true)
-        Button("Clear Console") {
-            if let window, let run = window.consoleRun {
-                window.workspace?.runs[run.id]?.clear()
-            }
-        }
-        .keyboardShortcut("k", modifiers: .command)
-        .disabled(!(window?.consoleVisible ?? false) || window?.consoleRun == nil)
-        Divider()
         Button("New Sub Project…") {
             if let window, let projectID = window.projectID {
                 window.sheet = .newSubProject(parentID: projectID)
@@ -363,17 +338,6 @@ private struct ProjectCommands: View {
     private func removalHidden(_ window: WindowState?) -> Bool {
         guard let window, let projectID = window.projectID, let workspace = window.workspace else { return false }
         return ProjectRules.isHephaestusOrAncestor(projectID, projects: workspace.projects)
-    }
-}
-
-extension ProjectCommands {
-    /// Run ⌘R, Build ⌘B, Test ⌘U.
-    static func shortcut(_ kind: RunKind) -> KeyEquivalent {
-        switch kind {
-        case .run: return "r"
-        case .build: return "b"
-        case .test: return "u"
-        }
     }
 }
 

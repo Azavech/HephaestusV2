@@ -220,7 +220,6 @@ extension Engine {
         case .own:
             return
         case .deleted:
-            // Its runs continue until they end or the app quits (docs/data-model.md › Reactions).
             recordApplied(path, nil)
             let unloaded = unloadTree(id)
             emitProjectsRemoved(unloaded.projectIDs, origin: .system)
