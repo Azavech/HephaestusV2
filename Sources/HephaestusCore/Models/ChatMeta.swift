@@ -26,6 +26,9 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     /// An implement chat the user has not written in yet: Claude's questions and requests are
     /// refused (docs/workflow.md › Implement chats). Only for kind `ticket`.
     public var questionsBlocked: Bool
+    /// The chat's last context usage, read from the Claude CLI (docs/chats.md › Context usage);
+    /// nil before the first one. Written only when set.
+    public var contextUsage: ContextUsage?
     /// Runtime only: the project whose folder holds the file. Never written to the file and
     /// ignored when read from it; always present in the engine API.
     public var projectID: ProjectID
@@ -52,7 +55,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     public init(schema: Int = 1, id: ChatID, title: String = ChatMeta.defaultTitle, kind: ChatKind,
                 ticketID: TicketID? = nil, bundleID: BundleID? = nil, orchestratorChatID: ChatID? = nil, created: Date, updated: Date? = nil,
                 settings: ChatSettings = ChatSettings(), sessionStarted: Bool = false, closed: Bool = false, questionsBlocked: Bool = false,
-                projectID: ProjectID = "",
+                contextUsage: ContextUsage? = nil, projectID: ProjectID = "",
                 state: ChatState = .idle, backgroundWork: Bool = false, costUSD: Double? = nil, mentionedIDs: [String] = [],
                 unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
@@ -68,6 +71,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         self.sessionStarted = sessionStarted
         self.closed = closed
         self.questionsBlocked = questionsBlocked
+        self.contextUsage = contextUsage
         self.projectID = projectID
         self.state = state
         self.backgroundWork = backgroundWork
@@ -78,7 +82,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
 
     static let fileKeys: Set<String> = [
         "schema", "id", "title", "kind", "ticket", "bundle", "orchestrator", "created", "updated", "settings", "sessionStarted", "closed",
-        "questionsBlocked",
+        "questionsBlocked", "contextUsage",
     ]
     static let runtimeKeys: Set<String> = ["projectID", "state", "backgroundWork", "costUSD", "mentionedIDs"]
 
@@ -99,6 +103,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         sessionStarted = try c.value("sessionStarted", default: false)
         closed = try c.value("closed", default: false)
         questionsBlocked = try c.value("questionsBlocked", default: false)
+        contextUsage = try c.optional("contextUsage")
         if c.isYAML {
             projectID = ""
             state = .idle
@@ -136,6 +141,8 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         try c.encode(closed, "closed")
         // Written only when true (docs/data-model.md › Chat metadata file).
         if questionsBlocked { try c.encode(true, "questionsBlocked") }
+        // Written only when set (docs/data-model.md › Chat metadata file).
+        if let contextUsage { try c.encode(contextUsage, "contextUsage") }
         if !c.isYAML {
             try c.encode(projectID, "projectID")
             try c.encode(state, "state")

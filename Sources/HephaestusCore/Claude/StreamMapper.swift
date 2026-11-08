@@ -71,6 +71,9 @@ enum MapperOutput: Sendable, Hashable {
     case controlResponse(requestID: String, success: Bool, response: JSONValue?, error: String?)
     /// `control_cancel_request`.
     case cancelRequest(requestID: String)
+    /// The first `assistant` line of a message of the main conversation: the engine asks for
+    /// the context usage (docs/chats.md › Context usage). The line's items come before.
+    case mainMessage(messageID: String)
     /// A `result` line: its item; the CLI turn closes. The items of the finalized blocks come
     /// before.
     case result(ResultItem)
@@ -120,6 +123,8 @@ struct StreamMapper {
     private var messageModels: [String: String] = [:]
     /// The model of the latest `assistant` line or `message_start` event.
     private(set) var latestModel: String?
+    /// The message ids of the main conversation whose first `assistant` line was read.
+    private var mainMessageIDs: Set<String> = []
 
     /// An `add_comment` call of the chat, for the model of the comment it adds
     /// (docs/engine-api.md › tickets.addComment).
@@ -369,6 +374,9 @@ struct StreamMapper {
             default:
                 continue
             }
+        }
+        if parent == nil, mainMessageIDs.insert(messageID).inserted {
+            outputs.append(.mainMessage(messageID: messageID))
         }
         return outputs
     }

@@ -81,6 +81,9 @@ struct StreamMapperTests {
         // Line 22: the text delta.
         #expect(replay[21].outputs == [.delta(itemID: "msg_011CgbN9DUEEzm4yYRLnxmCV#0", kind: .text, text: "done", model: Self.haiku,
                                               effort: .low)])
+        // Lines 12 and 23, the first assistant lines of their messages, ask for the context usage.
+        #expect(replay[11].outputs.last == .mainMessage(messageID: "msg_011CgbN99ugMwKEYBQfCEoiP"))
+        #expect(replay[22].outputs.last == .mainMessage(messageID: "msg_011CgbN9DUEEzm4yYRLnxmCV"))
         // Line 28 is the result that closes the CLI turn.
         #expect(replay[27].outputs.last.map { if case .result = $0 { return true } else { return false } } == true)
         // Line 16: the weekly window of the rate_limit_event is the plan usage.
@@ -126,9 +129,11 @@ struct StreamMapperTests {
             text: "Not done: the Write to `note.txt` was denied, so the file wasn't created. I tried the scratchpad directory. I can retry in the working directory if you want, or you can approve the scratchpad write.",
             messageID: "msg_011CgbNBQVp7hM3Fkm45qGrN", parentToolUseID: nil, model: Self.haiku, effort: .low)))
         #expect(items[6] == .result(ResultItem(id: "ID", created: Self.date, durationMs: 6775, costUSD: 0.00333187, isError: false, summary: nil)))
-        // Lines 32–39: the thinking block streams empty text, so no delta; line 40 matches block 0.
+        // Lines 32–39: the thinking block streams empty text, so no delta; line 40 matches block 0
+        // and, as the first line of its message, asks for the context usage; line 59 does not.
         #expect(Self.deltas(all, itemID: "msg_011CgbNBQVp7hM3Fkm45qGrN#0").text.isEmpty)
-        #expect(replay[39].outputs.isEmpty)
+        #expect(replay[39].outputs == [.mainMessage(messageID: "msg_011CgbNBQVp7hM3Fkm45qGrN")])
+        #expect(!replay[58].outputs.contains(.mainMessage(messageID: "msg_011CgbNBQVp7hM3Fkm45qGrN")))
         let text = Self.deltas(all, itemID: "msg_011CgbNBQVp7hM3Fkm45qGrN#1")
         #expect(text.kinds == [.text])
         #expect(text.text.hasPrefix("Not done: the Write to"))

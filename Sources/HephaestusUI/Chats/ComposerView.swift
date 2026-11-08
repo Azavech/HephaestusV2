@@ -1,4 +1,5 @@
-// OWNER: ui-chats — the composer (docs/chats.md › Composer, › Skill completion).
+// OWNER: ui-chats — the composer (docs/chats.md › Composer, › Context indicator, › Skill
+// completion).
 import HephaestusCore
 import SwiftUI
 
@@ -78,16 +79,16 @@ struct ComposerView: View {
 
     /// The controls row stays on one line: when the Model, Effort and Permissions menus do not
     /// fit, one `slider.horizontal.3` menu replaces them, followed by the red `Allow All` capsule
-    /// while that mode is selected.
+    /// while that mode is selected, and the context indicator keeps only its ring.
     private var controls: some View {
         let menus = ChatSettingsMenus(settings: model.settings, models: model.workspace.models) { model.changeSettings($0) }
         return ViewThatFits(in: .horizontal) {
-            controlsRow {
+            controlsRow(indicatorShowsText: true) {
                 ChatModelMenuButton(menus: menus)
                 ChatEffortMenuButton(menus: menus)
                 ChatPermissionsMenuButton(menus: menus)
             }
-            controlsRow {
+            controlsRow(indicatorShowsText: false) {
                 ChatCombinedSettingsMenuButton(menus: menus)
                 if menus.settings.permissionMode == .bypassPermissions {
                     ChatPermissionsMenuButton(menus: menus)
@@ -96,7 +97,7 @@ struct ComposerView: View {
         }
     }
 
-    private func controlsRow<Menus: View>(@ViewBuilder menus: () -> Menus) -> some View {
+    private func controlsRow<Menus: View>(indicatorShowsText: Bool, @ViewBuilder menus: () -> Menus) -> some View {
         HStack(spacing: 8) {
             Button {
                 model.chooseFiles()
@@ -107,6 +108,9 @@ struct ComposerView: View {
             .accessibilityLabel("Attach")
             menus()
             Spacer(minLength: 8)
+            if let usage = model.meta?.contextUsage {
+                ComposerContextIndicator(usage: usage, showsText: indicatorShowsText)
+            }
             if model.state.isChatRunning, model.chatID != nil {
                 Button {
                     model.stop()
@@ -127,6 +131,86 @@ struct ComposerView: View {
             .accessibilityLabel("Send")
         }
         .font(.callout)
+    }
+}
+
+/// What the context indicator shows for a context usage (docs/chats.md › Context indicator).
+struct ContextIndicatorPresentation: Equatable {
+    enum Level: Equatable {
+        /// `<n>` 20 or more: green.
+        case normal
+        /// `<n>` under 20: orange.
+        case warning
+        /// `<n>` under 10: red.
+        case critical
+    }
+
+    /// `<n>`: the percentage left before compaction.
+    let percentLeft: Int
+    /// The used part of `window` − `buffer`, to which the ring is filled.
+    let fraction: Double
+    let level: Level
+    /// `<used> of <window> tokens used · <left> left before compaction`.
+    let tooltip: String
+
+    /// nil, and no indicator, when `bufferTokens` is not below `windowTokens`.
+    init?(usage: ContextUsage) {
+        guard let percentLeft = usage.percentLeft, let fraction = usage.usedFraction else { return nil }
+        self.percentLeft = percentLeft
+        self.fraction = min(max(fraction, 0), 1)
+        level = Self.level(percentLeft: percentLeft)
+        tooltip = usage.tooltip
+    }
+
+    /// `<n>% left`.
+    var text: String { "\(percentLeft)% left" }
+
+    static func level(percentLeft: Int) -> Level {
+        if percentLeft < 10 { return .critical }
+        if percentLeft < 20 { return .warning }
+        return .normal
+    }
+
+    var color: Color {
+        switch level {
+        case .normal: return .green
+        case .warning: return .orange
+        case .critical: return .red
+        }
+    }
+}
+
+/// The context indicator of the controls row: the ring followed by `<n>% left`, which the folded
+/// row hides; the tooltip, also the accessibility label, gives the numbers.
+struct ComposerContextIndicator: View {
+    let usage: ContextUsage
+    let showsText: Bool
+
+    var body: some View {
+        if let presentation = ContextIndicatorPresentation(usage: usage) {
+            HStack(spacing: 5) {
+                UsageRing(fraction: presentation.fraction, color: presentation.color)
+                if showsText {
+                    Text(presentation.text)
+                        .lineLimit(1)
+                }
+            }
+            .contentShape(Rectangle())
+            .help(presentation.tooltip)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(presentation.tooltip)
+            .preference(key: ContextIndicatorTextShown.self, value: showsText)
+        }
+    }
+}
+
+/// Whether the context indicator of the shown controls row has its `<n>% left`: false once the
+/// row folds its menus; nil without an indicator.
+struct ContextIndicatorTextShown: PreferenceKey {
+    static let defaultValue: Bool? = nil
+
+    static func reduce(value: inout Bool?, nextValue: () -> Bool?) {
+        value = nextValue() ?? value
     }
 }
 

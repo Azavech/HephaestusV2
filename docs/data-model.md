@@ -844,6 +844,7 @@ chats:
 | sessionStarted     | `sessionStarted`   | `Bool`                                 | no       | `false`                 | `true` once the Claude CLI has created the session; later launches resume it ([Chats](chats.md)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | closed             | `closed`           | `Bool`                                 | no       | `false`                 | `true` once the chat is closed: its Claude process has ended and its composer is replaced by `This conversation is over`. Reopen, and any message delivered to the chat, set it back to `false` ([Closing a chat](chats.md#closing-a-chat)).                                                                                                                                                                                                                                                                                                                              |
 | questionsBlocked   | `questionsBlocked` | `Bool`                                 | no       | `false`                 | Only for kind `ticket`: `true` for an implement chat that the user has not written in yet ([Claude workflow](workflow.md#implement-chats)). `chats.implementTicket` writes it at creation, and the user's first message with `chats.send` removes it; while it is `true`, `chats.postQuestions` to `chats.postAnimation` fail with `forbidden`, except one question set after a CI failure report ([Implement and feedback chats](chats.md#implement-and-feedback-chats), [Reports to the orchestrator](chats.md#reports-to-the-orchestrator)). Written only when `true`. |
+| contextUsage       | `contextUsage`     | [`ContextUsage?`](#context-usage)      | no       | `null`                  | The chat's last context usage, read from the Claude CLI after each message of the main conversation and each turn result ([Context usage](chats.md#context-usage)) and shown by the composer's context indicator ([Context indicator](chats.md#context-indicator)). Written only when set; replaced by each new value and never cleared.                                                                                                                                                                                                                                  |
 | projectID          | `projectID`        | `ProjectID`                            | —        | `""`                    | Runtime only: the project whose folder holds the file. Never written to the file and ignored when read from it; always present in the engine API. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                                                                          |
 | state              | `state`            | [`ChatState`](engine-api.md#chatstate) | —        | `idle`                  | Runtime only: never written to the file and ignored when read from it; always present in the engine API.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | backgroundWork     | `backgroundWork`   | `Bool`                                 | —        | `false`                 | Runtime only: true while the chat's Claude process has background work running ([Background work](chats.md#background-work)). Never written to the file and ignored when read from it; always present in the engine API.                                                                                                                                                                                                                                                                                                                                                  |
@@ -851,7 +852,7 @@ chats:
 | mentionedIDs       | `mentionedIDs`     | `[String]`                             | —        | `[]`                    | Runtime only: the ticket and bundle ids that the chat's transcript mentions, in ascending order ([Mentioned ids](#mentioned-ids)). Never written to the file and ignored when read from it; always present in the engine API.                                                                                                                                                                                                                                                                                                                                             |
 | unknownKeys        | —                  | `[String: JSONValue]`                  | —        | `[:]`                   | [Unknown keys](#unknown-keys).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
-The storage layer sets `projectID` after decoding a file, the engine sets `state` and `backgroundWork` from the chat's process and `costUSD` and `mentionedIDs` from the chat's transcript.
+The storage layer sets `projectID` after decoding a file, the engine sets `state` and `backgroundWork` from the chat's process and `costUSD` and `mentionedIDs` from the chat's transcript. `contextUsage` is stored, so that the indicator shows the last value after the process has ended and after a restart.
 
 ### Chat kinds
 
@@ -890,9 +891,22 @@ The engine reads a text with the rules the transcript renders it with ([Ticket a
 - When the list changes, the engine emits `chat.updated` ([Chat metadata in the API](engine-api.md#chat-metadata-in-the-api)).
 - The list is never stored: each launch computes it again from the transcripts, those of the chats created before the Mentioned In tab included.
 
+### Context usage
+
+Swift type `ContextUsage`: how much of the context window the conversation of a chat used when the engine last asked the Claude CLI ([Context usage](chats.md#context-usage)).
+
+| Swift name   | Key            | Type   | Required | Default | Rules                                                                                |
+| ------------ | -------------- | ------ | -------- | ------- | ------------------------------------------------------------------------------------ |
+| usedTokens   | `usedTokens`   | `Int`  | yes      | —       | The tokens of the conversation, the CLI's `totalTokens`: 0 or more.                  |
+| windowTokens | `windowTokens` | `Int`  | yes      | —       | The context window, the CLI's `maxTokens`: above 0.                                  |
+| bufferTokens | `bufferTokens` | `Int`  | yes      | —       | The autocompact buffer that Claude Code keeps free: 0 or more, below `windowTokens`. |
+| received     | `received`     | `Date` | yes      | —       | When the engine read the CLI's answer.                                               |
+
+The engine checks these rules on each answer of the CLI before it keeps a value. A file whose value breaks them still loads; the context indicator shows nothing for a value whose `bufferTokens` is not below its `windowTokens` ([Context indicator](chats.md#context-indicator)). `ContextUsage` keeps no unknown keys.
+
 ### Chat metadata file examples
 
-A project chat:
+A project chat, with the context usage read after Claude's last message:
 
 ```yaml
 # .hephaestus/chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301.yml
@@ -911,6 +925,11 @@ settings:
   ultracode: false
 sessionStarted: true
 closed: false
+contextUsage:
+  usedTokens: 18554
+  windowTokens: 1000000
+  bufferTokens: 33000
+  received: 2026-10-31T13:02:10Z
 ```
 
 A ticket chat started by Implement, which the user has not written in yet ([Claude workflow](workflow.md#implement-chats)):
@@ -1973,3 +1992,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R174: A sub project that uses its parent's settings inherits its parent's environments and changes their URL, port, deployment and Argo CD application.
 - R178: The Dashboard of a Go service can show an Instances widget listing the pods of the current working environment with their status.
 - R182: Each environment of a Go service has an `Allow invalid certificates` setting, off by default and changeable by a sub project that inherits the environment, with which the Contract view's requests to it accept any invalid server certificate.
+- R186: A chat shows how much of Claude's context window its conversation uses and what remains before compaction, as a ring and `<n>% left` in the composer that change after each Claude message and stay with the chat.

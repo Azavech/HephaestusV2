@@ -276,6 +276,12 @@ struct ChatAgentsTests {
         }
     }
 
+    /// A line of `stream-workflow-stop.jsonl` whose answer to the capture's `stop_task` request,
+    /// `hephaestus-2`, answers `requestID`.
+    static func answering(_ line: String, _ requestID: String) -> String {
+        line.replacingOccurrences(of: #""request_id": "hephaestus-2""#, with: #""request_id": "\#(requestID)""#)
+    }
+
     static func listAgents(_ bed: ChatTestBed) async throws -> [ChatAgents] {
         try await bed.connection.call(ChatsListAgents.self, .init(projectID: "DEMO"))
     }
@@ -360,9 +366,11 @@ struct ChatAgentsTests {
             #expect(await bed.waitForState(chat.id, .idle))
             #expect(await eventually { (try? await Self.listAgents(bed))?.first?.agents.count == 2 })
             _ = try await bed.connection.call(ChatsStopWorkflow.self, .init(chatID: chat.id, workflowID: "wdszm9a9r"))
-            let request = await process.line { $0.contains(#""subtype":"stop_task""#) }
-            #expect(request == #"{"type":"control_request","request_id":"hephaestus-2","request":{"subtype":"stop_task","task_id":"wdszm9a9r"}}"#)
-            for line in lines.dropFirst(44) { process.emit(line) }
+            let request = try #require(await process.line { $0.contains(#""subtype":"stop_task""#) })
+            let requestID = try #require(FakeClaudeLauncher.requestID(of: request))
+            #expect(request == #"{"type":"control_request","request_id":"\#(requestID)","request":{"subtype":"stop_task","task_id":"wdszm9a9r"}}"#)
+            // Line 48 answers the request id of the capture's run.
+            for line in lines.dropFirst(44) { process.emit(Self.answering(line, requestID)) }
             #expect(await eventually { await bed.engine.chatMeta(chat.id)?.backgroundWork == false })
             let entry = try #require(try await Self.listAgents(bed).first)
             #expect(entry.workflows.map(\.state) == [.stopped])
@@ -394,8 +402,9 @@ struct ChatAgentsTests {
             #expect(await bed.waitForState(chat.id, .idle))
             #expect(await eventually { (try? await Self.listAgents(bed))?.first?.workflows.count == 1 })
             _ = try await bed.connection.call(ChatsStopWorkflow.self, .init(chatID: chat.id, workflowID: "wdszm9a9r"))
-            _ = await process.line { $0.contains(#""subtype":"stop_task""#) }
-            process.emit(#"{"type":"control_response","response":{"subtype":"error","request_id":"hephaestus-2","error":"No such task."}}"#)
+            let request = try #require(await process.line { $0.contains(#""subtype":"stop_task""#) })
+            let requestID = try #require(FakeClaudeLauncher.requestID(of: request))
+            process.emit(#"{"type":"control_response","response":{"subtype":"error","request_id":"\#(requestID)","error":"No such task."}}"#)
             #expect(await eventually {
                 (try? await bed.systemTexts(chat.id))?.contains("The workflow “Two probe agents” was not stopped: No such task.") == true
             })

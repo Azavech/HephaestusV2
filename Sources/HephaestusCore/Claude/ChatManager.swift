@@ -182,6 +182,8 @@ enum ControlPurpose: Sendable, Equatable {
     case permissionMode(PermissionMode, origin: Actor)
     /// `stop_task` for the workflow with this id (docs/chats.md › Stopping a workflow).
     case stopWorkflow(String)
+    /// `get_context_usage` (docs/chats.md › Context usage).
+    case contextUsage
 
     /// The setting named in the warning of a refused setting (docs/chats.md › Control protocol).
     var settingName: String? {
@@ -190,7 +192,7 @@ enum ControlPurpose: Sendable, Equatable {
         case .permissionMode: return "permission mode"
         case .effort: return "effort"
         case .ultracode: return "ultracode"
-        case .initialize, .interrupt, .stopWorkflow: return nil
+        case .initialize, .interrupt, .stopWorkflow, .contextUsage: return nil
         }
     }
 }
@@ -239,6 +241,10 @@ final class ChatProcess {
     var terminatedByEngine = false
     /// End the process when its turn ends (an `mcpPort` change during a turn).
     var terminateAfterTurn = false
+    /// A `get_context_usage` request waits for its answer (docs/chats.md › Context usage).
+    var contextUsageRequested = false
+    /// A line asked for the context usage while a request was waiting: one more request follows.
+    var contextUsageAskedAgain = false
     var exited = false
 
     init(handle: any ClaudeProcess, generation: Int, resumed: Bool, mcpPort: Int, mapper: StreamMapper, log: AppendFile,

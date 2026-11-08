@@ -1,0 +1,2021 @@
+{
+ "type": "control_response",
+ "response": {
+  "subtype": "success",
+  "request_id": "hephaestus-2",
+  "response": {
+   "categories": [
+    {
+     "id": "system_prompt",
+     "name": "System prompt",
+     "tokens": 3378,
+     "color": "promptBorder",
+     "kind": "used"
+    },
+    {
+     "id": "system_tools",
+     "name": "System tools",
+     "tokens": 6838,
+     "color": "inactive",
+     "kind": "used"
+    },
+    {
+     "id": "system_tools_deferred",
+     "name": "System tools (deferred)",
+     "tokens": 21557,
+     "color": "inactive",
+     "isDeferred": true,
+     "kind": "deferred"
+    },
+    {
+     "id": "memory_files",
+     "name": "Memory files",
+     "tokens": 136,
+     "color": "claude",
+     "kind": "used"
+    },
+    {
+     "id": "skills",
+     "name": "Skills",
+     "tokens": 8202,
+     "color": "warning",
+     "kind": "used"
+    },
+    {
+     "id": "autocompact_buffer",
+     "name": "Autocompact buffer",
+     "tokens": 33000,
+     "color": "inactive",
+     "kind": "buffer"
+    },
+    {
+     "id": "free_space",
+     "name": "Free space",
+     "tokens": 948446,
+     "color": "promptBorder",
+     "kind": "free"
+    }
+   ],
+   "totalTokens": 18554,
+   "maxTokens": 1000000,
+   "rawMaxTokens": 1000000,
+   "autocompactSource": "model-default",
+   "percentage": 2,
+   "gridRows": [
+    [
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "System prompt",
+      "tokens": 3378,
+      "percentage": 0,
+      "squareFullness": 0.6756
+     },
+     {
+      "color": "inactive",
+      "isFilled": true,
+      "categoryName": "System tools",
+      "tokens": 6838,
+      "percentage": 1,
+      "squareFullness": 1
+     },
+     {
+      "color": "claude",
+      "isFilled": true,
+      "categoryName": "Memory files",
+      "tokens": 136,
+      "percentage": 0,
+      "squareFullness": 0.0272
+     },
+     {
+      "color": "warning",
+      "isFilled": true,
+      "categoryName": "Skills",
+      "tokens": 8202,
+      "percentage": 1,
+      "squareFullness": 1
+     },
+     {
+      "color": "warning",
+      "isFilled": true,
+      "categoryName": "Skills",
+      "tokens": 8202,
+      "percentage": 1,
+      "squareFullness": 0.6403999999999999
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     }
+    ],
+    [
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     }
+    ],
+    [
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     }
+    ],
+    [
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     }
+    ],
+    [
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     }
+    ],
+    [
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     }
+    ],
+    [
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     }
+    ],
+    [
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     }
+    ],
+    [
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     }
+    ],
+    [
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "promptBorder",
+      "isFilled": true,
+      "categoryName": "Free space",
+      "tokens": 948446,
+      "percentage": 95,
+      "squareFullness": 1
+     },
+     {
+      "color": "inactive",
+      "isFilled": true,
+      "categoryName": "Autocompact buffer",
+      "tokens": 33000,
+      "percentage": 3,
+      "squareFullness": 1
+     },
+     {
+      "color": "inactive",
+      "isFilled": true,
+      "categoryName": "Autocompact buffer",
+      "tokens": 33000,
+      "percentage": 3,
+      "squareFullness": 1
+     },
+     {
+      "color": "inactive",
+      "isFilled": true,
+      "categoryName": "Autocompact buffer",
+      "tokens": 33000,
+      "percentage": 3,
+      "squareFullness": 1
+     },
+     {
+      "color": "inactive",
+      "isFilled": true,
+      "categoryName": "Autocompact buffer",
+      "tokens": 33000,
+      "percentage": 3,
+      "squareFullness": 1
+     },
+     {
+      "color": "inactive",
+      "isFilled": true,
+      "categoryName": "Autocompact buffer",
+      "tokens": 33000,
+      "percentage": 3,
+      "squareFullness": 1
+     },
+     {
+      "color": "inactive",
+      "isFilled": true,
+      "categoryName": "Autocompact buffer",
+      "tokens": 33000,
+      "percentage": 3,
+      "squareFullness": 1
+     },
+     {
+      "color": "inactive",
+      "isFilled": true,
+      "categoryName": "Autocompact buffer",
+      "tokens": 33000,
+      "percentage": 3,
+      "squareFullness": 0.6000000000000005
+     }
+    ]
+   ],
+   "model": "claude-haiku-5-5",
+   "memoryFiles": [
+    {
+     "path": "/Users/example/.claude/CLAUDE.md",
+     "type": "User",
+     "tokens": 136
+    }
+   ],
+   "mcpTools": [],
+   "mcpInstructions": [],
+   "agents": [],
+   "slashCommands": {
+    "totalCommands": 46,
+    "includedCommands": 46,
+    "tokens": 1417
+   },
+   "skills": {
+    "totalSkills": 46,
+    "includedSkills": 46,
+    "tokens": 8202,
+    "skillFrontmatter": [
+     {
+      "name": "mac-install",
+      "source": "userSettings",
+      "path": "/Users/example/.claude/skills/mac-install/SKILL.md",
+      "tokens": 216
+     },
+     {
+      "name": "hexago:create-service",
+      "source": "plugin",
+      "pluginName": "hexago",
+      "pluginId": "hexago@hexago",
+      "path": "/Users/example/.claude/plugins/cache/hexago/hexago/1.10.1/skills/create-service/SKILL.md",
+      "tokens": 39
+     },
+     {
+      "name": "hexago:ensure-dockerfile",
+      "source": "plugin",
+      "pluginName": "hexago",
+      "pluginId": "hexago@hexago",
+      "path": "/Users/example/.claude/plugins/cache/hexago/hexago/1.10.1/skills/ensure-dockerfile/SKILL.md",
+      "tokens": 87
+     },
+     {
+      "name": "hexago:ensure-gitignore",
+      "source": "plugin",
+      "pluginName": "hexago",
+      "pluginId": "hexago@hexago",
+      "path": "/Users/example/.claude/plugins/cache/hexago/hexago/1.10.1/skills/ensure-gitignore/SKILL.md",
+      "tokens": 86
+     },
+     {
+      "name": "hexago:ensure-lint",
+      "source": "plugin",
+      "pluginName": "hexago",
+      "pluginId": "hexago@hexago",
+      "path": "/Users/example/.claude/plugins/cache/hexago/hexago/1.10.1/skills/ensure-lint/SKILL.md",
+      "tokens": 82
+     },
+     {
+      "name": "hexago:ensure-makefile",
+      "source": "plugin",
+      "pluginName": "hexago",
+      "pluginId": "hexago@hexago",
+      "path": "/Users/example/.claude/plugins/cache/hexago/hexago/1.10.1/skills/ensure-makefile/SKILL.md",
+      "tokens": 85
+     },
+     {
+      "name": "hexago:hexagonal-documentation",
+      "source": "plugin",
+      "pluginName": "hexago",
+      "pluginId": "hexago@hexago",
+      "path": "/Users/example/.claude/plugins/cache/hexago/hexago/1.10.1/skills/hexagonal-documentation/SKILL.md",
+      "tokens": 192
+     },
+     {
+      "name": "hexago:hexagonal-errors",
+      "source": "plugin",
+      "pluginName": "hexago",
+      "pluginId": "hexago@hexago",
+      "path": "/Users/example/.claude/plugins/cache/hexago/hexago/1.10.1/skills/hexagonal-errors/SKILL.md",
+      "tokens": 155
+     },
+     {
+      "name": "hexago:hexagonal-generation",
+      "source": "plugin",
+      "pluginName": "hexago",
+      "pluginId": "hexago@hexago",
+      "path": "/Users/example/.claude/plugins/cache/hexago/hexago/1.10.1/skills/hexagonal-generation/SKILL.md",
+      "tokens": 146
+     },
+     {
+      "name": "hexago:hexagonal-logging",
+      "source": "plugin",
+      "pluginName": "hexago",
+      "pluginId": "hexago@hexago",
+      "path": "/Users/example/.claude/plugins/cache/hexago/hexago/1.10.1/skills/hexagonal-logging/SKILL.md",
+      "tokens": 146
+     },
+     {
+      "name": "hexago:hexagonal-plugin-gin",
+      "source": "plugin",
+      "pluginName": "hexago",
+      "pluginId": "hexago@hexago",
+      "path": "/Users/example/.claude/plugins/cache/hexago/hexago/1.10.1/skills/hexagonal-plugin-gin/SKILL.md",
+      "tokens": 177
+     },
+     {
+      "name": "hexago:hexagonal-plugin-openapi-client",
+      "source": "plugin",
+      "pluginName": "hexago",
+      "pluginId": "hexago@hexago",
+      "path": "/Users/example/.claude/plugins/cache/hexago/hexago/1.10.1/skills/hexagonal-plugin-openapi-client/SKILL.md",
+      "tokens": 179
+     },
+     {
+      "name": "hexago:hexagonal-plugin-postgres",
+      "source": "plugin",
+      "pluginName": "hexago",
+      "pluginId": "hexago@hexago",
+      "path": "/Users/example/.claude/plugins/cache/hexago/hexago/1.10.1/skills/hexagonal-plugin-postgres/SKILL.md",
+      "tokens": 152
+     },
+     {
+      "name": "hexago:hexagonal-plugin-s3",
+      "source": "plugin",
+      "pluginName": "hexago",
+      "pluginId": "hexago@hexago",
+      "path": "/Users/example/.claude/plugins/cache/hexago/hexago/1.10.1/skills/hexagonal-plugin-s3/SKILL.md",
+      "tokens": 194
+     },
+     {
+      "name": "hexago:hexagonal-service",
+      "source": "plugin",
+      "pluginName": "hexago",
+      "pluginId": "hexago@hexago",
+      "path": "/Users/example/.claude/plugins/cache/hexago/hexago/1.10.1/skills/hexagonal-service/SKILL.md",
+      "tokens": 177
+     },
+     {
+      "name": "hexago:hexagonal-testing",
+      "source": "plugin",
+      "pluginName": "hexago",
+      "pluginId": "hexago@hexago",
+      "path": "/Users/example/.claude/plugins/cache/hexago/hexago/1.10.1/skills/hexagonal-testing/SKILL.md",
+      "tokens": 250
+     },
+     {
+      "name": "cowork-plugin-management:cowork-plugin-customizer",
+      "source": "plugin",
+      "pluginName": "cowork-plugin-management",
+      "pluginId": "cowork-plugin-management@synced",
+      "path": "/Users/example/.claude/plugins/synced/REDACTED/cowork-plugin-management/skills/cowork-plugin-customizer/SKILL.md",
+      "tokens": 110
+     },
+     {
+      "name": "cowork-plugin-management:create-cowork-plugin",
+      "source": "plugin",
+      "pluginName": "cowork-plugin-management",
+      "pluginId": "cowork-plugin-management@synced",
+      "path": "/Users/example/.claude/plugins/synced/REDACTED/cowork-plugin-management/skills/create-cowork-plugin/SKILL.md",
+      "tokens": 131
+     },
+     {
+      "name": "dataviz",
+      "source": "built-in",
+      "tokens": 482
+     },
+     {
+      "name": "update-config",
+      "source": "built-in",
+      "tokens": 236
+     },
+     {
+      "name": "keybindings-help",
+      "source": "built-in",
+      "tokens": 83
+     },
+     {
+      "name": "code-review",
+      "source": "built-in",
+      "tokens": 331
+     },
+     {
+      "name": "simplify",
+      "source": "built-in",
+      "tokens": 63
+     },
+     {
+      "name": "fewer-permission-prompts",
+      "source": "built-in",
+      "tokens": 64
+     },
+     {
+      "name": "loop",
+      "source": "built-in",
+      "tokens": 115
+     },
+     {
+      "name": "schedule",
+      "source": "built-in",
+      "tokens": 127
+     },
+     {
+      "name": "claude-api",
+      "source": "built-in",
+      "tokens": 361
+     },
+     {
+      "name": "workflow-authoring",
+      "source": "built-in",
+      "tokens": 84
+     },
+     {
+      "name": "run",
+      "source": "built-in",
+      "tokens": 123
+     },
+     {
+      "name": "plugin-authoring",
+      "source": "built-in",
+      "tokens": 89
+     },
+     {
+      "name": "init",
+      "source": "built-in",
+      "tokens": 22
+     },
+     {
+      "name": "security-review",
+      "source": "built-in",
+      "tokens": 30
+     },
+     {
+      "name": "built-in-browser",
+      "source": "syncedSkills",
+      "path": "/Users/example/.claude/skills/synced/REDACTED/built-in-browser/SKILL.md",
+      "tokens": 285
+     },
+     {
+      "name": "chrome-browser",
+      "source": "syncedSkills",
+      "path": "/Users/example/.claude/skills/synced/REDACTED/chrome-browser/SKILL.md",
+      "tokens": 262
+     },
+     {
+      "name": "clean-json-parsing",
+      "source": "syncedSkills",
+      "path": "/Users/example/.claude/skills/synced/REDACTED/clean-json-parsing/SKILL.md",
+      "tokens": 225
+     },
+     {
+      "name": "computer-use",
+      "source": "syncedSkills",
+      "path": "/Users/example/.claude/skills/synced/REDACTED/computer-use/SKILL.md",
+      "tokens": 322
+     },
+     {
+      "name": "anthropic-skills:deep-research",
+      "source": "syncedSkills",
+      "path": "/Users/example/.claude/skills/synced/REDACTED/deep-research/SKILL.md",
+      "tokens": 201
+     },
+     {
+      "name": "docs",
+      "source": "syncedSkills",
+      "path": "/Users/example/.claude/skills/synced/REDACTED/docs/SKILL.md",
+      "tokens": 343
+     },
+     {
+      "name": "docx",
+      "source": "syncedSkills",
+      "path": "/Users/example/.claude/skills/synced/REDACTED/docx/SKILL.md",
+      "tokens": 320
+     },
+     {
+      "name": "google-workspace",
+      "source": "syncedSkills",
+      "path": "/Users/example/.claude/skills/synced/REDACTED/google-workspace/SKILL.md",
+      "tokens": 326
+     },
+     {
+      "name": "import-memory",
+      "source": "syncedSkills",
+      "path": "/Users/example/.claude/skills/synced/REDACTED/import-memory/SKILL.md",
+      "tokens": 58
+     },
+     {
+      "name": "morning",
+      "source": "syncedSkills",
+      "path": "/Users/example/.claude/skills/synced/REDACTED/morning/SKILL.md",
+      "tokens": 122
+     },
+     {
+      "name": "pdf",
+      "source": "syncedSkills",
+      "path": "/Users/example/.claude/skills/synced/REDACTED/pdf/SKILL.md",
+      "tokens": 154
+     },
+     {
+      "name": "pptx",
+      "source": "syncedSkills",
+      "path": "/Users/example/.claude/skills/synced/REDACTED/pptx/SKILL.md",
+      "tokens": 328
+     },
+     {
+      "name": "skill-creator",
+      "source": "syncedSkills",
+      "path": "/Users/example/.claude/skills/synced/REDACTED/skill-creator/SKILL.md",
+      "tokens": 118
+     },
+     {
+      "name": "xlsx",
+      "source": "syncedSkills",
+      "path": "/Users/example/.claude/skills/synced/REDACTED/xlsx/SKILL.md",
+      "tokens": 324
+     }
+    ]
+   },
+   "autoCompactThreshold": 967000,
+   "isAutoCompactEnabled": true,
+   "messageBreakdown": {
+    "toolCallTokens": 0,
+    "toolResultTokens": 0,
+    "attachmentTokens": 0,
+    "assistantMessageTokens": 0,
+    "userMessageTokens": 0,
+    "redirectedContextTokens": 0,
+    "unattributedTokens": 0,
+    "toolCallsByType": [],
+    "attachmentsByType": []
+   },
+   "apiUsage": null
+  }
+ }
+}

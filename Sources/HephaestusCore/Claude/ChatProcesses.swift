@@ -330,6 +330,8 @@ extension Engine {
         case .unsupportedControlRequest(let requestID, let subtype):
             process.log.appendLine("unsupported control request \(subtype)")
             process.handle.write(ControlLines.unsupportedAnswer(requestID: requestID, subtype: subtype))
+        case .mainMessage:
+            askContextUsage(chatID, process: process)
         case .controlResponse(let requestID, let success, let response, let error):
             controlResponseReceived(requestID: requestID, success: success, response: response, error: error, chatID: chatID, process: process)
         case .cancelRequest(let requestID):
@@ -346,6 +348,8 @@ extension Engine {
             process.stopTask = nil
             appendChatItemLogging(.result(item), chatID: chatID)
             agentTurnEnded(chatID)
+            // Asked before the turn ends, which may close standard input.
+            askContextUsage(chatID, process: process)
             // Steps 4 and 5.
             process.turns.resultReceived()
             if !process.turns.isWorking { chatTurnEnded(chatID, runtime: runtime, process: process) }
@@ -531,6 +535,9 @@ extension Engine {
         if case .stopWorkflow(let workflowID) = entry.purpose {
             workflowStopRefused(workflowID, description: "no answer", chatID: chatID, process: process)
         }
+        if entry.purpose == .contextUsage {
+            contextUsageRequestEnded(chatID, process: process)
+        }
     }
 
     /// The `summary` of the first error `result` after Stop (docs/chats.md › Turn result).
@@ -549,6 +556,10 @@ extension Engine {
             return
         }
         entry.timer?.cancel()
+        if entry.purpose == .contextUsage {
+            contextUsageAnswered(requestID: requestID, success: success, response: response, error: error, chatID: chatID, process: process)
+            return
+        }
         if success {
             if entry.purpose == .initialize, let models = ClaudeModel.parse(response?.objectValue?["models"]) {
                 receivedInitializeModels(models)
@@ -567,6 +578,47 @@ extension Engine {
             workflowStopRefused(workflowID, description: description, chatID: chatID, process: process)
         } else {
             log.warn(.claude, "chat \(chatID.uuidString): control request \(requestID) failed")
+        }
+    }
+
+    // MARK: Context usage
+
+    /// docs/chats.md › Context usage: a `get_context_usage` request, unless one waits for its
+    /// answer; then one more request follows once the waiting one has ended.
+    func askContextUsage(_ chatID: ChatID, process: ChatProcess) {
+        guard !process.exited else { return }
+        if process.contextUsageRequested {
+            process.contextUsageAskedAgain = true
+            return
+        }
+        process.contextUsageRequested = true
+        sendControlRequest(.contextUsage, chatID: chatID, process: process) { ControlLines.getContextUsage(id: $0) }
+    }
+
+    /// A valid success answer replaces the chat's `contextUsage`: the metadata file is written and
+    /// `chat.updated` emitted. Any other answer leaves it unchanged and is logged.
+    private func contextUsageAnswered(requestID: String, success: Bool, response: JSONValue?, error: String?, chatID: ChatID,
+                                      process: ChatProcess) {
+        if !success {
+            process.log.appendLine("control request \(requestID) failed: \(error ?? "unknown error")")
+            log.warn(.claude, "chat \(chatID.uuidString): control request \(requestID) failed")
+        } else if let usage = ContextUsage.parse(response, received: ISODate.now()) {
+            if var meta = domain.chat(chatID) {
+                meta.contextUsage = usage
+                saveChatMetaLogging(meta, origin: .system)
+            }
+        } else {
+            process.log.appendLine("control request \(requestID): the context usage has invalid numbers")
+            log.warn(.claude, "chat \(chatID.uuidString): the context usage of \(requestID) has invalid numbers")
+        }
+        contextUsageRequestEnded(chatID, process: process)
+    }
+
+    private func contextUsageRequestEnded(_ chatID: ChatID, process: ChatProcess) {
+        process.contextUsageRequested = false
+        if process.contextUsageAskedAgain {
+            process.contextUsageAskedAgain = false
+            askContextUsage(chatID, process: process)
         }
     }
 

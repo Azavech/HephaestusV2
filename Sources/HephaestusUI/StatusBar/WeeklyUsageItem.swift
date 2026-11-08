@@ -92,7 +92,7 @@ struct WeeklyUsageItem: View {
             Button {
                 popoverShown = true
             } label: {
-                WeeklyUsageRing(fraction: presentation.fraction, color: Self.color(presentation.level))
+                UsageRing(fraction: presentation.fraction, color: Self.color(presentation.level))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -110,25 +110,6 @@ struct WeeklyUsageItem: View {
         case .warning: return .orange
         case .limited: return .red
         }
-    }
-}
-
-/// A ring 12 points wide, filled clockwise from the top; the unfilled part in the separator
-/// colour.
-private struct WeeklyUsageRing: View {
-    let fraction: Double
-    let color: Color
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 2)
-            Circle()
-                .trim(from: 0, to: fraction)
-                .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .butt))
-                .rotationEffect(.degrees(-90))
-        }
-        .frame(width: 12, height: 12)
     }
 }
 

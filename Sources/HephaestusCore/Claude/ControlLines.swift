@@ -39,6 +39,11 @@ enum ControlLines {
         line(#"{"type":"control_request","request_id":\#(string(id)),"request":{"subtype":"stop_task","task_id":\#(string(taskID))}}"#)
     }
 
+    /// The `get_context_usage` request (docs/chats.md › Context usage).
+    static func getContextUsage(id: String) -> Data {
+        line(#"{"type":"control_request","request_id":\#(string(id)),"request":{"subtype":"get_context_usage","detail":"summary"}}"#)
+    }
+
     /// The error answer to a control request of the CLI the engine does not support.
     static func unsupportedAnswer(requestID: String, subtype: String) -> Data {
         line(#"{"type":"control_response","response":{"subtype":"error","request_id":\#(string(requestID)),"error":\#(string("Unsupported control request: \(subtype)"))}}"#)
