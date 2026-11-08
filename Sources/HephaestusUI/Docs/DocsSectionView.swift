@@ -4,6 +4,8 @@ import HephaestusCore
 import SwiftUI
 
 /// The Docs section of the active project (`ProjectViewState.selectedDocPath`, `docMode`, `docBuffer`); a selected doc that does not exist shows `NotFoundView(kind: "Doc", id:)`.
+/// Its identity is the project it shows, so a project switch shows the section of the new project
+/// as when the section appears.
 struct DocsSectionView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -30,6 +32,11 @@ struct DocsSectionView: View {
         .onChange(of: state.selectedDocPath) {
             syncBuffer()
         }
+        // A project or device switch while the section is shown makes it appear again for the new
+        // project, as when the section is selected: the docs tree loads `docs.list` when it has no
+        // list yet, the selected doc gets its buffer and the section's commands become the
+        // window's (docs/ui.md › Sidebar; docs/documentation-viewer.md › Docs tree).
+        .id(ProjectKey(deviceID: workspace.deviceID, projectID: projectID))
     }
 
     /// The Docs section holds one buffer: the selected doc's (docs/documentation-viewer.md ›

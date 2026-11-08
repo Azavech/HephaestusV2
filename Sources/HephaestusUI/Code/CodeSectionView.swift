@@ -4,7 +4,8 @@ import HephaestusCore
 import SwiftUI
 
 /// The Code section of the active project; its tabs are `ProjectViewState.editorTabs`. It sets its
-/// `CodeSectionCommands` as `WindowState.sectionCommands`.
+/// `CodeSectionCommands` as `WindowState.sectionCommands`. Its identity is the project it shows,
+/// so a project switch shows the section of the new project as when the section appears.
 struct CodeSectionView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -34,6 +35,11 @@ struct CodeSectionView: View {
         .onChange(of: state.selectedEditorPath) { old, _ in
             dropMissingTab(old)
         }
+        // A project or device switch while the section is shown makes it appear again for the new
+        // project, as when the section is selected: the file tree lists a root it has not listed
+        // yet, the tabs still loading are read and the section's commands become the window's
+        // (docs/ui.md › Sidebar; docs/code-editor.md › File tree, Loading).
+        .id(ProjectKey(deviceID: workspace.deviceID, projectID: projectID))
     }
 
     /// Reads the tabs that are still loading; restored tabs are read again from disk.
