@@ -1529,7 +1529,7 @@ A new permission mode chosen during a turn applies within that turn: the CLI dec
 
 | Control           | Behaviour                                                                                                                                                                                                                            |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Text field        | Multi-line, grows from 1 to 10 visible lines, then scrolls. Placeholder `Message Claude…`. Return sends; Shift-Return inserts a line break.                                                                                          |
+| Text field        | Multi-line, grows from 1 to 10 visible lines, then scrolls. Placeholder `Message Claude…`. Return sends; Shift-Return inserts a line break. A `/` at its start shows the [skill list](#skill-completion).                            |
 | Linked item chips | Only in the inspector: one chip per item linked from the window ([Linked items](#linked-items)), before the attachment chips in the same row: the SF Symbol of the item's sidebar section, its short name, and an unlink button (×). |
 | Attachment chips  | One chip per attachment: a thumbnail for images or a file icon, the name and the size, and a remove button (×).                                                                                                                      |
 | Attach button     | SF Symbol `paperclip`. Opens an open panel for files (multiple selection, no folders).                                                                                                                                               |
@@ -1541,8 +1541,8 @@ A new permission mode chosen during a turn applies within that turn: the CLI dec
 
 - The controls row stays on one line. When it does not fit the composer's width, the Model, Effort and Permissions menus are replaced by one menu button with the SF Symbol `slider.horizontal.3` holding the submenus Model (with its Ultracode toggle), Effort and Permissions, followed by the red `Allow All` capsule while that mode is selected. Default chosen at design time.
 
-- Return in the text field does what an enabled Send does. While a turn is in progress, a sent message is delivered at once and Claude reads it after the current turn ([Chat states](#chat-states)).
-- Escape in the text field calls `chats.interrupt` while the chat is running; ⌘. does not.
+- While the [skill list](#skill-completion) is closed, Return in the text field does what an enabled Send does. While a turn is in progress, a sent message is delivered at once and Claude reads it after the current turn ([Chat states](#chat-states)).
+- While the skill list is closed, Escape in the text field calls `chats.interrupt` while the chat is running; ⌘. does not.
 - Sending clears the text field and the chips. When the call fails, the alert `Send failed` shows the error, and the message and its attachments come back when the composer is still empty. Default chosen at design time.
 - Files dropped anywhere on the chat view, and files pasted with ⌘V, become attachments; dropped folders are refused with the alert `Folders cannot be attached.` Pasted image data without a file becomes a PNG attachment named `Pasted Image <yyyy-MM-dd> at <HH.mm.ss>.png`, in local time, as in [Adding attachments](tickets.md#adding-attachments). Pasted text is inserted as text.
 - On a remote device, attachments are read on that device and sent as `AttachmentUpload` {name, contentType, dataBase64}.
@@ -1581,6 +1581,32 @@ The context Claude receives with a message sent while two tickets are linked:
 Open in the app: ticket DEMO-12 “Fix the login form”
 Open in the app: ticket DEMO-14 “Remember the last account”
 ```
+
+### Skill completion
+
+Typing `/` at the start of a message lists the skills of the chat's project, so that the user completes the call of one of them, `/hephaestus-skills:<name>` ([Calls](skills.md#calls)).
+
+- Every chat composer has the list: in the inspector, in chat windows, in the Chats section, in the Chats tabs and Mentioned In tabs of tickets and bundles, and in draft chats.
+- The list shows while the text field has the focus, its text starts with `/` and the insertion point is in that first word: the `/` and the characters after it up to the insertion point hold no white space or line break. The typed text is the characters between the `/` and the insertion point.
+- Skills offered: the skills the chat's project can use, the same set as its [generated plugin](skills.md#generation): the skills of the project's `skills` list that are skills of the library, and the [internal skills](skills.md#internal-skills) `feedback`, `finish-implementation`, `implement-bundle` and `implement-ticket`. Names of the project's list that are missing from the library are not offered ([Per-project enablement](skills.md#per-project-enablement)). The set does not depend on a CLI process, so draft chats get it too. On a remote device, it comes from that device's library and project. It follows `skills.changed` and `project.updated`, also while the list shows.
+- Matching: a skill matches when its name contains the typed text, in any letter case. Names that start with the typed text come first, then the other matching names; each group is sorted by name. A lone `/` offers every skill of the set.
+- Rows: each row shows the skill's name, then its description on one line, truncated at its end.
+- Place: as the comment composer's mention list ([Mentioning Claude](tickets.md#mentioning-claude)), the list shows just above the text field, at its left edge, with its first row selected, drawn in the accent color. It is as wide as the text field, at most 420 points, and shows at most 8 rows, then scrolls. Default chosen at design time for the width and the number of rows.
+- ↑ and ↓ move the selection, which stops at the first and the last rows, and scroll the list to keep the selected row visible. Each change of the matching skills selects the first row again. Default chosen at design time.
+- Return, Tab or a click on a row replaces the `/` and the typed text with `/hephaestus-skills:<name> `, the call of the row's skill followed by one space, and closes the list. The characters after the insertion point stay. Default chosen at design time for the characters after the insertion point.
+- Escape closes the list for that `/`: the list stays closed until that `/` is deleted or replaced, so typing a `/` again at the start of an empty text shows it again.
+- The list closes when no skill matches, when the insertion point leaves the first word, when white space is typed after the `/`, and when the text field loses the focus. It shows again once the conditions above hold again, except after Escape.
+- While the list shows, Return does not send, Tab inserts no tab, ↑ and ↓ do not move the insertion point, and Escape does not stop the running chat. While it is closed, Return, Tab, ↑, ↓ and Escape keep their behaviour of the [Composer](#composer).
+
+The rows in a project that enables `release-notes` and `swift-testing`:
+
+| Text    | Rows, in order                                                                                                |
+| ------- | ------------------------------------------------------------------------------------------------------------- |
+| `/`     | `feedback`, `finish-implementation`, `implement-bundle`, `implement-ticket`, `release-notes`, `swift-testing` |
+| `/f`    | `feedback`, `finish-implementation`, then `swift-testing`, which contains `f` without starting with it        |
+| `/IMPL` | `implement-bundle`, `implement-ticket`, then `finish-implementation`, which contains `impl`                   |
+| `/zzz`  | none: the list is closed                                                                                      |
+| `/f x`  | none: white space after the `/` closes the list                                                               |
 
 ## Transcript view
 
@@ -2313,9 +2339,12 @@ The Claude integration lives in `Sources/HephaestusCore/Claude/`. The type names
 
 | Shortcut        | Where                                                                                                                                  | Action                                                                |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| Return          | composer                                                                                                                               | Send                                                                  |
+| Return          | composer, while the skill list is closed                                                                                               | Send                                                                  |
 | Shift-Return    | composer                                                                                                                               | insert a line break                                                   |
-| Escape          | composer, while the chat is running                                                                                                    | Stop                                                                  |
+| Escape          | composer, while the chat is running and the skill list is closed                                                                       | Stop                                                                  |
+| Return or Tab   | composer, while the skill list shows ([Skill completion](#skill-completion))                                                           | insert the selected skill's call                                      |
+| ↑ and ↓         | composer, while the skill list shows                                                                                                   | move the selection of the skill list                                  |
+| Escape          | composer, while the skill list shows                                                                                                   | close the skill list                                                  |
 | ⌘V              | composer                                                                                                                               | paste; files and images become attachments                            |
 | ⌘Return         | chat view with a permission card, focus outside the composer, request shown for 1 s                                                    | Allow Once                                                            |
 | ⌥⌘Return        | chat view with a permission card, focus outside the composer, request shown for 1 s                                                    | Always Allow                                                          |
@@ -3024,3 +3053,4 @@ The user answers with a new comment that mentions @Claude, with one "<label>: <a
 - R180: The detail of a ticket or a bundle lists, in a Mentioned In tab, the other chats of the device that mention it.
 - R181: Feedback, Implement and Implement All start their chat by calling the internal skills feedback, implement-ticket and implement-bundle, which, with finish-implementation, hold the instructions of these tasks, are always active in every project, and are shown and edited only in the HephaestusV2 project.
 - R182: Each environment of a Go service has an `Allow invalid certificates` setting, off by default and changeable by a sub project that inherits the environment, with which the Contract view's requests to it accept any invalid server certificate.
+- R183: Typing `/` at the start of a chat message lists the skills of the chat's project whose name contains the typed text, to complete the skill's call.

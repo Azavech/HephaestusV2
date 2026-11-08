@@ -1,7 +1,8 @@
 // OWNER: ui-chats — the multi-line text fields of chat views: the composer's text field and the
-// questions card's answer field (docs/chats.md › Composer, › Pinned questions card,
-// › Keyboard shortcuts).
+// questions card's answer field (docs/chats.md › Composer, › Skill completion,
+// › Pinned questions card, › Keyboard shortcuts).
 import AppKit
+import HephaestusCore
 import SwiftUI
 
 /// A plain-text `NSTextView` that grows from `minLines` to `maxLines` visible lines, then scrolls.
@@ -22,6 +23,11 @@ struct ChatTextEditor: NSViewRepresentable {
     var onPasteFiles: ([URL]) -> Void = { _ in }
     var onPasteImage: (Data) -> Void = { _ in }
     var onFocusChange: (Bool) -> Void = { _ in }
+    /// The composer's skill list (docs/chats.md › Skill completion), filled from `skills`; nil,
+    /// the field completes nothing.
+    var skillList: SkillCompletionList?
+    /// The skills the chat's project can use.
+    var skills: [SkillSummary] = []
 
     static let font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
 
@@ -70,11 +76,19 @@ struct ChatTextEditor: NSViewRepresentable {
         let coordinator = context.coordinator
         coordinator.parent = self
         guard let textView = coordinator.textView else { return }
+        coordinator.isUpdatingView = true
+        defer { coordinator.isUpdatingView = false }
+        var refreshesSkillList = coordinator.lastSkills != skills
         if textView.string != text, !textView.hasMarkedText() {
             textView.string = text
             textView.needsDisplay = true
+            refreshesSkillList = true
         }
+        coordinator.lastSkills = skills
         apply(to: textView, coordinator: coordinator)
+        if refreshesSkillList {
+            coordinator.updateSkillList()
+        }
         if coordinator.lastFocusRequest != focusRequest {
             coordinator.lastFocusRequest = focusRequest
             DispatchQueue.main.async { [weak textView] in
@@ -92,7 +106,12 @@ struct ChatTextEditor: NSViewRepresentable {
         textView.isSelectable = isEditable
         textView.onPasteFiles = isComposer ? { urls in coordinator.parent.onPasteFiles(urls) } : nil
         textView.onPasteImage = isComposer ? { data in coordinator.parent.onPasteImage(data) } : nil
-        textView.onFocusChange = { focused in coordinator.parent.onFocusChange(focused) }
+        textView.onFocusChange = { focused in
+            coordinator.parent.onFocusChange(focused)
+            // The window's first responder changes once the call returns.
+            DispatchQueue.main.async { coordinator.updateSkillList() }
+        }
+        skillList?.choose = { [weak coordinator] index in coordinator?.acceptSkill(at: index) }
         textView.needsDisplay = true
     }
 
@@ -107,7 +126,14 @@ struct ChatTextEditor: NSViewRepresentable {
         weak var textView: ChatNSTextView?
         weak var scrollView: ChatTextScrollView?
         var lastFocusRequest = 0
+        var lastSkills: [SkillSummary] = []
+        /// True during `updateNSView`: the skill list, which the composer observes, changes after it.
+        var isUpdatingView = false
         private var lastHeight: CGFloat = 0
+        /// The `/` and the typed text while the skill list can show.
+        private var skillRange: NSRange?
+        /// True once Escape closed the skill list for the `/` at the start of the text.
+        private var skillListDismissed = false
 
         init(_ parent: ChatTextEditor) {
             self.parent = parent
@@ -120,6 +146,21 @@ struct ChatTextEditor: NSViewRepresentable {
             }
             textView.needsDisplay = true
             updateHeight()
+            updateSkillList()
+        }
+
+        func textViewDidChangeSelection(_ notification: Notification) {
+            updateSkillList()
+        }
+
+        func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange,
+                      replacementString: String?) -> Bool {
+            // An edit at the start of the text deletes or replaces the `/` that Escape closed the
+            // list for.
+            if affectedCharRange.location == 0 {
+                skillListDismissed = false
+            }
+            return true
         }
 
         /// The height of `minLines` to `maxLines` lines that fits the text.
@@ -151,7 +192,74 @@ struct ChatTextEditor: NSViewRepresentable {
             }
         }
 
+        // MARK: Skill completion
+
+        /// Shows the skills that match the typed text while the text field has the focus and the
+        /// insertion point is in a first word that starts with `/`, unless Escape closed the list
+        /// for that `/` (docs/chats.md › Skill completion).
+        func updateSkillList() {
+            guard !isUpdatingView else {
+                DispatchQueue.main.async { [weak self] in self?.updateSkillList() }
+                return
+            }
+            guard let list = parent.skillList, let textView else { return }
+            var range: NSRange?
+            var rows: [SkillSummary] = []
+            let selection = textView.selectedRange()
+            if !textView.string.hasPrefix("/") {
+                skillListDismissed = false
+            }
+            if textView.window?.firstResponder === textView, selection.length == 0, !textView.hasMarkedText(),
+               let query = SkillCompletion.query(in: textView.string, caret: selection.location) {
+                range = NSRange(location: 0, length: selection.location)
+                if !skillListDismissed {
+                    rows = SkillCompletion.matches(parent.skills, query: query)
+                }
+            }
+            skillRange = range
+            list.show(rows)
+        }
+
+        /// Return, Tab or a click on a row: the `/` and the typed text become the call of the
+        /// row's skill followed by one space.
+        func acceptSkill(at index: Int) {
+            guard let textView, let list = parent.skillList, list.rows.indices.contains(index),
+                  let range = skillRange else { return }
+            textView.insertText(SkillCompletion.completion(list.rows[index].name), replacementRange: range)
+            updateSkillList()
+        }
+
+        /// The keys of the shown skill list: Return and Tab insert the selected skill, ↑ and ↓
+        /// move the selection, Escape closes the list for this `/`.
+        private func handleSkillListCommand(_ selector: Selector) -> Bool {
+            guard let list = parent.skillList, list.isShown else { return false }
+            let flags = NSApp.currentEvent?.modifierFlags.intersection(.deviceIndependentFlagsMask) ?? []
+            switch selector {
+            case #selector(NSResponder.insertNewline(_:)):
+                guard !flags.contains(.shift) else { return false }
+                acceptSkill(at: list.selection)
+            case #selector(NSResponder.insertTab(_:)):
+                acceptSkill(at: list.selection)
+            case #selector(NSResponder.moveUp(_:)):
+                list.moveSelection(by: -1)
+            case #selector(NSResponder.moveDown(_:)):
+                list.moveSelection(by: 1)
+            case #selector(NSResponder.cancelOperation(_:)):
+                guard let event = NSApp.currentEvent, event.type == .keyDown, event.keyCode == 53, flags.isEmpty else {
+                    return false
+                }
+                skillListDismissed = true
+                list.show([])
+            default:
+                return false
+            }
+            return true
+        }
+
         func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            if handleSkillListCommand(selector) {
+                return true
+            }
             switch selector {
             case #selector(NSResponder.insertNewline(_:)):
                 guard parent.isComposer, !textView.hasMarkedText() else { return false }

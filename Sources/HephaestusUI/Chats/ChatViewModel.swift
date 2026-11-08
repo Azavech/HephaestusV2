@@ -276,6 +276,12 @@ final class ChatViewModel {
         }
     }
 
+    /// The skills the composer's skill list offers: those of the chat's project and the internal
+    /// skills, from the device's library (docs/chats.md › Skill completion).
+    var completionSkills: [SkillSummary] {
+        SkillCompletion.skills(library: workspace.skills, enabled: workspace.details[chatProjectID]?.project.skills ?? [])
+    }
+
     var placeholder: String? {
         let projectName = workspace.project(chatProjectID)?.name ?? chatProjectID
         return ChatFormat.placeholder(kind: kind, projectName: projectName, ticketID: meta?.ticketID ?? draft?.ticketID,

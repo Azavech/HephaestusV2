@@ -1,4 +1,4 @@
-// OWNER: ui-chats — the composer (docs/chats.md › Composer).
+// OWNER: ui-chats — the composer (docs/chats.md › Composer, › Skill completion).
 import HephaestusCore
 import SwiftUI
 
@@ -12,6 +12,7 @@ import SwiftUI
 /// ```
 struct ComposerView: View {
     @Bindable var model: ChatViewModel
+    @State private var skillList = SkillCompletionList()
 
     var body: some View {
         let workspace = model.workspace
@@ -47,14 +48,27 @@ struct ComposerView: View {
                     onSend: { model.send() },
                     onEscape: { model.stop() },
                     onPasteFiles: { model.addFiles($0) },
-                    onPasteImage: { model.addPastedImage($0) }
+                    onPasteImage: { model.addPastedImage($0) },
+                    skillList: skillList,
+                    skills: model.completionSkills
                 )
+                // The skill list, just above the text field at its left edge.
+                .overlay(alignment: .topLeading) {
+                    if skillList.isShown {
+                        ComposerSkillList(list: skillList)
+                            .offset(y: -(ComposerSkillList.height(rows: skillList.rows.count) + 4))
+                    }
+                }
+                .zIndex(1)
                 controls
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .textBackgroundColor)))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.25)))
+            // The border is drawn under the content, so that the skill list covers it.
+            .background {
+                RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .textBackgroundColor))
+                RoundedRectangle(cornerRadius: 10).strokeBorder(Color.secondary.opacity(0.25))
+            }
             .disabled(!workspace.isConnected)
         }
         .padding(.horizontal, 10)
@@ -113,6 +127,66 @@ struct ComposerView: View {
             .accessibilityLabel("Send")
         }
         .font(.callout)
+    }
+}
+
+/// The skill list of the composer (docs/chats.md › Skill completion): one row per matching skill,
+/// its name then its description on one line, the selected row in the accent color; at most
+/// `visibleRows` rows, then it scrolls.
+struct ComposerSkillList: View {
+    let list: SkillCompletionList
+    static let rowHeight: CGFloat = 22
+    static let visibleRows = 8
+    static let maxWidth: CGFloat = 420
+    static let padding: CGFloat = 4
+
+    /// The height of the list showing `rows` rows.
+    static func height(rows: Int) -> CGFloat {
+        CGFloat(min(rows, visibleRows)) * rowHeight + 2 * padding
+    }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                VStack(spacing: 0) {
+                    ForEach(Array(list.rows.enumerated()), id: \.element.name) { index, skill in
+                        row(skill, selected: index == list.selection) { list.choose(index) }
+                    }
+                }
+            }
+            .scrollIndicators(list.rows.count > Self.visibleRows ? .automatic : .never)
+            .frame(height: CGFloat(min(list.rows.count, Self.visibleRows)) * Self.rowHeight)
+            .onChange(of: list.selection) { _, selection in
+                guard list.rows.indices.contains(selection) else { return }
+                proxy.scrollTo(list.rows[selection].name)
+            }
+        }
+        .padding(Self.padding)
+        .frame(maxWidth: Self.maxWidth, alignment: .leading)
+        .frame(height: Self.height(rows: list.rows.count))
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .windowBackgroundColor)).shadow(radius: 3, y: 1))
+        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color(nsColor: .separatorColor)))
+    }
+
+    private func row(_ skill: SkillSummary, selected: Bool, choose: @escaping () -> Void) -> some View {
+        Button(action: choose) {
+            HStack(spacing: 8) {
+                Text(skill.name)
+                    .foregroundStyle(selected ? Color.white : Color.primary)
+                    .layoutPriority(1)
+                Text(skill.description)
+                    .foregroundStyle(selected ? Color.white.opacity(0.8) : Color.secondary)
+            }
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity, minHeight: Self.rowHeight, maxHeight: Self.rowHeight, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 4).fill(selected ? Color.accentColor : Color.clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .id(skill.name)
+        .accessibilityLabel("Skill \(skill.name)")
     }
 }
 

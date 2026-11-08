@@ -140,6 +140,7 @@ The first message of a chat that runs an internal skill calls it as a Claude Cod
 - Claude Code 2.1.309 runs a user message of a stream-json session as a skill call when its last content block is a text that starts with `/<plugin>:<skill>`: the skill's body follows the message, with `$ARGUMENTS` replaced by the rest of the text, line breaks included, and the message's image blocks stay visible to Claude. A message whose image block comes after its text is passed on as plain text, so the engine writes the image blocks before the text block ([User messages](chats.md#user-messages)). The CLI reports the message with `command_lifecycle` lines as any other ([Turn tracking](chats.md#turn-tracking)).
 - The default skills read their arguments with `$ARGUMENTS` only: with Claude Code 2.1.309, a positional `$1` stays as written when the call has no second argument.
 - Implement chats keep `questionsBlocked` and every other rule the engine enforces ([Implement chats](workflow.md#implement-chats)).
+- The user calls a skill the same way: in a chat composer, typing `/` at the start of a message lists the skills of the chat's project, internal skills included, and completes the call `/hephaestus-skills:<name> ` of the chosen one ([Skill completion](chats.md#skill-completion)).
 
 ### Availability
 
@@ -590,3 +591,4 @@ The library folder is chosen in Settings ▸ Skills, whose controls are specifie
 - R49: Skills are in their own folders, not in `~/.claude`.
 - R168: The header bars at the top of the panes of the main window's centre column, and the inspector's header, are all 36 points high, so that their bottom separators lie on one line.
 - R181: Feedback, Implement and Implement All start their chat by calling the internal skills feedback, implement-ticket and implement-bundle, which, with finish-implementation, hold the instructions of these tasks, are always active in every project, and are shown and edited only in the HephaestusV2 project.
+- R183: Typing `/` at the start of a chat message lists the skills of the chat's project whose name contains the typed text, to complete the skill's call.
