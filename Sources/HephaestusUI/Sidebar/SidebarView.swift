@@ -60,21 +60,77 @@ extension ProjectSection {
     }
 }
 
-/// A category of the sidebar: a heading over its section rows (docs/ui.md › Sidebar).
+/// A category of the sidebar: a heading over its section rows, or over its sub project rows for
+/// Sub Projects (docs/ui.md › Sidebar).
 struct SidebarCategory: Equatable, Identifiable {
     var title: String
     var sections: [ProjectSection]
+    /// The rows of the Sub Projects category; empty for the other categories.
+    var subProjects: [SidebarSubProject] = []
 
     var id: String { title }
 
     /// `Project` with every listed section, then `Go Service`, without rows yet, for the
-    /// `goService` type.
-    static func categories(for type: ProjectType) -> [SidebarCategory] {
+    /// `goService` type, then `Sub Projects` when the active project has a loaded sub project.
+    static func categories(for type: ProjectType, subProjects: [SidebarSubProject] = []) -> [SidebarCategory] {
         var categories = [SidebarCategory(title: "Project", sections: ProjectSection.listed)]
         if type == .goService {
             categories.append(SidebarCategory(title: "Go Service", sections: []))
         }
+        if !subProjects.isEmpty {
+            categories.append(SidebarCategory(title: "Sub Projects", sections: [], subProjects: subProjects))
+        }
         return categories
+    }
+
+    /// The categories of the active project, with its loaded descendants in Sub Projects: they
+    /// follow the workspace's `projects`.
+    @MainActor
+    static func categories(of project: ProjectSummary, in workspace: DeviceWorkspace) -> [SidebarCategory] {
+        categories(for: project.type, subProjects: SidebarSubProject.rows(of: project.id, in: workspace))
+    }
+}
+
+/// A row of the Sub Projects category: a loaded descendant of the active project, with its icon in
+/// its color, indented by its depth below the active project (docs/ui.md › Sidebar).
+struct SidebarSubProject: Equatable, Identifiable {
+    /// The project's identifier.
+    var id: String
+    var name: String
+    /// The symbol drawn: the project's icon, or `folder` for a project without one or whose icon
+    /// this Mac has no symbol for.
+    var symbol: String
+    /// The project's color, `#RRGGBB`; nil for none.
+    var color: String?
+    /// 0 for a direct sub project of the active project, one more per level below it.
+    var level: Int
+
+    /// The indentation of one level, in points.
+    static let indentation: CGFloat = 16
+
+    /// Every loaded descendant of a project, in `projects.list` order.
+    @MainActor
+    static func rows(of projectID: String, in workspace: DeviceWorkspace,
+                     isAvailable: (String) -> Bool = SFSymbols.isAvailable) -> [SidebarSubProject] {
+        workspace.descendants(of: projectID).map { project, depth in
+            SidebarSubProject(id: project.id, name: project.name,
+                              symbol: ProjectRules.iconSymbol(project.icon, isAvailable: isAvailable),
+                              color: project.color, level: depth - 1)
+        }
+    }
+
+    /// The icon's color: the project's color, or the accent colour for a project without one.
+    static func iconColor(_ color: String?) -> Color {
+        color.flatMap(ColorSwatches.nsColor).map { Color(nsColor: $0) } ?? .accentColor
+    }
+}
+
+extension WindowState {
+    /// A click on a row of the sidebar's Sub Projects category: activates the project, as the Sub
+    /// project segment does, and selects the Dashboard section (docs/ui.md › Sidebar).
+    func showSubProject(_ projectID: String) {
+        activate(projectID: projectID)
+        section = .dashboard
     }
 }
 
@@ -88,10 +144,13 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
-                    ForEach(SidebarCategory.categories(for: project.type)) { category in
+                    ForEach(SidebarCategory.categories(of: project, in: workspace)) { category in
                         heading(category.title)
                         ForEach(category.sections, id: \.self) { section in
                             row(section)
+                        }
+                        ForEach(category.subProjects) { subProject in
+                            row(subProject)
                         }
                     }
                 }
@@ -142,6 +201,30 @@ struct SidebarView: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    /// A row of the Sub Projects category, drawn like a section row without badge, indented by its
+    /// level; never shown as selected.
+    private func row(_ subProject: SidebarSubProject) -> some View {
+        Button {
+            window.showSubProject(subProject.id)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: subProject.symbol)
+                    .frame(width: 18)
+                    .foregroundStyle(SidebarSubProject.iconColor(subProject.color))
+                Text(subProject.name)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 4)
+            }
+            .padding(.leading, 8 + CGFloat(subProject.level) * SidebarSubProject.indentation)
+            .padding(.trailing, 8)
+            .padding(.vertical, 5)
+            .foregroundStyle(Color.primary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     /// The Tickets badge: the `todo`, `in_progress` and `review` tickets of the active project and
