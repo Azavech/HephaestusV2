@@ -178,11 +178,12 @@ public enum ModelRules {
         return true
     }
 
-    /// Web tab `url`: an absolute `http` or `https` URL, stored as entered after trimming.
-    public static func webTabURL(_ value: String) throws -> String {
+    /// Web tab `url` and `originalURL`: an absolute `http` or `https` URL, stored as entered after
+    /// trimming.
+    public static func webTabURL(_ value: String, field: String = "url") throws -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard isHTTPURL(trimmed) else {
-            throw ValidationError.invalid("url", "use an absolute http or https URL")
+            throw ValidationError.invalid(field, "use an absolute http or https URL")
         }
         return trimmed
     }

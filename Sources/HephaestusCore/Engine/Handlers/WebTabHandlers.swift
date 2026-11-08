@@ -27,12 +27,14 @@ extension Engine {
     }
 
     /// docs/engine-api.md › webTabs.open: a new tab with a new UUID, the URL's host as default
-    /// title, unlocked by default, at `index` clamped to the tab range or appended.
+    /// title, unlocked by default, at `index` clamped to the tab range or appended. A tab opened
+    /// locked takes its URL as original URL.
     func webTabsOpen(_ params: WebTabsOpen.Params, _ actor: Actor) async throws -> WebTab {
         let id = try loadedProjectID(params.projectID)
         let url = try validated { try ModelRules.webTabURL(params.url) }
         let title = params.title.map(Self.webTabTitle) ?? (URLComponents(string: url)?.host ?? "")
-        let tab = WebTab(id: UUID(), title: title, url: url, locked: params.locked ?? false)
+        let locked = params.locked ?? false
+        let tab = WebTab(id: UUID(), title: title, url: url, locked: locked, originalURL: locked ? url : nil)
         var project = loaded(id).project
         let index = min(max(params.index ?? project.webTabs.count, 0), project.webTabs.count)
         project.webTabs.insert(tab, at: index)
@@ -41,7 +43,8 @@ extension Engine {
     }
 
     /// docs/engine-api.md › webTabs.update: a locked tab can be navigated, renamed and unlocked;
-    /// Claude never unlocks a tab.
+    /// Claude never unlocks a tab. Locking takes the tab's URL after the update as original URL,
+    /// unlocking removes it, and a new URL keeps it (docs/web-tabs.md › Original URL).
     func webTabsUpdate(_ params: WebTabsUpdate.Params, _ actor: Actor) async throws -> WebTab {
         try ActorRules.requireNoUnlock(params.locked, actor)
         let id = try loadedProjectID(params.projectID)
@@ -49,7 +52,8 @@ extension Engine {
         guard let index = project.webTabs.firstIndex(where: { $0.id == params.tabID }) else {
             throw Self.webTabNotFound(params.tabID)
         }
-        var tab = project.webTabs[index]
+        let old = project.webTabs[index]
+        var tab = old
         if let url = params.url {
             tab.url = try validated { try ModelRules.webTabURL(url) }
         }
@@ -59,7 +63,12 @@ extension Engine {
         if let locked = params.locked {
             tab.locked = locked
         }
-        guard tab != project.webTabs[index] else { return tab }
+        if !tab.locked {
+            tab.originalURL = nil
+        } else if !old.locked || tab.originalURL == nil {
+            tab.originalURL = tab.url
+        }
+        guard tab != old else { return tab }
         project.webTabs[index] = tab
         try saveWebTabs(project, origin: actor)
         return tab

@@ -1,17 +1,18 @@
 # Web tabs
 
-Every project has an integrated web browser: a strip of web tabs shown in the Web section (⌘7). Tabs, their order, titles, URLs and locks are project data stored in `.hephaestus/project.yml`, so every window and every remote device shows the same tabs and sees changes live; the pages themselves are loaded by the WKWebView of the Mac whose window shows them. A locked tab cannot be closed until it is unlocked, so tabs that matter are not closed inadvertently. This document specifies the tab strip, the address bar, navigation and how it updates the stored tab, locking, popups, downloads, page permissions, the website data store and the behaviour in windows that show a remote device.
+Every project has an integrated web browser: a strip of web tabs shown in the Web section (⌘7). Tabs, their order, titles, URLs, locks and original URLs are project data stored in `.hephaestus/project.yml`, so every window and every remote device shows the same tabs and sees changes live; the pages themselves are loaded by the WKWebView of the Mac whose window shows them. A locked tab cannot be closed until it is unlocked, so tabs that matter are not closed inadvertently, and it goes back to its original page each time the user comes back to it, so the user can browse from it without losing that page. This document specifies the tab strip, the address bar, navigation and how it updates the stored tab, locking and original URLs, popups, downloads, page permissions, the website data store and the behaviour in windows that show a remote device.
 
 ## Tab data
 
 A tab is a `WebTab` element of the key `webTabs` of the project file; the exact format, defaults and validation are in [Data model](data-model.md#web-tab).
 
-| Field    | Type   | Meaning                                                                                                   |
-| -------- | ------ | --------------------------------------------------------------------------------------------------------- |
-| `id`     | UUID   | Identity of the tab, unique within the project.                                                           |
-| `title`  | String | Last known page title; shown as the tab's label.                                                          |
-| `url`    | String | Absolute `http` or `https` URL the tab shows, in its stored form (see [Remote windows](#remote-windows)). |
-| `locked` | Bool   | A locked tab cannot be closed.                                                                            |
+| Field         | Type    | Meaning                                                                                                                                            |
+| ------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`          | UUID    | Identity of the tab, unique within the project.                                                                                                    |
+| `title`       | String  | Last known page title; shown as the tab's label.                                                                                                   |
+| `url`         | String  | Absolute `http` or `https` URL the tab shows, in its stored form (see [Remote windows](#remote-windows)).                                          |
+| `locked`      | Bool    | A locked tab cannot be closed.                                                                                                                     |
+| `originalURL` | String? | The URL a locked tab goes back to each time the user comes back to it, in stored form; `null` for an unlocked tab ([Original URL](#original-url)). |
 
 - The order of the `webTabs` array is the order of the tab strip, left to right.
 - `.hephaestus/project.yml` is not git-ignored, so web tabs are committed with the project like the rest of its data.
@@ -22,13 +23,13 @@ A tab is a `WebTab` element of the key `webTabs` of the project file; the exact 
 
 All changes go through the [Engine API](engine-api.md#web-tabs). Each successful change emits `webTabs.updated` `{projectID, tabs}` with the complete list and `project.updated`.
 
-| Method           | Used by                                                                                                    | Rules that matter here                                                                                       |
-| ---------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `webTabs.list`   | windows loading a project; Claude (`list_web_tabs`)                                                        | Tabs in strip order.                                                                                         |
-| `webTabs.open`   | ⌘T, Duplicate, popups, links from docs, chats and tickets; Claude (`open_web_tab`)                         | `url` must be an absolute `http` or `https` URL; `title` defaults to the URL's host; `index` absent appends. |
-| `webTabs.update` | navigation of a shown tab (URL and title), Lock and Unlock; Claude (`update_web_tab`, which cannot unlock) | Allowed on a locked tab.                                                                                     |
-| `webTabs.close`  | close button, ⌘W, Close, Close Other Tabs, `window.close()` of a page; Claude (`close_web_tab`)            | Fails with `forbidden` and `This tab is locked.` when the tab is locked, whoever calls it.                   |
-| `webTabs.move`   | dragging a tab in the strip; Claude (`move_web_tab`)                                                       | `toIndex` is the final position, clamped.                                                                    |
+| Method           | Used by                                                                                                                                       | Rules that matter here                                                                                                                                            |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `webTabs.list`   | windows loading a project; Claude (`list_web_tabs`)                                                                                           | Tabs in strip order.                                                                                                                                              |
+| `webTabs.open`   | ⌘T, Duplicate, popups, links from docs, chats and tickets; Claude (`open_web_tab`)                                                            | `url` must be an absolute `http` or `https` URL; `title` defaults to the URL's host; `index` absent appends; a tab opened locked takes `url` as its original URL. |
+| `webTabs.update` | navigation of a shown tab (URL and title), Lock and Unlock, coming back to a locked tab (URL); Claude (`update_web_tab`, which cannot unlock) | Allowed on a locked tab. Locking sets the original URL, unlocking removes it, and a new `url` leaves it unchanged ([Original URL](#original-url)).                |
+| `webTabs.close`  | close button, ⌘W, Close, Close Other Tabs, `window.close()` of a page; Claude (`close_web_tab`)                                               | Fails with `forbidden` and `This tab is locked.` when the tab is locked, whoever calls it.                                                                        |
+| `webTabs.move`   | dragging a tab in the strip; Claude (`move_web_tab`)                                                                                          | `toIndex` is the final position, clamped.                                                                                                                         |
 
 Claude can list and open tabs through MCP ([MCP server](mcp.md)); it updates, moves and closes them with `update_web_tab`, `move_web_tab` and `close_web_tab`; a locked tab refuses `close_web_tab` like every close, and only the user unlocks a tab. A tab opened by Claude or by another client appears in every window's tab strip without being selected; `open_in_app` with a `webTab` target selects it ([UI](ui.md#resolving-a-target)).
 
@@ -80,12 +81,12 @@ The widths, the colors and the always-visible close button are design-time choic
 
 The context menu of a stored tab has these items, in this order (Brief §9.2):
 
-| Item             | Enabled when                              | Action                                                                                                                                         |
-| ---------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Lock or Unlock   | always; the title says what a click does  | `webTabs.update` with `locked` true or false.                                                                                                  |
-| Duplicate        | always                                    | `webTabs.open` with the tab's stored `url` and `title`, `locked` false, `index` = the tab's index + 1; the new tab is selected in this window. |
-| Close            | the tab is unlocked                       | Closes the tab ([Closing tabs](#closing-tabs)).                                                                                                |
-| Close Other Tabs | at least one other stored tab is unlocked | Closes every other unlocked tab, one `webTabs.close` per tab, left to right; locked tabs stay.                                                 |
+| Item             | Enabled when                              | Action                                                                                                                                             |
+| ---------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lock or Unlock   | always; the title says what a click does  | `webTabs.update` with `locked` true or false: Lock makes the tab's stored URL its original URL, Unlock removes it ([Original URL](#original-url)). |
+| Duplicate        | always                                    | `webTabs.open` with the tab's stored `url` and `title`, `locked` false, `index` = the tab's index + 1; the new tab is selected in this window.     |
+| Close            | the tab is unlocked                       | Closes the tab ([Closing tabs](#closing-tabs)).                                                                                                    |
+| Close Other Tabs | at least one other stored tab is unlocked | Closes every other unlocked tab, one `webTabs.close` per tab, left to right; locked tabs stay.                                                     |
 
 The placeholder tab, and a popup tab that is not stored yet, have a context menu with Close only. A duplicate starting unlocked is a design-time choice. Default chosen at design time.
 
@@ -155,8 +156,8 @@ When the result is not a valid URL the beep sounds and the text stays. For a sto
 
 ### Web views
 
-- A window creates one `WKWebView` per tab it shows, the first time the tab is selected, and loads the tab's stored URL (after the [localhost rewrite](remote.md#localhost-rewrite) in a window that shows a remote device).
-- A window keeps the web views of the active project alive while the project stays active in that window, whichever section is shown, so pages keep their state while the user visits other sections. A web view is released when its tab disappears, when the window activates another project or device, and when the window closes; coming back loads the stored URL again.
+- A window creates one `WKWebView` per tab it shows, the first time the tab is selected, and loads the tab's stored URL, or the original URL of a locked tab the user comes back to ([Original URL](#original-url)), after the [localhost rewrite](remote.md#localhost-rewrite) in a window that shows a remote device.
+- A window keeps the web views of the active project alive while the project stays active in that window, whichever section is shown, so pages keep their state while the user visits other sections; a locked tab goes back to its original URL when the Web section shows it again ([Original URL](#original-url)). A web view is released when its tab disappears, when the window activates another project or device, and when the window closes; showing the project again loads the stored URL, or a locked tab's original URL.
 - Two windows that show the same tab have two independent web views that share cookies and storage ([Website data](#website-data)).
 - Pages keep running while their web view is alive and not visible (audio keeps playing).
 
@@ -182,7 +183,7 @@ When `webTabs.updated` arrives, every window updates its tab strip, then for eac
 | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | The tab disappeared                                                                          | The web view is released; [Selection](#selection) applies.                                                                                                                                                                                                                                                                                    |
 | The stored URL changed and differs from the URL the web view shows (compared in stored form) | Sync load: the web view loads the new stored URL. Every URL and title the web view reaches until that load finishes or fails, plus the 1-second wait, is not written back, also not by a later write that another change of the page causes (a title set by a script, for example), until the web view reaches a URL that is not one of them. |
-| Only `title` or `locked` changed                                                             | The tab strip updates; the page is untouched.                                                                                                                                                                                                                                                                                                 |
+| Only `title`, `locked` or `originalURL` changed                                              | The tab strip updates; the page is untouched.                                                                                                                                                                                                                                                                                                 |
 
 A sync load never writes, so two windows showing the same tab cannot bounce a redirect between them. Concurrent writes from several clients follow "last write wins" ([Engine API](engine-api.md#writes-and-consistency)). Default chosen at design time.
 
@@ -204,18 +205,56 @@ When a main-frame navigation fails with an error other than a cancellation (`NSU
 
 ## Locking
 
-Locking protects a tab against being closed by mistake (Brief §1, §9.2); it does not freeze the page.
+Locking protects a tab against being closed by mistake (Brief §1, §9.2) and keeps the page it was locked on at hand: the page is not frozen, the user browses from the tab freely, and the tab goes back to its original page each time the user comes back to it ([Original URL](#original-url)).
 
-| A locked tab                              | Rule                                                                                                                                                                       |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Shows                                     | The `lock.fill` icon before its label and no close button.                                                                                                                 |
-| Can be closed                             | No: see [Closing tabs](#closing-tabs). The engine refuses `webTabs.close` for every actor.                                                                                 |
-| Can navigate, reload, go back and forward | Yes; its stored URL and title follow the page.                                                                                                                             |
-| Can be moved and duplicated               | Yes; the duplicate is unlocked.                                                                                                                                            |
-| Can be unlocked                           | Yes, by the user, with Unlock in its context menu, from any device; Claude's `update_web_tab` refuses `locked` false ([Rules for Claude](engine-api.md#rules-for-claude)). |
-| Can be opened locked                      | Yes: `webTabs.open` with `locked` true (Claude's `open_web_tab` accepts `locked`).                                                                                         |
+| A locked tab                              | Rule                                                                                                                                                                                                       |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shows                                     | The `lock.fill` icon before its label and no close button.                                                                                                                                                 |
+| Can be closed                             | No: see [Closing tabs](#closing-tabs). The engine refuses `webTabs.close` for every actor.                                                                                                                 |
+| Can navigate, reload, go back and forward | Yes; its stored URL and title follow the page.                                                                                                                                                             |
+| Goes back to its original page            | Yes, each time the user comes back to it ([Original URL](#original-url)).                                                                                                                                  |
+| Can be moved and duplicated               | Yes; the duplicate is unlocked and has no original URL.                                                                                                                                                    |
+| Can be unlocked                           | Yes, by the user, with Unlock in its context menu, from any device, which removes its original URL; Claude's `update_web_tab` refuses `locked` false ([Rules for Claude](engine-api.md#rules-for-claude)). |
+| Can be opened locked                      | Yes: `webTabs.open` with `locked` true (Claude's `open_web_tab` accepts `locked`); the URL it is opened with is its original URL.                                                                          |
 
-The lock is project data: locking a tab on one device locks it everywhere.
+The lock and the original URL are project data: locking a tab on one device locks it everywhere, with the same original URL.
+
+### Original URL
+
+Every locked tab has an original URL, the key `originalURL` of the tab ([Tab data](#tab-data)), in the stored form of its URL. An unlocked tab has none.
+
+| Change                                                                                                                          | Original URL                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Lock in the context menu, or `webTabs.update` with `locked` true on an unlocked tab                                             | The tab's URL after the update: its stored URL, or the `url` of the same call. |
+| `webTabs.open` with `locked` true                                                                                               | The `url` of the call.                                                         |
+| Unlock: `webTabs.update` with `locked` false                                                                                    | Removed. Locking the tab again takes the URL it has then.                      |
+| `webTabs.update` with `url` on a locked tab: a navigation stored by a window, coming back to the tab, Claude's `update_web_tab` | Unchanged: the tab navigates and keeps its original URL.                       |
+| `webTabs.update` with `locked` true on a locked tab                                                                             | Unchanged.                                                                     |
+| Duplicate                                                                                                                       | The duplicate is unlocked and has no original URL.                             |
+| A locked tab read without an original URL, such as a tab locked before original URLs existed                                    | Its stored URL ([Data model](data-model.md#web-tab)).                          |
+
+While the tab is locked, the user navigates in it as in any tab: its stored URL and title follow the page ([Storing what the page shows](#storing-what-the-page-shows)).
+
+Each time the user comes back to a locked tab in a window, the window brings the tab back to its original URL:
+
+1. The tab's web view loads the original URL, after the [localhost rewrite](remote.md#localhost-rewrite) in a window that shows a remote device, unless the page it shows is already the original URL: that page is not reloaded. A tab that has no web view in the window gets one that loads the original URL ([Web views](#web-views)). The load is the window's own navigation: it ends a sync load in progress, and what the page reached during that sync load is stored again ([Changes from other clients](#changes-from-other-clients)).
+2. When the stored URL is not the original URL, the window calls `webTabs.update` with `url` set to the original URL, so the stored URL becomes the original URL at once and every client sees it; the other windows whose web view of the tab shows another page load it as a sync load ([Changes from other clients](#changes-from-other-clients)). A failure is logged as in [Storing what the page shows](#storing-what-the-page-shows).
+3. From then on the stored URL and title follow the page again by the 1-second rule, a redirect of the original URL included.
+
+Two URLs, in stored form, are the same page when they are equal once their scheme is in lowercase and an empty path is `/`, as WebKit shows them.
+
+The user comes back to a locked tab in a window when the window shows the tab's page after it showed something else:
+
+| Situation                                                                                                                                                                                                                                                                                                  | Example                                                           |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| The tab is selected after another item of the strip was: a stored tab, a popup tab or the placeholder, whether the user, a navigation (`webTab` target) or the [Selection](#selection) rules select it.                                                                                                    | Clicking another tab, then the locked tab; ⇧⌘[ or ⇧⌘] back to it. |
+| The Web section is shown with the tab selected, after another section was.                                                                                                                                                                                                                                 | ⌘3, then ⌘7.                                                      |
+| The window shows the project's Web section with the tab selected after another project or device: the project's web views were released, and the new web view loads the original URL.                                                                                                                      | Choosing another project in the toolbar, then this one again.     |
+| The window becomes the active window again after another window of HephaestusV2 (a main window, a chat window, Settings, About or the image viewer) was the active window, while its Web section shows the tab. The active window is AppKit's main window, which sheets, popovers and panels never become. | Writing in a chat window, then clicking the main window.          |
+
+The first tab a window's Web section shows after the window opens, at launch included, is not a come back: its web view loads its stored URL, so a launch, a restart or a new window changes no tab. Selecting the tab that is already selected, ⌘T, which shows the new placeholder tab, coming back to HephaestusV2 from another app, closing a sheet, a popover or a panel of the window, a reconnection, a sync load and a change of the tab list that leaves the shown tab shown are not coming back to the tab either.
+
+The key `originalURL`, the first tab a window shows not counted as coming back, the windows that count and a page left as it is when it is still on its original URL are design-time choices. Default chosen at design time.
 
 ## Popups
 
@@ -283,7 +322,7 @@ A window that shows a remote device works like a local one ([Remote devices](rem
 
 - Tab changes are engine calls to the main device; all clients receive `webTabs.updated`.
 - Pages are loaded on the Mac that shows the window, with that Mac's website data.
-- URLs whose host is `localhost`, `127.0.0.1` or `::1` are loaded with the host replaced by the main device's address, and URLs reported back are reverse-rewritten; the stored URL keeps the loopback host and the URL field shows the stored form ([Localhost rewrite](remote.md#localhost-rewrite)).
+- URLs whose host is `localhost`, `127.0.0.1` or `::1` are loaded with the host replaced by the main device's address, and URLs reported back are reverse-rewritten; the stored URL and the original URL keep the loopback host and the URL field shows the stored form ([Localhost rewrite](remote.md#localhost-rewrite)). To compare its page with a locked tab's original URL, the window reverse-rewrites the page's URL with the original URL as the reference.
 - Downloads, file inputs and URLs of other schemes are handled on the Mac that shows the window.
 - While the device is not connected the window shows the reconnect view and loads no page ([UI](ui.md#empty-states)). Web views stay alive behind it; after the reconnection the window rebuilds its tabs from the snapshot and applies [Changes from other clients](#changes-from-other-clients) to them. Default chosen at design time.
 
@@ -297,3 +336,4 @@ A window that shows a remote device works like a local one ([Remote devices](rem
 
 - R8: A project can have web tabs: an integrated web browser.
 - R9: Some web tabs can be locked so that they are not closed inadvertently.
+- R159: A locked web tab goes back to its original page each time the user comes back to it.

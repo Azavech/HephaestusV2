@@ -1961,10 +1961,10 @@ Swift type `WebTabsOpen` · actors: user, claude · result: [WebTab](data-model.
 | projectID | ProjectID | yes      | Project identifier.                                                               |
 | url       | String    | yes      | Absolute `http` or `https` URL.                                                   |
 | title     | String    | no       | Default: the URL's host.                                                          |
-| locked    | Bool      | no       | Default false.                                                                    |
+| locked    | Bool      | no       | Default false. A tab opened locked takes `url` as its original URL.               |
 | index     | Int       | no       | Position of the new tab, clamped to 0 through the number of tabs; absent appends. |
 
-Adds a tab with a new UUID. Default chosen at design time (http and https only, host as title, clamped index).
+Adds a tab with a new UUID. Its `originalURL` is `url` when it is locked and `null` otherwise ([Original URL](web-tabs.md#original-url)). Default chosen at design time (http and https only, host as title, clamped index).
 
 | Error    | When                                                                                                          |
 | -------- | ------------------------------------------------------------------------------------------------------------- |
@@ -1985,7 +1985,7 @@ Swift type `WebTabsUpdate` · actors: user, claude · result: [WebTab](data-mode
 | title     | String    | no       | New title ([Data model](data-model.md#web-tab)). |
 | locked    | Bool      | no       | Lock or unlock the tab.                          |
 
-A locked tab can be updated: navigated, renamed and unlocked.
+A locked tab can be updated: navigated, renamed and unlocked. Its `originalURL` changes only with `locked` ([Original URL](web-tabs.md#original-url)): `locked` true on an unlocked tab sets it to the tab's `url` after the update, `url` of this call included; `locked` false sets it to `null`; a new `url` on a locked tab, and `locked` true on a locked tab, leave it unchanged.
 
 | Error     | When                                                                                   |
 | --------- | -------------------------------------------------------------------------------------- |
@@ -3320,7 +3320,7 @@ The field set is a design-time choice. Default chosen at design time.
   "data": {
     "projectID": "HEPH",
     "tabs": [
-      {"id": "7C9E6679-7425-40DE-944B-E07FC1F90AE7", "locked": true, "title": "GitHub", "url": "https://github.com/"}
+      {"id": "7C9E6679-7425-40DE-944B-E07FC1F90AE7", "locked": true, "originalURL": "https://github.com/", "title": "GitHub", "url": "https://github.com/"}
     ]
   },
   "name": "webTabs.updated",
@@ -3572,3 +3572,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R156: A project can have an icon, an SF Symbol picked in Project Settings from a popover that searches every SF Symbol of the Mac; Claude reads and sets it.
 - R157: A Go service project declares its environments in Project Settings, and the Contract view sends requests to the environment chosen in its Environment pop-up.
 - R158: A project has a GitHub page, taken from its origin remote unless set in Project Settings; a sub project can use its parent's settings.
+- R159: A locked web tab goes back to its original page each time the user comes back to it.

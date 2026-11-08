@@ -166,6 +166,10 @@ struct WriteRuleTests {
         #expect(throws: ValidationError.invalid("url", "use an absolute http or https URL")) { try project.validate() }
         project.webTabs = [WebTab(id: UUID(), url: "http://localhost:8080/")]
         try project.validate()
+        project.webTabs = [WebTab(id: UUID(), url: "http://localhost:8080/", locked: true, originalURL: "localhost:8080")]
+        #expect(throws: ValidationError.invalid("originalURL", "use an absolute http or https URL")) { try project.validate() }
+        project.webTabs = [WebTab(id: UUID(), url: "http://localhost:8080/", locked: true)]
+        try project.validate()
         project.skills = ["release-notes", "release-notes"]
         #expect(throws: ValidationError.self) { try project.validate() }
         project.skills = []

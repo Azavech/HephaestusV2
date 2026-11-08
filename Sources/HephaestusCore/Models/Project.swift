@@ -544,24 +544,34 @@ public struct WebTab: Codable, Sendable, Hashable, Identifiable {
     public var title: String
     public var url: String
     public var locked: Bool
+    /// The URL a locked tab goes back to each time the user comes back to it; nil for an unlocked
+    /// tab (docs/web-tabs.md › Original URL).
+    public var originalURL: String?
     public var unknownKeys: [String: JSONValue]
 
-    public init(id: UUID, title: String = "", url: String, locked: Bool = false, unknownKeys: [String: JSONValue] = [:]) {
+    /// A locked tab without `originalURL` takes its `url`; an unlocked tab has none.
+    public init(id: UUID, title: String = "", url: String, locked: Bool = false, originalURL: String? = nil,
+                unknownKeys: [String: JSONValue] = [:]) {
         self.id = id
         self.title = title
         self.url = url
         self.locked = locked
+        self.originalURL = locked ? originalURL ?? url : nil
         self.unknownKeys = unknownKeys
     }
 
-    static let knownKeys: Set<String> = ["id", "title", "url", "locked"]
+    static let knownKeys: Set<String> = ["id", "title", "url", "locked", "originalURL"]
 
+    /// docs/data-model.md › Web tab: a locked tab read without `originalURL` takes its `url`; an
+    /// unlocked tab is read without one, whatever URL the file holds.
     public init(from decoder: Decoder) throws {
         let c = try ModelDecodingContainer(decoder)
         id = try c.required("id")
         title = try c.value("title", default: "")
         url = try c.required("url")
         locked = try c.value("locked", default: false)
+        let original: String? = try c.optional("originalURL")
+        originalURL = locked ? original ?? url : nil
         unknownKeys = try c.unknownKeys(known: Self.knownKeys)
     }
 
@@ -571,13 +581,17 @@ public struct WebTab: Codable, Sendable, Hashable, Identifiable {
         try c.encode(title, "title")
         try c.encode(url, "url")
         try c.encode(locked, "locked")
+        try c.encodeOptional(originalURL, "originalURL")
         try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
     }
 
-    /// The write rules of the field table: an absolute http or https URL, a title of one line
-    /// of at most 500 characters.
+    /// The write rules of the field table: absolute http or https URLs, a title of one line of at
+    /// most 500 characters.
     public func validate() throws {
         _ = try ModelRules.webTabURL(url)
+        if let originalURL {
+            _ = try ModelRules.webTabURL(originalURL, field: "originalURL")
+        }
         guard title.count <= 500, !ModelRules.containsLineBreak(title) else {
             throw ValidationError.invalid("title", "use one line of at most 500 characters")
         }

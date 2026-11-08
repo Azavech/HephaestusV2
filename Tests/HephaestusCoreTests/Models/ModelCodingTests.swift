@@ -350,6 +350,32 @@ struct ModelCodingTests {
         #expect(off.unknownKeys.isEmpty)
     }
 
+    @Test("A web tab's originalURL is written after locked; a locked tab read without it takes its url, an unlocked tab has none")
+    func webTabOriginalURL() throws {
+        let tab = "id: 7C9E6679-7425-40DE-944B-E07FC1F90AE7\nurl: https://github.com/pulls\n"
+        let lockedBefore = try YAMLCoding.decode(WebTab.self, from: tab + "locked: true\n")
+        #expect(lockedBefore.originalURL == "https://github.com/pulls")
+        #expect(try YAMLCoding.decode(WebTab.self, from: tab + "locked: true\noriginalURL: null\n").originalURL == "https://github.com/pulls")
+        let locked = try YAMLCoding.decode(WebTab.self, from: tab + "locked: true\noriginalURL: https://github.com/\n")
+        #expect(locked.originalURL == "https://github.com/" && locked.unknownKeys.isEmpty)
+        let unlocked = try YAMLCoding.decode(WebTab.self, from: tab + "locked: false\noriginalURL: https://github.com/\n")
+        #expect(unlocked.originalURL == nil && unlocked.unknownKeys.isEmpty)
+        #expect(throws: (any Error).self) {
+            try YAMLCoding.decode(WebTab.self, from: tab + "locked: true\noriginalURL: [1]\n")
+        }
+
+        let yaml = try YAMLCoding.encode(locked)
+        #expect(yaml.hasSuffix("locked: true\noriginalURL: https://github.com/\n"))
+        #expect(try YAMLCoding.decode(WebTab.self, from: yaml) == locked)
+        #expect(try YAMLCoding.encode(unlocked).hasSuffix("locked: false\noriginalURL: null\n"))
+        let json = try JSONDecoder().decode(JSONValue.self, from: try EngineJSON.encode(unlocked))
+        #expect(json.objectValue?["originalURL"] == .null)
+        #expect(try EngineJSON.decode(WebTab.self, from: try EngineJSON.encode(locked)) == locked)
+
+        #expect(WebTab(id: UUID(), url: "https://example.com/", locked: true).originalURL == "https://example.com/")
+        #expect(WebTab(id: UUID(), url: "https://example.com/", originalURL: "https://example.org/").originalURL == nil)
+    }
+
     @Test("Booleans accept the YAML 1.1 spellings")
     func booleanSpellings() throws {
         for (text, value) in [("yes", true), ("no", false), ("on", true), ("off", false), ("True", true), ("FALSE", false)] {

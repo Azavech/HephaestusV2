@@ -208,6 +208,18 @@ final class WebPage: NSObject {
         }
     }
 
+    /// Coming back to a locked tab: the web view loads its original URL as this window's own
+    /// navigation, which ends a sync load in progress and forgets what it reached, so the page's
+    /// URL and title are stored again (docs/web-tabs.md › Original URL).
+    func loadAsOwnNavigation(storedURL: String) {
+        syncLoading = false
+        syncNavigation = nil
+        syncQuietUntil = nil
+        syncReachedURLs = []
+        syncReachedTitles = []
+        load(storedURL: storedURL)
+    }
+
     /// The URL the web view shows, in stored form.
     var shownStoredURL: String? {
         guard let url = webView.url else { return nil }

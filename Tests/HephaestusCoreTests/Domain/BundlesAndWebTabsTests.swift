@@ -244,6 +244,81 @@ struct BundlesAndWebTabsTests {
         }
     }
 
+    @Test("Locking and opening locked set the original URL, unlocking removes it, a new URL keeps it")
+    func originalURLs() async throws {
+        try await withDomainEngine { h in
+            try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
+            let file = URL(fileURLWithPath: h.path("Heph")).appendingPathComponent(".hephaestus/project.yml")
+            // The engine's own values: the API results and project.yml are read through the decoder,
+            // which gives a locked tab without original URL its url.
+            func originalURLs() async -> [String?] {
+                await h.engine.testDomain.project("HEPH")?.webTabs.map(\.originalURL) ?? []
+            }
+            let locked = try await h.call(WebTabsOpen.self, .init(projectID: "HEPH", url: " https://example.com/ ", locked: true), as: h.claude)
+            #expect(locked.originalURL == "https://example.com/")
+            let plain = try await h.connection.call(WebTabsOpen.self, .init(projectID: "HEPH", url: "https://example.org/"))
+            #expect(plain.originalURL == nil)
+            #expect(await originalURLs() == ["https://example.com/", nil])
+
+            // A window storing the page, then Claude's update_web_tab, navigate the locked tab.
+            let navigated = try await h.connection.call(WebTabsUpdate.self, .init(projectID: "HEPH", tabID: locked.id, url: "https://example.com/next"))
+            #expect(navigated.url == "https://example.com/next" && navigated.originalURL == "https://example.com/")
+            let byClaude = try await h.call(WebTabsUpdate.self, .init(projectID: "HEPH", tabID: locked.id, url: "https://example.net/"), as: h.claude)
+            #expect(byClaude.url == "https://example.net/" && byClaude.originalURL == "https://example.com/")
+            #expect(await originalURLs() == ["https://example.com/", nil])
+            let events = await DomainEventRecorder.make(h)
+            let lockedAgain = try await h.call(WebTabsUpdate.self, .init(projectID: "HEPH", tabID: locked.id, locked: true), as: h.claude)
+            #expect(lockedAgain.originalURL == "https://example.com/")
+            #expect(await events.settle().isEmpty)
+
+            // Unlocking removes it; locking again takes the URL the tab has then.
+            let unlocked = try await h.connection.call(WebTabsUpdate.self, .init(projectID: "HEPH", tabID: locked.id, locked: false))
+            #expect(!unlocked.locked && unlocked.originalURL == nil)
+            #expect(await originalURLs() == [nil, nil])
+            #expect(try String(contentsOf: file, encoding: .utf8).contains("  url: https://example.net/\n  locked: false\n  originalURL: null\n"))
+            let relocked = try await h.connection.call(WebTabsUpdate.self, .init(projectID: "HEPH", tabID: locked.id, locked: true))
+            #expect(relocked.originalURL == "https://example.net/")
+            let lockedWithURL = try await h.call(WebTabsUpdate.self, .init(projectID: "HEPH", tabID: plain.id, url: "https://example.org/docs",
+                                                                          locked: true), as: h.claude)
+            #expect(lockedWithURL.originalURL == "https://example.org/docs")
+            #expect(await originalURLs() == ["https://example.net/", "https://example.org/docs"])
+
+            let text = try String(contentsOf: file, encoding: .utf8)
+            #expect(text.contains("  url: https://example.net/\n  locked: true\n  originalURL: https://example.net/\n"))
+            #expect(text.contains("  url: https://example.org/docs\n  locked: true\n  originalURL: https://example.org/docs\n"))
+            let stored = try ProjectFileStore.readProject(ProjectFolder(root: URL(fileURLWithPath: h.path("Heph"))))
+            #expect(try await h.connection.call(WebTabsList.self, .init(projectID: "HEPH")) == stored.webTabs)
+        }
+    }
+
+    @Test("A tab locked before original URLs existed takes its stored URL as original URL")
+    func originalURLOfTabsLockedBefore() async throws {
+        try await withDomainEngine { h in
+            try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
+            let file = URL(fileURLWithPath: h.path("Heph")).appendingPathComponent(".hephaestus/project.yml")
+            let events = await DomainEventRecorder.make(h)
+            try writeFile(projectYAML(id: "HEPH", name: "Hephaestus V2", extra: """
+                webTabs:
+                  - id: 7C9E6679-7425-40DE-944B-E07FC1F90AE7
+                    url: https://github.com/pulls
+                    locked: true
+                  - id: A1C2E3F4-5B6D-4E7F-8091-A2B3C4D5E6F7
+                    url: http://localhost:8080/
+                    originalURL: http://localhost:8080/old
+                """), to: file)
+            await h.engine.projectDataFilesChanged(projectID: "HEPH", paths: [".hephaestus/project.yml"])
+            await events.wait(for: WebTabsUpdatedEvent.name)
+            let tabs = try await h.connection.call(WebTabsList.self, .init(projectID: "HEPH"))
+            #expect(tabs.map(\.originalURL) == ["https://github.com/pulls", nil])
+
+            let navigated = try await h.connection.call(WebTabsUpdate.self, .init(projectID: "HEPH", tabID: tabs[0].id, url: "https://github.com/x"))
+            #expect(navigated.originalURL == "https://github.com/pulls")
+            let text = try String(contentsOf: file, encoding: .utf8)
+            #expect(text.contains("  url: https://github.com/x\n  locked: true\n  originalURL: https://github.com/pulls\n"))
+            #expect(text.contains("  url: http://localhost:8080/\n  locked: false\n  originalURL: null\n"))
+        }
+    }
+
     // MARK: attachments.read
 
     @Test("attachments.read returns ticket and chat attachments of the .hephaestus folder only")

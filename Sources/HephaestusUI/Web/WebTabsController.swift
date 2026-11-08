@@ -1,8 +1,8 @@
 // OWNER: ui-web-search — the web tabs of one main window: web view lifetimes, selection, the
-// placeholder and popup tabs, syncing with `webTabs.updated`, the tab actions and the Web section's
-// menu commands (docs/web-tabs.md › Tab strip, › New tab, › Navigation and the stored URL,
-// › Locking, › Popups, › Page permissions and dialogs, › Remote windows; docs/ui.md › Closing tabs
-// and windows).
+// placeholder and popup tabs, syncing with `webTabs.updated`, the tab actions, coming back to a
+// locked tab and the Web section's menu commands (docs/web-tabs.md › Tab strip, › New tab,
+// › Navigation and the stored URL, › Locking, › Original URL, › Popups, › Page permissions and
+// dialogs, › Remote windows; docs/ui.md › Closing tabs and windows).
 import AppKit
 import HephaestusCore
 import Observation
@@ -169,6 +169,12 @@ final class WebTabsController: SectionCommandHandler {
     @ObservationIgnored fileprivate var knownSelections: [ProjectKey: String] = [:]
     /// Tabs this window opened or adopted that no `webTabs.updated` listed yet.
     @ObservationIgnored private var awaitedTabIDs: Set<UUID> = []
+    /// The stored tab whose page the window showed when last checked; nil while it showed none
+    /// (docs/web-tabs.md › Original URL).
+    @ObservationIgnored private var shownTabID: UUID?
+    /// Whether the Web section has shown a stored tab since the window opened: the first one is not
+    /// a come back.
+    @ObservationIgnored private var hasShownTab = false
     @ObservationIgnored private var closeObserver: NSObjectProtocol?
     @ObservationIgnored private var noticeMonitor: Any?
     @ObservationIgnored private var noticeToken = UUID()
@@ -186,6 +192,9 @@ final class WebTabsController: SectionCommandHandler {
     }
 
     private func start() {
+        if let app = window?.app {
+            Self.observeMainWindows(of: app)
+        }
         Task { @MainActor [weak self] in
             self?.refresh()
             self?.observe()
@@ -194,7 +203,7 @@ final class WebTabsController: SectionCommandHandler {
 
     // MARK: Observation
 
-    /// Follows the window's project, device, sheet and selection and the project's tabs.
+    /// Follows the window's project, device, section, sheet and selection and the project's tabs.
     private func observe() {
         guard !isTornDown else { return }
         withObservationTracking { [weak self] in
@@ -211,6 +220,7 @@ final class WebTabsController: SectionCommandHandler {
         guard let window else { return }
         _ = window.deviceID
         _ = window.sheet
+        _ = window.section
         guard let projectID = window.projectID else { return }
         _ = window.projectStates[ProjectKey(deviceID: window.deviceID, projectID: projectID)]?.selectedWebTabID
         if let workspace = window.workspace {
@@ -232,6 +242,7 @@ final class WebTabsController: SectionCommandHandler {
             sync(tabs, connected: workspace.isConnected)
         }
         detectSelectionChange()
+        detectComingBack()
         presentNextDialog()
     }
 
@@ -249,6 +260,7 @@ final class WebTabsController: SectionCommandHandler {
         isBound = true
         syncedTabs = nil
         awaitedTabIDs.removeAll()
+        shownTabID = nil
         lastSeenSelection = newKey.flatMap { window.projectStates[$0]?.selectedWebTabID }
     }
 
@@ -387,7 +399,8 @@ final class WebTabsController: SectionCommandHandler {
         return items.first.map { .item($0.id) } ?? .none
     }
 
-    /// Selects an item of the strip; nil selects nothing.
+    /// Selects an item of the strip; nil selects nothing. A locked tab selected after another item
+    /// comes back to its original URL.
     func select(_ id: WebStripID?) {
         switch id {
         case .stored(let tabID)?:
@@ -400,6 +413,7 @@ final class WebTabsController: SectionCommandHandler {
             localSelection = nil
             writeSelection(nil)
         }
+        detectComingBack()
     }
 
     private func writeSelection(_ tabID: UUID?) {
@@ -446,15 +460,24 @@ final class WebTabsController: SectionCommandHandler {
         return page(for: id)
     }
 
-    /// Creates the web view of a stored tab the first time it is selected and loads its stored URL.
-    func ensurePage(for id: WebStripID) {
+    /// The Web section shows an item of the strip: a locked tab the user comes back to goes back
+    /// to its original URL, and a stored tab gets its web view.
+    func show(_ id: WebStripID) {
+        bindIfNeeded()
+        detectComingBack()
+        ensurePage(for: id)
+    }
+
+    /// Creates the web view of a stored tab the first time it is selected and loads its stored URL,
+    /// or `url` (docs/web-tabs.md › Web views).
+    func ensurePage(for id: WebStripID, loading url: String? = nil) {
         bindIfNeeded()
         guard case .stored(let tabID) = id, pages[tabID] == nil, let key, let workspace = window?.workspace,
               workspace.deviceID == key.deviceID, workspace.isConnected,
               let tab = workspace.webTabs[key.projectID]?.first(where: { $0.id == tabID }) else { return }
         let page = WebPage(controller: self, tabID: tabID, isScriptOpened: false)
         pages[tabID] = page
-        page.load(storedURL: tab.url)
+        page.load(storedURL: url ?? tab.url)
     }
 
     // MARK: Remote windows (docs/remote.md › Localhost rewrite)
@@ -475,7 +498,13 @@ final class WebTabsController: SectionCommandHandler {
     /// A URL of the web view in stored form, relative to the stored URL of a tab (or, for a popup,
     /// of its opener's tab).
     func storedForm(of loadedURL: String, tabID: UUID?) -> String {
-        guard let address = deviceAddress, let reference = referenceURL(tabID: tabID) else { return loadedURL }
+        guard let reference = referenceURL(tabID: tabID) else { return loadedURL }
+        return storedForm(of: loadedURL, reference: reference)
+    }
+
+    /// A URL of the web view in stored form, relative to a URL in stored form.
+    func storedForm(of loadedURL: String, reference: String) -> String {
+        guard let address = deviceAddress else { return loadedURL }
         return LocalhostRewrite.reverse(loadedURL, storedURL: reference, deviceAddress: address)
     }
 
@@ -542,6 +571,126 @@ final class WebTabsController: SectionCommandHandler {
             result.append(character.isNewline ? " " : character)
         }
         return result
+    }
+
+    // MARK: Coming back to a locked tab (docs/web-tabs.md › Original URL)
+
+    /// The stored tab whose page the window shows: its Web section shows the bound project with a
+    /// stored tab selected. ⌘T waiting for the Web section shows the placeholder.
+    private var visibleTabID: UUID? {
+        guard let window, let key, window.section == .web, window.activeProjectKey == key,
+              window.pendingSectionCommand != .newWebTab,
+              case .item(.stored(let tabID)) = currentSelection else { return nil }
+        return tabID
+    }
+
+    /// The window shows another stored tab than when last checked, after another tab, section,
+    /// project or device: the user comes back to it. The first tab the Web section shows after the
+    /// window opens is not a come back.
+    private func detectComingBack() {
+        guard !isTornDown else { return }
+        let visible = visibleTabID
+        guard visible != shownTabID else { return }
+        shownTabID = visible
+        guard let visible else { return }
+        if hasShownTab {
+            comeBack(to: visible)
+        }
+        hasShownTab = true
+    }
+
+    /// The window became the main window again after another window of the app: the user comes
+    /// back to the tab its Web section shows.
+    private func windowBecameMainAgain() {
+        guard !isTornDown, hasShownTab, let visible = visibleTabID else { return }
+        shownTabID = visible
+        comeBack(to: visible)
+    }
+
+    /// A locked tab goes back to its original URL: its web view loads it unless its page is that
+    /// URL already, and the stored URL becomes the original URL with `webTabs.update`.
+    private func comeBack(to tabID: UUID) {
+        guard let key, let workspace = window?.workspace, workspace.deviceID == key.deviceID, workspace.isConnected,
+              let tab = currentTabs.first(where: { $0.id == tabID }), let original = tab.originalURL else { return }
+        let page = pages[tabID]
+        // The original URL is the reference of the reverse rewrite of a remote window.
+        let shown = page?.webView.url.map { storedForm(of: $0.absoluteString, reference: original) }
+        guard let action = Self.comingBack(to: tab, shownURL: shown) else { return }
+        if let load = action.load {
+            if let page {
+                page.loadAsOwnNavigation(storedURL: load)
+            } else {
+                ensurePage(for: .stored(tabID), loading: load)
+            }
+        }
+        guard let store = action.store, let page = pages[tabID] else { return }
+        page.lastWrittenURL = store
+        let params = WebTabsUpdate.Params(projectID: key.projectID, tabID: tabID, url: store)
+        Task { [weak self] in
+            do {
+                _ = try await workspace.call(WebTabsUpdate.self, params)
+            } catch {
+                self?.log("webTabs.update of tab \(tabID.uuidString) in \(key.projectID) failed: \(errorMessage(error))")
+            }
+        }
+    }
+
+    /// What coming back to a tab does.
+    struct ComingBack: Equatable {
+        /// The URL the tab's web view loads; nil when its page is that URL already.
+        var load: String?
+        /// The URL the tab's stored URL becomes; nil when it is that URL already.
+        var store: String?
+    }
+
+    /// Coming back to a locked tab whose web view shows `shownURL` (in stored form; nil without a
+    /// web view or a URL): its original URL, unless the page or the stored URL is that page
+    /// already. Nil for an unlocked tab.
+    nonisolated static func comingBack(to tab: WebTab, shownURL: String?) -> ComingBack? {
+        guard tab.locked, let original = tab.originalURL else { return nil }
+        let showsOriginal = shownURL.map { isSamePage($0, original) } ?? false
+        return ComingBack(load: showsOriginal ? nil : original, store: isSamePage(tab.url, original) ? nil : original)
+    }
+
+    /// Two URLs in stored form are the same page when they are equal once their scheme is in
+    /// lowercase and an empty path is `/`, as WebKit shows them.
+    nonisolated static func isSamePage(_ first: String, _ second: String) -> Bool {
+        if first == second { return true }
+        guard let first = pageForm(of: first), let second = pageForm(of: second) else { return false }
+        return first == second
+    }
+
+    nonisolated private static func pageForm(of url: String) -> String? {
+        guard var components = URLComponents(string: url) else { return nil }
+        components.scheme = components.scheme?.lowercased()
+        if components.path.isEmpty {
+            components.path = "/"
+        }
+        return components.string
+    }
+
+    /// The window of the app that was AppKit's main window last: a main, chat, Settings, About or
+    /// image viewer window, since sheets, popovers and panels never become main.
+    @ObservationIgnored private static var lastMainWindow: ObjectIdentifier?
+    @ObservationIgnored private static var mainWindowObserver: NSObjectProtocol?
+
+    /// Follows the app's main window from the first controller on. A window that becomes main after
+    /// another window of the app comes back to the tab its Web section shows; a window that becomes
+    /// main again when the app comes back from another app was the last main window, so it does not.
+    private static func observeMainWindows(of app: AppModel) {
+        guard mainWindowObserver == nil else { return }
+        lastMainWindow = NSApp?.mainWindow.map(ObjectIdentifier.init)
+        mainWindowObserver = NotificationCenter.default.addObserver(forName: NSWindow.didBecomeMainNotification, object: nil,
+                                                                    queue: .main) { [weak app] notification in
+            MainActor.assumeIsolated {
+                guard let window = notification.object as? NSWindow else { return }
+                let previous = lastMainWindow
+                lastMainWindow = ObjectIdentifier(window)
+                guard let app, let previous, previous != ObjectIdentifier(window), let id = app.windowRegistry.mainID(of: window),
+                      let controller = controllers[id] else { return }
+                controller.windowBecameMainAgain()
+            }
+        }
     }
 
     // MARK: Tab actions (docs/web-tabs.md › Context menu, › Closing tabs, › New tab)

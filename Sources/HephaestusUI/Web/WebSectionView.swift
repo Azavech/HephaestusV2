@@ -84,7 +84,7 @@ private struct WebSectionContent: View {
         }
         .onChange(of: selection, initial: true) { _, selection in
             if case .item(let id) = selection {
-                controller.ensurePage(for: id)
+                controller.show(id)
             }
         }
     }

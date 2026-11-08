@@ -205,15 +205,16 @@ The base URL of an environment is its `url` with the port replaced by `port` whe
 
 ### Web tab
 
-Swift type `WebTab`, one element of the key `webTabs` of the project file. Tabs, their order, titles, URLs and locks are project data, so every client shows the same tabs. Which tab a window shows is window state ([UI](ui.md)), not stored here.
+Swift type `WebTab`, one element of the key `webTabs` of the project file. Tabs, their order, titles, URLs, locks and original URLs are project data, so every client shows the same tabs. Which tab a window shows is window state ([UI](ui.md)), not stored here.
 
-| Swift name  | Key      | Type                  | Required | Default | Rules                                                                                                                                                                                                                                |
-| ----------- | -------- | --------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| id          | `id`     | `UUID`                | yes      | —       | Unique within the project.                                                                                                                                                                                                           |
-| title       | `title`  | `String`              | no       | `""`    | Last known page title. Line breaks are replaced by spaces; at most 500 characters, longer titles are truncated. Default chosen at design time.                                                                                       |
-| url         | `url`    | `String`              | yes      | —       | Absolute `http` or `https` URL, stored as entered after trimming ([Web tabs](web-tabs.md)). A remote device loads a localhost URL with the main device's address and the stored value stays unchanged ([Remote devices](remote.md)). |
-| locked      | `locked` | `Bool`                | no       | `false` | A locked tab cannot be closed ([Web tabs](web-tabs.md)).                                                                                                                                                                             |
-| unknownKeys | —        | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                                                                                                                                       |
+| Swift name  | Key           | Type                  | Required | Default | Rules                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ----------- | ------------- | --------------------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id          | `id`          | `UUID`                | yes      | —       | Unique within the project.                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| title       | `title`       | `String`              | no       | `""`    | Last known page title. Line breaks are replaced by spaces; at most 500 characters, longer titles are truncated. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                               |
+| url         | `url`         | `String`              | yes      | —       | Absolute `http` or `https` URL, stored as entered after trimming ([Web tabs](web-tabs.md)). A remote device loads a localhost URL with the main device's address and the stored value stays unchanged ([Remote devices](remote.md)).                                                                                                                                                                                                                                                         |
+| locked      | `locked`      | `Bool`                | no       | `false` | A locked tab cannot be closed ([Web tabs](web-tabs.md)).                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| originalURL | `originalURL` | `String?`             | no       | `null`  | The URL a locked tab goes back to each time the user comes back to it ([Original URL](web-tabs.md#original-url)), in the stored form of `url`. The engine sets it to the tab's `url` when it locks the tab or opens it locked, sets it to `null` when it unlocks the tab, and leaves it unchanged when `url` changes. Read rules: a locked tab without it, or with `null`, takes its `url`; an unlocked tab is read with `null`, whatever URL the file holds. Default chosen at design time. |
+| unknownKeys | —             | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 ### Deleted chat
 
@@ -273,13 +274,15 @@ commands:
   test: make test
 webTabs:
 - id: 7C9E6679-7425-40DE-944B-E07FC1F90AE7
-  title: GitHub
-  url: https://github.com/
+  title: Pull requests
+  url: https://github.com/pulls
   locked: true
+  originalURL: https://github.com/
 - id: A1C2E3F4-5B6D-4E7F-8091-A2B3C4D5E6F7
   title: Local server
   url: http://localhost:8080/
   locked: false
+  originalURL: null
 skills:
 - release-notes
 chatDefaults:
@@ -1766,3 +1769,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R156: A project can have an icon, an SF Symbol picked in Project Settings from a popover that searches every SF Symbol of the Mac; Claude reads and sets it.
 - R157: A Go service project declares its environments in Project Settings, and the Contract view sends requests to the environment chosen in its Environment pop-up.
 - R158: A project has a GitHub page, taken from its origin remote unless set in Project Settings; a sub project can use its parent's settings.
+- R159: A locked web tab goes back to its original page each time the user comes back to it.

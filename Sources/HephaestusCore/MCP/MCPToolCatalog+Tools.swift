@@ -1234,7 +1234,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "list_web_tabs",
             description: #"""
-            List a project's web tabs in tab order with their URL, title and lock state.
+            List a project's web tabs in tab order with their URL, title and lock state. A locked tab also has its original URL, the page it goes back to each time the user comes back to it.
             """#,
             inputSchema: schema(#"""
             {
@@ -1256,7 +1256,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "open_web_tab",
             description: #"""
-            Add a web tab at the end of a project's tab strip, on every device showing the project. A locked tab cannot be closed until it is unlocked.
+            Add a web tab at the end of a project's tab strip, on every device showing the project. A locked tab cannot be closed until it is unlocked, and goes back to this URL each time the user comes back to it.
             """#,
             inputSchema: schema(#"""
             {
@@ -1290,7 +1290,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "update_web_tab",
             description: #"""
-            Change a web tab of a project: load another URL, rename it or lock it. Omitted arguments are left unchanged. Only the user can unlock a tab.
+            Change a web tab of a project: load another URL, rename it or lock it. Omitted arguments are left unchanged. Only the user can unlock a tab. Locking a tab makes its URL its original URL, the page it goes back to each time the user comes back to it; loading another URL in a locked tab keeps its original URL, so show another page in a new tab with open_web_tab.
             """#,
             inputSchema: schema(#"""
             {

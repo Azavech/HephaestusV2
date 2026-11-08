@@ -2233,13 +2233,13 @@ Input schema:
 ### list_web_tabs
 
 - **Engine call:** webTabs.list with `projectID`.
-- **Result:** the `[WebTab]` array ([Data model](data-model.md#web-tab)).
+- **Result:** the `[WebTab]` array ([Data model](data-model.md#web-tab)): each tab with its `id`, `title`, `url`, `locked` and `originalURL`, the URL a locked tab goes back to each time the user comes back to it, `null` for an unlocked tab ([Original URL](web-tabs.md#original-url)).
 - **Errors:** Those of webTabs.list: unknown project (`notFound`).
 
 Description:
 
 ```text
-List a project's web tabs in tab order with their URL, title and lock state.
+List a project's web tabs in tab order with their URL, title and lock state. A locked tab also has its original URL, the page it goes back to each time the user comes back to it.
 ```
 
 Input schema:
@@ -2262,13 +2262,13 @@ Input schema:
 
 - **Engine call:** webTabs.open with `projectID`, `url`, and `title` and `locked` when given. `index` is never sent, so the tab is appended.
 - Every client receives `webTabs.updated` and shows the tab in the project's tab strip; no window switches to it. `open_in_app` with kind `webTab` shows it. Default chosen at design time.
-- **Result:** the new `WebTab`.
+- **Result:** the new `WebTab`; a tab opened locked has `url` as its `originalURL`.
 - **Errors:** Those of webTabs.open ([Engine API](engine-api.md#webtabsopen)): unknown project (`notFound`), a URL that is not an absolute http or https URL (`invalid`).
 
 Description:
 
 ```text
-Add a web tab at the end of a project's tab strip, on every device showing the project. A locked tab cannot be closed until it is unlocked.
+Add a web tab at the end of a project's tab strip, on every device showing the project. A locked tab cannot be closed until it is unlocked, and goes back to this URL each time the user comes back to it.
 ```
 
 Input schema:
@@ -2303,13 +2303,14 @@ Input schema:
 
 - **Engine call:** webTabs.update with `projectID`, `tabID`, and `url`, `title` and `locked` when given.
 - `locked` false is refused: only the user unlocks a tab, so Claude never closes a locked tab ([Engine API](engine-api.md#rules-for-claude)). Default chosen at design time.
-- **Result:** the updated `WebTab`.
+- `url` on a locked tab navigates it and leaves its original URL unchanged; `locked` true on an unlocked tab makes its URL after the update its original URL ([Original URL](web-tabs.md#original-url)). A locked tab goes back to its original URL each time a window shows it again, after `open_in_app` included, so another page is shown to the user in a new tab (`open_web_tab`).
+- **Result:** the updated `WebTab`, with its `originalURL`.
 - **Errors:** Those of webTabs.update ([Engine API](engine-api.md#webtabsupdate)): unknown project or tab (`notFound`), a URL that is not an absolute http or https URL (`invalid`), `locked` false (`forbidden`, `Only the user can unlock a tab.`).
 
 Description:
 
 ```text
-Change a web tab of a project: load another URL, rename it or lock it. Omitted arguments are left unchanged. Only the user can unlock a tab.
+Change a web tab of a project: load another URL, rename it or lock it. Omitted arguments are left unchanged. Only the user can unlock a tab. Locking a tab makes its URL its original URL, the page it goes back to each time the user comes back to it; loading another URL in a locked tab keeps its original URL, so show another page in a new tab with open_web_tab.
 ```
 
 Input schema:
@@ -2608,7 +2609,7 @@ Input schema:
 
 - **Engine call:** ui.open with `target`, the NavigationTarget ([Engine API](engine-api.md#navigationtarget)). `deviceID` is never sent: for a chat token the engine sends the `ui.open` event to the chat's driving device ([Engine API](engine-api.md#chat-metadata-in-the-api)), and to every client when that device is unknown or the token is the external one ([Engine API](engine-api.md#uiopen)).
 - **Target rules:** after argument validation, the target's properties are checked against its kind ([Target kinds](#target-kinds)).
-- **Result:** `{}`. A client that receives the event navigates one of its windows as described in [UI](ui.md#navigation).
+- **Result:** `{}`. A client that receives the event navigates one of its windows as described in [UI](ui.md#navigation). A locked web tab that the navigation shows again goes back to its original URL ([Original URL](web-tabs.md#original-url)).
 - **Errors:**
   - A target rule fails (`invalid`, messages below).
   - Those of ui.open ([Engine API](engine-api.md#uiopen)): malformed id or path (`invalid`), an item or file that does not exist, or a folder named by a `file` target with `line` (`notFound`). A `file` target without `line` may name a folder.
@@ -3194,3 +3195,4 @@ Unauthorized: missing or invalid bearer token.
 - R153: A project can have a color, set in Project Settings with a hex field or the macOS color picker; the ticket list shows each ticket's project as a badge in that color.
 - R156: A project can have an icon, an SF Symbol picked in Project Settings from a popover that searches every SF Symbol of the Mac; Claude reads and sets it.
 - R158: A project has a GitHub page, taken from its origin remote unless set in Project Settings; a sub project can use its parent's settings.
+- R159: A locked web tab goes back to its original page each time the user comes back to it.
