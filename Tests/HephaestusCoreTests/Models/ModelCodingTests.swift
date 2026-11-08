@@ -452,6 +452,21 @@ struct ModelCodingTests {
         #expect(throws: (any Error).self) { try YAMLCoding.decode(ChatMeta.self, from: base + "kind: feedback\nbundle: HEPH-B1\n") }
         #expect(throws: Never.self) { try YAMLCoding.decode(ChatMeta.self, from: base + "kind: feedback\n") }
         #expect(throws: Never.self) { try YAMLCoding.decode(ChatMeta.self, from: base + "kind: feedback\nticket: HEPH-12\n") }
+        // A CI chat has an orchestrator and exactly one of ticket and bundle (docs/data-model.md › Chat kinds).
+        let orchestrator = "orchestrator: 1D2C3B4A-5968-4776-A5B4-C3D2E1F0A9B8\n"
+        #expect(throws: Never.self) { try YAMLCoding.decode(ChatMeta.self, from: base + "kind: ci\nticket: HEPH-12\n" + orchestrator) }
+        #expect(throws: Never.self) { try YAMLCoding.decode(ChatMeta.self, from: base + "kind: ci\nbundle: HEPH-B2\n" + orchestrator) }
+        #expect(throws: (any Error).self) { try YAMLCoding.decode(ChatMeta.self, from: base + "kind: ci\nticket: HEPH-12\n") }
+        #expect(throws: (any Error).self) { try YAMLCoding.decode(ChatMeta.self, from: base + "kind: ci\n" + orchestrator) }
+        #expect(throws: (any Error).self) {
+            try YAMLCoding.decode(ChatMeta.self, from: base + "kind: ci\nticket: HEPH-12\nbundle: HEPH-B2\n" + orchestrator)
+        }
+        #expect(throws: (any Error).self) { try YAMLCoding.decode(ChatMeta.self, from: base + "kind: project\n" + orchestrator) }
+        #expect(throws: (any Error).self) {
+            try YAMLCoding.decode(ChatMeta.self, from: base + "kind: ci\nticket: HEPH-12\n" + orchestrator + "questionsBlocked: true\n")
+        }
+        let ci = try? YAMLCoding.decode(ChatMeta.self, from: base + "kind: ci\nbundle: HEPH-B2\n" + orchestrator)
+        #expect(ci?.kind == .ci && ci?.orchestratorChatID == UUID(uuidString: "1D2C3B4A-5968-4776-A5B4-C3D2E1F0A9B8"))
     }
 
     @Test("questionsBlocked: false by default, written only when true, only for kind ticket")

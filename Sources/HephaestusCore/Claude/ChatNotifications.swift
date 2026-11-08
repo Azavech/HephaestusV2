@@ -28,8 +28,8 @@ extension Engine {
 
     /// docs/chats.md › Notifications: a chat whose reported state changes from `previous` to
     /// `waitingPermission` or `waitingAnswers` posts "needs you"; a turn that ends in `idle` posts
-    /// "finished", except a stopped turn, a turn of an orchestrated ticket chat and a turn of a
-    /// bundle chat while one of its ticket chats is working.
+    /// "finished", except a stopped turn, a turn of a chat with an orchestrator and a turn of an
+    /// orchestrator while one of the chats it orchestrates is working.
     func postChatNotification(_ meta: ChatMeta, previous: ChatState) {
         guard !hasStopped, !chats.stopped, !chats.deleting.contains(meta.id), meta.state != previous else { return }
         if Engine.needsYouStates.contains(meta.state) {
@@ -43,14 +43,13 @@ extension Engine {
     private func postsFinished(_ meta: ChatMeta) -> Bool {
         if chats.runtimes[meta.id]?.turnReport.stopped == true { return false }
         if meta.orchestratorChatID != nil { return false }
-        if meta.kind == .bundle {
-            let working = domain.chats(of: meta.projectID).contains { chat in
-                chat.orchestratorChatID == meta.id
-                    && (Engine.turnStates.contains(chats.state(of: chat.id)) || chats.backgroundWork(of: chat.id))
-            }
-            if working { return false }
+        // An orchestrator, a bundle chat or the implement chat of a single ticket, waits for the
+        // chats it orchestrates (docs/chats.md › Notifications).
+        let working = domain.chats(of: meta.projectID).contains { chat in
+            chat.orchestratorChatID == meta.id
+                && (Engine.turnStates.contains(chats.state(of: chat.id)) || chats.backgroundWork(of: chat.id))
         }
-        return true
+        return !working
     }
 
     /// What the summary call of the event summarizes; nil when there is nothing to summarize.

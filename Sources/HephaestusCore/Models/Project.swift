@@ -353,6 +353,13 @@ public enum GitHubPage {
         return page
     }
 
+    /// `<owner>/<name>` of a page; nil when it is not a valid page (docs/chats.md › Placeholders,
+    /// `{{githubRepository}}`).
+    public static func repository(of page: String) -> String? {
+        guard let page = normalized(page) else { return nil }
+        return String(page.dropFirst("https://github.com/".count))
+    }
+
     /// The page as stored; `invalid` for anything else than a page (docs/engine-api.md ›
     /// projects.update).
     public static func validated(_ text: String) throws -> String {

@@ -88,6 +88,9 @@ extension Engine {
         register(ChatsImplementBundle.self, actors: [.user, .claude]) { [unowned self] params, actor in
             try await self.chatsImplementBundle(params, actor)
         }
+        register(ChatsWatchCI.self, actors: [.claude]) { [unowned self] params, actor in
+            try await self.chatsWatchCI(params, actor)
+        }
         register(ChatsCreateFeedback.self, actors: [.user]) { [unowned self] params, actor in
             try await self.chatsCreateFeedback(params, actor)
         }
@@ -155,6 +158,8 @@ extension Engine {
         switch params.kind {
         case .feedback:
             throw EngineError.invalid("kind", "feedback chats are created by chats.createFeedback")
+        case .ci:
+            throw EngineError.invalid("kind", "CI chats are created by chats.watchCI")
         case .project:
             guard params.ticketID == nil else { throw EngineError.invalid("ticketID", "only a ticket chat has a ticket") }
             guard params.bundleID == nil else { throw EngineError.invalid("bundleID", "only a bundle chat has a bundle") }
@@ -306,6 +311,59 @@ extension Engine {
         return try requireChat(meta.id)
     }
 
+    /// `chats.watchCI` (docs/engine-api.md › chats.watchCI, docs/chats.md › CI chats): a chat of
+    /// kind ci whose orchestrator is the calling chat, linked to that chat's ticket or bundle,
+    /// with its settings, and whose first message names the commit.
+    func chatsWatchCI(_ params: ChatsWatchCI.Params, _ actor: Actor) async throws -> ChatMeta {
+        _ = try ciOrchestrator(actor)
+        guard Engine.isFullCommitHash(params.commit) else {
+            throw EngineError.invalid("commit", "give the full hash of the pushed commit, 40 or 64 hexadecimal characters")
+        }
+        func checkTargets() throws -> (orchestrator: ChatMeta, project: Project) {
+            let orchestrator = try ciOrchestrator(actor)
+            guard let project = domain.project(orchestrator.projectID) else { throw EngineError.notFound("Project", orchestrator.projectID) }
+            guard githubPage(of: project.id) != nil else { throw EngineError(.conflict, "\(project.id) has no GitHub page.") }
+            if let ticketID = orchestrator.ticketID, domain.ticket(ticketID) == nil { throw EngineError.notFound("Ticket", ticketID) }
+            if let bundleID = orchestrator.bundleID, domain.bundle(bundleID) == nil { throw EngineError.notFound("Bundle", bundleID) }
+            return (orchestrator, project)
+        }
+        _ = try checkTargets()
+        _ = try await requireClaudeCLI()
+        let sender = senderName(actor)
+        let (orchestrator, project) = try checkTargets()
+        // The CI chat takes its orchestrator's settings and is linked to its ticket or its bundle
+        // (docs/chats.md › CI chats).
+        let meta = try createChat(kind: .ci, project: project,
+                                  ticketID: orchestrator.kind == .ticket ? orchestrator.ticketID : nil,
+                                  bundleID: orchestrator.kind == .bundle ? orchestrator.bundleID : nil,
+                                  settings: orchestrator.settings, orchestratorChatID: orchestrator.id, origin: actor)
+        try sendChatMessage(meta.id, text: Engine.ciMessage(commit: params.commit), attachments: [], sender: sender, origin: actor)
+        return try requireChat(meta.id)
+    }
+
+    /// The calling chat of chats.watchCI, which becomes the orchestrator of the CI chat: the chat
+    /// of a claude actor, of kind ticket or bundle and without orchestrator (docs/engine-api.md ›
+    /// chats.watchCI).
+    private func ciOrchestrator(_ actor: Actor) throws -> ChatMeta {
+        guard let chatID = actor.chat else { throw ActorRules.ownChatCIOnly }
+        guard let chat = domain.chat(chatID) else { throw EngineError.notFound("Chat", chatID.uuidString) }
+        guard chat.kind == .ticket || chat.kind == .bundle, chat.orchestratorChatID == nil else { throw ActorRules.ciOrchestratorOnly }
+        return chat
+    }
+
+    /// Whether `commit` is a full commit hash: 40 or 64 hexadecimal characters, in any case
+    /// (docs/engine-api.md › chats.watchCI).
+    static func isFullCommitHash(_ commit: String) -> Bool {
+        let bytes = Array(commit.utf8)
+        guard bytes.count == 40 || bytes.count == 64 else { return false }
+        return bytes.allSatisfy { (0x30...0x39).contains($0) || (0x41...0x46).contains($0) || (0x61...0x66).contains($0) }
+    }
+
+    /// The first message of a CI chat (docs/chats.md › CI chats).
+    static func ciMessage(commit: String) -> String {
+        "Watch the CI of commit \(commit.lowercased())."
+    }
+
     /// `chats.createFeedback` (docs/engine-api.md › chats.createFeedback, docs/chats.md ›
     /// Feedback message).
     func chatsCreateFeedback(_ params: ChatsCreateFeedback.Params, _ actor: Actor) async throws -> ChatMeta {
@@ -436,6 +494,7 @@ extension Engine {
         chats.openShortcutRequests[chatID] = nil
         chats.openFontRequests[chatID] = nil
         chats.openAnimationRequests[chatID] = nil
+        chats.ciQuestionAllowances.remove(chatID)
         chats.drivingDevices[chatID] = nil
         chats.scannedChats.remove(chatID)
         chats.hasTextMessage[chatID] = nil
@@ -496,7 +555,10 @@ extension Engine {
     /// `chats.postQuestions` (docs/chats.md › Posting questions).
     func chatsPostQuestions(_ params: ChatsPostQuestions.Params, _ actor: Actor) async throws -> QuestionSet {
         try ActorRules.requireOwnChat(params.chatID, actor)
-        try ActorRules.requireQuestionsAllowed(domain.chat(params.chatID), actor)
+        // After a CI failure report, an implement chat may post one question set
+        // (docs/chats.md › Reports to the orchestrator).
+        try ActorRules.requireQuestionsAllowed(domain.chat(params.chatID), actor,
+                                               allowedOnce: chats.ciQuestionAllowances.contains(params.chatID))
         try Engine.validated { try ModelRules.questions(params.questions) }
         let questions = params.questions.map { question in
             let recommended = Set(question.recommended.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) })
@@ -517,6 +579,7 @@ extension Engine {
         let item = QuestionsItem(id: setID.uuidString, created: ISODate.now(), questionSetID: setID, questions: questions)
         try appendChatItem(.questions(item), chatID: params.chatID, origin: actor)
         chats.openQuestionSets[params.chatID] = item
+        chats.ciQuestionAllowances.remove(params.chatID)
         emitChatUpdated(params.chatID, origin: actor)
         return QuestionSet(questionSetID: setID, chatID: params.chatID, questions: questions)
     }

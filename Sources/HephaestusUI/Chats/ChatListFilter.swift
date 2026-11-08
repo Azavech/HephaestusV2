@@ -5,8 +5,8 @@ import SwiftUI
 
 extension DeviceWorkspace {
     /// Whether a chat is closed: its `closed` is true, or its linked ticket (`ticket` of a ticket
-    /// chat or of a linked feedback chat) has the status `done` (docs/chats.md › Where chats
-    /// appear).
+    /// chat, of a CI chat or of a linked feedback chat) has the status `done` (docs/chats.md ›
+    /// Where chats appear).
     func isClosed(_ meta: ChatMeta) -> Bool {
         if meta.closed { return true }
         guard let ticketID = meta.ticketID, let projectID = Identifiers.projectID(of: ticketID) else { return false }

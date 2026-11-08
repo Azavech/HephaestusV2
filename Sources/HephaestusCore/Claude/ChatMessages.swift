@@ -224,6 +224,9 @@ extension Engine {
             values["feedbackContext"] = Prompts.feedbackContext(fromFirstMessage: first?.text)
             // `none` without an attachment (docs/chats.md › Placeholders).
             values["screenshotPath"] = first?.attachments.first.map { root.appendingPathComponent(".hephaestus/" + $0.path).path } ?? "none"
+        case .ci:
+            // `none` when the project has no GitHub page (docs/chats.md › Placeholders).
+            values["githubRepository"] = githubPage(of: project.id).flatMap(GitHubPage.repository(of:)) ?? "none"
         }
         return Prompts.systemPrompt(kind: meta.kind, values: values)
     }

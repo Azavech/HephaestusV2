@@ -61,6 +61,9 @@ final class ChatManager {
     /// their symbol, color, sound, shortcut, font and animation requests and their pending
     /// permission requests are known.
     var scannedChats: Set<ChatID> = []
+    /// The orchestrators that were sent a CI failure report and may post one question set despite
+    /// `questionsBlocked`; kept in memory only (docs/chats.md › Reports to the orchestrator).
+    var ciQuestionAllowances: Set<ChatID> = []
     /// The driving device of each chat (docs/engine-api.md › Chat metadata in the API).
     var drivingDevices: [ChatID: String] = [:]
     /// Chats being deleted: lines of their terminating process are ignored.

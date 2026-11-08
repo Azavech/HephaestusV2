@@ -134,7 +134,7 @@ struct PromptAndNamingTests {
             "deviceName": "Studio", "docsPath": "docs", "projectType": "Go service", "ticketID": "HEPH-12",
             "ticketTitle": "Locked web tabs close with Command-W", "ticket": "ID: HEPH-12", "bundleID": "HEPH-B2",
             "bundleTitle": "Web tab polish", "bundleTicketIDs": "HEPH-12, HEPH-13", "bundle": "ID: HEPH-B2", "feedbackContext": "- App: X",
-            "screenshotPath": "/Users/example/s.png",
+            "screenshotPath": "/Users/example/s.png", "githubRepository": "Azavech/HephaestusV2",
         ]
         for name in Prompts.Name.allCases {
             let text = Prompts.text(name)
@@ -165,7 +165,8 @@ struct PromptAndNamingTests {
         #expect(section.contains("change the first line of each ticket's completion comment so that it names the hash of the ticket's commit on main."))
         #expect(section.contains("you commit on your branch without pushing"))
         #expect(!section.contains("one ticket chat runs at a time"))
-        #expect(section.contains("- Never set a ticket to done, except in step 6 of \"When the project is a Go service\" in a Go service project."))
+        #expect(section.contains("- Never set a ticket to done, except after CI as \"Waiting for CI\" describes, "
+            + "and in step 6 of \"When the project is a Go service\" in a Go service project."))
         #expect(section.contains("After every ticket has reported back or been skipped, merge the branches not merged yet, in bundle order."))
         #expect(section.contains("When the build or the tests fail, do not push and ask the user with ask_questions how to proceed. Otherwise push once"))
         #expect(section.contains("Your final reply lists each ticket with the hash of its commit on main, or with skipped and the reason, "
@@ -198,7 +199,8 @@ struct PromptAndNamingTests {
         #expect(go.contains("The implement chat of a single ticket, started by Implement or by implement_ticket from a chat that is not a bundle chat, "
             + "posts its completion comment after its push, with the result waiting for the test service on each Claude line, then follows the steps below."))
         #expect(go.contains("In a bundle, the ticket chats do not run their Claude tests"))
-        #expect(go.contains("1. CI: wait with the gh CLI for the CI runs of the pushed commit until they end"))
+        #expect(go.contains("1. CI: when the project has a GitHub page, follow \"Waiting for CI\", and go on with step 2 once the CI chat has reported "
+            + "\"CI passed.\" or \"CI not checked.\". Otherwise wait with the gh CLI for the CI runs of the pushed commit until they end"))
         #expect(go.contains("commit the fix as fix: <summary> (<TICKET-ID>) with the id of the ticket whose change caused the failure"))
         #expect(go.contains("When there is no run to wait for (no workflow, no gh CLI or no remote), skip the wait, go on with step 2, "
             + "and say in your final reply that CI was not checked."))
@@ -218,13 +220,17 @@ struct PromptAndNamingTests {
         #expect(try section("# Ticket status", "# Implementing a ticket").contains(
             "- In a project whose type is Go service, the implement chat of a single ticket and the bundle chat set the tickets to done or review after the checks on the test service"))
         #expect(try section("# Implementing a ticket", "# Commits").contains("then follows \"When the project is a Go service\", whose step 6 replaces step 8"))
-        #expect(try section("# Commits", "# Pushing").contains("In a Go service project, each fix of a failed CI run or of a failed check gets its own commit too"))
+        #expect(try section("# Commits", "# Pushing").contains(
+            "Each fix of a failed CI run, and in a Go service project each fix of a failed check, gets its own commit too"))
         #expect(try section("# Completion comment", "# Implementing a bundle").contains(
             "the result of a Claude line is waiting for the test service until the checks on the test service have run"))
         let bundle = try section("# Implementing a bundle", "# Project and feedback chats")
-        #expect(bundle.contains("Do not implement the tickets yourself, except the fixes of \"When the project is a Go service\" in a Go service project."))
-        #expect(bundle.contains("- Never set a ticket to done, except in step 6 of \"When the project is a Go service\" in a Go service project."))
-        #expect(bundle.contains("- In a Go service project, then follow \"When the project is a Go service\" for the merged tickets."))
+        #expect(bundle.contains("Do not implement the tickets yourself, except the fix of a failed CI run after Fix and check again (\"Waiting for CI\") "
+            + "and the fixes of \"When the project is a Go service\" in a Go service project."))
+        #expect(bundle.contains("- Never set a ticket to done, except after CI as \"Waiting for CI\" describes, "
+            + "and in step 6 of \"When the project is a Go service\" in a Go service project."))
+        #expect(bundle.contains("- In a project with a GitHub page, then follow \"Waiting for CI\" for the merged tickets; "
+            + "in a Go service project, then follow \"When the project is a Go service\" for them."))
         #expect(bundle.contains("- In a Go service project, do not run the Claude tests of your ticket: each Claude line of your completion comment "
             + "reads waiting for the test service, and you set the ticket to review."))
 
@@ -299,18 +305,72 @@ struct PromptAndNamingTests {
         #expect(tool.description.contains("counts as passed once a release built by CI contains the ticket's commit."))
     }
 
+    @Test("CI: the chat that pushed starts a CI chat with watch_ci and waits for CI before the status; a CI chat gets the ci prompt alone")
+    func ciPrompts() throws {
+        let common = Prompts.text(.common)
+        func section(_ start: String, _ end: String) throws -> String {
+            let lower = try #require(common.range(of: start)).lowerBound
+            let upper = try #require(common.range(of: end, range: lower..<common.endIndex)).lowerBound
+            return String(common[lower..<upper])
+        }
+        let waiting = try section("# Waiting for CI", "# Implementing a bundle")
+        #expect(waiting.contains("1. After the push and the completion comment, call watch_ci with the full hash of the pushed commit (git rev-parse HEAD), "
+            + "then end your turn."))
+        #expect(waiting.contains("\"CI chat finished its turn:\" followed by that final reply, \"CI chat ended in error: <error message>\", "
+            + "or \"CI chat was stopped.\"."))
+        #expect(waiting.contains("set no ticket to done or review and do not close your chat until the CI chat has reported \"CI passed.\" "
+            + "or \"CI not checked.\", or the user has chosen Finish without green CI."))
+        #expect(waiting.contains("with the options Fix and check again, Re-run the failed runs and Finish without green CI"))
+        #expect(waiting.contains("HephaestusV2 accepts this question also in an implement chat in which the user has not written."))
+        #expect(waiting.contains("- Re-run the failed runs: run gh run rerun <run id> --repo <owner>/<name> --failed for each failed run, "
+            + "<owner>/<name> being the project's GitHub page without https://github.com/, then call watch_ci with the same commit."))
+        #expect(waiting.contains("A project or feedback chat that implements a ticket starts no CI chat, and neither does a chat that pushed no commit"))
+        #expect(try section("# Implementing a ticket", "# Commits").contains(
+            "In a project with a GitHub page, in a ticket or bundle chat, then call watch_ci and wait for CI, as \"Waiting for CI\" describes."))
+        #expect(try #require(Prompts.text(.ci).range(of: "stop that background task with TaskStop and run gh run watch again")) != nil)
+        #expect(try section("# Asking questions", "# Writing tickets").contains(
+            "Only the question about a failed CI that \"Waiting for CI\" describes is accepted there."))
+        let hephaestus = String(common[try #require(common.range(of: "# When the project is HephaestusV2")).lowerBound...])
+        #expect(!common.contains("Do not wait for the pipeline"))
+        #expect(hephaestus.contains("- Pushing to main starts a release: CI builds it, and the app installs it and restarts once no chat is running, "
+            + "so after your CI chat and you have finished. The project has a GitHub page: follow \"Waiting for CI\"."))
+        #expect(Prompts.text(.implementTicket).contains(", push, post the completion comment, in a project with a GitHub page call watch_ci and wait for CI"))
+        #expect(Prompts.text(.implementBundle).contains("In a project with a GitHub page, then call watch_ci and wait for CI"))
+        #expect(Prompts.text(.implementBundleTicket).contains(
+            "In a project with a GitHub page, set the ticket to review even when every test has passed: the bundle chat sets it after CI."))
+
+        // The CI chat's system prompt is the ci prompt alone, without the common prompt.
+        let values = ["projectName": "Hephaestus V2", "projectID": "HEPH", "projectRoot": "/Users/example/Developer/HephaestusV2",
+                      "deviceName": "Studio", "githubRepository": "Azavech/HephaestusV2"]
+        let prompt = Prompts.systemPrompt(kind: .ci, values: values)
+        #expect(prompt == Prompts.render(Prompts.text(.ci), values))
+        #expect(prompt.hasPrefix("You are Claude, working inside HephaestusV2, a macOS app that coordinates the work on many projects. "
+            + "This is a CI chat of the project Hephaestus V2 (identifier HEPH)"))
+        #expect(prompt.contains("The project's GitHub repository is Azavech/HephaestusV2.\n\nThe first message names the commit by its full hash."))
+        #expect(prompt.contains("gh run list --repo Azavech/HephaestusV2 --commit <hash>"))
+        #expect(prompt.contains("- CI passed. when every run ended with success, neutral or skipped"))
+        #expect(prompt.contains("- CI failed. when a run ended otherwise"))
+        #expect(prompt.contains("- CI not checked. when no run of the commit appeared within 2 minutes"))
+        #expect(!prompt.contains("# HephaestusV2 tools"))
+        #expect(!prompt.contains("{{"))
+        #expect(Prompts.kindPrompt(.ci) == .ci)
+        #expect(GitHubPage.repository(of: "https://github.com/Azavech/HephaestusV2") == "Azavech/HephaestusV2")
+        #expect(GitHubPage.repository(of: "https://github.com/owner/name.git") == "owner/name.git")
+        #expect(GitHubPage.repository(of: "https://gitlab.com/owner/name") == nil)
+    }
+
     @Test("The common prompt lists close_chat and says when to call it, for other chats only when the user asks")
     func closeChatPrompt() throws {
         let common = Prompts.text(.common)
-        #expect(common.contains("- Chats: list_chats, get_chat (a chat and its transcript, for example another chat of the same ticket), rename_chat, close_chat (closes the chat you run in, or chats of the project that the user asks you to close)."))
+        #expect(common.contains("- Chats: list_chats, get_chat (a chat and its transcript, for example another chat of the same ticket), rename_chat, close_chat (closes the chat you run in, or chats of the project that the user asks you to close), watch_ci (starts a CI chat that follows the CI of a commit you pushed)."))
         let lower = try #require(common.range(of: "# Closing chats")).lowerBound
         let upper = try #require(common.range(of: "# When the project is HephaestusV2")).lowerBound
         let section = String(common[lower..<upper])
         #expect(section.contains("After the call, finish your reply: when your turn ends, HephaestusV2 ends your session"))
         #expect(section.contains("- when the user asks you to close the chat;"))
         #expect(section.contains("- in a ticket chat, once you have set its ticket to done;"))
-        #expect(section.contains("- in a bundle chat, once every ticket has been implemented or skipped and you have pushed, and in a Go service "
-            + "project once you have finished step 6 of \"When the project is a Go service\";"))
+        #expect(section.contains("- in a bundle chat, once every ticket has been implemented or skipped and you have pushed, in a project with a GitHub page "
+            + "once \"Waiting for CI\" lets you finish, and in a Go service project once you have finished step 6 of \"When the project is a Go service\";"))
         #expect(section.contains("- in a feedback chat, once you have created its ticket."))
         #expect(section.contains("Close a project chat only when the user asks for it."))
         #expect(section.contains("To close other chats of the project, call close_chat with chatIDs"))

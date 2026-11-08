@@ -6,4 +6,6 @@ Follow "Implementing a ticket": set the ticket to in_progress, read it and the d
 
 This is an implement chat: until the user writes in it, ask no question. When something the ticket needs is unknown, make the choice yourself, mark it with the sentence "Default chosen at design time." in the docs you change, and list each choice under Notes of the completion comment; at the other points where the rules tell you to ask, decide yourself and state the decision under Notes too.
 
+In a project with a GitHub page, set the ticket to review even when every test has passed: the bundle chat sets it after CI.
+
 In a Go service project, do not run the Claude tests: they wait for the test service that the bundle chat runs after its push, and you set the ticket to review.

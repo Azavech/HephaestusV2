@@ -14,7 +14,7 @@ HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server th
 | JSON-RPC methods  | `initialize`, `ping`, `tools/list`, `tools/call`; every notification is accepted and ignored                                                             |
 | Server name       | `hephaestus`, in `serverInfo` and as the server's key in Claude's MCP configuration, so Claude names the tools `mcp__hephaestus__<tool>`                 |
 | Authentication    | `Authorization: Bearer <token>` with a chat token, an answer token or the external token on `/mcp`, with a hook token on the hook paths                  |
-| Tools             | The 49 tools of the [tool catalogue](#tool-catalogue), plus 4 [debug tools](#debug-tools) when `HEPHAESTUS_DEBUG_TOOLS=1`                                |
+| Tools             | The 50 tools of the [tool catalogue](#tool-catalogue), plus 4 [debug tools](#debug-tools) when `HEPHAESTUS_DEBUG_TOOLS=1`                                |
 
 Every tool call runs an engine method ([Engine API](engine-api.md)) with the actor `claude`. The engine validates it exactly as it validates a call from the UI or from a remote device and emits the same events, so every client, local or remote, shows the change live.
 
@@ -133,7 +133,7 @@ The chat tokens, the answer tokens and the hook tokens are created, kept and rev
 
 - A relaunch of a chat's process issues a new token. Sub-agents of the chat run in the same process and use the same token.
 - The external token is read and regenerated only through the external MCP token service of the windows of this Mac; no engine method or MCP tool exposes it ([Architecture](architecture.md#local-only-services)). Regenerate (Settings > MCP, [UI](ui.md)) replaces it at once: requests with the old token get 401, and terminal sessions must add the server again ([External use](#external-use)). When `secrets.json` cannot be written, the old token stays valid and Settings shows the alert `Regenerate failed` with the storage error's message. Default chosen at design time.
-- A chat token identifies the calling chat: `ask_questions` posts its questions to that chat, `ask_symbol` its symbol request, `ask_color` its color request, `ask_sound` its sound request, `ask_shortcut` its shortcut request, `ask_font` its font request, `ask_animation` its animation request, `close_chat` closes that chat or chats of its project, and `open_in_app` reaches that chat's driving device.
+- A chat token identifies the calling chat: `ask_questions` posts its questions to that chat, `ask_symbol` its symbol request, `ask_color` its color request, `ask_sound` its sound request, `ask_shortcut` its shortcut request, `ask_font` its font request, `ask_animation` its animation request, `close_chat` closes that chat or chats of its project, `watch_ci` makes that chat the orchestrator of the CI chat it starts, and `open_in_app` reaches that chat's driving device.
 - Tokens are never logged.
 
 ## User prompt hook
@@ -411,12 +411,13 @@ A chat token runs every engine call as the actor `claude` with the chat's id, th
 | Claude never sets a ticket title at creation, chat settings, project chat defaults, project environments, a project's GitHub page or its `Use parent settings`                                                                                                                                                | The tools never send these params ([Engine API](engine-api.md#rules-for-claude))                                                                                                                                                       | —                      |
 | Only the chat's own Claude asks questions, symbol, color, sound, shortcut, font and animation requests                                                                                                                                                                                                        | `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font`, `ask_animation`, chats.postQuestions, chats.postSymbol, chats.postColor, chats.postSound, chats.postShortcut, chats.postFont, chats.postAnimation | `forbidden`            |
 | Only the chat's own Claude shows images                                                                                                                                                                                                                                                                       | `show_image`, chats.postImages                                                                                                                                                                                                         | `forbidden`            |
-| An implement chat asks no question, symbol, color, sound, shortcut, font or animation request until the user writes in it (`This chat implements a ticket and cannot ask questions: decide yourself and note the choice in the completion comment.`)                                                          | chats.postQuestions, chats.postSymbol, chats.postColor, chats.postSound, chats.postShortcut, chats.postFont, chats.postAnimation, while the chat's metadata holds `questionsBlocked` ([Workflow](workflow.md#implement-chats))         | `forbidden`            |
+| An implement chat asks no question, symbol, color, sound, shortcut, font or animation request until the user writes in it, except one question set after a CI failure report (`This chat implements a ticket and cannot ask questions: decide yourself and note the choice in the completion comment.`)       | chats.postQuestions, chats.postSymbol, chats.postColor, chats.postSound, chats.postShortcut, chats.postFont, chats.postAnimation, while the chat's metadata holds `questionsBlocked` ([Workflow](workflow.md#implement-chats))         | `forbidden`            |
 | Claude asks for a sound only in a project of type Swift application                                                                                                                                                                                                                                           | chats.postSound ([Projects](projects.md#project-types))                                                                                                                                                                                | `forbidden`            |
 | Shortcut requests are posted only in Swift application projects                                                                                                                                                                                                                                               | `ask_shortcut`, chats.postShortcut ([Workflow](workflow.md#shortcut-requests))                                                                                                                                                         | `forbidden`            |
 | Animation requests are posted only in Swift application projects                                                                                                                                                                                                                                              | `ask_animation`, chats.postAnimation ([Workflow](workflow.md#animation-requests))                                                                                                                                                      | `forbidden`            |
 | Claude closes only chats of the calling chat's project; the external token closes no chat                                                                                                                                                                                                                     | `close_chat`, chats.close; `close_chat` with `chatIDs` reports the refused chats in its result ([close_chat](#close_chat))                                                                                                             | `forbidden`            |
 | Claude never closes another chat while a turn is in progress in it                                                                                                                                                                                                                                            | chats.close; `close_chat` with `chatIDs` reports the refused chats in its result ([close_chat](#close_chat))                                                                                                                           | `conflict`             |
+| Only a ticket or bundle chat that no other chat started starts a CI chat, and the external token starts none                                                                                                                                                                                                  | `watch_ci`, chats.watchCI ([Workflow](workflow.md#waiting-for-ci))                                                                                                                                                                     | `forbidden`            |
 | A comment answer uses only `list_projects`, `get_project`, `list_tickets`, `get_ticket`, `update_ticket`, `set_ticket_status`, `list_bundles`, `get_bundle`, `search`, `list_docs`, `list_web_tabs`, `list_skills`, `get_skill`, `list_chats` and `get_chat` (`<tool> is not available to a comment answer.`) | MCP server, step 2 of [tools/call](#toolscall), for an answer token                                                                                                                                                                    | `forbidden`            |
 | A comment answer changes only the ticket of its comment: the `ticketID` of its `update_ticket` and `set_ticket_status` names that ticket (`A comment answer changes only <ID>.`)                                                                                                                              | MCP server, step 4 of [tools/call](#toolscall), for an answer token                                                                                                                                                                    | `forbidden`            |
 | A feedback chat is linked to the ticket it creates                                                                                                                                                                                                                                                            | tickets.create ([Feedback](feedback.md#resulting-ticket))                                                                                                                                                                              | —                      |
@@ -466,6 +467,7 @@ The table lists every tool in the order of `tools/list`. "Required inputs" holds
 | `get_chat`          | `chatID`                                           | —                                           | chats.get                | ChatTranscript   |
 | `rename_chat`       | `chatID`, `title`                                  | —                                           | chats.rename             | ChatMeta         |
 | `close_chat`        | —                                                  | `chatIDs`                                   | chats.close              | `{refused}`      |
+| `watch_ci`          | `commit`                                           | —                                           | chats.watchCI            | ChatMeta         |
 | `search`            | `query`                                            | `scopes`, `projectID`                       | search.query             | [SearchResult]   |
 | `list_docs`         | `projectID`                                        | —                                           | docs.list                | [DocEntry]       |
 | `list_web_tabs`     | `projectID`                                        | —                                           | webTabs.list             | [WebTab]         |
@@ -1070,6 +1072,7 @@ Input schema:
 - **Engine call:** chats.implementTicket with `ticketID`. `settings` is never sent, so the chat uses the project's `chatDefaults`, else the host's `defaultChatSettings`; an orchestrated ticket chat takes the calling bundle chat's settings instead.
 - The new chat runs in its own Claude process with its own chat token; the calling chat goes on. No window changes its selection ([Tickets](tickets.md#ticket-chats-and-implement)); `open_in_app` with kind `chat` shows the new chat.
 - Called from a bundle chat for a ticket of that chat's bundle, the new chat is an orchestrated ticket chat linked to the calling chat. The engine first creates the branch `<bundle id>/<ticket id>` from the project root's current branch, checked out in the worktree `<data dir>/Worktrees/<project id>/<ticket id>`, after removing those that an earlier chat of the ticket left ([Branch and worktree](chats.md#branch-and-worktree)). The new chat works in that worktree, takes the calling chat's settings, commits on its branch without pushing, and the engine sends the calling chat a message each time one of its turns ends without waiting for answers ([Chats](chats.md#orchestrated-ticket-chats)).
+- Called from any other chat, the new chat implements and pushes its ticket. In a project with a GitHub page, it then starts a CI chat with [watch_ci](#watch_ci) and sets the ticket's status only once CI is green or the user decides so ([Workflow](workflow.md#waiting-for-ci)).
 - **Result:** the `ChatMeta` of the new chat.
 - **Errors:** Those of chats.implementTicket ([Engine API](engine-api.md#chatsimplementticket)): no such ticket (`notFound`), a `done` ticket (`conflict`, `<ID> is done; set it to To Do or In Progress to implement it.`), Claude CLI not available (`unavailable`), the branch and worktree of an orchestrated ticket chat cannot be created (`unavailable`, `Cannot create the branch and worktree of <ID>: <reason>`).
 
@@ -1327,7 +1330,7 @@ Input schema:
 - **Result:** plain text, not JSON ([Text returned to Claude](#text-returned-to-claude)).
 - **Errors:**
   - The external token (`forbidden`, message above).
-  - The chat is an implement chat whose metadata holds `questionsBlocked`: the user has not written in it yet (`forbidden`, `This chat implements a ticket and cannot ask questions: decide yourself and note the choice in the completion comment.`) ([Workflow](workflow.md#implement-chats)).
+  - The chat is an implement chat whose metadata holds `questionsBlocked`: the user has not written in it yet (`forbidden`, `This chat implements a ticket and cannot ask questions: decide yourself and note the choice in the completion comment.`) ([Workflow](workflow.md#implement-chats)). After a CI failure report, one question set is accepted there ([Reports to the orchestrator](chats.md#reports-to-the-orchestrator)).
   - A [question rule](#question-rules) fails (`invalid`).
   - The chat already has a question set without all its answers, a symbol request without answer, a color request without answer, a sound request without answer, a shortcut request without answer, a font request without answer or an animation request without answer (`conflict`), or the chat no longer exists (`notFound`) ([Engine API](engine-api.md#chatspostquestions)).
 
@@ -1941,7 +1944,7 @@ The input schema checks only the shape of the arguments. chats.postImages checks
 Description:
 
 ```text
-List a project's chats of every kind (project, ticket, bundle, feedback), most recently updated first, with their title, kind, linked ticket or bundle, settings and state.
+List a project's chats of every kind (project, ticket, bundle, feedback, ci), most recently updated first, with their title, kind, linked ticket or bundle, settings and state.
 ```
 
 Input schema:
@@ -2060,6 +2063,37 @@ Input schema:
       "items": {"type": "string"}
     }
   },
+  "additionalProperties": false
+}
+```
+
+### watch_ci
+
+- **Engine call:** chats.watchCI with `commit` ([Engine API](engine-api.md#chatswatchci)). The engine takes the calling chat from the token: it becomes the orchestrator of the new chat.
+- The new chat is a [CI chat](chats.md#ci-chats): kind `ci`, linked to the calling chat as its `orchestrator` and to the calling chat's ticket or bundle, with the calling chat's settings. Its first message is `Watch the CI of commit <commit>.`, and its prompt has Claude wait with the gh CLI for every workflow run of the commit on the project's GitHub repository, then end its turn with a final reply whose first line is `CI passed.`, `CI failed.` or `CI not checked.` ([Prompt: ci](chats.md#prompt-ci)). The new chat runs in its own Claude process with its own chat token, and the calling chat goes on; when the CI chat's turn ends, the engine sends the calling chat its report ([Reports to the orchestrator](chats.md#reports-to-the-orchestrator)). No window changes its selection.
+- Claude calls it after the push of an implementation in a project that has a GitHub page, then ends its turn ([Workflow](workflow.md#waiting-for-ci)).
+- **Permission:** not pre-approved: the call follows the chat's permission mode, as `implement_ticket` does ([Chats](chats.md#command-line)).
+- **Result:** the `ChatMeta` of the new chat.
+- **Errors:** Those of chats.watchCI ([Engine API](engine-api.md#chatswatchci)): the external token (`forbidden`, `Only a chat's own Claude can start a CI chat.`); a calling chat that is not a ticket or bundle chat, or that another chat started (`forbidden`, `Only a ticket or bundle chat that no other chat started can start a CI chat.`); a `commit` that is not a full hash (`invalid`, `commit: give the full hash of the pushed commit, 40 or 64 hexadecimal characters.`); a project without a GitHub page (`conflict`, `<ID> has no GitHub page.`); the calling chat's ticket or bundle no longer exists (`notFound`); Claude CLI not available (`unavailable`).
+
+Description:
+
+```text
+Start a CI chat that follows the CI of a commit you pushed: a separate Claude session waits with the gh CLI for every workflow run of the commit on the project's GitHub repository, then reports to this chat when its turn ends, with a final reply whose first line is "CI passed.", "CI failed." or "CI not checked.". Call it after the push of an implementation, from the ticket or bundle chat that pushed, in a project that has a GitHub page; then end your turn. Returns the new chat.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "commit": {
+      "type": "string",
+      "description": "Full hash of the pushed commit, as git rev-parse HEAD prints it."
+    }
+  },
+  "required": ["commit"],
   "additionalProperties": false
 }
 ```
@@ -2613,7 +2647,7 @@ claude mcp add --transport http hephaestus http://127.0.0.1:47820/mcp --header "
 ```
 
 - Calls run as `claude` with chatID `external`: the [actor rules](#actor-rules) apply, tickets created this way have `createdBy: claude` and comments `author: claude`.
-- `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font` and `ask_animation` fail, so Claude asks its questions in plain text ([Workflow](workflow.md#plain-text-questions)); `close_chat` fails, as there is no chat to close; `open_in_app` makes every client navigate.
+- `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font` and `ask_animation` fail, so Claude asks its questions in plain text ([Workflow](workflow.md#plain-text-questions)); `close_chat` fails, as there is no chat to close; `watch_ci` fails, as there is no chat to report to; `open_in_app` makes every client navigate.
 - These sessions do not receive the app's system prompts ([Chats](chats.md)); the tool descriptions state what Claude needs: the ticket template, the statuses Claude may set and how questions are asked.
 - The token survives app restarts and updates. After Regenerate or a port change, the server must be removed with `claude mcp remove hephaestus` and the new command run, as `claude mcp add` refuses a name that already exists.
 
@@ -3098,3 +3132,4 @@ Unauthorized: missing or invalid bearer token.
 - R156: A project can have an icon, an SF Symbol picked in Project Settings from a popover that searches every SF Symbol of the Mac; Claude reads and sets it.
 - R158: A project has a GitHub page, taken from its origin remote unless set in Project Settings; a sub project can use its parent's settings.
 - R159: A locked web tab goes back to its original page each time the user comes back to it.
+- R161: After an implementation is pushed in a project with a GitHub page, a CI chat follows CI and reports to the orchestrator, which asks the user how to proceed when CI fails and finishes only once CI is green or the user decides so.

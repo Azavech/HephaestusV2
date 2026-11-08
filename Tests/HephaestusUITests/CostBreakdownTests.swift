@@ -64,6 +64,9 @@ struct CostBreakdownTests {
         #expect(shown.groups.flatMap(\.lines).allSatisfy { $0.source == .claudeChats })
         #expect(CostBreakdown.lines(.claudeChats, chats: chats.filter { $0.projectID == "DEMO" }, deletedChats: deleted["DEMO"]!,
                                     showDeleted: true).count == 5)
+        // A CI chat: CI and the id of its ticket or bundle (docs/costs.md › Costs section).
+        #expect(CostBreakdown.kind(.ci, ticketID: "DEMO-3", bundleID: nil) == "CI DEMO-3")
+        #expect(CostBreakdown.kind(.ci, ticketID: nil, bundleID: "DEMO-B1") == "CI DEMO-B1")
     }
 
     @Test("Comment answers: one line per ticket with the sum of its entries; a deleted ticket's line only with the toggle")

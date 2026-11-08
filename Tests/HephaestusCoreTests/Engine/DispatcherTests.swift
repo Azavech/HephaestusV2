@@ -47,6 +47,8 @@ struct DispatcherTests {
             let questions = ChatsPostQuestions.Params(chatID: Self.chatID, questions: [])
             #expect(await engineError { try await connection.call(ChatsPostQuestions.self, questions) }
                 == EngineError(.forbidden, "chats.postQuestions is not available to user."))
+            #expect(await engineError { try await connection.call(ChatsWatchCI.self, .init(commit: String(repeating: "a", count: 40))) }
+                == EngineError(.forbidden, "chats.watchCI is not available to user."))
             #expect(await engineError { try await engine.call(DeviceInfoMethod.self, Empty(), actor: Self.claude) }
                 == EngineError(.forbidden, "device.info is not available to claude."))
             let raw = await engineError { try await engine.dispatch(method: "files.read", params: Data("[]".utf8), actor: Self.claude) }
@@ -135,6 +137,9 @@ struct DispatcherTests {
             #expect(await call(ChatsPostQuestions.self, questions, .claude(chatID: UUID().uuidString))
                 == EngineError(.forbidden, "Only the chat's own Claude can ask questions."))
             #expect(await call(ChatsPostQuestions.self, questions)?.code == .invalid)
+            let watch = ChatsWatchCI.Params(commit: String(repeating: "a", count: 40))
+            #expect(await call(ChatsWatchCI.self, watch, Self.external) == EngineError(.forbidden, "Only a chat's own Claude can start a CI chat."))
+            #expect(await call(ChatsWatchCI.self, watch) == EngineError(.notFound, "Chat \(Self.chatID.uuidString) not found."))
         }
     }
 

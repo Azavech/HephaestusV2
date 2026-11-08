@@ -4,7 +4,7 @@ import Foundation
 enum Prompts {
     /// The resource names: `Sources/HephaestusCore/Resources/prompts/<name>.md`.
     enum Name: String, CaseIterable, Sendable {
-        case common, project, ticket, bundle, feedback
+        case common, project, ticket, bundle, feedback, ci
         case implementTicket = "implement-ticket"
         case implementBundleTicket = "implement-bundle-ticket"
         case implementBundle = "implement-bundle"
@@ -46,13 +46,15 @@ enum Prompts {
         return result
     }
 
-    /// The prompt of a chat kind, appended after the common prompt.
+    /// The prompt of a chat kind, appended after the common prompt; a CI chat gets its prompt
+    /// alone.
     static func kindPrompt(_ kind: ChatKind) -> Name {
         switch kind {
         case .project: return .project
         case .ticket: return .ticket
         case .bundle: return .bundle
         case .feedback: return .feedback
+        case .ci: return .ci
         }
     }
 
@@ -189,9 +191,11 @@ enum Prompts {
     }
 
     /// The value of `--append-system-prompt`: the rendered common prompt, a blank line, and the
-    /// rendered prompt of the chat's kind.
+    /// rendered prompt of the chat's kind; for a CI chat, the rendered ci prompt alone, without
+    /// the common prompt (docs/chats.md › Composition and rendering).
     static func systemPrompt(kind: ChatKind, values: [String: String]) -> String {
-        render(text(.common), values) + "\n\n" + render(text(kindPrompt(kind)), values)
+        if kind == .ci { return render(text(.ci), values) }
+        return render(text(.common), values) + "\n\n" + render(text(kindPrompt(kind)), values)
     }
 }
 

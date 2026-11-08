@@ -5,7 +5,7 @@ import Foundation
 // docs/mcp.md; the docs conformance tests compare it with the docs.
 
 extension MCPToolCatalog {
-    /// The 49 tools of docs/mcp.md › Tool catalogue, in `tools/list` order.
+    /// The 50 tools of docs/mcp.md › Tool catalogue, in `tools/list` order.
     public static let tools: [MCPToolDefinition] = [
         MCPToolDefinition(
             name: "list_projects",
@@ -1008,7 +1008,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "list_chats",
             description: #"""
-            List a project's chats of every kind (project, ticket, bundle, feedback), most recently updated first, with their title, kind, linked ticket or bundle, settings and state.
+            List a project's chats of every kind (project, ticket, bundle, feedback, ci), most recently updated first, with their title, kind, linked ticket or bundle, settings and state.
             """#,
             inputSchema: schema(#"""
             {
@@ -1096,6 +1096,28 @@ extension MCPToolCatalog {
             isDebug: false,
             engineMethod: "chats.close",
             handling: .closeChat
+        ),
+        MCPToolDefinition(
+            name: "watch_ci",
+            description: #"""
+            Start a CI chat that follows the CI of a commit you pushed: a separate Claude session waits with the gh CLI for every workflow run of the commit on the project's GitHub repository, then reports to this chat when its turn ends, with a final reply whose first line is "CI passed.", "CI failed." or "CI not checked.". Call it after the push of an implementation, from the ticket or bundle chat that pushed, in a project that has a GitHub page; then end your turn. Returns the new chat.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "commit": {
+                  "type": "string",
+                  "description": "Full hash of the pushed commit, as git rev-parse HEAD prints it."
+                }
+              },
+              "required": ["commit"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "chats.watchCI",
+            handling: .forward
         ),
         MCPToolDefinition(
             name: "search",

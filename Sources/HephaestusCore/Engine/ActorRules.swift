@@ -49,10 +49,12 @@ enum ActorRules {
 
     /// chats.postQuestions and the other requests to the user: refused while the chat's metadata
     /// holds `questionsBlocked`, in an implement chat the user has not written in yet
-    /// (docs/workflow.md › Implement chats). Checked after `requireOwnChat`; a chat that does not
-    /// exist passes, and fails later with `notFound`.
-    static func requireQuestionsAllowed(_ chat: ChatMeta?, _ actor: Actor) throws {
-        guard actor.kind != .system, chat?.questionsBlocked == true else { return }
+    /// (docs/workflow.md › Implement chats), unless `allowedOnce`: the question set that
+    /// chats.postQuestions accepts after a CI failure report (docs/chats.md › Reports to the
+    /// orchestrator). Checked after `requireOwnChat`; a chat that does not exist passes, and fails
+    /// later with `notFound`.
+    static func requireQuestionsAllowed(_ chat: ChatMeta?, _ actor: Actor, allowedOnce: Bool = false) throws {
+        guard actor.kind != .system, chat?.questionsBlocked == true, !allowedOnce else { return }
         throw questionsBlocked
     }
 
@@ -62,6 +64,13 @@ enum ActorRules {
 
     /// The message of chats.postImages and of `show_image` with the external token.
     static let ownChatImagesOnly = EngineError(.forbidden, "Only the chat's own Claude can show images.")
+
+    /// The message of chats.watchCI and of `watch_ci` with the external token.
+    static let ownChatCIOnly = EngineError(.forbidden, "Only a chat's own Claude can start a CI chat.")
+
+    /// The message of chats.watchCI called from a chat that is not a ticket or bundle chat, or
+    /// that another chat started (docs/engine-api.md › chats.watchCI).
+    static let ciOrchestratorOnly = EngineError(.forbidden, "Only a ticket or bundle chat that no other chat started can start a CI chat.")
 
     /// The message of chats.close and of `close_chat` with the external token.
     static let ownChatCloseOnly = EngineError(.forbidden, "Only the chat's own Claude can close its chat.")

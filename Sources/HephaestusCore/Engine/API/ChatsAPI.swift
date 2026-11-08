@@ -34,7 +34,8 @@ public enum ChatsCreate: EngineMethod {
     public static let name = "chats.create"
     public struct Params: Codable, Sendable, Hashable {
         public var projectID: ProjectID
-        /// `project`, `ticket` or `bundle`; feedback chats come from `chats.createFeedback`.
+        /// `project`, `ticket` or `bundle`; feedback chats come from `chats.createFeedback`, CI
+        /// chats from `chats.watchCI`.
         public var kind: ChatKind
         /// Required for kind ticket and refused for another kind.
         public var ticketID: TicketID?
@@ -183,7 +184,8 @@ public enum ChatsAnswerPermission: EngineMethod {
 }
 
 /// `chats.postQuestions`: called by the MCP tool `ask_questions`. Actors: claude (the chat's own
-/// Claude only), refused while the chat's metadata holds `questionsBlocked`.
+/// Claude only), refused while the chat's metadata holds `questionsBlocked`, except one question
+/// set after a CI failure report (docs/chats.md › Reports to the orchestrator).
 public enum ChatsPostQuestions: EngineMethod {
     public static let name = "chats.postQuestions"
     public struct Params: Codable, Sendable, Hashable {
@@ -539,6 +541,23 @@ public enum ChatsImplementBundle: EngineMethod {
         public init(bundleID: BundleID, settings: ChatSettings? = nil) {
             self.bundleID = bundleID
             self.settings = settings
+        }
+    }
+    public typealias Result = ChatMeta
+}
+
+/// `chats.watchCI`: called by the MCP tool `watch_ci` from the chat that pushed an
+/// implementation, which becomes the orchestrator of the CI chat it creates. Actors: claude, with
+/// a chat token, from a ticket or bundle chat without orchestrator (docs/engine-api.md ›
+/// chats.watchCI).
+public enum ChatsWatchCI: EngineMethod {
+    public static let name = "chats.watchCI"
+    public struct Params: Codable, Sendable, Hashable {
+        /// Full hash of the pushed commit: 40 or 64 hexadecimal characters, in any case.
+        public var commit: String
+
+        public init(commit: String) {
+            self.commit = commit
         }
     }
     public typealias Result = ChatMeta

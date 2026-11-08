@@ -66,8 +66,8 @@ struct LinkedChatsView: View {
         }
     }
 
-    /// A row of the list: a chat, indented when it is a ticket chat orchestrated by the chat of
-    /// the row above it.
+    /// A row of the list: a chat, indented when the chat of a row above it orchestrates it: a
+    /// ticket chat under its bundle chat, a CI chat under the chat that started it.
     struct Row: Identifiable, Hashable {
         var meta: ChatMeta
         var nested: Bool
@@ -75,19 +75,23 @@ struct LinkedChatsView: View {
     }
 
     /// The listed rows: the chats of `chatIDs` that have metadata, most recently updated first,
-    /// each followed by the ticket chats it orchestrates, oldest first (docs/tickets.md ›
-    /// Bundles section). A chat id without metadata (another clone of the repository) is not
-    /// listed. With `hidesClosed`, closed chats are left out, except a chat that orchestrates an
-    /// open ticket chat (docs/tickets.md › Implement All).
+    /// each followed by the chats it orchestrates, oldest first: the ticket chats of a bundle chat
+    /// and the CI chats of a ticket or bundle chat, whether or not their ids are in `chatIDs`
+    /// (docs/tickets.md › Ticket chats and Implement, › Bundles section). A chat id without
+    /// metadata (another clone of the repository) is not listed. With `hidesClosed`, closed chats
+    /// are left out, except a chat that orchestrates an open chat (docs/tickets.md › Implement
+    /// All).
     static func listedRows(_ chatIDs: [ChatID], workspace: DeviceWorkspace, hidesClosed: Bool = false) -> [Row] {
-        let chats = chatIDs.compactMap { workspace.chats[$0.uuidString] }.sorted { $0.updated > $1.updated }
-        let listed = Set(chats.map(\.id))
+        let linked = chatIDs.compactMap { workspace.chats[$0.uuidString] }
+        let listed = Set(linked.map(\.id))
         var children: [ChatID: [ChatMeta]] = [:]
         for meta in workspace.chats.values {
-            if let orchestrator = meta.orchestratorChatID, listed.contains(orchestrator), !listed.contains(meta.id) {
+            if let orchestrator = meta.orchestratorChatID, orchestrator != meta.id, listed.contains(orchestrator) {
                 children[orchestrator, default: []].append(meta)
             }
         }
+        let nestedIDs = Set(children.values.flatMap { $0.map(\.id) })
+        let chats = linked.filter { !nestedIDs.contains($0.id) }.sorted { $0.updated > $1.updated }
         return chats.flatMap { meta -> [Row] in
             let nested = (children[meta.id] ?? [])
                 .filter { !hidesClosed || !workspace.isClosed($0) }
@@ -131,7 +135,8 @@ struct LinkedChatsView: View {
         }
     }
 
-    /// A ticket chat orchestrated by a chat of this tab, whose row has not arrived yet.
+    /// A chat orchestrated by a chat of this tab, a ticket chat or a CI chat, whose row has not
+    /// arrived yet.
     private func isOrchestrated(_ meta: ChatMeta) -> Bool {
         guard let orchestrator = meta.orchestratorChatID else { return false }
         return chatIDs.contains(orchestrator)
@@ -372,6 +377,7 @@ struct LinkedChatsView: View {
         case .ticket: return "checklist"
         case .bundle: return "shippingbox"
         case .feedback: return "ladybug"
+        case .ci: return "checkmark.seal"
         }
     }
 

@@ -528,7 +528,7 @@ struct ChatHeader: View {
     }
 }
 
-/// The kind and, for ticket, bundle and linked feedback chats, the ticket or bundle id; clicking
+/// The kind and, for ticket, bundle, CI and linked feedback chats, the ticket or bundle id; clicking
 /// the id navigates to it.
 private struct KindChip: View {
     let model: ChatViewModel

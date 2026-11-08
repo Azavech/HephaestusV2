@@ -12,7 +12,8 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     /// Key `bundle`.
     public var bundleID: BundleID?
     /// Key `orchestrator`: for a ticket chat started by a bundle chat with `implement_ticket`,
-    /// that bundle chat (docs/chats.md › Orchestrated ticket chats).
+    /// that bundle chat (docs/chats.md › Orchestrated ticket chats); for a CI chat, the ticket or
+    /// bundle chat that started it with `watch_ci` (docs/chats.md › CI chats).
     public var orchestratorChatID: ChatID?
     public var created: Date
     public var updated: Date
@@ -140,7 +141,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     /// (docs/data-model.md › Chat kinds), or nil.
     public static func kindProblem(kind: ChatKind, ticketID: TicketID?, bundleID: BundleID?,
                                    orchestratorChatID: ChatID? = nil, questionsBlocked: Bool = false) -> String? {
-        if kind != .ticket, orchestratorChatID != nil { return "only a ticket chat has an orchestrator" }
+        if kind != .ticket, kind != .ci, orchestratorChatID != nil { return "only a ticket chat or a CI chat has an orchestrator" }
         if kind != .ticket, questionsBlocked { return "only a ticket chat has questionsBlocked" }
         switch kind {
         case .project:
@@ -153,6 +154,9 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
             if ticketID != nil { return "a bundle chat has no ticket" }
         case .feedback:
             if bundleID != nil { return "a feedback chat has no bundle" }
+        case .ci:
+            if orchestratorChatID == nil { return "a CI chat needs its orchestrator" }
+            if (ticketID == nil) == (bundleID == nil) { return "a CI chat has either a ticket or a bundle" }
         }
         return nil
     }
@@ -178,4 +182,6 @@ public enum ChatKind: String, Codable, Sendable, Hashable, CaseIterable {
     case bundle
     /// Feedback chat.
     case feedback
+    /// CI chat: follows the CI of a pushed commit for its orchestrator (docs/chats.md › CI chats).
+    case ci
 }

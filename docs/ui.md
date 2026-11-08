@@ -149,7 +149,7 @@ The inspector is the project chat panel in the right column ([Where chats appear
 - Background: the frosted material of [Main window layout](#main-window-layout), behind the whole column: the header, the transcript, the pinned cards, the status line and the composer. The chat view draws no background of its own there and the transcript's web view is transparent ([Web view and bridge](chats.md#web-view-and-bridge)); the message bubbles, the cards and the composer's field keep their backgrounds.
 - The selected chat is kept per project and per window (`ProjectViewState.inspectorChatID`). Without a selection, the most recently updated project chat is selected. When the selected chat is deleted, the next most recently updated project chat is selected. With no project chat, the inspector shows a draft chat ([Draft chats](chats.md#draft-chats)).
 - New Chat (the inspector button, the toolbar button, File ▸ New Chat ⌥⌘N) shows the inspector when it is hidden, shows a new draft chat in it (`inspectorShowsDraft`) and puts the keyboard focus in its composer. The draft is stored as a chat only at its first Send ([Draft chats](chats.md#draft-chats)).
-- Ticket, bundle and feedback chats are not listed in the inspector; they appear in the Chats section and on their ticket or bundle.
+- Ticket, bundle, feedback and CI chats are not listed in the inspector; they appear in the Chats section and on their ticket or bundle.
 
 Linked items: the composer of the inspector's chat, or of its draft, links the items open in the centre column, read from the active project's `ProjectViewState` for the selected section only ([Linked items](chats.md#linked-items)):
 

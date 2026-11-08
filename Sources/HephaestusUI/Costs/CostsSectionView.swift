@@ -12,8 +12,8 @@ struct CostBreakdown: Equatable {
         /// What a click opens; nil for a deleted chat or ticket.
         var target: NavigationTarget?
         var title: String
-        /// `Project`, `Ticket <id>`, `Bundle <id>`, `Feedback`, `Feedback <ticket id>` or
-        /// `Comment answers <ticket id>`.
+        /// `Project`, `Ticket <id>`, `Bundle <id>`, `CI <id>`, `Feedback`, `Feedback <ticket id>`
+        /// or `Comment answers <ticket id>`.
         var kind: String
         /// Nil for a chat without a cost.
         var costUSD: Double?
@@ -128,6 +128,7 @@ struct CostBreakdown: Equatable {
         case .ticket: return "Ticket " + (ticketID ?? "")
         case .bundle: return "Bundle " + (bundleID ?? "")
         case .feedback: return ticketID.map { "Feedback " + $0 } ?? "Feedback"
+        case .ci: return "CI " + (bundleID ?? ticketID ?? "")
         }
     }
 

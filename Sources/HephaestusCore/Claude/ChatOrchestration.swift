@@ -1,7 +1,7 @@
 import Foundation
 
-/// What a turn of a chat tells its orchestrator chat when it ends (docs/chats.md › Orchestrated
-/// ticket chats).
+/// What a turn of a chat tells its orchestrator chat when it ends (docs/chats.md › Reports to
+/// the orchestrator).
 struct TurnReport {
     /// The text of the turn's last assistant item without `parentToolUseID`.
     var reply: String?
@@ -30,14 +30,37 @@ struct TurnReport {
         }
     }
 
-    /// The message to the orchestrator for a turn of the chat of `ticketID` that ended in
-    /// `state` (`idle` or `error`).
-    func message(ticketID: TicketID, state: ChatState) -> String {
-        if stopped { return "Chat of \(ticketID) was stopped." }
-        if state == .error || resultError != nil {
-            return "Chat of \(ticketID) ended in error: \(errorText ?? resultError ?? "")"
+    /// The message to the orchestrator for a turn that ended in `state` (`idle` or `error`), of
+    /// the chat named `subject`: `Chat of <TICKET-ID>` for an orchestrated ticket chat, `CI chat`
+    /// for a CI chat.
+    func message(subject: String, state: ChatState) -> String {
+        if stopped { return "\(subject) was stopped." }
+        if endedInError(state) {
+            return "\(subject) ended in error: \(errorText ?? resultError ?? "")"
         }
-        return "Chat of \(ticketID) finished its turn:\n\n\(reply ?? "")"
+        return "\(subject) finished its turn:\n\n\(reply ?? "")"
+    }
+
+    /// The turn left the chat in state `error`, or its last result has `isError` without being a
+    /// stopped turn.
+    func endedInError(_ state: ChatState) -> Bool {
+        state == .error || resultError != nil
+    }
+
+    /// The first lines of the final reply of a CI chat that report no failure: CI passed, or CI was
+    /// not checked (docs/chats.md › Prompt: ci).
+    static let ciResultsWithoutFailure: Set<String> = ["CI passed.", "CI not checked."]
+
+    /// Whether the report of a CI chat's turn that ended in `state` is a CI failure report: the turn
+    /// was stopped or ended in error, or the first line of the final reply that is not empty,
+    /// trimmed, is neither `CI passed.` nor `CI not checked.` (docs/chats.md › Reports to the
+    /// orchestrator).
+    func isCIFailure(state: ChatState) -> Bool {
+        if stopped || endedInError(state) { return true }
+        let firstLine = (reply ?? "").split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty }
+        return !TurnReport.ciResultsWithoutFailure.contains(firstLine ?? "")
     }
 }
 
@@ -47,8 +70,12 @@ extension Engine {
 
     /// Records the state reported by `chat.updated`. A turn that starts clears the turn's report;
     /// a change from a state already reported can post a notification (docs/chats.md ›
-    /// Notifications); a turn of a chat with an orchestrator that ends in `idle` or `error` sends
-    /// the report to the orchestrator chat (docs/chats.md › Orchestrated ticket chats).
+    /// Notifications); a turn of a chat with an orchestrator, an orchestrated ticket chat or a CI
+    /// chat, that ends in `idle` or `error` sends the report to the orchestrator chat
+    /// (docs/chats.md › Reports to the orchestrator). The report is sent at once, before the
+    /// caller emits the chat's `chat.updated`: the orchestrator starts its turn before the chat is
+    /// seen idle, so the clients never see both idle in between, which would let an update restart
+    /// the app (docs/workflow.md › Self-update loop).
     func recordReportedState(_ meta: ChatMeta) {
         let previous = chats.reportedStates[meta.id]
         chats.reportedStates[meta.id] = meta.state
@@ -62,17 +89,29 @@ extension Engine {
             postChatNotification(meta, previous: previous)
         }
         if startsTurn { return }
-        guard wasInTurn, meta.state == .idle || meta.state == .error, let orchestratorID = meta.orchestratorChatID,
-              let ticketID = meta.ticketID
-        else { return }
+        guard wasInTurn, meta.state == .idle || meta.state == .error, let orchestratorID = meta.orchestratorChatID else { return }
         let report = chats.runtimes[meta.id]?.turnReport ?? TurnReport()
-        let text = report.message(ticketID: ticketID, state: meta.state)
-        Task { self.sendOrchestratorReport(text, to: orchestratorID, from: meta.id) }
+        let text: String
+        var ciFailure: Bool?
+        switch meta.kind {
+        case .ci:
+            text = report.message(subject: "CI chat", state: meta.state)
+            ciFailure = report.isCIFailure(state: meta.state)
+        case .ticket:
+            guard let ticketID = meta.ticketID else { return }
+            text = report.message(subject: "Chat of \(ticketID)", state: meta.state)
+        case .project, .bundle, .feedback:
+            return
+        }
+        sendOrchestratorReport(text, to: orchestratorID, from: meta.id, ciFailure: ciFailure)
     }
 
-    /// Sends a ticket chat's report to its orchestrator as the `system` actor; skipped while the
-    /// engine stops or when the orchestrator chat is gone.
-    func sendOrchestratorReport(_ text: String, to orchestratorID: ChatID, from chatID: ChatID) {
+    /// Sends a chat's report to its orchestrator as the `system` actor; skipped while the engine
+    /// stops or when the orchestrator chat is gone. For the report of a CI chat, `ciFailure` tells
+    /// whether it is a CI failure report: once it is sent, the orchestrator may post one question
+    /// set despite `questionsBlocked`, and a report that is not a failure removes that permission
+    /// (docs/chats.md › Reports to the orchestrator).
+    func sendOrchestratorReport(_ text: String, to orchestratorID: ChatID, from chatID: ChatID, ciFailure: Bool? = nil) {
         guard !chats.stopped, !domain.isStopped, !chats.deleting.contains(orchestratorID), domain.chat(orchestratorID) != nil else {
             log.info(.claude, "chat \(chatID.uuidString): the report to the orchestrator chat \(orchestratorID.uuidString) was not sent")
             return
@@ -81,6 +120,12 @@ extension Engine {
             try sendChatMessage(orchestratorID, text: text, attachments: [], sender: senderName(.system), origin: .system)
         } catch {
             log.error(.claude, "chat \(chatID.uuidString): the report to the orchestrator chat \(orchestratorID.uuidString) failed: \(error)")
+            return
+        }
+        if ciFailure == true {
+            chats.ciQuestionAllowances.insert(orchestratorID)
+        } else if ciFailure == false {
+            chats.ciQuestionAllowances.remove(orchestratorID)
         }
     }
 }
@@ -231,7 +276,8 @@ extension Engine {
         let projectRoot = ChatWorkingDirectory(url: root)
         guard meta.kind == .ticket, let orchestratorID = meta.orchestratorChatID, let ticketID = meta.ticketID,
               let bundleID = domain.chat(orchestratorID)?.bundleID, let ticket = domain.ticket(ticketID),
-              ticket.chatIDs.last(where: { domain.chat($0)?.orchestratorChatID != nil }) == meta.id
+              ticket.chatIDs.last(where: { id in domain.chat(id).map { $0.kind == .ticket && $0.orchestratorChatID != nil } ?? false })
+                == meta.id
         else { return projectRoot }
         let worktree = ChatWorktree(dataDirectory: dataDirectory, projectID: meta.projectID, bundleID: bundleID, ticketID: ticketID)
         let folder = worktree.projectFolder(projectRoot: root)

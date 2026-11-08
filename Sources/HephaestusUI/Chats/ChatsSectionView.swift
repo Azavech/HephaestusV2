@@ -18,7 +18,7 @@ struct ChatsSectionView: View {
     @FocusState private var renameFocused: Bool
     @Environment(AppModel.self) private var app
 
-    /// The groups in the order Project, Ticket, Bundle, Feedback, each newest `updated` first,
+    /// The groups in the order Project, Ticket, Bundle, Feedback, CI, each newest `updated` first,
     /// without the closed chats while the filter hides them; a group with no chat left is not
     /// shown (docs/chats.md › Where chats appear).
     private var groups: [(kind: ChatKind, chats: [ChatMeta])] {
@@ -34,8 +34,8 @@ struct ChatsSectionView: View {
         }
     }
 
-    /// Chats in the order of the list: by kind in the order Project, Ticket, Bundle, Feedback, each
-    /// newest `updated` first.
+    /// Chats in the order of the list: by kind in the order Project, Ticket, Bundle, Feedback, CI,
+    /// each newest `updated` first.
     static func inListOrder(_ chats: [ChatMeta]) -> [ChatMeta] {
         chats.sorted { a, b in
             let kindA = ChatKind.allCases.firstIndex(of: a.kind) ?? 0

@@ -36,4 +36,31 @@ struct OrchestratedChatsTests {
         #expect(ticketRows.map(\.meta.id) == [first.id, unrelated.id])
         #expect(ticketRows.allSatisfy { !$0.nested })
     }
+
+    @Test("A CI chat is listed under its orchestrator in the ticket's and the bundle's Chats tabs, after the ticket chats; without its orchestrator it is listed alone")
+    func ciChats() {
+        let implement = chat(.ticket, ticketID: "DEMO-1", minutes: 0)
+        let ticketCI = chat(.ci, ticketID: "DEMO-1", orchestrator: implement.id, minutes: 5)
+        let other = chat(.ticket, ticketID: "DEMO-1", minutes: 10)
+        let bundleChat = chat(.bundle, bundleID: "DEMO-B1", minutes: 20)
+        let ticketChat = chat(.ticket, ticketID: "DEMO-2", orchestrator: bundleChat.id, minutes: 21)
+        let bundleCI = chat(.ci, bundleID: "DEMO-B1", orchestrator: bundleChat.id, minutes: 30)
+        let orphan = chat(.ci, ticketID: "DEMO-1", orchestrator: UUID(), minutes: 40)
+        let workspace = DeviceWorkspace(deviceID: "device", connection: OfflineConnection(), isLocal: true)
+        for meta in [implement, ticketCI, other, bundleChat, ticketChat, bundleCI, orphan] {
+            workspace.chats[meta.id.uuidString] = meta
+        }
+        // The ticket's chats hold the CI chat: it is nested under the implement chat, not listed twice.
+        let ticketRows = LinkedChatsView.listedRows([implement.id, ticketCI.id, other.id, orphan.id], workspace: workspace)
+        #expect(ticketRows.map(\.meta.id) == [orphan.id, other.id, implement.id, ticketCI.id])
+        #expect(ticketRows.map(\.nested) == [false, false, false, true])
+        #expect(LinkedChatsView.listedChats([implement.id, ticketCI.id, other.id, orphan.id], workspace: workspace).count == 4)
+        // The bundle's chats hold the bundle chat and its CI chat; the ticket chats come in from their orchestrator.
+        let bundleRows = LinkedChatsView.listedRows([bundleChat.id, bundleCI.id], workspace: workspace)
+        #expect(bundleRows.map(\.meta.id) == [bundleChat.id, ticketChat.id, bundleCI.id])
+        #expect(bundleRows.map(\.nested) == [false, true, true])
+        #expect(LinkedChatsView.kindSymbol(.ci) == "checkmark.seal")
+        #expect(ChatFormat.kindTitle(.ci) == "CI")
+        #expect(ChatFormat.placeholder(kind: .ci, projectName: "Demo", ticketID: "DEMO-1", bundleID: nil) == nil)
+    }
 }

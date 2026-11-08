@@ -87,6 +87,17 @@ struct ClosedChatsFilterTests {
         #expect(unfiltered.map(\.kind) == [.project, .ticket, .feedback])
         #expect(unfiltered.first?.chats.map(\.id) == [closed.id, open.id])
 
+        // CI chats form the last group, titled CI; one whose ticket is done is closed.
+        let openCI = chat(.ci, bundleID: "DEMO-B1", orchestrator: UUID(), minutes: 4)
+        let doneCI = chat(.ci, ticketID: "DEMO-1", orchestrator: UUID(), minutes: 5)
+        let withCI = all + [openCI, doneCI]
+        let ciWorkspace = self.workspace(withCI, tickets: [Ticket(id: "DEMO-1", title: "Done", status: .done, created: created)])
+        #expect(ChatsSectionView.groups(withCI, hidesClosed: false, workspace: ciWorkspace).map(\.kind) == [.project, .ticket, .feedback, .ci])
+        #expect(ChatsSectionView.groups(withCI, hidesClosed: true, workspace: ciWorkspace).map(\.kind) == [.project, .ci])
+        #expect(ChatsSectionView.groups(withCI, hidesClosed: true, workspace: ciWorkspace).last?.chats.map(\.id) == [openCI.id])
+        #expect(ciWorkspace.isClosed(doneCI) && !ciWorkspace.isClosed(openCI))
+        #expect(ChatFormat.kindTitle(.ci) == "CI")
+
         // Every chat closed: no group is left, and the list shows `No open chats`.
         #expect(ChatsSectionView.groups([closed, doneTicketChat], hidesClosed: true, workspace: workspace).isEmpty)
         #expect(ChatListFilter.noOpenChats == "No open chats")
