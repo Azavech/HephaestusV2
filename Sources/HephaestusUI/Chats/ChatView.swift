@@ -446,7 +446,8 @@ struct ChatClosedLine: View {
 
 /// The title (double-click edits it in place: Return renames, Escape cancels), the kind chip with
 /// the linked ticket or bundle id, Open in New Window and the More menu with Close while the chat
-/// is open or Reopen while it is closed, Rename… and Delete….
+/// is open or Reopen while it is closed, Rename… and Delete…, on one row as high as a pane header
+/// (docs/ui.md › Pane headers).
 struct ChatHeader: View {
     @Bindable var model: ChatViewModel
     let isInChatWindow: Bool
@@ -524,7 +525,7 @@ struct ChatHeader: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .paneHeaderBar()
     }
 }
 

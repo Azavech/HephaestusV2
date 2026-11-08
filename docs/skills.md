@@ -209,7 +209,8 @@ The Skills section of the active project (sidebar, ⌘8, [UI](ui.md)) has two co
 
 ### Library list
 
-- A filter field at the top, placeholder `Filter`, keeps the skills whose name or description contains its text, compared case-insensitively. Default chosen at design time.
+- A filter field in the list's header bar, placeholder `Filter`, keeps the skills whose name or description contains its text, compared case-insensitively. Default chosen at design time.
+- The header bar is the list's pane header: 36 pt high, the field centred vertically in it, its bottom separator on one line with those of the editor, of the inspector and of the other sections ([Pane headers](ui.md#pane-headers)).
 - Rows are sorted by name. Each row shows the SF Symbol `checkmark.circle.fill` when the skill is enabled in the active project, the name, and the description on one truncated line.
 - When the project's list names skills the library lacks, a group `Missing from Library` follows, one row per name: the SF Symbol `exclamationmark.triangle`, the name, the text `Not found in the skills library` and a `Disable` button that calls `skills.setEnabled` with `enabled: false`.
 - The bottom bar has `+` (New Skill…) and `−` (Move to Trash…, disabled without a selection).
@@ -218,13 +219,15 @@ The Skills section of the active project (sidebar, ⌘8, [UI](ui.md)) has two co
 
 | Part              | Content                                                                                                                                                                                                                  |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Header            | Name field; caption `Claude sees this skill as hephaestus-skills:<name>`; toggle `Enabled in <project name>`; buttons `Revert` and `Save`                                                                                |
+| Header            | Name field; buttons `Revert` and `Save`, on the editor's pane header ([Pane headers](ui.md#pane-headers))                                                                                                                |
+| Under the header  | the name's validation message, when there is one; caption `Claude sees this skill as hephaestus-skills:<name>`; toggle `Enabled in <project name>`                                                                       |
 | Description       | multi-line field that wraps, with the counter `<n>/1024`                                                                                                                                                                 |
 | Other frontmatter | shown when `extraFrontmatter` is not empty: read-only, monospaced, one `key: value` line per key in YAML, sorted by key                                                                                                  |
 | Body              | Markdown editor with the modes Edit, Preview and Split and the shared Markdown renderer ([Documentation viewer](documentation-viewer.md)); placeholder `Instructions Claude follows when it uses this skill (Markdown).` |
 | Files             | the extra files with `+` (New File…) and `−` (Move to Trash…); the selected file opens under the list                                                                                                                    |
 | Footer            | the skill folder path, home folder written `~`; `Reveal in Finder` when the window's device is this Mac                                                                                                                  |
 
+- The header is a bar 36 pt high, its content centred vertically, its bottom separator on one line with those of the list, of the inspector and of the other sections ([Pane headers](ui.md#pane-headers)). The Name field, `Revert` and `Save` are on its one row; the name's validation message, the caption and the toggle, which do not fit on it, are on a row just under its separator, and the banners follow them. Which elements are on the header's row: Default chosen at design time.
 - The `Enabled in <project name>` toggle applies at once through `skills.setEnabled`, using the saved name.
 - The body's mode starts as Preview, as in the Docs section ([Modes](documentation-viewer.md#modes)), and is kept when the window selects another skill of the same project. Default chosen at design time.
 - Preview renders the body natively with `MarkdownBlockRenderer` ([Block model](documentation-viewer.md#block-model)) and the options `baseDirectory` `""`, no `projectRootPath` and `stripFrontMatter` false: the body has no front matter and belongs to no project folder. Links in the preview do nothing and project images show as blocked. Default chosen at design time.
@@ -323,3 +326,4 @@ The library folder is chosen in Settings ▸ Skills, whose controls are specifie
 - R47: Skills can be used inside projects.
 - R48: A skill is an item the user can create, see and edit.
 - R49: Skills are in their own folders, not in `~/.claude`.
+- R168: The header bars at the top of the panes of the main window's centre column, and the inspector's header, are all 36 points high, so that their bottom separators lie on one line.

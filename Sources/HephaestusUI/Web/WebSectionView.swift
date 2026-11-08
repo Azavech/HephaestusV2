@@ -16,8 +16,9 @@ struct WebSectionView: View {
     }
 }
 
-/// docs/web-tabs.md › Web section layout: the tab strip (30 pt), the address bar (36 pt), the
-/// progress bar (2 pt), the page and the downloads bar; the empty state without any tab.
+/// docs/web-tabs.md › Web section layout: the tab strip (the pane header, 36 pt), the address bar
+/// (36 pt), the progress bar (2 pt), the page and the downloads bar; the empty state without any
+/// tab.
 private struct WebSectionContent: View {
     let window: WindowState
     let workspace: DeviceWorkspace

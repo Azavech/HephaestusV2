@@ -130,7 +130,7 @@ struct ChatsSectionView: View {
                     .buttonStyle(.borderless)
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .paneHeaderBar()
             Divider()
             if groups.isEmpty {
                 // Every chat is closed and hidden by the filter (docs/chats.md › Where chats appear).

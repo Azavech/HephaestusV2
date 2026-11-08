@@ -90,6 +90,8 @@ struct ProjectChatPanel: View {
 
     // MARK: Header
 
+    /// The inspector's header, as high as the pane headers of the centre column, its separator on
+    /// their line (docs/ui.md › Inspector, › Pane headers).
     private func header(shown: String?) -> some View {
         HStack(spacing: 8) {
             ChatMenuButton(menu: { chatsMenu(shown: shown) }) {
@@ -133,7 +135,7 @@ struct ProjectChatPanel: View {
             .accessibilityLabel("Open in New Window")
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .paneHeaderBar()
     }
 
     /// The pop-up's menu: the project chats, each with its title and state indicator.

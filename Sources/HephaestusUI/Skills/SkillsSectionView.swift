@@ -284,10 +284,11 @@ private struct SkillLibraryList: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // docs/skills.md › Library list
+            // docs/skills.md › Library list: the filter field in the list's pane header.
             TextField("Filter", text: $filter)
                 .textFieldStyle(.roundedBorder)
-                .padding(8)
+                .padding(.horizontal, 8)
+                .paneHeaderBar()
             Divider()
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

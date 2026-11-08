@@ -114,8 +114,9 @@ private struct EditorArea: View {
 
 // MARK: - Tabs
 
-/// The editor tabs, 30 pt high: 100 to 220 pt wide, scrolling horizontally and keeping the
-/// selected tab visible; dragged to reorder (docs/code-editor.md › Editor tabs).
+/// The editor tabs, the editor area's pane header (docs/ui.md › Pane headers): 100 to 220 pt wide,
+/// scrolling horizontally and keeping the selected tab visible; dragged to reorder
+/// (docs/code-editor.md › Editor tabs).
 private struct EditorTabsBar: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -155,8 +156,7 @@ private struct EditorTabsBar: View {
                 }
             }
         }
-        .frame(height: 30)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .paneHeaderBar()
         .background(Color(nsColor: .windowBackgroundColor))
     }
 

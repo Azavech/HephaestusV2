@@ -118,7 +118,7 @@ private struct DocsViewer: View {
     }
 
     /// The doc's path relative to the docs folder, `●` while the buffer has unsaved changes, and
-    /// the mode control. 36 pt high.
+    /// the mode control: the viewer's pane header (docs/ui.md › Pane headers).
     private func header(_ buffer: EditorBuffer, tree: DocsTreeModel, mode: DocMode) -> some View {
         HStack(spacing: 6) {
             Text(tree.relativePath(buffer.path))
@@ -144,7 +144,7 @@ private struct DocsViewer: View {
             .disabled(buffer.content != .text)
         }
         .padding(.horizontal, 10)
-        .frame(height: 36)
+        .paneHeaderBar()
         .background(Color(nsColor: .windowBackgroundColor))
     }
 

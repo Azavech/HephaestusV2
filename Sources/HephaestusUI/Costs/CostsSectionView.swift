@@ -154,18 +154,26 @@ struct CostsSectionView: View {
 
     var body: some View {
         if let breakdown {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    header(breakdown)
-                    Toggle("Show Deleted", isOn: $showDeleted)
-                        .toggleStyle(.checkbox)
-                    ForEach(breakdown.groups) { group in
-                        groupView(group)
+            VStack(spacing: 0) {
+                // The section's pane header stays at the top while the groups scroll
+                // (docs/ui.md › Pane headers); its total stays in the groups' 760 pt column.
+                header(breakdown)
+                    .padding(.horizontal, 20)
+                    .frame(maxWidth: 760, alignment: .leading)
+                    .paneHeaderBar()
+                Divider()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Toggle("Show Deleted", isOn: $showDeleted)
+                            .toggleStyle(.checkbox)
+                        ForEach(breakdown.groups) { group in
+                            groupView(group)
+                        }
                     }
+                    .padding(20)
+                    .frame(maxWidth: 760, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                .padding(20)
-                .frame(maxWidth: 760, alignment: .topLeading)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .onAppear {
                 loadGroups(breakdown)
@@ -180,9 +188,11 @@ struct CostsSectionView: View {
         HStack(alignment: .firstTextBaseline) {
             Text("Costs")
                 .font(.title2.weight(.semibold))
+                .lineLimit(1)
             Spacer()
             Text(CostBreakdown.amount(breakdown.totalUSD))
                 .font(.system(.largeTitle, design: .rounded).weight(.semibold).monospacedDigit())
+                .lineLimit(1)
         }
     }
 

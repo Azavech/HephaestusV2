@@ -17,7 +17,7 @@ The Docs section (⌘6) lists the Markdown files of the project's docs folder (`
 
 ```
 ┌───────────────────────┬──────────────────────────────────────────────────────┐
-│ Docs              [+] │ ui.md ●                  [ Preview | Edit | Split ]  │ header, 36 pt
+│ Docs              [+] │ ui.md ●                  [ Preview | Edit | Split ]  │ headers, 36 pt
 │ ▸ guides              │──────────────────────────────────────────────────────│
 │   README              │                                                      │
 │   Architecture        │        Preview, editor, or editor │ preview          │
@@ -34,7 +34,9 @@ The Docs section (⌘6) lists the Markdown files of the project's docs folder (`
 | Viewer header | The selected doc's path relative to the docs folder, `●` while the buffer has unsaved changes, and the mode control `Preview`, `Edit`, `Split` (segmented control). |
 | Viewer        | The selected doc in the current [mode](#modes), the changed-on-disk banner above it when needed ([Code editor](code-editor.md#changes-on-disk)).                    |
 
-The divider between tree and viewer is draggable (180 to 400 pt). Sizes are design-time choices. Default chosen at design time.
+The tree header and the viewer header are the section's pane headers: each is 36 pt high, its content centred vertically, and their bottom separators lie on one line with those of the inspector and of the other sections ([Pane headers](ui.md#pane-headers)). Without a selected doc, the viewer has no header.
+
+The divider between tree and viewer is draggable (180 to 400 pt). The other sizes are design-time choices. Default chosen at design time.
 
 ## Docs tree
 
@@ -797,3 +799,4 @@ The Docs section works the same in a window that shows a remote device ([Remote 
 - R135: Claude asks the user to choose a font with `ask_font` and a sample text: the suggestions are drawn in their fonts, every font of the Mac and of the project can be searched, the user picks one, sets its weight and size and sees the sample in it, answers another way or skips.
 - R136: In a Swift application project, Claude asks the user to choose a SwiftUI animation with `ask_animation`: each suggestion plays in a lane, the user compares them, sets a preset and its parameters in a Custom row, picks one, answers another way or skips.
 - R150: Claude shows the user images in the chat with `show_image`: PNG, JPEG, GIF and WebP files are copied into the chat and shown, with an optional caption, at the place of the call, without a permission prompt, in local and remote windows; clicking one opens the image viewer.
+- R168: The header bars at the top of the panes of the main window's centre column, and the inspector's header, are all 36 points high, so that their bottom separators lie on one line.

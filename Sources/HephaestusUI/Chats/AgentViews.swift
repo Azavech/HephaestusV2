@@ -250,7 +250,7 @@ struct AgentView: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .paneHeaderBar()
     }
 
     @ViewBuilder
@@ -344,7 +344,7 @@ struct WorkflowView: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .paneHeaderBar()
     }
 
     private func row(_ agent: ChatAgent) -> some View {

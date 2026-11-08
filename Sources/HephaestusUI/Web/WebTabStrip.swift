@@ -22,7 +22,8 @@ struct WebTabStrip: View {
     /// The tab being dragged and how far.
     @State private var drag: (tabID: UUID, translation: CGFloat)?
 
-    static let height: CGFloat = 30
+    /// The section's pane header (docs/ui.md › Pane headers): the strip and its tabs.
+    static let height: CGFloat = PaneHeader.height
     static let minimumTabWidth: CGFloat = 90
     static let maximumTabWidth: CGFloat = 240
     private static let addButtonWidth: CGFloat = 30

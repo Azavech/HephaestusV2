@@ -32,9 +32,14 @@ struct TicketDetailView: View {
         Group {
             if let ticket {
                 VStack(spacing: 0) {
-                    TicketHeaderView(window: window, workspace: workspace, projectID: projectID, ticket: ticket)
+                    TicketHeaderBar(window: window, workspace: workspace, ticket: ticket)
                         .padding(.horizontal, 16)
-                        .padding(.top, 12)
+                        .paneHeaderBar()
+                    Divider()
+                    TicketHeaderView(window: window, workspace: workspace, projectID: projectID, ticket: ticket)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 10)
                         .padding(.bottom, 8)
                     tabPicker(ticket)
                         .padding(.bottom, 8)
@@ -85,8 +90,51 @@ struct TicketDetailView: View {
 
 // MARK: - Header
 
-/// ID with its copy button, the title field, the status pop-up menu, the dates, the bundles and the
-/// links.
+/// The detail's pane header (docs/ui.md › Pane headers): the ID with its copy button and the status
+/// pop-up menu.
+private struct TicketHeaderBar: View {
+    let window: WindowState
+    let workspace: DeviceWorkspace
+    let ticket: Ticket
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(ticket.id)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+            Button {
+                TicketActions.copyIDs([ticket.id])
+            } label: {
+                Image(systemName: "doc.on.doc")
+            }
+            .buttonStyle(.borderless)
+            .help("Copy ID")
+            .accessibilityLabel("Copy ID")
+            Spacer()
+            Picker("Status", selection: Binding(
+                get: { ticket.status },
+                set: { status in
+                    Task {
+                        await TicketActions.setStatus(status, of: [ticket.id], workspace: workspace, window: window,
+                                                      itemTitle: "Status")
+                    }
+                }
+            )) {
+                ForEach(TicketStatus.allCases, id: \.self) { status in
+                    Text(status.label).tag(status)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .fixedSize()
+            .disabled(!window.isConnected)
+        }
+    }
+}
+
+/// Under the header's separator, as they do not fit on its row: the title field, the dates, the
+/// bundles and the links.
 private struct TicketHeaderView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -95,38 +143,6 @@ private struct TicketHeaderView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Text(ticket.id)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                Button {
-                    TicketActions.copyIDs([ticket.id])
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                }
-                .buttonStyle(.borderless)
-                .help("Copy ID")
-                .accessibilityLabel("Copy ID")
-                Spacer()
-                Picker("Status", selection: Binding(
-                    get: { ticket.status },
-                    set: { status in
-                        Task {
-                            await TicketActions.setStatus(status, of: [ticket.id], workspace: workspace, window: window,
-                                                          itemTitle: "Status")
-                        }
-                    }
-                )) {
-                    ForEach(TicketStatus.allCases, id: \.self) { status in
-                        Text(status.label).tag(status)
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .fixedSize()
-                .disabled(!window.isConnected)
-            }
             InlineTitleField(stored: ticket.title) { title in
                 do {
                     _ = try await workspace.call(TicketsUpdate.self, TicketsUpdate.Params(ticketID: ticket.id, title: title))

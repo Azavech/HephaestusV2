@@ -38,8 +38,7 @@ struct TicketListView: View {
         VStack(spacing: 0) {
             header
                 .padding(.horizontal, 8)
-                .padding(.vertical, 7)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .paneHeaderBar()
             Divider()
             content
         }
@@ -50,7 +49,8 @@ struct TicketListView: View {
 
     // MARK: Header
 
-    /// One row at every width: the text filter takes the width the buttons leave.
+    /// The list's pane header (docs/ui.md › Pane headers), one row at every width: the text filter
+    /// takes the width the buttons leave.
     private var header: some View {
         HStack(spacing: 8) {
             statusFilterButton

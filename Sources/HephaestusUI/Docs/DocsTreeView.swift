@@ -28,7 +28,7 @@ struct DocsTreeView: View {
                 .help("New Doc…")
             }
             .padding(.horizontal, 10)
-            .frame(height: 36)
+            .paneHeaderBar()
             Divider()
             if tree.docs == nil, tree.error == nil {
                 ProgressView()

@@ -152,7 +152,7 @@ struct BundlesSectionView: View {
                 .disabled(!window.isConnected)
             }
             .padding(.horizontal, 8)
-            .padding(.vertical, 7)
+            .paneHeaderBar()
             Divider()
             let allRows = allRows
             let rows = Self.shown(allRows, by: state)

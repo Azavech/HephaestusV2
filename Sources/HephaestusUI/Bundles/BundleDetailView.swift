@@ -31,9 +31,14 @@ struct BundleDetailView: View {
         Group {
             if let bundle {
                 VStack(spacing: 0) {
-                    header(bundle)
+                    headerBar(bundle)
                         .padding(.horizontal, 16)
-                        .padding(.top, 12)
+                        .paneHeaderBar()
+                    Divider()
+                    header(bundle)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 10)
                         .padding(.bottom, 8)
                     tabPicker(bundle)
                         .padding(.bottom, 8)
@@ -55,15 +60,20 @@ struct BundleDetailView: View {
 
     // MARK: Header
 
-    /// ID, the inline title field, `Created <date> · Updated <relative time>`, the Status row, and the
-    /// segmented progress bar with `<done> of <total> done`.
+    /// The detail's pane header (docs/ui.md › Pane headers): the ID.
+    private func headerBar(_ bundle: TicketBundle) -> some View {
+        Text(bundle.id)
+            .font(.system(size: 12, design: .monospaced))
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+    }
+
+    /// Under the header's separator, as they do not fit on its row: the inline title field,
+    /// `Created <date> · Updated <relative time>`, the Status row, and the segmented progress bar
+    /// with `<done> of <total> done`.
     private func header(_ bundle: TicketBundle) -> some View {
         let progress = BundleProgress.of(bundle, tickets: workspace.tickets[projectID] ?? [:])
         return VStack(alignment: .leading, spacing: 6) {
-            Text(bundle.id)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
             InlineTitleField(stored: bundle.title) { title in
                 do {
                     _ = try await workspace.call(BundlesUpdate.self, BundlesUpdate.Params(bundleID: bundle.id, title: title))

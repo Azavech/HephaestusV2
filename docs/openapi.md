@@ -23,7 +23,7 @@ A file opens on the Contract view when both hold:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ openapi.yaml  │ main.go  │                                           │ editor tabs, 30 pt
+│ openapi.yaml  │ main.go  │                                           │ editor tabs, 36 pt
 │──────────────────────────────────────────────────────────────────────│
 │                                              [ Contract | Source ]   │ mode bar, 30 pt
 │──────────────────────────────────────────────────────────────────────│

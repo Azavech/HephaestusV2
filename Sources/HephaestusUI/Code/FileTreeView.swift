@@ -30,7 +30,7 @@ struct FileTreeView: View {
                 .fixedSize()
             }
             .padding(.horizontal, 10)
-            .frame(height: 30)
+            .paneHeaderBar()
             Divider()
             content(tree, state)
         }

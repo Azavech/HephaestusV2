@@ -6,7 +6,7 @@ The Code section (⌘5) shows the active project's folder as a lazy file tree ne
 
 ```
 ┌──────────────────────────┬─────────────────────────────────────────────────────┐
-│ App                  [+] │ Engine.swift ●  │ main.go  │ README.md                │ editor tabs, 30 pt
+│ App                  [+] │ Engine.swift ●  │ main.go  │ README.md                │ tree header, editor tabs, 36 pt
 │ ▾ Sources                │─────────────────────────────────────────────────────│
 │   ▾ App                  │ This file changed on disk.      [Reload] [Keep Mine]│ banner, when needed
 │       Engine.swift       │─────────────────────────────────────────────────────│
@@ -26,7 +26,9 @@ The Code section (⌘5) shows the active project's folder as a lazy file tree ne
 | Banner      | One of the [banners](#banners), above the editor.                                                                                                                                                                                                   |
 | Editor      | The selected tab's [editor](#editor), or its notice for files that cannot be edited. An OpenAPI contract's tab shows the mode bar `Contract`, `Source` above the Contract view or the editor ([OpenAPI contracts](openapi.md#contract-and-source)). |
 
-The divider between tree and editor is draggable (180 to 480 pt). With no open tab the editor area shows `No Open File` and the line `Select a file in the tree.`. Sizes and texts are design-time choices. Default chosen at design time.
+The tree header and the editor tabs are the section's pane headers: each is 36 pt high, its content centred vertically, and their bottom separators lie on one line with those of the inspector and of the other sections ([Pane headers](ui.md#pane-headers)). With no open tab, the editor area has no tabs and no header.
+
+The divider between tree and editor is draggable (180 to 480 pt). With no open tab the editor area shows `No Open File` and the line `Select a file in the tree.`. The other sizes and the texts are design-time choices. Default chosen at design time.
 
 ## File tree
 
@@ -755,3 +757,4 @@ These tests are design-time additions to the conformance tests of [CI](ci.md). D
 - R13: A project has a Code section with a file browser.
 - R14: A code editor for Go and Swift is included.
 - R142: In the Code section, an OpenAPI 3.0 or 3.1 contract opens on a read-only Contract view, with a switch to its source, that shows its info, its operations by tag and its schemas with their `$ref` pointers resolved across the project's files, and sends each operation's request from a form whose values are kept per project on the Mac that shows the window, credentials included.
+- R168: The header bars at the top of the panes of the main window's centre column, and the inspector's header, are all 36 points high, so that their bottom separators lie on one line.

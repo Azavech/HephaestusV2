@@ -20,7 +20,11 @@ struct SkillEditorView: View {
         VStack(spacing: 0) {
             header
                 .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .paneHeaderBar()
+            Divider()
+            underHeader
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
             if editor.conflict != nil {
                 SkillBanner(text: "This skill was changed elsewhere.") {
                     Button("Reload") { editor.reloadConflict() }
@@ -55,22 +59,28 @@ struct SkillEditorView: View {
         workspace.project(projectID)?.name ?? projectID
     }
 
+    /// The editor's pane header (docs/ui.md › Pane headers): the Name field, Revert and Save.
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                TextField("Name", text: $form.name)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(.title3, design: .monospaced))
-                    .accessibilityLabel("Name")
-                Button("Revert") {
-                    editor.revert()
-                }
-                .disabled(!form.hasUnsavedChanges || editor.isSaving)
-                Button("Save") {
-                    Task { await editor.save() }
-                }
-                .disabled(!editor.canSave)
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            TextField("Name", text: $form.name)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.title3, design: .monospaced))
+                .accessibilityLabel("Name")
+            Button("Revert") {
+                editor.revert()
             }
+            .disabled(!form.hasUnsavedChanges || editor.isSaving)
+            Button("Save") {
+                Task { await editor.save() }
+            }
+            .disabled(!editor.canSave)
+        }
+    }
+
+    /// The row just under the header's separator: the name's validation message, the caption and
+    /// the Enabled toggle, which do not fit on the header's row.
+    private var underHeader: some View {
+        VStack(alignment: .leading, spacing: 6) {
             if let message = form.nameMessage(library: workspace.skills) {
                 ValidationMessage(text: message)
             }

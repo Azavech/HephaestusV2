@@ -87,6 +87,28 @@ SwiftUI lays the split views and their panes out under the toolbar whatever padd
 
 The welcome view and the reconnect view replace the sidebar, the content and the inspector ([Empty states](#empty-states)). Only the search panel ([Search panel](search.md#search-panel)) is drawn over the columns.
 
+### Pane headers
+
+Every header bar at the top of a pane of the centre column, and the inspector's header, is 36 points high, from the toolbar's bottom edge to its bottom separator, so that the separators of all the headers of a window lie on one horizontal line.
+
+| Section          | Header bars                                                                                                                                                                   |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dashboard        | none                                                                                                                                                                          |
+| Tickets          | the header bar of the [ticket list](tickets.md#ticket-list) and the header of the [ticket detail](tickets.md#ticket-detail)                                                   |
+| Bundles          | the list header and the bundle detail's header ([Bundles section](tickets.md#bundles-section))                                                                                |
+| Chats            | the list header ([Where chats appear](chats.md#where-chats-appear)) and the header of the [chat view](chats.md#chat-view), or of the agent view or workflow view in its place |
+| Code             | the file tree's header and the editor tabs ([Layout](code-editor.md#layout))                                                                                                  |
+| Docs             | the docs tree's header and the viewer's header ([Layout](documentation-viewer.md#layout))                                                                                     |
+| Web              | the tab strip ([Web section layout](web-tabs.md#web-section-layout))                                                                                                          |
+| Skills           | the filter bar of the [library list](skills.md#library-list) and the header of the [editor](skills.md#editor)                                                                 |
+| Costs            | the header ([Costs section](costs.md#costs-section))                                                                                                                          |
+| Project Settings | the header ([Project settings](projects.md#project-settings))                                                                                                                 |
+| Inspector        | the header ([Inspector](#inspector))                                                                                                                                          |
+
+- The content of a header is on one row, centred vertically in its 36 points. Elements of a header that do not fit on that row, for example a caption under a field, are on a row just under its separator.
+- A header stays at the top of its pane: it does not scroll with the content under its separator.
+- A pane without a header keeps none: the Dashboard, an empty state that takes the place of a whole section (for example `No chats yet`, `No Web Tabs` or the empty skills library) and a placeholder of a pane (for example `No Ticket Selected`, `No Open File` or `Select a doc`). The lists of the Tickets and Bundles sections keep their header when they are empty.
+
 ## Toolbar
 
 | Placement | Item                | SF Symbol         | Action                                                                     | Shortcut | Enabled when                                    | Tooltip                                                |
@@ -158,7 +180,7 @@ The Sub Projects category, its place, its rows of every loaded descendant indent
 The inspector is the project chat panel in the right column ([Where chats appear](chats.md#where-chats-appear)).
 
 - A new main window shows it. The toolbar's Project Chat button and View ▸ Show Project Chat / Hide Project Chat (⌥⌘0) toggle it; its visibility persists per window, and so does the width the user sets by dragging its divider ([Main window layout](#main-window-layout)).
-- Header: a pop-up button listing the active project's chats of kind `project`, most recently updated first, each with its title and the state indicator of [Where chats appear](chats.md#where-chats-appear), where the SF Symbol `progress.indicator` stands for the spinner, which cannot animate in a menu; a `New Chat` button (`plus.bubble`); an `Open in New Window` button (`macwindow.badge.plus`), disabled while a draft is shown, that opens the selected chat in a [chat window](#windows).
+- Header, 36 points high, its separator on the line of the centre column's header separators ([Pane headers](#pane-headers)): a pop-up button listing the active project's chats of kind `project`, most recently updated first, each with its title and the state indicator of [Where chats appear](chats.md#where-chats-appear), where the SF Symbol `progress.indicator` stands for the spinner, which cannot animate in a menu; a `New Chat` button (`plus.bubble`); an `Open in New Window` button (`macwindow.badge.plus`), disabled while a draft is shown, that opens the selected chat in a [chat window](#windows).
 - Body: the chat view of the selected chat ([Chat view](chats.md#chat-view)).
 - Background: the frosted material of [Main window layout](#main-window-layout), behind the whole column: the header, the transcript, the pinned cards, the status line and the composer. The chat view draws no background of its own there and the transcript's web view is transparent ([Web view and bridge](chats.md#web-view-and-bridge)); the message bubbles, the cards and the composer's field keep their backgrounds.
 - The selected chat is kept per project and per window (`ProjectViewState.inspectorChatID`). Without a selection, the most recently updated project chat is selected. When the selected chat is deleted, the next most recently updated project chat is selected. With no project chat, the inspector shows a draft chat ([Draft chats](chats.md#draft-chats)).
@@ -849,3 +871,4 @@ A window chosen for a `ui.open` event is ordered front; it becomes key only when
 - R164: The main button of the pinned questions card reads `Submit` only when pressing it sends the answers to Claude, and `Next` on the other questions of the set.
 - R165: The main window's toolbar has a button that shows and hides the sidebar.
 - R166: The status bar always shows the app's version.
+- R168: The header bars at the top of the panes of the main window's centre column, and the inspector's header, are all 36 points high, so that their bottom separators lie on one line.

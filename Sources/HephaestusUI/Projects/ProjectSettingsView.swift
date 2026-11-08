@@ -12,10 +12,19 @@ struct ProjectSettingsView: View {
 
     var body: some View {
         if let detail = workspace.details[projectID] {
-            ScrollView {
-                ProjectSettingsForm(window: window, workspace: workspace, detail: detail)
-                    // A new active project starts from its own stored values.
-                    .id(projectID)
+            VStack(spacing: 0) {
+                // The section's pane header stays at the top while the fields scroll
+                // (docs/ui.md › Pane headers).
+                ProjectSettingsHeader(project: detail.project)
+                    .padding(.horizontal, 20)
+                    .frame(maxWidth: 640, alignment: .leading)
+                    .paneHeaderBar()
+                Divider()
+                ScrollView {
+                    ProjectSettingsForm(window: window, workspace: workspace, detail: detail)
+                        // A new active project starts from its own stored values.
+                        .id(projectID)
+                }
             }
         } else {
             LoadingStateView(text: "Loading \(workspace.project(projectID)?.name ?? projectID)…")
@@ -26,7 +35,25 @@ struct ProjectSettingsView: View {
     }
 }
 
-/// The header and the fields of the section.
+/// The section's header: the project's name and identifier.
+private struct ProjectSettingsHeader: View {
+    let project: Project
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(project.name)
+                .font(.title2.weight(.semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Text(project.id)
+                .font(.system(.title2, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .fixedSize()
+        }
+    }
+}
+
+/// The fields of the section.
 private struct ProjectSettingsForm: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -40,7 +67,6 @@ private struct ProjectSettingsForm: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            header
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 12) {
                 row("Name") {
                     ProjectSettingsTextField(title: "Name", value: project.name,
@@ -137,17 +163,6 @@ private struct ProjectSettingsForm: View {
     }
 
     // MARK: Layout
-
-    /// The project's name and identifier.
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(project.name)
-                .font(.title2.weight(.semibold))
-            Text(project.id)
-                .font(.system(.title2, design: .monospaced))
-                .foregroundStyle(.secondary)
-        }
-    }
 
     private func row<Content: View>(_ label: String, alignment: VerticalAlignment? = nil,
                                     @ViewBuilder content: () -> Content) -> some View {

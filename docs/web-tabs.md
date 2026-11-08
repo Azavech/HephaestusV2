@@ -37,7 +37,7 @@ Claude can list and open tabs through MCP ([MCP server](mcp.md)); it updates, mo
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ [🔒 GitHub] [Dev server ×] [Pull requests ×]                         [+] │ tab strip, 30 pt
+│ [🔒 GitHub] [Dev server ×] [Pull requests ×]                         [+] │ tab strip, 36 pt
 │ ◀  ▶  ⟳   [ http://localhost:3000/dashboard                           ]  │ address bar, 36 pt
 │ ━━━━━━━━━━━━━━━━━━━━━━━━                                                 │ progress bar, 2 pt
 │                                                                          │
@@ -55,7 +55,9 @@ Claude can list and open tabs through MCP ([MCP server](mcp.md)); it updates, mo
 | Page          | The selected tab's web view, the [error view](#load-errors), or nothing for the placeholder tab.                         |
 | Downloads bar | Shown only while the window has downloads to list ([Downloads](#downloads)).                                             |
 
-The sizes are design-time choices. Default chosen at design time.
+The tab strip is the section's pane header: 36 pt high, its tabs and its `+` button as high as the strip, their content centred vertically, and its bottom separator on one line with those of the inspector and of the other sections ([Pane headers](ui.md#pane-headers)). The address bar is under that separator.
+
+The other sizes are design-time choices. Default chosen at design time.
 
 ### Empty state
 
@@ -337,3 +339,4 @@ A window that shows a remote device works like a local one ([Remote devices](rem
 - R8: A project can have web tabs: an integrated web browser.
 - R9: Some web tabs can be locked so that they are not closed inadvertently.
 - R159: A locked web tab goes back to its original page each time the user comes back to it.
+- R168: The header bars at the top of the panes of the main window's centre column, and the inspector's header, are all 36 points high, so that their bottom separators lie on one line.
