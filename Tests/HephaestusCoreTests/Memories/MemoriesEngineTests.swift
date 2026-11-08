@@ -352,6 +352,154 @@ struct MemoriesEngineTests {
         }
     }
 
+    // MARK: Inherited memories (docs/memories.md › Inherited memories)
+
+    /// The sub project APP at `<temp>/Project/app`, the root of its own repository, and WEB, a
+    /// sub project of APP in its repository.
+    private func createAppAndWeb(_ bed: Bed) async throws {
+        let app = bed.folder.appendingPathComponent("Project/app", isDirectory: true)
+        _ = try await bed.connection.call(ProjectsCreate.self, .init(rootPath: app.path, name: "App", identifier: "APP", parentID: "MEM",
+                                                                     createDirectory: true))
+        try FileManager.default.createDirectory(at: app.appendingPathComponent(".git"), withIntermediateDirectories: true)
+        _ = try await bed.connection.call(ProjectsCreate.self, .init(rootPath: app.appendingPathComponent("web").path, name: "Web",
+                                                                     identifier: "WEB", parentID: "APP", createDirectory: true))
+    }
+
+    /// APP and WEB, then LIB at `<temp>/Project/app/lib`, a sub project of APP with its own
+    /// repository: it inherits APP's folder, then MEM's.
+    private func createLib(_ bed: Bed) async throws {
+        try await createAppAndWeb(bed)
+        let lib = bed.folder.appendingPathComponent("Project/app/lib", isDirectory: true)
+        _ = try await bed.connection.call(ProjectsCreate.self, .init(rootPath: lib.path, name: "Lib", identifier: "LIB", parentID: "APP",
+                                                                     createDirectory: true))
+        try FileManager.default.createDirectory(at: lib.appendingPathComponent(".git"), withIntermediateDirectories: true)
+    }
+
+    @Test("A sub project in another repository inherits its parent's folder with its memories; MEM inherits nothing")
+    func inheritedFolders() async throws {
+        try await withMemoriesEngine { bed in
+            try await createAppAndWeb(bed)
+            try write("MEMORY.md", in: bed.memories, "- [b](b.md) — B\n")
+            try write("b.md", in: bed.memories, memory("beta", type: "user"))
+            try write("a.md", in: bed.memories, memory("alpha", type: nil))
+            let parent = try await bed.connection.call(MemoriesList.self, .init(projectID: "MEM"))
+            #expect(parent.inherited == [])
+            let app = try await bed.connection.call(MemoriesList.self, .init(projectID: "APP"))
+            #expect(app.path != bed.memories.path)
+            #expect(app.memories == [])
+            #expect(app.inherited == [InheritedMemoryFolder(projectID: "MEM", path: bed.memories.path, memories: parent.memories)])
+            #expect(parent.memories.map(\.name) == ["alpha", "beta"])
+            // WEB shares APP's folder: only MEM's folder is inherited.
+            let web = try await bed.connection.call(MemoriesList.self, .init(projectID: "WEB"))
+            #expect(web.path == app.path)
+            #expect(web.inherited == app.inherited)
+            // An inherited memory is read with the ancestor's projectID.
+            #expect(try await bed.connection.call(MemoriesGet.self, .init(projectID: "MEM", file: "a.md")).name == "alpha")
+        }
+    }
+
+    @Test("The inherited folders come nearest parent first: LIB inherits APP's folder, then MEM's")
+    func inheritedOrder() async throws {
+        try await withMemoriesEngine { bed in
+            try await createLib(bed)
+            let app = try await bed.connection.call(MemoriesList.self, .init(projectID: "APP"))
+            let lib = try await bed.connection.call(MemoriesList.self, .init(projectID: "LIB"))
+            #expect(lib.path != app.path)
+            #expect(lib.inherited.map(\.projectID) == ["APP", "MEM"])
+            #expect(lib.inherited.map(\.path) == [app.path, bed.memories.path])
+        }
+    }
+
+    @Test("A folder that several ancestors share is inherited once, named after the nearest; a sub project in the same repository inherits nothing")
+    func sharedInheritedFolder() async throws {
+        try await withMemoriesEngine { bed in
+            let root = bed.folder.appendingPathComponent("Project")
+            try FileManager.default.createDirectory(at: root.appendingPathComponent(".git"), withIntermediateDirectories: true)
+            _ = try await bed.connection.call(ProjectsCreate.self, .init(rootPath: root.appendingPathComponent("site").path, name: "Site",
+                                                                         identifier: "SITE", parentID: "MEM", createDirectory: true))
+            let deep = root.appendingPathComponent("site/deep")
+            _ = try await bed.connection.call(ProjectsCreate.self, .init(rootPath: deep.path, name: "Deep", identifier: "DEEP", parentID: "SITE",
+                                                                         createDirectory: true))
+            try FileManager.default.createDirectory(at: deep.appendingPathComponent(".git"), withIntermediateDirectories: true)
+            let site = try await bed.connection.call(MemoriesList.self, .init(projectID: "SITE"))
+            #expect(site.inherited == [])
+            let listing = try await bed.connection.call(MemoriesList.self, .init(projectID: "DEEP"))
+            #expect(listing.inherited == [InheritedMemoryFolder(projectID: "SITE", path: site.path, memories: [])])
+        }
+    }
+
+    @Test("A change of an inherited folder emits memories.changed for the watched sub projects that inherit it, with their own listing")
+    func inheritedEvents() async throws {
+        try await withMemoriesEngine { bed in
+            try await createAppAndWeb(bed)
+            let app = try await bed.connection.call(MemoriesList.self, .init(projectID: "APP"))
+            let events = bed.connection.events
+            _ = try await bed.connection.call(MemoriesCreate.self, .init(projectID: "MEM", name: "shared", description: "D", type: .user))
+            let user = Actor.user(deviceID: bed.engine.deviceID)
+            var changed: [MemoryFolder] = []
+            for _ in 0..<2 {
+                let event = await firstElement(of: events) { $0.name == MemoriesChangedEvent.name && $0.origin == user }
+                changed.append(try #require(try event?.payload(MemoriesChangedEvent.self)))
+            }
+            #expect(changed.map(\.projectID) == ["MEM", "APP"])
+            #expect(changed[0].memories.map(\.name) == ["shared"])
+            #expect(changed[1].path == app.path)
+            #expect(changed[1].memories == [])
+            #expect(changed[1].inherited == [InheritedMemoryFolder(projectID: "MEM", path: bed.memories.path, memories: changed[0].memories)])
+
+            // A change of APP's own folder concerns APP only: MEM does not inherit it.
+            _ = try await bed.connection.call(MemoriesCreate.self, .init(projectID: "APP", name: "local", description: "D", type: .project))
+            let own = await firstElement(of: events) { $0.name == MemoriesChangedEvent.name && $0.origin == user }
+            let payload = try #require(try own?.payload(MemoriesChangedEvent.self))
+            #expect(payload.projectID == "APP")
+            #expect(payload.memories.map(\.name) == ["local"])
+            #expect(payload.inherited.first?.memories.map(\.name) == ["shared"])
+            let other = await firstElement(of: events, timeout: .milliseconds(500)) {
+                $0.name == MemoriesChangedEvent.name && $0.origin == user
+            }
+            #expect(other == nil)
+        }
+    }
+
+    @Test("An inherited folder that cannot be read has no memories; the sub project's own memories are listed")
+    func unreadableInheritedFolder() async throws {
+        try await withMemoriesEngine { bed in
+            try await createAppAndWeb(bed)
+            _ = try await bed.connection.call(MemoriesCreate.self, .init(projectID: "APP", name: "local", description: "D", type: .project))
+            try write("a.md", in: bed.memories, memory("alpha", type: "user"))
+            try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: bed.memories.path)
+            defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bed.memories.path) }
+            let app = try await bed.connection.call(MemoriesList.self, .init(projectID: "APP"))
+            #expect(app.memories.map(\.name) == ["local"])
+            #expect(app.inherited == [InheritedMemoryFolder(projectID: "MEM", path: bed.memories.path, memories: [])])
+        }
+    }
+
+    @Test("projects.open that adopts a watched top-level project emits memories.changed with the folder it now inherits")
+    func adoptionInherits() async throws {
+        try await withMemoriesEngine { bed in
+            let outer = bed.folder.appendingPathComponent("Outer", isDirectory: true)
+            try FileManager.default.createDirectory(at: outer, withIntermediateDirectories: true)
+            _ = try await bed.connection.call(ProjectsCreate.self, .init(rootPath: outer.appendingPathComponent("inner").path, name: "Inner",
+                                                                         identifier: "INNER", createDirectory: true))
+            #expect(try await bed.connection.call(MemoriesList.self, .init(projectID: "INNER")).inherited == [])
+            try writeFile(projectYAML(id: "OUTER", name: "Outer", subprojects: ["inner"]), to: outer.appendingPathComponent(".hephaestus/project.yml"))
+            let outerFolder = bed.folder.appendingPathComponent("Claude").path + "/projects/"
+                + ClaudeMemoryFolderResolver.folderName(of: ClaudeMemoryFolderResolver.realPath(outer.path)) + "/memory"
+            try write("o.md", in: URL(fileURLWithPath: outerFolder), memory("outer-fact", type: "project"))
+            let events = bed.connection.events
+            _ = try await bed.connection.call(ProjectsOpen.self, .init(rootPath: outer.path))
+            let user = Actor.user(deviceID: bed.engine.deviceID)
+            let event = await firstElement(of: events) {
+                $0.name == MemoriesChangedEvent.name && $0.origin == user && (try? $0.payload(MemoriesChangedEvent.self))?.projectID == "INNER"
+            }
+            let payload = try #require(try event?.payload(MemoriesChangedEvent.self))
+            #expect(payload.inherited == [InheritedMemoryFolder(projectID: "OUTER", path: outerFolder, memories: [
+                MemorySummary(file: "o.md", name: "outer-fact", description: "About it", type: "project"),
+            ])])
+        }
+    }
+
     // MARK: Actors and events
 
     @Test("Only the user actor calls the memories methods")
@@ -399,6 +547,32 @@ struct MemoriesEngineTests {
                 $0.name == MemoriesChangedEvent.name && $0.origin == .system
                     && ((try? $0.payload(MemoriesChangedEvent.self))?.memories.map(\.name) ?? []) == ["from-chat", "primer"]
             }
+            #expect(changed != nil)
+        }
+    }
+
+    @Test("A change made outside the engine in an inherited folder whose project is not watched emits memories.changed for the sub project that inherits it", .fsEvents)
+    func inheritedWatcher() async throws {
+        try await withMemoriesEngine { bed in
+            try await createLib(bed)
+            // Only LIB is listed: APP's folder is watched as one that LIB inherits.
+            let lib = try await bed.connection.call(MemoriesList.self, .init(projectID: "LIB"))
+            let appFolder = URL(fileURLWithPath: try #require(lib.inherited.first { $0.projectID == "APP" }).path, isDirectory: true)
+            let events = bed.connection.events
+            // Written again every 2 seconds until memories.changed of LIB reports it.
+            let writer = Task {
+                for _ in 0..<10 {
+                    try write("app.md", in: appFolder, memory("app-fact", type: "user"))
+                    try await Task.sleep(for: .seconds(2))
+                }
+            }
+            let changed = await firstElement(of: events, timeout: waitLimit) {
+                guard $0.name == MemoriesChangedEvent.name, $0.origin == .system,
+                      let payload = try? $0.payload(MemoriesChangedEvent.self) else { return false }
+                return payload.projectID == "LIB" && payload.inherited.first?.memories.map(\.name) == ["app-fact"]
+            }
+            writer.cancel()
+            _ = await writer.result
             #expect(changed != nil)
         }
     }

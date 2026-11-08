@@ -4,7 +4,7 @@ import Testing
 @testable import HephaestusUI
 
 /// docs/memories.md › List and › Saving: the groups of the list, the filter and the field
-/// validation messages.
+/// validation messages; the read-only groups and editor of the inherited memories.
 @MainActor
 @Suite("Memories section")
 struct MemoriesSectionTests {
@@ -79,6 +79,149 @@ struct MemoriesSectionTests {
         #expect(form.description == "D2")
         #expect(form.body.text == "B2")
         #expect(!form.hasUnsavedChanges)
+    }
+
+    // MARK: Inherited memories (docs/memories.md › Inherited memories)
+
+    /// A connection that records the projects of its `memories.get` calls and answers them with
+    /// `memory`.
+    final class InheritedConnection: EngineConnection, @unchecked Sendable {
+        private let lock = NSLock()
+        private var recorded: [String] = []
+        private var answer: Memory
+
+        init(memory: Memory) {
+            answer = memory
+        }
+
+        var memory: Memory {
+            get { lock.withLock { answer } }
+            set { lock.withLock { answer = newValue } }
+        }
+
+        var projects: [String] { lock.withLock { recorded } }
+        var deviceInfo: DeviceInfo? { nil }
+        var state: ConnectionState { .connecting }
+        var stateUpdates: AsyncStream<ConnectionState> { AsyncStream { $0.finish() } }
+        var events: AsyncStream<EngineEventEnvelope> { AsyncStream { $0.finish() } }
+
+        func call<M: EngineMethod>(_ method: M.Type, _ params: M.Params) async throws -> M.Result {
+            if let get = params as? MemoriesGet.Params {
+                lock.withLock { recorded.append(get.projectID) }
+                if let result = memory as? M.Result { return result }
+            }
+            throw EngineError(.unavailable, "Offline.")
+        }
+
+        func close() {}
+    }
+
+    /// The sub project SUB with one memory, inheriting the folders of APP and SUITE.
+    static let subFolder = MemoryFolder(projectID: "SUB", path: "/Users/example/.claude/projects/sub/memory", hasIndex: false, memories: [
+        MemorySummary(file: "own.md", name: "own", description: "Own", type: "user"),
+    ], inherited: [
+        InheritedMemoryFolder(projectID: "APP", path: "/Users/example/.claude/projects/app/memory", memories: [
+            MemorySummary(file: "z.md", name: "zeta", description: "Last", type: "user"),
+            MemorySummary(file: "b.md", name: "alpha", description: "Backend developer", type: nil),
+            MemorySummary(file: "a.md", name: "alpha", description: "Answer style", type: "feedback"),
+        ]),
+        InheritedMemoryFolder(projectID: "SUITE", path: "/Users/example/.claude/projects/suite/memory", memories: []),
+        InheritedMemoryFolder(projectID: "GONE", path: "/Users/example/.claude/projects/gone/memory", memories: [
+            MemorySummary(file: "g.md", name: "gamma", description: "", type: "project"),
+        ]),
+    ])
+
+    @Test("Inherited groups keep the engine's order, headed Inherited from <parent name>, sorted by name, filtered, empty ones hidden")
+    func inheritedGroups() {
+        let names = ["APP": "App", "SUITE": "Suite"]
+        let groups = MemoryGroups.inheritedGroups(of: Self.subFolder.inherited, filter: "") { names[$0] }
+        #expect(groups.map(\.title) == ["Inherited from App", "Inherited from GONE"])
+        #expect(groups.map(\.projectID) == ["APP", "GONE"])
+        #expect(groups[0].memories.map(\.file) == ["a.md", "b.md", "z.md"])
+        let filtered = MemoryGroups.inheritedGroups(of: Self.subFolder.inherited, filter: "BACKEND") { names[$0] }
+        #expect(filtered == [MemoryGroups.InheritedGroup(projectID: "APP", title: "Inherited from App", memories: [
+            MemorySummary(file: "b.md", name: "alpha", description: "Backend developer", type: nil),
+        ])])
+    }
+
+    @Test("No Memories shows only without own memory, MEMORY.md and inherited memory, without list error or unsaved changes")
+    func emptyState() {
+        var folder = MemoryFolder(projectID: "SUB", path: "/m", hasIndex: false, memories: [])
+        #expect(MemoryGroups.showsEmptyState(folder, listError: nil, hasUnsavedChanges: false))
+        #expect(!MemoryGroups.showsEmptyState(folder, listError: "Failed", hasUnsavedChanges: false))
+        #expect(!MemoryGroups.showsEmptyState(folder, listError: nil, hasUnsavedChanges: true))
+        folder.inherited = [InheritedMemoryFolder(projectID: "APP", path: "/a", memories: [])]
+        #expect(MemoryGroups.showsEmptyState(folder, listError: nil, hasUnsavedChanges: false))
+        folder.inherited[0].memories = [MemorySummary(file: "a.md", name: "a", description: "")]
+        #expect(!MemoryGroups.showsEmptyState(folder, listError: nil, hasUnsavedChanges: false))
+    }
+
+    @Test("An inherited row's selection is <ancestor id>/<file name>; − and ⌫ act only on the project's own memories")
+    func inheritedSelection() {
+        #expect(MemoryActions.inheritedTag(projectID: "APP", file: "a.md") == "APP/a.md")
+        #expect(MemoryActions.target(of: "MEMORY.md") == .index)
+        #expect(MemoryActions.target(of: "own.md") == .memory(file: "own.md"))
+        #expect(MemoryActions.target(of: "APP/a.md") == .inherited(projectID: "APP", file: "a.md"))
+        #expect(MemoryEditorState(target: .inherited(projectID: "APP", file: "a.md"), projectID: "SUB").selection == "APP/a.md")
+        #expect(MemoryActions.ownMemoryFile(of: "own.md") == "own.md")
+        #expect(MemoryActions.ownMemoryFile(of: "APP/a.md") == nil)
+        #expect(MemoryActions.ownMemoryFile(of: "MEMORY.md") == nil)
+        #expect(MemoryActions.ownMemoryFile(of: nil) == nil)
+    }
+
+    @Test("An inherited memory's path is in its ancestor's folder; the feedback names it")
+    func inheritedPaths() {
+        let workspace = DeviceWorkspace(deviceID: "device", connection: OfflineConnection(), isLocal: false)
+        workspace.memoryFolders["SUB"] = Self.subFolder
+        #expect(MemoryActions.displayPath(of: .inherited(projectID: "APP", file: "a.md"), in: workspace, projectID: "SUB")
+            == "~/.claude/projects/app/memory/a.md")
+        #expect(MemoryActions.displayPath(of: .memory(file: "own.md"), in: workspace, projectID: "SUB") == "~/.claude/projects/sub/memory/own.md")
+        #expect(MemoryActions.displayPath(of: .index, in: workspace, projectID: "SUB") == "~/.claude/projects/sub/memory/MEMORY.md")
+        #expect(MemoryActions.displayPath(of: .inherited(projectID: "NONE", file: "a.md"), in: workspace, projectID: "SUB") == "a.md")
+        // A selection whose folder is no longer inherited shows as not found.
+        #expect(!MemoryActions.isNoLongerInherited(.inherited(projectID: "APP", file: "a.md"), in: Self.subFolder))
+        #expect(MemoryActions.isNoLongerInherited(.inherited(projectID: "NONE", file: "a.md"), in: Self.subFolder))
+        #expect(!MemoryActions.isNoLongerInherited(.inherited(projectID: "NONE", file: "a.md"), in: nil))
+        #expect(!MemoryActions.isNoLongerInherited(.memory(file: "own.md"), in: Self.subFolder))
+        var view = ProjectViewState()
+        view.selectedMemoryFile = "APP/z.md"
+        #expect(MemoryActions.selectedItemName(of: view, in: workspace, projectID: "SUB") == "zeta")
+        view.selectedMemoryFile = "APP/missing.md"
+        #expect(MemoryActions.selectedItemName(of: view, in: workspace, projectID: "SUB") == "missing")
+    }
+
+    @Test("An inherited memory is read with the ancestor's projectID and is read-only: never unsaved, never saved, replaced on refresh")
+    func inheritedEditor() async {
+        let connection = InheritedConnection(memory: Memory(file: "a.md", name: "answer-style", description: "D1", type: "feedback", body: "B1"))
+        let workspace = DeviceWorkspace(deviceID: "device", connection: connection, isLocal: true)
+        workspace.memoryFolders["SUB"] = Self.subFolder
+        let window = WindowState(deviceID: "device")
+        let editor = MemoryEditorState(target: .inherited(projectID: "APP", file: "a.md"), projectID: "SUB", bodyMode: .edit)
+        editor.attach(window: window, workspace: workspace)
+        #expect(editor.isReadOnly)
+        #expect(editor.displayName == "a")
+        await editor.refresh()
+        #expect(connection.projects == ["APP"])
+        #expect(editor.hasLoaded)
+        #expect(editor.form.savedName == "answer-style")
+        #expect(editor.form.body.text == "B1")
+        editor.form.body.text = "changed"
+        editor.form.name = "other"
+        #expect(!editor.hasUnsavedChanges)
+        #expect(!editor.canSave)
+        #expect(editor.unsavedEditors.isEmpty)
+        // Go to Line and Toggle Comment never act on its body, even with the focus in Edit mode.
+        editor.form.body.hasEditorFocus = true
+        #expect(editor.focusedEditor == nil)
+        let own = MemoryEditorState(target: .memory(file: "own.md"), projectID: "SUB", bodyMode: .edit)
+        own.form.body.hasEditorFocus = true
+        #expect(own.focusedEditor === own.form.body)
+        connection.memory = Memory(file: "a.md", name: "answer-style", description: "D2", type: "feedback", body: "B2")
+        await editor.refresh()
+        #expect(editor.conflict == nil)
+        #expect(editor.form.description == "D2")
+        #expect(editor.form.body.text == "B2")
+        #expect(!MemoryEditorState(target: .memory(file: "own.md"), projectID: "SUB").isReadOnly)
     }
 
     @Test("Paths are written with ~: This Mac's home folder locally, a folder under /Users/<name> in a remote window")

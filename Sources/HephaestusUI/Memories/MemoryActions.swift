@@ -71,9 +71,34 @@ enum MemoryActions {
         window.sheet = .newMemory(projectID: projectID)
     }
 
-    /// The editor target of a selected row.
-    static func target(of file: String) -> MemoryEditorState.Target {
-        file == indexFileName ? .index : .memory(file: file)
+    /// The tag and the selection of an inherited memory's row: `<ancestor id>/<file name>`; a file
+    /// name holds no `/` (docs/memories.md › Memories section).
+    static func inheritedTag(projectID: String, file: String) -> String {
+        projectID + "/" + file
+    }
+
+    /// The editor target of a selected row: `MEMORY.md`, an inherited memory or a memory of the
+    /// project's own folder.
+    static func target(of selection: String) -> MemoryEditorState.Target {
+        if selection == indexFileName { return .index }
+        if let slash = selection.firstIndex(of: "/") {
+            return .inherited(projectID: String(selection[..<slash]), file: String(selection[selection.index(after: slash)...]))
+        }
+        return .memory(file: selection)
+    }
+
+    /// True for an inherited memory whose folder the listed project no longer inherits: it shows
+    /// `Memory <name> was not found.` (docs/memories.md › Saving).
+    static func isNoLongerInherited(_ target: MemoryEditorState.Target, in folder: MemoryFolder?) -> Bool {
+        guard case .inherited(let ancestorID, _) = target, let folder else { return false }
+        return !folder.inherited.contains { $0.projectID == ancestorID }
+    }
+
+    /// The memory of the project's own folder that a selection names, for `−`, ⌫ and ⌘⌫; nil for
+    /// `MEMORY.md`, an inherited memory or no selection (docs/memories.md › List).
+    static func ownMemoryFile(of selection: String?) -> String? {
+        guard let selection, case .memory(let file) = target(of: selection) else { return nil }
+        return file
     }
 
     /// Move to Trash of a memory: the alert `Move “<name>” to the Trash?`, then `memories.delete`;
@@ -103,12 +128,24 @@ enum MemoryActions {
     /// The selected item of the feedback context: the selected memory's name, or `MEMORY.md`
     /// (docs/feedback.md › Feedback context).
     static func selectedItemName(of view: ProjectViewState, in workspace: DeviceWorkspace, projectID: String) -> String? {
-        guard let file = view.selectedMemoryFile else { return nil }
-        if file == indexFileName { return indexFileName }
-        if let memory = workspace.memoryFolders[projectID]?.memories.first(where: { $0.file == file }) {
-            return memory.name
+        guard let selection = view.selectedMemoryFile else { return nil }
+        let folder = workspace.memoryFolders[projectID]
+        let listed: MemorySummary?
+        let file: String
+        switch target(of: selection) {
+        case .index:
+            return indexFileName
+        case .memory(let name):
+            file = name
+            listed = folder?.memories.first { $0.file == name }
+        case .inherited(let ancestorID, let name):
+            file = name
+            listed = folder?.inherited.first { $0.projectID == ancestorID }?.memories.first { $0.file == name }
         }
-        if let editor = view.memoryEditor, editor.selection == file, editor.hasLoaded {
+        if let listed {
+            return listed.name
+        }
+        if let editor = view.memoryEditor, editor.selection == selection, editor.hasLoaded {
             return editor.form.savedName
         }
         return stem(of: file)
@@ -137,15 +174,34 @@ enum MemoryActions {
         return path
     }
 
-    /// The path of a file of the project's memory folder, home folder written `~`.
-    static func displayPath(of file: String, in workspace: DeviceWorkspace, projectID: String) -> String {
-        guard let folder = workspace.memoryFolders[projectID]?.path else { return file }
+    /// The file an editor target shows: the memory's file name, or `MEMORY.md`.
+    static func fileName(of target: MemoryEditorState.Target) -> String {
+        switch target {
+        case .memory(let file), .inherited(_, let file): return file
+        case .index: return indexFileName
+        }
+    }
+
+    /// The folder that holds what a target shows: the project's own memory folder, or the
+    /// inherited folder of the memory's ancestor; nil while it is not listed.
+    static func folderPath(of target: MemoryEditorState.Target, in workspace: DeviceWorkspace, projectID: String) -> String? {
+        guard let folder = workspace.memoryFolders[projectID] else { return nil }
+        if case .inherited(let ancestorID, _) = target {
+            return folder.inherited.first { $0.projectID == ancestorID }?.path
+        }
+        return folder.path
+    }
+
+    /// The path of the file a target shows, home folder written `~`.
+    static func displayPath(of target: MemoryEditorState.Target, in workspace: DeviceWorkspace, projectID: String) -> String {
+        let file = fileName(of: target)
+        guard let folder = folderPath(of: target, in: workspace, projectID: projectID) else { return file }
         return displayPath((folder as NSString).appendingPathComponent(file), in: workspace)
     }
 
-    /// Reveal in Finder of a file of the memory folder, on This Mac only.
-    static func reveal(_ file: String, in workspace: DeviceWorkspace, projectID: String) {
-        guard workspace.isLocal, let folder = workspace.memoryFolders[projectID]?.path else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: folder).appendingPathComponent(file)])
+    /// Reveal in Finder of the file a target shows, on This Mac only.
+    static func reveal(_ target: MemoryEditorState.Target, in workspace: DeviceWorkspace, projectID: String) {
+        guard workspace.isLocal, let folder = folderPath(of: target, in: workspace, projectID: projectID) else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: folder).appendingPathComponent(fileName(of: target))])
     }
 }

@@ -13,9 +13,11 @@ enum ClaudeCommandLine {
         "k8s_status", "k8s_logs", "k8s_events", "argocd_status",
     ].map { "mcp__hephaestus__\($0)" }.joined(separator: ",")
 
-    /// The argv of a chat process, the CLI path first; no shell is involved.
+    /// The argv of a chat process, the CLI path first; no shell is involved. `readFolders` are the
+    /// inherited memory folders that `{{parentMemories}}` names, each followed by its path with
+    /// its symbolic links resolved, as written on disk and in NFC, when they differ.
     static func chat(cliPath: String, chatID: ChatID, sessionStarted: Bool, settings: ChatSettings, mcpPort: Int, mcpConfigPath: String,
-                     systemPrompt: String, pluginDirectory: String?) -> [String] {
+                     systemPrompt: String, pluginDirectory: String?, readFolders: [String] = []) -> [String] {
         var argv = [cliPath, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
                     "--include-partial-messages"]
         argv += [sessionStarted ? "--resume" : "--session-id", chatID.uuidString]
@@ -31,15 +33,16 @@ enum ClaudeCommandLine {
         if let pluginDirectory {
             argv += ["--plugin-dir", pluginDirectory]
         }
-        argv += ["--settings", chatSettings(ultracode: settings.ultracode, mcpPort: mcpPort)]
+        argv += ["--settings", chatSettings(ultracode: settings.ultracode, mcpPort: mcpPort, readFolders: readFolders)]
         return argv
     }
 
     /// Row 18: the `UserPromptSubmit` hook of the linked items hook and the `PreToolUse` hook of
-    /// the close chat hook, after `"ultracode":true` when ultracode is on (docs/chats.md › Command
-    /// line, › Linked items hook, › Close chat hook). The CLI reads the token from the process's
-    /// environment, so it is not part of the arguments.
-    static func chatSettings(ultracode: Bool, mcpPort: Int) -> String {
+    /// the close chat hook, after `"ultracode":true` when ultracode is on and after the `Read`
+    /// rules of the inherited memory folders (docs/chats.md › Command line, › Linked items hook,
+    /// › Close chat hook). The CLI reads the token from the process's environment, so it is not
+    /// part of the arguments.
+    static func chatSettings(ultracode: Bool, mcpPort: Int, readFolders: [String] = []) -> String {
         func hook(_ path: String) -> String {
             let url = "http://127.0.0.1:\(mcpPort)\(path)"
             let variable = LinkedItemsHook.tokenVariable
@@ -48,7 +51,25 @@ enum ClaudeCommandLine {
         }
         let hooks = #""hooks":{"UserPromptSubmit":[{"hooks":[\#(hook(LinkedItemsHook.path))]}],"#
             + #""PreToolUse":[{"matcher":\#(ControlLines.string(CloseChatHook.toolName)),"hooks":[\#(hook(CloseChatHook.path))]}]}"#
-        return ultracode ? #"{"ultracode":true,\#(hooks)}"# : "{\(hooks)}"
+        let rules = readFolders.compactMap(readRule)
+        let permissions = rules.isEmpty ? "" : #""permissions":{"allow":[\#(rules.map(ControlLines.string).joined(separator: ","))]},"#
+        return "{" + (ultracode ? #""ultracode":true,"# : "") + permissions + hooks + "}"
+    }
+
+    /// The characters of a path that the CLI's path matching reads as a pattern in a permission
+    /// rule, and the control characters (U+0000 to U+001F, U+007F to U+009F).
+    static let patternCharacters = CharacterSet(charactersIn: "*?[\\")
+        .union(CharacterSet(charactersIn: Unicode.Scalar(0x00)...Unicode.Scalar(0x1F)))
+        .union(CharacterSet(charactersIn: Unicode.Scalar(0x7F)...Unicode.Scalar(0x9F)))
+
+    /// The `Read` rule of an inherited memory folder: `Read(/<folder>/**)`, the `//` of an absolute
+    /// path; nil for a path that holds a pattern character or ends with white space, which the
+    /// CLI's matching drops: Unicode white space or U+FEFF, as JavaScript's `\s` (docs/chats.md ›
+    /// Command line).
+    static func readRule(_ folder: String) -> String? {
+        guard folder.hasPrefix("/"), folder.rangeOfCharacter(from: patternCharacters) == nil,
+              let last = folder.unicodeScalars.last, !last.properties.isWhitespace, last != "\u{FEFF}" else { return nil }
+        return "Read(/\(folder)/**)"
     }
 
     /// The tools of a comment answer: the read-only file tools and the hephaestus tools that read

@@ -166,7 +166,8 @@ struct PromptAndNamingTests {
     func environmentsInCommonPrompt() {
         var values = ["projectName": "Orders", "projectID": "ORD", "projectRoot": "/Users/example/Developer/orders",
                       "workingDirectory": "It is your working directory.", "deviceName": "Studio", "docsPath": "docs",
-                      "projectType": "Go service", "environments": Prompts.environments(Self.exampleEnvironments, type: .goService)]
+                      "projectType": "Go service", "environments": Prompts.environments(Self.exampleEnvironments, type: .goService),
+                      "parentMemories": ""]
         let go = Prompts.render(Prompts.text(.common), values)
         #expect(go.contains("The project's type is Go service.\n\n"
             + "\(Self.environmentsHeader)\n- local: http://127.0.0.1:8080\n"
@@ -217,7 +218,7 @@ struct PromptAndNamingTests {
             "ticketID": "HEPH-12",
             "ticketTitle": "Locked web tabs close with Command-W", "ticket": "ID: HEPH-12", "bundleID": "HEPH-B2",
             "bundleTitle": "Web tab polish", "bundleTicketIDs": "HEPH-12, HEPH-13", "bundle": "ID: HEPH-B2", "feedbackContext": "- App: X",
-            "screenshotPath": "/Users/example/s.png", "githubRepository": "Azavech/HephaestusV2",
+            "screenshotPath": "/Users/example/s.png", "githubRepository": "Azavech/HephaestusV2", "parentMemories": "",
         ]
         for name in Prompts.Name.allCases {
             let text = Prompts.text(name)
@@ -232,6 +233,61 @@ struct PromptAndNamingTests {
             + "the Kubernetes and Argo CD tools take an environment's name:\n- staging: https://staging.example.com; deployment: orders-api\n\n"
             + "These rules apply in every chat."))
         #expect(prompt.contains("\n\n# This chat\n\nThis is the chat of ticket HEPH-12"))
+        // The memories of the parent projects follow the first paragraph and, in a Go service project, its environments.
+        var inherited = values
+        inherited["parentMemories"] = Prompts.parentMemories([
+            .init(projectName: "Suite", projectID: "SUITE", path: "/Users/example/.claude/projects/-Users-example-Developer-Suite/memory",
+                  index: "- [Answer style](feedback_style.md) — Answer in short sentences\n"),
+        ])
+        #expect(Prompts.systemPrompt(kind: .ticket, values: inherited).contains(
+            "- staging: https://staging.example.com; deployment: orders-api\n\n" + Prompts.parentMemoriesIntro
+                + "\n\nMemories of the project Suite (identifier SUITE), in the folder /Users/example/.claude/projects/-Users-example-Developer-Suite/memory:\n"
+                + "- [Answer style](feedback_style.md) — Answer in short sentences\n\nThese rules apply in every chat."))
+    }
+
+    @Test("{{parentMemories}} renders the example of docs/chats.md › Rendered blocks, and nothing without inherited folder")
+    func parentMemoriesBlock() throws {
+        let blocks = MarkdownSource.fencedBlocks(in: try Repository.doc("chats.md"))
+        let documented = try #require(blocks.first { $0.text.hasPrefix("This project is a sub project:") })
+        let rendered = Prompts.parentMemories([
+            .init(projectName: "Suite", projectID: "SUITE", path: "/Users/example/.claude/projects/-Users-example-Developer-Suite/memory",
+                  index: "- [User role](user-role.md) — The user is a backend developer who is new to SwiftUI\n"
+                      + "- [Answer style](feedback_style.md) — Answer in short sentences\n"),
+        ])
+        #expect(rendered == "\n\n" + documented.text)
+        #expect(Prompts.parentMemories([]) == "")
+        // Nearest parent first, each part after a blank line; a missing or empty MEMORY.md.
+        let two = Prompts.parentMemories([
+            .init(projectName: "App", projectID: "APP", path: "/m/app", index: nil),
+            .init(projectName: "Suite", projectID: "SUITE", path: "/m/suite", index: " \r\n\n"),
+        ])
+        #expect(two == "\n\n" + Prompts.parentMemoriesIntro
+            + "\n\nMemories of the project App (identifier APP), in the folder /m/app:\nThis folder has no MEMORY.md."
+            + "\n\nMemories of the project Suite (identifier SUITE), in the folder /m/suite:\nThis folder has no MEMORY.md.")
+    }
+
+    @Test("The MEMORY.md of an inherited folder: line breaks, white space, then the CLI's limits of 200 lines and 25,000 UTF-16 units")
+    func parentMemoryIndexLines() {
+        let truncated = "\n[Truncated: read /m/MEMORY.md for the rest.]"
+        #expect(Prompts.memoryIndexLines("\u{FEFF}\n- [A](a.md) — A\r\n- [B](b.md) — B\r\r\n  \n", folder: "/m")
+            == "- [A](a.md) — A\n- [B](b.md) — B")
+        #expect(Prompts.memoryIndexLines(" \n\t", folder: "/m") == "")
+        let lines = (1...201).map { "- line \($0)" }
+        #expect(Prompts.memoryIndexLines(lines.prefix(200).joined(separator: "\n"), folder: "/m") == lines.prefix(200).joined(separator: "\n"))
+        #expect(Prompts.memoryIndexLines(lines.joined(separator: "\n"), folder: "/m") == lines.prefix(200).joined(separator: "\n") + truncated)
+        // 150 lines of 200 units: the 124 lines whose line break comes within 25,000 units.
+        let long = (1...150).map { _ in String(repeating: "x", count: 200) }
+        #expect(Prompts.memoryIndexLines(long.joined(separator: "\n"), folder: "/m") == long.prefix(124).joined(separator: "\n") + truncated)
+        // A line break at offset 25,000 still ends the kept text; without one, what fits is kept.
+        let edge = String(repeating: "a", count: 25_000)
+        #expect(Prompts.memoryIndexLines(edge + "\nb", folder: "/m") == edge + truncated)
+        let early = "x\n" + String(repeating: "a", count: 24_998)
+        #expect(Prompts.memoryIndexLines(early + "\nb", folder: "/m") == early + truncated)
+        #expect(Prompts.memoryIndexLines(early + "a\nb", folder: "/m") == "x" + truncated)
+        #expect(Prompts.memoryIndexLines(edge, folder: "/m") == edge)
+        #expect(Prompts.memoryIndexLines(edge + "b", folder: "/m") == edge + truncated)
+        let emoji = String(repeating: "a", count: 24_999) + "😀"
+        #expect(Prompts.memoryIndexLines(emoji, folder: "/m") == String(repeating: "a", count: 24_999) + truncated)
     }
 
     @Test("Bundle orchestration: the orchestrator starts every ticket that waits for nothing at once, merges by rebase and fast-forward, asks retry, skip or stop, builds, tests and pushes once, never sets done; ticket chats commit on their branch without pushing")
@@ -278,7 +334,7 @@ struct PromptAndNamingTests {
             let upper = try #require(common.range(of: end, range: lower..<common.endIndex)).lowerBound
             return String(common[lower..<upper])
         }
-        #expect(common.contains("of the project. The project's type is {{projectType}}.{{environments}}\n"))
+        #expect(common.contains("of the project. The project's type is {{projectType}}.{{environments}}{{parentMemories}}\n"))
         let go = try section("# When the project is a Go service", "# When the project is HephaestusV2")
         #expect(go.contains("- The Testing section of a ticket has only Claude bullets, each a check of the behaviour on the test service; it has no User bullet."))
         #expect(go.contains("The implement chat of a single ticket, started by Implement or by implement_ticket from a chat that is not a bundle chat, "

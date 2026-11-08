@@ -179,7 +179,11 @@ extension Engine {
         emitGithubPageChanges(since: pagesBefore, except: Set([project.id, parentID].compactMap { $0 }), origin: actor)
         emitProjectsChanged(origin: actor)
         updateFileWatching()
-        return projectDetail(project.id)!
+        let detail = projectDetail(project.id)!
+        // The top-level projects it adopts, and their descendants, may inherit other memory folders
+        // (docs/memories.md › Live updates).
+        await refreshInheritedMemoryFolders(of: domain.descendants(of: project.id), origin: actor)
+        return detail
     }
 
     /// docs/engine-api.md › projects.update.

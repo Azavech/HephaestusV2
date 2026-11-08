@@ -31,17 +31,17 @@ extension Engine {
     /// `memories.list`: the project's memory folder, read from disk; the folder is watched for the
     /// project from then on.
     func memoriesList(_ params: MemoriesList.Params, _ actor: Actor) async throws -> MemoryFolder {
-        let (projectID, folder) = try await memoryFolder(of: params.projectID)
-        // Watched before the folder is read, so that a change made meanwhile is reported.
-        watchMemoryFolder(folder, for: projectID)
-        return try memoryListing(projectID: projectID, folder: folder)
+        let target = try await memoryFolder(of: params.projectID)
+        // Watched before the folders are read, so that a change made meanwhile is reported.
+        watchMemoryFolder(target.folder, inherited: target.inherited, for: target.projectID)
+        return try memoryListing(projectID: target.projectID, folder: target.folder, inherited: target.inherited)
     }
 
     /// `memories.get`.
     func memoriesGet(_ params: MemoriesGet.Params, _ actor: Actor) async throws -> Memory {
         _ = try Self.checkedProjectID(params.projectID)
         let file = try Self.checkedMemoryFile(params.file)
-        let (_, folder) = try await memoryFolder(of: params.projectID)
+        let folder = try await memoryFolder(of: params.projectID).folder
         return try existingMemory(file, in: folder).memory
     }
 
@@ -51,7 +51,8 @@ extension Engine {
         _ = try Self.checkedProjectID(params.projectID)
         let name = try Self.checkedMemoryName(params.name)
         let description = try Self.checkedMemoryDescription(params.description)
-        let (projectID, folder) = try await memoryFolder(of: params.projectID)
+        let target = try await memoryFolder(of: params.projectID)
+        let folder = target.folder
         let file = name + ".md"
         try checkMemoryNameIsFree(name, in: folder, except: nil)
         // MEMORY.md is read before the first write, so that an unreadable one changes nothing.
@@ -69,10 +70,10 @@ extension Engine {
             try writeMemoryData(Data(MemoryFiles.appending(MemoryFiles.indexLine(name: name, description: description), to: indexText).utf8),
                                 to: index)
         } catch {
-            memoriesDidChange(projectID: projectID, folder: folder, origin: actor)
+            memoriesDidChange(target, origin: actor)
             throw error
         }
-        memoriesDidChange(projectID: projectID, folder: folder, origin: actor)
+        memoriesDidChange(target, origin: actor)
         return try existingMemory(file, in: folder).memory
     }
 
@@ -86,7 +87,8 @@ extension Engine {
         let newName = try params.name.map { try Self.checkedMemoryName($0) }
         let description = try params.description.map { try Self.checkedMemoryDescription($0) }
         let body = params.body.map(ModelRules.normalizedLineBreaks)
-        let (projectID, folder) = try await memoryFolder(of: params.projectID)
+        let target = try await memoryFolder(of: params.projectID)
+        let folder = target.folder
         let entry = try existingMemory(file, in: folder)
         let current = entry.memory
 
@@ -140,10 +142,10 @@ extension Engine {
                                            newName: newName)
             }
         } catch {
-            memoriesDidChange(projectID: projectID, folder: folder, origin: actor)
+            memoriesDidChange(target, origin: actor)
             throw error
         }
-        memoriesDidChange(projectID: projectID, folder: folder, origin: actor)
+        memoriesDidChange(target, origin: actor)
         return try existingMemory(finalFile, in: folder).memory
     }
 
@@ -152,7 +154,8 @@ extension Engine {
     func memoriesDelete(_ params: MemoriesDelete.Params, _ actor: Actor) async throws -> Empty {
         _ = try Self.checkedProjectID(params.projectID)
         let file = try Self.checkedMemoryFile(params.file)
-        let (projectID, folder) = try await memoryFolder(of: params.projectID)
+        let target = try await memoryFolder(of: params.projectID)
+        let folder = target.folder
         let url = folder.appendingPathComponent(file)
         guard FileItem.at(url.path) != nil, try memoryFileNames(in: folder).contains(file) else {
             throw EngineError.notFound("Memory", file)
@@ -166,16 +169,16 @@ extension Engine {
         do {
             try moveItemToTrash(url, path: url.path)
         } catch {
-            memoriesDidChange(projectID: projectID, folder: folder, origin: actor)
+            memoriesDidChange(target, origin: actor)
             throw error
         }
-        memoriesDidChange(projectID: projectID, folder: folder, origin: actor)
+        memoriesDidChange(target, origin: actor)
         return Empty()
     }
 
     /// `memories.readIndex`.
     func memoriesReadIndex(_ params: MemoriesReadIndex.Params, _ actor: Actor) async throws -> MemoryIndex {
-        let (_, folder) = try await memoryFolder(of: params.projectID)
+        let folder = try await memoryFolder(of: params.projectID).folder
         guard let text = try readIndexText(in: folder) else {
             throw EngineError.notFound("File", MemoryFiles.indexFileName)
         }
@@ -191,14 +194,15 @@ extension Engine {
         guard data.count <= MemoryFiles.maximumSize else {
             throw EngineError.invalid("text", "use at most 20 MiB of UTF-8")
         }
-        let (projectID, folder) = try await memoryFolder(of: params.projectID)
+        let target = try await memoryFolder(of: params.projectID)
+        let folder = target.folder
         // A text equal to the file writes nothing and emits nothing.
         if let current = FileItem.at(indexURL(in: folder).path), current.kind == .file, current.size == data.count,
            (try? Data(contentsOf: indexURL(in: folder))) == data {
             return Empty()
         }
         try writeMemoryData(data, to: indexURL(in: folder))
-        memoriesDidChange(projectID: projectID, folder: folder, origin: actor)
+        memoriesDidChange(target, origin: actor)
         return Empty()
     }
 

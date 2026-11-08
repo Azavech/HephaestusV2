@@ -413,7 +413,7 @@ Steps:
 | conflict | An identifier of the project or of a descendant is used by another loaded project (`Identifier HEPH is already used by Hephaestus V2.`); rootPath is the root of a hidden project (`HephaestusV2 is hidden. Show it in Settings ▸ General.`).                                                                 |
 | internal | registry.yml or the parent's project.yml cannot be written.                                                                                                                                                                                                                                                   |
 
-Events: project.updated (the parent, when the project becomes a sub project), project.updated (the opened project), project.updated for every other project whose [GitHub page](projects.md#github-page) changed, a top-level project the opened project now has as a sub project, projects.changed.
+Events: project.updated (the parent, when the project becomes a sub project), project.updated (the opened project), project.updated for every other project whose [GitHub page](projects.md#github-page) changed, a top-level project the opened project now has as a sub project, projects.changed, then memories.changed for every watched project among the top-level projects it now has as sub projects and their descendants whose inherited memory folders changed ([Live updates](memories.md#live-updates)).
 
 ### projects.update
 
@@ -2369,13 +2369,13 @@ Events: project.updated when the project's list changed.
 
 ## Memories
 
-The memory folder, the memory files, `MEMORY.md` and the Memories section are in [Memories](memories.md). Every method takes the `projectID` of a loaded project and resolves the project's memory folder again ([Resolution](memories.md#resolution)); `file` is the file name of a memory in that folder, for example `user-role.md`. Only the user actor calls these methods: Claude writes memories with its own file tools.
+The memory folder, the memory files, `MEMORY.md` and the Memories section are in [Memories](memories.md). Every method takes the `projectID` of a loaded project and resolves the project's memory folder again ([Resolution](memories.md#resolution)); `file` is the file name of a memory in that folder, for example `user-role.md`. Only `memories.list` returns the folders the project inherits from its ancestors ([Inherited memories](memories.md#inherited-memories)); the other methods act on the project's own folder, and an inherited memory is read with `memories.get` and the `projectID` of the ancestor whose folder it is. Only the user actor calls these methods: Claude writes memories with its own file tools.
 
 ### memories.list
 
 Swift type `MemoriesList` · actors: user · result: [MemoryFolder](#memoryfolder)
 
-Returns the project's memory folder: its path, whether `MEMORY.md` exists, and every memory sorted by name, then by file name, read from disk at every call. A folder that does not exist has no memory and no `MEMORY.md`. A file that cannot be read is skipped and logged ([Memory files](memories.md#memory-files)). From this call on, the engine watches the folder for the project ([Live updates](memories.md#live-updates)).
+Returns the project's memory folder: its path, whether `MEMORY.md` exists, and every memory sorted by name, then by file name, then the folders the project inherits, nearest parent first, each with its memories in the same order, read from disk at every call ([Inherited memories](memories.md#inherited-memories)). A folder that does not exist has no memory and no `MEMORY.md`. A file that cannot be read is skipped and logged ([Memory files](memories.md#memory-files)); an inherited folder that cannot be read has no memories and is logged. From this call on, the engine watches the folder and the inherited folders for the project ([Live updates](memories.md#live-updates)).
 
 | Param     | Type      | Required | Description         |
 | --------- | --------- | -------- | ------------------- |
@@ -2614,7 +2614,7 @@ Every event travels as an [EngineEventEnvelope](#engineeventenvelope) `{name, or
 | files.changed     | FilesChangedEvent     | {projectID, paths [String]}                                      | Files changed under a project root.                                                                                                                                                                                                            |
 | webTabs.updated   | WebTabsUpdatedEvent   | {projectID, tabs [WebTab]}                                       | A project's web tabs changed.                                                                                                                                                                                                                  |
 | skills.changed    | SkillsChangedEvent    | [SkillSummary]: the complete `skills.list` result                | The skills library changed, including files inside a skill.                                                                                                                                                                                    |
-| memories.changed  | MemoriesChangedEvent  | MemoryFolder: the complete `memories.list` result of one project | A project's memory folder changed: a memory or `MEMORY.md` was created, changed, renamed or deleted, by a `memories.*` call, a chat or another app; emitted for each watched project of the folder ([Live updates](memories.md#live-updates)). |
+| memories.changed  | MemoriesChangedEvent  | MemoryFolder: the complete `memories.list` result of one project | A project's memory folder or one it inherits changed: a memory or `MEMORY.md` was created, changed, renamed or deleted by a `memories.*` call, a chat or any app, or its inherited folders changed ([Live updates](memories.md#live-updates)). |
 | settings.updated  | SettingsUpdatedEvent  | HostSettings                                                     | Host settings changed.                                                                                                                                                                                                                         |
 | claude.updated    | ClaudeUpdatedEvent    | {status ClaudeStatus, models [ClaudeModel]}                      | The Claude CLI status or the model list changed.                                                                                                                                                                                               |
 | planUsage.updated | PlanUsageUpdatedEvent | PlanUsage                                                        | The engine's plan usage was replaced ([Plan usage](#plan-usage)).                                                                                                                                                                              |
@@ -2669,7 +2669,7 @@ chat.delta events are flushed at most every 50 ms per chat, so a chat emits at m
 
 ### Changes made outside the engine
 
-- The engine watches every loaded project root, the skills library folder and the memory folders of the projects whose memories a client listed or changed with FSEvents, debounced 300 ms, at most 2 s after the first change of a batch for project roots ([Data model](data-model.md#processing-a-change)). Changes it did not make itself (an editor, `git pull`, Claude editing files) produce the events an API call would emit, with origin `system`. The reload rules and reactions for project, ticket and bundle files are in [Data model](data-model.md#external-changes); the library watcher is in [Skills](skills.md#library), the memory folder watcher in [Memories](memories.md#live-updates).
+- The engine watches every loaded project root, the skills library folder and the memory folders of the projects whose memories a client listed or changed, with the folders they inherit, with FSEvents, debounced 300 ms, at most 2 s after the first change of a batch for project roots ([Data model](data-model.md#processing-a-change)). Changes it did not make itself (an editor, `git pull`, Claude editing files) produce the events an API call would emit, with origin `system`. The reload rules and reactions for project, ticket and bundle files are in [Data model](data-model.md#external-changes); the library watcher is in [Skills](skills.md#library), the memory folder watcher in [Memories](memories.md#live-updates).
 - Not reloaded: `.hephaestus/chats/`, whose only writer is the engine, and the device files of the data directory, which are read at launch only ([Data model](data-model.md#watching)).
 - A change of a `.git/config` file inside a watched project root reads the origins that may have changed again ([ProjectDetail](#projectdetail)). Default chosen at design time.
 - files.changed is emitted for every change under a loaded project root except inside `.git/` and `.hephaestus/chats/`, changes made by the engine included. Both are skipped at any depth: a `.git` component anywhere in the path (the repository of a sub project or of a nested work tree) and the chats folder of a sub project add no paths. Default chosen at design time.
@@ -3722,22 +3722,46 @@ String enum of the memory types the engine writes: `user`, `feedback`, `project`
 
 The `memories.list` result and the data of `memories.changed`.
 
-| Field     | Type            | Required | Description                                                                                                                      |
-| --------- | --------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| projectID | ProjectID       | yes      | The project.                                                                                                                     |
-| path      | String          | yes      | Absolute path of the project's memory folder on the main device, without final `/` ([Memory folder](memories.md#memory-folder)). |
-| hasIndex  | Bool            | yes      | `MEMORY.md` exists in the folder.                                                                                                |
-| memories  | [MemorySummary] | yes      | Every memory of the folder, sorted by name, then by file name.                                                                   |
+| Field     | Type                    | Required | Description                                                                                                                       |
+| --------- | ----------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| projectID | ProjectID               | yes      | The project.                                                                                                                      |
+| path      | String                  | yes      | Absolute path of the project's memory folder on the main device, without final `/` ([Memory folder](memories.md#memory-folder)).  |
+| hasIndex  | Bool                    | yes      | `MEMORY.md` exists in the folder.                                                                                                 |
+| memories  | [MemorySummary]         | yes      | Every memory of the folder, sorted by name, then by file name.                                                                    |
+| inherited | [InheritedMemoryFolder] | yes      | The folders the project inherits from its ancestors, nearest parent first ([Inherited memories](memories.md#inherited-memories)). |
 
 ```json
 {
   "hasIndex": true,
+  "inherited": [],
   "memories": [
     {"description": "Answer in short sentences", "file": "feedback_style.md", "name": "answer-style", "type": "feedback"},
     {"description": "The user is a backend developer who is new to SwiftUI", "file": "user-role.md", "name": "user-role", "type": "user"}
   ],
   "path": "/Users/example/.claude/projects/-Users-example-Developer-HephaestusV2/memory",
   "projectID": "HEPH"
+}
+```
+
+An engine of an earlier version omits `inherited`: it reads as empty. Default chosen at design time.
+
+### InheritedMemoryFolder
+
+A memory folder that a project inherits from one of its ancestors ([Inherited memories](memories.md#inherited-memories)).
+
+| Field     | Type            | Required | Description                                                                                                           |
+| --------- | --------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| projectID | ProjectID       | yes      | The nearest ancestor of the project whose memory folder it is; the Memories section shows its name.                   |
+| path      | String          | yes      | Absolute path of the folder on the main device, without final `/`.                                                    |
+| memories  | [MemorySummary] | yes      | Every memory of the folder, sorted by name, then by file name; none when the folder does not exist or cannot be read. |
+
+```json
+{
+  "memories": [
+    {"description": "The user is a backend developer who is new to SwiftUI", "file": "user-role.md", "name": "user-role", "type": "user"}
+  ],
+  "path": "/Users/example/.claude/projects/-Users-example-Developer-Suite/memory",
+  "projectID": "SUITE"
 }
 ```
 
@@ -4041,3 +4065,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R160: The user can show, edit, create, rename and delete the memories Claude saves for a project, in a Memories section of the sidebar.
 - R161: After an implementation is pushed in a project with a GitHub page, a CI chat follows CI and reports to the orchestrator, which asks the user how to proceed when CI fails and finishes only once CI is green or the user decides so.
 - R162: Each environment of a Go service names its Kubernetes context, namespace, deployment, Argo CD application and kubeconfig, which Claude receives and uses through HephaestusV2's Kubernetes and Argo CD tools.
+- R167: A sub project's chats always receive the memories of its parent projects, which its Memories section lists read-only.

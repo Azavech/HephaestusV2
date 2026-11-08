@@ -36,6 +36,13 @@ struct EngineJSONTests {
         #expect(result == BrowseResult(path: "/"))
     }
 
+    @Test("MemoryFolder: inherited absent, from an engine of an earlier version, reads as empty")
+    func memoryFolderWithoutInherited() throws {
+        let folder = try EngineJSON.decode(MemoryFolder.self, from: Data(#"{"hasIndex":false,"memories":[],"path":"/m","projectID":"HEPH"}"#.utf8))
+        #expect(folder == MemoryFolder(projectID: "HEPH", path: "/m", hasIndex: false, memories: []))
+        #expect(try Self.encoded(folder) == #"{"hasIndex":false,"inherited":[],"memories":[],"path":"/m","projectID":"HEPH"}"#)
+    }
+
     @Test("Patch: absent keeps, null clears, a value replaces")
     func patch() throws {
         let params = SettingsUpdate.Params(claudePath: .clear, mcpPort: 47830)
@@ -89,6 +96,7 @@ struct EngineJSONTests {
         "### PlanUsageState": roundTrip([PlanUsageState].self),
         "### Skill": roundTrip(Skill.self),
         "### MemoryFolder": roundTrip(MemoryFolder.self),
+        "### InheritedMemoryFolder": roundTrip(InheritedMemoryFolder.self),
         "### Memory": roundTrip(Memory.self),
         "### MemoryIndex": roundTrip(MemoryIndex.self),
         "### EngineEventEnvelope": roundTrip(EngineEventEnvelope.self),

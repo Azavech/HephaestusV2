@@ -209,6 +209,80 @@ enum Prompts {
         return lines[(marker + 1)...].joined(separator: "\n")
     }
 
+    /// An inherited memory folder named by `{{parentMemories}}`: the ancestor that gave it, the
+    /// folder's absolute path and the text of its `MEMORY.md` (nil when it has none, or one that
+    /// cannot be read).
+    struct ParentMemoryFolder: Sendable, Equatable {
+        var projectName: String
+        var projectID: ProjectID
+        var path: String
+        var index: String?
+    }
+
+    /// The paragraph that starts `{{parentMemories}}`.
+    static let parentMemoriesIntro = "This project is a sub project: besides your own memories, you have the memories that Claude "
+        + "saved for its parent projects, listed below nearest parent first. Read a memory file of these folders with your file "
+        + "tools when it is relevant, as you read your own memories. Never write in these folders: save every new memory in your "
+        + "own memory folder."
+    /// The line of a folder without usable `MEMORY.md`.
+    static let noMemoryIndex = "This folder has no MEMORY.md."
+    /// The CLI loads at most this many lines of its own `MEMORY.md` (Claude Code 2.1.309).
+    static let memoryIndexLineLimit = 200
+    /// …and at most this many UTF-16 code units of them.
+    static let memoryIndexLengthLimit = 25_000
+
+    /// `{{parentMemories}}` (docs/chats.md › Rendered blocks): empty without folders; otherwise a
+    /// blank line, the intro paragraph, then one part per folder, nearest parent first, each after
+    /// a blank line.
+    static func parentMemories(_ folders: [ParentMemoryFolder]) -> String {
+        guard !folders.isEmpty else { return "" }
+        let parts = folders.map { folder in
+            let header = "Memories of the project \(folder.projectName) (identifier \(folder.projectID)), in the folder \(folder.path):"
+            let lines = folder.index.map { memoryIndexLines($0, folder: folder.path) } ?? ""
+            return header + "\n" + (lines.isEmpty ? noMemoryIndex : lines)
+        }
+        return "\n\n" + ([parentMemoriesIntro] + parts).joined(separator: "\n\n")
+    }
+
+    /// The lines of a `MEMORY.md` in `{{parentMemories}}`: without byte order mark, line breaks
+    /// converted to LF, leading and trailing white space and line breaks removed, then limited as
+    /// the CLI limits its own `MEMORY.md`: the first 200 lines, then at most 25,000 UTF-16 code
+    /// units, cut at the last line break within that length, or at that length without one; a cut
+    /// text ends with a `[Truncated: …]` line. Empty when nothing is left.
+    static func memoryIndexLines(_ text: String, folder: String) -> String {
+        var text = ModelRules.normalizedLineBreaks(text)
+        if text.hasPrefix("\u{FEFF}") { text.removeFirst() }
+        text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var cut = false
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        if lines.count > memoryIndexLineLimit {
+            text = lines.prefix(memoryIndexLineLimit).joined(separator: "\n")
+            cut = true
+        }
+        if text.utf16.count > memoryIndexLengthLimit {
+            // As the CLI's `lastIndexOf("\n", 25000)`: a line break at an offset of at most 25,000
+            // units, other than at the start, ends the kept text; without one, the characters that
+            // fit in 25,000 units are kept.
+            var units = 0
+            var fitting = text.startIndex
+            var lineBreak: String.Index?
+            var index = text.startIndex
+            while index < text.endIndex {
+                let character = text[index]
+                if character == "\n", units > 0, units <= memoryIndexLengthLimit {
+                    lineBreak = index
+                }
+                units += character.utf16.count
+                if units > memoryIndexLengthLimit { break }
+                index = text.index(after: index)
+                fitting = index
+            }
+            text = String(text[..<(lineBreak ?? fitting)])
+            cut = true
+        }
+        return cut ? text + "\n[Truncated: read \(folder)/MEMORY.md for the rest.]" : text
+    }
+
     /// The value of `--append-system-prompt`: the rendered common prompt, a blank line, and the
     /// rendered prompt of the chat's kind; for a CI chat, the rendered ci prompt alone, without
     /// the common prompt (docs/chats.md › Composition and rendering).

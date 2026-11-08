@@ -1,5 +1,6 @@
 // OWNER: ui-memories — the memory form and the MEMORY.md text of the Memories section, kept per
-// window and project (docs/memories.md › Memory editor, › MEMORY.md editor, › Saving).
+// window and project, and the read-only inherited memories (docs/memories.md › Memory editor,
+// › MEMORY.md editor, › Saving).
 import Foundation
 import HephaestusCore
 import Observation
@@ -17,6 +18,9 @@ final class MemoryEditorState {
         case memory(file: String)
         /// `MEMORY.md`.
         case index
+        /// A memory of an inherited folder, read-only: the ancestor whose folder it is and the
+        /// memory's file name (docs/memories.md › Inherited memories).
+        case inherited(projectID: String, file: String)
     }
 
     private(set) var target: Target
@@ -62,12 +66,20 @@ final class MemoryEditorState {
         index.content = .text
     }
 
-    /// The selected row this editor shows: the memory's file name, or `MEMORY.md`.
+    /// The selected row this editor shows: the memory's file name, `MEMORY.md`, or
+    /// `<ancestor id>/<file name>` for an inherited memory.
     var selection: String {
         switch target {
         case .memory(let file): return file
         case .index: return MemoryActions.indexFileName
+        case .inherited(let ancestorID, let file): return MemoryActions.inheritedTag(projectID: ancestorID, file: file)
         }
+    }
+
+    /// An inherited memory shows read-only: it is changed in its ancestor's Memories section.
+    var isReadOnly: Bool {
+        if case .inherited = target { return true }
+        return false
     }
 
     /// Sets the window and workspace the editor saves through and reports to.
@@ -86,7 +98,7 @@ final class MemoryEditorState {
     /// The memory's saved name, or `MEMORY.md`: the name of the prompt.
     var displayName: String {
         switch target {
-        case .memory(let file): return hasLoaded ? form.savedName : MemoryActions.stem(of: file)
+        case .memory(let file), .inherited(_, let file): return hasLoaded ? form.savedName : MemoryActions.stem(of: file)
         case .index: return MemoryActions.indexFileName
         }
     }
@@ -101,13 +113,14 @@ final class MemoryEditorState {
         switch target {
         case .memory: return form.hasUnsavedChanges
         case .index: return index.text != index.diskText
+        case .inherited: return false
         }
     }
 
     /// The body or `MEMORY.md` editor while its text view has the keyboard focus: Navigate ▸ Go to
     /// Line… and Edit ▸ Toggle Comment act on it.
     var focusedEditor: EditorBuffer? {
-        guard bodyMode != .preview else { return nil }
+        guard bodyMode != .preview, !isReadOnly else { return nil }
         let buffer = target == .index ? index : form.body
         return buffer.hasEditorFocus ? buffer : nil
     }
@@ -148,6 +161,11 @@ final class MemoryEditorState {
                 let content = try await workspace.call(MemoriesReadIndex.self, .init(projectID: projectID))
                 guard generation == fetchGeneration, target == self.target, !isSaving else { return }
                 applyIndex(content.text)
+            case .inherited(let ancestorID, let file):
+                // Read in the ancestor's own folder, which is the inherited one.
+                let memory = try await workspace.call(MemoriesGet.self, .init(projectID: ancestorID, file: file))
+                guard generation == fetchGeneration, target == self.target, !isSaving else { return }
+                apply(memory)
             }
         } catch {
             guard generation == fetchGeneration, target == self.target, !isSaving else { return }
@@ -164,7 +182,8 @@ final class MemoryEditorState {
     private func apply(_ memory: Memory) {
         loadError = nil
         extraFrontmatter = memory.extraFrontmatter
-        if !hasLoaded || !form.hasUnsavedChanges {
+        // An inherited memory has no unsaved changes: it is always replaced.
+        if !hasLoaded || !hasUnsavedChanges {
             hasLoaded = true
             form.reset(to: memory)
             conflict = nil
@@ -234,6 +253,7 @@ final class MemoryEditorState {
         switch target {
         case .memory(let file): return form.isValid(folder: workspace?.memoryFolders[projectID], file: file)
         case .index: return true
+        case .inherited: return false
         }
     }
 
@@ -285,6 +305,8 @@ final class MemoryEditorState {
                 index.diskText = text
                 loadError = nil
                 conflict = nil
+            case .inherited:
+                return
             }
         } catch {
             window?.alert = .failure("Save", error)
@@ -512,5 +534,35 @@ enum MemoryGroups {
     static func matches(name: String, description: String, filter: String) -> Bool {
         filter.isEmpty || name.range(of: filter, options: .caseInsensitive) != nil
             || description.range(of: filter, options: .caseInsensitive) != nil
+    }
+
+    /// The read-only group of an inherited folder: its ancestor, its heading and its memories.
+    struct InheritedGroup: Equatable {
+        var projectID: String
+        var title: String
+        var memories: [MemorySummary]
+    }
+
+    /// One group per inherited folder, in the engine's order (nearest parent first), headed
+    /// `Inherited from <parent name>` with the ancestor's current name, or its identifier when it
+    /// is not known; the memories that match the filter, sorted by name, then by file name, without
+    /// type groups. A group without memories is left out (docs/memories.md › List).
+    static func inheritedGroups(of folders: [InheritedMemoryFolder], filter: String,
+                                projectName: (String) -> String?) -> [InheritedGroup] {
+        folders.compactMap { folder in
+            let memories = folder.memories.filter { matches(name: $0.name, description: $0.description, filter: filter) }
+                .sorted { $0.name != $1.name ? $0.name < $1.name : $0.file < $1.file }
+            guard !memories.isEmpty else { return nil }
+            return InheritedGroup(projectID: folder.projectID, title: "Inherited from \(projectName(folder.projectID) ?? folder.projectID)",
+                                  memories: memories)
+        }
+    }
+
+    /// `No Memories` replaces both columns when the project has no memory, no `MEMORY.md` and no
+    /// inherited memory, unless the list failed or the editor has unsaved changes
+    /// (docs/memories.md › Empty and error states).
+    static func showsEmptyState(_ folder: MemoryFolder, listError: String?, hasUnsavedChanges: Bool) -> Bool {
+        listError == nil && folder.memories.isEmpty && !folder.hasIndex && folder.inherited.allSatisfy { $0.memories.isEmpty }
+            && !hasUnsavedChanges
     }
 }

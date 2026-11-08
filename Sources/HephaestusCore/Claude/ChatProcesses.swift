@@ -111,10 +111,13 @@ extension Engine {
         }
         // An orchestrated ticket chat works in its worktree (docs/chats.md › Working directory).
         let workingDirectory = chatWorkingDirectory(meta, root: root)
-        let systemPrompt = chatSystemPrompt(meta: meta, project: project, root: root, workingDirectory: workingDirectory, items: items)
+        // The inherited memory folders, named in the prompt and readable (docs/memories.md › Inherited memories).
+        let parentMemories = parentMemoryFolders(of: meta.projectID, root: root, environment: context.environment)
+        let systemPrompt = chatSystemPrompt(meta: meta, project: project, root: root, workingDirectory: workingDirectory, items: items,
+                                            parentMemories: parentMemories)
         let argv = ClaudeCommandLine.chat(cliPath: context.path, chatID: chatID, sessionStarted: meta.sessionStarted, settings: meta.settings,
                                           mcpPort: port, mcpConfigPath: configURL.path, systemPrompt: systemPrompt,
-                                          pluginDirectory: pluginDirectory)
+                                          pluginDirectory: pluginDirectory, readFolders: readableFolders(parentMemories))
         let logFile = AppendFile(url: dataDirectory.claudeLogFile(chatID: chatID), emptyAbove: AppendFile.rotationSize)
         logFile.appendLine(ClaudeCommandLine.launchLogLine(argv: argv, date: Date()))
         // The hook token of the linked items hook (docs/chats.md › Environment).

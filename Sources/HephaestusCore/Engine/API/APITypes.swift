@@ -985,11 +985,48 @@ public struct MemoryFolder: Codable, Sendable, Hashable {
     public var hasIndex: Bool
     /// Every memory of the folder, sorted by name, then by file name.
     public var memories: [MemorySummary]
+    /// The folders the project inherits from its ancestors, nearest parent first
+    /// (docs/memories.md › Inherited memories).
+    public var inherited: [InheritedMemoryFolder]
 
-    public init(projectID: ProjectID, path: String, hasIndex: Bool, memories: [MemorySummary]) {
+    public init(projectID: ProjectID, path: String, hasIndex: Bool, memories: [MemorySummary],
+                inherited: [InheritedMemoryFolder] = []) {
         self.projectID = projectID
         self.path = path
         self.hasIndex = hasIndex
+        self.memories = memories
+        self.inherited = inherited
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case projectID, path, hasIndex, memories, inherited
+    }
+
+    /// An engine of an earlier version omits `inherited`: it reads as empty.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        projectID = try c.decode(ProjectID.self, forKey: .projectID)
+        path = try c.decode(String.self, forKey: .path)
+        hasIndex = try c.decode(Bool.self, forKey: .hasIndex)
+        memories = try c.decode([MemorySummary].self, forKey: .memories)
+        inherited = try c.decodeIfPresent([InheritedMemoryFolder].self, forKey: .inherited) ?? []
+    }
+}
+
+/// A memory folder that a project inherits from one of its ancestors
+/// (docs/engine-api.md › InheritedMemoryFolder).
+public struct InheritedMemoryFolder: Codable, Sendable, Hashable {
+    /// The nearest ancestor of the project whose memory folder it is.
+    public var projectID: ProjectID
+    /// Absolute path of the folder on the main device, without final `/`.
+    public var path: String
+    /// Every memory of the folder, sorted by name, then by file name; none when the folder does not
+    /// exist or cannot be read.
+    public var memories: [MemorySummary]
+
+    public init(projectID: ProjectID, path: String, memories: [MemorySummary]) {
+        self.projectID = projectID
+        self.path = path
         self.memories = memories
     }
 }

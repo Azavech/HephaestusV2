@@ -217,7 +217,8 @@ struct ProjectViewState {
     var docMode: DocMode = .preview
     var selectedWebTabID: String?
     var selectedSkillName: String?
-    /// Selected row of the Memories section: a memory's file name, or `MEMORY.md`.
+    /// Selected row of the Memories section: a memory's file name, `MEMORY.md`, or
+    /// `<ancestor id>/<file name>` for an inherited memory.
     var selectedMemoryFile: String?
 
     // Fields added by the section documents (docs/ui.md › WindowState, first rule).

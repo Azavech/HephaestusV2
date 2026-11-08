@@ -1,10 +1,12 @@
 // OWNER: ui-memories — the memory editor and the MEMORY.md editor: header, description, type,
-// other frontmatter, body and footer (docs/memories.md › Memory editor, › MEMORY.md editor).
+// other frontmatter, body and footer; an inherited memory shows read-only (docs/memories.md ›
+// Memory editor, › MEMORY.md editor).
 import AppKit
 import HephaestusCore
 import SwiftUI
 
-/// The editor of the selected memory (docs/memories.md › Memory editor).
+/// The editor of the selected memory (docs/memories.md › Memory editor); an inherited memory
+/// shows read-only: its fields disabled, without Revert and Save, its body in Preview.
 struct MemoryEditorView: View {
     let editor: MemoryEditorState
     @Bindable var form: MemoryForm
@@ -43,7 +45,7 @@ struct MemoryEditorView: View {
                 .padding(16)
             }
             Divider()
-            MemoryFooter(file: file, workspace: workspace, projectID: projectID)
+            MemoryFooter(target: editor.target, workspace: workspace, projectID: projectID)
         }
     }
 
@@ -56,16 +58,19 @@ struct MemoryEditorView: View {
                     .textFieldStyle(.roundedBorder)
                     .font(.system(.title3, design: .monospaced))
                     .accessibilityLabel("Name")
-                Button("Revert") {
-                    editor.revert()
+                    .disabled(editor.isReadOnly)
+                if !editor.isReadOnly {
+                    Button("Revert") {
+                        editor.revert()
+                    }
+                    .disabled(!form.hasUnsavedChanges || editor.isSaving)
+                    Button("Save") {
+                        Task { await editor.save() }
+                    }
+                    .disabled(!editor.canSave)
                 }
-                .disabled(!form.hasUnsavedChanges || editor.isSaving)
-                Button("Save") {
-                    Task { await editor.save() }
-                }
-                .disabled(!editor.canSave)
             }
-            if let message = form.nameMessage(folder: workspace.memoryFolders[projectID], file: file) {
+            if !editor.isReadOnly, let message = form.nameMessage(folder: workspace.memoryFolders[projectID], file: file) {
                 ValidationMessage(text: message)
             }
         }
@@ -77,11 +82,27 @@ struct MemoryEditorView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Description")
                 .font(.headline)
-            MultilineField(text: $form.description)
+            if editor.isReadOnly {
+                // An inherited memory: the description shows dimmed and cannot be edited.
+                ScrollView {
+                    Text(form.description)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 5)
+                }
+                .padding(.vertical, 4)
                 .frame(height: 66)
+                .background(RoundedRectangle(cornerRadius: 5).fill(Color(nsColor: .textBackgroundColor)))
+                .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
                 .accessibilityLabel("Description")
-            if let message = form.descriptionMessage {
-                ValidationMessage(text: message)
+            } else {
+                MultilineField(text: $form.description)
+                    .frame(height: 66)
+                    .accessibilityLabel("Description")
+                if let message = form.descriptionMessage {
+                    ValidationMessage(text: message)
+                }
             }
         }
     }
@@ -93,6 +114,7 @@ struct MemoryEditorView: View {
             Text("Type")
                 .font(.headline)
             MemoryTypePicker(selection: $form.type)
+                .disabled(editor.isReadOnly)
         }
     }
 
@@ -147,7 +169,7 @@ struct MemoryIndexEditorView: View {
                 .padding(16)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             Divider()
-            MemoryFooter(file: MemoryActions.indexFileName, workspace: workspace, projectID: projectID)
+            MemoryFooter(target: .index, workspace: workspace, projectID: projectID)
         }
     }
 }
@@ -170,16 +192,16 @@ struct MemoryTypePicker: View {
     }
 }
 
-/// The file's path, home folder written `~`; `Reveal in Finder` on This Mac only
-/// (docs/memories.md › Remote windows).
+/// The file's path, in the project's folder or in the inherited folder of its ancestor, home
+/// folder written `~`; `Reveal in Finder` on This Mac only (docs/memories.md › Remote windows).
 private struct MemoryFooter: View {
-    let file: String
+    let target: MemoryEditorState.Target
     let workspace: DeviceWorkspace
     let projectID: String
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(MemoryActions.displayPath(of: file, in: workspace, projectID: projectID))
+            Text(MemoryActions.displayPath(of: target, in: workspace, projectID: projectID))
                 .font(.system(.callout, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -188,7 +210,7 @@ private struct MemoryFooter: View {
             Spacer(minLength: 8)
             if workspace.isLocal {
                 Button("Reveal in Finder") {
-                    MemoryActions.reveal(file, in: workspace, projectID: projectID)
+                    MemoryActions.reveal(target, in: workspace, projectID: projectID)
                 }
                 .controlSize(.small)
             }
@@ -199,7 +221,8 @@ private struct MemoryFooter: View {
 }
 
 /// A Markdown editor with the modes Edit, Preview and Split and the shared Markdown renderer
-/// (docs/memories.md › Memory editor): the memory's body or `MEMORY.md`.
+/// (docs/memories.md › Memory editor): the memory's body or `MEMORY.md`. An inherited memory
+/// shows in Preview, its mode picker disabled, `memoryBodyMode` unchanged.
 private struct MemoryMarkdownEditor: View {
     let editor: MemoryEditorState
     let buffer: EditorBuffer
@@ -227,13 +250,14 @@ private struct MemoryMarkdownEditor: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 .fixedSize()
+                .disabled(editor.isReadOnly)
             }
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color(nsColor: .separatorColor)))
         }
         .task(id: buffer.text) {
-            guard editor.bodyMode == .split else {
+            guard mode == .split else {
                 splitPreviewText = buffer.text
                 return
             }
@@ -244,13 +268,20 @@ private struct MemoryMarkdownEditor: View {
         }
     }
 
+    /// The shown mode: Preview for an inherited memory, otherwise the editor's mode.
+    private var mode: DocMode {
+        editor.isReadOnly ? .preview : editor.bodyMode
+    }
+
     private var modeBinding: Binding<DocMode> {
-        Binding(get: { editor.bodyMode }, set: { editor.setBodyMode($0) })
+        Binding(get: { mode }, set: { newMode in
+            if !editor.isReadOnly { editor.setBodyMode(newMode) }
+        })
     }
 
     @ViewBuilder
     private var content: some View {
-        switch editor.bodyMode {
+        switch mode {
         case .edit:
             textEditor
         case .preview:

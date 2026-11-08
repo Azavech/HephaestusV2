@@ -1,4 +1,5 @@
-// OWNER: ui-memories — the Memories section: list and editor (docs/memories.md › Memories section).
+// OWNER: ui-memories — the Memories section: list and editor, with the read-only groups of the
+// inherited folders (docs/memories.md › Memories section).
 import HephaestusCore
 import SwiftUI
 
@@ -69,10 +70,10 @@ struct MemoriesSectionView: View {
         }
     }
 
-    /// `No Memories`: the folder has no memory and no `MEMORY.md`; an editor with unsaved changes
-    /// stays shown, with its banner.
+    /// `No Memories`: the folder has no memory and no `MEMORY.md`, and no inherited folder lists a
+    /// memory; an editor with unsaved changes stays shown, with its banner.
     private func showsEmptyState(_ folder: MemoryFolder) -> Bool {
-        listError == nil && folder.memories.isEmpty && !folder.hasIndex && viewState?.memoryEditor?.hasUnsavedChanges != true
+        MemoryGroups.showsEmptyState(folder, listError: listError, hasUnsavedChanges: viewState?.memoryEditor?.hasUnsavedChanges == true)
     }
 
     // MARK: Editor column
@@ -81,7 +82,7 @@ struct MemoriesSectionView: View {
     private var editorColumn: some View {
         if let file = selectedFile {
             if let editor = viewState?.memoryEditor, editor.selection == file {
-                if editor.isMissing {
+                if editor.isMissing || MemoryActions.isNoLongerInherited(editor.target, in: folder) {
                     if editor.target == .index {
                         NotFoundView(kind: "File", id: MemoryActions.indexFileName)
                     } else {
@@ -91,7 +92,7 @@ struct MemoriesSectionView: View {
                     }
                 } else if editor.hasLoaded {
                     switch editor.target {
-                    case .memory:
+                    case .memory, .inherited:
                         MemoryEditorView(editor: editor, form: editor.form, window: window, workspace: workspace, projectID: projectID)
                     case .index:
                         MemoryIndexEditorView(editor: editor, workspace: workspace, projectID: projectID)
@@ -249,8 +250,8 @@ private struct MemoryLoadFailedView: View {
 
 // MARK: - List
 
-/// The list: a filter field, the `MEMORY.md` row, the memories under their group headings and
-/// the bottom bar (docs/memories.md › List).
+/// The list: a filter field, the `MEMORY.md` row, the memories under their group headings, the
+/// read-only groups of the inherited folders and the bottom bar (docs/memories.md › List).
 private struct MemoryList: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -270,9 +271,10 @@ private struct MemoryList: View {
         workspace.memoryFolders[projectID]
     }
 
-    /// The selected row when it is a memory, not `MEMORY.md`.
+    /// The selected row when it is a memory of the project's own folder: not `MEMORY.md` nor an
+    /// inherited memory, which cannot be moved to the Trash from here.
     private var selectedMemoryFile: String? {
-        selectedFile.flatMap { $0 == MemoryActions.indexFileName ? nil : $0 }
+        MemoryActions.ownMemoryFile(of: selectedFile)
     }
 
     var body: some View {
@@ -302,8 +304,9 @@ private struct MemoryList: View {
             let groups = MemoryGroups.groups(of: folder.memories.filter {
                 MemoryGroups.matches(name: $0.name, description: $0.description, filter: filter)
             })
+            let inherited = MemoryGroups.inheritedGroups(of: folder.inherited, filter: filter) { workspace.project($0)?.name }
             List(selection: selection) {
-                if !showsIndex, groups.isEmpty, !filter.isEmpty {
+                if !showsIndex, groups.isEmpty, inherited.isEmpty, !filter.isEmpty {
                     Text("No memories match “\(filter)”")
                         .foregroundStyle(.secondary)
                         .selectionDisabled()
@@ -322,10 +325,19 @@ private struct MemoryList: View {
                         }
                     }
                 }
+                // Keyed by ancestor: two ancestors may share a name.
+                ForEach(inherited, id: \.projectID) { group in
+                    Section(group.title) {
+                        ForEach(group.memories, id: \.file) { memory in
+                            MemoryRow(memory: memory)
+                                .tag(MemoryActions.inheritedTag(projectID: group.projectID, file: memory.file))
+                        }
+                    }
+                }
             }
             .listStyle(.inset)
             .onKeyPress(keys: [.delete]) { press in
-                // ⌫ or ⌘⌫ with a memory row selected (docs/memories.md › Keyboard).
+                // ⌫ or ⌘⌫ with a row of the project's own memories selected (docs/memories.md › Keyboard).
                 guard press.modifiers.isEmpty || press.modifiers == .command, let file = selectedMemoryFile else {
                     return .ignored
                 }
@@ -349,8 +361,8 @@ private struct MemoryList: View {
         })
     }
 
-    /// `+` (New Memory…) and `−` (Move to Trash…, disabled without a selected memory and while
-    /// `MEMORY.md` is selected).
+    /// `+` (New Memory…) and `−` (Move to Trash…, disabled without a selected memory, while
+    /// `MEMORY.md` is selected and while an inherited memory is selected).
     private var bottomBar: some View {
         HStack(spacing: 2) {
             Button {

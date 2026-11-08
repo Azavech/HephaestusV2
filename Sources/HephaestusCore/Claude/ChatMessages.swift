@@ -179,14 +179,16 @@ extension Engine {
     // MARK: System prompt
 
     /// The value of `--append-system-prompt` for a launch (docs/chats.md › Composition and
-    /// rendering): rendered at every launch with the current project, ticket and bundle data.
+    /// rendering): rendered at every launch with the current project, ticket and bundle data, and
+    /// the inherited memory folders of the project.
     func chatSystemPrompt(meta: ChatMeta, project: Project, root: URL, workingDirectory: ChatWorkingDirectory,
-                          items: [ChatItem]) -> String {
+                          items: [ChatItem], parentMemories: [Prompts.ParentMemoryFolder] = []) -> String {
         var values: [String: String] = [
             "projectName": project.name,
             "projectID": project.id,
             "projectRoot": root.path,
             "workingDirectory": workingDirectory.promptSentence,
+            "parentMemories": Prompts.parentMemories(parentMemories),
             "deviceName": deviceInfo.name,
             "docsPath": project.docsPath,
             "projectType": project.type.label,

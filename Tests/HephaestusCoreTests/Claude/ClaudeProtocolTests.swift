@@ -111,6 +111,31 @@ struct ClaudeProtocolTests {
         }
     }
 
+    @Test("Row 18 holds a Read rule per inherited memory folder, before the hooks; a path with a pattern character or a final white space gets none")
+    func readRules() throws {
+        let folder = "/Users/example/.claude/projects/-Users-example-Developer-Suite/memory"
+        let text = ClaudeCommandLine.chatSettings(ultracode: true, mcpPort: 47820,
+                                                  readFolders: [folder, "/Users/example/Library/Application Support/Claude (work)", "/tmp/a*b",
+                                                                "/tmp/a\\b", "/tmp/new\nline", "/tmp/space "])
+        #expect(text.hasPrefix(#"{"ultracode":true,"permissions":{"allow":["Read(//Users/example/.claude/projects/-Users-example-Developer-Suite/memory/**)","Read(//Users/example/Library/Application Support/Claude (work)/**)"]},"hooks":{"#))
+        let value = try JSONDecoder().decode(JSONValue.self, from: Data(text.utf8))
+        #expect(value.objectValue?["permissions"]?.objectValue?["allow"]?.arrayValue?.count == 2)
+        #expect(value.objectValue?["hooks"]?.objectValue?["PreToolUse"] != nil)
+        // No rule at all leaves the key out.
+        #expect(ClaudeCommandLine.chatSettings(ultracode: false, mcpPort: 47820, readFolders: ["/tmp/[x]"])
+            == ClaudeCommandLine.chatSettings(ultracode: false, mcpPort: 47820))
+        for path in ["/tmp/a?b", "/tmp/a[b", "/tmp/a\u{7F}b", "/tmp/a\u{85}b", "/tmp/tab\t", "/tmp/end ", "/tmp/nbsp\u{A0}",
+                     "/tmp/bom\u{FEFF}", "relative"] {
+            #expect(ClaudeCommandLine.readRule(path) == nil, "\(path)")
+        }
+        for path in ["/tmp/é ü", "/tmp/a]b", "/tmp/{a,b}", "/tmp/(x)", "/tmp/a|b+c^d$e"] {
+            #expect(ClaudeCommandLine.readRule(path) == "Read(/\(path)/**)", "\(path)")
+        }
+        let argv = ClaudeCommandLine.chat(cliPath: "/fake/claude", chatID: Self.chatID, sessionStarted: false, settings: ChatSettings(),
+                                          mcpPort: 47820, mcpConfigPath: "/m.json", systemPrompt: "P", pluginDirectory: nil, readFolders: [folder])
+        #expect(argv.last == ClaudeCommandLine.chatSettings(ultracode: false, mcpPort: 47820, readFolders: [folder]))
+    }
+
     @Test("close_chat is not pre-approved by --allowedTools: the close chat hook approves a call that names no other chat")
     func closeChatPermission() throws {
         let tools = ClaudeCommandLine.preApprovedTools.split(separator: ",").map(String.init)

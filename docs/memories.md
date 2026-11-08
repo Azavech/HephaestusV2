@@ -1,6 +1,6 @@
 # Memories
 
-The Claude CLI saves what it learns about the user and about a project as memories: Markdown files in a memory folder of the CLI's configuration folder, one folder per repository, listed in an index file, `MEMORY.md`, that the CLI reads at the start of the project's sessions. The Memories section of the sidebar shows the memories of the window's active project. The user reads, edits, creates, renames and deletes them there, and the engine keeps `MEMORY.md` and the `[[name]]` links between memories in step. Claude keeps writing memories with its own file tools: no MCP tool reads or writes them. The engine watches the folder, so the section follows the changes that chats and other apps make, on This Mac and in remote windows.
+The Claude CLI saves what it learns about the user and about a project as memories: Markdown files in a memory folder of the CLI's configuration folder, one folder per repository, listed in an index file, `MEMORY.md`, that the CLI reads at the start of the project's sessions. The Memories section of the sidebar shows the memories of the window's active project. The user reads, edits, creates, renames and deletes them there, and the engine keeps `MEMORY.md` and the `[[name]]` links between memories in step. A sub project also inherits the memories of its parent projects that are in other memory folders: its chats receive them and its Memories section lists them read-only. Claude keeps writing memories with its own file tools: no MCP tool reads or writes them. The engine watches the folders, so the section follows the changes that chats and other apps make, on This Mac and in remote windows.
 
 ## Section
 
@@ -11,7 +11,7 @@ The Claude CLI saves what it learns about the user and about a project as memori
 | SF Symbol   | `brain`                                                                                          |
 | Shortcut    | ⌘9 ([Menus and keyboard shortcuts](ui.md#menus-and-keyboard-shortcuts))                          |
 | Sidebar row | in the Project category, after Skills and before Costs, without badge ([Sidebar](ui.md#sidebar)) |
-| Shows       | the memories of the window's active project only                                                 |
+| Shows       | the memories of the window's active project, and read-only those it inherits                     |
 
 ## Memory folder
 
@@ -55,6 +55,38 @@ The engine computes the memory folder of a project as the Claude CLI does for a 
 7. **Folder.** The `autoMemoryDirectory` folder, otherwise `<config folder>/projects/<folder name>/memory`.
 
 The CLI has other variables, for remote and test sessions, that move or turn off its memory; the engine does not follow them. Default chosen at design time.
+
+## Inherited memories
+
+A sub project inherits the memories of every ancestor project whose memory folder differs from its own: its chats receive them besides its own memories, and its Memories section lists them read-only. A sub project in the same repository as its parent shares the parent's folder ([Memory folder](#memory-folder)) and inherits nothing from it. No setting turns inheritance off: the `Use parent settings` checkbox of Project Settings does not affect memories ([Sub projects](projects.md#sub-projects)).
+
+The engine computes the inherited folders of a project in these steps:
+
+1. **Ancestors.** The project's ancestors, from its parent up to its top-level project, nearest parent first ([Registry and project tree](projects.md#registry-and-project-tree)).
+2. **Folders.** The memory folder of each ancestor, resolved as the project's own, with the ancestor's root and the same environment ([Resolution](#resolution)).
+3. **Kept folders.** A folder equal to the project's own folder, or to a folder already kept, is skipped. Every other folder is kept, in this order, with the ancestor that gave it: the nearest of the ancestors that have this folder.
+
+A top-level project inherits no folder. Naming a folder that several ancestors share after the nearest of them is Default chosen at design time.
+
+Examples, with `CLAUDE_CONFIG_DIR` unset and no `autoMemoryDirectory`, under the project `Suite`, whose root `/Users/example/Developer/Suite` is the root of a git repository:
+
+| Sub project                                                                        | Inherited folders                                                                                                  |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `/Users/example/Developer/Suite/site`, in the repository of `Suite`                | none: its folder is the one of `Suite`                                                                             |
+| `/Users/example/Developer/Suite/app`, the root of its own git repository           | `~/.claude/projects/-Users-example-Developer-Suite/memory`, from `Suite`                                           |
+| `/Users/example/Developer/Suite/app/web`, a sub project of `app` in its repository | `~/.claude/projects/-Users-example-Developer-Suite/memory`, from `Suite`; none from `app`, whose folder is its own |
+
+What uses the inherited folders:
+
+| Place                                            | Use                                                                                                                                                                                                                                                                  |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| System prompt of each chat of the project        | the block `{{parentMemories}}` names every inherited folder that exists, with the name of its ancestor and the lines of its `MEMORY.md`, nearest parent first ([Rendered blocks](chats.md#rendered-blocks))                                                          |
+| Command line of each chat process of the project | `Read` permission rules for the folders of that block, so that Claude reads an inherited memory with its file tools as it reads its own, without prompt and without write access, when the CLI accepts their paths in a rule ([Command line](chats.md#command-line)) |
+| `memories.list` and `memories.changed`           | `inherited`: each inherited folder with its memories ([MemoryFolder](engine-api.md#memoryfolder))                                                                                                                                                                    |
+| Memories section of the project                  | one read-only group per inherited folder, after the project's own groups ([List](#list))                                                                                                                                                                             |
+
+- A chat computes the inherited folders when its process launches, as it renders its system prompt, so a resumed chat gets the current memories of its ancestors.
+- A memory that a chat of the sub project saves goes to the sub project's own folder, where the CLI writes ([Memory folder](#memory-folder)): the prompt tells Claude never to write in the inherited folders, and the permission rule grants reading only. An inherited memory is changed in the Memories section of its ancestor.
 
 ## Memory files
 
@@ -152,28 +184,32 @@ Parameters, results and errors are in [Engine API](engine-api.md#memories). All 
 | `memories.readIndex`  | the text of `MEMORY.md`                                                                           | none               |
 | `memories.writeIndex` | replaces the text of `MEMORY.md`, creating the folder when missing                                | `memories.changed` |
 
-- Each call resolves the project's memory folder again ([Resolution](#resolution)).
-- `memories.changed` carries the complete `memories.list` result of one project ([MemoryFolder](engine-api.md#memoryfolder)). A mutation emits it, when it completes, for the calling project and for every other loaded project whose memory folder is the same, which the engine watches ([Live updates](#live-updates)).
+- Each call resolves the project's memory folder again ([Resolution](#resolution)); `memories.list` also computes its inherited folders again and returns them, nearest parent first, each with its memories sorted by name, then by file name ([Inherited memories](#inherited-memories)). An inherited folder that does not exist or cannot be read has no memories; one that cannot be read is logged in `engine.log`. Default chosen at design time.
+- The other methods act on the project's own folder only. The section reads an inherited memory with `memories.get` and the `projectID` of the ancestor that gave its folder, whose own folder it is.
+- `memories.changed` carries the complete `memories.list` result of one project ([MemoryFolder](engine-api.md#memoryfolder)). A mutation emits it, when it completes, for the calling project, for every other loaded project whose memory folder is the same, which the engine watches, and for every watched project that inherits the folder ([Live updates](#live-updates)).
 - In the engine, `MemoryStore` (`Sources/HephaestusCore/Memories/`) reads and writes memory folders and runs their watcher, and the protocol `MemoryFolderResolving`, implemented by `ClaudeMemoryFolderResolver`, gives the memory folder of a project root, so that tests use a temporary folder in place of `~/.claude` ([Engine configuration](architecture.md#engine-configuration)). Default chosen at design time.
 
 ## Live updates
 
-- The engine watches the memory folder of every project whose memories a client listed or changed with a `memories.*` call since the engine started, recursively, with FSEvents, also while the folder does not exist yet. 300 ms after the last change it sees in a folder, the engine emits `memories.changed`, with origin `system`, for every watched project of that folder: changes made by chats, by other apps and by the engine itself, so one change can produce two events. Default chosen at design time.
-- A watched project whose folder changes at a later `memories.*` call, for example after `autoMemoryDirectory` changed, is watched at its new folder. A project that is removed or unloaded is no longer watched.
+- The engine watches the memory folder of every project whose memories a client listed or changed with a `memories.*` call since the engine started, and the folders that project inherits ([Inherited memories](#inherited-memories)), recursively, with FSEvents, also while a folder does not exist yet. 300 ms after the last change it sees in a folder, the engine emits `memories.changed`, with origin `system`, for every watched project of that folder and every watched project that inherits it: changes made by chats, by other apps and by the engine itself, so one change can produce two events. Default chosen at design time.
+- A watched project whose folder changes at a later `memories.*` call, for example after `autoMemoryDirectory` changed, is watched at its new folder; its inherited folders are computed again at each of its `memories.*` calls, and the folders they no longer include are no longer watched for it. A project that is removed or unloaded is no longer watched.
+- When `projects.open` makes loaded top-level projects sub projects of the opened project ([Opening an existing project](projects.md#opening-an-existing-project)), the engine computes again the inherited folders of the watched projects among them and their descendants, and emits `memories.changed`, with the call's origin, for each one whose inherited folders changed, after `projects.changed`. Other changes of the project tree give no project new ancestors. Default chosen at design time.
+- The `memories.changed` of a project reads its folders when it is emitted. A failure to read the project's own folder emits nothing and is logged; an inherited folder that cannot be read has no memories ([Engine API](#engine-api)).
 - The Memories section loads its list with `memories.list` as a seeding call, when it appears and after every reconnection, under the replay rule ([Seeding calls and the replay rule](remote.md#seeding-calls-and-the-replay-rule)): the `memories.changed` events of the project that arrive while the call is in flight are applied after its result.
 - The list is the project's entry of `DeviceWorkspace.memoryFolders` ([DeviceWorkspace](ui.md#deviceworkspace)), shared by the windows that show the device. On `memories.changed` for the project, the workspace replaces it with the event's data; the section then fetches the shown memory again with `memories.get`, or the text of `MEMORY.md` with `memories.readIndex`, as in [Saving](#saving).
 
 ## Memories section
 
-The Memories section of the active project has two columns: the list and the editor of the selected row (`selectedMemoryFile`: a memory's file name, or `MEMORY.md`).
+The Memories section of the active project has two columns: the list and the editor of the selected row (`selectedMemoryFile`: a memory's file name, `MEMORY.md`, or `<ancestor id>/<file name>` for an inherited memory, `<ancestor id>` being the `projectID` of its [InheritedMemoryFolder](engine-api.md#inheritedmemoryfolder); a file name holds no `/`). The form of an inherited row's selection is Default chosen at design time.
 
 ### List
 
-- A filter field at the top, placeholder `Filter`, keeps the rows whose name or description contains its text, compared case-insensitively; the `MEMORY.md` row is a row named `MEMORY.md` without description. Default chosen at design time.
+- A filter field at the top, placeholder `Filter`, keeps the rows whose name or description contains its text, compared case-insensitively, inherited rows included; the `MEMORY.md` row is a row named `MEMORY.md` without description. Default chosen at design time.
 - The first row is `MEMORY.md`, when the file exists.
 - The memories follow under the group headings `User`, `Feedback`, `Project`, `Reference` and `Other`, in this order; `Other` holds the memories whose type is missing or not one of the four. A group without memories is hidden.
+- After them, one read-only group per inherited folder, nearest parent first ([Inherited memories](#inherited-memories)), with the heading `Inherited from <parent name>`, `<parent name>` being the current name of the ancestor whose folder it is, or its identifier while the window does not know its name. It lists the folder's memories, without type groups and without `MEMORY.md` row; a group without memories is hidden. The identifier in the heading and hiding an inherited group without memories are Default chosen at design time.
 - Rows are sorted by name in each group, then by file name. Each row shows the name and, under it, the description on one truncated line.
-- The bottom bar has `+` (New Memory…) and `−` (Move to Trash…, disabled without a selected memory and while `MEMORY.md` is selected).
+- The bottom bar has `+` (New Memory…) and `−` (Move to Trash…, disabled without a selected memory, while `MEMORY.md` is selected and while an inherited memory is selected).
 
 ### Memory editor
 
@@ -190,6 +226,7 @@ The Memories section of the active project has two columns: the list and the edi
 - Preview renders the body natively with `MarkdownBlockRenderer` and the options of the Skills editor: links in the preview do nothing and project images show as blocked ([Editor](skills.md#editor)). Default chosen at design time.
 - Saving without choosing a type keeps the file's `metadata.type`.
 - The segmented picker is Default chosen at design time.
+- An inherited memory, read with `memories.get` and the `projectID` of its ancestor, shows read-only: the Name field and the Type picker are disabled, the description shows dimmed in its field without editing, the header has no `Revert` and `Save`, and ⌘S does nothing. Its body shows in Preview, with the mode picker disabled and `memoryBodyMode` unchanged; its footer is the path of the file in the inherited folder. It is changed in the Memories section of its ancestor. Showing the body in Preview only is Default chosen at design time.
 
 ### MEMORY.md editor
 
@@ -202,8 +239,8 @@ The memory editor and the MEMORY.md editor follow the Saving rules of the Skills
 - The memory form (name, description, type, body) has unsaved changes when it differs from the last loaded memory; the MEMORY.md editor when its text differs from the last loaded text. Save (⌘S) calls `memories.update` with the changed fields only, `name` when the name changed, `type` when the user chose a type other than the file's; for `MEMORY.md`, `memories.writeIndex`. After a save, each field the user did not change while it ran shows the saved file's value, so that a field changed elsewhere does not become an unsaved change. Revert discards the changes; while the banner of a version saved elsewhere shows, Revert takes that version, as Reload does. Default chosen at design time (the fields after a save, and Revert with the banner).
 - A saved new name selects the renamed file (`<new name>.md`).
 - Selecting another row, leaving the section or closing the window while the editor has unsaved changes asks `Do you want to save the changes to “<name>”?` with `Save`, `Don't Save` and `Cancel`; `<name>` is the memory's saved name, or `MEMORY.md`. Save saves and goes on, a failed save cancels; Don't Save discards the changes; Cancel keeps the editor.
-- On `memories.changed`, the editor fetches the shown memory with `memories.get`, or `MEMORY.md` with `memories.readIndex`. Content without unsaved changes is replaced silently. Content with unsaved changes whose saved version changed shows the banner `This memory was changed elsewhere.`, or `MEMORY.md was changed elsewhere.` for `MEMORY.md`, with `Reload` and `Keep Mine`; Keep Mine hides the banner and the next save overwrites. The banner of `MEMORY.md` is Default chosen at design time.
-- When the shown file is deleted or renamed elsewhere while the editor has unsaved changes, the editor stays with the banner: Reload discards the changes, Keep Mine keeps them and the next save reports the engine's error. Without unsaved changes, the editor shows `Memory <name> was not found.`, `<name>` being the memory's last known name, or its file name without `.md` when it never loaded; for `MEMORY.md`, `File MEMORY.md was not found.` When the folder has no memory and no `MEMORY.md` left, the section shows its empty state instead ([Empty and error states](#empty-and-error-states)). Default chosen at design time.
+- On `memories.changed`, the editor fetches the shown memory with `memories.get`, or `MEMORY.md` with `memories.readIndex`. Content without unsaved changes is replaced silently, which is always the case for an inherited memory. Content with unsaved changes whose saved version changed shows the banner `This memory was changed elsewhere.`, or `MEMORY.md was changed elsewhere.` for `MEMORY.md`, with `Reload` and `Keep Mine`; Keep Mine hides the banner and the next save overwrites. The banner of `MEMORY.md` is Default chosen at design time.
+- When the shown file is deleted or renamed elsewhere while the editor has unsaved changes, the editor stays with the banner: Reload discards the changes, Keep Mine keeps them and the next save reports the engine's error. Without unsaved changes, the editor shows `Memory <name> was not found.`, `<name>` being the memory's last known name, or its file name without `.md` when it never loaded; for `MEMORY.md`, `File MEMORY.md was not found.` An inherited memory whose folder the project no longer inherits shows `Memory <name> was not found.` too. When the folder has no memory and no `MEMORY.md` left and no inherited memory, the section shows its empty state instead ([Empty and error states](#empty-and-error-states)). Default chosen at design time.
 - An error returned by the engine on save appears in an alert with its message.
 
 Field validation, shown under the field while Save and Create stay disabled:
@@ -230,14 +267,14 @@ In the memory editor, a field is checked when its value differs from the saved o
 
 ### Move to Trash
 
-`−`, ⌫ or ⌘⌫ with a memory row selected show the alert `Move “<name>” to the Trash?` with the buttons `Move to Trash` (destructive, default) and `Cancel` (Escape), as in [Move to Trash](skills.md#move-to-trash); confirming calls `memories.delete` and clears the selection; clearing it is Default chosen at design time. `MEMORY.md` cannot be moved to the Trash from the section.
+`−`, ⌫ or ⌘⌫ with a memory row of the project's own folder selected show the alert `Move “<name>” to the Trash?` with the buttons `Move to Trash` (destructive, default) and `Cancel` (Escape), as in [Move to Trash](skills.md#move-to-trash); confirming calls `memories.delete` and clears the selection; clearing it is Default chosen at design time. `MEMORY.md` cannot be moved to the Trash from the section.
 
 ### Keyboard
 
 | Key                                                                      | Action                                     |
 | ------------------------------------------------------------------------ | ------------------------------------------ |
 | ⌘S                                                                       | save the memory form or `MEMORY.md`        |
-| ⌫ or ⌘⌫ with a memory row selected                                       | Move to Trash confirmation for that memory |
+| ⌫ or ⌘⌫ with a memory row of the project's own folder selected           | Move to Trash confirmation for that memory |
 | Return in the Name field of the New Memory sheet, ⌘Return anywhere in it | Create                                     |
 | Escape in a sheet                                                        | Cancel                                     |
 
@@ -245,7 +282,7 @@ In the memory editor, a field is checked when its value differs from the saved o
 
 | State                                        | Content                                                                                                                                                                                                                                                                                                          |
 | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| No memory and no `MEMORY.md`, or no folder   | in place of both columns: the SF Symbol `brain`, the title `No Memories`, the text `Claude saves what it learns about you and this project in <memory folder path>.` and the button `New Memory…`; the path has its home folder written `~`. An editor with unsaved changes stays shown instead, with its banner |
+| No own or inherited memory, no `MEMORY.md`   | in place of both columns: the SF Symbol `brain`, the title `No Memories`, the text `Claude saves what it learns about you and this project in <memory folder path>.` and the button `New Memory…`; the path has its home folder written `~`. An editor with unsaved changes stays shown instead, with its banner |
 | No row selected                              | `Select a memory`                                                                                                                                                                                                                                                                                                |
 | Filter without match                         | `No memories match “<filter text>”`                                                                                                                                                                                                                                                                              |
 | `memories.list` fails                        | the error message in place of the list                                                                                                                                                                                                                                                                           |
@@ -255,10 +292,11 @@ The symbol of the empty state, its place in place of both columns and the editor
 
 ## Remote windows
 
-- A remote window shows and edits the memories of the main device through the same methods: the files are read and written on the main device, in the memory folder of the main device's CLI ([Remote devices](remote.md)).
+- A remote window shows and edits the memories of the main device through the same methods: the files are read and written on the main device, in the memory folder of the main device's CLI ([Remote devices](remote.md)). The inherited groups come from the engine too, with `memories.list`, and an inherited memory with `memories.get` and the `projectID` of its ancestor.
 - `Reveal in Finder` is hidden in remote windows.
-- `memories.list` gives the absolute path of the folder on the main device. On This Mac, the home folder is written `~`; in a remote window, a path under `/Users/<name>` is written with `~`, as in [Skills › Remote windows](skills.md#remote-windows).
+- `memories.list` gives the absolute paths of the folder and of the inherited folders on the main device. On This Mac, the home folder is written `~`; in a remote window, a path under `/Users/<name>` is written with `~`, as in [Skills › Remote windows](skills.md#remote-windows).
 
 ## Requirements covered
 
 - R160: The user can show, edit, create, rename and delete the memories Claude saves for a project, in a Memories section of the sidebar.
+- R167: A sub project's chats always receive the memories of its parent projects, which its Memories section lists read-only.
