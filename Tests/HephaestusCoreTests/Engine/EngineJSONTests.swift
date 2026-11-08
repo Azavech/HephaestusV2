@@ -126,6 +126,23 @@ struct EngineJSONTests {
         #expect(checked == Set(Self.decoders.keys))
     }
 
+    @Test("A ProjectDetail without environments, from an engine of an earlier version, has the project's own for a Go service")
+    func projectDetailOfAnEarlierEngine() throws {
+        let local = ProjectEnvironment(name: "local", url: "http://127.0.0.1")
+        for (type, expected) in [(ProjectType.goService, [local]), (ProjectType.none, [])] {
+            let project = Project(id: "API", name: "API", created: Date(timeIntervalSince1970: 1_793_448_000), type: type,
+                                  environments: [local])
+            var json = try #require(try EngineJSON.jsonValue(ProjectDetail(project: project, rootPath: "/Users/example/Api",
+                                                                           environments: [], inheritedEnvironments: [local])).objectValue)
+            #expect(json["environments"] == .array([]))
+            json["environments"] = nil
+            json["inheritedEnvironments"] = nil
+            let detail = try EngineJSON.decode(ProjectDetail.self, from: try EngineJSON.encode(JSONValue.object(json)))
+            #expect(detail.environments == expected, "\(type)")
+            #expect(detail.inheritedEnvironments.isEmpty)
+        }
+    }
+
     @Test("An envelope's payload decodes only as its own event")
     func envelopePayload() throws {
         let envelope = EngineEventEnvelope(name: TicketDeletedEvent.name, origin: .system,

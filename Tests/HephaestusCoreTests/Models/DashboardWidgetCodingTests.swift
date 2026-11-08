@@ -41,7 +41,7 @@ struct DashboardWidgetCodingTests {
         #expect(try DashboardWidget.normalized(defaults) == defaults)
     }
 
-    @Test("A stored list is written after environments, each widget with id, kind, title and the keys of its kind only")
+    @Test("A stored list is written after environmentOverrides, each widget with id, kind, title and the keys of its kind only")
     func storedList() throws {
         let widgets = [
             DashboardWidget(id: DashboardWidget.defaultList[0].id, kind: .project, fields: [.name, .folder]),
@@ -54,6 +54,7 @@ struct DashboardWidgetCodingTests {
         let yaml = try YAMLCoding.encode(project)
         #expect(yaml.contains("""
             environments: []
+            environmentOverrides: {}
             dashboardWidgets:
             - id: 00000000-0000-0000-0000-000000000001
               kind: project
@@ -88,7 +89,7 @@ struct DashboardWidgetCodingTests {
 
         let empty = Project(id: "WEB", name: "Website", created: Self.created, dashboardWidgets: [])
         let emptyYAML = try YAMLCoding.encode(empty)
-        #expect(emptyYAML.contains("environments: []\ndashboardWidgets: []\ndeletedChats: []\n"))
+        #expect(emptyYAML.contains("environments: []\nenvironmentOverrides: {}\ndashboardWidgets: []\ndeletedChats: []\n"))
         #expect(try YAMLCoding.decode(Project.self, from: emptyYAML).dashboardWidgetList.isEmpty)
     }
 

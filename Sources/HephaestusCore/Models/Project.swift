@@ -29,6 +29,9 @@ public struct Project: Codable, Sendable, Hashable {
     /// The environments of a Go service, in the order they were added (docs/projects.md ›
     /// Environments).
     public var environments: [ProjectEnvironment]
+    /// The changes of a sub project to the environments it inherits, keyed by environment name
+    /// (docs/projects.md › Inherited environments).
+    public var environmentOverrides: [String: EnvironmentOverride]
     /// The widgets of the project's Dashboard, in their order; nil when the project has no stored
     /// list, which shows `DashboardWidget.defaultList` (docs/dashboard.md › Widgets).
     public var dashboardWidgets: [DashboardWidget]?
@@ -42,7 +45,8 @@ public struct Project: Codable, Sendable, Hashable {
     public init(schema: Int = 1, id: ProjectID, name: String, created: Date, type: ProjectType = .none, color: String? = nil, icon: String? = nil,
                 nextTicketNumber: Int = 1, nextBundleNumber: Int = 1, docsPath: String = "docs", githubPage: String? = nil,
                 useParentSettings: Bool = true, subprojects: [String] = [], webTabs: [WebTab] = [], skills: [String] = [],
-                chatDefaults: ChatSettings? = nil, environments: [ProjectEnvironment] = [], dashboardWidgets: [DashboardWidget]? = nil,
+                chatDefaults: ChatSettings? = nil, environments: [ProjectEnvironment] = [],
+                environmentOverrides: [String: EnvironmentOverride] = [:], dashboardWidgets: [DashboardWidget]? = nil,
                 deletedChats: [DeletedChat] = [], commentAnswers: [CommentAnswerCost] = [], unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
         self.id = id
@@ -61,6 +65,7 @@ public struct Project: Codable, Sendable, Hashable {
         self.skills = skills
         self.chatDefaults = chatDefaults
         self.environments = environments
+        self.environmentOverrides = environmentOverrides
         self.dashboardWidgets = dashboardWidgets
         self.deletedChats = deletedChats
         self.commentAnswers = commentAnswers
@@ -71,7 +76,7 @@ public struct Project: Codable, Sendable, Hashable {
     static let knownKeys: Set<String> = [
         "schema", "id", "name", "created", "type", "color", "icon", "nextTicketNumber", "nextBundleNumber", "docsPath",
         "githubPage", "useParentSettings",
-        "subprojects", "webTabs", "skills", "chatDefaults", "environments", "dashboardWidgets", "deletedChats",
+        "subprojects", "webTabs", "skills", "chatDefaults", "environments", "environmentOverrides", "dashboardWidgets", "deletedChats",
         "commentAnswers",
     ]
 
@@ -108,6 +113,7 @@ public struct Project: Codable, Sendable, Hashable {
         try c.checkAll("skills", skills, Identifiers.isSkillName, "skill name")
         chatDefaults = try c.optional("chatDefaults")
         environments = try c.value("environments", default: [])
+        environmentOverrides = try c.value("environmentOverrides", default: [:])
         dashboardWidgets = try c.optional("dashboardWidgets")
         deletedChats = try c.value("deletedChats", default: [])
         commentAnswers = try c.value("commentAnswers", default: [])
@@ -142,6 +148,8 @@ public struct Project: Codable, Sendable, Hashable {
         try c.encode(skills, "skills")
         try c.encodeOptional(chatDefaults, "chatDefaults")
         try c.encode(environments, "environments")
+        // The names in Unicode code point order (docs/data-model.md › Project file).
+        try c.encode(EnvironmentOverride.SortedMap(environmentOverrides), "environmentOverrides")
         // Left out of the file when there is no stored list; `null` in the JSON form.
         if dashboardWidgets != nil || !c.isYAML {
             try c.encodeOptional(dashboardWidgets, "dashboardWidgets")
@@ -180,6 +188,7 @@ public struct Project: Codable, Sendable, Hashable {
         try ModelRules.noDuplicates(skills, field: "skills")
         try chatDefaults?.validate()
         _ = try ProjectEnvironment.normalized(environments)
+        _ = try EnvironmentOverride.normalized(environmentOverrides)
         _ = try DashboardWidget.normalized(dashboardWidgets ?? [])
         try ModelRules.noDuplicates(deletedChats.map(\.id), field: "deletedChats") { "Chat \($0.uuidString) is listed more than once." }
         for chat in deletedChats {
@@ -543,18 +552,20 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
 
     /// The write rules of the key `environments` (docs/data-model.md › Project environment): each
     /// environment the list adds or changes keeps the rules of the field table, in the list's order,
-    /// then has a name that no other environment of the list has, compared letter case included.
-    /// An environment equal to one of `stored` is written back as it is, also when a file edited by
-    /// hand made it break a rule (docs/data-model.md › Write rules). Returns the list with the names,
-    /// the URLs and the Kubernetes fields of the other environments trimmed.
-    public static func normalized(_ environments: [ProjectEnvironment], keeping stored: [ProjectEnvironment] = []) throws
-        -> [ProjectEnvironment] {
+    /// then has a name that no other environment of the list has, nor one of `inheritedNames`, the
+    /// environments the project inherits (docs/projects.md › Inherited environments), compared
+    /// letter case included. An environment equal to one of `stored` is written back as it is, also
+    /// when a file edited by hand made it break a rule (docs/data-model.md › Write rules). Returns
+    /// the list with the names, the URLs and the Kubernetes fields of the other environments trimmed.
+    public static func normalized(_ environments: [ProjectEnvironment], keeping stored: [ProjectEnvironment] = [],
+                                  inheritedNames: Set<String> = []) throws -> [ProjectEnvironment] {
         let kept = environments.map { stored.contains($0) }
         let list = try environments.enumerated().map { index, environment in
             kept[index] ? environment : try environment.normalized(field: "environments[\(index)]")
         }
         for (index, environment) in list.enumerated() where !kept[index] {
-            guard !list.indices.contains(where: { $0 != index && list[$0].name == environment.name }) else {
+            guard !inheritedNames.contains(environment.name),
+                  !list.indices.contains(where: { $0 != index && list[$0].name == environment.name }) else {
                 throw ValidationError(field: "environments", message: duplicateMessage(environment.name))
             }
         }
@@ -564,6 +575,118 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
     /// `An environment named “<name>” already exists.` (docs/projects.md › Environments).
     public static func duplicateMessage(_ name: String) -> String {
         "An environment named “\(name)” already exists."
+    }
+}
+
+/// One value of the key `environmentOverrides` of the project file, under the name of the
+/// environment it changes: the change a sub project makes to an environment it inherits from its
+/// parent (docs/data-model.md › Environment override, docs/projects.md › Inherited environments).
+/// A value replaces the parent's; nil keeps the parent's.
+public struct EnvironmentOverride: Codable, Sendable, Hashable {
+    public var url: String?
+    public var port: Int?
+    public var deployment: String?
+    /// `<name>` or `<namespace>/<name>`, as `ProjectEnvironment.argoCDApplication`.
+    public var argoCDApplication: String?
+    public var unknownKeys: [String: JSONValue]
+
+    public init(url: String? = nil, port: Int? = nil, deployment: String? = nil, argoCDApplication: String? = nil,
+                unknownKeys: [String: JSONValue] = [:]) {
+        self.url = url
+        self.port = port
+        self.deployment = deployment
+        self.argoCDApplication = argoCDApplication
+        self.unknownKeys = unknownKeys
+    }
+
+    static let knownKeys: Set<String> = ["url", "port", "deployment", "argoCDApplication"]
+
+    /// The three string keys are read trimmed, an empty value being null.
+    public init(from decoder: Decoder) throws {
+        let c = try ModelDecodingContainer(decoder)
+        url = ModelRules.trimmedOrNil(try c.optional("url", String.self))
+        port = try c.optional("port")
+        deployment = ModelRules.trimmedOrNil(try c.optional("deployment", String.self))
+        argoCDApplication = ModelRules.trimmedOrNil(try c.optional("argoCDApplication", String.self))
+        unknownKeys = try c.unknownKeys(known: Self.knownKeys)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = ModelEncodingContainer(encoder)
+        try c.encodeOptional(url, "url")
+        try c.encodeOptional(port, "port")
+        try c.encodeOptional(deployment, "deployment")
+        try c.encodeOptional(argoCDApplication, "argoCDApplication")
+        try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
+    }
+
+    /// True when the change replaces none of the parent's values.
+    public var isEmpty: Bool {
+        url == nil && port == nil && deployment == nil && argoCDApplication == nil
+    }
+
+    /// The parent's environment with the values this change sets; the other fields, its name
+    /// included, stay the parent's.
+    public func applied(to environment: ProjectEnvironment) -> ProjectEnvironment {
+        var result = environment
+        if let url {
+            result.url = url
+        }
+        if let port {
+            result.port = port
+        }
+        if let deployment {
+            result.deployment = deployment
+        }
+        if let argoCDApplication {
+            result.argoCDApplication = argoCDApplication
+        }
+        return result
+    }
+
+    /// The write rules of the field table; `field` names the change in the messages, for example
+    /// `environmentOverrides[staging]`. Returns the change with its URL, its deployment and its
+    /// Argo CD application trimmed, an empty one being nil.
+    public func normalized(field: String) throws -> EnvironmentOverride {
+        var copy = self
+        copy.url = try ModelRules.trimmedOrNil(url).map { try ModelRules.environmentURL($0, field: field) }
+        if let port {
+            copy.port = try ModelRules.environmentPort(port, field: field)
+        }
+        copy.deployment = try ModelRules.environmentLine(deployment, field: field, what: "a deployment")
+        copy.argoCDApplication = try ModelRules.environmentArgoCDApplication(argoCDApplication, field: field)
+        return copy
+    }
+
+    /// The write rules of the key `environmentOverrides` (docs/data-model.md › Environment
+    /// override): each change the map adds or changes keeps the rules of the field table, checked
+    /// in the order of the names; a change equal to the stored change of the same name is written
+    /// back as it is (docs/data-model.md › Write rules).
+    public static func normalized(_ overrides: [String: EnvironmentOverride], keeping stored: [String: EnvironmentOverride] = [:])
+        throws -> [String: EnvironmentOverride] {
+        var result: [String: EnvironmentOverride] = [:]
+        for name in overrides.keys.sorted(by: JSONValue.codePointOrder) {
+            let change = overrides[name]!
+            result[name] = stored[name] == change ? change : try change.normalized(field: "environmentOverrides[\(name)]")
+        }
+        return result
+    }
+
+    /// Encodes a map of changes with its names in Unicode code point order, so that a project file
+    /// written twice is the same (docs/data-model.md › Project file).
+    struct SortedMap: Encodable {
+        let overrides: [String: EnvironmentOverride]
+
+        init(_ overrides: [String: EnvironmentOverride]) {
+            self.overrides = overrides
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: AnyJSONKey.self)
+            for name in overrides.keys.sorted(by: JSONValue.codePointOrder) {
+                try container.encode(overrides[name]!, forKey: AnyJSONKey(name))
+            }
+        }
     }
 }
 

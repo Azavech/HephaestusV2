@@ -287,6 +287,33 @@ struct KubernetesMethodsTests {
         }
     }
 
+    @Test("A sub project's chat uses the environments it inherits, with its changes and the parent's other values")
+    func inheritedEnvironment() async throws {
+        try await withKubernetesEngine { bed, kubectl in
+            let root = bed.root.appendingPathComponent("worker").path
+            _ = try await bed.connection.call(ProjectsCreate.self, .init(rootPath: root, name: "Worker", identifier: "WRK", parentID: "DEMO",
+                                                                         type: .goService, createDirectory: true))
+            _ = try await bed.connection.call(ProjectsUpdate.self, .init(projectID: "WRK", environmentOverrides: [
+                "staging": EnvironmentOverride(deployment: "orders-worker", argoCDApplication: "orders-worker-staging"),
+            ]))
+            let chat = try await bed.connection.call(ChatsCreate.self, .init(projectID: "WRK", kind: .project))
+            try kubectl.answer(.restart, output: "deployment.apps/orders-worker restarted\n")
+            let restarted = try await bed.kubernetes(KubernetesRestart.self, .init(chatID: chat.id, environment: "staging"), as: chat.id)
+            #expect(restarted == KubectlOutput(output: "deployment.apps/orders-worker restarted"))
+            #expect(kubectl.calls() == [Self.stagingPrefix + ["rollout", "restart", "deployment/orders-worker"]])
+            #expect(kubectl.workingDirectory() == Engine.resolvedPath(URL(fileURLWithPath: root)))
+            // The parent's `local` has no deployment, and the sub project changed none.
+            #expect(await engineError {
+                try await bed.kubernetes(KubernetesRestart.self, .init(chatID: chat.id, environment: "local"), as: chat.id)
+            } == EngineError(.invalid, "Environment “local” has no deployment."))
+            // Without Use parent settings, the sub project has no such environment.
+            _ = try await bed.connection.call(ProjectsUpdate.self, .init(projectID: "WRK", useParentSettings: false))
+            #expect(await engineError {
+                try await bed.kubernetes(KubernetesRestart.self, .init(chatID: chat.id, environment: "staging"), as: chat.id)
+            } == EngineError(.invalid, "environment: WRK has no environment named “staging”."))
+        }
+    }
+
     @Test("argoCD.status reads the Application in its namespace: <namespace>/<name>, else argocd")
     func argoCDStatus() async throws {
         try await withKubernetesEngine { bed, kubectl in

@@ -155,15 +155,18 @@ struct ProjectEnvironmentsTests {
         #expect(model.environment == staging)
         #expect(model.requestInput(operation, contract: contract).baseURL == "https://staging.example.com")
 
-        // Renamed in Project Settings: the stored name is kept and the first environment shows.
+        // Renamed in Project Settings: the stored name is kept and the first environment shows. The
+        // engine's ProjectDetail gives the environments that apply with the project's own.
         var detail = try #require(workspace.details["API"])
         detail.project.environments[1].name = "stage"
+        detail.environments = detail.project.environments
         workspace.details["API"] = detail
         #expect(model.environment == local)
         #expect(model.stored?.environment == "staging")
 
         // Removed: no environment is left, Send is disabled.
         detail.project.environments = []
+        detail.environments = []
         workspace.details["API"] = detail
         #expect(model.environment == nil)
         #expect(!model.canSend)
@@ -180,6 +183,51 @@ struct ProjectEnvironmentsTests {
             #expect(!model.canSend, "\(type)")
             buffer.detach()
         }
+    }
+
+    @Test func inheritedNamesAreTakenByTheNameField() {
+        let inherited = [ProjectEnvironment(name: "staging", url: "https://staging.example.com")]
+        let own = [ProjectEnvironment(name: "local", url: "http://127.0.0.1")]
+        let names = ProjectRules.otherEnvironmentNames(own, inherited: inherited, editing: nil)
+        #expect(names == ["local", "staging"])
+        #expect(ProjectRules.environmentNameMessage(" staging ", otherNames: names) == "An environment named “staging” already exists.")
+        #expect(ProjectRules.environmentNameMessage("Staging", otherNames: names) == nil)
+        #expect(ProjectRules.otherEnvironmentNames(own, inherited: inherited, editing: own[0]) == ["staging"])
+    }
+
+    @Test func changeOfAnInheritedEnvironment() {
+        #expect(ProjectRules.inheritedEnvironmentURLMessage("") == nil)
+        #expect(ProjectRules.inheritedEnvironmentURLMessage("  ") == nil)
+        #expect(ProjectRules.inheritedEnvironmentURLMessage("localhost:8080") == "Enter an http or https URL.")
+        #expect(ProjectRules.inheritedEnvironmentURLMessage(" https://worker.example.com ") == nil)
+        let stored = EnvironmentOverride(port: 8081, unknownKeys: ["region": "eu-west-1"])
+        let change = ProjectRules.environmentOverride(url: " https://worker.example.com ", port: " ", deployment: " orders-worker ",
+                                                      argoCDApplication: "", stored: stored)
+        #expect(change == EnvironmentOverride(url: "https://worker.example.com", deployment: "orders-worker", unknownKeys: ["region": "eu-west-1"]))
+        #expect(ProjectRules.environmentOverride(url: "", port: "9000", deployment: "", argoCDApplication: " argocd/w ", stored: nil)
+            == EnvironmentOverride(port: 9000, argoCDApplication: "argocd/w"))
+        // Four empty fields remove the change: the parent's values apply again.
+        #expect(ProjectRules.environmentOverride(url: " ", port: "", deployment: "", argoCDApplication: "", stored: stored) == nil)
+        let gone = EnvironmentOverride(port: 7000)
+        let overrides = ["staging": stored, "gone": gone]
+        #expect(ProjectRules.environmentOverrides(overrides, saving: change, for: "staging") == ["staging": change!, "gone": gone])
+        #expect(ProjectRules.environmentOverrides(overrides, saving: nil, for: "staging") == ["gone": gone])
+        #expect(ProjectRules.environmentOverrides([:], saving: gone, for: "local") == ["local": gone])
+    }
+
+    @Test func contractEnvironmentsAreTheEnvironmentsThatApply() async throws {
+        let own = ProjectEnvironment(name: "replay", url: "http://127.0.0.1", port: 9090)
+        let (workspace, buffer, model) = try await contractModel(type: .goService, environments: [own])
+        defer { buffer.detach() }
+        #expect(model.environments == [own])
+        let inherited = ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080)
+        var changed = inherited
+        changed.port = 8081
+        workspace.details["API"]?.environments = [changed, own]
+        workspace.details["API"]?.inheritedEnvironments = [inherited]
+        #expect(model.environments == [changed, own])
+        #expect(model.environment == changed)
+        #expect(model.canSend)
     }
 
     @Test func environmentWrittenByHandWithAnInvalidURLCannotSend() async throws {

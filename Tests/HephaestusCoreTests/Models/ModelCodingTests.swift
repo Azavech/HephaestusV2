@@ -87,8 +87,8 @@ struct ModelCodingTests {
         let keys = encoded.components(separatedBy: "\n").filter { !$0.hasPrefix(" ") && !$0.hasPrefix("-") && $0.contains(":") }
             .map { String($0.prefix { $0 != ":" }) }
         #expect(keys == ["schema", "id", "name", "created", "type", "nextTicketNumber", "nextBundleNumber", "docsPath",
-                         "useParentSettings", "subprojects", "webTabs", "skills", "chatDefaults", "environments", "deletedChats",
-                         "commentAnswers", "commands"])
+                         "useParentSettings", "subprojects", "webTabs", "skills", "chatDefaults", "environments",
+                         "environmentOverrides", "deletedChats", "commentAnswers", "commands"])
         #expect(try YAMLCoding.decode(Project.self, from: encoded) == project)
         let json = try JSONDecoder().decode(JSONValue.self, from: try EngineJSON.encode(project))
         #expect(json.objectValue?["commands"] == .object(["build": "make build"]))
@@ -309,6 +309,7 @@ struct ModelCodingTests {
               deployment: orders-api
               argoCDApplication: argocd/orders-staging
               kubeconfig: ~/.kube/staging.yaml
+            environmentOverrides: {}
             deletedChats: []
 
             """))
@@ -342,6 +343,70 @@ struct ModelCodingTests {
                         "- name: local\n  url: http://127.0.0.1\n  namespace: [orders]"] {
             #expect(throws: (any Error).self) {
                 try YAMLCoding.decode(Project.self, from: "id: API\nname: A\ncreated: 2026-10-31T10:00:00Z\nenvironments:\n\(invalid)\n")
+            }
+        }
+    }
+
+    @Test("Environment overrides are written after environments, by name in code point order, read trimmed, and keep their unknown keys")
+    func environmentOverrides() throws {
+        let project = Project(id: "WRK", name: "Worker", created: Self.created, type: .goService, environmentOverrides: [
+            "staging": EnvironmentOverride(url: "https://worker.example.com", deployment: "orders-worker"),
+            "local": EnvironmentOverride(port: 8081),
+            "Zeta": EnvironmentOverride(argoCDApplication: "argocd/z"),
+        ])
+        let yaml = try YAMLCoding.encode(project)
+        #expect(yaml.contains("""
+            environments: []
+            environmentOverrides:
+              Zeta:
+                url: null
+                port: null
+                deployment: null
+                argoCDApplication: argocd/z
+              local:
+                url: null
+                port: 8081
+                deployment: null
+                argoCDApplication: null
+              staging:
+                url: https://worker.example.com
+                port: null
+                deployment: orders-worker
+                argoCDApplication: null
+            deletedChats: []
+
+            """))
+        #expect(try YAMLCoding.decode(Project.self, from: yaml) == project)
+        #expect(try YAMLCoding.encode(try YAMLCoding.decode(Project.self, from: yaml)) == yaml)
+        #expect(try EngineJSON.decode(Project.self, from: try EngineJSON.encode(project)) == project)
+        let json = try EngineJSON.jsonValue(project).objectValue?["environmentOverrides"]?.objectValue
+        #expect(json?["local"]?.objectValue?["url"] == .null)
+        #expect(try YAMLCoding.encode(Project(id: "WEB", name: "Website", created: Self.created))
+            .contains("environments: []\nenvironmentOverrides: {}\n"))
+        #expect(try YAMLCoding.decode(Project.self, from: "id: WEB\nname: W\ncreated: 2026-10-31T09:30:00Z\n").environmentOverrides.isEmpty)
+
+        var extended = try YAMLCoding.decode(Project.self, from: """
+            id: WRK
+            name: Worker
+            created: 2026-10-31T10:00:00Z
+            environmentOverrides:
+              staging:
+                url: ' https://worker.example.com '
+                deployment: ''
+                argoCDApplication: '  argocd/w  '
+                region: eu-west-1
+
+            """)
+        #expect(extended.environmentOverrides == ["staging": EnvironmentOverride(url: "https://worker.example.com", argoCDApplication: "argocd/w",
+                                                                                 unknownKeys: ["region": "eu-west-1"])])
+        extended.environmentOverrides["staging"]?.port = 9000
+        let rewritten = try YAMLCoding.encode(extended)
+        #expect(rewritten.contains("    argoCDApplication: argocd/w\n    region: eu-west-1\n"))
+        #expect(try YAMLCoding.decode(Project.self, from: rewritten).environmentOverrides["staging"]?.unknownKeys == ["region": "eu-west-1"])
+
+        for invalid in ["  staging:\n    port: high", "  staging:\n    url: [a]", "  - staging"] {
+            #expect(throws: (any Error).self) {
+                try YAMLCoding.decode(Project.self, from: "id: WRK\nname: W\ncreated: 2026-10-31T10:00:00Z\nenvironmentOverrides:\n\(invalid)\n")
             }
         }
     }

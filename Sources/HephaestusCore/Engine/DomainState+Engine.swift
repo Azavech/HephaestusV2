@@ -203,8 +203,9 @@ extension Engine {
     // MARK: Events
 
     /// The ProjectDetail of a loaded project, with the last `gitRemoteURL` read and the GitHub
-    /// pages it gives; starts a new read, and one of the root whose origin gives the page of a
-    /// sub project that uses its parent's settings (docs/engine-api.md › ProjectDetail).
+    /// pages it gives, and its environments as they apply; starts a new read, and one of the root
+    /// whose origin gives the page of a sub project that uses its parent's settings
+    /// (docs/engine-api.md › ProjectDetail).
     func projectDetail(_ id: ProjectID) -> ProjectDetail? {
         guard let loaded = domain.projects[id] else { return nil }
         let hidden = hiddenProjectIDs
@@ -213,9 +214,11 @@ extension Engine {
         if let source = githubPageSource(of: id), source != id, let sourceRoot = domain.projects[source]?.rootPath {
             refreshGitRemoteURL(root: sourceRoot)
         }
+        let environments = resolvedEnvironments(of: id)
         return ProjectDetail(project: loaded.project, rootPath: loaded.rootPath, parentID: loaded.parentID,
                              subprojects: subprojects, gitRemoteURL: remoteURL, githubPage: githubPage(of: id),
-                             originGithubPage: originGithubPage(root: loaded.rootPath))
+                             originGithubPage: originGithubPage(root: loaded.rootPath),
+                             environments: environments.environments, inheritedEnvironments: environments.inherited)
     }
 
     /// `project.updated` with the current ProjectDetail.

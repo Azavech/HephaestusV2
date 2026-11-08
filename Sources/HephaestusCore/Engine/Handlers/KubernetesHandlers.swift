@@ -221,7 +221,8 @@ extension Engine {
     }
 
     /// Checks 1 to 4: the chat as `kubernetesChat` checks it, then the environment of its project
-    /// with this name, letter case included. The login-shell environment is awaited first, so that
+    /// with this name, letter case included, among the environments that apply, the inherited ones
+    /// with the project's changes included (docs/projects.md › Inherited environments). The login-shell environment is awaited first, so that
     /// the checks, and what the method does before its first command, read the engine state
     /// without suspending.
     func kubernetesTarget(_ chatID: ChatID, environment name: String, _ actor: Actor, tool: String) async throws -> KubernetesTarget {
@@ -230,7 +231,7 @@ extension Engine {
         guard let project = domain.project(meta.projectID), let root = domain.projectRoot(meta.projectID) else {
             throw EngineError.notFound("Chat", chatID.uuidString)
         }
-        guard let environment = project.environments.first(where: { $0.name == name }) else {
+        guard let environment = resolvedEnvironments(of: project.id).environments.first(where: { $0.name == name }) else {
             throw EngineError.invalid("environment", "\(project.id) has no environment named “\(name)”")
         }
         return KubernetesTarget(environment: environment, root: root, processEnvironment: processEnvironment)

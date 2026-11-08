@@ -608,6 +608,31 @@ struct ChatInteractionTests {
         }
     }
 
+    @Test("The system prompt of a sub project's chat lists the environments it inherits, with its changes, before its own")
+    func inheritedEnvironmentsInSystemPrompt() async throws {
+        try await withChatEngine { bed in
+            let header = "The project's environments, where the Go service runs; the Kubernetes and Argo CD tools take an environment's name:"
+            _ = try await bed.connection.call(ProjectsUpdate.self, .init(projectID: "DEMO", type: .goService, environments: [
+                ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
+                ProjectEnvironment(name: "staging", url: "https://staging.example.com", context: "staging-eks", deployment: "orders-api"),
+            ]))
+            let root = bed.root.appendingPathComponent("worker").path
+            _ = try await bed.connection.call(ProjectsCreate.self, .init(rootPath: root, name: "Worker", identifier: "WRK", parentID: "DEMO",
+                                                                         type: .goService, createDirectory: true))
+            _ = try await bed.connection.call(ProjectsUpdate.self, .init(projectID: "WRK", environments: [
+                ProjectEnvironment(name: "replay", url: "http://127.0.0.1", port: 9090),
+            ], environmentOverrides: ["staging": EnvironmentOverride(deployment: "orders-worker")]))
+            let chat = try await bed.connection.call(ChatsCreate.self, .init(projectID: "WRK", kind: .project,
+                                                                             message: ChatMessageInput(text: "Plan")))
+            let process = try #require(await bed.launcher.chatProcess(0))
+            #expect(process.request.arguments.contains(chat.id.uuidString))
+            let prompt = try #require(process.request.arguments.firstIndex(of: "--append-system-prompt").map { process.request.arguments[$0 + 1] })
+            #expect(prompt.contains("The project's type is Go service.\n\n\(header)\n- local: http://127.0.0.1:8080\n"
+                + "- staging: https://staging.example.com; kubectl context: staging-eks; deployment: orders-worker\n"
+                + "- replay: http://127.0.0.1:9090\n\nThese rules apply in every chat."))
+        }
+    }
+
     @Test("Implement All: the bundle chat and its message; a bundle without a ticket left is refused")
     func implementBundle() async throws {
         try await withChatEngine { bed in

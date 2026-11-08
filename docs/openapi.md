@@ -155,9 +155,9 @@ The form of an operation has, in this order: Environment, Parameters, Credential
 
 ### Environment
 
-- A pop-up lists the environments of the contract's project in their order ([Environments](projects.md#environments)), each item showing the environment's name and its base URL as `<name> · <base URL>`, for example `local · http://127.0.0.1:8080`. It has no other item: the contract's `servers` do not choose the URL of the requests.
+- A pop-up lists the environments of the contract's project in their order, for a sub project that inherits environments its parent's first, with its changes ([Environments](projects.md#environments), [Inherited environments](projects.md#inherited-environments)), each item showing the environment's name and its base URL as `<name> · <base URL>`, for example `local · http://127.0.0.1:8080`. It has no other item: the contract's `servers` do not choose the URL of the requests.
 - The pop-up starts on the environment stored for the contract ([Stored values](#stored-values)), else on the first environment. Choosing an environment stores its name for the contract.
-- The pop-up follows the project's environments live: an environment added, edited or removed in Project Settings, on any device, shows at once. When the selected environment is renamed or removed, the pop-up shows the first environment.
+- The pop-up follows the project's environments live: an environment added, edited or removed in Project Settings, on any device, shows at once, and so does a change of the environments a sub project inherits from its parent. When the selected environment is renamed or removed, the pop-up shows the first environment.
 - A project whose type is not `goService` has no environment here, even when its `project.yml` still lists environments from an earlier type ([Environments](projects.md#environments)).
 - When the project has no environment, which is always the case for a project whose type is not `goService`, the pop-up is empty and disabled, and under it the form shows `Add an environment in Project Settings.` with a `Project Settings…` button that selects the window's [Project Settings](projects.md#project-settings) section.
 
@@ -367,3 +367,4 @@ OAuth2, OpenID Connect and mutual TLS credentials, multipart and file bodies, ed
 - R142: In the Code section, an OpenAPI 3.0 or 3.1 contract opens on a read-only Contract view, with a switch to its source, that shows its info, its operations by tag and its schemas with their `$ref` pointers resolved across the project's files, and sends each operation's request from a form whose values are kept per project on the Mac that shows the window, credentials included.
 - R171: A Go service whose code holds `openapi/contract.yaml` shows it in an API Explorer section of the Go Service category, where the user views and queries it.
 - R157: A Go service project declares its environments in Project Settings, and the Contract view sends requests to the environment chosen in its Environment pop-up.
+- R174: A sub project that uses its parent's settings inherits its parent's environments and changes their URL, port, deployment and Argo CD application.

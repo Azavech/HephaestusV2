@@ -235,14 +235,15 @@ final class OpenAPIContractModel {
 
     // MARK: Environment (docs/openapi.md › Environment)
 
-    /// The environments of the contract's project, in their order: none for a project whose type
-    /// is not `goService` (docs/projects.md › Environments). Read live from the window's workspace,
-    /// which holds the detail of the project its sections show, so the pop-up follows
+    /// The environments of the contract's project as they apply, in their order, the inherited
+    /// ones with the project's changes first: none for a project whose type is not `goService`
+    /// (docs/projects.md › Environments, › Inherited environments). Read live from the window's
+    /// workspace, which holds the detail of the project its sections show, so the pop-up follows
     /// `project.updated`.
     var environments: [ProjectEnvironment] {
         guard let buffer, let projectID = buffer.projectID,
-              let project = buffer.workspace?.details[projectID]?.project, project.type == .goService else { return [] }
-        return project.environments
+              let detail = buffer.workspace?.details[projectID], detail.project.type == .goService else { return [] }
+        return detail.environments
     }
 
     /// The selected environment: the one stored for the contract, else the first, also when the

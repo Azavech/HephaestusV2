@@ -154,9 +154,19 @@ public struct ProjectDetail: Codable, Sendable, Hashable {
     /// The page of the project's origin; absent when the origin is not on GitHub. Project Settings
     /// shows it as the GitHub page field's placeholder.
     public var originGithubPage: String?
+    /// The project's environments as they apply: the inherited ones with the project's changes,
+    /// then its own; none for a project whose type is not `goService` (docs/projects.md ›
+    /// Inherited environments).
+    public var environments: [ProjectEnvironment]
+    /// The environments the project inherits, as its parent resolves them, without the project's
+    /// changes: the first elements of `environments` before the changes apply.
+    public var inheritedEnvironments: [ProjectEnvironment]
 
+    /// Without `environments`, the project's own environments apply, as a project that inherits
+    /// none has them.
     public init(project: Project, rootPath: String, parentID: ProjectID? = nil, subprojects: [ProjectSummary] = [],
-                gitRemoteURL: String? = nil, githubPage: String? = nil, originGithubPage: String? = nil) {
+                gitRemoteURL: String? = nil, githubPage: String? = nil, originGithubPage: String? = nil,
+                environments: [ProjectEnvironment]? = nil, inheritedEnvironments: [ProjectEnvironment] = []) {
         self.project = project
         self.rootPath = rootPath
         self.parentID = parentID
@@ -164,6 +174,33 @@ public struct ProjectDetail: Codable, Sendable, Hashable {
         self.gitRemoteURL = gitRemoteURL
         self.githubPage = githubPage
         self.originGithubPage = originGithubPage
+        self.environments = environments ?? Self.ownEnvironments(of: project)
+        self.inheritedEnvironments = inheritedEnvironments
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case project, rootPath, parentID, subprojects, gitRemoteURL, githubPage, originGithubPage, environments,
+             inheritedEnvironments
+    }
+
+    /// An engine of an earlier version sends neither `environments` nor `inheritedEnvironments`:
+    /// the project's own environments then apply.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        project = try c.decode(Project.self, forKey: .project)
+        rootPath = try c.decode(String.self, forKey: .rootPath)
+        parentID = try c.decodeIfPresent(ProjectID.self, forKey: .parentID)
+        subprojects = try c.decode([ProjectSummary].self, forKey: .subprojects)
+        gitRemoteURL = try c.decodeIfPresent(String.self, forKey: .gitRemoteURL)
+        githubPage = try c.decodeIfPresent(String.self, forKey: .githubPage)
+        originGithubPage = try c.decodeIfPresent(String.self, forKey: .originGithubPage)
+        environments = try c.decodeIfPresent([ProjectEnvironment].self, forKey: .environments) ?? Self.ownEnvironments(of: project)
+        inheritedEnvironments = try c.decodeIfPresent([ProjectEnvironment].self, forKey: .inheritedEnvironments) ?? []
+    }
+
+    /// The environments of a project that inherits none: its own for a Go service, none otherwise.
+    static func ownEnvironments(of project: Project) -> [ProjectEnvironment] {
+        project.type == .goService ? project.environments : []
     }
 }
 

@@ -27,6 +27,7 @@ struct DashboardWidgetsTests {
             #expect(try ProjectFileStore.readProject(folder).dashboardWidgets == expected)
             #expect(try readFile(folder.projectFile).contains("""
                 environments: []
+                environmentOverrides: {}
                 dashboardWidgets:
                 - id: 00000000-0000-0000-0000-000000000001
                   kind: project

@@ -161,7 +161,7 @@ extension Engine {
             parentID = domain.innermostProject(containing: rootPath)
             try register(rootPath: rootPath, parentID: parentID)
         }
-        let pagesBefore = githubPages()
+        let settingsBefore = inheritedSettings()
         loadTree(rootPath: rootPath, parentID: parentID, adoptingTopLevel: true)
         guard domain.projectID(atRoot: rootPath) == project.id else {
             throw EngineError(.internal, "Internal error: \(folder.projectFile.path) cannot be loaded.")
@@ -177,8 +177,8 @@ extension Engine {
             emitProjectUpdated(parentID, origin: actor)
         }
         emitProjectUpdated(project.id, origin: actor)
-        // A top-level project it adopts as a sub project may now use its page.
-        emitGithubPageChanges(since: pagesBefore, except: Set([project.id, parentID].compactMap { $0 }), origin: actor)
+        // A top-level project it adopts as a sub project may now use its page and its environments.
+        emitInheritedSettingsChanges(since: settingsBefore, except: Set([project.id, parentID].compactMap { $0 }), origin: actor)
         emitProjectsChanged(origin: actor)
         keepGitHubTabs(origin: actor)
         updateFileWatching()
@@ -250,18 +250,27 @@ extension Engine {
             }
             new.chatDefaults = settings
         }
+        if let overrides = params.environmentOverrides {
+            new.environmentOverrides = try validated { try EnvironmentOverride.normalized(overrides, keeping: old.environmentOverrides) }
+        }
         if let environments = params.environments {
-            new.environments = try validated { try ProjectEnvironment.normalized(environments, keeping: old.environments) }
+            // An environment of its own cannot take the name of one it inherits once the call
+            // applies (docs/projects.md › Inherited environments).
+            let inheritedNames = Set(resolvedEnvironments(of: id, project: new).inherited.map(\.name))
+            new.environments = try validated {
+                try ProjectEnvironment.normalized(environments, keeping: old.environments, inheritedNames: inheritedNames)
+            }
         }
         if let widgets = params.dashboardWidgets {
             new.dashboardWidgets = try validated { try DashboardWidget.normalized(widgets, keeping: old.dashboardWidgets ?? []) }
         }
         guard new != old else { return projectDetail(id)! }
-        let pagesBefore = githubPages()
+        let settingsBefore = inheritedSettings()
         try saveProject(new)
         emitProjectUpdated(id, origin: actor)
-        // The sub projects that use its settings follow (docs/projects.md › GitHub page).
-        emitGithubPageChanges(since: pagesBefore, except: [id], origin: actor)
+        // The sub projects that use its settings follow (docs/projects.md › GitHub page, › Inherited
+        // environments).
+        emitInheritedSettingsChanges(since: settingsBefore, except: [id], origin: actor)
         if new.name != old.name || new.type != old.type || new.color != old.color || new.icon != old.icon {
             emitProjectsChanged(origin: actor)
         }
