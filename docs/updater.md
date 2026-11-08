@@ -22,7 +22,8 @@ The name `UpdateController` is Default chosen at design time.
 | About version line | version and build of the running app      | `Version <version> (<build>)` | `Version 0.4.0 (57)` |
 
 - Only builds are compared: a release is newer when its build is greater than the running app's build. Version strings are shown and checked for equality, never compared. Release builds grow with every commit on `main` ([Versioning](ci.md#versioning)).
-- Every Mac updates its own app with its own Updater, using the `autoUpdate` and `updateCheckIntervalMinutes` values of its own `settings.yml` ([Data model](data-model.md#settings-file)), whatever device a window shows. The About window, the Update item and Settings > Updates always describe this Mac's app.
+- Every Mac updates its own app with its own Updater, using the `autoUpdate` and `updateCheckIntervalMinutes` values of its own `settings.yml` ([Data model](data-model.md#settings-file)), whatever device a window shows. The About window, the status bar's Version and Update items and Settings > Updates always describe this Mac's app.
+- The status bar always shows the running app's version and build in the Update display format, in its Version item: `v0.4.0(57)` for the app of the table ([Status bar](ui.md#status-bar)).
 
 ## Starting the Updater
 
@@ -320,7 +321,7 @@ Each time the window appears (opened while it was closed), the app posts `check`
 
 ## Update item
 
-The status bar of every main window of this app shows the Update item in its right group, before Weekly usage ([Status bar](ui.md#status-bar)), whatever device the window shows. Chat windows do not show it. While the Updater runs, the item is shown when either holds:
+The status bar of every main window of this app shows the Update item in its right group, between the Version item and Weekly usage ([Status bar](ui.md#status-bar)), whatever device the window shows. Chat windows do not show it. While the Updater runs, the item is shown when either holds:
 
 - the state is `available`, `downloading` or `ready`, whatever `autoUpdate` is, and the restart sequence has not started;
 - the install is chosen ([About window](#about-window)) and the app has not quit.
@@ -408,3 +409,4 @@ UpdaterCoreTests ([Development](development.md)) cover, without network access a
 - R116: An update restart waits until all chats are done and Claude is not working.
 - R140: A comment that mentions `@Claude` gets an answer from Claude as a new comment, made by a one-shot call without a chat; typing `@` in the comment composer suggests Claude, mentions are highlighted, Claude may change the ticket's title, description, links and status, a row shows while Claude replies and offers Retry when it could not, and the answers count in the project's costs.
 - R154: The status bar shows when an update is available, downloading or ready, and a click on it installs the update; Settings > Updates has an Update Now button while an update is available.
+- R166: The status bar always shows the app's version.

@@ -1,5 +1,5 @@
-// OWNER: ui-shell — the status bar of main windows and chat windows, its chats popover, the Update
-// item and the ladybug button (docs/ui.md › Status bar).
+// OWNER: ui-shell — the status bar of main windows and chat windows, its chats popover, the Version
+// and Update items and the ladybug button (docs/ui.md › Status bar).
 import AppKit
 import HephaestusCore
 import SwiftUI
@@ -56,8 +56,8 @@ struct DeviceStateLabel: View {
 }
 
 /// The status bar: 26 points high, at the bottom of every main window and chat window, separated
-/// from the content by a hairline. Chat windows show only the device state, the weekly usage and the
-/// ladybug; the Update item is in main windows only.
+/// from the content by a hairline. Chat windows show only the device state, the version, the weekly
+/// usage and the ladybug; the Update item is in main windows only.
 struct StatusBarView: View {
     enum Context {
         case main(WindowState)
@@ -80,18 +80,8 @@ struct StatusBarView: View {
                 if case .main(let window) = context {
                     middleGroup(window)
                     Spacer(minLength: 16)
-                    updateItem
                 }
-                // The ladybug is hidden while the receiving device hides its HephaestusV2 project
-                // (docs/feedback.md › Starting feedback); the separators of the items before it follow.
-                let showsLadybug = !FeedbackProject.hidesFeedback(workspace)
-                WeeklyUsageItem(usage: workspace?.planUsage, now: usageClock, separated: showsCosts || showsLadybug)
-                if case .main(let window) = context {
-                    costsItem(window, separated: showsLadybug)
-                }
-                if showsLadybug {
-                    ladybug
-                }
+                rightGroup
             }
             .padding(.horizontal, 10)
             .frame(maxHeight: .infinity)
@@ -151,7 +141,47 @@ struct StatusBarView: View {
         }
     }
 
-    // MARK: Right: update, costs
+    // MARK: Right: version, update, weekly usage, costs, ladybug
+
+    /// The items of the right group, left to right, separated by ` · `.
+    private var rightGroup: some View {
+        let items = StatusBarRightItem.items(
+            mainWindow: isMainWindow,
+            update: app.updateController.updateItem != nil,
+            weeklyUsage: WeeklyUsagePresentation(usage: workspace?.planUsage, now: usageClock) != nil,
+            costs: showsCosts,
+            // The ladybug is hidden while the receiving device hides its HephaestusV2 project
+            // (docs/feedback.md › Starting feedback).
+            ladybug: !FeedbackProject.hidesFeedback(workspace))
+        return HStack(spacing: 0) {
+            ForEach(Array(items.enumerated()), id: \.element) { index, item in
+                if index > 0 {
+                    separator
+                }
+                rightItem(item)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func rightItem(_ item: StatusBarRightItem) -> some View {
+        switch item {
+        case .version:
+            // This Mac's app, whatever device the window shows; a click does nothing
+            // (docs/updater.md › Versions and display).
+            Text(app.appVersion.display)
+        case .update:
+            updateItem
+        case .weeklyUsage:
+            WeeklyUsageItem(usage: workspace?.planUsage, now: usageClock)
+        case .costs:
+            if case .main(let window) = context {
+                costsItem(window)
+            }
+        case .ladybug:
+            ladybug
+        }
+    }
 
     /// `Update available…` while an update is available, downloading or ready, a click installing
     /// it; `Installing…` with a small progress indicator, not clickable, while the install is
@@ -166,14 +196,12 @@ struct StatusBarView: View {
             }
             .buttonStyle(.plain)
             .help(tooltip)
-            separator
         case .installing:
             HStack(spacing: 5) {
                 ProgressView()
                     .controlSize(.mini)
                 Text(UpdaterTexts.installing)
             }
-            separator
         case nil:
             EmptyView()
         }
@@ -182,7 +210,7 @@ struct StatusBarView: View {
     /// The active project's total, sub projects included; a click selects the Costs section
     /// (docs/costs.md › Status bar item).
     @ViewBuilder
-    private func costsItem(_ window: WindowState, separated: Bool) -> some View {
+    private func costsItem(_ window: WindowState) -> some View {
         if let projectID = window.projectID, let project = workspace?.project(projectID) {
             Button {
                 window.section = .costs
@@ -195,10 +223,12 @@ struct StatusBarView: View {
             }
             .buttonStyle(.plain)
             .help("Cost of \(project.name), sub projects included")
-            if separated {
-                separator
-            }
         }
+    }
+
+    private var isMainWindow: Bool {
+        if case .main = context { return true }
+        return false
     }
 
     /// The Costs item is shown: a main window with an active project.
@@ -281,6 +311,26 @@ struct StatusBarView: View {
     private var separator: some View {
         Text(" · ")
             .foregroundStyle(.secondary)
+    }
+}
+
+/// The items of the status bar's right group (docs/ui.md › Status bar).
+enum StatusBarRightItem: Hashable {
+    case version
+    case update
+    case weeklyUsage
+    case costs
+    case ladybug
+
+    /// The items shown, left to right: the Version item always first, then each other item whose
+    /// flag is true; the Update item and Costs only in main windows.
+    static func items(mainWindow: Bool, update: Bool, weeklyUsage: Bool, costs: Bool, ladybug: Bool) -> [StatusBarRightItem] {
+        var items: [StatusBarRightItem] = [.version]
+        if mainWindow && update { items.append(.update) }
+        if weeklyUsage { items.append(.weeklyUsage) }
+        if mainWindow && costs { items.append(.costs) }
+        if ladybug { items.append(.ladybug) }
+        return items
     }
 }
 

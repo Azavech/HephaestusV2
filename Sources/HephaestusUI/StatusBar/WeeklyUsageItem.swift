@@ -79,36 +79,27 @@ struct WeeklyUsagePresentation: Equatable {
     }
 }
 
-/// The Weekly usage item: a ring filled to the weekly usage, followed by the group separator
-/// when an item follows it, hidden while no value is known and from the reset time on; a click
-/// opens the popover.
+/// The Weekly usage item: a ring filled to the weekly usage, hidden while no value is known and
+/// from the reset time on; a click opens the popover.
 struct WeeklyUsageItem: View {
     let usage: PlanUsage?
     /// The time the item is drawn for; the status bar sets it again at the reset time.
     let now: Date
-    /// An item follows: the separator is drawn.
-    var separated = true
     @State private var popoverShown = false
 
     var body: some View {
         if let presentation = WeeklyUsagePresentation(usage: usage, now: now) {
-            HStack(spacing: 0) {
-                Button {
-                    popoverShown = true
-                } label: {
-                    WeeklyUsageRing(fraction: presentation.fraction, color: Self.color(presentation.level))
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(presentation.tooltip)
-                .accessibilityLabel(presentation.tooltip)
-                .popover(isPresented: $popoverShown, arrowEdge: .top) {
-                    WeeklyUsagePopover(presentation: presentation)
-                }
-                if separated {
-                    Text(" · ")
-                        .foregroundStyle(.secondary)
-                }
+            Button {
+                popoverShown = true
+            } label: {
+                WeeklyUsageRing(fraction: presentation.fraction, color: Self.color(presentation.level))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(presentation.tooltip)
+            .accessibilityLabel(presentation.tooltip)
+            .popover(isPresented: $popoverShown, arrowEdge: .top) {
+                WeeklyUsagePopover(presentation: presentation)
             }
         }
     }
