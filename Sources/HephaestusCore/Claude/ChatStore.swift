@@ -12,6 +12,7 @@ extension Engine {
         meta.state = chats.state(of: chatID)
         meta.backgroundWork = chats.backgroundWork(of: chatID)
         meta.costUSD = chats.costs[chatID]?.costUSD
+        meta.mentionedIDs = chats.mentions[chatID]?.ids ?? []
         return meta
     }
 
@@ -47,6 +48,7 @@ extension Engine {
         meta.state = chats.state(of: meta.id)
         meta.backgroundWork = chats.backgroundWork(of: meta.id)
         meta.costUSD = chats.costs[meta.id]?.costUSD
+        meta.mentionedIDs = chats.mentions[meta.id]?.ids ?? []
         domain.upsertChat(meta)
         recordReportedState(meta)
         emit(ChatUpdatedEvent.self, meta, origin: origin)
@@ -101,6 +103,11 @@ extension Engine {
             chats.costs[chatID, default: ChatCost()].add(cost)
             emitChatCostChanged(chatID, origin: origin)
         }
+        // docs/data-model.md › Mentioned ids: a `user` or `assistant` item adds its ids, also before
+        // the transcript is scanned, whose result keeps them.
+        if let itemIDs = ChatMentions.ids(in: item), chats.mentions[chatID, default: ChatMentions()].record(itemIDs, of: item.id) {
+            emitChatUpdated(chatID, origin: origin)
+        }
     }
 
     /// Appends an item from a background step; a failure is logged.
@@ -140,21 +147,31 @@ extension Engine {
                 appendChatItemLogging(.permissionRequest(request), chatID: chatID, op: .update)
             }
         }
-        if recordScan(chatID, items: items) {
+        let changes = recordScan(chatID, items: items, mentions: ChatMentions(items: items))
+        if changes.cost {
             emitChatCostChanged(chatID, origin: .system)
+        } else if changes.mentions {
+            emitChatUpdated(chatID, origin: .system)
         }
         return items
     }
 
     /// Records the question set that is not completed, the symbol, color, sound, shortcut, font and
-    /// animation requests without answer, whether a user message has text and the chat's cost;
-    /// returns whether the cost changed.
+    /// animation requests without answer, whether a user message has text, the chat's cost and the
+    /// ids it mentions, computed from `items` and kept with those of the items added meanwhile;
+    /// returns whether the cost and the mentioned ids changed.
     @discardableResult
-    private func recordScan(_ chatID: ChatID, items: [ChatItem]) -> Bool {
+    private func recordScan(_ chatID: ChatID, items: [ChatItem], mentions: ChatMentions) -> (cost: Bool, mentions: Bool) {
         chats.scannedChats.insert(chatID)
         let cost = ChatCost(items: items)
         let costChanged = chats.costs[chatID]?.costUSD != cost.costUSD
         chats.costs[chatID] = cost
+        var mentions = mentions
+        if let added = chats.mentions[chatID] {
+            mentions.overlay(added)
+        }
+        let mentionsChanged = (chats.mentions[chatID]?.ids ?? []) != mentions.ids
+        chats.mentions[chatID] = mentions
         var open: QuestionsItem?
         var openSymbol: SymbolItem?
         var openColor: ColorItem?
@@ -184,7 +201,7 @@ extension Engine {
         chats.openFontRequests[chatID] = openFont
         chats.openAnimationRequests[chatID] = openAnimation
         chats.hasTextMessage[chatID] = hasText
-        return costChanged
+        return (costChanged, mentionsChanged)
     }
 
     /// Replays the transcript once when the engine has not done it since it started.
@@ -195,8 +212,8 @@ extension Engine {
 
     /// docs/data-model.md › Loading, step 4: the transcript of every chat of the loaded projects
     /// is replayed once, in a child task, to find a question set that is not completed (the
-    /// state becomes waitingAnswers, with `chat.updated`) and to cancel the pending permission
-    /// requests.
+    /// state becomes waitingAnswers, with `chat.updated`), to cancel the pending permission
+    /// requests and to find the chat's cost and the ids it mentions.
     func scanChatTranscriptsOfLoadedProjects() {
         for projectID in domain.loadedProjectIDs() {
             scanChatTranscripts(of: projectID)
@@ -213,13 +230,17 @@ extension Engine {
             let chatID = meta.id
             let log = self.log
             Task {
-                let items = await Task.detached { (try? TranscriptReplay.replay(fileAt: url, log: log)) ?? [] }.value
-                self.applyStartupScan(chatID, items: items)
+                // The ids are read off the engine, as reading them parses the Markdown of the items.
+                let scan = await Task.detached { () -> ([ChatItem], ChatMentions) in
+                    let items = (try? TranscriptReplay.replay(fileAt: url, log: log)) ?? []
+                    return (items, ChatMentions(items: items))
+                }.value
+                self.applyStartupScan(chatID, items: scan.0, mentions: scan.1)
             }
         }
     }
 
-    private func applyStartupScan(_ chatID: ChatID, items: [ChatItem]) {
+    private func applyStartupScan(_ chatID: ChatID, items: [ChatItem], mentions: ChatMentions) {
         guard !chats.scannedChats.contains(chatID), !chats.deleting.contains(chatID), domain.chat(chatID) != nil else { return }
         var items = items
         if chats.runtimes[chatID]?.process == nil {
@@ -231,8 +252,11 @@ extension Engine {
                 appendChatItemLogging(.permissionRequest(request), chatID: chatID, op: .update)
             }
         }
-        if recordScan(chatID, items: items) {
+        let changes = recordScan(chatID, items: items, mentions: mentions)
+        if changes.cost {
             emitChatCostChanged(chatID, origin: .system)
+        } else if changes.mentions {
+            emitChatUpdated(chatID, origin: .system)
         } else {
             reportChatState(chatID)
         }

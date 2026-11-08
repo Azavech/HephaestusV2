@@ -1,6 +1,7 @@
 // OWNER: ui-tickets — the Chats tab of a ticket and of a bundle: Implement or Implement All, New Chat,
-// the list of linked chats and the selected chat's view (docs/tickets.md › Ticket chats and
-// Implement, › Bundles section, › Implement All).
+// the list of linked chats and the selected chat's view, and the chat rows that the Mentioned In
+// tab shares (docs/tickets.md › Ticket chats and Implement, › Mentioned In tab, › Bundles section,
+// › Implement All).
 import AppKit
 import HephaestusCore
 import SwiftUI
@@ -33,9 +34,6 @@ struct LinkedChatsView: View {
     let owner: LinkedChatsOwner
     let chatIDs: [ChatID]
 
-    @State private var renamingID: String?
-    @State private var renameText = ""
-    @FocusState private var renameFocused: Bool
     /// The identity of the draft chat view: each New Chat shows a new draft.
     @State private var draftIdentity = UUID()
 
@@ -307,24 +305,8 @@ struct LinkedChatsView: View {
             ForEach(listRows(rows), id: \.row.id) { entry in
                 switch entry.row {
                 case .chat(let meta):
-                    row(meta)
+                    ChatsTabChatRow(meta: meta, window: window, workspace: workspace, projectID: projectID)
                         .padding(.leading, entry.nested ? 22 : 0)
-                        .contextMenu {
-                            Button("Open in New Window") {
-                                window.app?.openChatWindow(ChatWindowValue(deviceID: workspace.deviceID, chatID: meta.id.uuidString))
-                            }
-                            Button("Rename…") {
-                                renameText = meta.title
-                                renamingID = meta.id.uuidString
-                                DispatchQueue.main.async { renameFocused = true }
-                            }
-                            .disabled(!window.isConnected)
-                            Button("Close") { close(meta) }
-                                .disabled(!window.isConnected || !ChatActions.canClose([meta]))
-                            Divider()
-                            Button("Delete…") { delete(meta) }
-                                .disabled(!window.isConnected)
-                        }
                         .tag(entry.row.id)
                 case .agent(let agentRow):
                     ChatAgentRowView(row: agentRow)
@@ -335,39 +317,6 @@ struct LinkedChatsView: View {
             }
         }
         .listStyle(.inset)
-    }
-
-    private func row(_ meta: ChatMeta) -> some View {
-        HStack(spacing: 8) {
-            if ChatAgentRows.hasEndedRows(workspace.agents[meta.id.uuidString]) {
-                ChatAgentsDisclosure(chatID: meta.id.uuidString, window: window, projectID: projectID)
-            }
-            Image(systemName: Self.kindSymbol(meta.kind))
-                .foregroundStyle(.secondary)
-                .frame(width: 16)
-            if renamingID == meta.id.uuidString {
-                TextField("Title", text: $renameText)
-                    .textFieldStyle(.plain)
-                    .focused($renameFocused)
-                    .onSubmit { rename(meta) }
-                    .onExitCommand { renamingID = nil }
-                    .onChange(of: renameFocused) { _, focused in
-                        if !focused { renamingID = nil }
-                    }
-            } else {
-                Text(meta.title)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            Spacer(minLength: 4)
-            ChatStateMark(state: meta.state)
-            TimelineView(.periodic(from: .now, by: 30)) { context in
-                Text(TicketFormat.relative(meta.updated, now: context.date))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
     }
 
     /// The kind icons of the list.
@@ -412,12 +361,77 @@ struct LinkedChatsView: View {
             Color.clear
         }
     }
+}
 
-    // MARK: Actions
+/// A chat row of the Chats tab and of the Mentioned In tab of a ticket or a bundle: the kind icon,
+/// the title, renamed in place, the state and the last update time, with the context menu Open in
+/// New Window, Rename…, Close and Delete… (docs/tickets.md › Ticket chats and Implement, ›
+/// Mentioned In tab).
+struct ChatsTabChatRow: View {
+    let meta: ChatMeta
+    let window: WindowState
+    let workspace: DeviceWorkspace
+    let projectID: String
+    /// The disclosure triangle of the chat's ended workflows and agents; the Mentioned In tab shows
+    /// none.
+    var showsAgentsDisclosure = true
 
-    private func rename(_ meta: ChatMeta) {
+    @State private var renaming = false
+    @State private var renameText = ""
+    @FocusState private var renameFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if showsAgentsDisclosure, ChatAgentRows.hasEndedRows(workspace.agents[meta.id.uuidString]) {
+                ChatAgentsDisclosure(chatID: meta.id.uuidString, window: window, projectID: projectID)
+            }
+            Image(systemName: LinkedChatsView.kindSymbol(meta.kind))
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+            if renaming {
+                TextField("Title", text: $renameText)
+                    .textFieldStyle(.plain)
+                    .focused($renameFocused)
+                    .onSubmit { rename() }
+                    .onExitCommand { renaming = false }
+                    .onChange(of: renameFocused) { _, focused in
+                        if !focused { renaming = false }
+                    }
+            } else {
+                Text(meta.title)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            Spacer(minLength: 4)
+            ChatStateMark(state: meta.state)
+            TimelineView(.periodic(from: .now, by: 30)) { context in
+                Text(TicketFormat.relative(meta.updated, now: context.date))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .contextMenu {
+            Button("Open in New Window") {
+                window.app?.openChatWindow(ChatWindowValue(deviceID: workspace.deviceID, chatID: meta.id.uuidString))
+            }
+            Button("Rename…") {
+                renameText = meta.title
+                renaming = true
+                DispatchQueue.main.async { renameFocused = true }
+            }
+            .disabled(!window.isConnected)
+            Button("Close") { close() }
+                .disabled(!window.isConnected || !ChatActions.canClose([meta]))
+            Divider()
+            Button("Delete…") { delete() }
+                .disabled(!window.isConnected)
+        }
+    }
+
+    private func rename() {
         let title = renameText
-        renamingID = nil
+        renaming = false
         guard title.trimmingCharacters(in: .whitespacesAndNewlines) != meta.title else { return }
         Task {
             do {
@@ -429,14 +443,14 @@ struct LinkedChatsView: View {
     }
 
     /// Close: `Close the chat “<title>”?`, then `chats.close` (docs/chats.md › Closing a chat).
-    private func close(_ meta: ChatMeta) {
+    private func close() {
         guard let app = window.app else { return }
         ChatActions.confirmClose([meta], workspace: workspace, window: TicketActions.nsWindow(window), app: app)
     }
 
     /// Delete…: `Delete the chat “<title>”?` with `Its transcript and attachments are moved to the
     /// Trash.` (docs/chats.md › Chat view), then `chats.delete`.
-    private func delete(_ meta: ChatMeta) {
+    private func delete() {
         Task {
             guard await TicketActions.confirm("Delete the chat “\(meta.title)”?",
                                               message: "Its transcript and attachments are moved to the Trash.",

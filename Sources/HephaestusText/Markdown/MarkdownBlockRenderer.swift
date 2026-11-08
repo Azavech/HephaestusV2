@@ -62,6 +62,8 @@ enum CodeBlockLanguage {
 /// Converts the swift-markdown tree to the block model.
 struct MarkdownConverter {
     let options: MarkdownRenderOptions
+    /// Highlights the code blocks; finding the ids of a text needs no tokens.
+    var highlightsCode = true
     private var anchors = HeadingAnchors()
     /// The parsed text, kept only when SF Symbol, color, shortcut, font or animation markers are
     /// read: a marker that is not drawn shows its source as written.
@@ -101,7 +103,7 @@ struct MarkdownConverter {
             let word = CodeBlockLanguage.word(ofInfoString: code.language)
             let language = CodeBlockLanguage.language(forWord: word)
             return .codeBlock(language: language, label: CodeBlockLanguage.label(forWord: word), code: code.code,
-                              tokens: CodeBlockLanguage.tokens(code.code, language: language))
+                              tokens: highlightsCode ? CodeBlockLanguage.tokens(code.code, language: language) : [])
         case is ThematicBreak:
             return .thematicBreak
         case let html as HTMLBlock:

@@ -1,4 +1,5 @@
-// OWNER: ui-tickets — the bundle detail with its Tickets and Chats tabs (docs/tickets.md › Bundles section, › Implement All).
+// OWNER: ui-tickets — the bundle detail with its Tickets, Chats and Mentioned In tabs (docs/tickets.md › Bundles section,
+// › Implement All, › Mentioned In tab).
 import AppKit
 import HephaestusCore
 import SwiftUI
@@ -49,6 +50,9 @@ struct BundleDetailView: View {
                     case .chats:
                         LinkedChatsView(window: window, workspace: workspace, projectID: projectID, owner: .bundle(bundle.id),
                                         chatIDs: bundle.chatIDs)
+                    case .mentionedIn:
+                        MentionedChatsView(window: window, workspace: workspace, projectID: projectID, owner: .bundle(bundle.id),
+                                           ownChatIDs: bundle.chatIDs)
                     }
                 }
             } else {
@@ -123,6 +127,7 @@ struct BundleDetailView: View {
 
     private func tabPicker(_ bundle: TicketBundle) -> some View {
         let chatCount = LinkedChatsView.listedChats(bundle.chatIDs, workspace: workspace).count
+        let mentionCount = MentionedChatsView.listedChats(owner: .bundle(bundle.id), ownChatIDs: bundle.chatIDs, workspace: workspace).count
         return Picker("Tab", selection: Binding(
             get: { tab },
             set: { newTab in
@@ -130,11 +135,16 @@ struct BundleDetailView: View {
                     LinkedChatsView.selectMostRecent(owner: .bundle(bundle.id), chatIDs: bundle.chatIDs, workspace: workspace,
                                                      window: window, projectID: projectID)
                 }
+                if newTab == .mentionedIn, tab != .mentionedIn {
+                    MentionedChatsView.selectMostRecent(owner: .bundle(bundle.id), ownChatIDs: bundle.chatIDs, workspace: workspace,
+                                                        window: window, projectID: projectID)
+                }
                 window.updateViewState(of: projectID) { $0.bundleTab = newTab }
             }
         )) {
             Text("Tickets (\(bundle.ticketIDs.count))").tag(BundleDetailTab.tickets)
             Text("Chats (\(chatCount))").tag(BundleDetailTab.chats)
+            Text("Mentioned In (\(mentionCount))").tag(BundleDetailTab.mentionedIn)
         }
         .pickerStyle(.segmented)
         .labelsHidden()

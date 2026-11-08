@@ -8,12 +8,12 @@ import Observation
 
 /// The tabs of the ticket detail (`ProjectViewState.ticketTab`).
 enum TicketDetailTab: String, Codable, Hashable {
-    case details, chats
+    case details, chats, mentionedIn
 }
 
 /// The tabs of the bundle detail (`ProjectViewState.bundleTab`).
 enum BundleDetailTab: String, Codable, Hashable {
-    case tickets, chats
+    case tickets, chats, mentionedIn
 }
 
 /// The comment composer's unsent text and files of one ticket (`ProjectViewState.commentDrafts`).

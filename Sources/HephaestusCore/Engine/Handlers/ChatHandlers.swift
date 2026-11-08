@@ -490,6 +490,7 @@ extension Engine {
             emitProjectUpdated(meta.projectID, origin: actor)
         }
         chats.costs[chatID] = nil
+        chats.mentions[chatID] = nil
         chats.openQuestionSets[chatID] = nil
         chats.openSymbolRequests[chatID] = nil
         chats.openColorRequests[chatID] = nil

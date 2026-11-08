@@ -320,6 +320,9 @@ struct ProjectViewState {
     var chatsTabSelection: [String: String] = [:]
     /// The tickets and bundles whose Chats tab shows a draft chat.
     var chatsTabDrafts: Set<String> = []
+    /// The chat shown in the Mentioned In tab of a ticket or bundle, by ticket or bundle id
+    /// (docs/tickets.md › Mentioned In tab).
+    var mentionedInSelection: [String: String] = [:]
     /// The workflow or agent shown in the Chats section in place of the chat view; its chat is
     /// then the only chat of `selectedChatIDs` (docs/chats.md › Where chats appear).
     var selectedChatAgent: ChatAgentSelection?
@@ -361,8 +364,8 @@ extension ProjectViewState: @MainActor Codable {
         case selectedTicketIDs, selectedBundleID, selectedChatIDs, inspectorChatID, inspectorShowsDraft, unlinkedItems, editorTabs,
              selectedEditorPath, selectedDocPath, docMode, selectedWebTabID, selectedSkillName, selectedMemoryFile,
              buildsTab, selectedRunID, selectedReleaseTag, expandedCodeFolders, selectedTreePath, expandedDocFolders, ticketList, ticketTab, bundleList, bundleTab,
-             chatsTabSelection, chatsTabDrafts, hidesClosedChats, commentDrafts, selectedChatAgent, chatsTabAgentSelection,
-             expandedAgentChats
+             chatsTabSelection, chatsTabDrafts, mentionedInSelection, hidesClosedChats, commentDrafts, selectedChatAgent,
+             chatsTabAgentSelection, expandedAgentChats
         /// The single selected chat of a state persisted before `selectedChatIDs`; decoded only.
         case selectedChatID
     }
@@ -399,6 +402,7 @@ extension ProjectViewState: @MainActor Codable {
         bundleTab = try c.decodeIfPresent(BundleDetailTab.self, forKey: .bundleTab) ?? .tickets
         chatsTabSelection = try c.decodeIfPresent([String: String].self, forKey: .chatsTabSelection) ?? [:]
         chatsTabDrafts = Set(try c.decodeIfPresent([String].self, forKey: .chatsTabDrafts) ?? [])
+        mentionedInSelection = try c.decodeIfPresent([String: String].self, forKey: .mentionedInSelection) ?? [:]
         hidesClosedChats = try c.decodeIfPresent(Bool.self, forKey: .hidesClosedChats) ?? true
         commentDrafts = try c.decodeIfPresent([String: CommentDraft].self, forKey: .commentDrafts) ?? [:]
         selectedChatAgent = try c.decodeIfPresent(ChatAgentSelection.self, forKey: .selectedChatAgent)
@@ -436,6 +440,7 @@ extension ProjectViewState: @MainActor Codable {
             try c.encode(bundleTab, forKey: .bundleTab)
             try c.encode(chatsTabSelection, forKey: .chatsTabSelection)
             try c.encode(chatsTabDrafts.sorted(), forKey: .chatsTabDrafts)
+            try c.encode(mentionedInSelection, forKey: .mentionedInSelection)
             try c.encode(commentDrafts, forKey: .commentDrafts)
             try c.encode(unlinkedItems.sorted(), forKey: .unlinkedItems)
             try c.encodeIfPresent(selectedChatAgent, forKey: .selectedChatAgent)

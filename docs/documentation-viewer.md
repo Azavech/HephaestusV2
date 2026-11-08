@@ -560,8 +560,12 @@ public enum MarkdownItemIDs {
     public static func id(fromHref href: String) -> String?
     /// Whether an id has the bundle form `<IDENT>-B<n>`.
     public static func isBundleID(_ id: String) -> Bool
+    /// The ids that a Markdown text shows as links in the chat transcript, whatever their identifier.
+    public static func linkedIDs(inMarkdown markdown: String) -> Set<String>
 }
 ```
+
+`linkedIDs(inMarkdown:)` renders the text to the block model with the transcript's rules, its sound, font and animation markers included, and returns the ids of its `.itemID` inlines. It counts every identifier: an identifier is a run of 2 to 8 letters `A`–`Z` written before a `-`, a `\` or a `&`, so a text without such a run is not parsed. The engine uses it to find the ids that a chat mentions ([Mentioned ids](data-model.md#mentioned-ids)).
 
 The class `md-id`, the scheme `hephaestus-id` and the word rule are Default chosen at design time. A click on an id link is handled by the view that shows it ([Link activation](#link-activation)).
 

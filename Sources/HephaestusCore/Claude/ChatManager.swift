@@ -72,6 +72,10 @@ final class ChatManager {
     var hasTextMessage: [ChatID: Bool] = [:]
     /// The cost of each scanned chat (docs/costs.md › Chat cost).
     var costs: [ChatID: ChatCost] = [:]
+    /// The ticket and bundle ids each chat mentions: from its replayed transcript, and from the
+    /// `user` and `assistant` items added since the engine started (docs/data-model.md ›
+    /// Mentioned ids).
+    var mentions: [ChatID: ChatMentions] = [:]
     /// The last state reported by `chat.updated`, per chat.
     var reportedStates: [ChatID: ChatState] = [:]
     /// The last `backgroundWork` reported by `chat.updated`, per chat.
