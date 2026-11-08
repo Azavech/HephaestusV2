@@ -586,10 +586,12 @@ final class ChatViewModel {
         return !questionAnswer.isEmpty
     }
 
-    /// Submit: `chats.answerQuestion` for the displayed question with the selected answer.
+    /// Submit or Next: `chats.answerQuestion` for the displayed question with the selected answer;
+    /// a failure is titled after the label the button shows.
     func submitAnswer() {
-        guard canSubmitAnswer else { return }
-        answerDisplayedQuestion(questionAnswer, action: "Submit")
+        guard canSubmitAnswer, let set = transcriptState?.incompleteQuestionSet,
+              let question = displayedQuestion(set) else { return }
+        answerDisplayedQuestion(questionAnswer, action: QuestionNavigation.answerButtonTitle(set, question))
     }
 
     /// Skip: `chats.answerQuestion` for the displayed question with `Skipped`.

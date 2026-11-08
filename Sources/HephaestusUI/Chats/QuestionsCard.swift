@@ -43,6 +43,18 @@ enum QuestionNavigation {
         return rotated.first { set.answers[$0.label] == nil }?.label
     }
 
+    /// Answering `label` completes the set when every other question of the set has an answer,
+    /// `Skipped` included.
+    static func completesSet(_ set: QuestionsItem, answering label: String) -> Bool {
+        set.questions.allSatisfy { $0.label == label || set.answers[$0.label] != nil }
+    }
+
+    /// The main button of the card: `Submit` when answering the displayed question completes the
+    /// set and sends the Answers message, else `Next`.
+    static func answerButtonTitle(_ set: QuestionsItem, _ question: Question) -> String {
+        completesSet(set, answering: question.label) ? "Submit" : "Next"
+    }
+
     /// The selection of a displayed question: the option whose label equals the stored answer, else
     /// `Answer another way` with the answer as its text; without an answer, the recommended option
     /// and an empty field.
@@ -166,7 +178,7 @@ struct QuestionsCard: View {
                     model.skipQuestion()
                 }
                 .disabled(model.isSubmittingAnswer)
-                Button("Submit") {
+                Button(QuestionNavigation.answerButtonTitle(set, question)) {
                     model.submitAnswer()
                 }
                 .buttonStyle(.borderedProminent)

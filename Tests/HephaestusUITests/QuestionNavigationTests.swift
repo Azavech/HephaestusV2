@@ -48,6 +48,31 @@ struct QuestionNavigationTests {
         #expect(QuestionNavigation.nextUnanswered(set(["A": "Yes", "B": "No"], labels: ["A", "B"]), after: "B") == nil)
     }
 
+    @Test("Answering completes the set when every other question has an answer, Skipped included, whatever the position")
+    func completesSet() {
+        #expect(QuestionNavigation.completesSet(set([:], labels: ["A"]), answering: "A"))
+        #expect(QuestionNavigation.completesSet(set(["A": "Yes", "B": "No"], labels: ["A", "B", "C"]), answering: "C"))
+        #expect(!QuestionNavigation.completesSet(set(["A": "Yes"], labels: ["A", "B", "C"]), answering: "B"))
+        #expect(!QuestionNavigation.completesSet(set(["A": "Yes"], labels: ["A", "B", "C"]), answering: "C"))
+        #expect(!QuestionNavigation.completesSet(set([:], labels: ["A", "B"]), answering: "B"))
+        #expect(QuestionNavigation.completesSet(set(["B": "No"], labels: ["A", "B"]), answering: "A"))
+        #expect(QuestionNavigation.completesSet(set(["A": QuestionNavigation.skipped], labels: ["A", "B"]), answering: "B"))
+    }
+
+    @Test("The main button reads Submit when answering the displayed question completes the set, else Next")
+    func answerButtonTitle() {
+        let three = set([:], labels: ["A", "B", "C"])
+        #expect(three.questions.map { QuestionNavigation.answerButtonTitle(three, $0) } == ["Next", "Next", "Next"])
+        let answered = set(["A": "Yes", "B": QuestionNavigation.skipped], labels: ["A", "B", "C"])
+        #expect(answered.questions.map { QuestionNavigation.answerButtonTitle(answered, $0) } == ["Next", "Next", "Submit"])
+        let one = set([:], labels: ["A"])
+        #expect(QuestionNavigation.answerButtonTitle(one, one.questions[0]) == "Submit")
+        let mixed = QuestionsItem(id: setID.uuidString, created: Date(timeIntervalSince1970: 1_800_000_000), questionSetID: setID,
+                                  questions: [multiple(max: 3)] + set([:], labels: ["B"]).questions, answers: ["B": "Yes"])
+        #expect(QuestionNavigation.answerButtonTitle(mixed, mixed.questions[0]) == "Submit")
+        #expect(QuestionNavigation.answerButtonTitle(mixed, mixed.questions[1]) == "Next")
+    }
+
     @Test("An answered question shows its option, or Answer another way with its text; Skipped is such a text")
     func selection() {
         let question = set([:]).questions[0]
