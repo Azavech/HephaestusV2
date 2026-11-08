@@ -421,6 +421,7 @@ public enum ProjectSection: String, Codable, Sendable, Hashable, CaseIterable {
     case code
     case docs
     case web
+    case builds
     case skills
     case memories
     case costs
@@ -1068,6 +1069,163 @@ public struct MemoryIndex: Codable, Sendable, Hashable {
 
     public init(text: String) {
         self.text = text
+    }
+}
+
+/// A GitHub Actions workflow run of a project's repository (docs/engine-api.md › WorkflowRun).
+public struct WorkflowRun: Codable, Sendable, Hashable {
+    /// The run's id on GitHub (`databaseId` of gh).
+    public var id: Int
+    /// Name of its workflow; empty for the runs of ruleset workflows.
+    public var workflowName: String
+    /// Title of the run (`displayTitle`).
+    public var title: String
+    /// Branch of the run (`headBranch`).
+    public var branch: String
+    /// SHA of the run's commit (`headSha`).
+    public var commit: String
+    /// Event that started the run, for example `push`.
+    public var event: String
+    /// `queued`, `in_progress`, `completed`, `requested`, `waiting` or `pending`, as GitHub writes it.
+    public var status: String
+    /// Once the run is completed, as GitHub writes it; absent before.
+    public var conclusion: String?
+    public var createdAt: Date
+    /// Start of the run's latest attempt; absent before it starts.
+    public var startedAt: Date?
+    public var updatedAt: Date
+    /// The jobs of the latest attempt; present in `builds.getRun` results only.
+    public var jobs: [WorkflowJob]?
+
+    public init(id: Int, workflowName: String, title: String, branch: String, commit: String, event: String,
+                status: String, conclusion: String? = nil, createdAt: Date, startedAt: Date? = nil, updatedAt: Date,
+                jobs: [WorkflowJob]? = nil) {
+        self.id = id
+        self.workflowName = workflowName
+        self.title = title
+        self.branch = branch
+        self.commit = commit
+        self.event = event
+        self.status = status
+        self.conclusion = conclusion
+        self.createdAt = createdAt
+        self.startedAt = startedAt
+        self.updatedAt = updatedAt
+        self.jobs = jobs
+    }
+}
+
+/// A job of a workflow run (docs/engine-api.md › WorkflowJob).
+public struct WorkflowJob: Codable, Sendable, Hashable {
+    /// The job's id on GitHub (`databaseId` of gh).
+    public var id: Int
+    public var name: String
+    public var status: String
+    public var conclusion: String?
+    public var startedAt: Date?
+    public var completedAt: Date?
+    /// The steps of the job, in step order.
+    public var steps: [WorkflowStep]
+
+    public init(id: Int, name: String, status: String, conclusion: String? = nil, startedAt: Date? = nil,
+                completedAt: Date? = nil, steps: [WorkflowStep] = []) {
+        self.id = id
+        self.name = name
+        self.status = status
+        self.conclusion = conclusion
+        self.startedAt = startedAt
+        self.completedAt = completedAt
+        self.steps = steps
+    }
+}
+
+/// A step of a job (docs/engine-api.md › WorkflowStep).
+public struct WorkflowStep: Codable, Sendable, Hashable {
+    /// Number of the step in its job, from 1.
+    public var number: Int
+    public var name: String
+    public var status: String
+    public var conclusion: String?
+    public var startedAt: Date?
+    public var completedAt: Date?
+
+    public init(number: Int, name: String, status: String, conclusion: String? = nil, startedAt: Date? = nil,
+                completedAt: Date? = nil) {
+        self.number = number
+        self.name = name
+        self.status = status
+        self.conclusion = conclusion
+        self.startedAt = startedAt
+        self.completedAt = completedAt
+    }
+}
+
+/// A release of the `builds.listReleases` result (docs/engine-api.md › GitHubRelease).
+public struct GitHubRelease: Codable, Sendable, Hashable {
+    /// Tag of the release (`tagName`).
+    public var tag: String
+    /// Name of the release; empty when it has none.
+    public var name: String
+    public var createdAt: Date
+    public var publishedAt: Date?
+    /// The release is the latest release of the repository.
+    public var isLatest: Bool
+    public var isPrerelease: Bool
+
+    public init(tag: String, name: String, createdAt: Date, publishedAt: Date? = nil, isLatest: Bool, isPrerelease: Bool) {
+        self.tag = tag
+        self.name = name
+        self.createdAt = createdAt
+        self.publishedAt = publishedAt
+        self.isLatest = isLatest
+        self.isPrerelease = isPrerelease
+    }
+}
+
+/// The `builds.getRelease` result: a release with its notes and assets
+/// (docs/engine-api.md › ReleaseDetail).
+public struct ReleaseDetail: Codable, Sendable, Hashable {
+    public var tag: String
+    public var name: String
+    public var createdAt: Date
+    public var publishedAt: Date?
+    public var isPrerelease: Bool
+    /// Release notes in Markdown (`body`); empty when the release has none.
+    public var notes: String
+    /// The files uploaded to the release, in the order of gh.
+    public var assets: [ReleaseAsset]
+
+    public init(tag: String, name: String, createdAt: Date, publishedAt: Date? = nil, isPrerelease: Bool, notes: String,
+                assets: [ReleaseAsset]) {
+        self.tag = tag
+        self.name = name
+        self.createdAt = createdAt
+        self.publishedAt = publishedAt
+        self.isPrerelease = isPrerelease
+        self.notes = notes
+        self.assets = assets
+    }
+}
+
+/// A file uploaded to a release (docs/engine-api.md › ReleaseAsset).
+public struct ReleaseAsset: Codable, Sendable, Hashable {
+    public var name: String
+    /// Size in bytes.
+    public var size: Int
+
+    public init(name: String, size: Int) {
+        self.name = name
+        self.size = size
+    }
+}
+
+/// The `builds.downloadAsset` result (docs/engine-api.md › DownloadedAsset).
+public struct DownloadedAsset: Codable, Sendable, Hashable {
+    /// Absolute path of the saved file in the Downloads folder of the main device.
+    public var path: String
+
+    public init(path: String) {
+        self.path = path
     }
 }
 

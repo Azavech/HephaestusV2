@@ -1,0 +1,38 @@
+{
+  "assets": [
+    {
+      "apiUrl": "https://api.github.com/repos/example/HephaestusV2/releases/assets/722022373",
+      "contentType": "application/zip",
+      "createdAt": "2026-11-07T21:41:13Z",
+      "digest": "sha256:6e51cc86841dbdb030fc44be1480f078484ba9045dc15124aa428ec01fb365aa",
+      "downloadCount": 2,
+      "id": "RA_kwDOVe6yms4rCS_l",
+      "label": "",
+      "name": "HephaestusV2.zip",
+      "size": 19039339,
+      "state": "uploaded",
+      "updatedAt": "2026-11-07T21:41:14Z",
+      "url": "https://github.com/example/HephaestusV2/releases/download/v0.41.0/HephaestusV2.zip"
+    },
+    {
+      "apiUrl": "https://api.github.com/repos/example/HephaestusV2/releases/assets/722022375",
+      "contentType": "application/json",
+      "createdAt": "2026-11-07T21:41:13Z",
+      "digest": "sha256:396ecd94ad521d7bdd312890e6352340f499e1892448e3a43d2b90b4c6010e9f",
+      "downloadCount": 20,
+      "id": "RA_kwDOVe6yms4rCS_n",
+      "label": "",
+      "name": "release.json",
+      "size": 299,
+      "state": "uploaded",
+      "updatedAt": "2026-11-07T21:41:13Z",
+      "url": "https://github.com/example/HephaestusV2/releases/download/v0.41.0/release.json"
+    }
+  ],
+  "body": "- feat: always load the HephaestusV2 project for feedback (HEPH-85)\n",
+  "createdAt": "2026-11-07T21:26:58Z",
+  "isPrerelease": false,
+  "name": "v0.41.0(302)",
+  "publishedAt": "2026-11-07T21:41:14Z",
+  "tagName": "v0.41.0"
+}

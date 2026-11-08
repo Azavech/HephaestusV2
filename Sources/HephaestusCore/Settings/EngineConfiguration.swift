@@ -30,11 +30,18 @@ public struct EngineConfiguration: Sendable {
     public var hephaestusProject: HephaestusProjectConfiguration?
     /// Gives the memory folder of a project root (docs/memories.md › Resolution).
     public var memoryFolders: any MemoryFolderResolving
+    /// Looks the GitHub CLI up and runs it for the `builds.*` methods (docs/builds.md › gh calls).
+    public var githubCLI: any GitHubCLIRunning
+    /// The Downloads folder where `builds.downloadAsset` saves release assets
+    /// (docs/builds.md › Downloads).
+    public var downloadsFolder: URL
 
     public init(dataDirectory: URL, mcpPort: Int?, syncPort: Int?, syncInterface: SyncInterface, advertisesBonjour: Bool,
                 debugTools: Bool, claudePath: String?, claudeLauncher: any ClaudeProcessLauncher, appVersion: String, build: Int,
                 hephaestusProject: HephaestusProjectConfiguration? = nil,
-                memoryFolders: any MemoryFolderResolving = ClaudeMemoryFolderResolver(homeDirectory: NSHomeDirectory())) {
+                memoryFolders: any MemoryFolderResolving = ClaudeMemoryFolderResolver(homeDirectory: NSHomeDirectory()),
+                githubCLI: any GitHubCLIRunning = MissingGitHubCLI(),
+                downloadsFolder: URL = EngineConfiguration.userDownloadsFolder(homeDirectory: NSHomeDirectory())) {
         self.dataDirectory = dataDirectory
         self.mcpPort = mcpPort
         self.syncPort = syncPort
@@ -47,6 +54,14 @@ public struct EngineConfiguration: Sendable {
         self.build = build
         self.hephaestusProject = hephaestusProject
         self.memoryFolders = memoryFolders
+        self.githubCLI = githubCLI
+        self.downloadsFolder = downloadsFolder
+    }
+
+    /// The Downloads folder of the user, `<home>/Downloads` when the system names none.
+    public static func userDownloadsFolder(homeDirectory: String) -> URL {
+        FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: homeDirectory, isDirectory: true).appendingPathComponent("Downloads", isDirectory: true)
     }
 
     /// The app's configuration: the values of the launch environment, all interfaces, Bonjour
@@ -67,7 +82,9 @@ public struct EngineConfiguration: Sendable {
             appVersion: appVersion,
             build: build,
             hephaestusProject: HephaestusProjectConfiguration(cloneURL: HephaestusRepository.url),
-            memoryFolders: ClaudeMemoryFolderResolver(homeDirectory: homeDirectory)
+            memoryFolders: ClaudeMemoryFolderResolver(homeDirectory: homeDirectory),
+            githubCLI: SystemGitHubCLI(),
+            downloadsFolder: userDownloadsFolder(homeDirectory: homeDirectory)
         )
     }
 
@@ -75,10 +92,13 @@ public struct EngineConfiguration: Sendable {
     /// the loopback interface, no Bonjour advertising, no Claude path, version `0.0.0`, build 0,
     /// no HephaestusV2 project unless the test gives one, and memory folders under the folders
     /// `Claude` (config folder) and `Home` next to the data directory, without managed settings,
-    /// unless the test gives a resolver: no test reads or writes `~/.claude`.
+    /// unless the test gives a resolver: no test reads or writes `~/.claude`. Without a GitHub CLI
+    /// of the test, gh is never found, and assets are saved in the folder `Downloads` next to the
+    /// data directory: no test runs the user's gh or writes into the user's Downloads folder.
     public static func test(dataDirectory: URL, debugTools: Bool = false, claudeLauncher: any ClaudeProcessLauncher,
                             hephaestusProject: HephaestusProjectConfiguration? = nil,
-                            memoryFolders: (any MemoryFolderResolving)? = nil) -> EngineConfiguration {
+                            memoryFolders: (any MemoryFolderResolving)? = nil,
+                            githubCLI: (any GitHubCLIRunning)? = nil) -> EngineConfiguration {
         let testFolder = dataDirectory.deletingLastPathComponent()
         return EngineConfiguration(
             dataDirectory: dataDirectory,
@@ -95,7 +115,9 @@ public struct EngineConfiguration: Sendable {
             memoryFolders: memoryFolders ?? ClaudeMemoryFolderResolver(
                 homeDirectory: testFolder.appendingPathComponent("Home", isDirectory: true).path,
                 configDirectory: testFolder.appendingPathComponent("Claude", isDirectory: true).path,
-                managedSettingsPath: nil)
+                managedSettingsPath: nil),
+            githubCLI: githubCLI ?? MissingGitHubCLI(),
+            downloadsFolder: testFolder.appendingPathComponent("Downloads", isDirectory: true)
         )
     }
 

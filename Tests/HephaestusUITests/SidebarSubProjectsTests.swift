@@ -35,7 +35,8 @@ struct SidebarSubProjectsTests {
         let workspace = workspace(type: type)
         let demo = try categories(of: "DEMO", in: workspace)
         #expect(demo.map(\.title) == ["Project", "Sub Projects"])
-        #expect(demo[0].sections == ProjectSection.listed && demo[0].subProjects.isEmpty)
+        // Without a GitHub page the Project category has no Builds row (docs/builds.md › Visibility).
+        #expect(demo[0].sections == ProjectSection.listed.filter { $0 != .builds } && demo[0].subProjects.isEmpty)
         let subProjects = try #require(demo.last)
         #expect(subProjects.sections.isEmpty)
         #expect(subProjects.subProjects.map(\.id) == ["MUS", "API", "SHR"])

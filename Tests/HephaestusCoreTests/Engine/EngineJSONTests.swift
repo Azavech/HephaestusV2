@@ -99,6 +99,9 @@ struct EngineJSONTests {
         "### InheritedMemoryFolder": roundTrip(InheritedMemoryFolder.self),
         "### Memory": roundTrip(Memory.self),
         "### MemoryIndex": roundTrip(MemoryIndex.self),
+        "### WorkflowRun": roundTrip(WorkflowRun.self),
+        "### GitHubRelease": roundTrip(GitHubRelease.self),
+        "### ReleaseDetail": roundTrip(ReleaseDetail.self),
         "### EngineEventEnvelope": roundTrip(EngineEventEnvelope.self),
     ]
 

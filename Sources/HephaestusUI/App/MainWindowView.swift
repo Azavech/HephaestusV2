@@ -162,6 +162,16 @@ private struct MainWindowColumns: View {
                 workspace.ensureProjectLoaded(projectID)
             }
         }
+        .onChange(of: buildsVisibility, initial: true) {
+            state.reconcileBuildsSection(with: workspace)
+        }
+    }
+
+    /// What decides whether the window may show Builds (docs/builds.md › Visibility).
+    private var buildsVisibility: [String] {
+        let projectID = state.projectID ?? ""
+        return [workspace.deviceID, projectID, String(workspace.loadedProjectIDs.contains(projectID)),
+                workspace.details[projectID]?.githubPage ?? "", state.section.rawValue]
     }
 }
 
@@ -270,6 +280,9 @@ private struct SectionContent: View {
                 DocsSectionView(window: state, workspace: workspace, projectID: projectID)
             case .web:
                 WebSectionView(window: state, workspace: workspace, projectID: projectID)
+            case .builds:
+                BuildsSectionView(window: state, workspace: workspace, projectID: projectID)
+                    .id("\(workspace.deviceID)/\(projectID)")
             case .skills:
                 SkillsSectionView(window: state, workspace: workspace, projectID: projectID)
             case .memories:

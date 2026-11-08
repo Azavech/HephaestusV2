@@ -376,6 +376,14 @@ public enum GitHubPage {
         return String(page.dropFirst("https://github.com/".count))
     }
 
+    /// The owner and the repository name of a page, nil when the text is not a page
+    /// (docs/builds.md › Repository).
+    public static func ownerAndName(of text: String) -> (owner: String, name: String)? {
+        guard let page = normalized(text) else { return nil }
+        let parts = page.dropFirst("https://github.com/".count).split(separator: "/")
+        return (String(parts[0]), String(parts[1]))
+    }
+
     /// The page as stored; `invalid` for anything else than a page (docs/engine-api.md ›
     /// projects.update).
     public static func validated(_ text: String) throws -> String {

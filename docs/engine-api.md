@@ -1,6 +1,6 @@
 # Engine API
 
-The engine API is the single interface to everything a device's engine owns: projects, sub projects, tickets, bundles, chats, files, docs, web tabs, skills, the memories the Claude CLI saves for the projects and the device's global memories, host settings and the Claude plan usage. Local windows, remote devices and Claude (through the MCP server) call the same named methods with JSON params and JSON results, and all of them receive the same stream of named events, so every client sees every change live wherever it was made, and a remote window works as if it were the main device itself. This document is the contract for every method (params, result, errors, allowed actors, events emitted), every event, every API-only type, the JSON conventions and the Swift shape of the API. Persisted types (Project, WebTab, ChatSettings, Ticket, Comment, TicketLink, Attachment, TicketBundle, ChatMeta, ChatItem, Question, HostSettings, PlanUsage) are defined in [Data model](data-model.md); the transports are described in [Remote devices](remote.md) and [MCP server](mcp.md).
+The engine API is the single interface to everything a device's engine owns: projects, sub projects, tickets, bundles, chats, files, docs, web tabs, skills, the memories the Claude CLI saves for the projects and the device's global memories, host settings and the Claude plan usage; it also reads the workflow runs and releases of the projects' GitHub repositories with the GitHub CLI ([Builds](builds.md)). Local windows, remote devices and Claude (through the MCP server) call the same named methods with JSON params and JSON results, and all of them receive the same stream of named events, so every client sees every change live wherever it was made, and a remote window works as if it were the main device itself. This document is the contract for every method (params, result, errors, allowed actors, events emitted), every event, every API-only type, the JSON conventions and the Swift shape of the API. Persisted types (Project, WebTab, ChatSettings, Ticket, Comment, TicketLink, Attachment, TicketBundle, ChatMeta, ChatItem, Question, HostSettings, PlanUsage) are defined in [Data model](data-model.md); the transports are described in [Remote devices](remote.md) and [MCP server](mcp.md).
 
 ## Overview
 
@@ -158,7 +158,7 @@ A failed call returns an [EngineError](#engineerror) `{code, message}`.
 | invalid     | The params do not decode or break a validation rule.                                                                                                                                                                                                                                                                                                                                             |
 | conflict    | The call clashes with the current state: an id or a file already exists, a file changed since `expectedModified`, a question set, a symbol request, a color request, a sound request, a shortcut request, a font request or an animation request is waiting or already answered, a ticket to implement is done, a bundle to implement is in progress or done, a workflow to stop is not running. |
 | forbidden   | The actor may not do this: a method or param not open to the actor, a ticket or bundle status rule, a locked web tab, a protected path.                                                                                                                                                                                                                                                          |
-| unavailable | A required service is missing: the Claude CLI, the Trash, the skills library folder, a memory folder, or the connection to the device.                                                                                                                                                                                                                                                           |
+| unavailable | A required service is missing or fails: the Claude CLI, the Trash, the skills library folder, a memory folder, the GitHub CLI, its login or GitHub ([Builds](builds.md#failures)), or the connection to the device.                                                                                                                                                                              |
 | internal    | Unexpected failure: file system error, process start failure, encoding failure.                                                                                                                                                                                                                                                                                                                  |
 
 ### Dispatcher errors
@@ -300,6 +300,13 @@ The first column lists every engine method; it is the list the docs conformance 
 | `memories.delete`           | MemoriesDelete           | projectID?, file                                           | Empty            | user         |
 | `memories.readIndex`        | MemoriesReadIndex        | projectID?                                                 | MemoryIndex      | user         |
 | `memories.writeIndex`       | MemoriesWriteIndex       | projectID?, text                                           | Empty            | user         |
+| `builds.listRuns`           | BuildsListRuns           | projectID                                                  | [WorkflowRun]    | user         |
+| `builds.getRun`             | BuildsGetRun             | projectID, runID                                           | WorkflowRun      | user         |
+| `builds.rerunRun`           | BuildsRerunRun           | projectID, runID, failedOnly?                              | Empty            | user         |
+| `builds.cancelRun`          | BuildsCancelRun          | projectID, runID                                           | Empty            | user         |
+| `builds.listReleases`       | BuildsListReleases       | projectID                                                  | [GitHubRelease]  | user         |
+| `builds.getRelease`         | BuildsGetRelease         | projectID, tag                                             | ReleaseDetail    | user         |
+| `builds.downloadAsset`      | BuildsDownloadAsset      | projectID, tag, asset                                      | DownloadedAsset  | user         |
 | `settings.get`              | SettingsGet              | none                                                       | HostSettings     | user         |
 | `settings.update`           | SettingsUpdate           | any HostSettings key (partial)                             | HostSettings     | user         |
 | `ui.open`                   | UIOpen                   | target, deviceID?                                          | Empty            | user, claude |
@@ -2515,6 +2522,151 @@ Writes the text atomically as UTF-8, creating the folder when missing. A text eq
 
 Events: memories.changed.
 
+## Builds
+
+The Builds section, the gh commands and their failures are in [Builds](builds.md). Every method takes the `projectID` of a loaded project and runs `gh` on the repository `<owner>/<name>` of the project's GitHub page `https://github.com/<owner>/<name>` ([gh calls](builds.md#gh-calls)). The results are read from GitHub at every call; the engine stores none of them and emits no event. Only the user actor calls these methods.
+
+Besides the errors of its params, every method fails with these ([Failures](builds.md#failures)):
+
+| Error       | When                                                                                                                                                                                                                                                                                                     |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| unavailable | The project has no GitHub page (`Project <id> has no GitHub page.`); no `gh` is found (`Install the GitHub CLI (gh) to see runs and releases.`); gh exits with status 4 (`Run gh auth login in Terminal to see runs and releases.`); gh fails otherwise or times out (`gh <command> failed: <reason>.`). |
+| internal    | The output of gh is not the JSON the method reads (`gh <command> returned unexpected output: <reason>.`).                                                                                                                                                                                                |
+
+### builds.listRuns
+
+Swift type `BuildsListRuns` · actors: user · result: [WorkflowRun](#workflowrun) array
+
+Returns the newest 50 workflow runs of the repository, of every branch and every workflow, newest first, without `jobs`.
+
+| Param     | Type      | Required | Description         |
+| --------- | --------- | -------- | ------------------- |
+| projectID | ProjectID | yes      | Project identifier. |
+
+| Error                 | When                                   |
+| --------------------- | -------------------------------------- |
+| invalid               | projectID is malformed.                |
+| notFound              | No loaded project has this identifier. |
+| unavailable, internal | As every method of [Builds](#builds).  |
+
+Events: none.
+
+### builds.getRun
+
+Swift type `BuildsGetRun` · actors: user · result: [WorkflowRun](#workflowrun)
+
+Returns one run with its `jobs` and their steps.
+
+| Param     | Type      | Required | Description                       |
+| --------- | --------- | -------- | --------------------------------- |
+| projectID | ProjectID | yes      | Project identifier.               |
+| runID     | Int       | yes      | Id of the run (`WorkflowRun.id`). |
+
+| Error                 | When                                                                                                     |
+| --------------------- | -------------------------------------------------------------------------------------------------------- |
+| invalid               | projectID is malformed; runID is less than 1 (`runID: use a run id of at least 1.`).                     |
+| notFound              | No loaded project has this identifier.                                                                   |
+| unavailable, internal | As every method of [Builds](#builds); a run that does not exist makes gh fail (`gh run view failed: …`). |
+
+Events: none.
+
+### builds.rerunRun
+
+Swift type `BuildsRerunRun` · actors: user · result: [Empty](#empty)
+
+Runs a completed run again: every job, or only the failed jobs and the jobs that depend on them.
+
+| Param      | Type      | Required | Description                                                                                        |
+| ---------- | --------- | -------- | -------------------------------------------------------------------------------------------------- |
+| projectID  | ProjectID | yes      | Project identifier.                                                                                |
+| runID      | Int       | yes      | Id of the run.                                                                                     |
+| failedOnly | Bool      | no       | true: only the failed jobs and the jobs that depend on them run again (`--failed`); default false. |
+
+| Error                 | When                                                                                         |
+| --------------------- | -------------------------------------------------------------------------------------------- |
+| invalid               | projectID is malformed; runID is less than 1.                                                |
+| notFound              | No loaded project has this identifier.                                                       |
+| unavailable, internal | As every method of [Builds](#builds); GitHub's refusals, for example of a run not completed. |
+
+Events: none.
+
+### builds.cancelRun
+
+Swift type `BuildsCancelRun` · actors: user · result: [Empty](#empty)
+
+Cancels a queued or running run.
+
+| Param     | Type      | Required | Description         |
+| --------- | --------- | -------- | ------------------- |
+| projectID | ProjectID | yes      | Project identifier. |
+| runID     | Int       | yes      | Id of the run.      |
+
+| Error                 | When                                                                                     |
+| --------------------- | ---------------------------------------------------------------------------------------- |
+| invalid               | projectID is malformed; runID is less than 1.                                            |
+| notFound              | No loaded project has this identifier.                                                   |
+| unavailable, internal | As every method of [Builds](#builds); GitHub's refusals, for example of a completed run. |
+
+Events: none.
+
+### builds.listReleases
+
+Swift type `BuildsListReleases` · actors: user · result: [GitHubRelease](#githubrelease) array
+
+Returns the newest 50 published releases of the repository, newest first; drafts are left out.
+
+| Param     | Type      | Required | Description         |
+| --------- | --------- | -------- | ------------------- |
+| projectID | ProjectID | yes      | Project identifier. |
+
+| Error                 | When                                   |
+| --------------------- | -------------------------------------- |
+| invalid               | projectID is malformed.                |
+| notFound              | No loaded project has this identifier. |
+| unavailable, internal | As every method of [Builds](#builds).  |
+
+Events: none.
+
+### builds.getRelease
+
+Swift type `BuildsGetRelease` · actors: user · result: [ReleaseDetail](#releasedetail)
+
+Returns one release with its notes and its assets.
+
+| Param     | Type      | Required | Description         |
+| --------- | --------- | -------- | ------------------- |
+| projectID | ProjectID | yes      | Project identifier. |
+| tag       | String    | yes      | Tag of the release. |
+
+| Error                 | When                                                                                                             |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| invalid               | projectID is malformed; tag is empty (`tag: use at least 1 character.`).                                         |
+| notFound              | No loaded project has this identifier.                                                                           |
+| unavailable, internal | As every method of [Builds](#builds); a release that does not exist makes gh fail (`gh release view failed: …`). |
+
+Events: none.
+
+### builds.downloadAsset
+
+Swift type `BuildsDownloadAsset` · actors: user · result: [DownloadedAsset](#downloadedasset)
+
+Downloads an asset of a release with gh into a new folder of `<data dir>/Runtime/downloads/`, moves it into the Downloads folder of the main device under a free name and gives it the quarantine attributes of a web download ([Downloads](builds.md#downloads)).
+
+| Param     | Type      | Required | Description                              |
+| --------- | --------- | -------- | ---------------------------------------- |
+| projectID | ProjectID | yes      | Project identifier.                      |
+| tag       | String    | yes      | Tag of the release.                      |
+| asset     | String    | yes      | Name of the asset (`ReleaseAsset.name`). |
+
+| Error                 | When                                                                                                                                                                |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid               | projectID is malformed; tag or asset is empty (`tag: use at least 1 character.`, `asset: use at least 1 character.`).                                               |
+| notFound              | No loaded project has this identifier.                                                                                                                              |
+| unavailable, internal | As every method of [Builds](#builds); an asset that the release does not have makes gh fail (`gh release download failed: no assets match the file pattern.`).      |
+| internal              | The temporary folder cannot be created, gh saved no file, or the file cannot be moved into the Downloads folder (`<asset> cannot be saved in <folder>: <reason>.`). |
+
+Events: none.
+
 ## Settings
 
 ### settings.get
@@ -3295,7 +3447,7 @@ public enum NavigationTarget: Codable, Sendable, Hashable {
 
 ### ProjectSection
 
-String enum of the sidebar sections: `dashboard`, `tickets`, `bundles`, `chats`, `code`, `docs`, `web`, `skills`, `memories`, `costs`, `apiExplorer`, `settings` ([Sidebar](ui.md#sidebar)). The Swift name avoids SwiftUI's `Section`. Default chosen at design time.
+String enum of the sidebar sections: `dashboard`, `tickets`, `bundles`, `chats`, `code`, `docs`, `web`, `builds`, `skills`, `memories`, `costs`, `apiExplorer`, `settings` ([Sidebar](ui.md#sidebar)). The Swift name avoids SwiftUI's `Section`. Default chosen at design time.
 
 ### AttachmentUpload
 
@@ -3804,6 +3956,121 @@ A memory folder that a project inherits from one of its ancestors ([Inherited me
 {"text": "- [answer-style](feedback_style.md) — Answer in short sentences\n"}
 ```
 
+### WorkflowRun
+
+A GitHub Actions workflow run ([Workflow runs](builds.md#workflow-runs)). A date that gh writes as `0001-01-01T00:00:00Z`, for a time GitHub has not set, and an empty conclusion are absent.
+
+| Field        | Type                          | Required | Description                                                                                                                                                            |
+| ------------ | ----------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id           | Int                           | yes      | The run's id on GitHub (`databaseId` of gh).                                                                                                                           |
+| workflowName | String                        | yes      | Name of its workflow; empty for the runs of ruleset workflows, which gh gives without name.                                                                            |
+| title        | String                        | yes      | Title of the run (`displayTitle`), for example the first line of the commit message.                                                                                   |
+| branch       | String                        | yes      | Branch of the run (`headBranch`).                                                                                                                                      |
+| commit       | String                        | yes      | SHA of the run's commit (`headSha`), 40 hexadecimal characters.                                                                                                        |
+| event        | String                        | yes      | Event that started the run, for example `push`, `pull_request` or `workflow_dispatch`.                                                                                 |
+| status       | String                        | yes      | As GitHub writes it: `queued`, `in_progress`, `completed`, `requested`, `waiting` or `pending`.                                                                        |
+| conclusion   | String                        | no       | Once the run is completed, as GitHub writes it: `success`, `failure`, `cancelled`, `skipped`, `timed_out`, `neutral`, `action_required`, `stale` or `startup_failure`. |
+| createdAt    | Date                          | yes      | Creation of the run.                                                                                                                                                   |
+| startedAt    | Date                          | no       | Start of the run's latest attempt; absent before it starts.                                                                                                            |
+| updatedAt    | Date                          | yes      | Last change of the run.                                                                                                                                                |
+| jobs         | [[WorkflowJob](#workflowjob)] | no       | The jobs of the run's latest attempt, in the order of gh; present in the results of `builds.getRun` only.                                                              |
+
+```json
+{
+  "branch": "main",
+  "commit": "ec49a8f2897f0d17737ccc2137d7506cb82d0d93",
+  "conclusion": "success",
+  "createdAt": "2026-11-07T21:27:02Z",
+  "event": "push",
+  "id": 42415910670,
+  "startedAt": "2026-11-07T21:27:02Z",
+  "status": "completed",
+  "title": "feat: always load the HephaestusV2 project for feedback (HEPH-85)",
+  "updatedAt": "2026-11-07T21:41:19Z",
+  "workflowName": "Release"
+}
+```
+
+### WorkflowJob
+
+| Field       | Type                            | Required | Description                                  |
+| ----------- | ------------------------------- | -------- | -------------------------------------------- |
+| id          | Int                             | yes      | The job's id on GitHub (`databaseId` of gh). |
+| name        | String                          | yes      | Name of the job.                             |
+| status      | String                          | yes      | As for [WorkflowRun](#workflowrun).          |
+| conclusion  | String                          | no       | As for WorkflowRun.                          |
+| startedAt   | Date                            | no       | Start of the job; absent before it starts.   |
+| completedAt | Date                            | no       | End of the job; absent before it completes.  |
+| steps       | [[WorkflowStep](#workflowstep)] | yes      | The steps of the job, in step order.         |
+
+### WorkflowStep
+
+| Field       | Type   | Required | Description                                 |
+| ----------- | ------ | -------- | ------------------------------------------- |
+| number      | Int    | yes      | Number of the step in its job, from 1.      |
+| name        | String | yes      | Name of the step.                           |
+| status      | String | yes      | As for [WorkflowRun](#workflowrun).         |
+| conclusion  | String | no       | As for WorkflowRun.                         |
+| startedAt   | Date   | no       | Start of the step; absent before it starts. |
+| completedAt | Date   | no       | End of the step; absent before it ends.     |
+
+### GitHubRelease
+
+A release of the `builds.listReleases` result ([Releases](builds.md#releases)).
+
+| Field        | Type   | Required | Description                                            |
+| ------------ | ------ | -------- | ------------------------------------------------------ |
+| tag          | String | yes      | Tag of the release (`tagName`).                        |
+| name         | String | yes      | Name of the release; empty when it has none.           |
+| createdAt    | Date   | yes      | Creation of the release.                               |
+| publishedAt  | Date   | no       | Publication of the release; absent when gh gives none. |
+| isLatest     | Bool   | yes      | The release is the latest release of the repository.   |
+| isPrerelease | Bool   | yes      | The release is a pre-release.                          |
+
+```json
+{"createdAt": "2026-11-07T21:26:58Z", "isLatest": true, "isPrerelease": false, "name": "v0.41.0(302)", "publishedAt": "2026-11-07T21:41:14Z", "tag": "v0.41.0"}
+```
+
+### ReleaseDetail
+
+The `builds.getRelease` result.
+
+| Field        | Type                            | Required | Description                                                                                                                           |
+| ------------ | ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| tag          | String                          | yes      | Tag of the release.                                                                                                                   |
+| name         | String                          | yes      | Name of the release; empty when it has none.                                                                                          |
+| createdAt    | Date                            | yes      | Creation of the release.                                                                                                              |
+| publishedAt  | Date                            | no       | Publication of the release.                                                                                                           |
+| isPrerelease | Bool                            | yes      | The release is a pre-release.                                                                                                         |
+| notes        | String                          | yes      | Release notes in Markdown (`body`); empty when the release has none.                                                                  |
+| assets       | [[ReleaseAsset](#releaseasset)] | yes      | The files uploaded to the release, in the order of gh; the source code archives that GitHub adds to every release are not among them. |
+
+```json
+{
+  "assets": [{"name": "HephaestusV2.zip", "size": 19039339}, {"name": "release.json", "size": 299}],
+  "createdAt": "2026-11-07T21:26:58Z",
+  "isPrerelease": false,
+  "name": "v0.41.0(302)",
+  "notes": "- feat: always load the HephaestusV2 project for feedback (HEPH-85)\n",
+  "publishedAt": "2026-11-07T21:41:14Z",
+  "tag": "v0.41.0"
+}
+```
+
+### ReleaseAsset
+
+| Field | Type   | Required | Description             |
+| ----- | ------ | -------- | ----------------------- |
+| name  | String | yes      | File name of the asset. |
+| size  | Int    | yes      | Size in bytes.          |
+
+### DownloadedAsset
+
+| Field | Type   | Required | Description                                                                 |
+| ----- | ------ | -------- | --------------------------------------------------------------------------- |
+| path  | String | yes      | Absolute path of the saved file in the Downloads folder of the main device. |
+
+
 ### EngineEventEnvelope
 
 | Field  | Type      | Required | Description                                                      |
@@ -3829,19 +4096,19 @@ A memory folder that a project inherits from one of its ancestors ([Inherited me
 
 ### Files
 
-| Path (under Sources/HephaestusCore/Engine/) | Content                                                                                                                                                                                                                                                                                                                                   |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Engine.swift                                | The `Engine` actor, its dispatcher and its event subscriptions.                                                                                                                                                                                                                                                                           |
-| Actor.swift                                 | `Actor`, `ActorKind`.                                                                                                                                                                                                                                                                                                                     |
-| EngineError.swift                           | `EngineError`.                                                                                                                                                                                                                                                                                                                            |
-| EngineConnection.swift                      | `EngineConnection`, `ConnectionState`.                                                                                                                                                                                                                                                                                                    |
-| LocalEngineConnection.swift                 | The in-process connection.                                                                                                                                                                                                                                                                                                                |
-| API/EngineMethod.swift                      | `EngineMethod`, `EngineEvent`, `Empty`, `Patch`.                                                                                                                                                                                                                                                                                          |
-| API/EngineJSON.swift                        | The JSON encoder and decoder of the API.                                                                                                                                                                                                                                                                                                  |
-| API/APITypes.swift                          | The other types of [API types](#api-types).                                                                                                                                                                                                                                                                                               |
-| API/(Area)API.swift                         | The method declarations of one area: `DeviceAPI` (device.info, snapshot.get), `ProjectsAPI`, `TicketsAPI`, `AttachmentsAPI`, `BundlesAPI`, `ChatsAPI`, `SoundsAPI`, `ClaudeAPI`, `FilesAPI`, `DocsAPI`, `FSAPI`, `WebTabsAPI`, `SearchAPI`, `SkillsAPI`, `MemoriesAPI`, `SettingsAPI`, `UIAPI`, `KubernetesAPI` (kubernetes.*, argoCD.*). |
-| API/Events.swift                            | One `EngineEvent` type per event, with the payload types.                                                                                                                                                                                                                                                                                 |
-| Handlers/(Area)Handlers.swift               | `register<Area>Handlers()` and the handlers of one area.                                                                                                                                                                                                                                                                                  |
+| Path (under Sources/HephaestusCore/Engine/) | Content                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Engine.swift                                | The `Engine` actor, its dispatcher and its event subscriptions.                                                                                                                                                                                                                                                                                        |
+| Actor.swift                                 | `Actor`, `ActorKind`.                                                                                                                                                                                                                                                                                                                                  |
+| EngineError.swift                           | `EngineError`.                                                                                                                                                                                                                                                                                                                                         |
+| EngineConnection.swift                      | `EngineConnection`, `ConnectionState`.                                                                                                                                                                                                                                                                                                                 |
+| LocalEngineConnection.swift                 | The in-process connection.                                                                                                                                                                                                                                                                                                                             |
+| API/EngineMethod.swift                      | `EngineMethod`, `EngineEvent`, `Empty`, `Patch`.                                                                                                                                                                                                                                                                                                       |
+| API/EngineJSON.swift                        | The JSON encoder and decoder of the API.                                                                                                                                                                                                                                                                                                               |
+| API/APITypes.swift                          | The other types of [API types](#api-types).                                                                                                                                                                                                                                                                                                            |
+| API/(Area)API.swift                         | The method declarations of one area: `DeviceAPI` (device.info, snapshot.get), `ProjectsAPI`, `TicketsAPI`, `AttachmentsAPI`, `BundlesAPI`, `ChatsAPI`, `SoundsAPI`, `ClaudeAPI`, `FilesAPI`, `DocsAPI`, `FSAPI`, `WebTabsAPI`, `SearchAPI`, `SkillsAPI`, `MemoriesAPI`, `BuildsAPI`, `SettingsAPI`, `UIAPI`, `KubernetesAPI` (kubernetes.*, argoCD.*). |
+| API/Events.swift                            | One `EngineEvent` type per event, with the payload types.                                                                                                                                                                                                                                                                                              |
+| Handlers/(Area)Handlers.swift               | `register<Area>Handlers()` and the handlers of one area.                                                                                                                                                                                                                                                                                               |
 
 `RemoteEngineConnection` lives in `Sources/HephaestusCore/Sync/` ([Remote devices](remote.md)); the MCP server in `Sources/HephaestusCore/MCP/` ([MCP server](mcp.md)).
 
@@ -3971,7 +4238,7 @@ public actor Engine {
 4. Run the handler with the decoded params and the actor. An `EngineError` is rethrown as is; any other error becomes `internal` and is logged.
 5. Encode the result with `EngineJSON.encoder()`.
 
-The handlers are registered at engine start by `registerDeviceHandlers()`, `registerProjectHandlers()`, `registerTicketHandlers()`, `registerAttachmentHandlers()`, `registerBundleHandlers()`, `registerChatHandlers()`, `registerClaudeHandlers()`, `registerFileHandlers()`, `registerDocHandlers()`, `registerFSHandlers()`, `registerWebTabHandlers()`, `registerSearchHandlers()`, `registerSkillHandlers()`, `registerMemoryHandlers()`, `registerSettingsHandlers()`, `registerUIHandlers()` and `registerKubernetesHandlers()`. The `actors` set of each registration is the Actors column of the [Method index](#method-index). Parameter-level rules for Claude ([Rules for Claude](#rules-for-claude)) are checked by the handlers.
+The handlers are registered at engine start by `registerDeviceHandlers()`, `registerProjectHandlers()`, `registerTicketHandlers()`, `registerAttachmentHandlers()`, `registerBundleHandlers()`, `registerChatHandlers()`, `registerClaudeHandlers()`, `registerFileHandlers()`, `registerDocHandlers()`, `registerFSHandlers()`, `registerWebTabHandlers()`, `registerSearchHandlers()`, `registerSkillHandlers()`, `registerMemoryHandlers()`, `registerBuildHandlers()`, `registerSettingsHandlers()`, `registerUIHandlers()` and `registerKubernetesHandlers()`. The `actors` set of each registration is the Actors column of the [Method index](#method-index). Parameter-level rules for Claude ([Rules for Claude](#rules-for-claude)) are checked by the handlers.
 
 `emit` encodes the envelope once with `EngineJSON.encoder()` and yields the same bytes to every subscriber: each `LocalEngineConnection` and each remote device session.
 
@@ -4071,6 +4338,7 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R158: A project has a GitHub page, taken from its origin remote unless set in Project Settings; a sub project can use its parent's settings.
 - R159: A locked web tab goes back to its original page each time the user comes back to it.
 - R160: The user can show, edit, create, rename and delete the memories Claude saves for a project, in a Memories section of the sidebar.
+- R173: A project with a GitHub page has a Builds section that tracks its workflow runs and releases, re-runs and cancels runs and downloads release assets.
 - R161: After an implementation is pushed in a project with a GitHub page, a CI chat follows CI and reports to the orchestrator, which asks the user how to proceed when CI fails and finishes only once CI is green or the user decides so.
 - R162: Each environment of a Go service names its Kubernetes context, namespace, deployment, Argo CD application and kubeconfig, which Claude receives and uses through HephaestusV2's Kubernetes and Argo CD tools.
 - R167: A sub project's chats always receive the memories of its parent projects, which its Memories section lists read-only.

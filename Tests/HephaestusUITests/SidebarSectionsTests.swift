@@ -9,9 +9,11 @@ import Testing
 @MainActor
 @Suite("Sidebar sections")
 struct SidebarSectionsTests {
-    @Test("The listed rows are Dashboard to Costs, Memories after Skills; Project Settings is pinned apart")
+    @Test("The listed rows are Dashboard to Costs, Builds after Web, Memories after Skills; Project Settings is pinned apart")
     func listedAndPinned() {
-        #expect(ProjectSection.listed == [.dashboard, .tickets, .bundles, .chats, .code, .docs, .web, .skills, .memories, .costs])
+        #expect(ProjectSection.listed == [.dashboard, .tickets, .bundles, .chats, .code, .docs, .web, .builds, .skills, .memories, .costs])
+        #expect(ProjectSection.builds.title == "Builds")
+        #expect(ProjectSection.builds.symbol == "shippingbox.and.arrow.backward")
         #expect(ProjectSection.allCases.last == .settings)
         #expect(ProjectSection.settings.title == "Project Settings")
         #expect(ProjectSection.settings.symbol == "gearshape")
@@ -19,9 +21,9 @@ struct SidebarSectionsTests {
         #expect(ProjectSection.memories.symbol == "brain")
     }
 
-    @Test("⌘1 to ⌘9, then ⌘0, select the listed sections and ⇧⌘, selects Project Settings")
+    @Test("⌘1 to ⌘9, then ⌘0, select the listed sections, ⌘B selects Builds and ⇧⌘, selects Project Settings")
     func shortcuts() {
-        for (index, section) in ProjectSection.listed.enumerated() {
+        for (index, section) in ProjectSection.listed.filter({ $0 != .builds }).enumerated() {
             #expect(section.shortcut.key == KeyEquivalent(Character(String((index + 1) % 10))))
             #expect(section.shortcut.modifiers == .command)
         }
@@ -29,6 +31,16 @@ struct SidebarSectionsTests {
         #expect(ProjectSection.costs.shortcut.key == KeyEquivalent("0"))
         #expect(ProjectSection.settings.shortcut.key == KeyEquivalent(","))
         #expect(ProjectSection.settings.shortcut.modifiers == [.command, .shift])
+        #expect(ProjectSection.builds.shortcut.key == KeyEquivalent("b"))
+        #expect(ProjectSection.builds.shortcut.modifiers == .command)
+    }
+
+    @Test("The Builds section links no item")
+    func buildsLinkNothing() {
+        var state = ProjectViewState()
+        state.selectedRunID = 12
+        state.selectedReleaseTag = "v1.0"
+        #expect(state.openItems(in: .builds).isEmpty)
     }
 
     @Test("The Memories section links no item")
@@ -81,7 +93,7 @@ struct SidebarCategoriesTests {
     @Test("Project holds every listed section; Go Service only for the Go service type, with API Explorer while it shows",
           arguments: ProjectType.allCases, [false, true])
     func categories(_ type: ProjectType, showsAPIExplorer: Bool) {
-        let categories = SidebarCategory.categories(for: type, showsAPIExplorer: showsAPIExplorer)
+        let categories = SidebarCategory.categories(for: type, showsBuilds: true, showsAPIExplorer: showsAPIExplorer)
         #expect(categories.first == SidebarCategory(title: "Project", sections: ProjectSection.listed))
         #expect(!categories.contains { $0.sections.contains(.settings) })
         if type == .goService {
@@ -90,5 +102,11 @@ struct SidebarCategoriesTests {
         } else {
             #expect(categories.map(\.title) == ["Project"])
         }
+    }
+
+    @Test("Without a GitHub page the Project category has no Builds row", arguments: ProjectType.allCases)
+    func withoutGitHubPage(_ type: ProjectType) {
+        let categories = SidebarCategory.categories(for: type, showsBuilds: false)
+        #expect(categories.first?.sections == ProjectSection.listed.filter { $0 != .builds })
     }
 }

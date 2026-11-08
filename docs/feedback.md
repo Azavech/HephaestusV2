@@ -129,6 +129,7 @@ The client fills the [FeedbackContext](engine-api.md#feedbackcontext) from the c
 | `code`            | path of the active editor tab followed by `:<line>`, the line of the cursor   |
 | `docs`            | path of the open doc                                                          |
 | `web`             | URL of the selected web tab                                                   |
+| `builds`          | absent                                                                        |
 | `skills`          | name of the selected skill                                                    |
 | `memories`        | name of the selected memory; `MEMORY.md` when the index is selected           |
 | `costs`           | absent                                                                        |

@@ -252,7 +252,7 @@ Input schemas, errors and examples: [Debug tools](mcp.md#debug-tools).
 3. A test engine is built from an `EngineConfiguration` ([Engine configuration](architecture.md#engine-configuration)): a temporary data directory, ports 0, the sync server on the loopback interface, no Bonjour advertising and therefore no Bonjour browsing ([Startup](architecture.md#startup)).
 4. Engine method tests call through `LocalEngineConnection`, so they exercise the JSON path every client uses. Default chosen at design time.
 5. Tests never start the real Claude CLI. Chat behaviour is tested with the in-memory `ClaudeProcessLauncher` fed with fixture lines, and the CLI arguments are compared as argument lists with [Chats](chats.md).
-6. Tests use no network beyond 127.0.0.1 and no user interaction; the GitHub answers of the release feed are stubbed.
+6. Tests use no network beyond 127.0.0.1 and no user interaction; the GitHub answers of the release feed are stubbed, and a test engine runs no `gh`: its `githubCLI` is a fake that answers as a missing gh unless the test gives its own ([Engine configuration](architecture.md#engine-configuration), [gh calls](builds.md#gh-calls)). A test that saves a release asset turns its quarantine attributes off with the engine's test hook `useReleaseQuarantine(_:)`, so that it adds nothing to the quarantine events of the user running it.
 7. Test data contains no personal data ([Public repository](#public-repository)).
 8. At most 32 test engines run at the same time, and the tests that wait for FSEvents run one at a time, across suites (the `.fsEvents` trait). Swift Testing starts every test of a run at once, and a process gets at most 512 FSEvents streams: past that `FSEventStreamStart` fails and an engine watches nothing. Default chosen at design time.
 9. A test that binds a port it chose earlier, or checks that a stopped server's port refuses connections, uses a free port below the ephemeral range (49152 to 65535). A released ephemeral port can go to another test's listener that asks for port 0 at any time, and a later bind of 127.0.0.1 on it succeeds and takes that listener's loopback connections. Default chosen at design time.
@@ -267,6 +267,10 @@ HephaestusCoreTests compares the docs with the code ([CI and release](ci.md)): t
 ### Claude CLI captures
 
 `Tests/HephaestusCoreTests/Fixtures/` holds sanitized captures of the standard output of the Claude CLI in stream-json. The captures, the chat settings they were recorded with and the items each line must produce are listed in [Fixture replays](chats.md#fixture-replays); the tests replay them through the output mapping. A new capture is added there first (docs first), then recorded.
+
+### gh captures
+
+`Tests/HephaestusCoreTests/Fixtures/gh/` holds sanitized outputs of the gh commands of [gh calls](builds.md#gh-calls), recorded with the same `--json` fields as the engine: `run-list.json` (`gh run list`), `run-view.json` (`gh run view` of a completed run), `run-view-running.json` (`gh run view` of a run not completed, with a running job whose end gh writes as `0001-01-01T00:00:00Z`), `release-list.json` (`gh release list`) and `release-view.json` (`gh release view`). The tests read them into the [API types](engine-api.md#workflowrun) and serve them from a fake gh. A capture is recorded by running the command against a public repository, then sanitized ([Sanitizing a capture](#sanitizing-a-capture)): the repository in the URLs is written `example/HephaestusV2`. `run-view-running.json` comes from another public repository, so both its owner and its name are rewritten; in the other captures only the owner changes.
 
 ### Recording a capture
 

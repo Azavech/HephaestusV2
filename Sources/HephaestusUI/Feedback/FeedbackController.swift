@@ -216,7 +216,7 @@ final class FeedbackController {
             return view.selectedSkillName
         case .memories:
             return MemoryActions.selectedItemName(of: view, in: workspace, projectID: projectID)
-        case .dashboard, .costs, .apiExplorer, .settings:
+        case .dashboard, .builds, .costs, .apiExplorer, .settings:
             return nil
         }
     }

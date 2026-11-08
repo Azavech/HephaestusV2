@@ -145,15 +145,17 @@ extension Trait where Self == FSEventsTrait {
 /// directory, ports 0, the sync server on the loopback interface, no Bonjour advertising) and a
 /// `LocalEngineConnection` to it, then closes both. `prepare` receives the data directory before
 /// the engine opens it. `body` also receives the temporary directory that holds the data
-/// directory, for other files of the test.
-func withTestEngine<T>(debugTools: Bool = false, prepare: (DataDirectory) throws -> Void = { _ in },
+/// directory, for other files of the test. `githubCLI` replaces the fake gh that is never found.
+func withTestEngine<T>(debugTools: Bool = false, githubCLI: (any GitHubCLIRunning)? = nil,
+                       claudeLauncher: any ClaudeProcessLauncher = NoClaudeLauncher(),
+                       prepare: (DataDirectory) throws -> Void = { _ in },
                        _ body: (Engine, LocalEngineConnection, URL) async throws -> T) async throws -> T {
     try await TestEngineSlots.withSlot { try await withTemporaryDirectory { folder in
         let directory = DataDirectory(url: folder.appendingPathComponent("Data", isDirectory: true))
         try FileManager.default.createDirectory(at: directory.url, withIntermediateDirectories: true)
         try prepare(directory)
         let configuration = EngineConfiguration.test(dataDirectory: directory.url, debugTools: debugTools,
-                                                     claudeLauncher: NoClaudeLauncher())
+                                                     claudeLauncher: claudeLauncher, githubCLI: githubCLI)
         let engine = try await Engine(configuration: configuration)
         await engine.useFileTrash(.folder(folder.appendingPathComponent("Trash", isDirectory: true)))
         await engine.useCLITimings(.inert)

@@ -209,12 +209,14 @@ private struct ViewCommands: View {
     var body: some View {
         let window = actionable(focused)
         let hasProject = window?.projectID != nil
+        // docs/builds.md › Visibility: View ▸ Builds is enabled while the Builds row shows.
+        let showsBuilds = window.flatMap { window in window.workspace.map { window.showsBuilds(in: $0) } } ?? false
         ForEach(ProjectSection.listed, id: \.self) { section in
             Button(section.title) {
                 window?.section = section
             }
             .keyboardShortcut(section.shortcut)
-            .disabled(!hasProject)
+            .disabled(!hasProject || (section == .builds && !showsBuilds))
         }
         // docs/memories.md › Global Memories view: enabled in a main window whose device is
         // connected, with or without project.

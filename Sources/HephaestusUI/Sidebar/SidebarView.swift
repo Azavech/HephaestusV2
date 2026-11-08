@@ -18,6 +18,7 @@ extension ProjectSection {
         case .code: return "Code"
         case .docs: return "Docs"
         case .web: return "Web"
+        case .builds: return "Builds"
         case .skills: return "Skills"
         case .memories: return "Memories"
         case .costs: return "Costs"
@@ -36,6 +37,7 @@ extension ProjectSection {
         case .code: return "chevron.left.forwardslash.chevron.right"
         case .docs: return "doc.text"
         case .web: return "globe"
+        case .builds: return "shippingbox.and.arrow.backward"
         case .skills: return "wand.and.stars"
         case .memories: return "brain"
         case .costs: return "dollarsign.circle"
@@ -44,7 +46,8 @@ extension ProjectSection {
         }
     }
 
-    /// Its shortcut: ⌘1 to ⌘9, then ⌘0, and ⇧⌘E in the View menu, ⇧⌘, for Project ▸ Project Settings….
+    /// Its shortcut: ⌘1 to ⌘9, then ⌘0, and ⇧⌘E in the View menu, with ⌘B for Builds, and ⇧⌘, for
+    /// Project ▸ Project Settings….
     var shortcut: KeyboardShortcut {
         switch self {
         case .dashboard: return KeyboardShortcut("1", modifiers: .command)
@@ -54,6 +57,7 @@ extension ProjectSection {
         case .code: return KeyboardShortcut("5", modifiers: .command)
         case .docs: return KeyboardShortcut("6", modifiers: .command)
         case .web: return KeyboardShortcut("7", modifiers: .command)
+        case .builds: return KeyboardShortcut("b", modifiers: .command)
         case .skills: return KeyboardShortcut("8", modifiers: .command)
         case .memories: return KeyboardShortcut("9", modifiers: .command)
         case .costs: return KeyboardShortcut("0", modifiers: .command)
@@ -73,12 +77,14 @@ struct SidebarCategory: Equatable, Identifiable {
 
     var id: String { title }
 
-    /// `Project` with every listed section, then `Go Service` for the `goService` type, with the
-    /// API Explorer row while it shows (docs/openapi.md › Availability), then `Sub Projects` when
-    /// the active project has a loaded sub project.
-    static func categories(for type: ProjectType, showsAPIExplorer: Bool = false,
+    /// `Project` with every listed section, Builds only for a project with a GitHub page
+    /// (docs/builds.md › Visibility), then `Go Service` for the `goService` type, with the API
+    /// Explorer row while it shows (docs/openapi.md › Availability), then `Sub Projects` when the
+    /// active project has a loaded sub project.
+    static func categories(for type: ProjectType, showsBuilds: Bool = false, showsAPIExplorer: Bool = false,
                            subProjects: [SidebarSubProject] = []) -> [SidebarCategory] {
-        var categories = [SidebarCategory(title: "Project", sections: ProjectSection.listed)]
+        let sections = ProjectSection.listed.filter { $0 != .builds || showsBuilds }
+        var categories = [SidebarCategory(title: "Project", sections: sections)]
         if type == .goService {
             categories.append(SidebarCategory(title: "Go Service", sections: showsAPIExplorer ? [.apiExplorer] : []))
         }
@@ -91,8 +97,8 @@ struct SidebarCategory: Equatable, Identifiable {
     /// The categories of the active project, with its loaded descendants in Sub Projects: they
     /// follow the workspace's `projects`.
     @MainActor
-    static func categories(of project: ProjectSummary, in workspace: DeviceWorkspace) -> [SidebarCategory] {
-        categories(for: project.type, showsAPIExplorer: workspace.showsAPIExplorer(project.id) == true,
+    static func categories(of project: ProjectSummary, in workspace: DeviceWorkspace, showsBuilds: Bool = false) -> [SidebarCategory] {
+        categories(for: project.type, showsBuilds: showsBuilds, showsAPIExplorer: workspace.showsAPIExplorer(project.id) == true,
                    subProjects: SidebarSubProject.rows(of: project.id, in: workspace))
     }
 }
@@ -150,7 +156,7 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
-                    ForEach(SidebarCategory.categories(of: project, in: workspace)) { category in
+            ForEach(SidebarCategory.categories(of: project, in: workspace, showsBuilds: window.showsBuilds(in: workspace))) { category in
                         heading(category.title)
                         ForEach(category.sections, id: \.self) { section in
                             row(section)

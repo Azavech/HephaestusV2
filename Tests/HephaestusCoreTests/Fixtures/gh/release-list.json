@@ -1,0 +1,26 @@
+[
+  {
+    "createdAt": "2026-11-07T21:26:58Z",
+    "isLatest": true,
+    "isPrerelease": false,
+    "name": "v0.41.0(302)",
+    "publishedAt": "2026-11-07T21:41:14Z",
+    "tagName": "v0.41.0"
+  },
+  {
+    "createdAt": "2026-11-07T19:55:44Z",
+    "isLatest": false,
+    "isPrerelease": false,
+    "name": "v0.40.0(301)",
+    "publishedAt": "2026-11-07T20:04:42Z",
+    "tagName": "v0.40.0"
+  },
+  {
+    "createdAt": "2026-11-07T17:27:17Z",
+    "isLatest": false,
+    "isPrerelease": false,
+    "name": "v0.39.0(300)",
+    "publishedAt": "2026-11-07T17:39:25Z",
+    "tagName": "v0.39.0"
+  }
+]

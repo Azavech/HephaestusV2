@@ -1,0 +1,41 @@
+[
+  {
+    "conclusion": "success",
+    "createdAt": "2026-11-07T21:27:02Z",
+    "databaseId": 42415910670,
+    "displayTitle": "feat: always load the HephaestusV2 project for feedback (HEPH-85)",
+    "event": "push",
+    "headBranch": "main",
+    "headSha": "ec49a8f2897f0d17737ccc2137d7506cb82d0d93",
+    "startedAt": "2026-11-07T21:27:02Z",
+    "status": "completed",
+    "updatedAt": "2026-11-07T21:41:19Z",
+    "workflowName": "Release"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-11-07T19:55:48Z",
+    "databaseId": 42408559069,
+    "displayTitle": "feat: show the Update item while an update is available (HEPH-84)",
+    "event": "push",
+    "headBranch": "main",
+    "headSha": "a40308f7d83b87638b2f46eb69ca348d9f0b4417",
+    "startedAt": "2026-11-07T19:55:48Z",
+    "status": "completed",
+    "updatedAt": "2026-11-07T20:04:46Z",
+    "workflowName": "Release"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-11-07T17:27:20Z",
+    "databaseId": 42396389751,
+    "displayTitle": "feat: show each ticket's project as a colored badge (HEPH-83)",
+    "event": "push",
+    "headBranch": "main",
+    "headSha": "bb31a1a156a5abb40039a3673f4b3480bf93a6af",
+    "startedAt": "2026-11-07T17:27:20Z",
+    "status": "completed",
+    "updatedAt": "2026-11-07T17:39:31Z",
+    "workflowName": "Release"
+  }
+]

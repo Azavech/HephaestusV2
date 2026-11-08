@@ -1,0 +1,60 @@
+{
+  "conclusion": "",
+  "createdAt": "2026-11-08T02:20:21Z",
+  "databaseId": 42438107949,
+  "displayTitle": "Dependabot triage PR #14963",
+  "event": "workflow_dispatch",
+  "headBranch": "trunk",
+  "headSha": "736c68f674113337685e3eb1f908602a03b8f99b",
+  "jobs": [
+    {
+      "completedAt": "2026-11-08T02:26:36Z",
+      "conclusion": "success",
+      "databaseId": 128602523980,
+      "name": "activation",
+      "startedAt": "2026-11-08T02:26:07Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-08T02:26:16Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-08T02:26:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-08T02:26:24Z",
+          "conclusion": "success",
+          "name": "Setup Scripts",
+          "number": 2,
+          "startedAt": "2026-11-08T02:26:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-08T02:26:34Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 45,
+          "startedAt": "2026-11-08T02:26:34Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/example/HephaestusV2/actions/runs/42438107949/job/128602523980"
+    },
+    {
+      "completedAt": "0001-01-01T00:00:00Z",
+      "conclusion": "",
+      "databaseId": 128602664848,
+      "name": "agent",
+      "startedAt": "2026-11-08T02:26:39Z",
+      "status": "in_progress",
+      "steps": [],
+      "url": "https://github.com/example/HephaestusV2/actions/runs/42438107949/job/128602664848"
+    }
+  ],
+  "startedAt": "2026-11-08T02:20:21Z",
+  "status": "queued",
+  "updatedAt": "2026-11-08T02:26:36Z",
+  "workflowName": "Dependabot PR Triage (skills-driven)"
+}

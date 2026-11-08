@@ -2,6 +2,7 @@
 // Downloads).
 import AppKit
 import CoreServices
+import HephaestusCore
 import SwiftUI
 import UniformTypeIdentifiers
 import WebKit
@@ -166,8 +167,8 @@ final class WebDownloads {
     /// ` (1)`, ` (2)`, … is inserted before the extension.
     func reserveDestination(for suggestedName: String) -> URL? {
         guard let folder = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return nil }
-        let name = Self.safeName(suggestedName)
-        let url = Self.uniqueURL(in: folder, name: name) { candidate in
+        let name = DownloadNames.safeName(suggestedName)
+        let url = DownloadNames.uniqueURL(in: folder, name: name) { candidate in
             reserved.contains(candidate.path) || FileManager.default.fileExists(atPath: candidate.path)
         }
         reserved.insert(url.path)
@@ -177,30 +178,6 @@ final class WebDownloads {
     func release(_ item: WebDownload) {
         if let destination = item.destination {
             reserved.remove(destination.path)
-        }
-    }
-
-    /// The name without path separators; WebKit suggests a name already, this keeps it inside the
-    /// folder.
-    static func safeName(_ name: String) -> String {
-        let cleaned = name.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_")
-        let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
-        // A name that is empty, `.` or `..` becomes `download` (docs/web-tabs.md › Downloads).
-        return trimmed.isEmpty || trimmed == "." || trimmed == ".." ? "download" : trimmed
-    }
-
-    /// `name`, else `base (n).ext` with the first n from 1 that `isTaken` refuses.
-    static func uniqueURL(in folder: URL, name: String, isTaken: (URL) -> Bool) -> URL {
-        let candidate = folder.appendingPathComponent(name)
-        guard isTaken(candidate) else { return candidate }
-        let ext = (name as NSString).pathExtension
-        let base = ext.isEmpty ? name : (name as NSString).deletingPathExtension
-        var number = 1
-        while true {
-            let numbered = ext.isEmpty ? "\(base) (\(number))" : "\(base) (\(number)).\(ext)"
-            let url = folder.appendingPathComponent(numbered)
-            if !isTaken(url) { return url }
-            number += 1
         }
     }
 }

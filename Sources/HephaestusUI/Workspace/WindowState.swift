@@ -58,6 +58,12 @@ final class WindowState: Identifiable {
     /// True while the window waits for its device's projects to choose the default project
     /// (docs/projects.md › Project selector).
     var needsDefaultProject = false
+    /// True from a switch of the active project, or a navigation to the Builds section, until the
+    /// project is loaded and Builds checked against its GitHub page (docs/builds.md › Visibility).
+    var buildsCheckPending = false
+    /// The active project and whether it had a GitHub page when the window last looked, so that
+    /// a window that shows Builds follows a page that is lost (docs/builds.md › Visibility).
+    var observedGitHubPage: ObservedGitHubPage?
     /// The app, set when the window registers.
     @ObservationIgnored weak var app: AppModel?
     /// The menu commands of the shown section, set by that section's view.
@@ -248,6 +254,15 @@ struct ProjectViewState {
     /// Selected row of the Memories section: a memory's file name, `MEMORY.md`, or
     /// `<ancestor id>/<file name>` for an inherited memory.
     var selectedMemoryFile: String?
+    /// The tab of the Builds section (docs/builds.md › Layout).
+    var buildsTab: BuildsTab = .runs
+    /// Selected workflow run of the Builds section, by id (docs/builds.md › Run details).
+    var selectedRunID: Int?
+    /// Selected release of the Builds section, by tag (docs/builds.md › Release details).
+    var selectedReleaseTag: String?
+    /// The release asset downloads of the Builds section that run, or that saved their file since
+    /// the section was last shown (docs/builds.md › Downloads); never encoded.
+    var buildsDownloads: BuildsDownloads = [:]
 
     // Fields added by the section documents (docs/ui.md › WindowState, first rule).
 
@@ -316,7 +331,7 @@ extension ProjectViewState: @MainActor Codable {
     enum CodingKeys: String, CodingKey {
         case selectedTicketIDs, selectedBundleID, selectedChatIDs, inspectorChatID, inspectorShowsDraft, unlinkedItems, editorTabs,
              selectedEditorPath, selectedDocPath, docMode, selectedWebTabID, selectedSkillName, selectedMemoryFile,
-             expandedCodeFolders, selectedTreePath, expandedDocFolders, ticketList, ticketTab, bundleList, bundleTab,
+             buildsTab, selectedRunID, selectedReleaseTag, expandedCodeFolders, selectedTreePath, expandedDocFolders, ticketList, ticketTab, bundleList, bundleTab,
              chatsTabSelection, chatsTabDrafts, hidesClosedChats, commentDrafts, selectedChatAgent, chatsTabAgentSelection,
              expandedAgentChats
         /// The single selected chat of a state persisted before `selectedChatIDs`; decoded only.
@@ -343,6 +358,9 @@ extension ProjectViewState: @MainActor Codable {
         selectedWebTabID = try c.decodeIfPresent(String.self, forKey: .selectedWebTabID)
         selectedSkillName = try c.decodeIfPresent(String.self, forKey: .selectedSkillName)
         selectedMemoryFile = try c.decodeIfPresent(String.self, forKey: .selectedMemoryFile)
+        buildsTab = try c.decodeIfPresent(BuildsTab.self, forKey: .buildsTab) ?? .runs
+        selectedRunID = try c.decodeIfPresent(Int.self, forKey: .selectedRunID)
+        selectedReleaseTag = try c.decodeIfPresent(String.self, forKey: .selectedReleaseTag)
         expandedCodeFolders = Set(try c.decodeIfPresent([String].self, forKey: .expandedCodeFolders) ?? [])
         selectedTreePath = try c.decodeIfPresent(String.self, forKey: .selectedTreePath)
         expandedDocFolders = Set(try c.decodeIfPresent([String].self, forKey: .expandedDocFolders) ?? [])
@@ -375,6 +393,9 @@ extension ProjectViewState: @MainActor Codable {
         try c.encodeIfPresent(selectedWebTabID, forKey: .selectedWebTabID)
         try c.encodeIfPresent(selectedSkillName, forKey: .selectedSkillName)
         try c.encodeIfPresent(selectedMemoryFile, forKey: .selectedMemoryFile)
+        try c.encode(buildsTab, forKey: .buildsTab)
+        try c.encodeIfPresent(selectedRunID, forKey: .selectedRunID)
+        try c.encodeIfPresent(selectedReleaseTag, forKey: .selectedReleaseTag)
         try c.encode(hidesClosedChats, forKey: .hidesClosedChats)
         if encoder.userInfo[WindowState.persistedOnlyKey] as? Bool != true {
             try c.encode(expandedCodeFolders.sorted(), forKey: .expandedCodeFolders)

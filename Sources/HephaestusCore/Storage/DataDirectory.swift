@@ -57,6 +57,9 @@ public struct DataDirectory: Sendable, Hashable {
     }
     /// `Runtime/screenshots/`: PNG files of `debug_screenshot`.
     public var screenshotsFolder: URL { runtimeFolder.appendingPathComponent("screenshots", isDirectory: true) }
+    /// `Runtime/downloads/`: one folder per `builds.downloadAsset` call while gh downloads the
+    /// asset (docs/builds.md › Downloads).
+    public var downloadsFolder: URL { runtimeFolder.appendingPathComponent("downloads", isDirectory: true) }
     /// `Worktrees/`: the git worktrees of the orchestrated ticket chats.
     public var worktreesFolder: URL { url.appendingPathComponent("Worktrees", isDirectory: true) }
     /// `Worktrees/<projectID>/<ticketID>/`: the git worktree of an orchestrated ticket chat

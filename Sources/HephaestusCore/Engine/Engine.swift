@@ -78,6 +78,13 @@ public actor Engine {
     /// (Engine/HephaestusProject.swift).
     var hephaestusAttempt: Task<Void, Never>?
     let hephaestusCloneProcess = HephaestusCloneProcess()
+    /// The running `gh` processes of the `builds.*` methods, ended at shutdown
+    /// (Builds/GitHubCLI.swift).
+    let githubCLIProcesses = GitHubCLIProcesses()
+    /// Whether `builds.downloadAsset` gives the saved file the quarantine attributes of a web
+    /// download (docs/builds.md › Downloads); tests turn it off, so that they add nothing to the
+    /// quarantine events of the user running them.
+    var quarantinesReleaseDownloads = true
 
     // MARK: Servers and local-only services (docs/architecture.md › Local-only services)
 
@@ -176,7 +183,8 @@ public actor Engine {
         async let hephaestusClone: Void = stopHephaestusClone()
         async let portForwardProcesses: Void = stopPortForwards()
         async let kubectlProcesses: Void = stopKubectlRuns()
-        _ = await (chatProcesses, claudeHelpers, hephaestusClone, portForwardProcesses, kubectlProcesses)
+        async let githubRuns: Void = stopGitHubCLIRuns()
+        _ = await (chatProcesses, claudeHelpers, hephaestusClone, portForwardProcesses, kubectlProcesses, githubRuns)
 
         await stopMCPServer()
         await stopSyncServer()
@@ -356,6 +364,7 @@ public actor Engine {
         registerSearchHandlers()
         registerSkillHandlers()
         registerMemoryHandlers()
+        registerBuildHandlers()
         registerSettingsHandlers()
         registerUIHandlers()
     }

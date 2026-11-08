@@ -14,6 +14,10 @@ extension WindowState {
     /// Activates a project: it becomes `projectID`, its id is stored in `lastProjectByDevice` and in
     /// `AppModel.lastProjectIDByDevice`, and the workspace loads it when needed.
     func activate(projectID: String) {
+        if self.projectID != projectID {
+            // docs/builds.md › Visibility: Builds is checked once the new project is loaded.
+            buildsCheckPending = true
+        }
         self.projectID = projectID
         needsDefaultProject = false
         lastProjectByDevice[deviceID] = projectID
@@ -122,6 +126,12 @@ extension WindowState {
         case .skill: section = .skills
         case .webTab: section = .web
         case .section(_, let targetSection): section = targetSection
+        }
+        if section == .builds {
+            // docs/builds.md › Visibility: Builds gives way to Dashboard for a project without
+            // GitHub page, at once when the project is loaded, else once it is.
+            buildsCheckPending = true
+            reconcileBuildsSection(with: workspace)
         }
 
         // Step 5: the selection, after the unsaved changes prompt of a doc buffer or a skill form.

@@ -118,6 +118,8 @@ public enum EngineMethods {
         SkillsReadFile.self, SkillsWriteFile.self, SkillsDeleteFile.self, SkillsSetEnabled.self,
         MemoriesList.self, MemoriesGet.self, MemoriesCreate.self, MemoriesUpdate.self, MemoriesDelete.self,
         MemoriesReadIndex.self, MemoriesWriteIndex.self,
+        BuildsListRuns.self, BuildsGetRun.self, BuildsRerunRun.self, BuildsCancelRun.self, BuildsListReleases.self,
+        BuildsGetRelease.self, BuildsDownloadAsset.self,
         SettingsGet.self, SettingsUpdate.self,
         UIOpen.self,
     ]
