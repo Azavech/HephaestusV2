@@ -14,7 +14,8 @@ struct MCPToolsConformanceTests {
         var engineMethod: String
     }
 
-    /// The catalogue rows in table order: the tool catalogue, then the debug tool catalogue.
+    /// The catalogue rows in table order: the tool catalogue, the Kubernetes and Argo CD tools,
+    /// then the debug tool catalogue.
     static func documentedRows() throws -> [Row] {
         try MarkdownTable.tables(in: Repository.doc("mcp.md"))
             .filter { $0.header.count >= 2 && $0.header[0] == "Tool" && $0.header[1] == "Required inputs" }
@@ -52,7 +53,7 @@ struct MCPToolsConformanceTests {
     @Test("With debug tools disabled, tools/list returns the catalogue in table order")
     func withoutDebugTools() async throws {
         let rows = try Self.documentedRows()
-        #expect(rows.count == 54)
+        #expect(rows.count == 63)
         let expected = rows.filter { !$0.name.hasPrefix("debug_") }.map(\.name)
         #expect(try await Self.listed(debugTools: false).map(\.name) == expected)
     }

@@ -566,9 +566,45 @@ struct ChatInteractionTests {
             _ = try await bed.connection.call(ProjectsUpdate.self, .init(projectID: "DEMO", type: .goService))
             let go = try await bed.createChat(message: "Plan")
             let goPrompt = try await systemPrompt(go, 1)
-            #expect(goPrompt.contains(" of the project. The project's type is Go service.\n\nThese rules apply in every chat. "))
+            #expect(goPrompt.contains(" of the project. The project's type is Go service.\n\nThe project's environments, where the Go service runs; "
+                + "the Kubernetes and Argo CD tools take an environment's name:\n- none: the user adds them in Project Settings\n\n"
+                + "These rules apply in every chat. "))
             #expect(goPrompt.contains("\n\n# When the project is a Go service\n\nWhen the project's type is Go service, these rules apply too."))
             #expect(!goPrompt.contains("{{"))
+        }
+    }
+
+    @Test("The system prompt of a Go service chat lists the project's environments after its type; a project of another type lists none")
+    func environmentsInSystemPrompt() async throws {
+        try await withChatEngine { bed in
+            func systemPrompt(_ chat: ChatMeta, _ index: Int) async throws -> String {
+                let process = try #require(await bed.launcher.chatProcess(index))
+                #expect(process.request.arguments.contains(chat.id.uuidString))
+                return try #require(process.request.arguments.firstIndex(of: "--append-system-prompt").map { process.request.arguments[$0 + 1] })
+            }
+            let header = "The project's environments, where the Go service runs; the Kubernetes and Argo CD tools take an environment's name:"
+            let environments = [
+                ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
+                ProjectEnvironment(name: "staging", url: "https://staging.example.com/", context: "staging-eks", namespace: "orders",
+                                   deployment: "orders-api", argoCDApplication: "orders-staging", kubeconfig: "~/.kube/staging.yaml"),
+            ]
+            // The environments of a project of type None are kept, not listed.
+            _ = try await bed.connection.call(ProjectsUpdate.self, .init(projectID: "DEMO", environments: environments))
+            let none = try await systemPrompt(try await bed.createChat(message: "Plan"), 0)
+            #expect(none.contains("The project's type is None.\n\nThese rules apply in every chat."))
+            #expect(!none.contains(header))
+
+            _ = try await bed.connection.call(ProjectsUpdate.self, .init(projectID: "DEMO", type: .goService))
+            let go = try await systemPrompt(try await bed.createChat(message: "Plan"), 1)
+            #expect(go.contains("The project's type is Go service.\n\n\(header)\n- local: http://127.0.0.1:8080\n"
+                + "- staging: https://staging.example.com; kubectl context: staging-eks; namespace: orders; deployment: orders-api; "
+                + "Argo CD application: orders-staging; kubeconfig file: ~/.kube/staging.yaml\n\nThese rules apply in every chat."))
+            #expect(!go.contains("{{"))
+
+            _ = try await bed.connection.call(ProjectsUpdate.self, .init(projectID: "DEMO", environments: []))
+            let empty = try await systemPrompt(try await bed.createChat(message: "Plan"), 2)
+            #expect(empty.contains("The project's type is Go service.\n\n\(header)\n- none: the user adds them in Project Settings\n\n"
+                + "These rules apply in every chat."))
         }
     }
 

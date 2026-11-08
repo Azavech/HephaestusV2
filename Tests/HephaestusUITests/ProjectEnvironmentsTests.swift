@@ -4,8 +4,8 @@ import Testing
 @testable import HephaestusUI
 
 /// docs/projects.md › Environments and docs/openapi.md › Environment: the messages of the
-/// environment sheets, and the Environment pop-up of a contract's request form with the environment
-/// stored for the contract.
+/// environment sheets and the environment they send, and the Environment pop-up of a contract's
+/// request form with the environment stored for the contract.
 @MainActor @Suite("Project environments")
 struct ProjectEnvironmentsTests {
     static let created = Date(timeIntervalSince1970: 1_793_448_000)
@@ -57,6 +57,25 @@ struct ProjectEnvironmentsTests {
         #expect(ProjectRules.environmentPort("") == nil)
     }
 
+    @Test func kubernetesFieldMessages() {
+        let application = "Enter <name> or <namespace>/<name>."
+        for valid in ["", "  ", "orders-staging", " argocd/orders-staging ", "team-a/orders"] {
+            #expect(ProjectRules.environmentArgoCDApplicationMessage(valid) == nil, "\(valid)")
+        }
+        for invalid in ["argocd/orders/staging", "/orders", "argocd/", "/", "a//b", "orders staging", "argocd/ orders",
+                        "orders\tstaging", "two\nlines"] {
+            #expect(ProjectRules.environmentArgoCDApplicationMessage(invalid) == application, "\(invalid)")
+        }
+
+        let kubeconfig = "Enter an absolute path or a path starting with ~/."
+        for valid in ["", " ", "/Users/example/.kube/config", " ~/.kube/staging.yaml "] {
+            #expect(ProjectRules.environmentKubeconfigMessage(valid) == nil, "\(valid)")
+        }
+        for invalid in ["~", "~/", ".kube/config", "kube/config", "~example/.kube/config", "/Users/example/.kube/a\n/b"] {
+            #expect(ProjectRules.environmentKubeconfigMessage(invalid) == kubeconfig, "\(invalid)")
+        }
+    }
+
     @Test func editedEnvironmentKeepsItsOwnName() {
         let others = ProjectRules.otherEnvironmentNames([local, staging], editing: local)
         #expect(others == ["staging"])
@@ -66,18 +85,18 @@ struct ProjectEnvironmentsTests {
     }
 
     @Test func createSaveAndRemoveBuildTheList() {
-        let dev = ProjectRules.environment(name: " dev ", url: " http://localhost:3000/ ", port: "", editing: nil)
+        let dev = sheetEnvironment(name: " dev ", url: " http://localhost:3000/ ")
         #expect(dev == ProjectEnvironment(name: "dev", url: "http://localhost:3000/"))
         // Create appends.
         #expect(ProjectRules.environments([local, staging], saving: dev, replacing: nil) == [local, staging, dev])
 
         // Save replaces at its place, with the edited environment's unknown keys.
         var extended = local
-        extended.unknownKeys = ["context": "kind-local"]
-        let saved = ProjectRules.environment(name: "local", url: "http://127.0.0.1", port: " 9090 ", editing: extended)
-        #expect(saved == ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 9090, unknownKeys: ["context": "kind-local"]))
+        extended.unknownKeys = ["region": "eu-west-1"]
+        let saved = sheetEnvironment(name: "local", url: "http://127.0.0.1", port: " 9090 ", editing: extended)
+        #expect(saved == ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 9090, unknownKeys: ["region": "eu-west-1"]))
         #expect(ProjectRules.environments([extended, staging], saving: saved, replacing: "local") == [saved, staging])
-        let renamed = ProjectRules.environment(name: "stage", url: "https://staging.example.com", port: "", editing: staging)
+        let renamed = sheetEnvironment(name: "stage", url: "https://staging.example.com", editing: staging)
         #expect(ProjectRules.environments([local, staging], saving: renamed, replacing: "staging")
             == [local, ProjectEnvironment(name: "stage", url: "https://staging.example.com")])
 
@@ -87,6 +106,32 @@ struct ProjectEnvironmentsTests {
         // `−` removes the selected environment only.
         #expect(ProjectRules.environments([local, staging], removing: "local") == [staging])
         #expect(ProjectRules.environments([local, staging], removing: "dev") == nil)
+    }
+
+    @Test func kubernetesFieldsAreSentTrimmedAndEmptyFieldsGiveNoValue() {
+        let created = sheetEnvironment(name: "staging", url: "https://staging.example.com", context: " staging-eks ",
+                                       namespace: "orders", deployment: " orders-api", argoCDApplication: "argocd/orders-staging ",
+                                       kubeconfig: " ~/.kube/staging.yaml ")
+        let full = ProjectEnvironment(name: "staging", url: "https://staging.example.com", context: "staging-eks", namespace: "orders",
+                                      deployment: "orders-api", argoCDApplication: "argocd/orders-staging",
+                                      kubeconfig: "~/.kube/staging.yaml")
+        #expect(created == full)
+        let empty = sheetEnvironment(name: "local", url: "http://127.0.0.1", context: "", namespace: "  ", deployment: "\t",
+                                     argoCDApplication: " ", kubeconfig: "")
+        #expect(empty == ProjectEnvironment(name: "local", url: "http://127.0.0.1"))
+
+        // Save starts from the edited environment: its unknown keys stay, and a cleared field
+        // removes its value.
+        var stored = full
+        stored.unknownKeys = ["region": "eu-west-1"]
+        let saved = sheetEnvironment(name: "staging", url: "https://staging.example.com", context: "staging-eks", namespace: "",
+                                     deployment: "orders-api", argoCDApplication: "", kubeconfig: "/Users/example/.kube/config",
+                                     editing: stored)
+        #expect(saved == ProjectEnvironment(name: "staging", url: "https://staging.example.com", context: "staging-eks",
+                                            deployment: "orders-api", kubeconfig: "/Users/example/.kube/config",
+                                            unknownKeys: ["region": "eu-west-1"]))
+        let cleared = sheetEnvironment(name: "staging", url: "https://staging.example.com", editing: stored)
+        #expect(cleared == ProjectEnvironment(name: "staging", url: "https://staging.example.com", unknownKeys: ["region": "eu-west-1"]))
     }
 
     @Test func sheetBelongsToItsProject() {
@@ -144,6 +189,14 @@ struct ProjectEnvironmentsTests {
         #expect(model.environment?.name == "files")
         #expect(!model.canSend)
         #expect(workspace.details["API"] != nil)
+    }
+
+    /// `ProjectRules.environment` with the sheet's fields, the ones not given empty.
+    private func sheetEnvironment(name: String, url: String, port: String = "", context: String = "", namespace: String = "",
+                                  deployment: String = "", argoCDApplication: String = "", kubeconfig: String = "",
+                                  editing original: ProjectEnvironment? = nil) -> ProjectEnvironment {
+        ProjectRules.environment(name: name, url: url, port: port, context: context, namespace: namespace, deployment: deployment,
+                                 argoCDApplication: argoCDApplication, kubeconfig: kubeconfig, editing: original)
     }
 
     /// The Contract view model of a contract tab of the project `API` in an offline workspace,

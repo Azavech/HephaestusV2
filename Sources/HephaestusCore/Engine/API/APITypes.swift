@@ -1060,3 +1060,222 @@ public struct EngineEventEnvelope: Codable, Sendable, Hashable {
         }
     }
 }
+
+// MARK: Kubernetes and Argo CD (docs/engine-api.md › Kubernetes and Argo CD)
+
+/// The state of a Kubernetes Deployment and of its pods, the result of `kubernetes.status`
+/// (docs/engine-api.md › DeploymentStatus).
+public struct DeploymentStatus: Codable, Sendable, Hashable {
+    /// The Deployment's name (`metadata.name`).
+    public var deployment: String
+    /// Its namespace (`metadata.namespace`).
+    public var namespace: String
+    /// `spec.replicas`; 1 when absent.
+    public var desiredReplicas: Int
+    /// `status.readyReplicas`; 0 when absent.
+    public var readyReplicas: Int
+    /// `status.updatedReplicas`; 0 when absent.
+    public var updatedReplicas: Int
+    /// `status.availableReplicas`; 0 when absent.
+    public var availableReplicas: Int
+    /// The image of each container of the pod template, in order.
+    public var images: [String]
+    /// `status.conditions`, in order.
+    public var conditions: [DeploymentCondition]
+    /// The pods of the label selector, in kubectl's order.
+    public var pods: [PodStatus]
+
+    public init(deployment: String, namespace: String, desiredReplicas: Int, readyReplicas: Int, updatedReplicas: Int,
+                availableReplicas: Int, images: [String], conditions: [DeploymentCondition], pods: [PodStatus]) {
+        self.deployment = deployment
+        self.namespace = namespace
+        self.desiredReplicas = desiredReplicas
+        self.readyReplicas = readyReplicas
+        self.updatedReplicas = updatedReplicas
+        self.availableReplicas = availableReplicas
+        self.images = images
+        self.conditions = conditions
+        self.pods = pods
+    }
+}
+
+/// A condition of a Deployment (docs/engine-api.md › DeploymentCondition).
+public struct DeploymentCondition: Codable, Sendable, Hashable {
+    /// For example `Available` or `Progressing`.
+    public var type: String
+    /// `True`, `False` or `Unknown`.
+    public var status: String
+    public var reason: String?
+    public var message: String?
+    /// `lastTransitionTime`.
+    public var lastTransition: Date?
+
+    public init(type: String, status: String, reason: String? = nil, message: String? = nil, lastTransition: Date? = nil) {
+        self.type = type
+        self.status = status
+        self.reason = reason
+        self.message = message
+        self.lastTransition = lastTransition
+    }
+}
+
+/// A pod of a Deployment (docs/engine-api.md › PodStatus).
+public struct PodStatus: Codable, Sendable, Hashable {
+    public var name: String
+    /// `status.phase`; `Unknown` when absent.
+    public var phase: String
+    /// The containers whose status is ready.
+    public var readyContainers: Int
+    /// The containers of the pod (`spec.containers`).
+    public var containers: Int
+    /// The sum of the restart counts of its containers.
+    public var restarts: Int
+    /// The time since `created`, as kubectl shows it (docs/engine-api.md › Pod age).
+    public var age: String
+    /// `metadata.creationTimestamp`.
+    public var created: Date?
+    /// `spec.nodeName`; nil while the pod is not scheduled.
+    public var node: String?
+
+    public init(name: String, phase: String, readyContainers: Int, containers: Int, restarts: Int, age: String,
+                created: Date? = nil, node: String? = nil) {
+        self.name = name
+        self.phase = phase
+        self.readyContainers = readyContainers
+        self.containers = containers
+        self.restarts = restarts
+        self.age = age
+        self.created = created
+        self.node = node
+    }
+}
+
+/// A Kubernetes event of a Deployment, of one of its ReplicaSets or of one of their pods
+/// (docs/engine-api.md › ClusterEvent).
+public struct ClusterEvent: Codable, Sendable, Hashable {
+    /// `Normal` or `Warning`.
+    public var type: String
+    public var reason: String
+    /// `Deployment`, `ReplicaSet` or `Pod`.
+    public var kind: String
+    public var name: String
+    public var message: String
+    public var count: Int
+    public var firstSeen: Date?
+    public var lastSeen: Date?
+
+    public init(type: String, reason: String, kind: String, name: String, message: String, count: Int,
+                firstSeen: Date? = nil, lastSeen: Date? = nil) {
+        self.type = type
+        self.reason = reason
+        self.kind = kind
+        self.name = name
+        self.message = message
+        self.count = count
+        self.firstSeen = firstSeen
+        self.lastSeen = lastSeen
+    }
+}
+
+/// The `options` of `kubernetes.logs` (docs/engine-api.md › LogOptions).
+public struct LogOptions: Codable, Sendable, Hashable {
+    /// One pod; every pod of the deployment when nil.
+    public var pod: String?
+    /// The container; each pod's default container when nil.
+    public var container: String?
+    /// The last lines of each container, 1–5000; 200 when nil.
+    public var tailLines: Int?
+    /// Only the lines of the last `sinceSeconds` seconds, at least 1.
+    public var sinceSeconds: Int?
+    /// true: the logs of the previous container of each pod.
+    public var previous: Bool?
+
+    public init(pod: String? = nil, container: String? = nil, tailLines: Int? = nil, sinceSeconds: Int? = nil, previous: Bool? = nil) {
+        self.pod = pod
+        self.container = container
+        self.tailLines = tailLines
+        self.sinceSeconds = sinceSeconds
+        self.previous = previous
+    }
+}
+
+/// The standard output of a method's last kubectl command (docs/engine-api.md › KubectlOutput).
+public struct KubectlOutput: Codable, Sendable, Hashable {
+    public var output: String
+
+    public init(output: String) {
+        self.output = output
+    }
+}
+
+/// A port forward started by `kubernetes.forward` (docs/engine-api.md › PortForward).
+public struct PortForward: Codable, Sendable, Hashable {
+    public var portForwardID: UUID
+    /// The environment's name.
+    public var environment: String
+    /// The port kubectl listens on, on 127.0.0.1.
+    public var localPort: Int
+    /// The port in the pod.
+    public var remotePort: Int
+    /// `http://127.0.0.1:<localPort>`.
+    public var url: String
+
+    public init(portForwardID: UUID, environment: String, localPort: Int, remotePort: Int, url: String) {
+        self.portForwardID = portForwardID
+        self.environment = environment
+        self.localPort = localPort
+        self.remotePort = remotePort
+        self.url = url
+    }
+}
+
+/// The state of an Argo CD Application (docs/engine-api.md › ArgoCDAppStatus).
+public struct ArgoCDAppStatus: Codable, Sendable, Hashable {
+    /// `<namespace>/<name>`.
+    public var application: String
+    /// `status.sync.status`; `Unknown` when absent.
+    public var syncStatus: String
+    /// `status.health.status`; `Unknown` when absent.
+    public var healthStatus: String
+    public var healthMessage: String?
+    /// `status.sync.revision`, else the `status.sync.revisions` joined with `, `.
+    public var revision: String?
+    /// true when the Application has an `operation` or its last operation's phase is `Running`.
+    public var operationInProgress: Bool
+    /// `status.operationState`.
+    public var lastOperation: ArgoCDOperation?
+
+    public init(application: String, syncStatus: String, healthStatus: String, healthMessage: String? = nil, revision: String? = nil,
+                operationInProgress: Bool, lastOperation: ArgoCDOperation? = nil) {
+        self.application = application
+        self.syncStatus = syncStatus
+        self.healthStatus = healthStatus
+        self.healthMessage = healthMessage
+        self.revision = revision
+        self.operationInProgress = operationInProgress
+        self.lastOperation = lastOperation
+    }
+}
+
+/// The last operation of an Argo CD Application (docs/engine-api.md › ArgoCDOperation).
+public struct ArgoCDOperation: Codable, Sendable, Hashable {
+    /// `Running`, `Terminating`, `Failed`, `Error` or `Succeeded`.
+    public var phase: String
+    public var message: String?
+    public var startedAt: Date?
+    public var finishedAt: Date?
+    /// `syncResult.revision`, else `operation.sync.revision`.
+    public var revision: String?
+    /// `operation.initiatedBy.username`, or `automated`.
+    public var initiatedBy: String?
+
+    public init(phase: String, message: String? = nil, startedAt: Date? = nil, finishedAt: Date? = nil, revision: String? = nil,
+                initiatedBy: String? = nil) {
+        self.phase = phase
+        self.message = message
+        self.startedAt = startedAt
+        self.finishedAt = finishedAt
+        self.revision = revision
+        self.initiatedBy = initiatedBy
+    }
+}

@@ -337,8 +337,9 @@ private struct ProjectEnvironmentsPart: View {
 }
 
 /// The New Environment sheet, or the Edit Environment sheet of the environment named `name`:
-/// Name, URL and Port with their messages, then `Cancel` and `Create` or `Save`. The change applies
-/// at once with `projects.update` (docs/projects.md › Environments).
+/// Name, URL, Port, kubectl context, Namespace, Deployment, Argo CD application and Kubeconfig file
+/// with their messages, then `Cancel` and `Create` or `Save`. The change applies at once with
+/// `projects.update` (docs/projects.md › Environments).
 struct EnvironmentSheet: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -352,9 +353,16 @@ struct EnvironmentSheet: View {
     @State private var name: String
     @State private var url: String
     @State private var port: String
+    @State private var context: String
+    @State private var namespace: String
+    @State private var deployment: String
+    @State private var argoCDApplication: String
+    @State private var kubeconfig: String
     @State private var nameEdited = false
     @State private var urlEdited = false
     @State private var portEdited = false
+    @State private var argoCDApplicationEdited = false
+    @State private var kubeconfigEdited = false
     @State private var working = false
     @State private var failure: String?
 
@@ -370,6 +378,11 @@ struct EnvironmentSheet: View {
         _name = State(initialValue: original?.name ?? "")
         _url = State(initialValue: original?.url ?? "")
         _port = State(initialValue: original?.port.map(String.init) ?? "")
+        _context = State(initialValue: original?.context ?? "")
+        _namespace = State(initialValue: original?.namespace ?? "")
+        _deployment = State(initialValue: original?.deployment ?? "")
+        _argoCDApplication = State(initialValue: original?.argoCDApplication ?? "")
+        _kubeconfig = State(initialValue: original?.kubeconfig ?? "")
     }
 
     /// The project's environments as they are now, which the change applies to.
@@ -383,9 +396,12 @@ struct EnvironmentSheet: View {
 
     private var urlMessage: String? { ProjectRules.environmentURLMessage(url) }
     private var portMessage: String? { ProjectRules.environmentPortMessage(port) }
+    private var argoCDApplicationMessage: String? { ProjectRules.environmentArgoCDApplicationMessage(argoCDApplication) }
+    private var kubeconfigMessage: String? { ProjectRules.environmentKubeconfigMessage(kubeconfig) }
 
     private var canConfirm: Bool {
-        nameMessage == nil && urlMessage == nil && portMessage == nil && !working
+        nameMessage == nil && urlMessage == nil && portMessage == nil && argoCDApplicationMessage == nil
+            && kubeconfigMessage == nil && !working
     }
 
     var body: some View {
@@ -436,6 +452,35 @@ struct EnvironmentSheet: View {
                         FieldMessage(text: portEdited ? portMessage : nil)
                     }
                 }
+                // The Kubernetes fields are optional: an empty field means not set.
+                GridRow {
+                    label("kubectl context")
+                    monospacedField("kubectl context", text: $context)
+                }
+                GridRow {
+                    label("Namespace")
+                    monospacedField("Namespace", text: $namespace)
+                }
+                GridRow {
+                    label("Deployment")
+                    monospacedField("Deployment", text: $deployment)
+                }
+                GridRow {
+                    label("Argo CD application")
+                    VStack(alignment: .leading, spacing: 4) {
+                        monospacedField("Argo CD application", text: $argoCDApplication)
+                            .onChange(of: argoCDApplication) { argoCDApplicationEdited = true }
+                        FieldMessage(text: argoCDApplicationEdited ? argoCDApplicationMessage : nil)
+                    }
+                }
+                GridRow {
+                    label("Kubeconfig file")
+                    VStack(alignment: .leading, spacing: 4) {
+                        monospacedField("Kubeconfig file", text: $kubeconfig)
+                            .onChange(of: kubeconfig) { kubeconfigEdited = true }
+                        FieldMessage(text: kubeconfigEdited ? kubeconfigMessage : nil)
+                    }
+                }
             }
             FieldMessage(text: failure)
             SheetButtonRow(defaultTitle: edits ? "Save" : "Create", defaultEnabled: canConfirm,
@@ -447,12 +492,19 @@ struct EnvironmentSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 460)
+        .frame(width: 540)
     }
 
     private func label(_ text: String) -> some View {
         Text(text)
             .gridColumnAlignment(.trailing)
+    }
+
+    /// A text field in SF Mono that fills its row.
+    private func monospacedField(_ title: String, text: Binding<String>) -> some View {
+        TextField(title, text: text, prompt: Text(""))
+            .labelsHidden()
+            .font(.system(.body, design: .monospaced))
     }
 
     /// Create appends the environment; Save replaces the edited one at its place, keeping its
@@ -461,7 +513,9 @@ struct EnvironmentSheet: View {
     /// engine's message otherwise.
     private func confirm() {
         guard canConfirm else { return }
-        let environment = ProjectRules.environment(name: name, url: url, port: port, editing: original)
+        let environment = ProjectRules.environment(name: name, url: url, port: port, context: context, namespace: namespace,
+                                                   deployment: deployment, argoCDApplication: argoCDApplication,
+                                                   kubeconfig: kubeconfig, editing: original)
         let list = ProjectRules.environments(current, saving: environment, replacing: original?.name)
         working = true
         Task {

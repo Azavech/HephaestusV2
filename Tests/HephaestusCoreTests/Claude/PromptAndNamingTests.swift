@@ -120,6 +120,86 @@ struct PromptAndNamingTests {
         #expect(Prompts.feedbackContext(fromFirstMessage: nil) == "- none")
     }
 
+    /// The environments of the `{{environments}}` example of docs/chats.md › Rendered blocks: one
+    /// without any Kubernetes field, one with every field.
+    static let exampleEnvironments = [
+        ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
+        ProjectEnvironment(name: "staging", url: "https://staging.example.com/", context: "staging-eks", namespace: "orders",
+                           deployment: "orders-api", argoCDApplication: "argocd/orders-staging", kubeconfig: "~/.kube/staging.yaml"),
+    ]
+
+    /// The line of `{{environments}}` that follows its blank line.
+    static let environmentsHeader = "The project's environments, where the Go service runs; the Kubernetes and Argo CD tools take an environment's name:"
+
+    @Test("{{environments}} of a Go service: a blank line, then the example of docs/chats.md › Rendered blocks")
+    func environmentsBlock() throws {
+        let blocks = MarkdownSource.fencedBlocks(in: try Repository.doc("chats.md"))
+        let documented = try #require(blocks.first { $0.text.hasPrefix(Self.environmentsHeader + "\n") })
+        #expect(Prompts.environments(Self.exampleEnvironments, type: .goService) == "\n\n" + documented.text)
+    }
+
+    @Test("{{environments}}: the base URL, then each Kubernetes field set, in the documented order and as stored; an Argo CD application <name> stays <name>")
+    func environmentsFields() {
+        let environments = [
+            ProjectEnvironment(name: "prod", url: "https://api.example.com:8443/v1/", port: 9000, deployment: "orders-api",
+                               argoCDApplication: "orders-prod"),
+            ProjectEnvironment(name: "Preview", url: "https://preview.example.com", namespace: "orders-preview",
+                               kubeconfig: "/Users/example/.kube/preview.yaml"),
+            ProjectEnvironment(name: "dev", url: "http://127.0.0.1:8080", context: "kind-dev"),
+        ]
+        #expect(Prompts.environments(environments, type: .goService) == "\n\n\(Self.environmentsHeader)\n"
+            + "- prod: https://api.example.com:9000/v1; deployment: orders-api; Argo CD application: orders-prod\n"
+            + "- Preview: https://preview.example.com; namespace: orders-preview; kubeconfig file: /Users/example/.kube/preview.yaml\n"
+            + "- dev: http://127.0.0.1:8080; kubectl context: kind-dev")
+    }
+
+    @Test("{{environments}}: the none line for a Go service without environments; empty for the other types, environments or not")
+    func environmentsNoneAndOtherTypes() {
+        #expect(Prompts.environments([], type: .goService) == "\n\n\(Self.environmentsHeader)\n- none: the user adds them in Project Settings")
+        for type in [ProjectType.none, .swiftApplication] {
+            #expect(Prompts.environments(Self.exampleEnvironments, type: type) == "", "\(type)")
+            #expect(Prompts.environments([], type: type) == "", "\(type)")
+        }
+    }
+
+    @Test("The common prompt of a Go service has the environments after the project's type, then a blank line; another type has none")
+    func environmentsInCommonPrompt() {
+        var values = ["projectName": "Orders", "projectID": "ORD", "projectRoot": "/Users/example/Developer/orders",
+                      "workingDirectory": "It is your working directory.", "deviceName": "Studio", "docsPath": "docs",
+                      "projectType": "Go service", "environments": Prompts.environments(Self.exampleEnvironments, type: .goService)]
+        let go = Prompts.render(Prompts.text(.common), values)
+        #expect(go.contains("The project's type is Go service.\n\n"
+            + "\(Self.environmentsHeader)\n- local: http://127.0.0.1:8080\n"
+            + "- staging: https://staging.example.com; kubectl context: staging-eks; namespace: orders; deployment: orders-api; "
+            + "Argo CD application: argocd/orders-staging; kubeconfig file: ~/.kube/staging.yaml\n\n"
+            + "These rules apply in every chat."))
+
+        values["environments"] = Prompts.environments([], type: .goService)
+        #expect(Prompts.render(Prompts.text(.common), values).contains("The project's type is Go service.\n\n\(Self.environmentsHeader)\n"
+            + "- none: the user adds them in Project Settings\n\nThese rules apply in every chat."))
+
+        values["projectType"] = "None"
+        values["environments"] = Prompts.environments(Self.exampleEnvironments, type: .none)
+        let none = Prompts.render(Prompts.text(.common), values)
+        #expect(none.contains("The project's type is None.\n\nThese rules apply in every chat."))
+        #expect(!none.contains(Self.environmentsHeader))
+    }
+
+    @Test("The common prompt lists the Kubernetes and Argo CD tools and tells Claude to use them with an environment's name; the four that read are pre-approved")
+    func kubernetesToolsPrompt() throws {
+        let common = Prompts.text(.common)
+        #expect(common.contains("- Kubernetes and Argo CD, in a Go service project: k8s_status, k8s_logs, k8s_events, k8s_restart, k8s_scale, "
+            + "k8s_port_forward, k8s_stop_port_forward, argocd_status, argocd_sync (they act on the deployment and the Argo CD application "
+            + "of an environment of the project, with its kubectl context, namespace and kubeconfig file).\n"))
+        let lower = try #require(common.range(of: "# When the project is a Go service")).lowerBound
+        let upper = try #require(common.range(of: "# When the project is HephaestusV2")).lowerBound
+        let section = String(common[lower..<upper])
+        #expect(section.contains("use the Kubernetes and Argo CD tools with its name, never kubectl with a guessed context, namespace or deployment"))
+        #expect(section.contains("Stop a port forward with k8s_stop_port_forward once you no longer need it."))
+        #expect(ClaudeCommandLine.preApprovedTools.hasSuffix(",mcp__hephaestus__get_chat,mcp__hephaestus__k8s_status,mcp__hephaestus__k8s_logs,"
+            + "mcp__hephaestus__k8s_events,mcp__hephaestus__argocd_status"))
+    }
+
     @Test("Rendering replaces each placeholder in one pass")
     func render() {
         #expect(Prompts.render("{{a}} and {{b}}", ["a": "{{b}}", "b": "B"]) == "{{b}} and B")
@@ -131,7 +211,10 @@ struct PromptAndNamingTests {
         let values = [
             "projectName": "Hephaestus V2", "projectID": "HEPH", "projectRoot": "/Users/example/Developer/HephaestusV2",
             "workingDirectory": "It is your working directory.",
-            "deviceName": "Studio", "docsPath": "docs", "projectType": "Go service", "ticketID": "HEPH-12",
+            "deviceName": "Studio", "docsPath": "docs", "projectType": "Go service",
+            "environments": "\n\nThe project's environments, where the Go service runs; the Kubernetes and Argo CD tools take an environment's name:\n"
+                + "- staging: https://staging.example.com; deployment: orders-api",
+            "ticketID": "HEPH-12",
             "ticketTitle": "Locked web tabs close with Command-W", "ticket": "ID: HEPH-12", "bundleID": "HEPH-B2",
             "bundleTitle": "Web tab polish", "bundleTicketIDs": "HEPH-12, HEPH-13", "bundle": "ID: HEPH-B2", "feedbackContext": "- App: X",
             "screenshotPath": "/Users/example/s.png", "githubRepository": "Azavech/HephaestusV2",
@@ -145,7 +228,9 @@ struct PromptAndNamingTests {
         let prompt = Prompts.systemPrompt(kind: .ticket, values: values)
         #expect(prompt.hasPrefix("You are Claude, working inside HephaestusV2"))
         #expect(prompt.contains("The project's root folder is /Users/example/Developer/HephaestusV2 on the device Studio. It is your working directory. "))
-        #expect(prompt.contains("of the project. The project's type is Go service.\n\nThese rules apply in every chat. "))
+        #expect(prompt.contains("of the project. The project's type is Go service.\n\nThe project's environments, where the Go service runs; "
+            + "the Kubernetes and Argo CD tools take an environment's name:\n- staging: https://staging.example.com; deployment: orders-api\n\n"
+            + "These rules apply in every chat."))
         #expect(prompt.contains("\n\n# This chat\n\nThis is the chat of ticket HEPH-12"))
     }
 
@@ -193,7 +278,7 @@ struct PromptAndNamingTests {
             let upper = try #require(common.range(of: end, range: lower..<common.endIndex)).lowerBound
             return String(common[lower..<upper])
         }
-        #expect(common.contains("of the project. The project's type is {{projectType}}.\n"))
+        #expect(common.contains("of the project. The project's type is {{projectType}}.{{environments}}\n"))
         let go = try section("# When the project is a Go service", "# When the project is HephaestusV2")
         #expect(go.contains("- The Testing section of a ticket has only Claude bullets, each a check of the behaviour on the test service; it has no User bullet."))
         #expect(go.contains("The implement chat of a single ticket, started by Implement or by implement_ticket from a chat that is not a bundle chat, "

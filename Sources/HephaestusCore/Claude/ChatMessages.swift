@@ -190,6 +190,7 @@ extension Engine {
             "deviceName": deviceInfo.name,
             "docsPath": project.docsPath,
             "projectType": project.type.label,
+            "environments": Prompts.environments(project.environments, type: project.type),
         ]
         switch meta.kind {
         case .project:

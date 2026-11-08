@@ -207,6 +207,51 @@ public enum ModelRules {
         return value
     }
 
+    /// The value trimmed, nil when it is nil or empty once trimmed.
+    public static func trimmedOrNil(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }
+        return trimmed
+    }
+
+    /// Environment `context`, `namespace` and `deployment` (docs/data-model.md › Project
+    /// environment): trimmed, nil when empty, otherwise one line; `what` names the value in the
+    /// message, for example `use a namespace on one line`.
+    public static func environmentLine(_ value: String?, field: String, what: String) throws -> String? {
+        guard let trimmed = trimmedOrNil(value) else { return nil }
+        guard !containsLineBreak(trimmed) else {
+            throw ValidationError.invalid(field, "use \(what) on one line")
+        }
+        return trimmed
+    }
+
+    /// Environment `argoCDApplication`: trimmed, nil when empty, otherwise `<name>` or
+    /// `<namespace>/<name>`.
+    public static func environmentArgoCDApplication(_ value: String?, field: String) throws -> String? {
+        guard let trimmed = trimmedOrNil(value) else { return nil }
+        guard isArgoCDApplication(trimmed) else {
+            throw ValidationError.invalid(field, "use an Argo CD application as <name> or <namespace>/<name>")
+        }
+        return trimmed
+    }
+
+    /// Whether `value` is an Argo CD application `<name>` or `<namespace>/<name>`: one `/` at most,
+    /// the parts not empty, no white space or line break.
+    public static func isArgoCDApplication(_ value: String) -> Bool {
+        guard !value.contains(where: { $0.isWhitespace || $0.isNewline }) else { return false }
+        let parts = value.split(separator: "/", omittingEmptySubsequences: false)
+        return (1...2).contains(parts.count) && parts.allSatisfy { !$0.isEmpty }
+    }
+
+    /// Environment `kubeconfig`: trimmed, nil when empty, otherwise one line that is an absolute
+    /// path or a path starting with `~/`.
+    public static func environmentKubeconfig(_ value: String?, field: String) throws -> String? {
+        guard let trimmed = trimmedOrNil(value) else { return nil }
+        guard !containsLineBreak(trimmed), isAbsoluteOrHomePath(trimmed) else {
+            throw ValidationError.invalid(field, "use a kubeconfig file as an absolute path or a path starting with ~/")
+        }
+        return trimmed
+    }
+
     /// Web tab `title`: line breaks replaced by spaces, at most 500 characters, longer titles
     /// truncated.
     public static func normalizedWebTabTitle(_ value: String) -> String {

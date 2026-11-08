@@ -113,8 +113,8 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | MCP request with an answer token       | claude, chatID `answer` ([Comment answers](chats.md#comment-answers)) |
 | Engine-internal work and tests         | system                                                                |
 
-- **user** may call every method except `chats.postQuestions`, `chats.postSymbol`, `chats.postColor`, `chats.postSound`, `chats.postShortcut`, `chats.postFont`, `chats.postAnimation`, `chats.postImages` and `chats.watchCI`. Local and remote users have the same rights.
-- **claude** may call only the 50 methods that MCP tools map to (the Actors column says "claude"), with the rules below. Any other method fails with `forbidden` before its params are decoded.
+- **user** may call every method except `chats.postQuestions`, `chats.postSymbol`, `chats.postColor`, `chats.postSound`, `chats.postShortcut`, `chats.postFont`, `chats.postAnimation`, `chats.postImages`, `chats.watchCI` and the methods of [Kubernetes and Argo CD](#kubernetes-and-argo-cd). Local and remote users have the same rights.
+- **claude** may call only the 59 methods that MCP tools map to (the Actors column says "claude"), with the rules below. Any other method fails with `forbidden` before its params are decoded.
 - **system** may call every method, without restrictions.
 
 ### Rules for Claude
@@ -135,6 +135,7 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | chats.postSound                                                                                                                  | The chat's project must have the type `swiftApplication` (`ask_sound is only available in Swift application projects.`) ([Projects](projects.md#project-types)).                                                                                                                                                                                   | forbidden |
 | chats.postShortcut                                                                                                               | The chat's project must have the type `swiftApplication` (`ask_shortcut is available only in Swift application projects.`) ([Projects](projects.md#project-types)).                                                                                                                                                                                | forbidden |
 | chats.postAnimation                                                                                                              | The chat's project must have the type `swiftApplication` (`ask_animation is available only in Swift application projects.`) ([Projects](projects.md#project-types)).                                                                                                                                                                               | forbidden |
+| The methods of [Kubernetes and Argo CD](#kubernetes-and-argo-cd)                                                                 | Only the chat's own Claude may call them: the actor's chatID must equal the `chatID` param; the external token is refused (`Only the chat's own Claude can use the Kubernetes and Argo CD tools.`). The chat's project must have the type `goService` (`<tool> is only available in Go service projects.`).                                        | forbidden |
 | chats.close                                                                                                                      | The external token is refused (`Only the chat's own Claude can close its chat.`).                                                                                                                                                                                                                                                                  | forbidden |
 | chats.close                                                                                                                      | A chat other than the actor's own must belong to its project (`Chat <chatID> belongs to another project.`).                                                                                                                                                                                                                                        | forbidden |
 | chats.close                                                                                                                      | A chat other than the actor's own must have no turn in progress (`Chat <chatID> has a turn in progress.`).                                                                                                                                                                                                                                         | conflict  |
@@ -153,7 +154,7 @@ A failed call returns an [EngineError](#engineerror) `{code, message}`.
 
 | Code        | Meaning                                                                                                                                                                                                                                                                                                                                                                                          |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| notFound    | The method, or an object named by the params, does not exist: project, ticket, bundle, chat, comment, attachment, file, directory, skill, memory, web tab, question set, symbol request, color request, sound request, shortcut request, font request, animation request, sound, permission request, workflow or agent.                                                                          |
+| notFound    | The method, or an object named by the params, does not exist: project, ticket, bundle, chat, comment, attachment, file, directory, skill, memory, web tab, question set, symbol request, color request, sound request, shortcut request, font request, animation request, sound, permission request, workflow, agent or port forward.                                                            |
 | invalid     | The params do not decode or break a validation rule.                                                                                                                                                                                                                                                                                                                                             |
 | conflict    | The call clashes with the current state: an id or a file already exists, a file changed since `expectedModified`, a question set, a symbol request, a color request, a sound request, a shortcut request, a font request or an animation request is waiting or already answered, a ticket to implement is done, a bundle to implement is in progress or done, a workflow to stop is not running. |
 | forbidden   | The actor may not do this: a method or param not open to the actor, a ticket or bundle status rule, a locked web tab, a protected path.                                                                                                                                                                                                                                                          |
@@ -201,6 +202,15 @@ The first column lists every engine method; it is the list the docs conformance 
 | `projects.update`           | ProjectsUpdate           | projectID, name?, docsPath?, chatDefaults?                 | ProjectDetail    | user, claude |
 | `projects.remove`           | ProjectsRemove           | projectID                                                  | Empty            | user, claude |
 | `projects.ensureHephaestus` | ProjectsEnsureHephaestus | none                                                       | Empty            | user         |
+| `kubernetes.status`         | KubernetesStatus         | chatID, environment                                        | DeploymentStatus | claude       |
+| `kubernetes.logs`           | KubernetesLogs           | chatID, environment, options?                              | KubectlOutput    | claude       |
+| `kubernetes.events`         | KubernetesEvents         | chatID, environment                                        | [ClusterEvent]   | claude       |
+| `kubernetes.restart`        | KubernetesRestart        | chatID, environment                                        | KubectlOutput    | claude       |
+| `kubernetes.scale`          | KubernetesScale          | chatID, environment, replicas                              | KubectlOutput    | claude       |
+| `kubernetes.forward`        | KubernetesForward        | chatID, environment, remotePort, localPort?                | PortForward      | claude       |
+| `kubernetes.stopForward`    | KubernetesStopForward    | chatID, portForwardID                                      | Empty            | claude       |
+| `argoCD.status`             | ArgoCDStatus             | chatID, environment                                        | ArgoCDAppStatus  | claude       |
+| `argoCD.sync`               | ArgoCDSync               | chatID, environment                                        | KubectlOutput    | claude       |
 | `tickets.list`              | TicketsList              | projectID, includeSubprojects?                             | [Ticket]         | user, claude |
 | `tickets.get`               | TicketsGet               | ticketID                                                   | Ticket           | user, claude |
 | `tickets.create`            | TicketsCreate            | projectID, title?, description, attachments?               | Ticket           | user, claude |
@@ -409,26 +419,26 @@ Events: project.updated (the parent, when the project becomes a sub project), pr
 
 Swift type `ProjectsUpdate` · actors: user, claude · result: [ProjectDetail](#projectdetail)
 
-| Param             | Type                 | Required      | Description                                                                                                                                                                                                                                                                                                                                                                               |
-| ----------------- | -------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| projectID         | ProjectID            | yes           | Project identifier.                                                                                                                                                                                                                                                                                                                                                                       |
-| name              | String               | no            | New display name.                                                                                                                                                                                                                                                                                                                                                                         |
-| type              | ProjectType          | no            | New [project type](data-model.md#project-type).                                                                                                                                                                                                                                                                                                                                           |
-| color             | String               | no, clearable | New [color](data-model.md#project-file): `#RRGGBB` in either letter case, stored in uppercase (Default chosen at design time); null removes it. Allowed for claude.                                                                                                                                                                                                                       |
-| icon              | String               | no, clearable | New [icon](data-model.md#project-file): the name of an SF Symbol, trimmed, that the [symbol catalogue](chats.md#symbol-catalogue) of the main device has, localized variants included; null, or a name that is empty once trimmed, removes it (Default chosen at design time). Allowed for claude.                                                                                        |
-| docsPath          | String               | no            | Docs folder as a project path; the folder does not need to exist; it must not be inside `.hephaestus`.                                                                                                                                                                                                                                                                                    |
-| githubPage        | String               | no, clearable | The page of the [GitHub page](projects.md#github-page) field: `https://github.com/<owner>/<name>`, trimmed, stored without a trailing `/`; null removes it.                                                                                                                                                                                                                               |
-| useParentSettings | Bool                 | no            | Whether a sub project uses its parent's settings ([Sub projects](projects.md#sub-projects)); stored for a top-level project too, without effect.                                                                                                                                                                                                                                          |
-| chatDefaults      | ChatSettings         | no, clearable | Chat defaults of the project; null removes them so the host `defaultChatSettings` apply. Must be absent for claude.                                                                                                                                                                                                                                                                       |
-| environments      | [ProjectEnvironment] | no            | Replaces all [environments](data-model.md#project-environment) of the project, in the given order. Each environment the call adds or changes has its name and URL trimmed and is checked; one equal to a stored environment is written back as it is ([Write rules](data-model.md#write-rules)). The MCP tool `update_project` never sends it ([Environments](projects.md#environments)). |
+| Param             | Type                 | Required      | Description                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------- | -------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| projectID         | ProjectID            | yes           | Project identifier.                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| name              | String               | no            | New display name.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| type              | ProjectType          | no            | New [project type](data-model.md#project-type).                                                                                                                                                                                                                                                                                                                                                                                                        |
+| color             | String               | no, clearable | New [color](data-model.md#project-file): `#RRGGBB` in either letter case, stored in uppercase (Default chosen at design time); null removes it. Allowed for claude.                                                                                                                                                                                                                                                                                    |
+| icon              | String               | no, clearable | New [icon](data-model.md#project-file): the name of an SF Symbol, trimmed, that the [symbol catalogue](chats.md#symbol-catalogue) of the main device has, localized variants included; null, or a name that is empty once trimmed, removes it (Default chosen at design time). Allowed for claude.                                                                                                                                                     |
+| docsPath          | String               | no            | Docs folder as a project path; the folder does not need to exist; it must not be inside `.hephaestus`.                                                                                                                                                                                                                                                                                                                                                 |
+| githubPage        | String               | no, clearable | The page of the [GitHub page](projects.md#github-page) field: `https://github.com/<owner>/<name>`, trimmed, stored without a trailing `/`; null removes it.                                                                                                                                                                                                                                                                                            |
+| useParentSettings | Bool                 | no            | Whether a sub project uses its parent's settings ([Sub projects](projects.md#sub-projects)); stored for a top-level project too, without effect.                                                                                                                                                                                                                                                                                                       |
+| chatDefaults      | ChatSettings         | no, clearable | Chat defaults of the project; null removes them so the host `defaultChatSettings` apply. Must be absent for claude.                                                                                                                                                                                                                                                                                                                                    |
+| environments      | [ProjectEnvironment] | no            | Replaces all [environments](data-model.md#project-environment) of the project, in the given order. Each environment the call adds or changes has its name, URL and Kubernetes fields trimmed, an empty Kubernetes field becoming null, and is checked; one equal to a stored environment is written back as it is ([Write rules](data-model.md#write-rules)). The MCP tool `update_project` never sends it ([Environments](projects.md#environments)). |
 
 An absent param leaves its value unchanged. The identifier, `created`, the counters, `subprojects`, `webTabs` and `skills` change only through their own methods.
 
-| Error     | When                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| notFound  | No loaded project has this identifier.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| invalid   | projectID is malformed; name, type, docsPath or chatDefaults fail validation ([Data model](data-model.md#project-file)); docsPath breaks the path rules or is inside `.hephaestus`; color is not `#` followed by six hex digits (`color: use a color of the form #RRGGBB.`); the trimmed icon is neither empty nor a name of the main device's symbol catalogue (`<name> is not an SF Symbol of this Mac.`); githubPage is not a page of the form `https://github.com/<owner>/<name>` (`githubPage: use a page of the form https://github.com/<owner>/<name>.`); an environment the call adds or changes breaks the rules of [Project environment](data-model.md#project-environment): a name that is not 1 to 100 characters on one line after trimming (`environments[1]: use a name of 1 to 100 characters on one line.`), a URL that is not an absolute `http` or `https` URL with a host (`environments[1]: use an absolute http or https URL.`), a port outside 1–65535 (`environments[1]: use a port from 1 to 65535.`), the name of another environment of the list (`An environment named “local” already exists.`). |
-| forbidden | The actor is claude and chatDefaults is present (`Claude cannot change chat defaults.`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Error     | When                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| notFound  | No loaded project has this identifier.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| invalid   | projectID is malformed; name, type, docsPath or chatDefaults fail validation ([Data model](data-model.md#project-file)); docsPath breaks the path rules or is inside `.hephaestus`; color is not `#` followed by six hex digits (`color: use a color of the form #RRGGBB.`); the trimmed icon is neither empty nor a name of the main device's symbol catalogue (`<name> is not an SF Symbol of this Mac.`); githubPage is not a page of the form `https://github.com/<owner>/<name>` (`githubPage: use a page of the form https://github.com/<owner>/<name>.`); an environment the call adds or changes breaks the rules of [Project environment](data-model.md#project-environment): a name that is not 1 to 100 characters on one line after trimming (`environments[1]: use a name of 1 to 100 characters on one line.`), a URL that is not an absolute `http` or `https` URL with a host (`environments[1]: use an absolute http or https URL.`), a port outside 1–65535 (`environments[1]: use a port from 1 to 65535.`), a kubectl context, a namespace or a deployment that is not one line (`environments[1]: use a kubectl context on one line.`, `environments[1]: use a namespace on one line.`, `environments[1]: use a deployment on one line.`), an Argo CD application of another form (`environments[1]: use an Argo CD application as <name> or <namespace>/<name>.`), a kubeconfig file that is not one line, absolute or starting with `~/` (`environments[1]: use a kubeconfig file as an absolute path or a path starting with ~/.`), the name of another environment of the list (`An environment named “local” already exists.`). |
+| forbidden | The actor is claude and chatDefaults is present (`Claude cannot change chat defaults.`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 Events: project.updated; then project.updated for every other project whose [GitHub page](projects.md#github-page) changed, the sub projects that use its settings; projects.changed when the name, the type, the color or the icon changed.
 
@@ -463,6 +473,161 @@ Swift type `ProjectsEnsureHephaestus` · actors: user · result: [Empty](#empty)
 Starts the launch check of the HephaestusV2 project again ([Launch check and clone](projects.md#launch-check-and-clone)): when the device has no HephaestusV2 project loaded and no attempt is running, the engine starts one in a background task, which clones the repository when needed and registers the project. It returns at once, without waiting for the attempt; the project then arrives with `projects.changed`. With a HephaestusV2 project loaded, shown or hidden, or an attempt running, it does nothing. The feedback sheet calls it each time feedback starts for the device ([Feedback sheet](feedback.md#feedback-sheet)). The method name is a design-time choice. Default chosen at design time.
 
 Params: none. Errors: dispatcher errors only. Events: once the attempt succeeds, project.updated (the HephaestusV2 project) and projects.changed.
+
+## Kubernetes and Argo CD
+
+The methods behind the [Kubernetes and Argo CD tools](mcp.md#kubernetes-and-argo-cd-tools): each runs kubectl on the main device for an environment of the calling chat's project ([Project environment](data-model.md#project-environment)), and `kubernetes.forward` keeps a kubectl process running for the chat. Only the chat's own Claude calls them, through these tools, which fill `chatID` from their token. The kubectl commands of each method, their arguments, their process and their failures are those of the tool, in [MCP server](mcp.md#rules-of-the-kubernetes-tools). The methods emit no events: their results go to the caller only. The method names and their result types are Default chosen at design time.
+
+Every method makes these checks, in this order, and fails at the first one that fails; checks 4 and 5 apply to the methods with an `environment` param.
+
+| Check | Error       | Message                                                                                                                                                                                                                                          |
+| ----- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1     | forbidden   | The actor is not the Claude of the chat `chatID`, the external token included: `Only the chat's own Claude can use the Kubernetes and Argo CD tools.`                                                                                            |
+| 2     | notFound    | No such chat: `Chat <chatID> not found.`                                                                                                                                                                                                         |
+| 3     | forbidden   | The chat's project does not have the type `goService`: `<tool> is only available in Go service projects.`, `<tool>` being the method's MCP tool, for example `k8s_status is only available in Go service projects.` for kubernetes.status.       |
+| 4     | invalid     | No environment of the project has the name `environment`, letter case included: `environment: <project identifier> has no environment named “<name>”.`                                                                                           |
+| 5     | invalid     | The environment lacks the field the method needs, an `argoCDApplication` of another form than `<name>` or `<namespace>/<name>` counting as absent: `Environment “<name>” has no deployment.`, `Environment “<name>” has no Argo CD application.` |
+| 6     | invalid     | No executable file named `kubectl` is in the `PATH` of the login-shell environment: `kubectl was not found in the PATH of the login shell.`                                                                                                      |
+| 7     | unavailable | A kubectl command exits with a non-zero status or runs longer than 60 seconds: `<command> exited with code <n>: <standard error>`, `<command> exited with code <n>.`, `<command> did not finish within 60 seconds.`                              |
+| 7     | internal    | The standard output of a kubectl command is not the JSON object the method reads: `Unexpected output from <command>.`                                                                                                                            |
+
+`chatID` that is not a UUID, and a param that breaks the params table of the method, fail with the `invalid` of [Dispatcher errors](#dispatcher-errors) before check 1.
+
+### Label selector
+
+The pods and the ReplicaSets of a deployment are found with its label selector, `spec.selector`, written for `kubectl -l`: each `matchLabels` entry as `<key>=<value>`, in ascending key order, then each `matchExpressions` entry in its order, `In` as `<key> in (<values>)`, `NotIn` as `<key> notin (<values>)`, `Exists` as `<key>` and `DoesNotExist` as `!<key>`, `<values>` being the values joined with `,`; the parts are joined with `,`. A deployment whose selector gives no part fails with `internal` and `Unexpected output from <command>.`, `<command>` being the command that read the deployment.
+
+### Pod age
+
+The age of a pod is the time from its `created` to the call, written as kubectl's `get pods` writes it: whole seconds below 2 minutes (`95s`); minutes and seconds below 10 minutes (`7m12s`); minutes below 3 hours (`47m`); hours and minutes below 8 hours (`5h3m`); hours below 2 days (`30h`); days and hours below 8 days (`3d4h`); days below 2 years (`42d`); years and days below 8 years (`2y30d`); years beyond (`9y`). A last part that is 0 is left out (`7m`, `5h`, `3d`, `2y`), and a `created` in the future gives `0s`.
+
+### kubernetes.status
+
+Swift type `KubernetesStatus` · actors: claude (the chat's own Claude only) · result: [DeploymentStatus](#deploymentstatus)
+
+| Param       | Type   | Required | Description                                   |
+| ----------- | ------ | -------- | --------------------------------------------- |
+| chatID      | ChatID | yes      | Chat id; must be the actor's chatID.          |
+| environment | String | yes      | Name of an environment of the chat's project. |
+
+Reads the environment's deployment, then the pods of its [label selector](#label-selector) ([k8s_status](mcp.md#k8s_status)), and returns their state; a pod's `age` is computed when the call runs. Errors: the [checks](#kubernetes-and-argo-cd), with the field `deployment`.
+
+Events: none.
+
+### kubernetes.logs
+
+Swift type `KubernetesLogs` · actors: claude (the chat's own Claude only) · result: [KubectlOutput](#kubectloutput)
+
+| Param       | Type                      | Required | Description                                                              |
+| ----------- | ------------------------- | -------- | ------------------------------------------------------------------------ |
+| chatID      | ChatID                    | yes      | Chat id; must be the actor's chatID.                                     |
+| environment | String                    | yes      | Name of an environment of the chat's project.                            |
+| options     | [LogOptions](#logoptions) | no       | The pod, the container, the number of lines, the time span and previous. |
+
+Reads the last lines of the logs of one pod, or of every pod of the deployment's [label selector](#label-selector) ([k8s_logs](mcp.md#k8s_logs)). `output` is kubectl's standard output, or `No log lines.` when it is empty. Errors: the [checks](#kubernetes-and-argo-cd), with the field `deployment` when `options.pod` is absent; `options.tailLines` outside 1–5000 (`options.tailLines: use a number from 1 to 5000.`) and `options.sinceSeconds` below 1 (`options.sinceSeconds: use a number of at least 1.`), checked before check 1.
+
+Events: none.
+
+### kubernetes.events
+
+Swift type `KubernetesEvents` · actors: claude (the chat's own Claude only) · result: [ClusterEvent](#clusterevent) array
+
+| Param       | Type   | Required | Description                                   |
+| ----------- | ------ | -------- | --------------------------------------------- |
+| chatID      | ChatID | yes      | Chat id; must be the actor's chatID.          |
+| environment | String | yes      | Name of an environment of the chat's project. |
+
+Returns the events of the deployment, of its ReplicaSets and of their pods, newest first ([k8s_events](mcp.md#k8s_events)): sorted by `lastSeen` from the newest, the events without `lastSeen` last, events with the same time in kubectl's order. Errors: the [checks](#kubernetes-and-argo-cd), with the field `deployment`.
+
+Events: none.
+
+### kubernetes.restart
+
+Swift type `KubernetesRestart` · actors: claude (the chat's own Claude only) · result: [KubectlOutput](#kubectloutput)
+
+| Param       | Type   | Required | Description                                   |
+| ----------- | ------ | -------- | --------------------------------------------- |
+| chatID      | ChatID | yes      | Chat id; must be the actor's chatID.          |
+| environment | String | yes      | Name of an environment of the chat's project. |
+
+Runs `kubectl … rollout restart deployment/<deployment>` ([k8s_restart](mcp.md#k8s_restart)). Errors: the [checks](#kubernetes-and-argo-cd), with the field `deployment`.
+
+Events: none.
+
+### kubernetes.scale
+
+Swift type `KubernetesScale` · actors: claude (the chat's own Claude only) · result: [KubectlOutput](#kubectloutput)
+
+| Param       | Type   | Required | Description                                   |
+| ----------- | ------ | -------- | --------------------------------------------- |
+| chatID      | ChatID | yes      | Chat id; must be the actor's chatID.          |
+| environment | String | yes      | Name of an environment of the chat's project. |
+| replicas    | Int    | yes      | 0 to 2,147,483,647.                           |
+
+Runs `kubectl … scale deployment/<deployment> --replicas=<replicas>` ([k8s_scale](mcp.md#k8s_scale)). Errors: the [checks](#kubernetes-and-argo-cd), with the field `deployment`; `replicas` out of range (`replicas: use a number from 0 to 2147483647.`), checked before check 1.
+
+Events: none.
+
+### kubernetes.forward
+
+Swift type `KubernetesForward` · actors: claude (the chat's own Claude only) · result: [PortForward](#portforward)
+
+| Param       | Type   | Required | Description                                                       |
+| ----------- | ------ | -------- | ----------------------------------------------------------------- |
+| chatID      | ChatID | yes      | Chat id; must be the actor's chatID.                              |
+| environment | String | yes      | Name of an environment of the chat's project.                     |
+| remotePort  | Int    | yes      | Port in the pod, 1–65535.                                         |
+| localPort   | Int    | no       | Port on 127.0.0.1, 1–65535; kubectl picks a free one when absent. |
+
+Starts `kubectl … port-forward deployment/<deployment> --address=127.0.0.1 <localPort>:<remotePort>` and returns once kubectl forwards, with a new UUID as `portForwardID` ([k8s_port_forward](mcp.md#k8s_port_forward)). The engine keeps the port forward with the chat: it stops it on `kubernetes.stopForward`, when the chat's Claude process exits, chats.delete and projects.remove included, and at shutdown, and forgets it when kubectl exits by itself.
+
+| Error       | When                                                                                                                                                                                                                                                                              |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid     | A port outside 1–65535 (`remotePort: use a port from 1 to 65535.`, `localPort: use a port from 1 to 65535.`), checked before check 1; the [checks](#kubernetes-and-argo-cd) 4 to 6, with the field `deployment`.                                                                  |
+| unavailable | kubectl exits before it forwards (the message of check 7); kubectl prints no `Forwarding from` line within 30 seconds (`<command> did not start forwarding within 30 seconds.`); the chat's Claude process exits before the forward starts (`The chat's Claude process exited.`). |
+
+The other errors are those of the [checks](#kubernetes-and-argo-cd).
+
+Events: none.
+
+### kubernetes.stopForward
+
+Swift type `KubernetesStopForward` · actors: claude (the chat's own Claude only) · result: [Empty](#empty)
+
+| Param         | Type   | Required | Description                                                    |
+| ------------- | ------ | -------- | -------------------------------------------------------------- |
+| chatID        | ChatID | yes      | Chat id; must be the actor's chatID.                           |
+| portForwardID | UUID   | yes      | `portForwardID` of a [PortForward](#portforward) of this chat. |
+
+Sends `SIGTERM` to the process group of the port forward's kubectl, then `SIGKILL` 2 seconds later when it is still alive, and returns once `SIGTERM` is sent ([k8s_stop_port_forward](mcp.md#k8s_stop_port_forward)). Errors: the [checks](#kubernetes-and-argo-cd) 1 to 3; portForwardID is not a UUID (`invalid`); the chat has no running port forward with this id (`notFound`, `Port forward <portForwardID> not found.`).
+
+Events: none.
+
+### argoCD.status
+
+Swift type `ArgoCDStatus` · actors: claude (the chat's own Claude only) · result: [ArgoCDAppStatus](#argocdappstatus)
+
+| Param       | Type   | Required | Description                                   |
+| ----------- | ------ | -------- | --------------------------------------------- |
+| chatID      | ChatID | yes      | Chat id; must be the actor's chatID.          |
+| environment | String | yes      | Name of an environment of the chat's project. |
+
+Reads the environment's Argo CD Application with kubectl, in the Application's namespace ([argocd_status](mcp.md#argocd_status)). Errors: the [checks](#kubernetes-and-argo-cd), with the field `argoCDApplication`.
+
+Events: none.
+
+### argoCD.sync
+
+Swift type `ArgoCDSync` · actors: claude (the chat's own Claude only) · result: [KubectlOutput](#kubectloutput)
+
+| Param       | Type   | Required | Description                                   |
+| ----------- | ------ | -------- | --------------------------------------------- |
+| chatID      | ChatID | yes      | Chat id; must be the actor's chatID.          |
+| environment | String | yes      | Name of an environment of the chat's project. |
+
+Reads the Application, then sets its sync operation with `kubectl … patch` ([argocd_sync](mcp.md#argocd_sync)). Errors: the [checks](#kubernetes-and-argo-cd), with the field `argoCDApplication`; the Application has an operation in progress (`conflict`, `The Argo CD application <namespace>/<name> already has an operation in progress.`).
+
+Events: none.
 
 ## Tickets
 
@@ -2760,6 +2925,170 @@ In a [ProjectSummary](#projectsummary), `ticketCounts` counts the tickets of the
 | githubPage       | String           | no       | The project's [GitHub page](projects.md#github-page), resolved from its `Use parent settings`, its GitHub page field and its origin; absent when it has none. For a sub project that uses its parent's settings, building a ProjectDetail also starts a read of the origin of the project the page comes from. Default chosen at design time (that read).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | originGithubPage | String           | no       | The page of the project's origin, read from `gitRemoteURL` ([GitHub page](projects.md#github-page)); absent when the origin is not on GitHub, while its SSH host alias is not resolved yet, and without `gitRemoteURL`. The GitHub page field of Project Settings shows it as its placeholder. Default chosen at design time.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
+### DeploymentStatus
+
+The state of a Kubernetes Deployment and its pods, the result of [kubernetes.status](#kubernetesstatus). The fields come from the Deployment's JSON and from the JSON of its pods.
+
+| Field             | Type                                          | Required | Description                                                                                  |
+| ----------------- | --------------------------------------------- | -------- | -------------------------------------------------------------------------------------------- |
+| deployment        | String                                        | yes      | The Deployment's name (`metadata.name`).                                                     |
+| namespace         | String                                        | yes      | Its namespace (`metadata.namespace`).                                                        |
+| desiredReplicas   | Int                                           | yes      | `spec.replicas`; 1 when absent, as Kubernetes defaults it.                                   |
+| readyReplicas     | Int                                           | yes      | `status.readyReplicas`; 0 when absent.                                                       |
+| updatedReplicas   | Int                                           | yes      | `status.updatedReplicas`; 0 when absent.                                                     |
+| availableReplicas | Int                                           | yes      | `status.availableReplicas`; 0 when absent.                                                   |
+| images            | [String]                                      | yes      | The image of each container of the pod template (`spec.template.spec.containers`), in order. |
+| conditions        | [[DeploymentCondition](#deploymentcondition)] | yes      | `status.conditions`, in order.                                                               |
+| pods              | [[PodStatus](#podstatus)]                     | yes      | The pods of the [label selector](#label-selector), in kubectl's order.                       |
+
+```json
+{
+  "availableReplicas": 2,
+  "conditions": [
+    {"lastTransition": "2026-10-31T09:12:40Z", "message": "Deployment has minimum availability.", "reason": "MinimumReplicasAvailable", "status": "True", "type": "Available"},
+    {"lastTransition": "2026-10-31T13:58:02Z", "message": "ReplicaSet \"orders-api-7d9f8c6b5\" has successfully progressed.", "reason": "NewReplicaSetAvailable", "status": "True", "type": "Progressing"}
+  ],
+  "deployment": "orders-api",
+  "desiredReplicas": 2,
+  "images": ["registry.example.com/orders-api:1.8.2"],
+  "namespace": "orders",
+  "pods": [
+    {"age": "5m12s", "containers": 1, "created": "2026-10-31T13:57:48Z", "name": "orders-api-7d9f8c6b5-2x4zq", "node": "node-a", "phase": "Running", "readyContainers": 1, "restarts": 0},
+    {"age": "4m40s", "containers": 1, "created": "2026-10-31T13:58:20Z", "name": "orders-api-7d9f8c6b5-9kmwd", "node": "node-b", "phase": "Running", "readyContainers": 1, "restarts": 1}
+  ],
+  "readyReplicas": 2,
+  "updatedReplicas": 2
+}
+```
+
+### DeploymentCondition
+
+| Field          | Type   | Required | Description                                                 |
+| -------------- | ------ | -------- | ----------------------------------------------------------- |
+| type           | String | yes      | For example `Available`, `Progressing` or `ReplicaFailure`. |
+| status         | String | yes      | `True`, `False` or `Unknown`.                               |
+| reason         | String | no       | A short reason in CamelCase.                                |
+| message        | String | no       | Details for a person.                                       |
+| lastTransition | Date   | no       | `lastTransitionTime`.                                       |
+
+### PodStatus
+
+| Field           | Type   | Required | Description                                                                                      |
+| --------------- | ------ | -------- | ------------------------------------------------------------------------------------------------ |
+| name            | String | yes      | The pod's name.                                                                                  |
+| phase           | String | yes      | `status.phase`: `Pending`, `Running`, `Succeeded`, `Failed` or `Unknown`; `Unknown` when absent. |
+| readyContainers | Int    | yes      | The containers of `status.containerStatuses` whose `ready` is true.                              |
+| containers      | Int    | yes      | The containers of the pod (`spec.containers`).                                                   |
+| restarts        | Int    | yes      | The sum of the `restartCount` of its containers.                                                 |
+| age             | String | yes      | The time since `created`, as kubectl shows it ([Pod age](#pod-age)); `0s` without `created`.     |
+| created         | Date   | no       | `metadata.creationTimestamp`.                                                                    |
+| node            | String | no       | `spec.nodeName`; absent while the pod is not scheduled.                                          |
+
+### ClusterEvent
+
+A Kubernetes event of a Deployment, of one of its ReplicaSets or of one of their pods, an element of the result of [kubernetes.events](#kubernetesevents).
+
+| Field     | Type   | Required | Description                                                                                           |
+| --------- | ------ | -------- | ----------------------------------------------------------------------------------------------------- |
+| type      | String | yes      | `Normal` or `Warning`; `Normal` when absent.                                                          |
+| reason    | String | yes      | For example `ScalingReplicaSet` or `BackOff`; `""` when absent.                                       |
+| kind      | String | yes      | The kind of the object: `Deployment`, `ReplicaSet` or `Pod` (`involvedObject.kind`).                  |
+| name      | String | yes      | The name of the object (`involvedObject.name`).                                                       |
+| message   | String | yes      | The message; `""` when absent.                                                                        |
+| count     | Int    | yes      | How many times it happened: `count`, else `series.count`, else 1.                                     |
+| firstSeen | Date   | no       | `firstTimestamp`, else `eventTime`.                                                                   |
+| lastSeen  | Date   | no       | `lastTimestamp`, else `series.lastObservedTime`, else `eventTime`, else `metadata.creationTimestamp`. |
+
+```json
+[
+  {"count": 3, "firstSeen": "2026-10-31T13:58:30Z", "kind": "Pod", "lastSeen": "2026-10-31T14:01:10Z", "message": "Back-off restarting failed container api in pod orders-api-7d9f8c6b5-9kmwd_orders(1f0c2b6e-3d4a-4b5c-8d9e-0f1a2b3c4d5e)", "name": "orders-api-7d9f8c6b5-9kmwd", "reason": "BackOff", "type": "Warning"},
+  {"count": 1, "firstSeen": "2026-10-31T13:57:48Z", "kind": "Deployment", "lastSeen": "2026-10-31T13:57:48Z", "message": "Scaled up replica set orders-api-7d9f8c6b5 from 0 to 2", "name": "orders-api", "reason": "ScalingReplicaSet", "type": "Normal"}
+]
+```
+
+### LogOptions
+
+The `options` of [kubernetes.logs](#kuberneteslogs). `pod` and `container` are trimmed, and an empty one counts as absent.
+
+| Field        | Type   | Required | Description                                                                                  |
+| ------------ | ------ | -------- | -------------------------------------------------------------------------------------------- |
+| pod          | String | no       | One pod; every pod of the deployment when absent.                                            |
+| container    | String | no       | The container; each pod's default container when absent.                                     |
+| tailLines    | Int    | no       | The last lines of each container, 1–5000; 200 when absent.                                   |
+| sinceSeconds | Int    | no       | Only the lines of the last `sinceSeconds` seconds, at least 1.                               |
+| previous     | Bool   | no       | true: the logs of the previous container of each pod, the one that ended; false when absent. |
+
+### KubectlOutput
+
+| Field  | Type   | Required | Description                                                                                                                       |
+| ------ | ------ | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| output | String | yes      | The standard output of the method's last kubectl command, without its final line break ([Kubectl output](mcp.md#kubectl-output)). |
+
+### PortForward
+
+A port forward started by [kubernetes.forward](#kubernetesforward).
+
+| Field         | Type   | Required | Description                                         |
+| ------------- | ------ | -------- | --------------------------------------------------- |
+| portForwardID | UUID   | yes      | Id of the port forward, for kubernetes.stopForward. |
+| environment   | String | yes      | The environment's name.                             |
+| localPort     | Int    | yes      | The port kubectl listens on, on 127.0.0.1.          |
+| remotePort    | Int    | yes      | The port in the pod.                                |
+| url           | String | yes      | `http://127.0.0.1:<localPort>`.                     |
+
+```json
+{
+  "environment": "staging",
+  "localPort": 52814,
+  "portForwardID": "6A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D",
+  "remotePort": 8080,
+  "url": "http://127.0.0.1:52814"
+}
+```
+
+### ArgoCDAppStatus
+
+The state of an Argo CD Application, the result of [argoCD.status](#argocdstatus), read from the Application resource.
+
+| Field               | Type                                | Required | Description                                                                                                                |
+| ------------------- | ----------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------- |
+| application         | String                              | yes      | `<namespace>/<name>`.                                                                                                      |
+| syncStatus          | String                              | yes      | `status.sync.status`: `Synced`, `OutOfSync` or `Unknown`; `Unknown` when absent.                                           |
+| healthStatus        | String                              | yes      | `status.health.status`: `Healthy`, `Progressing`, `Degraded`, `Suspended`, `Missing` or `Unknown`; `Unknown` when absent.  |
+| healthMessage       | String                              | no       | `status.health.message`.                                                                                                   |
+| revision            | String                              | no       | `status.sync.revision`, else the `status.sync.revisions` of an Application with several sources, joined with `, `.         |
+| operationInProgress | Bool                                | yes      | true when the Application has an `operation`, which a sync sets until it ends, or its last operation's phase is `Running`. |
+| lastOperation       | [ArgoCDOperation](#argocdoperation) | no       | `status.operationState`, the last operation that started; absent before the first one.                                     |
+
+```json
+{
+  "application": "argocd/orders-staging",
+  "healthStatus": "Healthy",
+  "lastOperation": {
+    "finishedAt": "2026-10-31T13:58:05Z",
+    "initiatedBy": "automated",
+    "message": "successfully synced (all tasks run)",
+    "phase": "Succeeded",
+    "revision": "8f3c2a1b9d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a",
+    "startedAt": "2026-10-31T13:57:46Z"
+  },
+  "operationInProgress": false,
+  "revision": "8f3c2a1b9d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a",
+  "syncStatus": "Synced"
+}
+```
+
+### ArgoCDOperation
+
+| Field       | Type   | Required | Description                                                                                |
+| ----------- | ------ | -------- | ------------------------------------------------------------------------------------------ |
+| phase       | String | yes      | `Running`, `Terminating`, `Failed`, `Error` or `Succeeded`.                                |
+| message     | String | no       | The operation's message.                                                                   |
+| startedAt   | Date   | no       | When it started.                                                                           |
+| finishedAt  | Date   | no       | When it ended; absent while it runs.                                                       |
+| revision    | String | no       | `syncResult.revision`, else `operation.sync.revision`.                                     |
+| initiatedBy | String | no       | `operation.initiatedBy.username`, or `automated` when Argo CD's automated sync started it. |
+
 ### FileEntry
 
 | Field       | Type   | Required | Description                                                                                                                                                                                                                                                                             |
@@ -3469,19 +3798,19 @@ The `memories.list` result and the data of `memories.changed`.
 
 ### Files
 
-| Path (under Sources/HephaestusCore/Engine/) | Content                                                                                                                                                                                                                                                                                         |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Engine.swift                                | The `Engine` actor, its dispatcher and its event subscriptions.                                                                                                                                                                                                                                 |
-| Actor.swift                                 | `Actor`, `ActorKind`.                                                                                                                                                                                                                                                                           |
-| EngineError.swift                           | `EngineError`.                                                                                                                                                                                                                                                                                  |
-| EngineConnection.swift                      | `EngineConnection`, `ConnectionState`.                                                                                                                                                                                                                                                          |
-| LocalEngineConnection.swift                 | The in-process connection.                                                                                                                                                                                                                                                                      |
-| API/EngineMethod.swift                      | `EngineMethod`, `EngineEvent`, `Empty`, `Patch`.                                                                                                                                                                                                                                                |
-| API/EngineJSON.swift                        | The JSON encoder and decoder of the API.                                                                                                                                                                                                                                                        |
-| API/APITypes.swift                          | The other types of [API types](#api-types).                                                                                                                                                                                                                                                     |
-| API/(Area)API.swift                         | The method declarations of one area: `DeviceAPI` (device.info, snapshot.get), `ProjectsAPI`, `TicketsAPI`, `AttachmentsAPI`, `BundlesAPI`, `ChatsAPI`, `SoundsAPI`, `ClaudeAPI`, `FilesAPI`, `DocsAPI`, `FSAPI`, `WebTabsAPI`, `SearchAPI`, `SkillsAPI`, `MemoriesAPI`, `SettingsAPI`, `UIAPI`. |
-| API/Events.swift                            | One `EngineEvent` type per event, with the payload types.                                                                                                                                                                                                                                       |
-| Handlers/(Area)Handlers.swift               | `register<Area>Handlers()` and the handlers of one area.                                                                                                                                                                                                                                        |
+| Path (under Sources/HephaestusCore/Engine/) | Content                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Engine.swift                                | The `Engine` actor, its dispatcher and its event subscriptions.                                                                                                                                                                                                                                                                           |
+| Actor.swift                                 | `Actor`, `ActorKind`.                                                                                                                                                                                                                                                                                                                     |
+| EngineError.swift                           | `EngineError`.                                                                                                                                                                                                                                                                                                                            |
+| EngineConnection.swift                      | `EngineConnection`, `ConnectionState`.                                                                                                                                                                                                                                                                                                    |
+| LocalEngineConnection.swift                 | The in-process connection.                                                                                                                                                                                                                                                                                                                |
+| API/EngineMethod.swift                      | `EngineMethod`, `EngineEvent`, `Empty`, `Patch`.                                                                                                                                                                                                                                                                                          |
+| API/EngineJSON.swift                        | The JSON encoder and decoder of the API.                                                                                                                                                                                                                                                                                                  |
+| API/APITypes.swift                          | The other types of [API types](#api-types).                                                                                                                                                                                                                                                                                               |
+| API/(Area)API.swift                         | The method declarations of one area: `DeviceAPI` (device.info, snapshot.get), `ProjectsAPI`, `TicketsAPI`, `AttachmentsAPI`, `BundlesAPI`, `ChatsAPI`, `SoundsAPI`, `ClaudeAPI`, `FilesAPI`, `DocsAPI`, `FSAPI`, `WebTabsAPI`, `SearchAPI`, `SkillsAPI`, `MemoriesAPI`, `SettingsAPI`, `UIAPI`, `KubernetesAPI` (kubernetes.*, argoCD.*). |
+| API/Events.swift                            | One `EngineEvent` type per event, with the payload types.                                                                                                                                                                                                                                                                                 |
+| Handlers/(Area)Handlers.swift               | `register<Area>Handlers()` and the handlers of one area.                                                                                                                                                                                                                                                                                  |
 
 `RemoteEngineConnection` lives in `Sources/HephaestusCore/Sync/` ([Remote devices](remote.md)); the MCP server in `Sources/HephaestusCore/MCP/` ([MCP server](mcp.md)).
 
@@ -3610,7 +3939,7 @@ public actor Engine {
 4. Run the handler with the decoded params and the actor. An `EngineError` is rethrown as is; any other error becomes `internal` and is logged.
 5. Encode the result with `EngineJSON.encoder()`.
 
-The handlers are registered at engine start by `registerDeviceHandlers()`, `registerProjectHandlers()`, `registerTicketHandlers()`, `registerAttachmentHandlers()`, `registerBundleHandlers()`, `registerChatHandlers()`, `registerClaudeHandlers()`, `registerFileHandlers()`, `registerDocHandlers()`, `registerFSHandlers()`, `registerWebTabHandlers()`, `registerSearchHandlers()`, `registerSkillHandlers()`, `registerMemoryHandlers()`, `registerSettingsHandlers()` and `registerUIHandlers()`. The `actors` set of each registration is the Actors column of the [Method index](#method-index). Parameter-level rules for Claude ([Rules for Claude](#rules-for-claude)) are checked by the handlers.
+The handlers are registered at engine start by `registerDeviceHandlers()`, `registerProjectHandlers()`, `registerTicketHandlers()`, `registerAttachmentHandlers()`, `registerBundleHandlers()`, `registerChatHandlers()`, `registerClaudeHandlers()`, `registerFileHandlers()`, `registerDocHandlers()`, `registerFSHandlers()`, `registerWebTabHandlers()`, `registerSearchHandlers()`, `registerSkillHandlers()`, `registerMemoryHandlers()`, `registerSettingsHandlers()`, `registerUIHandlers()` and `registerKubernetesHandlers()`. The `actors` set of each registration is the Actors column of the [Method index](#method-index). Parameter-level rules for Claude ([Rules for Claude](#rules-for-claude)) are checked by the handlers.
 
 `emit` encodes the envelope once with `EngineJSON.encoder()` and yields the same bytes to every subscriber: each `LocalEngineConnection` and each remote device session.
 
@@ -3711,3 +4040,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R159: A locked web tab goes back to its original page each time the user comes back to it.
 - R160: The user can show, edit, create, rename and delete the memories Claude saves for a project, in a Memories section of the sidebar.
 - R161: After an implementation is pushed in a project with a GitHub page, a CI chat follows CI and reports to the orchestrator, which asks the user how to proceed when CI fails and finishes only once CI is green or the user decides so.
+- R162: Each environment of a Go service names its Kubernetes context, namespace, deployment, Argo CD application and kubeconfig, which Claude receives and uses through HephaestusV2's Kubernetes and Argo CD tools.

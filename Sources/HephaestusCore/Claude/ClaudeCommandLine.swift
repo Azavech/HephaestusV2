@@ -3,12 +3,14 @@ import Foundation
 /// The argument lists of the Claude CLI processes (docs/chats.md › Command line, › Haiku naming
 /// › Command) and the files written for a launch.
 enum ClaudeCommandLine {
-    /// Row 14: the tools that run in every permission mode.
+    /// Row 14: the tools that run in every permission mode (docs/chats.md › Command line); the
+    /// four Kubernetes and Argo CD tools that only read the cluster come last.
     static let preApprovedTools = [
         "ask_questions", "ask_symbol", "ask_color", "ask_sound", "ask_shortcut", "ask_font", "ask_animation", "show_image",
         "list_projects", "get_project", "list_tickets", "get_ticket", "create_ticket", "update_ticket", "set_ticket_status",
         "add_comment", "update_comment", "list_bundles", "get_bundle", "create_bundle", "update_bundle", "search", "list_docs",
         "list_web_tabs", "list_skills", "get_skill", "list_chats", "get_chat",
+        "k8s_status", "k8s_logs", "k8s_events", "argocd_status",
     ].map { "mcp__hephaestus__\($0)" }.joined(separator: ",")
 
     /// The argv of a chat process, the CLI path first; no shell is involved.
@@ -97,7 +99,10 @@ enum ClaudeCommandLine {
         return "--- \(ISODate.string(from: date)) launch: \(parts.joined(separator: " ")) ---"
     }
 
-    private static func quoted(_ argument: String) -> String {
+    /// An argument as the launch line writes it: as it is when it holds only letters, digits and
+    /// `-_./:=,@+%`, else in single quotes, each `'` written `'\''`; also the quoting of the kubectl
+    /// commands in the messages of the Kubernetes tools (docs/mcp.md › Rules of the Kubernetes tools).
+    static func quoted(_ argument: String) -> String {
         let plain = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_./:=,@+%"))
         if !argument.isEmpty, argument.unicodeScalars.allSatisfy(plain.contains) {
             return argument

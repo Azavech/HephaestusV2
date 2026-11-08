@@ -92,6 +92,10 @@ struct MCPToolHandlers: Sendable {
         if tool.handling == .closeChat, actor.chat == nil {
             throw MCPToolError(.forbidden, "Only the chat's own Claude can close its chat.")
         }
+        // docs/mcp.md › Rules of the Kubernetes tools, rule 1: chat tokens only.
+        if [.kubernetesJSON, .kubernetesLogs, .kubernetesText].contains(tool.handling), actor.chat == nil {
+            throw MCPToolError(ActorRules.ownChatKubernetesOnly)
+        }
         // Step 3: argument validation, `null` properties removed.
         let cleaned = MCPSchemaValidator.removingNulls(arguments)
         if let error = MCPSchemaValidator().validate(cleaned, against: tool.inputSchema) {
@@ -252,6 +256,29 @@ struct MCPToolHandlers: Sendable {
             try Self.checkTarget(target, schema: tool.inputSchema)
             return try await engineText(tool, params: .object(["target": .object(target)]), actor: actor)
 
+        case .kubernetesJSON:
+            // Step 2 made sure the token is a chat token.
+            var params = args
+            params["chatID"] = .string(actor.chat?.uuidString.uppercased() ?? "")
+            return try await engineText(tool, params: .object(params), actor: actor)
+
+        case .kubernetesLogs:
+            // Step 2 made sure the token is a chat token. The optional arguments given go into
+            // `options` (docs/mcp.md › k8s_logs).
+            var params = args.filter { !Self.logOptionArguments.contains($0.key) }
+            let options = args.filter { Self.logOptionArguments.contains($0.key) }
+            if !options.isEmpty {
+                params["options"] = .object(options)
+            }
+            params["chatID"] = .string(actor.chat?.uuidString.uppercased() ?? "")
+            return try await kubectlOutput(tool, params: .object(params), actor: actor)
+
+        case .kubernetesText:
+            // Step 2 made sure the token is a chat token.
+            var params = args
+            params["chatID"] = .string(actor.chat?.uuidString.uppercased() ?? "")
+            return try await kubectlOutput(tool, params: .object(params), actor: actor)
+
         case .debugUI:
             return try await debugTool(tool, args: args)
         }
@@ -280,6 +307,20 @@ struct MCPToolHandlers: Sendable {
     private func engineText(_ tool: MCPToolDefinition, params: JSONValue, actor: Actor) async throws -> String {
         let method = tool.engineMethod ?? ""
         return String(decoding: try await engineCall(method, try Self.encoded(params), actor), as: UTF8.self)
+    }
+
+    /// The arguments of `k8s_logs` that it sends in `options` (docs/mcp.md › k8s_logs).
+    static let logOptionArguments: Set<String> = ["pod", "container", "tailLines", "sinceSeconds", "previous"]
+
+    /// docs/mcp.md › Kubectl output: the plain text of a tool whose method returns a
+    /// KubectlOutput is its `output`.
+    private func kubectlOutput(_ tool: MCPToolDefinition, params: JSONValue, actor: Actor) async throws -> String {
+        let text = try await engineText(tool, params: params, actor: actor)
+        do {
+            return try EngineJSON.decode(KubectlOutput.self, from: Data(text.utf8)).output
+        } catch {
+            throw EngineError.unexpectedResult(tool.engineMethod ?? "")
+        }
     }
 
     private static func encoded(_ params: JSONValue) throws -> Data {

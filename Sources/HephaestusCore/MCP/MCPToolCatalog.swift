@@ -73,6 +73,18 @@ public enum MCPToolHandling: String, Sendable, Hashable, CaseIterable {
     case closeChat
     /// `open_in_app`: the target rules of docs/mcp.md › Target kinds.
     case openInApp
+    /// `k8s_status`, `k8s_events`, `k8s_port_forward`, `k8s_stop_port_forward`, `argocd_status`:
+    /// chat tokens only, `chatID` from the token, the method's JSON as the result
+    /// (docs/mcp.md › Rules of the Kubernetes tools, › Kubectl output).
+    case kubernetesJSON
+    /// `k8s_logs`: chat tokens only, `chatID` from the token, the optional arguments in
+    /// `options`, plain-text result: the `output` of the method's KubectlOutput
+    /// (docs/mcp.md › k8s_logs, › Kubectl output).
+    case kubernetesLogs
+    /// `k8s_restart`, `k8s_scale`, `argocd_sync`: chat tokens only, `chatID` from the token,
+    /// plain-text result: the `output` of the method's KubectlOutput (docs/mcp.md › Kubectl
+    /// output).
+    case kubernetesText
     /// A debug tool: `MCPDebugUI`, not an engine method.
     case debugUI
 }
@@ -80,7 +92,8 @@ public enum MCPToolHandling: String, Sendable, Hashable, CaseIterable {
 /// The tools of the MCP server, with the exact texts and schemas of docs/mcp.md (the lists are
 /// in MCPToolCatalog+Tools.swift).
 public enum MCPToolCatalog {
-    /// The tools `tools/list` returns: the catalogue, then the debug tools when they are enabled.
+    /// The tools `tools/list` returns: the catalogue and the Kubernetes and Argo CD tools, then
+    /// the debug tools when they are enabled.
     public static func listedTools(debugTools: Bool) -> [MCPToolDefinition] {
         debugTools ? tools + Self.debugTools : tools
     }

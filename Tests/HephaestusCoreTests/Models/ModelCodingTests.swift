@@ -282,11 +282,12 @@ struct ModelCodingTests {
         }
     }
 
-    @Test("Environments are written after chatDefaults, with port null when absent, keep their unknown keys and need a name and a URL")
+    @Test("Environments are written after chatDefaults, with port and the Kubernetes keys null when absent, keep their unknown keys and need a name and a URL")
     func projectEnvironments() throws {
         let project = Project(id: "API", name: "Orders API", created: Self.created, type: .goService, environments: [
             ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
-            ProjectEnvironment(name: "staging", url: "https://staging.example.com"),
+            ProjectEnvironment(name: "staging", url: "https://staging.example.com", context: "staging-eks", namespace: "orders",
+                               deployment: "orders-api", argoCDApplication: "argocd/orders-staging", kubeconfig: "~/.kube/staging.yaml"),
         ])
         let yaml = try YAMLCoding.encode(project)
         #expect(yaml.contains("""
@@ -295,14 +296,28 @@ struct ModelCodingTests {
             - name: local
               url: http://127.0.0.1
               port: 8080
+              context: null
+              namespace: null
+              deployment: null
+              argoCDApplication: null
+              kubeconfig: null
             - name: staging
               url: https://staging.example.com
               port: null
+              context: staging-eks
+              namespace: orders
+              deployment: orders-api
+              argoCDApplication: argocd/orders-staging
+              kubeconfig: ~/.kube/staging.yaml
             deletedChats: []
 
             """))
         #expect(try YAMLCoding.decode(Project.self, from: yaml) == project)
         #expect(try EngineJSON.decode(Project.self, from: try EngineJSON.encode(project)) == project)
+        let json = try EngineJSON.jsonValue(project.environments[0]).objectValue
+        for key in ["context", "namespace", "deployment", "argoCDApplication", "kubeconfig"] {
+            #expect(json?[key] == .null, "\(key)")
+        }
         #expect(try YAMLCoding.encode(Project(id: "WEB", name: "Website", created: Self.created)).contains("environments: []\n"))
         #expect(try YAMLCoding.decode(Project.self, from: "id: WEB\nname: W\ncreated: 2026-10-31T09:30:00Z\n").environments.isEmpty)
 
@@ -313,15 +328,18 @@ struct ModelCodingTests {
             environments:
             - name: local
               url: http://127.0.0.1
-              context: kind-local
+              region: eu-west-1
 
             """)
-        #expect(extended.environments == [ProjectEnvironment(name: "local", url: "http://127.0.0.1", unknownKeys: ["context": "kind-local"])])
+        #expect(extended.environments == [ProjectEnvironment(name: "local", url: "http://127.0.0.1", unknownKeys: ["region": "eu-west-1"])])
         #expect(extended.unknownKeys.isEmpty)
         extended.environments[0].name = "dev"
-        #expect(try YAMLCoding.decode(Project.self, from: try YAMLCoding.encode(extended)).environments[0].unknownKeys == ["context": "kind-local"])
+        let rewritten = try YAMLCoding.encode(extended)
+        #expect(rewritten.contains("  kubeconfig: null\n  region: eu-west-1\n"))
+        #expect(try YAMLCoding.decode(Project.self, from: rewritten).environments[0].unknownKeys == ["region": "eu-west-1"])
 
-        for invalid in ["- url: http://127.0.0.1", "- name: local", "- name: local\n  url: http://127.0.0.1\n  port: high"] {
+        for invalid in ["- url: http://127.0.0.1", "- name: local", "- name: local\n  url: http://127.0.0.1\n  port: high",
+                        "- name: local\n  url: http://127.0.0.1\n  namespace: [orders]"] {
             #expect(throws: (any Error).self) {
                 try YAMLCoding.decode(Project.self, from: "id: API\nname: A\ncreated: 2026-10-31T10:00:00Z\nenvironments:\n\(invalid)\n")
             }
@@ -395,6 +413,37 @@ struct ModelCodingTests {
 
         #expect(WebTab(id: UUID(), url: "https://example.com/", locked: true).originalURL == "https://example.com/")
         #expect(WebTab(id: UUID(), url: "https://example.com/", originalURL: "https://example.org/").originalURL == nil)
+    }
+
+    @Test("The Kubernetes keys of an environment are read trimmed, an empty value as null, and their rules are not checked")
+    func projectEnvironmentKubernetesKeys() throws {
+        let read = try YAMLCoding.decode(Project.self, from: """
+            id: API
+            name: Orders API
+            created: 2026-10-31T10:00:00Z
+            environments:
+            - name: staging
+              url: https://staging.example.com
+              context: ' staging-eks '
+              namespace: "orders\\t"
+              deployment: '  '
+              argoCDApplication: ''
+              kubeconfig:
+            - name: broken
+              url: http://127.0.0.1
+              argoCDApplication: argocd/orders/staging
+              kubeconfig: kube/config
+
+            """).environments
+        #expect(read == [
+            ProjectEnvironment(name: "staging", url: "https://staging.example.com", context: "staging-eks", namespace: "orders"),
+            ProjectEnvironment(name: "broken", url: "http://127.0.0.1", argoCDApplication: "argocd/orders/staging", kubeconfig: "kube/config"),
+        ])
+        let json = #"{"name":"staging","url":"https://staging.example.com","port":null,"context":" staging-eks ","namespace":"","#
+            + #""deployment":" orders-api ","argoCDApplication":" orders-staging ","kubeconfig":"\n"}"#
+        #expect(try EngineJSON.decode(ProjectEnvironment.self, from: Data(json.utf8))
+            == ProjectEnvironment(name: "staging", url: "https://staging.example.com", context: "staging-eks", deployment: "orders-api",
+                                  argoCDApplication: "orders-staging"))
     }
 
     @Test("Booleans accept the YAML 1.1 spellings")

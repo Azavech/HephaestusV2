@@ -240,6 +240,85 @@ struct WriteRuleTests {
         try project.validate()
     }
 
+    @Test("Environment Kubernetes keys: trimmed, empty as null, one line, and the forms of argoCDApplication and kubeconfig, with the messages of projects.update")
+    func environmentKubernetesRules() throws {
+        let normalized = try ProjectEnvironment.normalized([
+            ProjectEnvironment(name: "staging", url: "https://staging.example.com", context: " staging-eks ", namespace: "orders\n",
+                               deployment: "\torders-api", argoCDApplication: " argocd/orders-staging ", kubeconfig: " ~/.kube/staging.yaml "),
+            ProjectEnvironment(name: "local", url: "http://127.0.0.1", context: "", namespace: "  ", deployment: "\n",
+                               argoCDApplication: " ", kubeconfig: ""),
+            ProjectEnvironment(name: "prod", url: "https://example.com", argoCDApplication: "orders-prod",
+                               kubeconfig: "/Users/example/.kube/prod.yaml"),
+        ])
+        #expect(normalized == [
+            ProjectEnvironment(name: "staging", url: "https://staging.example.com", context: "staging-eks", namespace: "orders",
+                               deployment: "orders-api", argoCDApplication: "argocd/orders-staging", kubeconfig: "~/.kube/staging.yaml"),
+            ProjectEnvironment(name: "local", url: "http://127.0.0.1"),
+            ProjectEnvironment(name: "prod", url: "https://example.com", argoCDApplication: "orders-prod",
+                               kubeconfig: "/Users/example/.kube/prod.yaml"),
+        ])
+
+        // The message of the first rule `environment` breaks as the second element of a list.
+        func message(_ environment: ProjectEnvironment) -> String? {
+            do {
+                _ = try ProjectEnvironment.normalized([ProjectEnvironment(name: "local", url: "http://127.0.0.1"), environment])
+                return nil
+            } catch {
+                return (error as? ValidationError)?.message ?? "\(error)"
+            }
+        }
+        func environment(context: String? = nil, namespace: String? = nil, deployment: String? = nil,
+                         argoCDApplication: String? = nil, kubeconfig: String? = nil) -> ProjectEnvironment {
+            ProjectEnvironment(name: "staging", url: "https://staging.example.com", context: context, namespace: namespace,
+                               deployment: deployment, argoCDApplication: argoCDApplication, kubeconfig: kubeconfig)
+        }
+        for context in ["staging\neks", " staging\r\neks "] {
+            #expect(message(environment(context: context)) == "environments[1]: use a kubectl context on one line.")
+        }
+        #expect(message(environment(namespace: "orders\nprod")) == "environments[1]: use a namespace on one line.")
+        #expect(message(environment(deployment: "orders\rapi")) == "environments[1]: use a deployment on one line.")
+        for application in ["argocd/orders/staging", "/orders", "argocd/", "/", "a//b", "orders staging", "argocd/ orders",
+                            "orders\tstaging", "orders\nstaging"] {
+            #expect(message(environment(argoCDApplication: application))
+                == "environments[1]: use an Argo CD application as <name> or <namespace>/<name>.", "\(application)")
+        }
+        for kubeconfig in ["~", "~/", ".kube/config", "kube/config", "~example/.kube/config", "/Users/example/a\n/b"] {
+            #expect(message(environment(kubeconfig: kubeconfig))
+                == "environments[1]: use a kubeconfig file as an absolute path or a path starting with ~/.", "\(kubeconfig)")
+        }
+        #expect(message(environment(context: "staging-eks", namespace: "orders", deployment: "orders-api",
+                                    argoCDApplication: "team-a/orders", kubeconfig: "/Users/example/.kube/config")) == nil)
+
+        // A stored environment whose Kubernetes keys a hand edit made invalid is written back as it
+        // is; changed, it is checked.
+        let broken = environment(argoCDApplication: "argocd/orders/staging", kubeconfig: "kube/config")
+        #expect(try ProjectEnvironment.normalized([broken], keeping: [broken]) == [broken])
+        var renamed = broken
+        renamed.name = "stage"
+        #expect(throws: ValidationError.invalid("environments[0]", "use an Argo CD application as <name> or <namespace>/<name>")) {
+            try ProjectEnvironment.normalized([renamed], keeping: [broken])
+        }
+    }
+
+    @Test("An Argo CD application <name> stands for argocd/<name>, <namespace>/<name> for itself")
+    func argoCDApplicationRef() {
+        #expect(ArgoCDApplicationRef.defaultNamespace == "argocd")
+        #expect(ArgoCDApplicationRef("orders-staging") == ArgoCDApplicationRef(namespace: "argocd", name: "orders-staging"))
+        #expect(ArgoCDApplicationRef("team-a/orders") == ArgoCDApplicationRef(namespace: "team-a", name: "orders"))
+        #expect(ArgoCDApplicationRef("orders-staging")?.description == "argocd/orders-staging")
+        #expect(ArgoCDApplicationRef("team-a/orders")?.description == "team-a/orders")
+        for invalid in ["", "argocd/orders/staging", "/orders", "argocd/", "/", "a//b", "orders staging", " orders", "orders\n"] {
+            #expect(ArgoCDApplicationRef(invalid) == nil, "\(invalid)")
+        }
+
+        // The Application lives in its own namespace, not in the environment's namespace.
+        let staging = ProjectEnvironment(name: "staging", url: "https://staging.example.com", namespace: "orders",
+                                         argoCDApplication: "orders-staging")
+        #expect(staging.argoCDApplicationRef == ArgoCDApplicationRef(namespace: "argocd", name: "orders-staging"))
+        #expect(ProjectEnvironment(name: "local", url: "http://127.0.0.1").argoCDApplicationRef == nil)
+        #expect(ProjectEnvironment(name: "broken", url: "http://127.0.0.1", argoCDApplication: "a/b/c").argoCDApplicationRef == nil)
+    }
+
     @Test("Ticket, comment and bundle rules")
     func ticketRules() throws {
         var ticket = Ticket(id: "HEPH-1", title: "T", created: Self.created)

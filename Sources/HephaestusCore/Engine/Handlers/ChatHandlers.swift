@@ -455,9 +455,9 @@ extension Engine {
     }
 
     /// `chats.delete` (docs/chats.md › Persistence): the process is terminated (SIGTERM, SIGKILL
-    /// 5 s later) and its token revoked, the chat leaves its ticket's or bundle's `chats`, and its
-    /// metadata, transcript and attachment folder go to the Trash. From the start, the lines of
-    /// the terminating process are ignored.
+    /// 5 s later), its port forwards stopped and its token revoked, the chat leaves its ticket's or
+    /// bundle's `chats`, and its metadata, transcript and attachment folder go to the Trash. From
+    /// the start, the lines of the terminating process are ignored.
     func chatsDelete(_ params: ChatsDelete.Params, _ actor: Actor) async throws -> Empty {
         let chatID = params.chatID
         let meta = try requireChat(chatID)
@@ -477,6 +477,9 @@ extension Engine {
                 process.log.close()
             }
         }
+        // The exit of the process no longer reaches `chatProcessExited`, which stops the port
+        // forwards of a chat whose process exits (docs/chats.md › Exit handling and logs).
+        stopPortForwards(ofChat: chatID)
         await tokens.revokeChatToken(chatID: chatID)
         try? FileManager.default.removeItem(at: dataDirectory.mcpConfigFile(chatID: chatID))
         if let cost, domain.isLoaded(meta.projectID) {

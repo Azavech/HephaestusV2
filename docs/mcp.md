@@ -1,6 +1,6 @@
 # MCP server
 
-HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server that the Claude CLI processes of the app's chats, and terminal Claude sessions holding the external token, call to read and change projects, tickets, bundles, chats, web tabs and skills, to ask the user labelled questions, an SF Symbol, a color or a sound, to show the user images in a chat and to navigate the app. The server implements MCP's Streamable HTTP transport limited to JSON answers: JSON-RPC 2.0 messages are POSTed to `http://127.0.0.1:47820/mcp`, each one authenticated by a bearer token that identifies the calling chat. Every tool call runs an engine method with the actor `claude`, so it is validated like any other call and emits the same events, which every connected client, local or remote, receives live. This document specifies the transport, the authentication, the JSON-RPC handling, every tool with its exact description and input schema, the results and errors, the actor rules, external use and the debug tools.
+HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server that the Claude CLI processes of the app's chats, and terminal Claude sessions holding the external token, call to read and change projects, tickets, bundles, chats, web tabs and skills, to ask the user labelled questions, an SF Symbol, a color or a sound, to show the user images in a chat, to navigate the app, and to inspect and operate the Kubernetes deployments and Argo CD applications of the environments of Go services. The server implements MCP's Streamable HTTP transport limited to JSON answers: JSON-RPC 2.0 messages are POSTed to `http://127.0.0.1:47820/mcp`, each one authenticated by a bearer token that identifies the calling chat. Every tool call runs an engine method with the actor `claude`, so it is validated like any other call and emits the same events, which every connected client, local or remote, receives live. This document specifies the transport, the authentication, the JSON-RPC handling, every tool with its exact description and input schema, the results and errors, the actor rules, external use and the debug tools.
 
 ## Overview
 
@@ -14,7 +14,7 @@ HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server th
 | JSON-RPC methods  | `initialize`, `ping`, `tools/list`, `tools/call`; every notification is accepted and ignored                                                             |
 | Server name       | `hephaestus`, in `serverInfo` and as the server's key in Claude's MCP configuration, so Claude names the tools `mcp__hephaestus__<tool>`                 |
 | Authentication    | `Authorization: Bearer <token>` with a chat token, an answer token or the external token on `/mcp`, with a hook token on the hook paths                  |
-| Tools             | The 50 tools of the [tool catalogue](#tool-catalogue), plus 4 [debug tools](#debug-tools) when `HEPHAESTUS_DEBUG_TOOLS=1`                                |
+| Tools             | 50 [catalogue](#tool-catalogue) and 9 [Kubernetes](#kubernetes-and-argo-cd-tools) tools; 4 [debug tools](#debug-tools) when `HEPHAESTUS_DEBUG_TOOLS=1`   |
 
 Every tool call runs an engine method ([Engine API](engine-api.md)) with the actor `claude`. The engine validates it exactly as it validates a call from the UI or from a remote device and emits the same events, so every client, local or remote, shows the change live.
 
@@ -133,7 +133,7 @@ The chat tokens, the answer tokens and the hook tokens are created, kept and rev
 
 - A relaunch of a chat's process issues a new token. Sub-agents of the chat run in the same process and use the same token.
 - The external token is read and regenerated only through the external MCP token service of the windows of this Mac; no engine method or MCP tool exposes it ([Architecture](architecture.md#local-only-services)). Regenerate (Settings > MCP, [UI](ui.md)) replaces it at once: requests with the old token get 401, and terminal sessions must add the server again ([External use](#external-use)). When `secrets.json` cannot be written, the old token stays valid and Settings shows the alert `Regenerate failed` with the storage error's message. Default chosen at design time.
-- A chat token identifies the calling chat: `ask_questions` posts its questions to that chat, `ask_symbol` its symbol request, `ask_color` its color request, `ask_sound` its sound request, `ask_shortcut` its shortcut request, `ask_font` its font request, `ask_animation` its animation request, `close_chat` closes that chat or chats of its project, `watch_ci` makes that chat the orchestrator of the CI chat it starts, and `open_in_app` reaches that chat's driving device.
+- A chat token identifies the calling chat: `ask_questions` posts its questions to that chat, `ask_symbol` its symbol request, `ask_color` its color request, `ask_sound` its sound request, `ask_shortcut` its shortcut request, `ask_font` its font request, `ask_animation` its animation request, `close_chat` closes that chat or chats of its project, `watch_ci` makes that chat the orchestrator of the CI chat it starts, the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) act on the environments of that chat's project and keep their port forwards with that chat, and `open_in_app` reaches that chat's driving device.
 - Tokens are never logged.
 
 ## User prompt hook
@@ -256,9 +256,9 @@ The result is `{}`.
 ### tools/list
 
 - `params`, when present, must be an object (-32602 otherwise); its members, `cursor` included, are ignored. Default chosen at design time.
-- The result is `{"tools": [...]}`, holding every tool of the [tool catalogue](#tool-catalogue) in its order, followed, when debug tools are enabled, by the [debug tools](#debug-tools) in the order of their table. There is no `nextCursor`.
+- The result is `{"tools": [...]}`, holding every tool of the [tool catalogue](#tool-catalogue) in its order, then the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) in the order of their table, followed, when debug tools are enabled, by the [debug tools](#debug-tools) in the order of their table. There is no `nextCursor`.
 - The list is the same for every token. Default chosen at design time.
-- Each tool is an object with `name`, `description` and `inputSchema`, with the exact values given in [Tools](#tools); there is no `title`, `annotations`, `outputSchema` or `_meta`. Default chosen at design time.
+- Each tool is an object with `name`, `description` and `inputSchema`, with the exact values given in [Tools](#tools) and [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools); there is no `title`, `annotations`, `outputSchema` or `_meta`. Default chosen at design time.
 
 The element for `get_bundle`:
 
@@ -291,7 +291,7 @@ The element for `get_bundle`:
 The call goes through these steps:
 
 1. The JSON-RPC checks of `name` and `arguments` ([Protocol errors](#protocol-errors)).
-2. Availability for the token: `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font`, `ask_animation` and `close_chat` with the external token or an answer token fail; with an answer token, every tool other than the [tools of a comment answer](#actor-rules) fails.
+2. Availability for the token: `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font`, `ask_animation`, `close_chat` and the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) with the external token or an answer token fail; with an answer token, every tool other than the [tools of a comment answer](#actor-rules) fails.
 3. [Argument validation](#argument-validation) against the tool's input schema.
 4. The rules of the tool, given in its section.
 5. [Path expansion](#path-expansion).
@@ -315,7 +315,7 @@ From step 2 on, every failure is a tool result with `isError: true`, never a JSO
 
 - `content` holds exactly one text item; there is no `structuredContent`.
 - For a tool backed by an engine method, the text is the method's result encoded with `EngineJSON.encoder()`, byte for byte the JSON that `Engine.dispatch` returns: sorted keys, dates as in [JSON encoding](engine-api.md#json-encoding) (whole seconds without a fraction, milliseconds when a fraction exists), `{}` for an empty result ([Engine API](engine-api.md#json-encoding)). `list_tickets` with `status` encodes the filtered array with the same encoder, and `get_ticket` the ticket with absolute attachment paths ([get_ticket](#get_ticket)).
-- `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font`, `ask_animation` and `show_image` return plain text ([Text returned to Claude](#text-returned-to-claude), [ask_symbol](#ask_symbol), [ask_color](#ask_color), [ask_sound](#ask_sound), [ask_shortcut](#ask_shortcut), [ask_font](#ask_font), [ask_animation](#ask_animation), [show_image](#show_image)) and the debug tools return the JSON given in their sections.
+- `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font`, `ask_animation` and `show_image` return plain text ([Text returned to Claude](#text-returned-to-claude), [ask_symbol](#ask_symbol), [ask_color](#ask_color), [ask_sound](#ask_sound), [ask_shortcut](#ask_shortcut), [ask_font](#ask_font), [ask_animation](#ask_animation), [show_image](#show_image)) `k8s_logs`, `k8s_restart`, `k8s_scale` and `argocd_sync` return the text of kubectl's output ([Kubectl output](#kubectl-output)), and the debug tools return the JSON given in their sections.
 
 ### Tool errors
 
@@ -415,6 +415,8 @@ A chat token runs every engine call as the actor `claude` with the chat's id, th
 | Claude asks for a sound only in a project of type Swift application                                                                                                                                                                                                                                           | chats.postSound ([Projects](projects.md#project-types))                                                                                                                                                                                | `forbidden`            |
 | Shortcut requests are posted only in Swift application projects                                                                                                                                                                                                                                               | `ask_shortcut`, chats.postShortcut ([Workflow](workflow.md#shortcut-requests))                                                                                                                                                         | `forbidden`            |
 | Animation requests are posted only in Swift application projects                                                                                                                                                                                                                                              | `ask_animation`, chats.postAnimation ([Workflow](workflow.md#animation-requests))                                                                                                                                                      | `forbidden`            |
+| Only the chat's own Claude uses the Kubernetes and Argo CD tools (`Only the chat's own Claude can use the Kubernetes and Argo CD tools.`), only in a project of type Go service (`<tool> is only available in Go service projects.`)                                                                          | MCP server, step 2 of [tools/call](#toolscall); the methods of [Kubernetes and Argo CD](engine-api.md#kubernetes-and-argo-cd)                                                                                                          | `forbidden`            |
+| A chat stops only its own port forwards, which end when its Claude process exits                                                                                                                                                                                                                              | kubernetes.stopForward ([k8s_stop_port_forward](#k8s_stop_port_forward)), the engine ([k8s_port_forward](#k8s_port_forward))                                                                                                           | `notFound`             |
 | Claude closes only chats of the calling chat's project; the external token closes no chat                                                                                                                                                                                                                     | `close_chat`, chats.close; `close_chat` with `chatIDs` reports the refused chats in its result ([close_chat](#close_chat))                                                                                                             | `forbidden`            |
 | Claude never closes another chat while a turn is in progress in it                                                                                                                                                                                                                                            | chats.close; `close_chat` with `chatIDs` reports the refused chats in its result ([close_chat](#close_chat))                                                                                                                           | `conflict`             |
 | Only a ticket or bundle chat that no other chat started starts a CI chat, and the external token starts none                                                                                                                                                                                                  | `watch_ci`, chats.watchCI ([Workflow](workflow.md#waiting-for-ci))                                                                                                                                                                     | `forbidden`            |
@@ -424,11 +426,11 @@ A chat token runs every engine call as the actor `claude` with the chat's id, th
 | Claude never unlocks a web tab, so it never closes a locked tab                                                                                                                                                                                                                                               | webTabs.update, webTabs.close ([Engine API](engine-api.md#rules-for-claude))                                                                                                                                                           | `forbidden`            |
 | A chat never removes the project it belongs to                                                                                                                                                                                                                                                                | projects.remove ([Engine API](engine-api.md#rules-for-claude))                                                                                                                                                                         | `forbidden`            |
 
-The tools are not limited to the calling chat's project: a chat may read and change every project of the device. Default chosen at design time. Only `close_chat` is: it closes chats of the calling chat's project only ([close_chat](#close_chat)). The MCP server asks the user nothing itself; the Claude CLI asks before tool calls according to the chat's permission mode and the app shows those requests ([Chats](chats.md)). The workflow Claude follows with these tools is in [Workflow](workflow.md).
+The tools are not limited to the calling chat's project: a chat may read and change every project of the device. Default chosen at design time. Only `close_chat` and the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) are: `close_chat` closes chats of the calling chat's project only ([close_chat](#close_chat)), and the Kubernetes and Argo CD tools act on the environments of the calling chat's project and on the port forwards of the calling chat only. The MCP server asks the user nothing itself; the Claude CLI asks before tool calls according to the chat's permission mode and the app shows those requests ([Chats](chats.md)). The workflow Claude follows with these tools is in [Workflow](workflow.md).
 
 ## Tool catalogue
 
-The table lists every tool in the order of `tools/list`. "Required inputs" holds the names in the tool's `inputSchema.required` and "Optional inputs" its other top-level properties; `—` means none. The result types are defined in [Engine API](engine-api.md#api-types) and [Data model](data-model.md); `{}` is an empty result, `text` the plain text of [ask_questions](#ask_questions), [ask_symbol](#ask_symbol), [ask_color](#ask_color), [ask_sound](#ask_sound), [ask_shortcut](#ask_shortcut), [ask_font](#ask_font), [ask_animation](#ask_animation) and [show_image](#show_image), and `{refused}` the result of [close_chat](#close_chat): `{}` without `chatIDs`, the object that lists the refused chats with it. The [conformance test](#conformance) reads this table.
+The table lists the tools in the order of `tools/list`; the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) follow them, in the table of their section. "Required inputs" holds the names in the tool's `inputSchema.required` and "Optional inputs" its other top-level properties; `—` means none. The result types are defined in [Engine API](engine-api.md#api-types) and [Data model](data-model.md); `{}` is an empty result, `text` the plain text of [ask_questions](#ask_questions), [ask_symbol](#ask_symbol), [ask_color](#ask_color), [ask_sound](#ask_sound), [ask_shortcut](#ask_shortcut), [ask_font](#ask_font), [ask_animation](#ask_animation) and [show_image](#show_image), and `{refused}` the result of [close_chat](#close_chat): `{}` without `chatIDs`, the object that lists the refused chats with it. The [conformance test](#conformance) reads this table.
 
 | Tool                | Required inputs                                    | Optional inputs                             | Engine method            | Result           |
 | ------------------- | -------------------------------------------------- | ------------------------------------------- | ------------------------ | ---------------- |
@@ -512,7 +514,7 @@ Input schema:
 ### get_project
 
 - **Engine call:** projects.get with `projectID`.
-- **Result:** the `ProjectDetail` ([Engine API](engine-api.md#projectdetail)). Its `githubPage` is the project's resolved [GitHub page](projects.md#github-page), absent when it has none. Its `project` holds the settings of `project.yml`, among them the page typed in Project Settings, `githubPage`; `useParentSettings`, which tells whether a sub project uses its parent's settings; and `environments` ([Project environment](data-model.md#project-environment)).
+- **Result:** the `ProjectDetail` ([Engine API](engine-api.md#projectdetail)). Its `githubPage` is the project's resolved [GitHub page](projects.md#github-page), absent when it has none. Its `project` holds the settings of `project.yml`, among them the page typed in Project Settings, `githubPage`; `useParentSettings`, which tells whether a sub project uses its parent's settings; and `environments`, each with its kubectl context, namespace, deployment, Argo CD application and kubeconfig file ([Project environment](data-model.md#project-environment)).
 - **Errors:** Those of projects.get: no project with this identifier (`notFound`), malformed identifier (`invalid`).
 
 Description:
@@ -2638,6 +2640,349 @@ Input schema:
 
 A missing required property fails with `target.<property>: required for kind <kind>.`, checked in the table's order. A property that is neither required nor optional for the kind then fails with `target.<property>: not used by kind <kind>.`, checked in the schema's property order. Default chosen at design time.
 
+## Kubernetes and Argo CD tools
+
+These nine tools let Claude inspect and operate where a Go service runs: the Kubernetes Deployment of each environment of the project and the Argo CD Application that deploys it ([Environments](projects.md#environments)), with the kubectl context, namespace and kubeconfig file the environment names, so that Claude never guesses them. `tools/list` lists them after the tools of the [tool catalogue](#tool-catalogue), in the order of the table below, which has the format of the tool catalogue; the [conformance test](#conformance) reads it with the other tool tables. `text` in the Result column is the plain text of [Kubectl output](#kubectl-output).
+
+| Tool                    | Required inputs             | Optional inputs                                             | Engine method          | Result           |
+| ----------------------- | --------------------------- | ----------------------------------------------------------- | ---------------------- | ---------------- |
+| `k8s_status`            | `environment`               | —                                                           | kubernetes.status      | DeploymentStatus |
+| `k8s_logs`              | `environment`               | `pod`, `container`, `tailLines`, `sinceSeconds`, `previous` | kubernetes.logs        | text             |
+| `k8s_events`            | `environment`               | —                                                           | kubernetes.events      | [ClusterEvent]   |
+| `k8s_restart`           | `environment`               | —                                                           | kubernetes.restart     | text             |
+| `k8s_scale`             | `environment`, `replicas`   | —                                                           | kubernetes.scale       | text             |
+| `k8s_port_forward`      | `environment`, `remotePort` | `localPort`                                                 | kubernetes.forward     | PortForward      |
+| `k8s_stop_port_forward` | `portForwardID`             | —                                                           | kubernetes.stopForward | `{}`             |
+| `argocd_status`         | `environment`               | —                                                           | argoCD.status          | ArgoCDAppStatus  |
+| `argocd_sync`           | `environment`               | —                                                           | argoCD.sync            | text             |
+
+The result types are defined in [Engine API](engine-api.md#kubernetes-and-argo-cd). The tool names, their inputs and results, the Go service rule, the `invalid` failures for an unknown environment, a missing field and a missing kubectl, the login-shell environment, the flags taken from the environment and the four pre-approved tools come from the user; the other rules of this section are design-time choices. Default chosen at design time.
+
+### Rules of the Kubernetes tools
+
+Every tool of the table follows these rules, in this order, rules 4 to 9 only when it takes an environment; its own section adds the kubectl commands it runs and its result.
+
+1. **Availability:** chat tokens only. With the external token the call fails before argument validation with `Only the chat's own Claude can use the Kubernetes and Argo CD tools.` (`forbidden`); a comment answer cannot call them ([Actor rules](#actor-rules)). The tools are listed for every token and in every project.
+2. **Engine call:** the tool's engine method with `chatID` = the calling chat and the arguments as given, except that `k8s_logs` sends its optional arguments in `options` ([kubernetes.logs](engine-api.md#kuberneteslogs)).
+3. **Project type:** the chat's project must have the type `goService` ([Project types](projects.md#project-types)). In a project of another type the call fails with `forbidden` and `<tool> is only available in Go service projects.`, for example `k8s_status is only available in Go service projects.`, and kubectl does not run.
+4. **Environment:** `environment` names an environment of the chat's project, compared exactly, letter case included ([Project environment](data-model.md#project-environment)). An unknown name fails with `invalid` and `environment: <project identifier> has no environment named “<name>”.`
+5. **Fields:** `k8s_status`, `k8s_events`, `k8s_restart`, `k8s_scale`, `k8s_port_forward`, and `k8s_logs` without `pod`, need the environment's `deployment`; `argocd_status` and `argocd_sync` need its `argoCDApplication`, which counts as absent when it has another form than `<name>` or `<namespace>/<name>`, a form that only a `project.yml` edited by hand holds. An environment without the field fails with `invalid` and `Environment “<name>” has no deployment.` or `Environment “<name>” has no Argo CD application.`
+6. **kubectl:** the first executable file named `kubectl` in the `PATH` of the [login-shell environment](chats.md#environment), looked up at each call. When there is none, the call fails with `invalid` and `kubectl was not found in the PATH of the login shell.`
+7. **Arguments:** every kubectl command starts with `--kubeconfig=<file>`, `--context=<context>` and `--namespace=<namespace>`, each only when the environment sets the field, in this order, each a single argument so that no value is read as an option. `<file>` is the environment's `kubeconfig` with `~/` replaced by the home folder of the user running the app. `argocd_status` and `argocd_sync` use the namespace of the Argo CD Application instead of the environment's `namespace`: `<namespace>` of `<namespace>/<name>`, else `argocd`. The commands of each tool follow this prefix, written `kubectl …` below.
+8. **Process:** each command runs on the main device as a child process of the engine ([Child processes](architecture.md#child-processes)): the login-shell environment without any `HEPHAESTUS_*` variable, the project root as working directory, its own process group, standard input `/dev/null`, standard output and standard error captured. A command that runs longer than 60 seconds receives `SIGTERM` on its process group, then `SIGKILL` 2 seconds later.
+9. **kubectl failure:** a command that exits with a non-zero status fails the call with `unavailable` and `<command> exited with code <n>: <standard error>`, `<standard error>` trimmed, or `<command> exited with code <n>.` when it is empty; one that runs longer than 60 seconds fails with `unavailable` and `<command> did not finish within 60 seconds.` `<command>` is `kubectl` and its arguments joined with spaces, an argument that is empty or holds a character other than letters, digits and `-_./:=,@+%` being written in single quotes, as in [Exit handling and logs](chats.md#exit-handling-and-logs). A command whose standard output is not the JSON object the tool reads fails with `internal` and `Unexpected output from <command>.`
+10. **Permission:** `k8s_status`, `k8s_logs`, `k8s_events` and `argocd_status` only read the cluster: they are pre-approved and run without a permission prompt in every permission mode ([Chats](chats.md#command-line)). `k8s_restart`, `k8s_scale`, `k8s_port_forward`, `k8s_stop_port_forward` and `argocd_sync` follow the chat's permission mode: in Ask Every Time the user approves each call.
+11. **Asking:** the tools ask the user nothing, so they run in an implement chat whose metadata holds `questionsBlocked` and while a question set or another request waits for an answer ([Workflow](workflow.md#implement-chats)).
+
+### Kubectl output
+
+`k8s_logs`, `k8s_restart`, `k8s_scale` and `argocd_sync` return plain text, not JSON: the `output` of the method's [KubectlOutput](engine-api.md#kubectloutput), the standard output of the last kubectl command without its final line break. The other tools return the JSON of their method's result, as every tool backed by an engine method does ([Success](#success)).
+
+### k8s_status
+
+- **Engine call:** kubernetes.status with `chatID` and `environment` ([Engine API](engine-api.md#kubernetesstatus)).
+- **kubectl:** `kubectl … get deployment/<deployment> -o json`, then `kubectl … get pods -l <selector> -o json`, `<selector>` being the deployment's label selector ([Label selector](engine-api.md#label-selector)).
+- **Result:** the [DeploymentStatus](engine-api.md#deploymentstatus): the desired, ready, updated and available replicas, the images and the conditions of the deployment, and its pods with their phase, ready containers, restarts, age and node.
+- **Errors:** those of the [rules](#rules-of-the-kubernetes-tools).
+
+Description:
+
+```text
+Get the state of the Kubernetes deployment of an environment of this Go service project: its desired, ready, updated and available replicas, its container images and conditions, and its pods with their phase, ready containers, restarts, age and node. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context, namespace and kubeconfig file. Only available in projects of type Go service, in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "environment": {
+      "type": "string",
+      "description": "Name of an environment of the project, for example staging."
+    }
+  },
+  "required": ["environment"],
+  "additionalProperties": false
+}
+```
+
+### k8s_logs
+
+- **Engine call:** kubernetes.logs with `chatID`, `environment` and `options` holding `pod`, `container`, `tailLines`, `sinceSeconds` and `previous` as given ([Engine API](engine-api.md#kuberneteslogs)).
+- **kubectl:** with `pod`, `kubectl … logs pod/<pod> --tail=<tailLines>`; without `pod`, `kubectl … get deployment/<deployment> -o json`, then `kubectl … logs -l <selector> --prefix --tail=<tailLines>`, which gives the last lines of every pod of the deployment, each line prefixed with `[pod/<pod>/<container>] `. Both add `--container=<container>`, `--since=<sinceSeconds>s` and `--previous` when they are given. `<tailLines>` is 200 when it is omitted. Without `container`, kubectl reads each pod's default container.
+- **Result:** plain text: the log lines as kubectl prints them, or `No log lines.` when it prints none ([Kubectl output](#kubectl-output)).
+- **Errors:** those of the [rules](#rules-of-the-kubernetes-tools); `tailLines` outside 1 to 5000 or `sinceSeconds` below 1 ([argument validation](#argument-validation)).
+
+Description:
+
+```text
+Get the last log lines of the pods of the Kubernetes deployment of an environment of this Go service project, each line prefixed with [pod/<pod>/<container>], or of one pod with pod. container picks the container (default: each pod's default container), tailLines the number of lines per container (default 200, at most 5000), sinceSeconds keeps the lines of the last seconds only, and previous gives the logs of the previous container, the one that ended, for example after a crash. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context, namespace and kubeconfig file. Only available in projects of type Go service, in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "environment": {
+      "type": "string",
+      "description": "Name of an environment of the project, for example staging."
+    },
+    "pod": {
+      "type": "string",
+      "description": "Name of one pod; every pod of the deployment when omitted."
+    },
+    "container": {
+      "type": "string",
+      "description": "Name of the container; each pod's default container when omitted."
+    },
+    "tailLines": {
+      "type": "integer",
+      "description": "Number of last lines of each container. Default 200.",
+      "minimum": 1,
+      "maximum": 5000
+    },
+    "sinceSeconds": {
+      "type": "integer",
+      "description": "Keep only the lines of the last sinceSeconds seconds.",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "previous": {
+      "type": "boolean",
+      "description": "Get the logs of the previous container, the one that ended, for example after a crash."
+    }
+  },
+  "required": ["environment"],
+  "additionalProperties": false
+}
+```
+
+### k8s_events
+
+- **Engine call:** kubernetes.events with `chatID` and `environment` ([Engine API](engine-api.md#kubernetesevents)).
+- **kubectl:** `kubectl … get deployment/<deployment> -o json`, `kubectl … get replicasets -l <selector> -o json` and `kubectl … get events -o json`. The events kept are those of the Deployment, of its ReplicaSets (those whose owner is the Deployment), and of the pods whose name starts with the name of one of these ReplicaSets followed by `-`, deleted pods included, newest first.
+- **Result:** the [ClusterEvent](engine-api.md#clusterevent) array.
+- **Errors:** those of the [rules](#rules-of-the-kubernetes-tools).
+
+Description:
+
+```text
+Get the Kubernetes events of the deployment of an environment of this Go service project, of its ReplicaSets and of its pods, newest first, each with its type, reason, object, message, count and times. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context, namespace and kubeconfig file. Only available in projects of type Go service, in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "environment": {
+      "type": "string",
+      "description": "Name of an environment of the project, for example staging."
+    }
+  },
+  "required": ["environment"],
+  "additionalProperties": false
+}
+```
+
+### k8s_restart
+
+- **Engine call:** kubernetes.restart with `chatID` and `environment` ([Engine API](engine-api.md#kubernetesrestart)).
+- **kubectl:** `kubectl … rollout restart deployment/<deployment>`. Kubernetes then replaces the pods of the deployment as its rollout strategy says.
+- **Result:** plain text: kubectl's output, for example `deployment.apps/orders-api restarted` ([Kubectl output](#kubectl-output)).
+- **Errors:** those of the [rules](#rules-of-the-kubernetes-tools).
+
+Description:
+
+```text
+Restart the pods of the Kubernetes deployment of an environment of this Go service project with kubectl rollout restart: Kubernetes replaces them as the deployment's rollout strategy says; follow it with k8s_status. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context, namespace and kubeconfig file. Only available in projects of type Go service, in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "environment": {
+      "type": "string",
+      "description": "Name of an environment of the project, for example staging."
+    }
+  },
+  "required": ["environment"],
+  "additionalProperties": false
+}
+```
+
+### k8s_scale
+
+- **Engine call:** kubernetes.scale with `chatID`, `environment` and `replicas` ([Engine API](engine-api.md#kubernetesscale)).
+- **kubectl:** `kubectl … scale deployment/<deployment> --replicas=<replicas>`.
+- **Result:** plain text: kubectl's output, for example `deployment.apps/orders-api scaled` ([Kubectl output](#kubectl-output)).
+- **Errors:** those of the [rules](#rules-of-the-kubernetes-tools); `replicas` below 0 ([argument validation](#argument-validation)).
+
+Description:
+
+```text
+Set the number of replicas of the Kubernetes deployment of an environment of this Go service project with kubectl scale; 0 stops every pod. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context, namespace and kubeconfig file. Only available in projects of type Go service, in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "environment": {
+      "type": "string",
+      "description": "Name of an environment of the project, for example staging."
+    },
+    "replicas": {
+      "type": "integer",
+      "description": "Number of pods the deployment runs; 0 stops every pod.",
+      "minimum": 0,
+      "maximum": 2147483647
+    }
+  },
+  "required": ["environment", "replicas"],
+  "additionalProperties": false
+}
+```
+
+### k8s_port_forward
+
+- **Engine call:** kubernetes.forward with `chatID`, `environment`, `remotePort` and `localPort` when given ([Engine API](engine-api.md#kubernetesforward)).
+- **kubectl:** `kubectl … port-forward deployment/<deployment> --address=127.0.0.1 <localPort>:<remotePort>`, or `:<remotePort>` without `localPort`, so that kubectl listens on a free port. kubectl forwards to one pod of the deployment, which it chooses when it starts. The process keeps running: the engine reads its standard output until the line `Forwarding from 127.0.0.1:<port> -> <remotePort>`, at most 30 seconds, then goes on reading it and drops what it reads.
+- **Lifetime:** the port forward belongs to the calling chat. It lasts until `k8s_stop_port_forward` with its id, until kubectl exits, for example when it loses its pod, or until the chat's Claude process exits for any reason: idle termination, closing, a crash, the chat's deletion, the project's removal or the app quitting ([Exit handling and logs](chats.md#exit-handling-and-logs)). Stopping it sends `SIGTERM` to the process group of kubectl, then `SIGKILL` 2 seconds later when it is still alive; when the app quits, the port forwards stop with the other child processes, `SIGKILL` coming 3 seconds after `SIGTERM` ([Shutdown](architecture.md#shutdown)).
+- **Result:** the [PortForward](engine-api.md#portforward) `{portForwardID, environment, localPort, remotePort, url}`, `url` being `http://127.0.0.1:<localPort>`.
+- **Errors:** those of the [rules](#rules-of-the-kubernetes-tools), kubectl exiting before it forwards included, for example when the local port is in use; no `Forwarding from` line within 30 seconds (`unavailable`, `<command> did not start forwarding within 30 seconds.`), the process being stopped; the chat's Claude process exited before the forward started (`unavailable`, `The chat's Claude process exited.`).
+
+Description:
+
+```text
+Forward a local port of this Mac to a port of the Kubernetes deployment of an environment of this Go service project with kubectl port-forward, to call the service in one of its pods. remotePort is the port in the pod; localPort is the port on 127.0.0.1, a free port when omitted. Returns the port forward's portForwardID and its url http://127.0.0.1:<localPort>. The forward lasts until k8s_stop_port_forward with its portForwardID, until kubectl ends it, or until this chat's Claude process exits. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context, namespace and kubeconfig file. Only available in projects of type Go service, in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "environment": {
+      "type": "string",
+      "description": "Name of an environment of the project, for example staging."
+    },
+    "remotePort": {
+      "type": "integer",
+      "description": "Port in the pod, for example 8080.",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "localPort": {
+      "type": "integer",
+      "description": "Port on 127.0.0.1 of this Mac; a free port when omitted.",
+      "minimum": 1,
+      "maximum": 65535
+    }
+  },
+  "required": ["environment", "remotePort"],
+  "additionalProperties": false
+}
+```
+
+### k8s_stop_port_forward
+
+- **Engine call:** kubernetes.stopForward with `chatID` and `portForwardID` ([Engine API](engine-api.md#kubernetesstopforward)).
+- The tool takes the port forward's id and no environment: the id names the port forward, also after its environment was renamed or removed. Default chosen at design time.
+- **Action:** `SIGTERM` to the process group of the port forward's kubectl, then `SIGKILL` 2 seconds later when it is still alive; the call returns once `SIGTERM` is sent.
+- **Result:** `{}`.
+- **Errors:** rules 1 to 3 of the [rules](#rules-of-the-kubernetes-tools); `portForwardID` is not a UUID (`invalid`); the calling chat has no running port forward with this id, because it never had one, it ended or it belongs to another chat (`notFound`, `Port forward <portForwardID> not found.`).
+
+Description:
+
+```text
+Stop a port forward that this chat started with k8s_port_forward. portForwardID is the portForwardID of its result. Only available in projects of type Go service, in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "portForwardID": {
+      "type": "string",
+      "description": "Port forward id (a UUID): portForwardID of the k8s_port_forward result."
+    }
+  },
+  "required": ["portForwardID"],
+  "additionalProperties": false
+}
+```
+
+### argocd_status
+
+- **Engine call:** argoCD.status with `chatID` and `environment` ([Engine API](engine-api.md#argocdstatus)).
+- **kubectl:** `kubectl … get applications.argoproj.io/<name> -o json`, in the namespace of the Application (rule 7 of the [rules](#rules-of-the-kubernetes-tools)). Nothing calls the Argo CD API server or its CLI.
+- **Result:** the [ArgoCDAppStatus](engine-api.md#argocdappstatus): the sync status, the health status, the synced revision and the last operation of the Application.
+- **Errors:** those of the [rules](#rules-of-the-kubernetes-tools); a cluster without Argo CD makes kubectl fail (`unavailable`).
+
+Description:
+
+```text
+Get the state of the Argo CD Application of an environment of this Go service project: its sync status, health status, synced revision and last operation, read with kubectl from the Application resource. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context and kubeconfig file, in the namespace of the Application. Only available in projects of type Go service, in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "environment": {
+      "type": "string",
+      "description": "Name of an environment of the project, for example staging."
+    }
+  },
+  "required": ["environment"],
+  "additionalProperties": false
+}
+```
+
+### argocd_sync
+
+- **Engine call:** argoCD.sync with `chatID` and `environment` ([Engine API](engine-api.md#argocdsync)).
+- **kubectl:** `kubectl … get applications.argoproj.io/<name> -o json`; when the Application has an `operation`, or a `status.operationState.phase` of `Running`, the call fails with `conflict` and `The Argo CD application <namespace>/<name> already has an operation in progress.` Otherwise `kubectl … patch applications.argoproj.io/<name> --type=merge --patch=<patch>`, `<patch>` being `{"operation":{"initiatedBy":{"username":"HephaestusV2"},"sync":{"syncStrategy":{"hook":{}}}}}`. The Argo CD application controller then syncs the Application to its target revision with the default options of a sync, and Argo CD shows `HephaestusV2` as the user who started it.
+- **Result:** plain text: kubectl's output, for example `application.argoproj.io/orders-staging patched` ([Kubectl output](#kubectl-output)).
+- **Errors:** those of the [rules](#rules-of-the-kubernetes-tools) and the operation in progress (`conflict`, message above).
+
+Description:
+
+```text
+Start a sync of the Argo CD Application of an environment of this Go service project to its target revision, with Argo CD's default sync options, by setting the Application's sync operation with kubectl; follow it with argocd_status. Fails while the Application has an operation in progress. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 runs kubectl with that environment's kubectl context and kubeconfig file, in the namespace of the Application. Only available in projects of type Go service, in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "environment": {
+      "type": "string",
+      "description": "Name of an environment of the project, for example staging."
+    }
+  },
+  "required": ["environment"],
+  "additionalProperties": false
+}
+```
+
 ## External use
 
 Terminal Claude sessions on the main device use the server with the external token. Settings > MCP ([UI](ui.md)) shows the effective port, the external token with Copy and Regenerate, and this command with the port and the token filled in, ready to copy:
@@ -2647,7 +2992,7 @@ claude mcp add --transport http hephaestus http://127.0.0.1:47820/mcp --header "
 ```
 
 - Calls run as `claude` with chatID `external`: the [actor rules](#actor-rules) apply, tickets created this way have `createdBy: claude` and comments `author: claude`.
-- `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font` and `ask_animation` fail, so Claude asks its questions in plain text ([Workflow](workflow.md#plain-text-questions)); `close_chat` fails, as there is no chat to close; `watch_ci` fails, as there is no chat to report to; `open_in_app` makes every client navigate.
+- `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font` and `ask_animation` fail, so Claude asks its questions in plain text ([Workflow](workflow.md#plain-text-questions)); `close_chat` fails, as there is no chat to close; `watch_ci` fails, as there is no chat to report to; the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) fail, as they act on the environments of the calling chat's project; `open_in_app` makes every client navigate.
 - These sessions do not receive the app's system prompts ([Chats](chats.md)); the tool descriptions state what Claude needs: the ticket template, the statuses Claude may set and how questions are asked.
 - The token survives app restarts and updates. After Regenerate or a port change, the server must be removed with `claude mcp remove hephaestus` and the new command run, as `claude mcp add` refuses a name that already exists.
 
@@ -2893,6 +3238,7 @@ The server writes these messages to `Logs/engine.log` with the component `mcp`, 
 - The [actor rules](#actor-rules) hold whatever the token: Claude never changes the status of a `done` ticket.
 - The debug tools exist only when debug tools are enabled; then every holder of a token of that process can capture its windows and click in them.
 - Attachment paths may name any file the app can read; the Claude CLI asks the user before the call according to the chat's permission mode ([Chats](chats.md)).
+- The [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) run kubectl with the user's kubeconfig files, so they can do in a cluster what the user's credentials allow. Only the four tools that read are pre-approved; the tools that change a cluster, or open a port of the Mac, follow the chat's permission mode. Their values reach kubectl as single arguments, never through a shell.
 - The security model of the whole app is in [Architecture](architecture.md#security-overview).
 
 ## Swift shape
@@ -2928,7 +3274,7 @@ The docs conformance tests of HephaestusCoreTests ([CI](ci.md)) check this docum
 3. With debug tools enabled, `tools/list` returns those tools followed by the tools of the `debug_` rows, in table order.
 4. For every tool, the set of names in `inputSchema.required` equals the row's required inputs.
 
-Only debug tools have names starting with `debug_`, and no other table of this document has a backticked name alone in its first cell. The descriptions and input schemas given in [Tools](#tools) and [Debug tools](#debug-tools) are normative: `MCPToolCatalog` reproduces them, the order of JSON members and whitespace aside.
+Only debug tools have names starting with `debug_`, and no other table of this document has a backticked name alone in its first cell. The descriptions and input schemas given in [Tools](#tools), [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) and [Debug tools](#debug-tools) are normative: `MCPToolCatalog` reproduces them, the order of JSON members and whitespace aside.
 
 ## Examples
 
@@ -3133,3 +3479,4 @@ Unauthorized: missing or invalid bearer token.
 - R158: A project has a GitHub page, taken from its origin remote unless set in Project Settings; a sub project can use its parent's settings.
 - R159: A locked web tab goes back to its original page each time the user comes back to it.
 - R161: After an implementation is pushed in a project with a GitHub page, a CI chat follows CI and reports to the orchestrator, which asks the user how to proceed when CI fails and finishes only once CI is green or the user decides so.
+- R162: Each environment of a Go service names its Kubernetes context, namespace, deployment, Argo CD application and kubeconfig, which Claude receives and uses through HephaestusV2's Kubernetes and Argo CD tools.

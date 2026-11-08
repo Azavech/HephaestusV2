@@ -376,11 +376,15 @@ struct ProjectsTests {
             try await h.create("Api", name: "Orders API", identifier: "API")
             let events = await DomainEventRecorder.make(h)
             let detail = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "API", environments: [
-                ProjectEnvironment(name: " staging ", url: " https://staging.example.com/ "),
-                ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
+                ProjectEnvironment(name: " staging ", url: " https://staging.example.com/ ", context: " staging-eks ",
+                                   namespace: "orders ", deployment: " orders-api", argoCDApplication: " argocd/orders-staging ",
+                                   kubeconfig: " ~/.kube/staging.yaml "),
+                ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080, context: " ", namespace: "",
+                                   deployment: "\n", argoCDApplication: "", kubeconfig: "  "),
             ]))
             #expect(detail.project.environments == [
-                ProjectEnvironment(name: "staging", url: "https://staging.example.com/"),
+                ProjectEnvironment(name: "staging", url: "https://staging.example.com/", context: "staging-eks", namespace: "orders",
+                                   deployment: "orders-api", argoCDApplication: "argocd/orders-staging", kubeconfig: "~/.kube/staging.yaml"),
                 ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
             ])
             #expect(await events.wait(for: ProjectUpdatedEvent.name) == ["project.updated"])
@@ -388,8 +392,26 @@ struct ProjectsTests {
             #expect(try events.all.last!.payload(ProjectUpdatedEvent.self).project.environments == detail.project.environments)
             let folder = ProjectFolder(root: URL(fileURLWithPath: h.path("Api")))
             #expect(try ProjectFileStore.readProject(folder).environments == detail.project.environments)
-            #expect(try String(contentsOf: folder.projectFile, encoding: .utf8)
-                .contains("environments:\n- name: staging\n  url: https://staging.example.com/\n  port: null\n- name: local\n"))
+            #expect(try String(contentsOf: folder.projectFile, encoding: .utf8).contains("""
+                environments:
+                - name: staging
+                  url: https://staging.example.com/
+                  port: null
+                  context: staging-eks
+                  namespace: orders
+                  deployment: orders-api
+                  argoCDApplication: argocd/orders-staging
+                  kubeconfig: ~/.kube/staging.yaml
+                - name: local
+                  url: http://127.0.0.1
+                  port: 8080
+                  context: null
+                  namespace: null
+                  deployment: null
+                  argoCDApplication: null
+                  kubeconfig: null
+
+                """))
 
             func update(_ environments: [ProjectEnvironment]) async -> EngineError? {
                 await engineError { try await h.connection.call(ProjectsUpdate.self, .init(projectID: "API", environments: environments)) }
@@ -403,6 +425,16 @@ struct ProjectsTests {
                 == EngineError(.invalid, "environments[0]: use a port from 1 to 65535."))
             #expect(await update([valid, ProjectEnvironment(name: "local ", url: "http://b.example")])
                 == EngineError(.invalid, "An environment named “local” already exists."))
+            #expect(await update([valid, ProjectEnvironment(name: "a", url: "http://a.example", context: "staging\neks")])
+                == EngineError(.invalid, "environments[1]: use a kubectl context on one line."))
+            #expect(await update([valid, ProjectEnvironment(name: "a", url: "http://a.example", namespace: "orders\nprod")])
+                == EngineError(.invalid, "environments[1]: use a namespace on one line."))
+            #expect(await update([valid, ProjectEnvironment(name: "a", url: "http://a.example", deployment: "orders\napi")])
+                == EngineError(.invalid, "environments[1]: use a deployment on one line."))
+            #expect(await update([valid, ProjectEnvironment(name: "a", url: "http://a.example", argoCDApplication: "argocd/orders/staging")])
+                == EngineError(.invalid, "environments[1]: use an Argo CD application as <name> or <namespace>/<name>."))
+            #expect(await update([valid, ProjectEnvironment(name: "a", url: "http://a.example", kubeconfig: "kube/config")])
+                == EngineError(.invalid, "environments[1]: use a kubeconfig file as an absolute path or a path starting with ~/."))
             #expect(try ProjectFileStore.readProject(folder).environments == detail.project.environments)
 
             events.clear()
@@ -421,6 +453,8 @@ struct ProjectsTests {
             environments:
             - name: broken
               url: localhost:8080
+              argoCDApplication: argocd/orders/staging
+              kubeconfig: kube/config
             - name: twin
               url: http://a.example
             - name: twin
@@ -440,10 +474,17 @@ struct ProjectsTests {
             #expect(added.project.environments == stored + [local])
             let removed = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "API", environments: [stored[0], stored[1], local]))
             #expect(removed.project.environments.map(\.name) == ["broken", "twin", "local"])
+            #expect(removed.project.environments[0].kubeconfig == "kube/config")
             var repaired = stored[0]
             repaired.url = "http://localhost:8080"
+            #expect(await engineError {
+                try await h.connection.call(ProjectsUpdate.self, .init(projectID: "API", environments: [repaired, stored[1], local]))
+            } == EngineError(.invalid, "environments[0]: use an Argo CD application as <name> or <namespace>/<name>."))
+            repaired.argoCDApplication = "orders-staging"
+            repaired.kubeconfig = nil
             let fixed = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "API", environments: [repaired, stored[1], local]))
             #expect(fixed.project.environments[0].url == "http://localhost:8080")
+            #expect(fixed.project.environments[0].argoCDApplication == "orders-staging")
             #expect(await engineError {
                 try await h.connection.call(ProjectsUpdate.self, .init(projectID: "API", environments: [repaired, stored[1], ProjectEnvironment(name: "twin", url: "http://c.example")]))
             } == EngineError(.invalid, "An environment named “twin” already exists."))
@@ -462,7 +503,11 @@ struct ProjectsTests {
                 return await handlers.call(definition, arguments: try jsonValue(arguments), actor: h.claude)
             }
             try await h.create("Api", name: "Orders API", identifier: "API")
-            let environments = [ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080)]
+            let environments = [
+                ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
+                ProjectEnvironment(name: "staging", url: "https://staging.example.com", context: "staging-eks", namespace: "orders",
+                                   deployment: "orders-api", argoCDApplication: "argocd/orders-staging", kubeconfig: "~/.kube/staging.yaml"),
+            ]
             _ = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "API", environments: environments))
             let text = try await call("get_project", #"{"projectID":"API"}"#).get()
             #expect(try EngineJSON.decoder().decode(ProjectsGet.Result.self, from: Data(text.utf8)).project.environments == environments)

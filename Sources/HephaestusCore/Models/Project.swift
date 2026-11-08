@@ -405,29 +405,56 @@ public enum ProjectType: String, Codable, Sendable, Hashable, CaseIterable {
 }
 
 /// One element of the key `environments` of the project file: a place where a Go service runs,
-/// which the Contract view sends its requests to (docs/data-model.md › Project environment,
-/// docs/projects.md › Environments).
+/// which the Contract view sends its requests to, with the Kubernetes resources it runs on, which
+/// the Kubernetes and Argo CD tools act on (docs/data-model.md › Project environment,
+/// docs/projects.md › Environments, docs/mcp.md › Kubernetes and Argo CD tools).
 public struct ProjectEnvironment: Codable, Sendable, Hashable {
     public var name: String
     public var url: String
     /// Replaces the URL's port in the base URL; nil keeps the URL's own port.
     public var port: Int?
+    /// The kubectl context; nil uses the kubeconfig's current context.
+    public var context: String?
+    /// The Kubernetes namespace of the deployment; nil uses the namespace of the context.
+    public var namespace: String?
+    /// The name of the Kubernetes Deployment that runs the service.
+    public var deployment: String?
+    /// The Argo CD Application that deploys the service: `<name>`, in the namespace `argocd`, or
+    /// `<namespace>/<name>` ([ArgoCDApplicationRef]).
+    public var argoCDApplication: String?
+    /// The kubeconfig file on the main device: an absolute path or a path starting with `~/`; nil
+    /// uses kubectl's default.
+    public var kubeconfig: String?
     public var unknownKeys: [String: JSONValue]
 
-    public init(name: String, url: String, port: Int? = nil, unknownKeys: [String: JSONValue] = [:]) {
+    public init(name: String, url: String, port: Int? = nil, context: String? = nil, namespace: String? = nil,
+                deployment: String? = nil, argoCDApplication: String? = nil, kubeconfig: String? = nil,
+                unknownKeys: [String: JSONValue] = [:]) {
         self.name = name
         self.url = url
         self.port = port
+        self.context = context
+        self.namespace = namespace
+        self.deployment = deployment
+        self.argoCDApplication = argoCDApplication
+        self.kubeconfig = kubeconfig
         self.unknownKeys = unknownKeys
     }
 
-    static let knownKeys: Set<String> = ["name", "url", "port"]
+    static let knownKeys: Set<String> = ["name", "url", "port", "context", "namespace", "deployment", "argoCDApplication", "kubeconfig"]
 
     public init(from decoder: Decoder) throws {
         let c = try ModelDecodingContainer(decoder)
         name = try c.required("name")
         url = try c.required("url")
         port = try c.optional("port")
+        // The Kubernetes keys are read trimmed, an empty value being null (docs/data-model.md ›
+        // Project environment).
+        context = ModelRules.trimmedOrNil(try c.optional("context", String.self))
+        namespace = ModelRules.trimmedOrNil(try c.optional("namespace", String.self))
+        deployment = ModelRules.trimmedOrNil(try c.optional("deployment", String.self))
+        argoCDApplication = ModelRules.trimmedOrNil(try c.optional("argoCDApplication", String.self))
+        kubeconfig = ModelRules.trimmedOrNil(try c.optional("kubeconfig", String.self))
         unknownKeys = try c.unknownKeys(known: Self.knownKeys)
     }
 
@@ -436,6 +463,11 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
         try c.encode(name, "name")
         try c.encode(url, "url")
         try c.encodeOptional(port, "port")
+        try c.encodeOptional(context, "context")
+        try c.encodeOptional(namespace, "namespace")
+        try c.encodeOptional(deployment, "deployment")
+        try c.encodeOptional(argoCDApplication, "argoCDApplication")
+        try c.encodeOptional(kubeconfig, "kubeconfig")
         try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
     }
 
@@ -461,8 +493,15 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
         return portIsValid && ModelRules.isHTTPURL(url.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
+    /// The Argo CD Application of `argoCDApplication`, or nil when the environment has none or
+    /// when a file edited by hand gives it another form.
+    public var argoCDApplicationRef: ArgoCDApplicationRef? {
+        argoCDApplication.flatMap(ArgoCDApplicationRef.init)
+    }
+
     /// The write rules of the field table; `field` names the environment in the messages, for
-    /// example `environments[1]`. Returns the environment with its name and URL trimmed.
+    /// example `environments[1]`. Returns the environment with its name, its URL and its
+    /// Kubernetes fields trimmed, an empty Kubernetes field being nil.
     public func normalized(field: String) throws -> ProjectEnvironment {
         var copy = self
         copy.name = try ModelRules.environmentName(name, field: field)
@@ -470,6 +509,11 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
         if let port {
             copy.port = try ModelRules.environmentPort(port, field: field)
         }
+        copy.context = try ModelRules.environmentLine(context, field: field, what: "a kubectl context")
+        copy.namespace = try ModelRules.environmentLine(namespace, field: field, what: "a namespace")
+        copy.deployment = try ModelRules.environmentLine(deployment, field: field, what: "a deployment")
+        copy.argoCDApplication = try ModelRules.environmentArgoCDApplication(argoCDApplication, field: field)
+        copy.kubeconfig = try ModelRules.environmentKubeconfig(kubeconfig, field: field)
         return copy
     }
 
@@ -477,8 +521,8 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
     /// environment the list adds or changes keeps the rules of the field table, in the list's order,
     /// then has a name that no other environment of the list has, compared letter case included.
     /// An environment equal to one of `stored` is written back as it is, also when a file edited by
-    /// hand made it break a rule (docs/data-model.md › Write rules). Returns the list with the names
-    /// and URLs of the other environments trimmed.
+    /// hand made it break a rule (docs/data-model.md › Write rules). Returns the list with the names,
+    /// the URLs and the Kubernetes fields of the other environments trimmed.
     public static func normalized(_ environments: [ProjectEnvironment], keeping stored: [ProjectEnvironment] = []) throws
         -> [ProjectEnvironment] {
         let kept = environments.map { stored.contains($0) }
@@ -496,6 +540,39 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
     /// `An environment named “<name>” already exists.` (docs/projects.md › Environments).
     public static func duplicateMessage(_ name: String) -> String {
         "An environment named “\(name)” already exists."
+    }
+}
+
+/// The Argo CD Application of an environment (docs/data-model.md › Project environment): the text
+/// `<name>` names the Application `<name>` of the namespace `argocd`, Argo CD's default, and
+/// `<namespace>/<name>` the Application `<name>` of `<namespace>`.
+public struct ArgoCDApplicationRef: Sendable, Hashable, CustomStringConvertible {
+    /// The namespace of an Application written without one.
+    public static let defaultNamespace = "argocd"
+
+    public var namespace: String
+    public var name: String
+
+    public init(namespace: String, name: String) {
+        self.namespace = namespace
+        self.name = name
+    }
+
+    /// The Application of `text`, or nil when `text` is not `<name>` or `<namespace>/<name>`: one
+    /// `/` at most, the parts not empty, no white space.
+    public init?(_ text: String) {
+        guard ModelRules.isArgoCDApplication(text) else { return nil }
+        let parts = text.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        if parts.count == 2 {
+            self.init(namespace: parts[0], name: parts[1])
+        } else {
+            self.init(namespace: Self.defaultNamespace, name: parts[0])
+        }
+    }
+
+    /// `<namespace>/<name>`.
+    public var description: String {
+        "\(namespace)/\(name)"
     }
 }
 

@@ -208,6 +208,21 @@ enum ProjectRules {
         return value
     }
 
+    /// The Argo CD application field: empty, or `<name>` or `<namespace>/<name>` without white
+    /// space after trimming, one `/` at most and the parts not empty.
+    static func environmentArgoCDApplicationMessage(_ application: String) -> String? {
+        guard let trimmed = ModelRules.trimmedOrNil(application) else { return nil }
+        return ModelRules.isArgoCDApplication(trimmed) ? nil : "Enter <name> or <namespace>/<name>."
+    }
+
+    /// The Kubeconfig file field: empty, or an absolute path or a path starting with `~/` on one
+    /// line after trimming.
+    static func environmentKubeconfigMessage(_ kubeconfig: String) -> String? {
+        guard let trimmed = ModelRules.trimmedOrNil(kubeconfig) else { return nil }
+        let valid = !ModelRules.containsLineBreak(trimmed) && ModelRules.isAbsoluteOrHomePath(trimmed)
+        return valid ? nil : "Enter an absolute path or a path starting with ~/."
+    }
+
     /// The names the Name field must not take: those of the project's environments, the edited
     /// environment's own name excluded.
     static func otherEnvironmentNames(_ environments: [ProjectEnvironment], editing original: ProjectEnvironment?) -> [String] {
@@ -215,12 +230,21 @@ enum ProjectRules {
     }
 
     /// The environment the sheet's fields describe: the name and the URL trimmed, the port as a
-    /// number or none, and the edited environment's unknown keys.
-    static func environment(name: String, url: String, port: String, editing original: ProjectEnvironment?) -> ProjectEnvironment {
+    /// number or none, the five Kubernetes fields trimmed, an empty one giving no value, and the
+    /// edited environment's unknown keys. Every known field comes from its text field, so a
+    /// cleared field removes the edited environment's value.
+    static func environment(name: String, url: String, port: String, context: String, namespace: String,
+                            deployment: String, argoCDApplication: String, kubeconfig: String,
+                            editing original: ProjectEnvironment?) -> ProjectEnvironment {
         var environment = original ?? ProjectEnvironment(name: "", url: "")
         environment.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         environment.url = url.trimmingCharacters(in: .whitespacesAndNewlines)
         environment.port = environmentPort(port)
+        environment.context = ModelRules.trimmedOrNil(context)
+        environment.namespace = ModelRules.trimmedOrNil(namespace)
+        environment.deployment = ModelRules.trimmedOrNil(deployment)
+        environment.argoCDApplication = ModelRules.trimmedOrNil(argoCDApplication)
+        environment.kubeconfig = ModelRules.trimmedOrNil(kubeconfig)
         return environment
     }
 

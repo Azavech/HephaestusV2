@@ -48,6 +48,11 @@ public actor Engine {
 
     /// Loaded projects, tickets, bundles and chat metadata (Engine/DomainState.swift).
     var domain: DomainState
+    /// The port forwards of the chats (Kubernetes/PortForwards.swift).
+    let portForwards = PortForwards()
+    /// The timeouts of kubectl and the clock of the pods' ages (Kubernetes/Kubectl.swift); tests
+    /// change them.
+    var kubectl = Kubectl()
     /// Claude CLI location, status and models (Claude/ClaudeCLI.swift).
     let claudeCLI = ClaudeCLI()
     /// Chat processes (Claude/ChatManager.swift).
@@ -169,7 +174,9 @@ public actor Engine {
         async let chatProcesses: Void = stopChatProcesses()
         async let claudeHelpers: Void = stopClaudeHelperProcesses()
         async let hephaestusClone: Void = stopHephaestusClone()
-        _ = await (chatProcesses, claudeHelpers, hephaestusClone)
+        async let portForwardProcesses: Void = stopPortForwards()
+        async let kubectlProcesses: Void = stopKubectlRuns()
+        _ = await (chatProcesses, claudeHelpers, hephaestusClone, portForwardProcesses, kubectlProcesses)
 
         await stopMCPServer()
         await stopSyncServer()
@@ -335,6 +342,7 @@ public actor Engine {
     private func registerAllHandlers() {
         registerDeviceHandlers()
         registerProjectHandlers()
+        registerKubernetesHandlers()
         registerTicketHandlers()
         registerAttachmentHandlers()
         registerBundleHandlers()

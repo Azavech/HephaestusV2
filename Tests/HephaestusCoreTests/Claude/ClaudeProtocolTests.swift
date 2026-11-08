@@ -74,7 +74,7 @@ struct ClaudeProtocolTests {
             "--permission-prompt-tool", "stdio",
             "--mcp-config", "/Users/example/Library/Application Support/HephaestusV2/Runtime/mcp/3F2504E0-4F89-11D3-9A0C-0305E82C3301.json",
             "--allowedTools",
-            "mcp__hephaestus__ask_questions,mcp__hephaestus__ask_symbol,mcp__hephaestus__ask_color,mcp__hephaestus__ask_sound,mcp__hephaestus__ask_shortcut,mcp__hephaestus__ask_font,mcp__hephaestus__ask_animation,mcp__hephaestus__show_image,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__create_ticket,mcp__hephaestus__update_ticket,mcp__hephaestus__set_ticket_status,mcp__hephaestus__add_comment,mcp__hephaestus__update_comment,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__create_bundle,mcp__hephaestus__update_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat",
+            "mcp__hephaestus__ask_questions,mcp__hephaestus__ask_symbol,mcp__hephaestus__ask_color,mcp__hephaestus__ask_sound,mcp__hephaestus__ask_shortcut,mcp__hephaestus__ask_font,mcp__hephaestus__ask_animation,mcp__hephaestus__show_image,mcp__hephaestus__list_projects,mcp__hephaestus__get_project,mcp__hephaestus__list_tickets,mcp__hephaestus__get_ticket,mcp__hephaestus__create_ticket,mcp__hephaestus__update_ticket,mcp__hephaestus__set_ticket_status,mcp__hephaestus__add_comment,mcp__hephaestus__update_comment,mcp__hephaestus__list_bundles,mcp__hephaestus__get_bundle,mcp__hephaestus__create_bundle,mcp__hephaestus__update_bundle,mcp__hephaestus__search,mcp__hephaestus__list_docs,mcp__hephaestus__list_web_tabs,mcp__hephaestus__list_skills,mcp__hephaestus__get_skill,mcp__hephaestus__list_chats,mcp__hephaestus__get_chat,mcp__hephaestus__k8s_status,mcp__hephaestus__k8s_logs,mcp__hephaestus__k8s_events,mcp__hephaestus__argocd_status",
             "--disallowedTools", "AskUserQuestion",
             "--append-system-prompt", "You are Claude, working inside HephaestusV2, …",
             "--plugin-dir", "/Users/example/Library/Application Support/HephaestusV2/Runtime/plugins/HEPH",
@@ -122,6 +122,21 @@ struct ClaudeProtocolTests {
         let hook = try #require(entry["hooks"]?.arrayValue?.first?.objectValue)
         #expect(hook["url"] == .string("http://127.0.0.1:47820/hooks/pre-tool-use"))
         #expect(hook["headers"] == .object(["Authorization": .string("Bearer $HEPHAESTUS_HOOK_TOKEN")]))
+    }
+
+    @Test("Row 14 is the <pre-approved tools> argument of docs/chats.md › Command line: the Kubernetes and Argo CD tools that read, not those that change a cluster or open a port")
+    func preApprovedTools() throws {
+        let chats = try Repository.doc("chats.md")
+        let start = try #require(chats.range(of: "- `<pre-approved tools>` is this single argument: `")).upperBound
+        let end = try #require(chats[start...].firstIndex(of: "`"))
+        #expect(ClaudeCommandLine.preApprovedTools == String(chats[start..<end]))
+        let tools = Set(ClaudeCommandLine.preApprovedTools.split(separator: ",").map(String.init))
+        for tool in ["k8s_status", "k8s_logs", "k8s_events", "argocd_status"] {
+            #expect(tools.contains("mcp__hephaestus__\(tool)"), "\(tool)")
+        }
+        for tool in ["k8s_restart", "k8s_scale", "k8s_port_forward", "k8s_stop_port_forward", "argocd_sync"] {
+            #expect(!tools.contains("mcp__hephaestus__\(tool)"), "\(tool)")
+        }
     }
 
     @Test("The naming command of docs/chats.md › Haiku naming › Command")

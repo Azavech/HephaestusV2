@@ -722,4 +722,200 @@ struct MCPToolHandlersTests {
         #expect(result == .failure(MCPToolError(code: .notFound, message: "No ticket HEPH-99.")))
         #expect(engine.calls.map(\.method) == ["tickets.get"])
     }
+
+    // MARK: Kubernetes and Argo CD tools (docs/mcp.md › Kubernetes and Argo CD tools)
+
+    /// The nine tools, in the table's order, each with arguments that pass validation.
+    static let kubernetesTools: [(tool: String, arguments: String)] = [
+        ("k8s_status", #"{"environment":"staging"}"#),
+        ("k8s_logs", #"{"environment":"staging"}"#),
+        ("k8s_events", #"{"environment":"staging"}"#),
+        ("k8s_restart", #"{"environment":"staging"}"#),
+        ("k8s_scale", #"{"environment":"staging","replicas":3}"#),
+        ("k8s_port_forward", #"{"environment":"staging","remotePort":8080}"#),
+        ("k8s_stop_port_forward", #"{"portForwardID":"6A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D"}"#),
+        ("argocd_status", #"{"environment":"staging"}"#),
+        ("argocd_sync", #"{"environment":"staging"}"#),
+    ]
+
+    @Test("Kubernetes and Argo CD tools: the method of the table with the arguments as given and chatID, the calling chat; k8s_logs sends its optional arguments in options")
+    func kubernetesParams() async throws {
+        let engine = RecordedEngine()
+        engine.answer("kubernetes.logs", .success(#"{"output":"No log lines."}"#))
+        engine.answer("kubernetes.restart", .success(#"{"output":"deployment.apps/orders-api restarted"}"#))
+        engine.answer("kubernetes.scale", .success(#"{"output":"deployment.apps/orders-api scaled"}"#))
+        engine.answer("argoCD.sync", .success(#"{"output":"application.argoproj.io/orders-staging patched"}"#))
+        let handlers = Self.handlers(engine)
+        let chatID = #""chatID":"\#(Self.chatID.uuidString)""#
+        let cases: [(tool: String, arguments: String, method: String, params: String)] = [
+            ("k8s_status", #"{"environment":"staging"}"#, "kubernetes.status", #"{\#(chatID),"environment":"staging"}"#),
+            ("k8s_logs", #"{"environment":"staging"}"#, "kubernetes.logs", #"{\#(chatID),"environment":"staging"}"#),
+            ("k8s_logs", #"{"environment":"staging","pod":"orders-api-7d9f8c6b5-2x4zq","container":"api","tailLines":50,"sinceSeconds":600.0,"previous":true}"#,
+             "kubernetes.logs",
+             #"{\#(chatID),"environment":"staging","options":{"pod":"orders-api-7d9f8c6b5-2x4zq","container":"api","tailLines":50,"sinceSeconds":600,"previous":true}}"#),
+            ("k8s_logs", #"{"environment":"staging","tailLines":5000,"previous":false,"pod":null,"container":""}"#, "kubernetes.logs",
+             #"{\#(chatID),"environment":"staging","options":{"tailLines":5000,"previous":false,"container":""}}"#),
+            ("k8s_events", #"{"environment":"Staging EU"}"#, "kubernetes.events", #"{\#(chatID),"environment":"Staging EU"}"#),
+            ("k8s_restart", #"{"environment":"staging"}"#, "kubernetes.restart", #"{\#(chatID),"environment":"staging"}"#),
+            ("k8s_scale", #"{"environment":"staging","replicas":0}"#, "kubernetes.scale", #"{\#(chatID),"environment":"staging","replicas":0}"#),
+            ("k8s_scale", #"{"environment":"staging","replicas":2147483647}"#, "kubernetes.scale",
+             #"{\#(chatID),"environment":"staging","replicas":2147483647}"#),
+            ("k8s_port_forward", #"{"environment":"staging","remotePort":8080}"#, "kubernetes.forward",
+             #"{\#(chatID),"environment":"staging","remotePort":8080}"#),
+            ("k8s_port_forward", #"{"environment":"staging","remotePort":65535,"localPort":1.0}"#, "kubernetes.forward",
+             #"{\#(chatID),"environment":"staging","remotePort":65535,"localPort":1}"#),
+            ("k8s_stop_port_forward", #"{"portForwardID":"6a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"}"#, "kubernetes.stopForward",
+             #"{\#(chatID),"portForwardID":"6a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"}"#),
+            ("argocd_status", #"{"environment":"staging"}"#, "argoCD.status", #"{\#(chatID),"environment":"staging"}"#),
+            ("argocd_sync", #"{"environment":"staging"}"#, "argoCD.sync", #"{\#(chatID),"environment":"staging"}"#),
+        ]
+        for (tool, arguments, method, params) in cases {
+            let count = engine.calls.count
+            guard case .success = try await Self.call(handlers, tool, arguments) else {
+                Issue.record("\(tool) \(arguments) failed")
+                continue
+            }
+            #expect(engine.calls.count == count + 1, "\(tool)")
+            let call = try #require(engine.calls.last)
+            #expect(call.method == method, "\(tool)")
+            #expect(call.params == (try jsonValue(params)), "\(tool) \(arguments)")
+            #expect(call.actor == Self.chat, "\(tool)")
+        }
+    }
+
+    @Test("k8s_logs, k8s_restart, k8s_scale and argocd_sync return the output of the method's KubectlOutput as plain text")
+    func kubectlOutputText() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        let logs = "[pod/orders-api-7d9f8c6b5-2x4zq/api] listening on :8080\n[pod/orders-api-7d9f8c6b5-9kmwd/api] GET /orders \"200\""
+        let outputs: [(tool: String, arguments: String, method: String, output: String)] = [
+            ("k8s_logs", #"{"environment":"staging"}"#, "kubernetes.logs", logs),
+            ("k8s_logs", #"{"environment":"staging","pod":"orders-api-7d9f8c6b5-2x4zq"}"#, "kubernetes.logs", "No log lines."),
+            ("k8s_restart", #"{"environment":"staging"}"#, "kubernetes.restart", "deployment.apps/orders-api restarted"),
+            ("k8s_scale", #"{"environment":"staging","replicas":2}"#, "kubernetes.scale", "deployment.apps/orders-api scaled"),
+            ("argocd_sync", #"{"environment":"staging"}"#, "argoCD.sync", "application.argoproj.io/orders-staging patched"),
+            ("k8s_restart", #"{"environment":"staging"}"#, "kubernetes.restart", ""),
+        ]
+        for (tool, arguments, method, output) in outputs {
+            engine.answer(method, .success(String(decoding: try EngineJSON.encode(KubectlOutput(output: output)), as: UTF8.self)))
+            #expect(try await Self.call(handlers, tool, arguments) == .success(output), "\(tool)")
+        }
+    }
+
+    @Test("A Kubernetes text tool whose result is not a KubectlOutput fails with internal, as get_ticket does")
+    func kubectlOutputUnexpected() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        for (tool, arguments, method) in [("k8s_logs", #"{"environment":"staging"}"#, "kubernetes.logs"),
+                                          ("k8s_restart", #"{"environment":"staging"}"#, "kubernetes.restart"),
+                                          ("k8s_scale", #"{"environment":"staging","replicas":1}"#, "kubernetes.scale"),
+                                          ("argocd_sync", #"{"environment":"staging"}"#, "argoCD.sync")] {
+            for answer in ["{}", #"{"output":3}"#, #"["deployment.apps/orders-api scaled"]"#, "not json"] {
+                engine.answer(method, .success(answer))
+                #expect(try await Self.call(handlers, tool, arguments)
+                    == .failure(MCPToolError(code: .internal, message: "Unexpected result for \(method).")), "\(tool) \(answer)")
+            }
+        }
+    }
+
+    @Test("k8s_status, k8s_events, k8s_port_forward, k8s_stop_port_forward and argocd_status return the method's JSON unchanged")
+    func kubernetesJSONResults() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        let status = #"{"availableReplicas":2,"conditions":[{"lastTransition":"2026-10-31T09:12:40Z","message":"Deployment has minimum availability.","reason":"MinimumReplicasAvailable","status":"True","type":"Available"}],"deployment":"orders-api","desiredReplicas":2,"images":["registry.example.com/orders-api:1.8.2"],"namespace":"orders","pods":[{"age":"5m12s","containers":1,"created":"2026-10-31T13:57:48Z","name":"orders-api-7d9f8c6b5-2x4zq","node":"node-a","phase":"Running","readyContainers":1,"restarts":0}],"readyReplicas":2,"updatedReplicas":2}"#
+        let events = #"[{"count":3,"firstSeen":"2026-10-31T13:58:30Z","kind":"Pod","lastSeen":"2026-10-31T14:01:10Z","message":"Back-off restarting failed container api","name":"orders-api-7d9f8c6b5-9kmwd","reason":"BackOff","type":"Warning"}]"#
+        let forward = #"{"environment":"staging","localPort":52814,"portForwardID":"6A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D","remotePort":8080,"url":"http://127.0.0.1:52814"}"#
+        let application = #"{"application":"argocd/orders-staging","healthStatus":"Healthy","operationInProgress":false,"revision":"8f3c2a1b","syncStatus":"Synced"}"#
+        let results: [(tool: String, arguments: String, method: String, text: String)] = [
+            ("k8s_status", #"{"environment":"staging"}"#, "kubernetes.status", status),
+            ("k8s_events", #"{"environment":"staging"}"#, "kubernetes.events", events),
+            ("k8s_events", #"{"environment":"staging"}"#, "kubernetes.events", "[]"),
+            ("k8s_port_forward", #"{"environment":"staging","remotePort":8080}"#, "kubernetes.forward", forward),
+            ("k8s_stop_port_forward", #"{"portForwardID":"6A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D"}"#, "kubernetes.stopForward", "{}"),
+            ("argocd_status", #"{"environment":"staging"}"#, "argoCD.status", application),
+        ]
+        for (tool, arguments, method, text) in results {
+            engine.answer(method, .success(text))
+            #expect(try await Self.call(handlers, tool, arguments) == .success(text), "\(tool)")
+        }
+    }
+
+    @Test("Kubernetes and Argo CD tools: the engine's errors are the tool errors")
+    func kubernetesEngineErrors() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        let errors: [(tool: String, arguments: String, method: String, error: EngineError)] = [
+            ("k8s_status", #"{"environment":"staging"}"#, "kubernetes.status",
+             EngineError(.forbidden, "k8s_status is only available in Go service projects.")),
+            ("k8s_logs", #"{"environment":"prod"}"#, "kubernetes.logs", EngineError(.invalid, "environment: ORD has no environment named “prod”.")),
+            ("k8s_restart", #"{"environment":"staging"}"#, "kubernetes.restart", EngineError(.invalid, "Environment “staging” has no deployment.")),
+            ("k8s_scale", #"{"environment":"staging","replicas":1}"#, "kubernetes.scale",
+             EngineError(.unavailable, "kubectl --context=staging-eks scale deployment/orders-api --replicas=1 exited with code 1: error: You must be logged in to the server (Unauthorized)")),
+            ("k8s_stop_port_forward", #"{"portForwardID":"6A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D"}"#, "kubernetes.stopForward",
+             EngineError(.notFound, "Port forward 6A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D not found.")),
+            ("argocd_sync", #"{"environment":"staging"}"#, "argoCD.sync",
+             EngineError(.conflict, "The Argo CD application argocd/orders-staging already has an operation in progress.")),
+        ]
+        for (tool, arguments, method, error) in errors {
+            engine.answer(method, .failure(error))
+            #expect(try await Self.call(handlers, tool, arguments) == .failure(MCPToolError(code: error.code, message: error.message)), "\(tool)")
+        }
+    }
+
+    @Test("Kubernetes and Argo CD tools: the external token fails before argument validation, without an engine call")
+    func kubernetesExternalToken() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        let refused = MCPToolError(code: .forbidden, message: "Only the chat's own Claude can use the Kubernetes and Argo CD tools.")
+        for (tool, arguments) in Self.kubernetesTools {
+            #expect(try await Self.call(handlers, tool, arguments, actor: Self.external) == .failure(refused), "\(tool)")
+            #expect(try await Self.call(handlers, tool, #"{"environment":1,"namespace":"orders"}"#, actor: Self.external) == .failure(refused), "\(tool)")
+        }
+        #expect(engine.calls.isEmpty)
+    }
+
+    @Test("Kubernetes and Argo CD tools: an answer token gets the message of a comment answer, without an engine call")
+    func kubernetesAnswerToken() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        for (tool, arguments) in Self.kubernetesTools {
+            let definition = try #require(MCPToolCatalog.tool(named: tool, debugTools: false))
+            let result = await handlers.call(definition, arguments: try jsonValue(arguments), actor: .claude(chatID: Actor.answerChatID),
+                                             answerTicketID: "HEPH-12")
+            #expect(result == .failure(MCPToolError(code: .forbidden, message: "\(tool) is not available to a comment answer.")), "\(tool)")
+        }
+        #expect(engine.calls.isEmpty)
+    }
+
+    @Test("Kubernetes and Argo CD tools: their schemas refuse values out of bounds, missing and unknown arguments, in property order, without an engine call", arguments: [
+        ("k8s_logs", #"{"environment":"staging","tailLines":5001}"#, "tailLines: must be at most 5000."),
+        ("k8s_logs", #"{"environment":"staging","tailLines":0}"#, "tailLines: must be at least 1."),
+        ("k8s_logs", #"{"environment":"staging","sinceSeconds":0}"#, "sinceSeconds: must be at least 1."),
+        ("k8s_logs", #"{"environment":"staging","sinceSeconds":2147483648}"#, "sinceSeconds: must be at most 2147483647."),
+        ("k8s_logs", #"{"environment":"staging","tailLines":12.5}"#, "tailLines: must be an integer."),
+        ("k8s_logs", #"{"environment":"staging","previous":"yes"}"#, "previous: must be a boolean."),
+        ("k8s_logs", #"{"environment":"staging","pod":1,"container":2}"#, "pod: must be a string."),
+        ("k8s_logs", #"{"pod":"orders-api-7d9f8c6b5-2x4zq"}"#, "environment: required."),
+        ("k8s_logs", #"{"environment":"staging","options":{"tailLines":10}}"#, "options: unknown argument."),
+        ("k8s_status", #"{"environment":"staging","namespace":"orders"}"#, "namespace: unknown argument."),
+        ("k8s_status", #"{"environment":["staging"]}"#, "environment: must be a string."),
+        ("k8s_events", "{}", "environment: required."),
+        ("k8s_restart", #"{"environment":null}"#, "environment: required."),
+        ("k8s_scale", #"{"environment":"staging","replicas":-1}"#, "replicas: must be at least 0."),
+        ("k8s_scale", #"{"environment":"staging","replicas":2147483648}"#, "replicas: must be at most 2147483647."),
+        ("k8s_scale", #"{"environment":"staging"}"#, "replicas: required."),
+        ("k8s_port_forward", #"{"environment":"staging","remotePort":0}"#, "remotePort: must be at least 1."),
+        ("k8s_port_forward", #"{"environment":"staging","remotePort":8080,"localPort":65536}"#, "localPort: must be at most 65535."),
+        ("k8s_port_forward", #"{"environment":"staging","remotePort":0,"localPort":0}"#, "remotePort: must be at least 1."),
+        ("k8s_port_forward", #"{"environment":"staging","localPort":8080}"#, "remotePort: required."),
+        ("k8s_stop_port_forward", #"{"environment":"staging"}"#, "environment: unknown argument."),
+        ("k8s_stop_port_forward", "{}", "portForwardID: required."),
+        ("argocd_status", #"{"environment":"staging","application":"orders-staging"}"#, "application: unknown argument."),
+        ("argocd_sync", #"{"environment":true}"#, "environment: must be a string."),
+    ])
+    func kubernetesValidation(tool: String, arguments: String, message: String) async throws {
+        let engine = RecordedEngine()
+        #expect(try await Self.call(Self.handlers(engine), tool, arguments) == .failure(MCPToolError(code: .invalid, message: message)))
+        #expect(engine.calls.isEmpty)
+    }
 }

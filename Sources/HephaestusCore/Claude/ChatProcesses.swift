@@ -751,8 +751,9 @@ extension Engine {
 
     /// docs/chats.md › Exit handling and logs: the open blocks are finalized, the pending
     /// permission requests cancelled, the error item added for an unexpected non-zero exit during
-    /// a turn, the session retried once when it was not found, the token revoked and the MCP
-    /// configuration file deleted. Messages delivered while the process ended start a new one.
+    /// a turn, the session retried once when it was not found, the chat's port forwards stopped,
+    /// the token revoked and the MCP configuration file deleted. Messages delivered while the
+    /// process ended start a new one.
     func chatProcessExited(_ chatID: ChatID, generation: Int, termination: ProcessTermination) async {
         guard let runtime = chats.runtimes[chatID], let process = runtime.process, process.generation == generation, !process.exited else {
             return
@@ -804,6 +805,8 @@ extension Engine {
         if !deleting { reportChatState(chatID) }
         process.log.close()
         process.stdoutCapture?.close()
+        // The chat's port forwards end with its Claude process (docs/mcp.md › k8s_port_forward).
+        stopPortForwards(ofChat: chatID)
         await tokens.revokeChatToken(chatID: chatID)
         try? FileManager.default.removeItem(at: dataDirectory.mcpConfigFile(chatID: chatID))
         runtime.cleaningUp = false
