@@ -21,6 +21,9 @@ public struct Project: Codable, Sendable, Hashable {
     public var webTabs: [WebTab]
     public var skills: [String]
     public var chatDefaults: ChatSettings?
+    /// The environments of a Go service, in the order they were added (docs/projects.md ›
+    /// Environments).
+    public var environments: [ProjectEnvironment]
     /// The costs of the deleted chats, in deletion order (docs/costs.md › Deleted chats).
     public var deletedChats: [DeletedChat]
     /// The costs of the comment answers, in the order the calls ended, deleted tickets' included
@@ -31,8 +34,8 @@ public struct Project: Codable, Sendable, Hashable {
     public init(schema: Int = 1, id: ProjectID, name: String, created: Date, type: ProjectType = .none, color: String? = nil, icon: String? = nil,
                 nextTicketNumber: Int = 1, nextBundleNumber: Int = 1, docsPath: String = "docs", subprojects: [String] = [],
                 commands: ProjectCommands = ProjectCommands(), webTabs: [WebTab] = [], skills: [String] = [],
-                chatDefaults: ChatSettings? = nil, deletedChats: [DeletedChat] = [], commentAnswers: [CommentAnswerCost] = [],
-                unknownKeys: [String: JSONValue] = [:]) {
+                chatDefaults: ChatSettings? = nil, environments: [ProjectEnvironment] = [], deletedChats: [DeletedChat] = [],
+                commentAnswers: [CommentAnswerCost] = [], unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
         self.id = id
         self.name = name
@@ -48,6 +51,7 @@ public struct Project: Codable, Sendable, Hashable {
         self.webTabs = webTabs
         self.skills = skills
         self.chatDefaults = chatDefaults
+        self.environments = environments
         self.deletedChats = deletedChats
         self.commentAnswers = commentAnswers
         self.unknownKeys = unknownKeys
@@ -55,7 +59,7 @@ public struct Project: Codable, Sendable, Hashable {
 
     static let knownKeys: Set<String> = [
         "schema", "id", "name", "created", "type", "color", "icon", "nextTicketNumber", "nextBundleNumber", "docsPath",
-        "subprojects", "commands", "webTabs", "skills", "chatDefaults", "deletedChats",
+        "subprojects", "commands", "webTabs", "skills", "chatDefaults", "environments", "deletedChats",
         "commentAnswers",
     ]
 
@@ -84,6 +88,7 @@ public struct Project: Codable, Sendable, Hashable {
         skills = try c.value("skills", default: [])
         try c.checkAll("skills", skills, Identifiers.isSkillName, "skill name")
         chatDefaults = try c.optional("chatDefaults")
+        environments = try c.value("environments", default: [])
         deletedChats = try c.value("deletedChats", default: [])
         commentAnswers = try c.value("commentAnswers", default: [])
         unknownKeys = try c.unknownKeys(known: Self.knownKeys)
@@ -112,6 +117,7 @@ public struct Project: Codable, Sendable, Hashable {
         try c.encode(webTabs, "webTabs")
         try c.encode(skills, "skills")
         try c.encodeOptional(chatDefaults, "chatDefaults")
+        try c.encode(environments, "environments")
         try c.encode(deletedChats, "deletedChats")
         try c.encode(commentAnswers, "commentAnswers")
         try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
@@ -142,6 +148,7 @@ public struct Project: Codable, Sendable, Hashable {
         }
         try ModelRules.noDuplicates(skills, field: "skills")
         try chatDefaults?.validate()
+        _ = try ProjectEnvironment.normalized(environments)
         try ModelRules.noDuplicates(deletedChats.map(\.id), field: "deletedChats") { "Chat \($0.uuidString) is listed more than once." }
         for chat in deletedChats {
             try chat.validate()
@@ -361,6 +368,101 @@ public struct ProjectCommands: Codable, Sendable, Hashable {
         copy.run = ModelRules.normalizedCommand(run)
         copy.test = ModelRules.normalizedCommand(test)
         return copy
+    }
+}
+
+/// One element of the key `environments` of the project file: a place where a Go service runs,
+/// which the Contract view sends its requests to (docs/data-model.md › Project environment,
+/// docs/projects.md › Environments).
+public struct ProjectEnvironment: Codable, Sendable, Hashable {
+    public var name: String
+    public var url: String
+    /// Replaces the URL's port in the base URL; nil keeps the URL's own port.
+    public var port: Int?
+    public var unknownKeys: [String: JSONValue]
+
+    public init(name: String, url: String, port: Int? = nil, unknownKeys: [String: JSONValue] = [:]) {
+        self.name = name
+        self.url = url
+        self.port = port
+        self.unknownKeys = unknownKeys
+    }
+
+    static let knownKeys: Set<String> = ["name", "url", "port"]
+
+    public init(from decoder: Decoder) throws {
+        let c = try ModelDecodingContainer(decoder)
+        name = try c.required("name")
+        url = try c.required("url")
+        port = try c.optional("port")
+        unknownKeys = try c.unknownKeys(known: Self.knownKeys)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = ModelEncodingContainer(encoder)
+        try c.encode(name, "name")
+        try c.encode(url, "url")
+        try c.encodeOptional(port, "port")
+        try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
+    }
+
+    /// The URL with its port replaced by `port` when it is set, without a trailing `/`
+    /// (docs/projects.md › Environments).
+    public var baseURL: String {
+        var text = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        // A negative port, possible only in a file edited by hand, would make Foundation raise.
+        if let port, port >= 0, var components = URLComponents(string: text), components.host != nil {
+            components.port = port
+            text = components.string ?? text
+        }
+        while text.hasSuffix("/") {
+            text.removeLast()
+        }
+        return text
+    }
+
+    /// Whether the URL and the port keep their write rules, which only a file edited by hand
+    /// breaks: the Contract view sends no request to an environment that does not.
+    public var isUsable: Bool {
+        let portIsValid = port.map { (1...65535).contains($0) } ?? true
+        return portIsValid && ModelRules.isHTTPURL(url.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    /// The write rules of the field table; `field` names the environment in the messages, for
+    /// example `environments[1]`. Returns the environment with its name and URL trimmed.
+    public func normalized(field: String) throws -> ProjectEnvironment {
+        var copy = self
+        copy.name = try ModelRules.environmentName(name, field: field)
+        copy.url = try ModelRules.environmentURL(url, field: field)
+        if let port {
+            copy.port = try ModelRules.environmentPort(port, field: field)
+        }
+        return copy
+    }
+
+    /// The write rules of the key `environments` (docs/data-model.md › Project environment): each
+    /// environment the list adds or changes keeps the rules of the field table, in the list's order,
+    /// then has a name that no other environment of the list has, compared letter case included.
+    /// An environment equal to one of `stored` is written back as it is, also when a file edited by
+    /// hand made it break a rule (docs/data-model.md › Write rules). Returns the list with the names
+    /// and URLs of the other environments trimmed.
+    public static func normalized(_ environments: [ProjectEnvironment], keeping stored: [ProjectEnvironment] = []) throws
+        -> [ProjectEnvironment] {
+        let kept = environments.map { stored.contains($0) }
+        let list = try environments.enumerated().map { index, environment in
+            kept[index] ? environment : try environment.normalized(field: "environments[\(index)]")
+        }
+        for (index, environment) in list.enumerated() where !kept[index] {
+            guard !list.indices.contains(where: { $0 != index && list[$0].name == environment.name }) else {
+                throw ValidationError(field: "environments", message: duplicateMessage(environment.name))
+            }
+        }
+        return list
+    }
+
+    /// `An environment named “<name>” already exists.` (docs/projects.md › Environments).
+    public static func duplicateMessage(_ name: String) -> String {
+        "An environment named “\(name)” already exists."
     }
 }
 

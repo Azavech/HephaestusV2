@@ -353,6 +353,108 @@ struct ProjectsTests {
         }
     }
 
+    @Test("projects.update replaces the environments in the given order, trimmed, and emits project.updated only")
+    func updateEnvironments() async throws {
+        try await withDomainEngine { h in
+            try await h.create("Api", name: "Orders API", identifier: "API")
+            let events = await DomainEventRecorder.make(h)
+            let detail = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "API", environments: [
+                ProjectEnvironment(name: " staging ", url: " https://staging.example.com/ "),
+                ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
+            ]))
+            #expect(detail.project.environments == [
+                ProjectEnvironment(name: "staging", url: "https://staging.example.com/"),
+                ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
+            ])
+            #expect(await events.wait(for: ProjectUpdatedEvent.name) == ["project.updated"])
+            #expect(await events.settle() == ["project.updated"])
+            #expect(try events.all.last!.payload(ProjectUpdatedEvent.self).project.environments == detail.project.environments)
+            let folder = ProjectFolder(root: URL(fileURLWithPath: h.path("Api")))
+            #expect(try ProjectFileStore.readProject(folder).environments == detail.project.environments)
+            #expect(try String(contentsOf: folder.projectFile, encoding: .utf8)
+                .contains("environments:\n- name: staging\n  url: https://staging.example.com/\n  port: null\n- name: local\n"))
+
+            func update(_ environments: [ProjectEnvironment]) async -> EngineError? {
+                await engineError { try await h.connection.call(ProjectsUpdate.self, .init(projectID: "API", environments: environments)) }
+            }
+            let valid = ProjectEnvironment(name: "local", url: "http://127.0.0.1")
+            #expect(await update([valid, ProjectEnvironment(name: "", url: "http://a.example")])
+                == EngineError(.invalid, "environments[1]: use a name of 1 to 100 characters on one line."))
+            #expect(await update([ProjectEnvironment(name: "a", url: "localhost:8080")])
+                == EngineError(.invalid, "environments[0]: use an absolute http or https URL."))
+            #expect(await update([ProjectEnvironment(name: "a", url: "http://a.example", port: 65536)])
+                == EngineError(.invalid, "environments[0]: use a port from 1 to 65535."))
+            #expect(await update([valid, ProjectEnvironment(name: "local ", url: "http://b.example")])
+                == EngineError(.invalid, "An environment named “local” already exists."))
+            #expect(try ProjectFileStore.readProject(folder).environments == detail.project.environments)
+
+            events.clear()
+            let same = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "API", environments: detail.project.environments))
+            #expect(same.project.environments == detail.project.environments)
+            #expect(await events.settle().isEmpty)
+            let removed = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "API", environments: []))
+            #expect(removed.project.environments.isEmpty)
+            #expect(try String(contentsOf: folder.projectFile, encoding: .utf8).contains("environments: []\n"))
+        }
+    }
+
+    @Test("projects.update writes back as they are the stored environments that a hand edit made invalid")
+    func updateKeepsStoredEnvironments() async throws {
+        let environments = """
+            environments:
+            - name: broken
+              url: localhost:8080
+            - name: twin
+              url: http://a.example
+            - name: twin
+              url: http://b.example
+
+            """
+        try await withDomainEngine(prepare: { directory, projects in
+            let root = projects.appendingPathComponent("Api").path
+            try writeFile(projectYAML(id: "API", name: "Orders API", extra: environments),
+                          to: URL(fileURLWithPath: root + "/.hephaestus/project.yml"))
+            try writeFile(registryYAML([root]), to: directory.registryFile)
+        }) { h in
+            let stored = try await h.connection.call(ProjectsGet.self, .init(projectID: "API")).project.environments
+            #expect(stored.map(\.name) == ["broken", "twin", "twin"])
+            let local = ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080)
+            let added = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "API", environments: stored + [local]))
+            #expect(added.project.environments == stored + [local])
+            let removed = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "API", environments: [stored[0], stored[1], local]))
+            #expect(removed.project.environments.map(\.name) == ["broken", "twin", "local"])
+            var repaired = stored[0]
+            repaired.url = "http://localhost:8080"
+            let fixed = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "API", environments: [repaired, stored[1], local]))
+            #expect(fixed.project.environments[0].url == "http://localhost:8080")
+            #expect(await engineError {
+                try await h.connection.call(ProjectsUpdate.self, .init(projectID: "API", environments: [repaired, stored[1], ProjectEnvironment(name: "twin", url: "http://c.example")]))
+            } == EngineError(.invalid, "An environment named “twin” already exists."))
+        }
+    }
+
+    @Test("get_project returns the environments, which update_project cannot change")
+    func environmentsThroughMCP() async throws {
+        try await withDomainEngine { h in
+            let engine = h.engine
+            let handlers = MCPToolHandlers(engineCall: { method, params, actor in
+                try await engine.dispatch(method: method, params: params, actor: actor)
+            }, debugUI: nil, homeDirectory: "/Users/example")
+            func call(_ tool: String, _ arguments: String) async throws -> Result<String, MCPToolError> {
+                let definition = try #require(MCPToolCatalog.tool(named: tool, debugTools: false))
+                return await handlers.call(definition, arguments: try jsonValue(arguments), actor: h.claude)
+            }
+            try await h.create("Api", name: "Orders API", identifier: "API")
+            let environments = [ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080)]
+            _ = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "API", environments: environments))
+            let text = try await call("get_project", #"{"projectID":"API"}"#).get()
+            #expect(try EngineJSON.decoder().decode(ProjectsGet.Result.self, from: Data(text.utf8)).project.environments == environments)
+            let refused = try await call("update_project", #"{"projectID":"API","environments":[]}"#)
+            #expect(refused == .failure(MCPToolError(code: .invalid, message: "environments: unknown argument.")))
+            #expect(try await h.connection.call(ProjectsGet.self, .init(projectID: "API")).project.environments == environments)
+        }
+    }
+
     @Test("projects.remove unregisters the project and its descendants and leaves their files")
     func remove() async throws {
         try await withDomainEngine { h in

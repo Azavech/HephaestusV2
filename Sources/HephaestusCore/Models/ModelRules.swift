@@ -169,16 +169,47 @@ public enum ModelRules {
         return trimmed
     }
 
+    /// Whether `value` is an absolute `http` or `https` URL with a host.
+    public static func isHTTPURL(_ value: String) -> Bool {
+        guard let components = URLComponents(string: value),
+              let scheme = components.scheme?.lowercased(), scheme == "http" || scheme == "https",
+              let host = components.host, !host.isEmpty
+        else { return false }
+        return true
+    }
+
     /// Web tab `url`: an absolute `http` or `https` URL, stored as entered after trimming.
     public static func webTabURL(_ value: String) throws -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let components = URLComponents(string: trimmed),
-              let scheme = components.scheme?.lowercased(), scheme == "http" || scheme == "https",
-              let host = components.host, !host.isEmpty
-        else {
+        guard isHTTPURL(trimmed) else {
             throw ValidationError.invalid("url", "use an absolute http or https URL")
         }
         return trimmed
+    }
+
+    /// Environment `name`: one line of 1 to 100 characters, trimmed (docs/data-model.md ›
+    /// Project environment).
+    public static func environmentName(_ value: String, field: String = "name") throws -> String {
+        try singleLine(value, field: field, length: 1...100,
+                       error: .invalid(field, "use a name of 1 to 100 characters on one line"))
+    }
+
+    /// Environment `url`: an absolute `http` or `https` URL with a host, stored as entered after
+    /// trimming.
+    public static func environmentURL(_ value: String, field: String = "url") throws -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isHTTPURL(trimmed) else {
+            throw ValidationError.invalid(field, "use an absolute http or https URL")
+        }
+        return trimmed
+    }
+
+    /// Environment `port`: 1–65535.
+    public static func environmentPort(_ value: Int, field: String = "port") throws -> Int {
+        guard (1...65535).contains(value) else {
+            throw ValidationError.invalid(field, "use a port from 1 to 65535")
+        }
+        return value
     }
 
     /// Web tab `title`: line breaks replaced by spaces, at most 500 characters, longer titles

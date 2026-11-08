@@ -240,6 +240,9 @@ extension Engine {
             }
             new.chatDefaults = settings
         }
+        if let environments = params.environments {
+            new.environments = try validated { try ProjectEnvironment.normalized(environments, keeping: old.environments) }
+        }
         guard new != old else { return projectDetail(id)! }
         try saveProject(new)
         emitProjectUpdated(id, origin: actor)

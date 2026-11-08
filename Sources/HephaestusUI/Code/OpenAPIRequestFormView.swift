@@ -4,7 +4,7 @@ import AppKit
 import HephaestusCore
 import SwiftUI
 
-/// Server, Parameters, Credentials, Body, Headers and Send.
+/// Environment, Parameters, Credentials, Body, Headers and Send.
 struct OpenAPIRequestFormView: View {
     let model: OpenAPIContractModel
     let contract: OpenAPIContract
@@ -13,7 +13,7 @@ struct OpenAPIRequestFormView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            serverPart
+            environmentPart
             parametersPart
             credentialsPart
             bodyPart
@@ -25,57 +25,39 @@ struct OpenAPIRequestFormView: View {
                         .controlSize(.small)
                 } else {
                     Button("Send") { model.send(operation) }
-                        .disabled(!OpenAPIRequestBuilder.isUsableBaseURL(model.baseURL(operation)))
+                        .disabled(!model.canSend)
                 }
             }
         }
         .textFieldStyle(.roundedBorder)
     }
 
-    // MARK: Server (docs/openapi.md › Server)
+    // MARK: Environment (docs/openapi.md › Environment)
 
-    private var serverPart: some View {
-        let servers = model.usableServers(operation)
-        let choice = model.serverChoice(operation)
-        return part("Server") {
-            Picker("Server", selection: Binding(get: { choice }, set: { model.setServerChoice($0) })) {
-                ForEach(servers, id: \.url) { server in
-                    Text(server.url).tag(OpenAPIContractModel.ServerChoice.server(server.url))
+    /// The pop-up of the project's environments, `<name> · <base URL>` each; empty and disabled,
+    /// with the note and `Project Settings…`, when the project has none.
+    private var environmentPart: some View {
+        let items = Array(model.environments.enumerated())
+        return part("Environment") {
+            Picker("Environment", selection: Binding(get: { model.environment?.name },
+                                                     set: { name in if let name { model.selectEnvironment(name) } })) {
+                ForEach(items, id: \.offset) { _, environment in
+                    Text("\(environment.name) · \(environment.baseURL)").tag(Optional(environment.name))
                 }
-                Text("Custom URL").tag(OpenAPIContractModel.ServerChoice.custom)
+                if items.isEmpty {
+                    // The empty pop-up's selection, so that it has a tag.
+                    Text("").tag(String?.none)
+                }
             }
             .labelsHidden()
             .frame(maxWidth: 420, alignment: .leading)
-            switch choice {
-            case .custom:
-                TextField("URL", text: Binding(get: { model.stored?.customURL ?? "" },
-                                               set: { value in model.update { $0.customURL = value } }))
-                    .frame(maxWidth: 420)
-            case .server(let url):
-                if let server = servers.first(where: { $0.url == url }) {
-                    if let description = server.description {
-                        Text(description)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(server.variables, id: \.name) { variable in
-                        fieldRow(variable.name) {
-                            if variable.values.isEmpty {
-                                TextField("", text: Binding(
-                                    get: { model.variableValue(variable, of: server) },
-                                    set: { model.setVariableValue($0, variable, of: server) }))
-                            } else {
-                                Picker(variable.name, selection: Binding(
-                                    get: { model.variableValue(variable, of: server) },
-                                    set: { model.setVariableValue($0, variable, of: server) })) {
-                                    ForEach(variable.values, id: \.self) { value in
-                                        Text(value).tag(value)
-                                    }
-                                }
-                                .labelsHidden()
-                            }
-                        }
-                    }
+            .disabled(items.isEmpty)
+            if items.isEmpty {
+                Text("Add an environment in Project Settings.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Button("Project Settings…") {
+                    model.showProjectSettings()
                 }
             }
         }

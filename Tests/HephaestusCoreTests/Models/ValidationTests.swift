@@ -176,6 +176,67 @@ struct WriteRuleTests {
         #expect(ModelRules.normalizedWebTabTitle(String(repeating: "x", count: 600)).count == 500)
     }
 
+    @Test("Environment rules: names, URLs, ports and unique names, with the messages of projects.update")
+    func environmentRules() throws {
+        let normalized = try ProjectEnvironment.normalized([
+            ProjectEnvironment(name: "  local ", url: " http://127.0.0.1 ", port: 8080),
+            ProjectEnvironment(name: "Local", url: "https://staging.example.com/v1/", port: 65535),
+        ])
+        #expect(normalized == [
+            ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
+            ProjectEnvironment(name: "Local", url: "https://staging.example.com/v1/", port: 65535),
+        ])
+        let valid = ProjectEnvironment(name: "local", url: "http://127.0.0.1")
+        let name = ValidationError.invalid("environments[1]", "use a name of 1 to 100 characters on one line")
+        let url = ValidationError.invalid("environments[0]", "use an absolute http or https URL")
+        let port = ValidationError.invalid("environments[0]", "use a port from 1 to 65535")
+        let cases: [([ProjectEnvironment], ValidationError)] = [
+            ([valid, ProjectEnvironment(name: " ", url: "http://a.example")], name),
+            ([valid, ProjectEnvironment(name: String(repeating: "x", count: 101), url: "http://a.example")], name),
+            ([valid, ProjectEnvironment(name: "two\nlines", url: "http://a.example")], name),
+            ([ProjectEnvironment(name: "a", url: "ftp://a.example")], url),
+            ([ProjectEnvironment(name: "a", url: "/v1")], url),
+            ([ProjectEnvironment(name: "a", url: "localhost:8080")], url),
+            ([ProjectEnvironment(name: "a", url: "")], url),
+            ([ProjectEnvironment(name: "a", url: "http://a.example", port: 0)], port),
+            ([ProjectEnvironment(name: "a", url: "http://a.example", port: 65536)], port),
+            ([valid, ProjectEnvironment(name: " local", url: "http://b.example")],
+             ValidationError(field: "environments", message: "An environment named “local” already exists.")),
+        ]
+        for (environments, error) in cases {
+            #expect(throws: error) { try ProjectEnvironment.normalized(environments) }
+        }
+        #expect(try ModelRules.environmentName(String(repeating: "x", count: 100)).count == 100)
+
+        // Environments already stored are written back as they are, rules broken by hand included;
+        // the ones the list adds or changes are checked, their names against every other one.
+        let broken = ProjectEnvironment(name: " spaced ", url: "localhost:8080", port: 0)
+        let twin = ProjectEnvironment(name: "twin", url: "http://a.example")
+        let stored = [broken, twin, twin]
+        let added = ProjectEnvironment(name: " added ", url: "http://b.example")
+        #expect(try ProjectEnvironment.normalized(stored + [added], keeping: stored)
+            == stored + [ProjectEnvironment(name: "added", url: "http://b.example")])
+        #expect(try ProjectEnvironment.normalized([twin, twin], keeping: stored) == [twin, twin])
+        var changed = twin
+        changed.port = 8080
+        #expect(throws: ValidationError(field: "environments", message: "An environment named “twin” already exists.")) {
+            try ProjectEnvironment.normalized([changed, twin], keeping: stored)
+        }
+        #expect(throws: ValidationError(field: "environments", message: "An environment named “twin” already exists.")) {
+            try ProjectEnvironment.normalized([twin, ProjectEnvironment(name: "twin ", url: "http://c.example")], keeping: [twin])
+        }
+        var fixed = broken
+        fixed.url = "http://127.0.0.1"
+        #expect(throws: ValidationError.invalid("environments[0]", "use a port from 1 to 65535")) {
+            try ProjectEnvironment.normalized([fixed], keeping: stored)
+        }
+        var project = Project(id: "API", name: "Api", created: Self.created,
+                              environments: [ProjectEnvironment(name: "a", url: "http://a.example", port: 70000)])
+        #expect(throws: ValidationError.invalid("environments[0]", "use a port from 1 to 65535")) { try project.validate() }
+        project.environments[0].port = 1
+        try project.validate()
+    }
+
     @Test("Ticket, comment and bundle rules")
     func ticketRules() throws {
         var ticket = Ticket(id: "HEPH-1", title: "T", created: Self.created)

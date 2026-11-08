@@ -132,28 +132,29 @@ The engine API sends these types as JSON objects with the same keys and value ru
 
 ## Project file
 
-`.hephaestus/project.yml` holds the project's identity, type, color, icon, counters, documentation folder, sub projects, commands, web tabs, enabled skills, chat defaults, the costs of its deleted chats and the costs of its comment answers. Swift type `Project`.
+`.hephaestus/project.yml` holds the project's identity, type, color, icon, counters, documentation folder, sub projects, commands, web tabs, enabled skills, chat defaults, environments, the costs of its deleted chats and the costs of its comment answers. Swift type `Project`.
 
-| Swift name       | Key                | Type                  | Required | Default  | Rules                                                                                                                                                                                                                                                                                                                     |
-| ---------------- | ------------------ | --------------------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| schema           | `schema`           | `Int`                 | no       | `1`      | See [Keys and values](#keys-and-values).                                                                                                                                                                                                                                                                                  |
-| id               | `id`               | `ProjectID`           | yes      | —        | Project identifier ([Ids](#ids)). Set at creation, never changed. Unique among all projects registered on the device, sub projects included.                                                                                                                                                                              |
-| name             | `name`             | `String`              | yes      | —        | Display name. Single line, 1–100 characters. Default chosen at design time. Names need not be unique.                                                                                                                                                                                                                     |
-| created          | `created`          | `Date`                | yes      | —        | Creation time. Never changed.                                                                                                                                                                                                                                                                                             |
-| type             | `type`             | `ProjectType`         | no       | `none`   | [Project type](#project-type): `none`, `goService` or `swiftApplication`. An absent key is `none`. Default chosen at design time.                                                                                                                                                                                         |
-| color            | `color`            | `String?`             | no       | `null`   | The project's color ([Project settings](projects.md#project-settings)): `#` and six hex digits, in uppercase. Read in either letter case and uppercased; any other value makes the file invalid. Left out of the file when the project has no color; `null` in the JSON form. Default chosen at design time (read rules). |
-| icon             | `icon`             | `String?`             | no       | `null`   | The project's icon ([Project settings](projects.md#project-settings)): an SF Symbol name, for example `hammer`. Read trimmed, an empty value being no icon; no symbol catalogue is checked. Left out of the file when the project has no icon; `null` in the JSON form. Default chosen at design time (read rules).       |
-| nextTicketNumber | `nextTicketNumber` | `Int`                 | no       | `1`      | At least 1. First number tried for the next ticket ([Id allocation](#id-allocation)).                                                                                                                                                                                                                                     |
-| nextBundleNumber | `nextBundleNumber` | `Int`                 | no       | `1`      | At least 1. First number tried for the next bundle.                                                                                                                                                                                                                                                                       |
-| docsPath         | `docsPath`         | `String`              | no       | `docs`   | Relative path ([Paths](#paths)) of the documentation folder. The folder may be missing ([Documentation viewer](documentation-viewer.md)).                                                                                                                                                                                 |
-| subprojects      | `subprojects`      | `[String]`            | no       | `[]`     | Relative paths of the direct sub projects, in the order they were added. See [Sub project entries](#sub-project-entries).                                                                                                                                                                                                 |
-| commands         | `commands`         | `ProjectCommands`     | no       | all null | Build, Run and Test commands.                                                                                                                                                                                                                                                                                             |
-| webTabs          | `webTabs`          | `[WebTab]`            | no       | `[]`     | Web tabs in tab strip order. Tab `id`s are unique within the project.                                                                                                                                                                                                                                                     |
-| skills           | `skills`           | `[String]`            | no       | `[]`     | Names of library skills enabled in this project, in the order they were enabled, without duplicates. See [Enabled skills](#enabled-skills).                                                                                                                                                                               |
-| chatDefaults     | `chatDefaults`     | `ChatSettings?`       | no       | `null`   | Settings of new chats of this project; `null` uses the host's `defaultChatSettings` ([Chat settings](#chat-settings)).                                                                                                                                                                                                    |
-| deletedChats     | `deletedChats`     | `[DeletedChat]`       | no       | `[]`     | The costs of the project's deleted chats, in deletion order. See [Deleted chat](#deleted-chat).                                                                                                                                                                                                                           |
-| commentAnswers   | `commentAnswers`   | `[CommentAnswerCost]` | no       | `[]`     | The costs of the project's comment answers, in the order the calls ended, deleted tickets' included. See [Comment answer cost](#comment-answer-cost).                                                                                                                                                                     |
-| unknownKeys      | —                  | `[String: JSONValue]` | —        | `[:]`    | [Unknown keys](#unknown-keys).                                                                                                                                                                                                                                                                                            |
+| Swift name       | Key                | Type                   | Required | Default  | Rules                                                                                                                                                                                                                                                                                                                     |
+| ---------------- | ------------------ | ---------------------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| schema           | `schema`           | `Int`                  | no       | `1`      | See [Keys and values](#keys-and-values).                                                                                                                                                                                                                                                                                  |
+| id               | `id`               | `ProjectID`            | yes      | —        | Project identifier ([Ids](#ids)). Set at creation, never changed. Unique among all projects registered on the device, sub projects included.                                                                                                                                                                              |
+| name             | `name`             | `String`               | yes      | —        | Display name. Single line, 1–100 characters. Default chosen at design time. Names need not be unique.                                                                                                                                                                                                                     |
+| created          | `created`          | `Date`                 | yes      | —        | Creation time. Never changed.                                                                                                                                                                                                                                                                                             |
+| type             | `type`             | `ProjectType`          | no       | `none`   | [Project type](#project-type): `none`, `goService` or `swiftApplication`. An absent key is `none`. Default chosen at design time.                                                                                                                                                                                         |
+| color            | `color`            | `String?`              | no       | `null`   | The project's color ([Project settings](projects.md#project-settings)): `#` and six hex digits, in uppercase. Read in either letter case and uppercased; any other value makes the file invalid. Left out of the file when the project has no color; `null` in the JSON form. Default chosen at design time (read rules). |
+| icon             | `icon`             | `String?`              | no       | `null`   | The project's icon ([Project settings](projects.md#project-settings)): an SF Symbol name, for example `hammer`. Read trimmed, an empty value being no icon; no symbol catalogue is checked. Left out of the file when the project has no icon; `null` in the JSON form. Default chosen at design time (read rules).       |
+| nextTicketNumber | `nextTicketNumber` | `Int`                  | no       | `1`      | At least 1. First number tried for the next ticket ([Id allocation](#id-allocation)).                                                                                                                                                                                                                                     |
+| nextBundleNumber | `nextBundleNumber` | `Int`                  | no       | `1`      | At least 1. First number tried for the next bundle.                                                                                                                                                                                                                                                                       |
+| docsPath         | `docsPath`         | `String`               | no       | `docs`   | Relative path ([Paths](#paths)) of the documentation folder. The folder may be missing ([Documentation viewer](documentation-viewer.md)).                                                                                                                                                                                 |
+| subprojects      | `subprojects`      | `[String]`             | no       | `[]`     | Relative paths of the direct sub projects, in the order they were added. See [Sub project entries](#sub-project-entries).                                                                                                                                                                                                 |
+| commands         | `commands`         | `ProjectCommands`      | no       | all null | Build, Run and Test commands.                                                                                                                                                                                                                                                                                             |
+| webTabs          | `webTabs`          | `[WebTab]`             | no       | `[]`     | Web tabs in tab strip order. Tab `id`s are unique within the project.                                                                                                                                                                                                                                                     |
+| skills           | `skills`           | `[String]`             | no       | `[]`     | Names of library skills enabled in this project, in the order they were enabled, without duplicates. See [Enabled skills](#enabled-skills).                                                                                                                                                                               |
+| chatDefaults     | `chatDefaults`     | `ChatSettings?`        | no       | `null`   | Settings of new chats of this project; `null` uses the host's `defaultChatSettings` ([Chat settings](#chat-settings)).                                                                                                                                                                                                    |
+| environments     | `environments`     | `[ProjectEnvironment]` | no       | `[]`     | The environments of a Go service, in the order they were added; names are unique. See [Project environment](#project-environment).                                                                                                                                                                                        |
+| deletedChats     | `deletedChats`     | `[DeletedChat]`        | no       | `[]`     | The costs of the project's deleted chats, in deletion order. See [Deleted chat](#deleted-chat).                                                                                                                                                                                                                           |
+| commentAnswers   | `commentAnswers`   | `[CommentAnswerCost]`  | no       | `[]`     | The costs of the project's comment answers, in the order the calls ended, deleted tickets' included. See [Comment answer cost](#comment-answer-cost).                                                                                                                                                                     |
+| unknownKeys      | —                  | `[String: JSONValue]`  | —        | `[:]`    | [Unknown keys](#unknown-keys).                                                                                                                                                                                                                                                                                            |
 
 ### Sub project entries
 
@@ -186,6 +187,19 @@ Swift type `ProjectCommands`, key `commands` of the project file.
 | unknownKeys | —       | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).  |
 
 Each value is trimmed, and an empty string is stored as `null`. Default chosen at design time. How commands run, and what Run does when a command is `null`, is defined in [Projects](projects.md).
+
+### Project environment
+
+Swift type `ProjectEnvironment`, one element of the key `environments` of the project file: a place where a Go service runs, which the Contract view sends its requests to ([Environments](projects.md#environments), [Environment](openapi.md#environment)). Project Settings shows the environments of a project whose type is `goService` only; the key is kept when the type changes.
+
+| Swift name  | Key    | Type                  | Required | Default | Rules                                                                                             |
+| ----------- | ------ | --------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------- |
+| name        | `name` | `String`              | yes      | —       | Single line, 1–100 characters, trimmed. Unique within the project, compared letter case included. |
+| url         | `url`  | `String`              | yes      | —       | Absolute `http` or `https` URL with a host, stored as entered after trimming.                     |
+| port        | `port` | `Int?`                | no       | `null`  | 1–65535. When set, it replaces the URL's port in the base URL; `null` keeps the URL's own port.   |
+| unknownKeys | —      | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                    |
+
+The base URL of an environment is its `url` with the port replaced by `port` when it is set, without a trailing `/` ([Environments](projects.md#environments)). `projects.update` checks these rules on the environments it adds or changes; an environment it receives unchanged is written back as it is, as [Write rules](#write-rules) says. The keys come from the user; the letter case rule is a design-time choice. Default chosen at design time.
 
 ### Web tab
 
@@ -269,6 +283,7 @@ chatDefaults:
   effort: high
   permissionMode: manual
   ultracode: false
+environments: []
 deletedChats:
 - id: 5B8C2D4E-6F7A-4B9C-8D1E-2F3A4B5C6D7E
   title: Plan the release
@@ -292,6 +307,24 @@ schema: 1
 id: WEB
 name: Website
 created: 2026-10-31T09:30:00Z
+```
+
+A Go service with two [environments](#project-environment): `local` replaces the URL's port with 8080, and `staging` keeps the URL's own port:
+
+```yaml
+# .hephaestus/project.yml
+schema: 1
+id: API
+name: Orders API
+created: 2026-10-31T10:00:00Z
+type: goService
+environments:
+- name: local
+  url: http://127.0.0.1
+  port: 8080
+- name: staging
+  url: https://staging.example.com
+  port: null
 ```
 
 ## Chat settings
@@ -1529,7 +1562,7 @@ Every other rule of the field tables (lengths, ranges, single-line values, uniqu
 
 The engine keeps the keys it does not know, so a file written by a newer version or extended by hand keeps them when this version rewrites it.
 
-- These types keep unknown keys in `unknownKeys`: `Project`, `ProjectCommands`, `WebTab`, `ChatSettings`, `Ticket`, `Comment`, `TicketLink`, `Attachment`, `TicketBundle`, `ChatMeta`, `DeviceRecord`, `Registry`, `HostSettings`, `Secrets`, `RemotesFile`, `RemoteDevice`, `PlanUsage`. `SkillFrontmatter` keeps them in `extraFrontmatter`. Chat items do not keep unknown keys: transcripts are never rewritten.
+- These types keep unknown keys in `unknownKeys`: `Project`, `ProjectCommands`, `ProjectEnvironment`, `WebTab`, `ChatSettings`, `Ticket`, `Comment`, `TicketLink`, `Attachment`, `TicketBundle`, `ChatMeta`, `DeviceRecord`, `Registry`, `HostSettings`, `Secrets`, `RemotesFile`, `RemoteDevice`, `PlanUsage`. `SkillFrontmatter` keeps them in `extraFrontmatter`. Chat items do not keep unknown keys: transcripts are never rewritten.
 - Decoding stores every key of the mapping that is not in the type's table, with its value converted to `JSONValue`.
 - Encoding writes them after the known keys, sorted by key in Unicode code point order, nested values as decoded.
 - A mutation changes known fields only; `unknownKeys` stays as read.
@@ -1726,3 +1759,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R151: Claude can ask multiple-choice questions: the user checks options within the minimum and maximum Claude sets and adds own answers.
 - R153: A project can have a color, set in Project Settings with a hex field or the macOS color picker; the ticket list shows each ticket's project as a badge in that color.
 - R156: A project can have an icon, an SF Symbol picked in Project Settings from a popover that searches every SF Symbol of the Mac; Claude reads and sets it.
+- R157: A Go service project declares its environments in Project Settings, and the Contract view sends requests to the environment chosen in its Environment pop-up.

@@ -162,7 +162,6 @@ struct OpenAPIParsingTests {
         #expect(contract.info.title == "Pet Store")
         #expect(contract.info.version == "1.2.0")
         #expect(contract.servers.map(\.url) == ["https://{region}.example.com/v1", "/relative"])
-        #expect(contract.servers.map(\.isUsable) == [true, false])
         #expect(contract.servers[0].variables.first?.values == ["eu", "us"])
         #expect(contract.operations.map(\.id) == ["GET /pets", "POST /pets", "GET /pets/{petId}", "GET /health"])
         #expect(contract.groups.map(\.name) == ["pets", "store", "default"])
@@ -370,21 +369,46 @@ struct OpenAPISampleTests {
 
 @Suite("OpenAPI requests")
 struct OpenAPIRequestTests {
-    @Test("The URL takes the server variables, the path parameters and the query")
-    func url() {
-        let server = OpenAPIServer(url: "https://{region}.example.com/v1/", description: nil,
-                                   variables: [OpenAPIServerVariable(name: "region", defaultValue: "eu", values: [], description: nil)])
-        #expect(server.url(values: [:]) == "https://eu.example.com/v1/")
+    @Test("The URL takes the environment's base URL, the path parameters and the query")
+    func url() throws {
+        let environment = ProjectEnvironment(name: "local", url: "http://127.0.0.1/v1/", port: 8080)
         let input = OpenAPIRequestInput(
-            baseURL: server.url(values: ["region": "us"]), method: "get", path: "/pets/{petId}/toys",
+            baseURL: environment.baseURL, method: "get", path: "/pets/{petId}/toys",
             parameters: [(.path, "petId", "a b/c"), (.query, "limit", "10"), (.query, "empty", ""), (.query, "q", "x&y=é")],
             credentials: [.apiKey(name: "key", location: "query", value: "k1")])
         #expect(OpenAPIRequestBuilder.url(for: input)
-                == "https://us.example.com/v1/pets/a%20b%2Fc/toys?limit=10&q=x%26y%3D%C3%A9&key=k1")
+                == "http://127.0.0.1:8080/v1/pets/a%20b%2Fc/toys?limit=10&q=x%26y%3D%C3%A9&key=k1")
+        let request = try #require(OpenAPIRequestBuilder.request(for: OpenAPIRequestInput(
+            baseURL: ProjectEnvironment(name: "staging", url: "https://staging.example.com/").baseURL, method: "delete", path: "/pets")))
+        #expect(request.url?.absoluteString == "https://staging.example.com/pets")
+        #expect(request.httpMethod == "DELETE")
         #expect(OpenAPIRequestBuilder.isUsableBaseURL("http://127.0.0.1:8080"))
         #expect(!OpenAPIRequestBuilder.isUsableBaseURL("/v1"))
         #expect(!OpenAPIRequestBuilder.isUsableBaseURL(""))
         #expect(!OpenAPIRequestBuilder.isUsableBaseURL("ftp://example.com"))
+    }
+
+    @Test("The base URL of an environment: its URL with the port replaced by its port, without a trailing slash")
+    func environmentBaseURL() {
+        let cases: [(url: String, port: Int?, baseURL: String)] = [
+            ("http://127.0.0.1", 8080, "http://127.0.0.1:8080"),
+            ("https://api.example.com:8443/v1/", 9000, "https://api.example.com:9000/v1"),
+            ("https://api.example.com:8443/v1", nil, "https://api.example.com:8443/v1"),
+            ("https://staging.example.com/", nil, "https://staging.example.com"),
+            ("http://localhost:3000//", nil, "http://localhost:3000"),
+            (" http://[::1] ", 8080, "http://[::1]:8080"),
+            ("http://user@localhost/api?x=1", 8081, "http://user@localhost:8081/api?x=1"),
+        ]
+        for item in cases {
+            #expect(ProjectEnvironment(name: "e", url: item.url, port: item.port).baseURL == item.baseURL, "\(item.url)")
+        }
+        #expect(ProjectEnvironment(name: "e", url: "http://127.0.0.1", port: 8080).isUsable)
+        #expect(ProjectEnvironment(name: "e", url: " https://staging.example.com ").isUsable)
+        #expect(!ProjectEnvironment(name: "e", url: "ftp://example.com").isUsable)
+        #expect(!ProjectEnvironment(name: "e", url: "127.0.0.1:8080").isUsable)
+        #expect(!ProjectEnvironment(name: "e", url: "http://127.0.0.1", port: 70000).isUsable)
+        #expect(!ProjectEnvironment(name: "e", url: "http://127.0.0.1", port: -1).isUsable)
+        #expect(ProjectEnvironment(name: "e", url: "http://127.0.0.1", port: -1).baseURL == "http://127.0.0.1")
     }
 
     @Test("Headers: parameters, cookies, credentials, content type, then added headers")
@@ -427,8 +451,8 @@ struct OpenAPIRequestStoreTests {
             let store = OpenAPIRequestStore(file: file)
             var contract = store.contract(deviceID: "D1", projectID: "DEMO", path: "api/openapi.yaml")
             #expect(contract.operations.isEmpty)
-            contract.server = "https://{region}.example.com/v1"
-            contract.serverVariables = ["https://{region}.example.com/v1": ["region": "us"]]
+            #expect(contract.environment == nil)
+            contract.environment = "staging"
             contract.credentials["bearerAuth"] = OpenAPIStoredCredential(token: "secret")
             contract.headers = [OpenAPIHeader(name: "X-Tenant", value: "demo")]
             var operation = OpenAPIStoredOperation()
@@ -456,11 +480,51 @@ struct OpenAPIRequestStoreTests {
             try Data("not json".utf8).write(to: file)
             let store = OpenAPIRequestStore(file: file)
             var contract = store.contract(deviceID: "D", projectID: "P", path: "a.yaml")
-            contract.customURL = "http://localhost:3000"
-            contract.usesCustomURL = true
+            contract.environment = "local"
             store.set(contract)
             try store.save()
-            #expect(OpenAPIRequestStore(file: file).contract(deviceID: "D", projectID: "P", path: "a.yaml").customURL == "http://localhost:3000")
+            #expect(OpenAPIRequestStore(file: file).contract(deviceID: "D", projectID: "P", path: "a.yaml").environment == "local")
+        }
+    }
+
+    @Test("The server keys of an earlier version are ignored and left out at the next write")
+    func earlierServerKeys() throws {
+        try withTemporaryDirectory { folder in
+            let file = folder.appendingPathComponent(OpenAPIRequestStore.fileName)
+            try Data(#"""
+                {"contracts": [{"deviceID": "D", "projectID": "P", "path": "a.yaml",
+                  "server": "https://{region}.example.com/v1", "usesCustomURL": true, "customURL": "http://localhost:3000",
+                  "serverVariables": {"https://{region}.example.com/v1": {"region": "us"}},
+                  "headers": [{"name": "X-Tenant", "value": "demo"}]}]}
+                """#.utf8).write(to: file)
+            let store = OpenAPIRequestStore(file: file)
+            var contract = store.contract(deviceID: "D", projectID: "P", path: "a.yaml")
+            #expect(contract.environment == nil)
+            #expect(contract.headers == [OpenAPIHeader(name: "X-Tenant", value: "demo")])
+            contract.environment = "local"
+            store.set(contract)
+            try store.save()
+            let text = try String(contentsOf: file, encoding: .utf8)
+            #expect(text.contains(#""environment" : "local""#))
+            for key in ["server", "usesCustomURL", "customURL", "serverVariables"] {
+                #expect(!text.contains("\"\(key)\""), "\(key)")
+            }
+        }
+    }
+
+    @Test("The example of docs/openapi.md › Stored values reads back")
+    func docsExample() throws {
+        let block = try #require(MarkdownSource.fencedBlocks(in: try Repository.doc("openapi.md"))
+            .first { $0.heading == "## Stored values" && $0.info == "json" })
+        try withTemporaryDirectory { folder in
+            let file = folder.appendingPathComponent(OpenAPIRequestStore.fileName)
+            try Data(block.text.utf8).write(to: file)
+            let contract = OpenAPIRequestStore(file: file)
+                .contract(deviceID: "6F1C2D3E-4A5B-4C6D-8E7F-901A2B3C4D5E", projectID: "DEMO", path: "api/openapi.yaml")
+            #expect(contract.environment == "local")
+            #expect(contract.credentials["bearerAuth"]?.token == "example-token")
+            #expect(contract.headers == [OpenAPIHeader(name: "X-Tenant", value: "demo")])
+            #expect(contract.operations["GET /pets/{petId}"]?.parameters["path:petId"] == "42")
         }
     }
 }

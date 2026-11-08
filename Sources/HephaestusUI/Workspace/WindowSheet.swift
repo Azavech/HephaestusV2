@@ -50,6 +50,9 @@ public enum WindowSheet: Codable, Hashable, Sendable, Identifiable {
     /// A JavaScript `alert`, `confirm` or `prompt` of a web tab (docs/web-tabs.md › Page permissions
     /// and dialogs).
     case webPageDialog(tabID: String)
+    /// New Environment sheet of Project Settings, or Edit Environment sheet of the environment
+    /// `name` (docs/projects.md › Environments).
+    case environment(projectID: String, name: String?)
 
     public var id: Self { self }
 }
@@ -99,6 +102,8 @@ struct WindowSheetView: View {
             RenameFileSheet(window: window, workspace: workspace, projectID: projectID, path: path)
         case .webPageDialog(let tabID):
             WebPageDialogSheet(window: window, tabID: tabID)
+        case .environment(let projectID, let name):
+            EnvironmentSheet(window: window, workspace: workspace, projectID: projectID, name: name)
         }
     }
 }

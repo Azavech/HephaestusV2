@@ -39,12 +39,8 @@ public struct OpenAPIStoredContract: Codable, Sendable, Equatable {
     public var deviceID: String
     public var projectID: String
     public var path: String
-    /// The URL as written of the selected server; nil before a choice.
-    public var server: String?
-    public var usesCustomURL = false
-    public var customURL = ""
-    /// Variable values by server URL as written, then by variable name.
-    public var serverVariables: [String: [String: String]] = [:]
+    /// The name of the selected environment; nil before a choice (docs/openapi.md › Environment).
+    public var environment: String?
     /// By scheme name.
     public var credentials: [String: OpenAPIStoredCredential] = [:]
     public var headers: [OpenAPIHeader] = []
@@ -62,10 +58,9 @@ public struct OpenAPIStoredContract: Codable, Sendable, Equatable {
         deviceID = try c.decode(String.self, forKey: .deviceID)
         projectID = try c.decode(String.self, forKey: .projectID)
         path = try c.decode(String.self, forKey: .path)
-        server = try c.decodeIfPresent(String.self, forKey: .server)
-        usesCustomURL = try c.decodeIfPresent(Bool.self, forKey: .usesCustomURL) ?? false
-        customURL = try c.decodeIfPresent(String.self, forKey: .customURL) ?? ""
-        serverVariables = try c.decodeIfPresent([String: [String: String]].self, forKey: .serverVariables) ?? [:]
+        // The keys server, usesCustomURL, customURL and serverVariables of an earlier version are
+        // ignored, and left out at the next write.
+        environment = try c.decodeIfPresent(String.self, forKey: .environment)
         credentials = try c.decodeIfPresent([String: OpenAPIStoredCredential].self, forKey: .credentials) ?? [:]
         headers = try c.decodeIfPresent([OpenAPIHeader].self, forKey: .headers) ?? []
         operations = try c.decodeIfPresent([String: OpenAPIStoredOperation].self, forKey: .operations) ?? [:]

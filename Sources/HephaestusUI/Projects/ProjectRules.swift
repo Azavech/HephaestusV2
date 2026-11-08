@@ -180,6 +180,72 @@ enum ProjectRules {
         return icon
     }
 
+    // MARK: Environments (docs/projects.md › Environments)
+
+    /// The Name field of an environment sheet: 1 to 100 characters after trimming, on one line,
+    /// and no other environment with the trimmed name, letter case included.
+    static func environmentNameMessage(_ name: String, otherNames: [String]) -> String? {
+        guard let trimmed = try? ModelRules.environmentName(name) else { return "Enter a name of 1 to 100 characters." }
+        return otherNames.contains(trimmed) ? ProjectEnvironment.duplicateMessage(trimmed) : nil
+    }
+
+    /// The URL field: an absolute `http` or `https` URL with a host, after trimming.
+    static func environmentURLMessage(_ url: String) -> String? {
+        (try? ModelRules.environmentURL(url)) == nil ? "Enter an http or https URL." : nil
+    }
+
+    /// The Port field: empty, or a whole number from 1 to 65535 after trimming.
+    static func environmentPortMessage(_ port: String) -> String? {
+        let trimmed = port.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty || environmentPort(trimmed) != nil ? nil : "Enter a port from 1 to 65535."
+    }
+
+    /// The port typed in the Port field: nil for an empty field or one that is not a port.
+    static func environmentPort(_ port: String) -> Int? {
+        let trimmed = port.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.allSatisfy({ $0.isASCII && $0.isNumber }), let value = Int(trimmed),
+              (1...65535).contains(value) else { return nil }
+        return value
+    }
+
+    /// The names the Name field must not take: those of the project's environments, the edited
+    /// environment's own name excluded.
+    static func otherEnvironmentNames(_ environments: [ProjectEnvironment], editing original: ProjectEnvironment?) -> [String] {
+        environments.map(\.name).filter { $0 != original?.name }
+    }
+
+    /// The environment the sheet's fields describe: the name and the URL trimmed, the port as a
+    /// number or none, and the edited environment's unknown keys.
+    static func environment(name: String, url: String, port: String, editing original: ProjectEnvironment?) -> ProjectEnvironment {
+        var environment = original ?? ProjectEnvironment(name: "", url: "")
+        environment.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        environment.url = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        environment.port = environmentPort(port)
+        return environment
+    }
+
+    /// The list Create or Save applies: the environment in place of the one named `originalName`,
+    /// else appended (Create, or an edited environment renamed or removed meanwhile).
+    static func environments(_ environments: [ProjectEnvironment], saving environment: ProjectEnvironment,
+                             replacing originalName: String?) -> [ProjectEnvironment] {
+        var list = environments
+        if let originalName, let index = list.firstIndex(where: { $0.name == originalName }) {
+            list[index] = environment
+        } else {
+            list.append(environment)
+        }
+        return list
+    }
+
+    /// The list `−` applies: the environments without the first one named `name`; nil when none
+    /// has that name.
+    static func environments(_ environments: [ProjectEnvironment], removing name: String) -> [ProjectEnvironment]? {
+        guard let index = environments.firstIndex(where: { $0.name == name }) else { return nil }
+        var list = environments
+        list.remove(at: index)
+        return list
+    }
+
     // MARK: HephaestusV2 project
 
     /// True for the HephaestusV2 project, the device's project `HEPH`, and for its ancestors:

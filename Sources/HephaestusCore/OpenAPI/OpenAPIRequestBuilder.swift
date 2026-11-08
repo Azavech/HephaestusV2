@@ -21,7 +21,7 @@ public enum OpenAPICredential: Sendable, Equatable {
 
 /// What a request form holds when Send is clicked.
 public struct OpenAPIRequestInput: Sendable, Equatable {
-    /// The selected server's URL with its variables replaced, or the custom URL.
+    /// The base URL of the selected environment (`ProjectEnvironment.baseURL`).
     public var baseURL: String
     /// Lowercase or uppercase.
     public var method: String

@@ -261,6 +261,52 @@ struct ModelCodingTests {
         }
     }
 
+    @Test("Environments are written after chatDefaults, with port null when absent, keep their unknown keys and need a name and a URL")
+    func projectEnvironments() throws {
+        let project = Project(id: "API", name: "Orders API", created: Self.created, type: .goService, environments: [
+            ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
+            ProjectEnvironment(name: "staging", url: "https://staging.example.com"),
+        ])
+        let yaml = try YAMLCoding.encode(project)
+        #expect(yaml.contains("""
+            chatDefaults: null
+            environments:
+            - name: local
+              url: http://127.0.0.1
+              port: 8080
+            - name: staging
+              url: https://staging.example.com
+              port: null
+            deletedChats: []
+
+            """))
+        #expect(try YAMLCoding.decode(Project.self, from: yaml) == project)
+        #expect(try EngineJSON.decode(Project.self, from: try EngineJSON.encode(project)) == project)
+        #expect(try YAMLCoding.encode(Project(id: "WEB", name: "Website", created: Self.created)).contains("environments: []\n"))
+        #expect(try YAMLCoding.decode(Project.self, from: "id: WEB\nname: W\ncreated: 2026-10-31T09:30:00Z\n").environments.isEmpty)
+
+        var extended = try YAMLCoding.decode(Project.self, from: """
+            id: API
+            name: Orders API
+            created: 2026-10-31T10:00:00Z
+            environments:
+            - name: local
+              url: http://127.0.0.1
+              context: kind-local
+
+            """)
+        #expect(extended.environments == [ProjectEnvironment(name: "local", url: "http://127.0.0.1", unknownKeys: ["context": "kind-local"])])
+        #expect(extended.unknownKeys.isEmpty)
+        extended.environments[0].name = "dev"
+        #expect(try YAMLCoding.decode(Project.self, from: try YAMLCoding.encode(extended)).environments[0].unknownKeys == ["context": "kind-local"])
+
+        for invalid in ["- url: http://127.0.0.1", "- name: local", "- name: local\n  url: http://127.0.0.1\n  port: high"] {
+            #expect(throws: (any Error).self) {
+                try YAMLCoding.decode(Project.self, from: "id: API\nname: A\ncreated: 2026-10-31T10:00:00Z\nenvironments:\n\(invalid)\n")
+            }
+        }
+    }
+
     @Test("Booleans accept the YAML 1.1 spellings")
     func booleanSpellings() throws {
         for (text, value) in [("yes", true), ("no", false), ("on", true), ("off", false), ("True", true), ("FALSE", false)] {

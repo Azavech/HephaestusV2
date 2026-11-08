@@ -22,12 +22,6 @@ final class OpenAPIContractModel {
         case schema(String)
     }
 
-    /// The server of a form: one of the operation's servers by URL as written, or `Custom URL`.
-    enum ServerChoice: Hashable {
-        case server(String)
-        case custom
-    }
-
     /// The parse delay after a change of the text.
     static let parseDelay: Duration = .milliseconds(300)
 
@@ -205,53 +199,40 @@ final class OpenAPIContractModel {
         }
     }
 
-    // MARK: Server (docs/openapi.md › Server)
+    // MARK: Environment (docs/openapi.md › Environment)
 
-    /// The operation's servers whose URL is an absolute `http` or `https` URL.
-    func usableServers(_ operation: OpenAPIOperation) -> [OpenAPIServer] {
-        operation.servers.filter(\.isUsable)
+    /// The environments of the contract's project, in their order: none for a project whose type
+    /// is not `goService` (docs/projects.md › Environments). Read live from the window's workspace,
+    /// which holds the detail of the project its sections show, so the pop-up follows
+    /// `project.updated`.
+    var environments: [ProjectEnvironment] {
+        guard let buffer, let projectID = buffer.projectID,
+              let project = buffer.workspace?.details[projectID]?.project, project.type == .goService else { return [] }
+        return project.environments
     }
 
-    func serverChoice(_ operation: OpenAPIOperation) -> ServerChoice {
-        let servers = usableServers(operation)
-        if stored?.usesCustomURL == true || servers.isEmpty { return .custom }
-        if let url = stored?.server, servers.contains(where: { $0.url == url }) { return .server(url) }
-        return .server(servers[0].url)
-    }
-
-    func setServerChoice(_ choice: ServerChoice) {
-        update { values in
-            switch choice {
-            case .custom:
-                values.usesCustomURL = true
-            case .server(let url):
-                values.usesCustomURL = false
-                values.server = url
-            }
+    /// The selected environment: the one stored for the contract, else the first, also when the
+    /// stored name no longer exists.
+    var environment: ProjectEnvironment? {
+        if let name = stored?.environment, let match = environments.first(where: { $0.name == name }) {
+            return match
         }
+        return environments.first
     }
 
-    func variableValue(_ variable: OpenAPIServerVariable, of server: OpenAPIServer) -> String {
-        stored?.serverVariables[server.url]?[variable.name] ?? variable.defaultValue
+    /// Choosing an environment stores its name for the contract.
+    func selectEnvironment(_ name: String) {
+        update { $0.environment = name }
     }
 
-    func setVariableValue(_ value: String, _ variable: OpenAPIServerVariable, of server: OpenAPIServer) {
-        update { $0.serverVariables[server.url, default: [:]][variable.name] = value }
+    /// Whether Send is enabled: an environment is selected and its URL and port keep their rules.
+    var canSend: Bool {
+        environment?.isUsable ?? false
     }
 
-    /// The base URL of an operation's request.
-    func baseURL(_ operation: OpenAPIOperation) -> String {
-        switch serverChoice(operation) {
-        case .custom:
-            return stored?.customURL ?? ""
-        case .server(let url):
-            guard let server = usableServers(operation).first(where: { $0.url == url }) else { return "" }
-            var values: [String: String] = [:]
-            for variable in server.variables {
-                values[variable.name] = variableValue(variable, of: server)
-            }
-            return server.url(values: values)
-        }
+    /// `Project Settings…`: selects the window's Project Settings section.
+    func showProjectSettings() {
+        buffer?.window?.section = .settings
     }
 
     // MARK: Forms
@@ -333,13 +314,14 @@ final class OpenAPIContractModel {
         }
         let media = mediaType(operation)
         let body = media.map { bodyModel(operation, $0).text } ?? ""
-        return OpenAPIRequestInput(baseURL: baseURL(operation), method: operation.method, path: operation.path,
+        return OpenAPIRequestInput(baseURL: environment?.baseURL ?? "", method: operation.method, path: operation.path,
                                    parameters: parameters, credentials: credentials, mediaType: media?.name, body: body,
                                    headers: stored?.headers ?? [])
     }
 
     func send(_ operation: OpenAPIOperation) {
-        guard let contract, let request = OpenAPIRequestBuilder.request(for: requestInput(operation, contract: contract)) else { return }
+        guard let contract, canSend,
+              let request = OpenAPIRequestBuilder.request(for: requestInput(operation, contract: contract)) else { return }
         let rewrite: (@Sendable (URL) -> URL)? = LocalhostRewrite.deviceAddress(of: buffer?.window).map { address in
             { url in URL(string: LocalhostRewrite.forward(url.absoluteString, deviceAddress: address)) ?? url }
         }

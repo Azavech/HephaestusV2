@@ -83,10 +83,13 @@ public enum ProjectsUpdate: EngineMethod {
         public var commands: ProjectCommands?
         /// Clearable: null removes the project's chat defaults. Must be absent for claude.
         public var chatDefaults: Patch<ChatSettings> = .keep
+        /// Replaces all environments, in the given order; the MCP tool `update_project` never
+        /// sends it.
+        public var environments: [ProjectEnvironment]?
 
         public init(projectID: ProjectID, name: String? = nil, type: ProjectType? = nil, color: Patch<String> = .keep,
                     icon: Patch<String> = .keep, docsPath: String? = nil, commands: ProjectCommands? = nil,
-                    chatDefaults: Patch<ChatSettings> = .keep) {
+                    chatDefaults: Patch<ChatSettings> = .keep, environments: [ProjectEnvironment]? = nil) {
             self.projectID = projectID
             self.name = name
             self.type = type
@@ -95,6 +98,7 @@ public enum ProjectsUpdate: EngineMethod {
             self.docsPath = docsPath
             self.commands = commands
             self.chatDefaults = chatDefaults
+            self.environments = environments
         }
     }
     public typealias Result = ProjectDetail

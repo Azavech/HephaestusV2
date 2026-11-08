@@ -44,6 +44,7 @@ struct MCPSchemaValidatorTests {
         ("update_project", #"{"projectID":"HEPH","commands":"make"}"#, "commands: must be an object."),
         ("update_project", #"{"projectID":"HEPH","commands":{"deploy":"x"}}"#, "commands.deploy: unknown argument."),
         ("update_project", #"{"projectID":"HEPH","commands":{"build":7}}"#, "commands.build: must be a string."),
+        ("update_project", #"{"projectID":"HEPH","environments":[]}"#, "environments: unknown argument."),
         ("create_ticket", #"{"projectID":"HEPH","description":"d","attachments":"a"}"#, "attachments: must be an array."),
         ("create_ticket", #"{"projectID":"HEPH","description":"d","attachments":["a",2,"c"]}"#, "attachments[1]: must be a string."),
         ("create_ticket", #"{"projectID":"HEPH","description":"d","attachments":["a",null]}"#, "attachments[1]: must be a string."),

@@ -13,7 +13,7 @@ struct ProjectSettingsView: View {
     var body: some View {
         if let detail = workspace.details[projectID] {
             ScrollView {
-                ProjectSettingsForm(workspace: workspace, detail: detail)
+                ProjectSettingsForm(window: window, workspace: workspace, detail: detail)
                     // A new active project starts from its own stored values.
                     .id(projectID)
             }
@@ -28,6 +28,7 @@ struct ProjectSettingsView: View {
 
 /// The header and the fields of the section.
 private struct ProjectSettingsForm: View {
+    let window: WindowState
     let workspace: DeviceWorkspace
     let detail: ProjectDetail
 
@@ -103,6 +104,14 @@ private struct ProjectSettingsForm: View {
                 row("Chat defaults") {
                     chatDefaults
                 }
+                if project.type == .goService {
+                    // The list has no text baseline: the label aligns with its top.
+                    row("Environments", alignment: .top) {
+                        ProjectEnvironmentsPart(window: window, projectID: project.id, environments: project.environments) { environments in
+                            await update(ProjectsUpdate.Params(projectID: project.id, environments: environments))
+                        }
+                    }
+                }
                 if !detail.subprojects.isEmpty {
                     row("Sub projects") {
                         ForEach(detail.subprojects, id: \.id) { sub in
@@ -140,10 +149,12 @@ private struct ProjectSettingsForm: View {
         }
     }
 
-    private func row<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
-        GridRow {
+    private func row<Content: View>(_ label: String, alignment: VerticalAlignment? = nil,
+                                    @ViewBuilder content: () -> Content) -> some View {
+        GridRow(alignment: alignment) {
             Text(label)
                 .gridColumnAlignment(.trailing)
+                .padding(.top, alignment == .top ? 4 : 0)
             VStack(alignment: .leading, spacing: 4) {
                 content()
             }
@@ -229,6 +240,234 @@ private struct ProjectSettingsForm: View {
             return nil
         } catch {
             return errorMessage(error)
+        }
+    }
+}
+
+/// The Environments part of a Go service project: the list of its environments, then `+`, `Edit`
+/// and `−`. The sheets apply their change themselves; `−` applies the list without the selected
+/// environment at once (docs/projects.md › Environments).
+private struct ProjectEnvironmentsPart: View {
+    let window: WindowState
+    let projectID: String
+    let environments: [ProjectEnvironment]
+    /// Applies a new list; returns the engine's message, or nil on success.
+    let apply: ([ProjectEnvironment]) async -> String?
+
+    /// The selected environment's name.
+    @State private var selection: String?
+    @State private var failure: String?
+
+    /// The selected environment, while the list still has it.
+    private var selected: ProjectEnvironment? {
+        selection.flatMap { name in environments.first { $0.name == name } }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            List(selection: $selection) {
+                ForEach(Array(environments.enumerated()), id: \.offset) { _, environment in
+                    HStack(spacing: 8) {
+                        Text(environment.name)
+                        Text(environment.baseURL)
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .tag(environment.name)
+                }
+            }
+            .listStyle(.inset)
+            .frame(height: 112)
+            .contextMenu(forSelectionType: String.self) { _ in
+                EmptyView()
+            } primaryAction: { names in
+                // A double-click on a row edits its environment.
+                if let name = names.first {
+                    edit(name)
+                }
+            }
+            Divider()
+            HStack(spacing: 2) {
+                Button {
+                    window.sheet = .environment(projectID: projectID, name: nil)
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 22, height: 20)
+                }
+                Button("Edit") {
+                    if let selected {
+                        edit(selected.name)
+                    }
+                }
+                .disabled(selected == nil)
+                Button {
+                    remove()
+                } label: {
+                    Image(systemName: "minus")
+                        .frame(width: 22, height: 20)
+                }
+                .disabled(selected == nil)
+                Spacer()
+            }
+            .buttonStyle(.borderless)
+            .padding(.horizontal, 6)
+            .frame(height: 26)
+        }
+        .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Color(nsColor: .separatorColor)))
+        FieldMessage(text: failure)
+    }
+
+    private func edit(_ name: String) {
+        window.sheet = .environment(projectID: projectID, name: name)
+    }
+
+    /// `−`: the list without the selected environment applies at once.
+    private func remove() {
+        guard let selected, let list = ProjectRules.environments(environments, removing: selected.name) else { return }
+        Task {
+            failure = await apply(list)
+        }
+    }
+}
+
+/// The New Environment sheet, or the Edit Environment sheet of the environment named `name`:
+/// Name, URL and Port with their messages, then `Cancel` and `Create` or `Save`. The change applies
+/// at once with `projects.update` (docs/projects.md › Environments).
+struct EnvironmentSheet: View {
+    let window: WindowState
+    let workspace: DeviceWorkspace
+    let projectID: String
+    /// True for Edit Environment.
+    private let edits: Bool
+
+    /// The edited environment as the sheet opened; nil for New Environment. Kept while the sheet
+    /// is open, whatever happens to the list meanwhile.
+    @State private var original: ProjectEnvironment?
+    @State private var name: String
+    @State private var url: String
+    @State private var port: String
+    @State private var nameEdited = false
+    @State private var urlEdited = false
+    @State private var portEdited = false
+    @State private var working = false
+    @State private var failure: String?
+
+    init(window: WindowState, workspace: DeviceWorkspace, projectID: String, name: String?) {
+        self.window = window
+        self.workspace = workspace
+        self.projectID = projectID
+        let original = name.flatMap { name in
+            workspace.details[projectID]?.project.environments.first { $0.name == name }
+        }
+        edits = name != nil
+        _original = State(initialValue: original)
+        _name = State(initialValue: original?.name ?? "")
+        _url = State(initialValue: original?.url ?? "")
+        _port = State(initialValue: original?.port.map(String.init) ?? "")
+    }
+
+    /// The project's environments as they are now, which the change applies to.
+    private var current: [ProjectEnvironment] {
+        workspace.details[projectID]?.project.environments ?? []
+    }
+
+    private var nameMessage: String? {
+        ProjectRules.environmentNameMessage(name, otherNames: ProjectRules.otherEnvironmentNames(current, editing: original))
+    }
+
+    private var urlMessage: String? { ProjectRules.environmentURLMessage(url) }
+    private var portMessage: String? { ProjectRules.environmentPortMessage(port) }
+
+    private var canConfirm: Bool {
+        nameMessage == nil && urlMessage == nil && portMessage == nil && !working
+    }
+
+    var body: some View {
+        if edits && original == nil {
+            // The environment to edit was removed before the sheet opened: it closes at once.
+            Color.clear
+                .frame(width: 1, height: 1)
+                .onAppear {
+                    window.sheet = nil
+                }
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(edits ? "Edit Environment" : "New Environment")
+                .font(.headline)
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 10) {
+                GridRow {
+                    label("Name")
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField("Name", text: $name, prompt: Text(""))
+                            .labelsHidden()
+                            .onChange(of: name) { nameEdited = true }
+                        FieldMessage(text: nameEdited ? nameMessage : nil)
+                    }
+                }
+                GridRow {
+                    label("URL")
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField("URL", text: $url, prompt: Text(""))
+                            .labelsHidden()
+                            .font(.system(.body, design: .monospaced))
+                            .onChange(of: url) { urlEdited = true }
+                        FieldMessage(text: urlEdited ? urlMessage : nil)
+                    }
+                }
+                GridRow {
+                    label("Port")
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField("Port", text: $port, prompt: Text(""))
+                            .labelsHidden()
+                            .font(.system(.body, design: .monospaced))
+                            .frame(width: 100)
+                            .onChange(of: port) { portEdited = true }
+                        FieldMessage(text: portEdited ? portMessage : nil)
+                    }
+                }
+            }
+            FieldMessage(text: failure)
+            SheetButtonRow(defaultTitle: edits ? "Save" : "Create", defaultEnabled: canConfirm,
+                           cancel: { window.sheet = nil }, confirm: confirm) {
+                if working {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+        }
+        .padding(20)
+        .frame(width: 460)
+    }
+
+    private func label(_ text: String) -> some View {
+        Text(text)
+            .gridColumnAlignment(.trailing)
+    }
+
+    /// Create appends the environment; Save replaces the edited one at its place, keeping its
+    /// unknown keys, or appends it when no environment has its name any more (renamed or removed
+    /// meanwhile). The whole list applies at once; the sheet closes on success and shows the
+    /// engine's message otherwise.
+    private func confirm() {
+        guard canConfirm else { return }
+        let environment = ProjectRules.environment(name: name, url: url, port: port, editing: original)
+        let list = ProjectRules.environments(current, saving: environment, replacing: original?.name)
+        working = true
+        Task {
+            do {
+                _ = try await workspace.call(ProjectsUpdate.self, ProjectsUpdate.Params(projectID: projectID, environments: list))
+                window.sheet = nil
+            } catch {
+                failure = errorMessage(error)
+            }
+            working = false
         }
     }
 }

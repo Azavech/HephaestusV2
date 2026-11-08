@@ -1,6 +1,6 @@
 # OpenAPI contracts
 
-In the Code section ([Code editor](code-editor.md)), a YAML or JSON file that holds an OpenAPI 3.0 or 3.1 contract opens on the **Contract view**, with a switch to **Source**, the ordinary text editor. The Contract view is a native, read-only view of the buffer's current text, unsaved changes included: the API's info, its operations grouped by tag and its schemas, with `$ref` pointers resolved inside the document and across the project's files. Each operation has a request form that sends the request from the Mac that shows the window with the app's own HTTP client, and shows the response's status, duration, headers and body. The values typed in the forms are kept per project on that Mac. This document specifies the detection of contracts, the switch, the Contract view, `$ref` resolution, the request form, prefilled bodies, sending, the response, the stored values and remote windows.
+In the Code section ([Code editor](code-editor.md)), a YAML or JSON file that holds an OpenAPI 3.0 or 3.1 contract opens on the **Contract view**, with a switch to **Source**, the ordinary text editor. The Contract view is a native, read-only view of the buffer's current text, unsaved changes included: the API's info, its operations grouped by tag and its schemas, with `$ref` pointers resolved inside the document and across the project's files. Each operation has a request form that sends the request to the project environment chosen in the form ([Environments](projects.md#environments)), from the Mac that shows the window with the app's own HTTP client, and shows the response's status, duration, headers and body. The values typed in the forms are kept per project on that Mac. This document specifies the detection of contracts, the switch, the Contract view, `$ref` resolution, the request form, prefilled bodies, sending, the response, the stored values and remote windows.
 
 ## Detection
 
@@ -151,14 +151,17 @@ The 32-ref limit is Default chosen at design time.
 
 ## Request form
 
-The form of an operation has, in this order: Server, Parameters, Credentials, Body, Headers and the Send button. Parameters, Credentials and Body show only when the operation has some; Server, Headers and Send always show.
+The form of an operation has, in this order: Environment, Parameters, Credentials, Body, Headers and the Send button. Parameters, Credentials and Body show only when the operation has some; Environment, Headers and Send always show.
 
-### Server
+### Environment
 
-- A pop-up lists the servers of the operation (its `servers`, else its path item's `servers`, else the root `servers`) whose URL, with every variable replaced by its default, is an absolute `http` or `https` URL; each item shows the server's URL as written in the contract (for example `https://{region}.example.com/v1`). The last item is `Custom URL`.
-- The pop-up starts on the first server, or on `Custom URL` when no server qualifies.
-- Under it, the selected server's description, then one row per variable of the selected server: its name, then a pop-up of its `enum` values when it has some, else a text field. A variable starts on its `default`.
-- `Custom URL` shows a text field `URL` under the pop-up.
+- A pop-up lists the environments of the contract's project in their order ([Environments](projects.md#environments)), each item showing the environment's name and its base URL as `<name> · <base URL>`, for example `local · http://127.0.0.1:8080`. It has no other item: the contract's `servers` do not choose the URL of the requests.
+- The pop-up starts on the environment stored for the contract ([Stored values](#stored-values)), else on the first environment. Choosing an environment stores its name for the contract.
+- The pop-up follows the project's environments live: an environment added, edited or removed in Project Settings, on any device, shows at once. When the selected environment is renamed or removed, the pop-up shows the first environment.
+- A project whose type is not `goService` has no environment here, even when its `project.yml` still lists environments from an earlier type ([Environments](projects.md#environments)).
+- When the project has no environment, which is always the case for a project whose type is not `goService`, the pop-up is empty and disabled, and under it the form shows `Add an environment in Project Settings.` with a `Project Settings…` button that selects the window's [Project Settings](projects.md#project-settings) section.
+
+The item text `<name> · <base URL>` is a design-time choice. Default chosen at design time.
 
 ### Parameters
 
@@ -186,7 +189,7 @@ Rows of a name field (placeholder `Name`) and a value field (placeholder `Value`
 
 ### Send
 
-`Send` sends the request ([Sending a request](#sending-a-request)). It is disabled when the base URL is not an absolute `http` or `https` URL (for example an empty `Custom URL`). While the request runs, a small spinner shows next to the button and the button becomes `Cancel`, which stops the request; the response area then keeps what it showed before.
+`Send` sends the request ([Sending a request](#sending-a-request)). It is disabled when the project has no environment, and when the URL or the port of the selected environment breaks the rules of [Project environment](data-model.md#project-environment), which happens only for a value written by hand in `project.yml` ([Write rules](data-model.md#write-rules)). While the request runs, a small spinner shows next to the button and the button becomes `Cancel`, which stops the request; the response area then keeps what it showed before.
 
 The layout of the form and the 200 pt height are design-time choices. Default chosen at design time.
 
@@ -248,7 +251,7 @@ The sample values are design-time choices. Default chosen at design time.
 
 ## Sending a request
 
-1. **Base URL.** The selected server's URL with each `{variable}` replaced by its value, or the `Custom URL` text, trimmed. A trailing `/` is removed.
+1. **Base URL.** The base URL of the selected environment: its URL with the port replaced by its port when it has one, without a trailing `/` ([Environments](projects.md#environments)).
 2. **Path.** The operation's path with each `{name}` replaced by the value of the path parameter `name`, percent-encoded: every byte outside the RFC 3986 unreserved characters (`A`–`Z`, `a`–`z`, `0`–`9`, `-`, `.`, `_`, `~`) is encoded. The URL is the base URL followed by the path.
 3. **Query.** The query parameters with a value that is not empty, in the form's order, then the API keys sent in the query, as `name=value` pairs percent-encoded the same way and joined with `&`, appended after `?` (after `&` when the base URL already has a query).
 4. **Method.** The operation's method in uppercase.
@@ -280,9 +283,9 @@ The 300 pt height is Default chosen at design time.
 
 The values typed in the request forms are kept per project on the Mac that shows the window, in `<data dir>/openapi-requests.json` of that Mac's own data directory ([Architecture](architecture.md#device-data-directory)). The file has mode 0600, like `secrets.json`, because it holds credentials. It is read when a Contract view first needs it, and written atomically ([Data model](data-model.md#atomic-writes)) 500 ms after the last change. A missing, unreadable or invalid file counts as empty; an invalid file is replaced at the next write.
 
-| Kept per contract file                                                                                                                             | Kept per operation (`<METHOD> <path>`)                                                                |
-| -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| The selected server or `Custom URL`, the custom URL, the values of the variables of each server, the credentials of each scheme, the added headers | The values of the parameters, the selected media type and the body of each media type that was edited |
+| Kept per contract file                                                                  | Kept per operation (`<METHOD> <path>`)                                                                |
+| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| The name of the selected environment, the credentials of each scheme, the added headers | The values of the parameters, the selected media type and the body of each media type that was edited |
 
 ```json
 {
@@ -291,10 +294,7 @@ The values typed in the request forms are kept per project on the Mac that shows
       "deviceID": "6F1C2D3E-4A5B-4C6D-8E7F-901A2B3C4D5E",
       "projectID": "DEMO",
       "path": "api/openapi.yaml",
-      "server": "https://{region}.example.com/v1",
-      "usesCustomURL": false,
-      "customURL": "",
-      "serverVariables": { "https://{region}.example.com/v1": { "region": "eu" } },
+      "environment": "local",
       "credentials": {
         "bearerAuth": { "token": "example-token" },
         "basicAuth": { "username": "user", "password": "example-password" },
@@ -313,14 +313,16 @@ The values typed in the request forms are kept per project on the Mac that shows
 ```
 
 - A contract is identified by the device id of the window, the project id and the file's project path, so a window that shows a remote device keeps its values on this Mac under the remote device's id. A renamed or moved contract starts with empty values.
-- Parameters are keyed `<in>:<name>`; credentials by the scheme's name in `components.securitySchemes`; server variables by the server's URL as written.
+- Parameters are keyed `<in>:<name>`; credentials by the scheme's name in `components.securitySchemes`.
+- The environment is kept by its name, under `environment`, which is absent until the user chooses an environment in the pop-up and changes only with that choice. A stored name that no environment of the project has, after a rename or a removal, selects the first environment.
+- The keys `server`, `usesCustomURL`, `customURL` and `serverVariables` of a file written by an earlier version are ignored and left out at the next write.
 - The mode of the tab, the selected row and the responses are not stored.
 
 The file name and its format are design-time choices. Default chosen at design time.
 
 ## Remote windows
 
-In a window that shows a remote device ([Remote devices](remote.md#remote-windows)), the contract and the files its refs name are read through the engine of the main device, like every file of the Code section; the requests run on the Mac that shows the window with the [localhost rewrite](remote.md#localhost-rewrite), so a request to `localhost` reaches a server running on the main device; the values typed in the forms are stored on the Mac that shows the window.
+In a window that shows a remote device ([Remote devices](remote.md#remote-windows)), the contract and the files its refs name are read through the engine of the main device, like every file of the Code section, and the environments are those of the project on the main device; the requests still run on the Mac that shows the window, with the [localhost rewrite](remote.md#localhost-rewrite), so a request to an environment whose host is `localhost`, `127.0.0.1` or `::1` reaches a server running on the main device; the values typed in the forms are stored on the Mac that shows the window.
 
 ## Not included
 
@@ -329,3 +331,4 @@ OAuth2, OpenID Connect and mutual TLS credentials, multipart and file bodies, ed
 ## Requirements covered
 
 - R142: In the Code section, an OpenAPI 3.0 or 3.1 contract opens on a read-only Contract view, with a switch to its source, that shows its info, its operations by tag and its schemas with their `$ref` pointers resolved across the project's files, and sends each operation's request from a form whose values are kept per project on the Mac that shows the window, credentials included.
+- R157: A Go service project declares its environments in Project Settings, and the Contract view sends requests to the environment chosen in its Environment pop-up.

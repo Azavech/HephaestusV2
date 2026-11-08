@@ -26,7 +26,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "get_project",
             description: #"""
-            Get a project: its .hephaestus/project.yml settings (name, type, color, icon, docs folder, build/run/test commands, sub projects, web tabs, enabled skills, chat defaults), root folder, parent, sub projects and git remote URL.
+            Get a project: its .hephaestus/project.yml settings (name, type, color, icon, docs folder, build/run/test commands, sub projects, web tabs, enabled skills, chat defaults, environments), root folder, parent, sub projects and git remote URL.
             """#,
             inputSchema: schema(#"""
             {

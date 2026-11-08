@@ -29,10 +29,9 @@ public struct OpenAPIContract: Sendable {
         let root = OpenAPINode(value: resolver.files[path] ?? .null, file: path)
         let builder = OpenAPIContractBuilder(resolver: resolver)
         info = builder.info(root.value["info"].map { OpenAPINode(value: $0, file: path) })
-        let rootServers = builder.servers(root.value["servers"])
-        servers = rootServers
+        servers = builder.servers(root.value["servers"])
         securitySchemes = builder.securitySchemes(root)
-        let operations = builder.operations(root, rootServers: rootServers)
+        let operations = builder.operations(root)
         self.operations = operations
         groups = builder.groups(root.value["tags"], operations: operations)
         schemas = builder.schemas(root)
@@ -75,26 +74,13 @@ public struct OpenAPIServerVariable: Sendable, Equatable {
     public var description: String?
 }
 
+/// A server of the root `servers`, shown in the Info detail (docs/openapi.md › Info detail); the
+/// requests go to the project's environments instead (docs/openapi.md › Environment).
 public struct OpenAPIServer: Sendable, Equatable {
     /// The URL as written, with its `{variables}`.
     public var url: String
     public var description: String?
     public var variables: [OpenAPIServerVariable]
-
-    /// The URL with each variable replaced by its value, or by its default.
-    public func url(values: [String: String]) -> String {
-        var result = url
-        for variable in variables {
-            result = result.replacingOccurrences(of: "{\(variable.name)}", with: values[variable.name] ?? variable.defaultValue)
-        }
-        return result
-    }
-
-    /// True when the URL with the defaults is an absolute `http` or `https` URL (docs/openapi.md ›
-    /// Server).
-    public var isUsable: Bool {
-        OpenAPIRequestBuilder.isUsableBaseURL(url(values: [:]))
-    }
 }
 
 public enum OpenAPIParameterLocation: String, Sendable, CaseIterable {
@@ -149,8 +135,6 @@ public struct OpenAPIOperation: Sendable, Identifiable {
     public var unresolvedParameters: [String]
     public var requestBody: OpenAPIRequestBody?
     public var responses: [OpenAPIResponse]
-    /// The operation's servers, else its path item's, else the root's.
-    public var servers: [OpenAPIServer]
     /// The scheme names of each security requirement; nil when neither the operation nor the root
     /// has `security`.
     public var security: [[String]]?
@@ -248,13 +232,12 @@ struct OpenAPIContractBuilder {
         }
     }
 
-    func operations(_ root: OpenAPINode, rootServers: [OpenAPIServer]) -> [OpenAPIOperation] {
+    func operations(_ root: OpenAPINode) -> [OpenAPIOperation] {
         let rootSecurity = security(root.value["security"])
         var operations: [OpenAPIOperation] = []
         for member in root.value["paths"]?.members ?? [] {
             guard let item = resolved(OpenAPINode(value: member.value, file: root.file)).node else { continue }
             let pathParameters = item.value["parameters"]?.arrayValue ?? []
-            let pathServers = servers(item.value["servers"])
             for method in OpenAPIContract.methods {
                 guard let operationValue = item.value[method], operationValue.members != nil else { continue }
                 let operation = OpenAPINode(value: operationValue, file: item.file)
@@ -268,7 +251,6 @@ struct OpenAPIContractBuilder {
                     }
                 }
                 unresolved += ownUnresolved
-                let operationServers = servers(operationValue["servers"])
                 operations.append(OpenAPIOperation(
                     method: method,
                     path: member.key,
@@ -279,7 +261,6 @@ struct OpenAPIContractBuilder {
                     unresolvedParameters: unresolved,
                     requestBody: requestBody(operationValue["requestBody"], file: operation.file),
                     responses: responses(operationValue["responses"], file: operation.file),
-                    servers: !operationServers.isEmpty ? operationServers : !pathServers.isEmpty ? pathServers : rootServers,
                     security: operationValue["security"] != nil ? security(operationValue["security"]) : rootSecurity))
             }
         }
