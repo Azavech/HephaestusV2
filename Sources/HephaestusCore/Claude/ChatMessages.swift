@@ -116,10 +116,29 @@ extension Engine {
 
     // MARK: Composed messages
 
-    /// docs/chats.md › Feedback message.
+    /// The call of an internal skill: `/hephaestus-skills:<name>` (docs/skills.md › Calls).
+    static func skillCall(_ name: String) -> String {
+        "/\(SkillsPluginGenerator.pluginName):\(name)"
+    }
+
+    /// The first message of a chat created by `chats.implementTicket`:
+    /// `/hephaestus-skills:implement-ticket <ticket id>`, followed by the bundle id for an
+    /// orchestrated ticket chat (docs/chats.md › Implement and feedback chats).
+    static func implementTicketMessage(ticketID: TicketID, bundleID: BundleID?) -> String {
+        ([skillCall("implement-ticket"), ticketID] + [bundleID].compactMap { $0 }).joined(separator: " ")
+    }
+
+    /// The first message of a chat created by `chats.implementBundle`:
+    /// `/hephaestus-skills:implement-bundle <bundle id>`.
+    static func implementBundleMessage(bundleID: BundleID) -> String {
+        "\(skillCall("implement-bundle")) \(bundleID)"
+    }
+
+    /// docs/chats.md › Feedback message: the line `/hephaestus-skills:feedback`, then the comment
+    /// and the context.
     static func feedbackMessage(comment: String, context: FeedbackContext, projectName: String?, screenshotPath: String) -> String {
         let trimmed = comment.trimmingCharacters(in: .whitespacesAndNewlines)
-        var lines = [trimmed.isEmpty ? "(no comment)" : ModelRules.normalizedLineBreaks(trimmed), "", "Feedback context:"]
+        var lines = [skillCall("feedback"), trimmed.isEmpty ? "(no comment)" : ModelRules.normalizedLineBreaks(trimmed), "", "Feedback context:"]
         lines.append("- App: HephaestusV2 v\(context.appVersion)(\(context.build))")
         let device = context.deviceName == context.mainDeviceName
             ? context.deviceName : "\(context.deviceName), connected to \(context.mainDeviceName)"

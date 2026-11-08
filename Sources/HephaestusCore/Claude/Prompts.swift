@@ -5,9 +5,6 @@ enum Prompts {
     /// The resource names: `Sources/HephaestusCore/Resources/prompts/<name>.md`.
     enum Name: String, CaseIterable, Sendable {
         case common, project, ticket, bundle, feedback, ci
-        case implementTicket = "implement-ticket"
-        case implementBundleTicket = "implement-bundle-ticket"
-        case implementBundle = "implement-bundle"
         case namingTicket = "naming-ticket"
         case namingBundle = "naming-bundle"
         case namingChat = "naming-chat"

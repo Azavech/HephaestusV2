@@ -1417,7 +1417,7 @@ The workflow of the capture `stream-workflow.jsonl` ([Fixture replays](chats.md#
 
 ## Skill file
 
-The skills library is a folder with one folder per skill: the setting `skillsLibraryPath`, else `<data dir>/Skills`. It is separate from `~/.claude/skills`. A skill's folder is named after the skill and holds `SKILL.md` and any other files and folders the skill uses. Library operations, per-project enablement and the plugin generated for `--plugin-dir` are defined in [Skills](skills.md).
+The skills library is a folder with one folder per skill: the setting `skillsLibraryPath`, else `<data dir>/Skills`. It is separate from `~/.claude/skills`. A skill's folder is named after the skill and holds `SKILL.md` and any other files and folders the skill uses. Library operations, per-project enablement and the plugin generated for `--plugin-dir` are defined in [Skills](skills.md). The hidden file `.internal-skills.json` of the library folder records the SHA-256 of the default `SKILL.md` the engine last wrote for each [internal skill](skills.md#internal-skills), as a JSON object of lowercase hexadecimal digests by skill name, written atomically ([Atomic writes](#atomic-writes)); the library skips it.
 
 ### SKILL.md format
 

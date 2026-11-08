@@ -110,8 +110,8 @@ extension Engine {
         skillsLibrary.summaries(in: skillsLibraryFolder, log: log)
     }
 
-    /// Startup step 4: creates the library folder when it is missing and starts watching it
-    /// (docs/skills.md › Library).
+    /// Startup step 4: creates the library folder when it is missing, writes the missing internal
+    /// skills and starts watching it (docs/skills.md › Library, › Internal skills).
     func startSkillsLibraryWatching() async {
         let folder = skillsLibraryFolder
         do {
@@ -119,13 +119,16 @@ extension Engine {
         } catch {
             log.error(.skills, "the skills library \(folder.path) cannot be created: \(error.localizedDescription)")
         }
+        ensureInternalSkills()
         watchSkillsLibrary(folder)
     }
 
     /// `settings.update` changed `skillsLibraryPath`: the engine uses the new folder, already
-    /// created by the handler; skills of the previous folder are not moved (docs/skills.md ›
-    /// Settings). The handler emits `skills.changed` afterwards.
+    /// created by the handler, and writes the missing internal skills there; skills of the
+    /// previous folder are not moved (docs/skills.md › Settings). The handler emits
+    /// `skills.changed` afterwards.
     func skillsLibraryFolderDidChange() async {
+        ensureInternalSkills()
         watchSkillsLibrary(skillsLibraryFolder)
     }
 
@@ -199,6 +202,7 @@ extension Engine {
     /// Regenerates the skills plugin of a project after its `skills` list changed
     /// (docs/skills.md › Generation); a failure is logged, the next chat launch tries again.
     func regenerateSkillsPlugin(_ project: Project) {
+        ensureInternalSkills()
         do {
             _ = try skillsPlugins.preparePlugin(projectID: project.id, skills: project.skills, library: skillsLibraryFolder,
                                                 dataDirectory: dataDirectory)

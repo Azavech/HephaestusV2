@@ -45,3 +45,11 @@ extension Engine {
         })
     }
 }
+
+extension Array where Element == SkillSummary {
+    /// The skills other than the internal skills, which the engine writes in every library
+    /// (docs/skills.md › Internal skills).
+    var userSkills: [SkillSummary] {
+        filter { !InternalSkills.isInternal($0.name) }
+    }
+}

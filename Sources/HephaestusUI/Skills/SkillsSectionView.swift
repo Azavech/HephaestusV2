@@ -71,9 +71,10 @@ struct SkillsSectionView: View {
         }
     }
 
-    /// `Library empty`: the library has no skill and no skill is selected.
+    /// `Library empty`: the library has no skill that the list shows and no skill is selected.
     private var showsLibraryEmptyState: Bool {
-        listError == nil && (listLoaded || workspace.hasSnapshot) && workspace.skills.isEmpty && selectedName == nil
+        listError == nil && (listLoaded || workspace.hasSnapshot)
+            && SkillsVisibility.listed(workspace.skills, projectID: projectID).isEmpty && selectedName == nil
     }
 
     // MARK: Editor column
@@ -81,7 +82,11 @@ struct SkillsSectionView: View {
     @ViewBuilder
     private var editorColumn: some View {
         if let name = selectedName {
-            if let editor = viewState?.skillEditor, editor.skillName == name {
+            if !SkillsVisibility.isListed(name, projectID: projectID) {
+                // An internal skill is shown only in the HephaestusV2 project (docs/skills.md ›
+                // Internal skills).
+                NotFoundView(kind: "Skill", id: name)
+            } else if let editor = viewState?.skillEditor, editor.skillName == name {
                 if editor.isMissing {
                     NotFoundView(kind: "Skill", id: name)
                 } else if editor.hasLoaded {
@@ -266,9 +271,10 @@ private struct SkillLibraryList: View {
         workspace.details[projectID]?.project.skills ?? []
     }
 
-    /// The skills whose name or description contains the filter, case-insensitively, by name.
+    /// The skills the list shows whose name or description contains the filter,
+    /// case-insensitively, by name.
     private var filteredSkills: [SkillSummary] {
-        let skills = workspace.skills.sorted { $0.name < $1.name }
+        let skills = SkillsVisibility.listed(workspace.skills, projectID: projectID).sorted { $0.name < $1.name }
         guard !filter.isEmpty else { return skills }
         return skills.filter {
             $0.name.range(of: filter, options: .caseInsensitive) != nil
@@ -317,7 +323,7 @@ private struct SkillLibraryList: View {
                         .selectionDisabled()
                 }
                 ForEach(skills, id: \.name) { skill in
-                    SkillRow(skill: skill, isEnabled: enabled.contains(skill.name))
+                    SkillRow(skill: skill, isEnabled: enabled.contains(skill.name) || InternalSkills.isInternal(skill.name))
                         .tag(skill.name)
                 }
                 if !missing.isEmpty {
@@ -332,7 +338,8 @@ private struct SkillLibraryList: View {
             .listStyle(.inset)
             .onKeyPress(keys: [.delete]) { press in
                 // ⌫ or ⌘⌫ with a list row selected (docs/skills.md › Keyboard).
-                guard press.modifiers.isEmpty || press.modifiers == .command, let name = selectedName else {
+                guard press.modifiers.isEmpty || press.modifiers == .command, let name = selectedName,
+                      !InternalSkills.isInternal(name) else {
                     return .ignored
                 }
                 trash(name)
@@ -351,7 +358,8 @@ private struct SkillLibraryList: View {
         })
     }
 
-    /// `+` (New Skill…) and `−` (Move to Trash…, disabled without a selection).
+    /// `+` (New Skill…) and `−` (Move to Trash…, disabled without a selection and for an internal
+    /// skill).
     private var bottomBar: some View {
         HStack(spacing: 2) {
             Button {
@@ -372,7 +380,7 @@ private struct SkillLibraryList: View {
             }
             .help("Move to Trash…")
             .accessibilityLabel("Move to Trash…")
-            .disabled(selectedName == nil)
+            .disabled(selectedName.map(InternalSkills.isInternal) ?? true)
             Spacer()
         }
         .buttonStyle(.borderless)
@@ -492,5 +500,19 @@ private struct SkillsLibraryEmptyView: View {
         }
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// The internal skills are listed and edited only in the Skills section of the HephaestusV2
+/// project, the device's project `HEPH` (docs/skills.md › Internal skills).
+enum SkillsVisibility {
+    /// True when the Skills section of `projectID` lists the skill `name`.
+    static func isListed(_ name: String, projectID: String) -> Bool {
+        projectID == HephaestusRepository.identifier || !InternalSkills.isInternal(name)
+    }
+
+    /// The skills of the library that the Skills section of `projectID` lists.
+    static func listed(_ skills: [SkillSummary], projectID: String) -> [SkillSummary] {
+        skills.filter { isListed($0.name, projectID: projectID) }
     }
 }

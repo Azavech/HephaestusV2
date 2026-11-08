@@ -533,8 +533,8 @@ struct ChatInteractionTests {
                 Issue.record("no user item")
                 return
             }
-            #expect(user.text.hasPrefix("Implement ticket DEMO-1: Fix the build\n\nFollow \"Implementing a ticket\""))
-            #expect(user.text.contains(#"of the form "<type>: <summary> (DEMO-1)""#))
+            // The first message calls the internal skill implement-ticket (docs/chats.md › Implement and feedback chats).
+            #expect(user.text == "/hephaestus-skills:implement-ticket DEMO-1")
             // Called by Claude, the first message's sender is Claude.
             let byClaude = try await bed.engine.call(ChatsImplementTicket.self, .init(ticketID: "DEMO-1"), actor: .claude(chatID: chat.id.uuidString))
             #expect(await bed.waitForState(byClaude.id, .idle))
@@ -561,7 +561,7 @@ struct ChatInteractionTests {
             let none = try await bed.createChat(message: "Plan")
             let nonePrompt = try await systemPrompt(none, 0)
             #expect(nonePrompt.contains(" of the project. The project's type is None.\n\nThese rules apply in every chat. "))
-            #expect(nonePrompt.contains("\n\n# When the project is a Go service\n\nWhen the project's type is Go service, these rules apply too."))
+            #expect(nonePrompt.contains("\n\n# Environments of a Go service\n\nWhen the project's type is Go service, its environments"))
 
             _ = try await bed.connection.call(ProjectsUpdate.self, .init(projectID: "DEMO", type: .goService))
             let go = try await bed.createChat(message: "Plan")
@@ -569,7 +569,7 @@ struct ChatInteractionTests {
             #expect(goPrompt.contains(" of the project. The project's type is Go service.\n\nThe project's environments, where the Go service runs; "
                 + "the Kubernetes and Argo CD tools take an environment's name:\n- none: the user adds them in Project Settings\n\n"
                 + "These rules apply in every chat. "))
-            #expect(goPrompt.contains("\n\n# When the project is a Go service\n\nWhen the project's type is Go service, these rules apply too."))
+            #expect(goPrompt.contains("\n\n# Environments of a Go service\n\nWhen the project's type is Go service, its environments"))
             #expect(!goPrompt.contains("{{"))
         }
     }
@@ -661,7 +661,8 @@ struct ChatInteractionTests {
             let process = try #require(await bed.launcher.chatProcess())
             let prompt = try #require(process.request.arguments.firstIndex(of: "--append-system-prompt").map { process.request.arguments[$0 + 1] })
             #expect(prompt.contains("<bundle>\nID: DEMO-B1\nTitle: Polish\nTickets: DEMO-1, DEMO-2\n\nTicket 1 of 2:\nID: DEMO-1\n"))
-            #expect(await process.line { $0.contains("Implement bundle DEMO-B1: Polish") }?.contains("Its tickets, in this order: DEMO-1, DEMO-2.") == true)
+            // The first message calls the internal skill implement-bundle (docs/chats.md › Implement and feedback chats).
+            #expect(await process.line { $0.hasPrefix(#"{"type":"user""#) }?.contains(#"{"type":"text","text":"/hephaestus-skills:implement-bundle DEMO-B1"}"#) == true)
 
             // A review ticket counts as a ticket left to implement.
             try await bed.writeTicket(Ticket(id: "DEMO-3", title: "Three", status: .review, created: ISODate.now(), description: "Problem"))
@@ -752,7 +753,7 @@ struct ChatInteractionTests {
                 if case .user(let user) = item { return user }
                 return nil
             }.first
-            #expect(first?.text.hasPrefix("Implement ticket DEMO-1: One\n\nThe chat of bundle DEMO-B1 started this chat") == true)
+            #expect(first?.text == "/hephaestus-skills:implement-ticket DEMO-1 DEMO-B1")
             #expect(first?.sender == "Claude")
             // A ticket the bundle does not list, or a call from another chat, is not orchestrated.
             #expect(try await bed.engine.call(ChatsImplementTicket.self, .init(ticketID: "DEMO-2"), actor: claude).orchestratorChatID == nil)
@@ -829,7 +830,10 @@ struct ChatInteractionTests {
             let screenshot = try #require(user.attachments.first)
             #expect(screenshot.name == "screenshot.png")
             let path = bed.folder.attachmentFile(path: screenshot.path).path
+            // The image block comes before the text, which calls the internal skill feedback.
+            #expect(line.range(of: #"{"type":"image""#)!.lowerBound < line.range(of: #"{"type":"text""#)!.lowerBound)
             #expect(user.text == """
+            /hephaestus-skills:feedback
             The lock icon disappears.
 
             Feedback context:
@@ -842,7 +846,7 @@ struct ChatInteractionTests {
             """)
             let prompt = try #require(process.request.arguments.firstIndex(of: "--append-system-prompt").map { process.request.arguments[$0 + 1] })
             #expect(prompt.contains("<feedback>\n- App: HephaestusV2 v0.4.0(57)\n"))
-            #expect(prompt.contains("attachments [\"\(path)\"]"))
+            #expect(prompt.contains("includes a screenshot of that window, saved at \(path)."))
         }
     }
 

@@ -2355,7 +2355,7 @@ Input schema:
 ### list_skills
 
 - **Engine call:** skills.list with `{}`.
-- **Result:** the `[SkillSummary]` array `{name, description}`, sorted by name ([Engine API](engine-api.md#skillslist)).
+- **Result:** the `[SkillSummary]` array `{name, description}`, sorted by name ([Engine API](engine-api.md#skillslist)). It lists the [internal skills](skills.md#internal-skills) only for a chat of the HephaestusV2 project; from a chat of another project, the external token or a comment answer, it leaves them out.
 - **Errors:** only argument validation errors.
 
 Description:
@@ -2378,7 +2378,7 @@ Input schema:
 
 - **Engine call:** skills.get with `name`.
 - **Result:** the `Skill` ([Engine API](engine-api.md#skill)).
-- **Errors:** Those of skills.get: no skill with this name (`notFound`).
+- **Errors:** Those of skills.get: no skill with this name (`notFound`), and an [internal skill](skills.md#internal-skills) asked from another chat than a chat of the HephaestusV2 project (`notFound`).
 
 Description:
 
@@ -2443,7 +2443,7 @@ Input schema:
 - **Engine call:** skills.update with `name` and the given `newName`, `description` and `body`.
 - A call that changes nothing writes nothing and returns the skill.
 - **Result:** the updated `Skill`.
-- **Errors:** Those of skills.update ([Engine API](engine-api.md#skillsupdate)): no such skill (`notFound`), a new name or description that breaks the rules of [Skills](skills.md#skill-names) (`invalid`), new name already used (`conflict`).
+- **Errors:** Those of skills.update ([Engine API](engine-api.md#skillsupdate)): no such skill (`notFound`), a new name or description that breaks the rules of [Skills](skills.md#skill-names) (`invalid`), new name already used (`conflict`). An [internal skill](skills.md#internal-skills) is changed only from a chat of the HephaestusV2 project, and never renamed: from another chat it is not found (`notFound`), and a new name fails with `forbidden`.
 
 Description:
 
@@ -2483,7 +2483,7 @@ Input schema:
 
 - **Engine call:** skills.delete with `name`.
 - **Result:** `{}`.
-- **Errors:** Those of skills.delete ([Engine API](engine-api.md#skillsdelete)): no such skill (`notFound`).
+- **Errors:** Those of skills.delete ([Engine API](engine-api.md#skillsdelete)): no such skill (`notFound`); an [internal skill](skills.md#internal-skills) fails with `forbidden` from a chat of the HephaestusV2 project and with `notFound` from any other chat.
 
 Description:
 
@@ -2511,7 +2511,7 @@ Input schema:
 
 - **Engine call:** skills.setEnabled with `projectID`, `name` and `enabled`.
 - **Result:** the updated `ProjectDetail`.
-- **Errors:** Those of skills.setEnabled ([Engine API](engine-api.md#skillssetenabled)): unknown project, or no such skill when `enabled` is true (`notFound`).
+- **Errors:** Those of skills.setEnabled ([Engine API](engine-api.md#skillssetenabled)): unknown project, or no such skill when `enabled` is true (`notFound`); `enabled` false for an [internal skill](skills.md#internal-skills), which is always enabled (`forbidden`). `enabled` true for an internal skill changes nothing.
 
 Description:
 

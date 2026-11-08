@@ -116,7 +116,7 @@ public enum EngineMethods {
         WebTabsList.self, WebTabsOpen.self, WebTabsUpdate.self, WebTabsClose.self, WebTabsMove.self,
         SearchQuery.self,
         SkillsList.self, SkillsGet.self, SkillsCreate.self, SkillsUpdate.self, SkillsDelete.self,
-        SkillsReadFile.self, SkillsWriteFile.self, SkillsDeleteFile.self, SkillsSetEnabled.self,
+        SkillsReadFile.self, SkillsWriteFile.self, SkillsDeleteFile.self, SkillsSetEnabled.self, SkillsRestoreDefault.self,
         MemoriesList.self, MemoriesGet.self, MemoriesCreate.self, MemoriesUpdate.self, MemoriesDelete.self,
         MemoriesReadIndex.self, MemoriesWriteIndex.self,
         BuildsListRuns.self, BuildsGetRun.self, BuildsRerunRun.self, BuildsCancelRun.self, BuildsListReleases.self,

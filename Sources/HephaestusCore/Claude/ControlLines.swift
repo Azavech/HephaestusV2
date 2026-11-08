@@ -70,15 +70,17 @@ enum ControlLines {
         var base64: String
     }
 
-    /// A user message: the `text` block, left out when the text is empty, then the `image` blocks;
-    /// `uuid` is the id under which the CLI reports the message (docs/chats.md › Turn tracking).
+    /// A user message: the `image` blocks, then the `text` block, left out when the text is empty.
+    /// The CLI runs a message as a skill call only when its last block is a text (docs/chats.md ›
+    /// User messages). `uuid` is the id under which the CLI reports the message (docs/chats.md ›
+    /// Turn tracking).
     static func userMessage(text: String, images: [Image], uuid: String) -> Data {
         var blocks: [String] = []
-        if !text.isEmpty {
-            blocks.append(#"{"type":"text","text":\#(string(text))}"#)
-        }
         for image in images {
             blocks.append(#"{"type":"image","source":{"type":"base64","media_type":\#(string(image.mediaType)),"data":\#(string(image.base64))}}"#)
+        }
+        if !text.isEmpty {
+            blocks.append(#"{"type":"text","text":\#(string(text))}"#)
         }
         return line(#"{"type":"user","message":{"role":"user","content":[\#(blocks.joined(separator: ","))]},"uuid":\#(string(uuid))}"#)
     }

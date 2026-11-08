@@ -15,7 +15,7 @@ let package = Package(
         .target(
             name: "HephaestusCore",
             dependencies: ["HephaestusText", .product(name: "Yams", package: "Yams")],
-            resources: [.copy("Resources/prompts")],
+            resources: [.copy("Resources/prompts"), .copy("Resources/skills")],
             swiftSettings: swiftSettings
         ),
         .target(

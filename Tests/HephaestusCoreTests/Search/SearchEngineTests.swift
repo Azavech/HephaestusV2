@@ -40,7 +40,9 @@ struct SearchEngineTests {
             #expect(results == [SearchResult(id: "skill:release-notes", kind: .skills, title: "release-notes",
                                              subtitle: "Writes release notes from git log.", snippet: "Writes release notes from git log.",
                                              target: .skill(name: "release-notes"))])
-            #expect(try await connection.call(SearchQuery.self, .init(query: "swift")).map(\.id) == ["skill:swift-testing"])
+            // The internal skills are skills of the library too (docs/skills.md › Internal skills).
+            #expect(try await connection.call(SearchQuery.self, .init(query: "swift")).map(\.id).filter { !$0.hasPrefix("skill:implement-") }
+                == ["skill:swift-testing"])
             let claude = try await engine.call(SearchQuery.self, .init(query: "swift-testing", scopes: [.skills, .tickets]),
                                                actor: .claude(chatID: "external"))
             #expect(claude.map(\.id) == ["skill:swift-testing"])
@@ -127,7 +129,8 @@ struct LoadedProjectTests {
             let updated = try #require(await firstEvent(named: ProjectUpdatedEvent.name, on: events))
             #expect(updated.origin == .user(deviceID: engine.deviceID))
             let links = try FileManager.default.contentsOfDirectory(atPath: plugin.appendingPathComponent("hephaestus-skills/skills").path)
-            #expect(links.sorted() == ["kestrel-skill", "release-notes"])
+            // The plugin also links the internal skills (docs/skills.md › Generation).
+            #expect(links.sorted() == (InternalSkills.names + ["kestrel-skill", "release-notes"]).sorted())
 
             let again = try await connection.call(SkillsSetEnabled.self, .init(projectID: "HEPH", name: "kestrel-skill", enabled: true))
             #expect(again.project.skills == enabled.project.skills)
@@ -141,7 +144,8 @@ struct LoadedProjectTests {
             _ = try await connection.call(SkillsSetEnabled.self, .init(projectID: "HEPH", name: "kestrel-skill", enabled: false))
             let disabled = try await connection.call(SkillsSetEnabled.self, .init(projectID: "HEPH", name: "missing", enabled: false))
             #expect(disabled.project.skills == [])
-            #expect(!FileManager.default.fileExists(atPath: plugin.path))
+            #expect(try FileManager.default.contentsOfDirectory(atPath: plugin.appendingPathComponent("hephaestus-skills/skills").path).sorted()
+                == InternalSkills.names)
         }
     }
 }

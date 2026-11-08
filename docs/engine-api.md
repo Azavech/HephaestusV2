@@ -142,6 +142,7 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | ui.open                                                                                                                          | `deviceID` is ignored; the event targets the chat's driving device ([ui.open](#uiopen)).                                                                                                                                                                                                                                                           | none      |
 | webTabs.update                                                                                                                   | `locked` false is refused (`Only the user can unlock a tab.`): only the user unlocks a tab, so Claude never closes a locked tab.                                                                                                                                                                                                                   | forbidden |
 | projects.remove                                                                                                                  | The project that holds the calling chat, or one of its ancestors, is refused (`A chat cannot remove the project it belongs to.`): removing it would end the chat's own Claude process.                                                                                                                                                             | forbidden |
+| skills.list, skills.get, skills.update, skills.delete                                                                            | The [internal skills](skills.md#internal-skills) are shown only to a chat of the HephaestusV2 project: for another chat, the external token and an answer token, `skills.list` leaves them out and the others fail as for a skill that does not exist (`Skill feedback not found.`).                                                               | notFound  |
 | Every AttachmentUpload                                                                                                           | `sourcePath` is accepted from claude and system only; from user it fails.                                                                                                                                                                                                                                                                          | forbidden |
 
 The restrictions on `chatDefaults` and `settings` keep Claude from raising its own permission mode. Default chosen at design time. The rules on `webTabs.update` and `projects.remove` keep locked tabs open and the calling chat's own Claude process running. Default chosen at design time.
@@ -298,6 +299,7 @@ The first column lists every engine method; it is the list the docs conformance 
 | `skills.writeFile`               | SkillsWriteFile               | name, path, text                                           | Empty            | user         |
 | `skills.deleteFile`              | SkillsDeleteFile              | name, path                                                 | Empty            | user         |
 | `skills.setEnabled`              | SkillsSetEnabled              | projectID, name, enabled                                   | ProjectDetail    | user, claude |
+| `skills.restoreDefault`          | SkillsRestoreDefault          | name                                                       | Skill            | user         |
 | `memories.list`                  | MemoriesList                  | projectID?                                                 | MemoryFolder     | user         |
 | `memories.get`                   | MemoriesGet                   | projectID?, file                                           | Memory           | user         |
 | `memories.create`                | MemoriesCreate                | projectID?, name, description, type                        | Memory           | user         |
@@ -1267,7 +1269,7 @@ Swift type `ChatsSend` · actors: user · result: [Empty](#empty)
 - The linked items are their own field of `message`, never added to the text: Claude receives them as context outside the message, through the linked items hook ([Chats](chats.md#linked-items-hook)). They do not count as content: a message with linked items only is empty.
 - The first user message of a chat that has text starts its naming with Haiku ([Chats](chats.md#haiku-naming)).
 - In a closed chat the message reopens the chat: `closed` becomes false in the metadata write that follows the `user` item ([Chats](chats.md#closing-a-chat)).
-- In an implement chat whose metadata holds `questionsBlocked`, the message removes the key in the same metadata write, so that Claude may ask again ([Chats](chats.md#implement-and-feedback-chats)). The implement message of `chats.implementTicket` and the messages the engine composes itself, such as the Answers message and the reports to an orchestrator, leave the key as it is.
+- In an implement chat whose metadata holds `questionsBlocked`, the message removes the key in the same metadata write, so that Claude may ask again ([Chats](chats.md#implement-and-feedback-chats)). The first message of `chats.implementTicket`, which calls the skill `implement-ticket`, and the messages the engine composes itself, such as the Answers message and the reports to an orchestrator, leave the key as it is.
 - Returns once the message is accepted; Claude's answer arrives as events.
 
 | Error       | When                                                                                                                                                     |
@@ -1784,9 +1786,9 @@ Swift type `ChatsImplementTicket` · actors: user, claude · result: [ChatMeta](
 | ticketID | TicketID     | yes      | Ticket to implement.                                                                                                                                                              |
 | settings | ChatSettings | no       | Default: the calling bundle chat's `settings` for an orchestrated ticket chat, else the project's `chatDefaults`, else the host `defaultChatSettings`. Must be absent for claude. |
 
-Creates a chat of kind ticket in the ticket's project, linked to the ticket, with `questionsBlocked: true` in its metadata: it is an implement chat, which asks no question until the user writes in it ([Workflow](workflow.md#implement-chats), [Data model](data-model.md#chat-metadata-file)). It then sends the message of the prompt `implement-ticket.md` as its first user message, with `sender` the name of the actor's device, or `Claude` for a claude actor ([Data model](data-model.md#user-item)) ([Chats](chats.md#implement-and-feedback-chats)). The engine does not change the ticket's status: Claude sets `in_progress` itself ([Workflow](workflow.md#implementation-workflow)). Implement sends the settings chosen in the [Implement sheet](tickets.md#implement-sheet).
+Creates a chat of kind ticket in the ticket's project, linked to the ticket, with `questionsBlocked: true` in its metadata: it is an implement chat, which asks no question until the user writes in it ([Workflow](workflow.md#implement-chats), [Data model](data-model.md#chat-metadata-file)). It then sends `/hephaestus-skills:implement-ticket <ticket id>`, which calls the internal skill `implement-ticket` ([Internal skills](skills.md#internal-skills)), as its first user message, with `sender` the name of the actor's device, or `Claude` for a claude actor ([Data model](data-model.md#user-item)) ([Chats](chats.md#implement-and-feedback-chats)). The engine does not change the ticket's status: Claude sets `in_progress` itself ([Workflow](workflow.md#implementation-workflow)). Implement sends the settings chosen in the [Implement sheet](tickets.md#implement-sheet).
 
-When the actor is claude with the chatID of a chat of kind bundle whose bundle lists the ticket, the new chat is an orchestrated ticket chat: its `orchestrator` is that calling chat, its `settings` are that chat's `settings` at the time of the call, and its first user message is the message of the prompt `implement-bundle-ticket.md`, rendered with the calling chat's bundle ([Chats](chats.md#orchestrated-ticket-chats)). When one of the chat's turns ends, the engine sends that chat a message about it. Before it creates the chat, the engine creates its branch `<bundle id>/<ticket id>` from the project root's current branch, checked out in the worktree `<data dir>/Worktrees/<project id>/<ticket id>`, after removing those an earlier chat of the ticket left, and the chat works in that worktree ([Branch and worktree](chats.md#branch-and-worktree)).
+When the actor is claude with the chatID of a chat of kind bundle whose bundle lists the ticket, the new chat is an orchestrated ticket chat: its `orchestrator` is that calling chat, its `settings` are that chat's `settings` at the time of the call, and its first user message is `/hephaestus-skills:implement-ticket <ticket id> <bundle id>`, with the calling chat's bundle ([Chats](chats.md#orchestrated-ticket-chats)). When one of the chat's turns ends, the engine sends that chat a message about it. Before it creates the chat, the engine creates its branch `<bundle id>/<ticket id>` from the project root's current branch, checked out in the worktree `<data dir>/Worktrees/<project id>/<ticket id>`, after removing those an earlier chat of the ticket left, and the chat works in that worktree ([Branch and worktree](chats.md#branch-and-worktree)).
 
 | Error       | When                                                                                                                                                                                                                                                           |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1807,7 +1809,7 @@ Swift type `ChatsImplementBundle` · actors: user, claude · result: [ChatMeta](
 | bundleID | BundleID     | yes      | Bundle to implement.                                                                                   |
 | settings | ChatSettings | no       | Default: the project's `chatDefaults`, else the host `defaultChatSettings`. Must be absent for claude. |
 
-Creates a chat of kind bundle in the bundle's project, linked to the bundle, and sets the bundle's status to `in_progress` in the same write of the bundle file ([Tickets and bundles](tickets.md#bundle-status-rules)), then sends the message of the prompt `implement-bundle.md` as its first user message, with `sender` the name of the actor's device, or `Claude` for a claude actor ([Data model](data-model.md#user-item)) ([Chats](chats.md#implement-and-feedback-chats)). Implement All sends the settings chosen in the [Implement sheet](tickets.md#implement-sheet).
+Creates a chat of kind bundle in the bundle's project, linked to the bundle, and sets the bundle's status to `in_progress` in the same write of the bundle file ([Tickets and bundles](tickets.md#bundle-status-rules)), then sends `/hephaestus-skills:implement-bundle <bundle id>`, which calls the internal skill `implement-bundle` ([Internal skills](skills.md#internal-skills)), as its first user message, with `sender` the name of the actor's device, or `Claude` for a claude actor ([Data model](data-model.md#user-item)) ([Chats](chats.md#implement-and-feedback-chats)). Implement All sends the settings chosen in the [Implement sheet](tickets.md#implement-sheet).
 
 | Error       | When                                                                                                                                                                                                                                                                                                                                              |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1857,7 +1859,7 @@ Called by the feedback sheet, with the settings of its [chat settings menus](fee
 | context    | [FeedbackContext](#feedbackcontext)   | yes      | Where the feedback was taken.                                                  |
 | settings   | ChatSettings                          | no       | Default: the project's `chatDefaults`, else the host `defaultChatSettings`.    |
 
-Creates a chat of kind feedback in the project and sends its first user message, with `sender` the name of the actor's device: the comment, the rendered context and the screenshot as an image, in the format of [Chats](chats.md#feedback-message). The screenshot is stored as `.hephaestus/chats/<chatID>/<UUID>-screenshot.png`, the attachment of that message, and its absolute path on the main device is part of the message text, so Claude attaches it to the ticket it creates (`tickets.create` with `sourcePath`).
+Creates a chat of kind feedback in the project and sends its first user message, with `sender` the name of the actor's device: the line `/hephaestus-skills:feedback`, which calls the internal skill `feedback` ([Internal skills](skills.md#internal-skills)), the comment, the rendered context and the screenshot as an image, in the format of [Chats](chats.md#feedback-message). The screenshot is stored as `.hephaestus/chats/<chatID>/<UUID>-screenshot.png`, the attachment of that message, and its absolute path on the main device is part of the message text, so Claude attaches it to the ticket it creates (`tickets.create` with `sourcePath`).
 
 | Error       | When                                                                                                                                                                                                                                                                                                                                                     |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -2340,13 +2342,13 @@ Events: none.
 
 ## Skills
 
-The library location, skill names, the SKILL.md format, extra files, the generated plugin and the editor are in [Skills](skills.md).
+The library location, skill names, the SKILL.md format, extra files, the [internal skills](skills.md#internal-skills), the generated plugin and the editor are in [Skills](skills.md).
 
 ### skills.list
 
 Swift type `SkillsList` · actors: user, claude · result: [SkillSummary](#skillsummary) array
 
-Returns every skill of the library sorted by name, read from disk at every call. A folder whose SKILL.md cannot be read is skipped and logged ([Data model](data-model.md#skillmd-format)).
+Returns every skill of the library sorted by name, read from disk at every call. A folder whose SKILL.md cannot be read is skipped and logged ([Data model](data-model.md#skillmd-format)). The internal skills are left out for a claude actor whose chat is not a chat of the HephaestusV2 project ([Rules for Claude](#rules-for-claude)).
 
 | Error       | When                                                                                                                |
 | ----------- | ------------------------------------------------------------------------------------------------------------------- |
@@ -2362,10 +2364,10 @@ Swift type `SkillsGet` · actors: user, claude · result: [Skill](#skill)
 | ----- | ------ | -------- | ----------- |
 | name  | String | yes      | Skill name. |
 
-| Error    | When                            |
-| -------- | ------------------------------- |
-| invalid  | name is not a valid skill name. |
-| notFound | No such skill.                  |
+| Error    | When                                                                                                      |
+| -------- | --------------------------------------------------------------------------------------------------------- |
+| invalid  | name is not a valid skill name.                                                                           |
+| notFound | No such skill; an internal skill for a claude actor whose chat is not a chat of the HephaestusV2 project. |
 
 Events: none.
 
@@ -2381,11 +2383,11 @@ Swift type `SkillsCreate` · actors: user, claude · result: [Skill](#skill)
 
 Creates `<library>/<name>/SKILL.md` ([Data model](data-model.md#skillmd-format)); the skill is enabled in no project.
 
-| Error    | When                                                                         |
-| -------- | ---------------------------------------------------------------------------- |
-| invalid  | name or description breaks its rule.                                         |
-| conflict | A skill with this name exists (`A skill named swift-style already exists.`). |
-| internal | The folder or the file cannot be written.                                    |
+| Error    | When                                                                                                                                                  |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid  | name or description breaks its rule.                                                                                                                  |
+| conflict | A skill with this name exists (`A skill named swift-style already exists.`); the name is that of an internal skill, also while its folder is missing. |
+| internal | The folder or the file cannot be written.                                                                                                             |
 
 Events: skills.changed.
 
@@ -2402,12 +2404,13 @@ Swift type `SkillsUpdate` · actors: user, claude · result: [Skill](#skill)
 
 Extra frontmatter keys and the other files of the skill are kept. On a rename, every project whose `skills` contains the old name gets the new name at the same position, and its generated plugin is rebuilt ([Skills](skills.md)).
 
-| Error    | When                                                                                                    |
-| -------- | ------------------------------------------------------------------------------------------------------- |
-| notFound | No such skill.                                                                                          |
-| invalid  | name or newName is not a valid skill name; description breaks its rule.                                 |
-| conflict | A skill named newName exists (`A skill named <newName> already exists.`, the message of skills.create). |
-| internal | The folder or a file cannot be written.                                                                 |
+| Error     | When                                                                                                        |
+| --------- | ----------------------------------------------------------------------------------------------------------- |
+| notFound  | No such skill; an internal skill for a claude actor whose chat is not a chat of the HephaestusV2 project.   |
+| invalid   | name or newName is not a valid skill name; description breaks its rule.                                     |
+| forbidden | newName renames an internal skill (`feedback is an internal skill of HephaestusV2: it cannot be renamed.`). |
+| conflict  | A skill named newName exists (`A skill named <newName> already exists.`, the message of skills.create).     |
+| internal  | The folder or a file cannot be written.                                                                     |
 
 Events: skills.changed; project.updated for each project changed by a rename.
 
@@ -2421,11 +2424,12 @@ Swift type `SkillsDelete` · actors: user, claude · result: [Empty](#empty)
 
 Moves the skill's folder to the Trash (a symbolic link goes to the Trash, not its target) and removes the name from `skills` of every project that enables it.
 
-| Error       | When                                     |
-| ----------- | ---------------------------------------- |
-| invalid     | name is not a valid skill name.          |
-| notFound    | No such skill.                           |
-| unavailable | The folder cannot be moved to the Trash. |
+| Error       | When                                                                                                                |
+| ----------- | ------------------------------------------------------------------------------------------------------------------- |
+| invalid     | name is not a valid skill name.                                                                                     |
+| notFound    | No such skill; an internal skill for a claude actor whose chat is not a chat of the HephaestusV2 project.           |
+| forbidden   | The skill is an internal skill (`feedback is an internal skill of HephaestusV2: it cannot be moved to the Trash.`). |
+| unavailable | The folder cannot be moved to the Trash.                                                                            |
 
 Events: skills.changed; project.updated for each changed project.
 
@@ -2496,14 +2500,32 @@ Swift type `SkillsSetEnabled` · actors: user, claude · result: [ProjectDetail]
 | name      | String    | yes      | Skill name.                                                                                            |
 | enabled   | Bool      | yes      | true: append the name at the end of the project's `skills` when absent. false: remove it when present. |
 
-Enabling requires the skill to exist; a name that is no longer in the library can still be disabled. The project's generated plugin is rebuilt; chat processes launched afterwards load it ([Skills](skills.md#per-project-enablement)).
+Enabling requires the skill to exist; a name that is no longer in the library can still be disabled. The project's generated plugin is rebuilt; chat processes launched afterwards load it ([Skills](skills.md#per-project-enablement)). An internal skill is always enabled: enabling it changes nothing and returns the project, disabling it fails.
 
-| Error    | When                                                                             |
-| -------- | -------------------------------------------------------------------------------- |
-| invalid  | projectID is malformed; name is not a valid skill name.                          |
-| notFound | No loaded project has this identifier; enabled is true and no such skill exists. |
+| Error     | When                                                                                                                                 |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| invalid   | projectID is malformed; name is not a valid skill name.                                                                              |
+| notFound  | No loaded project has this identifier; enabled is true and no such skill exists.                                                     |
+| forbidden | enabled is false and the name is that of an internal skill (`feedback is an internal skill of HephaestusV2: it is always enabled.`). |
 
 Events: project.updated when the project's list changed.
+
+### skills.restoreDefault
+
+Swift type `SkillsRestoreDefault` · actors: user · result: [Skill](#skill)
+
+| Param | Type   | Required | Description                |
+| ----- | ------ | -------- | -------------------------- |
+| name  | String | yes      | Name of an internal skill. |
+
+Writes the app's current default `SKILL.md` of an [internal skill](skills.md#internal-skills), its name, description and body, creating the skill's folder when it is missing, records its digest in `.internal-skills.json` and keeps the skill's extra files. The editor's `Restore Default` button calls it ([Editor](skills.md#editor)).
+
+| Error    | When                                                                                                   |
+| -------- | ------------------------------------------------------------------------------------------------------ |
+| invalid  | name is not the name of an internal skill (`release-notes is not an internal skill of HephaestusV2.`). |
+| internal | The folder or the file cannot be written.                                                              |
+
+Events: skills.changed.
 
 ## Memories
 

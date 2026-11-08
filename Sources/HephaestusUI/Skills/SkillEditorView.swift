@@ -59,20 +59,32 @@ struct SkillEditorView: View {
         workspace.project(projectID)?.name ?? projectID
     }
 
-    /// The editor's pane header (docs/ui.md › Pane headers): the Name field, Revert and Save.
+    /// The editor's pane header (docs/ui.md › Pane headers): the Name field, disabled for an
+    /// internal skill, Restore Default for an internal skill, Revert and Save.
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             TextField("Name", text: $form.name)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(.title3, design: .monospaced))
                 .accessibilityLabel("Name")
+                .disabled(editor.isInternal)
+            // The buttons keep their whole labels; the Name field takes the width left.
+            if editor.isInternal {
+                Button("Restore Default") {
+                    Task { await editor.restoreDefault() }
+                }
+                .fixedSize()
+                .disabled(editor.isSaving)
+            }
             Button("Revert") {
                 editor.revert()
             }
+            .fixedSize()
             .disabled(!form.hasUnsavedChanges || editor.isSaving)
             Button("Save") {
                 Task { await editor.save() }
             }
+            .fixedSize()
             .disabled(!editor.canSave)
         }
     }
@@ -90,9 +102,12 @@ struct SkillEditorView: View {
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                 Spacer(minLength: 12)
-                Toggle("Enabled in \(projectName)", isOn: enabledBinding)
+                // An internal skill is always enabled: its toggle is on and cannot be turned off
+                // (docs/skills.md › Internal skills).
+                Toggle("Enabled in \(projectName)", isOn: editor.isInternal ? .constant(true) : enabledBinding)
                     .toggleStyle(.switch)
                     .controlSize(.small)
+                    .disabled(editor.isInternal)
             }
         }
         .onChange(of: isEnabledInProject) { _, enabled in

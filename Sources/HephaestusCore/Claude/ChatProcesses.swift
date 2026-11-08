@@ -99,6 +99,9 @@ extension Engine {
             return
         }
         var pluginDirectory: String?
+        // The internal skills are written when missing before the plugin is generated
+        // (docs/skills.md › Generation).
+        ensureInternalSkills()
         do {
             let folder = try skillsPlugins.preparePlugin(projectID: project.id, skills: project.skills, library: skillsLibraryFolder,
                                                          dataDirectory: dataDirectory)

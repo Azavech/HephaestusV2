@@ -144,3 +144,17 @@ public enum SkillsSetEnabled: EngineMethod {
     }
     public typealias Result = ProjectDetail
 }
+
+/// `skills.restoreDefault`: writes the default SKILL.md of an internal skill. Actors: user.
+public enum SkillsRestoreDefault: EngineMethod {
+    public static let name = "skills.restoreDefault"
+    public struct Params: Codable, Sendable, Hashable {
+        /// Name of an internal skill.
+        public var name: String
+
+        public init(name: String) {
+            self.name = name
+        }
+    }
+    public typealias Result = Skill
+}

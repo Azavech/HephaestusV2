@@ -650,8 +650,9 @@ Running `check-public.sh` on `docs/` for check 3, and the finding texts, are Def
 | 4   | Data model examples  | HephaestusCoreTests | The YAML, JSON and JSON Lines examples of `docs/data-model.md` selected as stated in [Data model](data-model.md#conformance-tests)       | The Swift model type chosen by each example's path                      | Every example decodes, and passes the extra checks listed there.                                                                  |
 | 5   | Repository files     | HephaestusCoreTests | Every fenced block of `docs/ci.md` whose preceding non-blank line is ``Contents of `<path>`:``                                           | The file `<path>`, relative to the repository root                      | The file's content equals the block's lines joined with `\n` plus one final `\n`, byte for byte.                                  |
 | 6   | release.json example | UpdaterCoreTests    | The only fenced block of `docs/ci.md` whose info string is `json` ([release.json](#releasejson))                                         | `ReleaseManifest`                                                       | The block decodes and passes `validate()`.                                                                                        |
+| 7   | Default skills       | HephaestusCoreTests | The `markdown` block of every `#### Default: <name>` section of `docs/skills.md` ([Internal skills](skills.md#default-skillmd-files))    | `Sources/HephaestusCore/Resources/skills/<name>/SKILL.md`               | The sets of names are equal, and each file equals its block followed by one newline, byte for byte.                               |
 
-Tests 5 and 6 are Default chosen at design time. Test 5 covers `.github/workflows/release.yml`, `.github/workflows/ci.yml`, `Resources/Info.plist`, `Resources/Updater-Info.plist` and `Resources/HephaestusV2.entitlements`.
+Tests 5, 6 and 7 are Default chosen at design time. Test 5 covers `.github/workflows/release.yml`, `.github/workflows/ci.yml`, `Resources/Info.plist`, `Resources/Updater-Info.plist` and `Resources/HephaestusV2.entitlements`.
 
 ## Local make targets
 

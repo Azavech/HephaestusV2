@@ -30,14 +30,20 @@ extension Engine {
         register(SkillsSetEnabled.self, actors: [.user, .claude]) { [unowned self] params, actor in
             try await self.skillsSetEnabled(params, actor)
         }
+        register(SkillsRestoreDefault.self, actors: [.user]) { [unowned self] params, actor in
+            try await self.skillsRestoreDefault(params, actor)
+        }
     }
 
     /// `skills.list`: every skill of the library sorted by name, read from disk; a folder whose
-    /// SKILL.md cannot be read is skipped and logged.
+    /// SKILL.md cannot be read is skipped and logged. The internal skills are left out for a
+    /// claude actor outside the HephaestusV2 project (docs/skills.md › Claude's skill tools).
     func skillsList(_ params: Empty, _ actor: Actor) async throws -> [SkillSummary] {
         let library = try readableSkillsLibraryFolder()
+        let hidesInternal = hidesInternalSkills(from: actor)
         do {
             return try SkillsLibraryReader.skills(in: library, log: log).map(\.summary)
+                .filter { !hidesInternal || !InternalSkills.isInternal($0.name) }
         } catch {
             throw EngineError(.unavailable, "The skills library \(library.path) cannot be read: \(error.localizedDescription)")
         }
@@ -46,6 +52,7 @@ extension Engine {
     /// `skills.get`.
     func skillsGet(_ params: SkillsGet.Params, _ actor: Actor) async throws -> Skill {
         let name = try SkillsLibrary.checkedName(params.name)
+        try refuseHiddenInternalSkill(name, actor)
         let library = try readableSkillsLibraryFolder()
         return apiSkill(try existingSkill(name, in: library))
     }
@@ -58,7 +65,9 @@ extension Engine {
         let body = ModelRules.normalizedLineBreaks(params.body ?? "")
         let library = try readableSkillsLibraryFolder()
         let folder = library.appendingPathComponent(name, isDirectory: true)
-        guard !SkillsLibraryReader.itemExists(folder) else {
+        // An internal skill's name is taken, also while its folder is missing (docs/skills.md ›
+        // Protection).
+        guard !SkillsLibraryReader.itemExists(folder), !InternalSkills.isInternal(name) else {
             throw EngineError(.conflict, "A skill named \(name) already exists.")
         }
         let document = SkillDocument(frontmatter: SkillFrontmatter(name: name, description: description), body: body)
@@ -76,6 +85,10 @@ extension Engine {
         let newName = try params.newName.map { try SkillsLibrary.checkedName($0, field: "newName") }
         let description = try params.description.map(SkillsLibrary.checkedDescription)
         let body = params.body.map(ModelRules.normalizedLineBreaks)
+        try refuseHiddenInternalSkill(name, actor)
+        if InternalSkills.isInternal(name), let newName, newName != name {
+            throw Engine.internalSkillRefusal(name, "it cannot be renamed.")
+        }
         let library = try readableSkillsLibraryFolder()
         let skill = try existingSkill(name, in: library)
 
@@ -129,6 +142,10 @@ extension Engine {
     /// skill's library entry to the Trash (a symbolic link goes, not its target).
     func skillsDelete(_ params: SkillsDelete.Params, _ actor: Actor) async throws -> Empty {
         let name = try SkillsLibrary.checkedName(params.name)
+        try refuseHiddenInternalSkill(name, actor)
+        guard !InternalSkills.isInternal(name) else {
+            throw Engine.internalSkillRefusal(name, "it cannot be moved to the Trash.")
+        }
         let library = try readableSkillsLibraryFolder()
         let skill = try existingSkill(name, in: library)
         for projectID in domain.loadedProjectIDs() {
@@ -207,6 +224,12 @@ extension Engine {
         guard let project = domain.project(projectID) else {
             throw EngineError.notFound("Project", projectID)
         }
+        // An internal skill is always enabled: enabling it changes nothing, disabling it fails
+        // (docs/skills.md › Internal skills).
+        if InternalSkills.isInternal(name) {
+            guard params.enabled else { throw Engine.internalSkillRefusal(name, "it is always enabled.") }
+            return try await call(ProjectsGet.self, ProjectsGet.Params(projectID: projectID), actor: .system)
+        }
         if params.enabled {
             _ = try existingSkill(name, in: try readableSkillsLibraryFolder())
         }
@@ -215,6 +238,35 @@ extension Engine {
             return try await call(ProjectsGet.self, ProjectsGet.Params(projectID: projectID), actor: .system)
         }
         return try saveProjectSkills(project, skills, origin: actor)
+    }
+
+    /// `skills.restoreDefault`: writes the app's current default SKILL.md of an internal skill,
+    /// creating its folder, records its digest and keeps the extra files (docs/skills.md ›
+    /// Protection).
+    func skillsRestoreDefault(_ params: SkillsRestoreDefault.Params, _ actor: Actor) async throws -> Skill {
+        let name = try SkillsLibrary.checkedName(params.name)
+        guard InternalSkills.isInternal(name), let content = InternalSkills.defaultContent(name) else {
+            throw EngineError(.invalid, "\(name) is not an internal skill of HephaestusV2.")
+        }
+        let library = try readableSkillsLibraryFolder()
+        let folder = library.appendingPathComponent(name, isDirectory: true)
+        if SkillsLibraryReader.itemExists(folder), !SkillsLibraryReader.isDirectory(folder) {
+            throw EngineError(.internal, "\(folder.path) cannot be written: it is not a folder")
+        }
+        try writeInternalSkillDefault(content, to: folder.appendingPathComponent(SkillsLibraryReader.skillFileName))
+        var record = InternalSkills.record(in: library)
+        record[name] = AtomicFile.sha256(content)
+        try writeInternalSkillsRecord(record, in: library)
+        emit(SkillsChangedEvent.self, skillSummaries(), origin: actor)
+        return apiSkill(try existingSkill(name, in: library))
+    }
+
+    /// `notFound` for an internal skill that the actor does not see (docs/skills.md › Claude's
+    /// skill tools).
+    private func refuseHiddenInternalSkill(_ name: String, _ actor: Actor) throws {
+        if InternalSkills.isInternal(name), hidesInternalSkills(from: actor) {
+            throw EngineError.notFound("Skill", name)
+        }
     }
 
     /// Saves a project with a new `skills` list (project.yml, memory, project.updated), then

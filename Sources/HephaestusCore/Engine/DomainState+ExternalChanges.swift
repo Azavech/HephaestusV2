@@ -323,6 +323,7 @@ extension Engine {
     /// (docs/skills.md › Generation).
     func regenerateSkillsPlugin(_ projectID: ProjectID) {
         guard let project = domain.project(projectID) else { return }
+        ensureInternalSkills()
         do {
             _ = try skillsPlugins.preparePlugin(projectID: projectID, skills: project.skills, library: skillsLibraryFolder,
                                                dataDirectory: dataDirectory)

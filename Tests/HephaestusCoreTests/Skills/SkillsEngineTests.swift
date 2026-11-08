@@ -24,7 +24,7 @@ struct SkillsEngineTests {
     @Test("skills.list reads the library at every call, sorted by name, skipping what is not a skill")
     func list() async throws {
         try await withSkillsEngine { _, connection, library, _ in
-            #expect(try await connection.call(SkillsList.self) == [])
+            #expect(try await connection.call(SkillsList.self).userSkills == [])
             try writeSkill("swift-testing", in: library, description: "Swift Testing rules.")
             try writeSkill("release-notes", in: library, SkillDocumentTests.example)
             try writeSkill("no-front", in: library, "Just a body.\n")
@@ -36,7 +36,7 @@ struct SkillsEngineTests {
             try writeFile("binary/SKILL.md", in: library, "")
             try Data([0xFF, 0xFE, 0x00]).write(to: library.appendingPathComponent("binary/SKILL.md"))
 
-            let skills = try await connection.call(SkillsList.self)
+            let skills = try await connection.call(SkillsList.self).userSkills
             #expect(skills == [
                 SkillSummary(name: "no-front", description: ""),
                 SkillSummary(name: "release-notes",
@@ -112,7 +112,7 @@ struct SkillsEngineTests {
                 try FileManager.default.createSymbolicLink(at: library.appendingPathComponent("shared"), withDestinationURL: target)
                 try FileManager.default.createSymbolicLink(at: library.appendingPathComponent("dangling"),
                                                            withDestinationURL: elsewhere.appendingPathComponent("none"))
-                #expect(try await connection.call(SkillsList.self) == [SkillSummary(name: "shared", description: "Shared.")])
+                #expect(try await connection.call(SkillsList.self).userSkills == [SkillSummary(name: "shared", description: "Shared.")])
                 #expect(try await connection.call(SkillsGet.self, .init(name: "shared")).body == "Body\n")
             }
         }
@@ -130,11 +130,11 @@ struct SkillsEngineTests {
             #expect(text == "---\nname: swift-style\ndescription: |-\n  Swift style\n  rules.\n---\n")
             let event = try #require(await firstEvent(named: SkillsChangedEvent.name, on: events))
             #expect(event.origin == .user(deviceID: engine.deviceID))
-            #expect(try event.payload(SkillsChangedEvent.self) == [SkillSummary(name: "swift-style", description: "Swift style\nrules.")])
+            #expect(try event.payload(SkillsChangedEvent.self).userSkills == [SkillSummary(name: "swift-style", description: "Swift style\nrules.")])
 
             let withBody = try await connection.call(SkillsCreate.self, .init(name: "a", description: "A.", body: "# A\r\n"))
             #expect(withBody.body == "# A\n")
-            #expect(try await connection.call(SkillsList.self).map(\.name) == ["a", "swift-style"])
+            #expect(try await connection.call(SkillsList.self).userSkills.map(\.name) == ["a", "swift-style"])
         }
     }
 
@@ -213,7 +213,7 @@ struct SkillsEngineTests {
             let text = try String(contentsOf: library.appendingPathComponent("new-name/SKILL.md"), encoding: .utf8)
             #expect(text == "---\nname: new-name\ndescription: D.\nmodel: haiku\n---\nBody\n")
             let event = try #require(await firstEvent(named: SkillsChangedEvent.name, on: events))
-            #expect(try event.payload(SkillsChangedEvent.self) == [SkillSummary(name: "new-name", description: "D.")])
+            #expect(try event.payload(SkillsChangedEvent.self).userSkills == [SkillSummary(name: "new-name", description: "D.")])
         }
     }
 
@@ -229,7 +229,7 @@ struct SkillsEngineTests {
             #expect(await update(.init(name: "a", newName: "Not Valid"))?.code == .invalid)
             #expect(await update(.init(name: "a", description: ""))?.code == .invalid)
             #expect(await update(.init(name: "a", newName: "b")) == EngineError(.conflict, "A skill named b already exists."))
-            #expect(try await connection.call(SkillsList.self).map(\.name) == ["a", "b"])
+            #expect(try await connection.call(SkillsList.self).userSkills.map(\.name) == ["a", "b"])
         }
     }
 
@@ -259,7 +259,7 @@ struct SkillsEngineTests {
             #expect(!FileManager.default.fileExists(atPath: library.appendingPathComponent("a").path))
             let trashed = try FileManager.default.contentsOfDirectory(atPath: trash.path)
             #expect(trashed.count == 1 && trashed[0].hasSuffix("-a"))
-            #expect(try #require(await firstEvent(named: SkillsChangedEvent.name, on: events)).payload(SkillsChangedEvent.self) == [])
+            #expect(try #require(await firstEvent(named: SkillsChangedEvent.name, on: events)).payload(SkillsChangedEvent.self).userSkills == [])
 
             try await withTemporaryDirectory { elsewhere in
                 let target = try writeSkill("shared", in: elsewhere, description: "Shared.")
@@ -458,7 +458,7 @@ struct SkillsEngineTests {
             // library as it was then: each step waits for the event that shows its change.
             func changed(to skills: [SkillSummary]) async -> EngineEventEnvelope? {
                 await firstElement(of: events, timeout: waitLimit) {
-                    $0.name == SkillsChangedEvent.name && (try? $0.payload(SkillsChangedEvent.self)) == skills
+                    $0.name == SkillsChangedEvent.name && (try? $0.payload(SkillsChangedEvent.self))?.userSkills == skills
                 }
             }
             try FileManager.default.removeItem(at: library.appendingPathComponent("primer"))
@@ -480,7 +480,7 @@ struct SkillsEngineTests {
             try await withTemporaryDirectory { other in
                 let newLibrary = other.appendingPathComponent("Skills", isDirectory: true)
                 _ = try await connection.call(SettingsUpdate.self, .init(skillsLibraryPath: .set(newLibrary.path)))
-                #expect(try await connection.call(SkillsList.self) == [])
+                #expect(try await connection.call(SkillsList.self).userSkills == [])
                 _ = try await connection.call(SkillsCreate.self, .init(name: "new", description: "New."))
                 #expect(FileManager.default.fileExists(atPath: newLibrary.appendingPathComponent("new/SKILL.md").path))
                 #expect(FileManager.default.fileExists(atPath: library.appendingPathComponent("old/SKILL.md").path))
@@ -501,10 +501,10 @@ struct SkillsEngineTests {
                 writer.cancel()
                 _ = await writer.result
                 let event = try #require(seen)
-                #expect(try event.payload(SkillsChangedEvent.self).map(\.name) == ["new", "outside"])
+                #expect(try event.payload(SkillsChangedEvent.self).userSkills.map(\.name) == ["new", "outside"])
 
                 _ = try await connection.call(SettingsUpdate.self, .init(skillsLibraryPath: .clear))
-                #expect(try await connection.call(SkillsList.self).map(\.name) == ["old"])
+                #expect(try await connection.call(SkillsList.self).userSkills.map(\.name) == ["old"])
             }
         }
     }
@@ -518,9 +518,9 @@ struct SkillsEngineTests {
             }) { _, connection, _ in
                 var isDirectory: ObjCBool = false
                 #expect(FileManager.default.fileExists(atPath: custom.path, isDirectory: &isDirectory) && isDirectory.boolValue)
-                #expect(try await connection.call(SnapshotGet.self).skills == [])
+                #expect(try await connection.call(SnapshotGet.self).skills.userSkills == [])
                 try writeSkill("a", in: custom, description: "A.")
-                #expect(try await connection.call(SnapshotGet.self).skills == [SkillSummary(name: "a", description: "A.")])
+                #expect(try await connection.call(SnapshotGet.self).skills.userSkills == [SkillSummary(name: "a", description: "A.")])
             }
         }
     }

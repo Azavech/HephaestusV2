@@ -41,7 +41,8 @@ struct DeviceAndSettingsTests {
             let snapshot = try await connection.call(SnapshotGet.self)
             #expect(snapshot.device == (try await connection.call(DeviceInfoMethod.self)))
             #expect(snapshot.projects.isEmpty)
-            #expect(snapshot.skills.isEmpty)
+            // The library holds only the internal skills (docs/skills.md › Internal skills).
+            #expect(snapshot.skills.map(\.name) == InternalSkills.names)
             #expect(snapshot.settings == HostSettings())
             #expect(snapshot.claude == ClaudeStatus.detecting)
             let json = try jsonValue(String(decoding: try EngineJSON.encode(snapshot), as: UTF8.self))
@@ -149,7 +150,8 @@ struct DeviceAndSettingsTests {
             #expect(FileManager.default.fileExists(atPath: library.path, isDirectory: &isDirectory) && isDirectory.boolValue)
             let received = await firstElements(2, of: events)
             #expect(received.map(\.name) == [SettingsUpdatedEvent.name, SkillsChangedEvent.name])
-            #expect(try received.last?.payload(SkillsChangedEvent.self) == [])
+            // The new folder gets the internal skills (docs/skills.md › Settings).
+            #expect(try received.last?.payload(SkillsChangedEvent.self).map(\.name) == InternalSkills.names)
         }
     }
 }

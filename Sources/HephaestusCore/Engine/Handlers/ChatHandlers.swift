@@ -255,13 +255,9 @@ extension Engine {
                                   settings: params.settings ?? orchestrator?.chat.settings,
                                   orchestratorChatID: orchestrator?.chat.id, questionsBlocked: true, origin: actor)
         recordDrivingDevice(meta.id, actor)
-        let text: String
-        if let orchestrator {
-            text = Prompts.render(Prompts.text(.implementBundleTicket),
-                                  ["ticketID": ticketID, "ticketTitle": ticket.title, "bundleID": orchestrator.bundleID])
-        } else {
-            text = Prompts.render(Prompts.text(.implementTicket), ["ticketID": ticketID, "ticketTitle": ticket.title])
-        }
+        // The first message calls the internal skill implement-ticket (docs/chats.md › Implement
+        // and feedback chats).
+        let text = Engine.implementTicketMessage(ticketID: ticketID, bundleID: orchestrator?.bundleID)
         try sendChatMessage(meta.id, text: text, attachments: [], sender: sender, origin: actor)
         return try requireChat(meta.id)
     }
@@ -304,10 +300,9 @@ extension Engine {
         let meta = try createChat(kind: .bundle, project: project, ticketID: nil, bundleID: bundleID, settings: params.settings,
                                   bundleStatus: .inProgress, origin: actor)
         recordDrivingDevice(meta.id, actor)
-        let text = Prompts.render(Prompts.text(.implementBundle), [
-            "bundleID": bundleID, "bundleTitle": bundle.title, "bundleTicketIDs": bundle.ticketIDs.joined(separator: ", "),
-        ])
-        try sendChatMessage(meta.id, text: text, attachments: [], sender: sender, origin: actor)
+        // The first message calls the internal skill implement-bundle (docs/chats.md › Implement
+        // and feedback chats).
+        try sendChatMessage(meta.id, text: Engine.implementBundleMessage(bundleID: bundleID), attachments: [], sender: sender, origin: actor)
         return try requireChat(meta.id)
     }
 

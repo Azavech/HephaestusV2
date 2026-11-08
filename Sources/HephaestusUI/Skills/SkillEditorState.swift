@@ -318,6 +318,35 @@ final class SkillEditorState {
         }
     }
 
+    /// True for an internal skill: its name cannot change and it has Restore Default
+    /// (docs/skills.md › Internal skills).
+    var isInternal: Bool {
+        InternalSkills.isInternal(skillName)
+    }
+
+    /// Restore Default: `skills.restoreDefault`, without confirmation; once it succeeds the form's
+    /// changes are discarded and the form shows the restored skill. A failure shows
+    /// `Restore Default failed` and keeps the form (docs/skills.md › Editor).
+    func restoreDefault() async {
+        guard let workspace else { return }
+        do {
+            fetchGeneration += 1
+            isSaving = true
+            defer { isSaving = false }
+            let skill = try await workspace.call(SkillsRestoreDefault.self, .init(name: skillName))
+            hasLoaded = true
+            loadError = nil
+            form.reset(to: skill)
+            extraFrontmatter = skill.extraFrontmatter
+            files = skill.files
+            conflict?.skill = nil
+            conflict?.skillMissing = false
+            normalizeConflict()
+        } catch {
+            window?.alert = .failure("Restore Default", error)
+        }
+    }
+
     /// Revert: discards the form's changes.
     func revert() {
         form.discardChanges()
