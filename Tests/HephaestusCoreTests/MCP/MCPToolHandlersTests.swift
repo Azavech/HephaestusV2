@@ -89,6 +89,50 @@ struct MCPToolHandlersTests {
         #expect(engine.calls.last?.params == (try jsonValue(#"{"projectID":"HEPH","color":null}"#)))
     }
 
+    @Test("update_project forwards an icon, an empty one included, and sends a null icon as null; a null color stays dropped")
+    func updateProjectIcon() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        _ = try await Self.call(handlers, "update_project", #"{"projectID":"HEPH","icon":"star"}"#)
+        #expect(engine.calls.last?.method == "projects.update")
+        #expect(engine.calls.last?.params == (try jsonValue(#"{"projectID":"HEPH","icon":"star"}"#)))
+        _ = try await Self.call(handlers, "update_project", #"{"projectID":"HEPH","icon":""}"#)
+        #expect(engine.calls.last?.params == (try jsonValue(#"{"projectID":"HEPH","icon":""}"#)))
+        _ = try await Self.call(handlers, "update_project", #"{"projectID":"HEPH","icon":null}"#)
+        #expect(engine.calls.last?.params == (try jsonValue(#"{"projectID":"HEPH","icon":null}"#)))
+        _ = try await Self.call(handlers, "update_project", #"{"projectID":"HEPH","color":null,"name":"Forge"}"#)
+        #expect(engine.calls.last?.params == (try jsonValue(#"{"projectID":"HEPH","name":"Forge"}"#)))
+        let wrongType = try await Self.call(handlers, "update_project", #"{"projectID":"HEPH","icon":12}"#)
+        #expect(wrongType == .failure(MCPToolError(code: .invalid, message: "icon: must be a string.")))
+        #expect(engine.calls.count == 4)
+    }
+
+    @Test("update_project sets, refuses and removes the icon that get_project returns")
+    func updateAndGetProjectIcon() async throws {
+        try await Self.withEngine(namer: FixedTitleNamer(title: nil)) { handlers, _ in
+            func call(_ tool: String, _ arguments: String) async throws -> Result<String, MCPToolError> {
+                try await Self.call(handlers, tool, arguments)
+            }
+            func icon() async throws -> String? {
+                try EngineJSON.decode(ProjectDetail.self, from: Data(try await call("get_project", #"{"projectID":"HEPH"}"#).get().utf8)).project.icon
+            }
+            let set = try await call("update_project", #"{"projectID":"HEPH","icon":"star"}"#).get()
+            #expect(try EngineJSON.decode(ProjectDetail.self, from: Data(set.utf8)).project.icon == "star")
+            #expect(try await call("get_project", #"{"projectID":"HEPH"}"#).get().contains(#""icon":"star""#))
+            #expect(try await icon() == "star")
+            let unknown = try await call("update_project", #"{"projectID":"HEPH","icon":"no.such.symbol"}"#)
+            #expect(unknown == .failure(MCPToolError(code: .invalid, message: "no.such.symbol is not an SF Symbol of this Mac.")))
+            #expect(try await icon() == "star")
+            _ = try await call("update_project", #"{"projectID":"HEPH","icon":null}"#).get()
+            #expect(try await icon() == nil)
+            for arguments in [#"{"projectID":"HEPH","icon":""}"#, #"{"projectID":"HEPH","icon":"  "}"#] {
+                _ = try await call("update_project", #"{"projectID":"HEPH","icon":"hammer"}"#).get()
+                _ = try await call("update_project", arguments).get()
+                #expect(try await icon() == nil)
+            }
+        }
+    }
+
     @Test("run_project: wait defaults to true for build and test, false for run")
     func runProject() async throws {
         let engine = RecordedEngine()

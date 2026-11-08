@@ -205,6 +205,15 @@ extension Engine {
         case .set(let color):
             new.color = try validated { try ProjectColor.normalized(color) }
         }
+        switch params.icon {
+        case .keep:
+            break
+        case .clear:
+            new.icon = nil
+        case .set(let icon):
+            let catalog = symbolCatalog()
+            new.icon = try validated { try ProjectIcon.validated(icon, isSymbol: catalog.contains) }
+        }
         if let docsPath = params.docsPath {
             guard let path = DomainPaths.projectPath(docsPath), !path.isEmpty else {
                 throw EngineError.invalid("docsPath", "use a relative path with / separators and no empty, . or .. component")
@@ -234,7 +243,7 @@ extension Engine {
         guard new != old else { return projectDetail(id)! }
         try saveProject(new)
         emitProjectUpdated(id, origin: actor)
-        if new.name != old.name || new.type != old.type || new.color != old.color {
+        if new.name != old.name || new.type != old.type || new.color != old.color || new.icon != old.icon {
             emitProjectsChanged(origin: actor)
         }
         return projectDetail(id)!

@@ -10,6 +10,9 @@ public struct Project: Codable, Sendable, Hashable {
     /// The project's color, `#RRGGBB` in uppercase; nil for no color (docs/projects.md › Project
     /// settings).
     public var color: String?
+    /// The project's icon, the name of an SF Symbol; nil for no icon (docs/projects.md › Project
+    /// settings).
+    public var icon: String?
     public var nextTicketNumber: Int
     public var nextBundleNumber: Int
     public var docsPath: String
@@ -25,8 +28,8 @@ public struct Project: Codable, Sendable, Hashable {
     public var commentAnswers: [CommentAnswerCost]
     public var unknownKeys: [String: JSONValue]
 
-    public init(schema: Int = 1, id: ProjectID, name: String, created: Date, type: ProjectType = .none, color: String? = nil, nextTicketNumber: Int = 1,
-                nextBundleNumber: Int = 1, docsPath: String = "docs", subprojects: [String] = [],
+    public init(schema: Int = 1, id: ProjectID, name: String, created: Date, type: ProjectType = .none, color: String? = nil, icon: String? = nil,
+                nextTicketNumber: Int = 1, nextBundleNumber: Int = 1, docsPath: String = "docs", subprojects: [String] = [],
                 commands: ProjectCommands = ProjectCommands(), webTabs: [WebTab] = [], skills: [String] = [],
                 chatDefaults: ChatSettings? = nil, deletedChats: [DeletedChat] = [], commentAnswers: [CommentAnswerCost] = [],
                 unknownKeys: [String: JSONValue] = [:]) {
@@ -36,6 +39,7 @@ public struct Project: Codable, Sendable, Hashable {
         self.created = created
         self.type = type
         self.color = color
+        self.icon = icon
         self.nextTicketNumber = nextTicketNumber
         self.nextBundleNumber = nextBundleNumber
         self.docsPath = docsPath
@@ -50,7 +54,7 @@ public struct Project: Codable, Sendable, Hashable {
     }
 
     static let knownKeys: Set<String> = [
-        "schema", "id", "name", "created", "type", "color", "nextTicketNumber", "nextBundleNumber", "docsPath",
+        "schema", "id", "name", "created", "type", "color", "icon", "nextTicketNumber", "nextBundleNumber", "docsPath",
         "subprojects", "commands", "webTabs", "skills", "chatDefaults", "deletedChats",
         "commentAnswers",
     ]
@@ -68,6 +72,9 @@ public struct Project: Codable, Sendable, Hashable {
             guard ProjectColor.isValid(text) else { throw c.invalid("color", "\"\(text)\" is not a color of the form #RRGGBB") }
             return text.uppercased()
         }
+        // Read trimmed, an empty value being no icon; the name is not checked against a symbol
+        // catalogue (docs/data-model.md › Project file).
+        icon = try c.optional("icon", String.self).flatMap(ProjectIcon.normalized)
         nextTicketNumber = try c.value("nextTicketNumber", default: 1)
         nextBundleNumber = try c.value("nextBundleNumber", default: 1)
         docsPath = try c.value("docsPath", default: "docs")
@@ -92,6 +99,10 @@ public struct Project: Codable, Sendable, Hashable {
         // Left out of the file when there is no color; `null` in the JSON form.
         if color != nil || !c.isYAML {
             try c.encodeOptional(color, "color")
+        }
+        // Left out of the file when there is no icon; `null` in the JSON form.
+        if icon != nil || !c.isYAML {
+            try c.encodeOptional(icon, "icon")
         }
         try c.encode(nextTicketNumber, "nextTicketNumber")
         try c.encode(nextBundleNumber, "nextBundleNumber")
@@ -266,6 +277,27 @@ public enum ProjectColor {
     public static func normalized(_ text: String) throws -> String {
         guard isValid(text) else { throw ValidationError.invalid("color", "use a color of the form #RRGGBB") }
         return text.uppercased()
+    }
+}
+
+/// The key `icon` of the project file: the name of an SF Symbol (docs/data-model.md › Project
+/// file, docs/projects.md › Project settings).
+public enum ProjectIcon {
+    /// The name as read from a file: trimmed, nil when empty.
+    public static func normalized(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// The icon `projects.update` stores: nil for a name that is empty once trimmed, which removes
+    /// the icon; otherwise the trimmed name, which must be in the symbol catalogue of the main
+    /// device, localized variants included (docs/engine-api.md › projects.update).
+    public static func validated(_ text: String, isSymbol: (String) -> Bool) throws -> String? {
+        guard let name = normalized(text) else { return nil }
+        guard isSymbol(name) else {
+            throw ValidationError(field: "icon", message: "\(name) is not an SF Symbol of this Mac.")
+        }
+        return name
     }
 }
 

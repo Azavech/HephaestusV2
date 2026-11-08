@@ -74,6 +74,9 @@ public enum ProjectsUpdate: EngineMethod {
         public var type: ProjectType?
         /// Clearable: `#RRGGBB` in either letter case, stored in uppercase; null removes the color.
         public var color: Patch<String> = .keep
+        /// Clearable: the name of an SF Symbol of the main device's catalogue, trimmed; null removes
+        /// the icon.
+        public var icon: Patch<String> = .keep
         /// Docs folder as a project path.
         public var docsPath: String?
         /// Replaces all run commands.
@@ -82,11 +85,13 @@ public enum ProjectsUpdate: EngineMethod {
         public var chatDefaults: Patch<ChatSettings> = .keep
 
         public init(projectID: ProjectID, name: String? = nil, type: ProjectType? = nil, color: Patch<String> = .keep,
-                    docsPath: String? = nil, commands: ProjectCommands? = nil, chatDefaults: Patch<ChatSettings> = .keep) {
+                    icon: Patch<String> = .keep, docsPath: String? = nil, commands: ProjectCommands? = nil,
+                    chatDefaults: Patch<ChatSettings> = .keep) {
             self.projectID = projectID
             self.name = name
             self.type = type
             self.color = color
+            self.icon = icon
             self.docsPath = docsPath
             self.commands = commands
             self.chatDefaults = chatDefaults

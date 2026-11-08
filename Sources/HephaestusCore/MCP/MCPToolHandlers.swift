@@ -127,6 +127,11 @@ struct MCPToolHandlers: Sendable {
             if args["color"] == .string("") {
                 params["color"] = .null
             }
+            // The one `null` argument that is not dropped: it removes the icon (docs/mcp.md ›
+            // Null values).
+            if arguments.objectValue?["icon"]?.isNull == true {
+                params["icon"] = .null
+            }
             return try await engineText(tool, params: .object(params), actor: actor)
 
         case .runProject:

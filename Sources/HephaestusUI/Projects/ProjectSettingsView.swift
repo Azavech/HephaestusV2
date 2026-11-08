@@ -64,6 +64,11 @@ private struct ProjectSettingsForm: View {
                         await update(ProjectsUpdate.Params(projectID: project.id, color: color.map { .set($0) } ?? .clear))
                     }
                 }
+                row("Icon") {
+                    ProjectIconField(value: project.icon) { icon in
+                        await update(ProjectsUpdate.Params(projectID: project.id, icon: icon.map { .set($0) } ?? .clear))
+                    }
+                }
                 row("Folder") {
                     HStack(spacing: 8) {
                         PathText(path: detail.rootPath)
@@ -317,6 +322,144 @@ private struct ProjectColorField: View {
         guard color != value else { return }
         Task {
             failure = await apply(color)
+        }
+    }
+}
+
+/// The layout of the Icon popover's grid: the 36 pt cells of the symbol card, 8 columns, at most 6
+/// rows visible (docs/projects.md › Project settings).
+enum ProjectIconGrid {
+    static let columns = 8
+    static let visibleRows = 6
+
+    /// The cells: `None` (nil) first, then the search results in their order.
+    static func cells(results: [String]) -> [String?] {
+        [nil] + results
+    }
+
+    /// The width of the grid: its columns and the spaces between them.
+    static var width: CGFloat {
+        CGFloat(columns) * SymbolGrid.cell + CGFloat(columns - 1) * SymbolGrid.spacing
+    }
+
+    /// The height of the grid's visible area: its rows, at most `visibleRows`.
+    static func height(count: Int) -> CGFloat {
+        let rows = min(visibleRows, max(1, (count + columns - 1) / columns))
+        return CGFloat(rows) * SymbolGrid.cell + CGFloat(rows - 1) * SymbolGrid.spacing
+    }
+}
+
+/// The Icon field: a button showing the project's icon, or `folder` without one, that opens the
+/// icon popover. A click on a cell closes the popover and applies at once; a click on the cell of
+/// the stored choice only closes it.
+private struct ProjectIconField: View {
+    /// The stored icon; nil for none.
+    let value: String?
+    /// Applies an icon, or nil to remove it; returns the engine's message, or nil on success.
+    let apply: (String?) async -> String?
+
+    @State private var showsPopover = false
+    @State private var failure: String?
+
+    var body: some View {
+        Button {
+            showsPopover = true
+        } label: {
+            Image(systemName: ProjectRules.iconSymbol(value))
+                .frame(width: 24)
+        }
+        .accessibilityLabel("Icon")
+        .accessibilityValue(value ?? "None")
+        .popover(isPresented: $showsPopover, arrowEdge: .bottom) {
+            ProjectIconPopover(current: value) { choice in
+                showsPopover = false
+                guard choice != value else { return }
+                failure = nil
+                Task {
+                    failure = await apply(choice)
+                }
+            }
+        }
+        .onChange(of: value) {
+            failure = nil
+        }
+        FieldMessage(text: failure)
+    }
+}
+
+/// The icon popover: the `Search symbols` field, then the grid of `None` and the results of the
+/// symbol search over the catalogue of this Mac (docs/chats.md › Symbol search); the cell of the
+/// stored choice has the accent background.
+private struct ProjectIconPopover: View {
+    /// The stored icon; nil for none.
+    let current: String?
+    /// Called with the clicked cell: a symbol's name, or nil for `None`.
+    let choose: (String?) -> Void
+
+    @State private var search = ""
+    @State private var results: [String] = []
+    @FocusState private var searchFocused: Bool
+
+    var body: some View {
+        let cells = ProjectIconGrid.cells(results: results)
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("Search symbols", text: $search)
+                .textFieldStyle(.roundedBorder)
+                .focused($searchFocused)
+            ScrollView(.vertical) {
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(SymbolGrid.cell), spacing: SymbolGrid.spacing),
+                                         count: ProjectIconGrid.columns),
+                          alignment: .leading, spacing: SymbolGrid.spacing) {
+                    ForEach(cells, id: \.self) { name in
+                        cell(name)
+                    }
+                }
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(width: ProjectIconGrid.width, height: ProjectIconGrid.height(count: cells.count))
+        }
+        .padding(12)
+        .onAppear {
+            searchFocused = true
+        }
+        .task(id: search) {
+            // Off the main actor; a result that arrives after the query changed is dropped.
+            let query = search
+            let found = await Task.detached { SFSymbolCatalog.system.search(query) }.value
+            if query == search {
+                results = found
+            }
+        }
+    }
+
+    /// `None`, or a symbol centered with its name as tooltip; the stored choice on the accent color.
+    @ViewBuilder
+    private func cell(_ name: String?) -> some View {
+        let isCurrent = name == current
+        let button = Button {
+            choose(name)
+        } label: {
+            Group {
+                if let name {
+                    Image(systemName: name)
+                        .font(.system(size: 17))
+                } else {
+                    Text("None")
+                        .font(.caption)
+                }
+            }
+            .foregroundStyle(isCurrent ? Color.white : Color.primary)
+            .frame(width: SymbolGrid.cell, height: SymbolGrid.cell)
+            .background(RoundedRectangle(cornerRadius: 6).fill(isCurrent ? Color.accentColor : Color.clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(name ?? "None")
+        .accessibilityAddTraits(isCurrent ? .isSelected : [])
+        if let name {
+            button.help(name)
+        } else {
+            button
         }
     }
 }

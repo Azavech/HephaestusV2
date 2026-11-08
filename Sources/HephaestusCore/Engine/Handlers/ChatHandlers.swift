@@ -606,10 +606,10 @@ extension Engine {
         guard domain.project(projectID)?.type == .swiftApplication else { throw refusal }
     }
 
-    /// `chats.postSymbol` (docs/chats.md › Posting a symbol request).
-    func chatsPostSymbol(_ params: ChatsPostSymbol.Params, _ actor: Actor) async throws -> SymbolRequest {
-        try ActorRules.requireOwnChat(params.chatID, actor)
-        try ActorRules.requireQuestionsAllowed(domain.chat(params.chatID), actor)
+    /// The symbol catalogue of this Mac, the main device; what could not be read is logged the
+    /// first time `chats.postSymbol` or `projects.update` uses it (docs/chats.md › Symbol
+    /// catalogue).
+    func symbolCatalog() -> SFSymbolCatalog {
         let catalog = SFSymbolCatalog.system
         if !chats.loggedSymbolCatalogProblems {
             chats.loggedSymbolCatalogProblems = true
@@ -617,6 +617,14 @@ extension Engine {
                 log.error(.claude, "symbol catalogue: \(problem)")
             }
         }
+        return catalog
+    }
+
+    /// `chats.postSymbol` (docs/chats.md › Posting a symbol request).
+    func chatsPostSymbol(_ params: ChatsPostSymbol.Params, _ actor: Actor) async throws -> SymbolRequest {
+        try ActorRules.requireOwnChat(params.chatID, actor)
+        try ActorRules.requireQuestionsAllowed(domain.chat(params.chatID), actor)
+        let catalog = symbolCatalog()
         let suggestions = params.suggestions.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         let recommended = params.recommended.trimmingCharacters(in: .whitespacesAndNewlines)
         try Engine.validated {

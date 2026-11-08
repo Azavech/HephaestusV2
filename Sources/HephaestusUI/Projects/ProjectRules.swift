@@ -167,6 +167,19 @@ enum ProjectRules {
         let valid = ModelRules.isRelativePath(docsPath) && docsPath.split(separator: "/").first != ".hephaestus"
         return valid ? nil : "Enter a folder path inside the project, for example docs."
     }
+
+    /// The breadcrumb's icon, drawn for a project without an icon (docs/ui.md › Breadcrumb
+    /// selector).
+    static let defaultIcon = "folder"
+
+    /// The symbol drawn for a project's icon: the icon, or `defaultIcon` when the project has none
+    /// or the Mac that shows the window has no symbol for its name (docs/projects.md › Project
+    /// settings).
+    static func iconSymbol(_ icon: String?, isAvailable: (String) -> Bool = SFSymbols.isAvailable) -> String {
+        guard let icon, isAvailable(icon) else { return defaultIcon }
+        return icon
+    }
+
     // MARK: HephaestusV2 project
 
     /// True for the HephaestusV2 project, the device's project `HEPH`, and for its ancestors:

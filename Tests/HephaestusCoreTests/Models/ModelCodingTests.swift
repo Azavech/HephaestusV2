@@ -55,14 +55,14 @@ struct ModelCodingTests {
             chatDefaults:
               model: opus
               temperature: 0.5
-            icon: hammer
+            mascot: hammer
 
             """
         var project = try YAMLCoding.decode(Project.self, from: yaml)
         #expect(project.commands.unknownKeys == ["lint": "make lint"])
         #expect(project.webTabs[0].unknownKeys == ["pinnedAt": "2026-10-31T12:00:00Z"])
         #expect(project.chatDefaults?.unknownKeys == ["temperature": .double(0.5)])
-        #expect(project.unknownKeys == ["icon": "hammer"])
+        #expect(project.unknownKeys == ["mascot": "hammer"])
         project.name = "Renamed"
         let again = try YAMLCoding.decode(Project.self, from: try YAMLCoding.encode(project))
         #expect(again.unknownKeys == project.unknownKeys)
@@ -228,6 +228,36 @@ struct ModelCodingTests {
         }
         #expect(throws: (any Error).self) {
             try Project(id: "WEB", name: "W", created: Self.created, color: "#12345").validate()
+        }
+    }
+
+    @Test("The project icon is written after the color when set, left out when absent, read trimmed, and not checked against the symbols")
+    func projectIcon() throws {
+        let plain = Project(id: "WEB", name: "Website", created: Self.created)
+        let plainYAML = try YAMLCoding.encode(plain)
+        #expect(!plainYAML.contains("icon"))
+        #expect(try YAMLCoding.decode(Project.self, from: plainYAML).icon == nil)
+        let plainJSON = try JSONDecoder().decode(JSONValue.self, from: try EngineJSON.encode(plain))
+        #expect(plainJSON.objectValue?["icon"] == .null)
+
+        let withIcon = Project(id: "WEB", name: "Website", created: Self.created, color: "#FFD60A", icon: "hammer")
+        let yaml = try YAMLCoding.encode(withIcon)
+        #expect(yaml.contains("type: none\ncolor: '#FFD60A'\nicon: hammer\nnextTicketNumber"))
+        #expect(try YAMLCoding.decode(Project.self, from: yaml) == withIcon)
+        #expect(try EngineJSON.decode(Project.self, from: try EngineJSON.encode(withIcon)).icon == "hammer")
+        let uncolored = try YAMLCoding.encode(Project(id: "WEB", name: "Website", created: Self.created, icon: "star.fill"))
+        #expect(uncolored.contains("type: none\nicon: star.fill\nnextTicketNumber"))
+
+        func read(_ value: String) throws -> String? {
+            try YAMLCoding.decode(Project.self, from: "id: WEB\nname: W\ncreated: 2026-10-31T09:30:00Z\nicon: \(value)\n").icon
+        }
+        #expect(try read("' star '") == "star")
+        #expect(try read("''") == nil)
+        #expect(try read("'  '") == nil)
+        #expect(try read("null") == nil)
+        #expect(try read("no.such.symbol") == "no.such.symbol")
+        #expect(throws: (any Error).self) {
+            try read("[star]")
         }
     }
 

@@ -356,7 +356,7 @@ The server validates `arguments` against the tool's `inputSchema` with its own v
 
 ### Null values
 
-A property whose value is `null` is removed before validation, at every depth, and counts as absent, as the engine's decoders do ([Engine API](engine-api.md#json-encoding)). An array element that is `null` stays and fails its type. Default chosen at design time.
+A property whose value is `null` is removed before validation, at every depth, and counts as absent, as the engine's decoders do ([Engine API](engine-api.md#json-encoding)), except that `update_project` sends an `icon` that is `null` to the engine as `null`, which removes the project's icon ([update_project](#update_project)). An array element that is `null` stays and fails its type. Default chosen at design time.
 
 ### Validation order
 
@@ -429,59 +429,59 @@ The tools are not limited to the calling chat's project: a chat may read and cha
 
 The table lists every tool in the order of `tools/list`. "Required inputs" holds the names in the tool's `inputSchema.required` and "Optional inputs" its other top-level properties; `—` means none. The result types are defined in [Engine API](engine-api.md#api-types) and [Data model](data-model.md); `{}` is an empty result, `text` the plain text of [ask_questions](#ask_questions), [ask_symbol](#ask_symbol), [ask_color](#ask_color), [ask_sound](#ask_sound), [ask_shortcut](#ask_shortcut), [ask_font](#ask_font), [ask_animation](#ask_animation) and [show_image](#show_image), and `{refused}` the result of [close_chat](#close_chat): `{}` without `chatIDs`, the object that lists the refused chats with it. The [conformance test](#conformance) reads this table.
 
-| Tool                | Required inputs                                    | Optional inputs                                 | Engine method            | Result           |
-| ------------------- | -------------------------------------------------- | ----------------------------------------------- | ------------------------ | ---------------- |
-| `list_projects`     | —                                                  | —                                               | projects.list            | [ProjectSummary] |
-| `get_project`       | `projectID`                                        | —                                               | projects.get             | ProjectDetail    |
-| `create_project`    | `path`, `name`, `identifier`                       | `parentID`                                      | projects.create          | ProjectDetail    |
-| `update_project`    | `projectID`                                        | `name`, `type`, `color`, `docsPath`, `commands` | projects.update          | ProjectDetail    |
-| `remove_project`    | `projectID`                                        | —                                               | projects.remove          | `{}`             |
-| `run_project`       | `projectID`, `kind`                                | `wait`, `timeoutSeconds`                        | projects.run             | RunResult        |
-| `stop_run`          | `runID`                                            | —                                               | projects.stopRun         | `{}`             |
-| `list_tickets`      | `projectID`                                        | `status`                                        | tickets.list             | [Ticket]         |
-| `get_ticket`        | `ticketID`                                         | —                                               | tickets.get              | Ticket           |
-| `create_ticket`     | `projectID`, `description`                         | `attachments`, `links`                          | tickets.create           | Ticket           |
-| `update_ticket`     | `ticketID`                                         | `title`, `description`, `links`                 | tickets.update           | Ticket           |
-| `delete_ticket`     | `ticketID`                                         | —                                               | tickets.delete           | `{}`             |
-| `set_ticket_status` | `ticketID`, `status`                               | —                                               | tickets.setStatus        | Ticket           |
-| `add_comment`       | `ticketID`, `text`                                 | `attachments`                                   | tickets.addComment       | Ticket           |
-| `update_comment`    | `ticketID`, `commentID`, `text`                    | —                                               | tickets.updateComment    | Ticket           |
-| `delete_comment`    | `ticketID`, `commentID`                            | —                                               | tickets.deleteComment    | Ticket           |
-| `remove_attachment` | `ticketID`, `attachmentID`                         | —                                               | tickets.removeAttachment | Ticket           |
-| `implement_ticket`  | `ticketID`                                         | —                                               | chats.implementTicket    | ChatMeta         |
-| `list_bundles`      | `projectID`                                        | —                                               | bundles.list             | [TicketBundle]   |
-| `get_bundle`        | `bundleID`                                         | —                                               | bundles.get              | TicketBundle     |
-| `create_bundle`     | `projectID`, `ticketIDs`                           | `title`                                         | bundles.create           | TicketBundle     |
-| `update_bundle`     | `bundleID`                                         | `title`, `ticketIDs`                            | bundles.update           | TicketBundle     |
-| `set_bundle_status` | `bundleID`, `status`                               | —                                               | bundles.setStatus        | TicketBundle     |
-| `delete_bundle`     | `bundleID`                                         | —                                               | bundles.delete           | `{}`             |
-| `implement_bundle`  | `bundleID`                                         | —                                               | chats.implementBundle    | ChatMeta         |
-| `ask_questions`     | `questions`                                        | —                                               | chats.postQuestions      | text             |
-| `ask_symbol`        | `question`, `suggestions`, `recommended`           | —                                               | chats.postSymbol         | text             |
-| `ask_color`         | `question`, `suggestions`, `recommended`           | `lightAndDark`                                  | chats.postColor          | text             |
-| `ask_sound`         | `question`, `suggestions`, `recommended`           | —                                               | chats.postSound          | text             |
-| `ask_shortcut`      | `question`, `suggestions`, `recommended`, `inUse`  | —                                               | chats.postShortcut       | text             |
-| `ask_font`          | `question`, `sample`, `suggestions`, `recommended` | —                                               | chats.postFont           | text             |
-| `ask_animation`     | `question`, `suggestions`, `recommended`           | —                                               | chats.postAnimation      | text             |
-| `show_image`        | `paths`                                            | `caption`                                       | chats.postImages         | text             |
-| `list_chats`        | `projectID`                                        | —                                               | chats.list               | [ChatMeta]       |
-| `get_chat`          | `chatID`                                           | —                                               | chats.get                | ChatTranscript   |
-| `rename_chat`       | `chatID`, `title`                                  | —                                               | chats.rename             | ChatMeta         |
-| `close_chat`        | —                                                  | `chatIDs`                                       | chats.close              | `{refused}`      |
-| `search`            | `query`                                            | `scopes`, `projectID`                           | search.query             | [SearchResult]   |
-| `list_docs`         | `projectID`                                        | —                                               | docs.list                | [DocEntry]       |
-| `list_web_tabs`     | `projectID`                                        | —                                               | webTabs.list             | [WebTab]         |
-| `open_web_tab`      | `projectID`, `url`                                 | `title`, `locked`                               | webTabs.open             | WebTab           |
-| `update_web_tab`    | `projectID`, `tabID`                               | `url`, `title`, `locked`                        | webTabs.update           | WebTab           |
-| `move_web_tab`      | `projectID`, `tabID`, `toIndex`                    | —                                               | webTabs.move             | [WebTab]         |
-| `close_web_tab`     | `projectID`, `tabID`                               | —                                               | webTabs.close            | `{}`             |
-| `list_skills`       | —                                                  | —                                               | skills.list              | [SkillSummary]   |
-| `get_skill`         | `name`                                             | —                                               | skills.get               | Skill            |
-| `create_skill`      | `name`, `description`, `body`                      | —                                               | skills.create            | Skill            |
-| `update_skill`      | `name`                                             | `newName`, `description`, `body`                | skills.update            | Skill            |
-| `delete_skill`      | `name`                                             | —                                               | skills.delete            | `{}`             |
-| `set_skill_enabled` | `projectID`, `name`, `enabled`                     | —                                               | skills.setEnabled        | ProjectDetail    |
-| `open_in_app`       | `target`                                           | —                                               | ui.open                  | `{}`             |
+| Tool                | Required inputs                                    | Optional inputs                                         | Engine method            | Result           |
+| ------------------- | -------------------------------------------------- | ------------------------------------------------------- | ------------------------ | ---------------- |
+| `list_projects`     | —                                                  | —                                                       | projects.list            | [ProjectSummary] |
+| `get_project`       | `projectID`                                        | —                                                       | projects.get             | ProjectDetail    |
+| `create_project`    | `path`, `name`, `identifier`                       | `parentID`                                              | projects.create          | ProjectDetail    |
+| `update_project`    | `projectID`                                        | `name`, `type`, `color`, `icon`, `docsPath`, `commands` | projects.update          | ProjectDetail    |
+| `remove_project`    | `projectID`                                        | —                                                       | projects.remove          | `{}`             |
+| `run_project`       | `projectID`, `kind`                                | `wait`, `timeoutSeconds`                                | projects.run             | RunResult        |
+| `stop_run`          | `runID`                                            | —                                                       | projects.stopRun         | `{}`             |
+| `list_tickets`      | `projectID`                                        | `status`                                                | tickets.list             | [Ticket]         |
+| `get_ticket`        | `ticketID`                                         | —                                                       | tickets.get              | Ticket           |
+| `create_ticket`     | `projectID`, `description`                         | `attachments`, `links`                                  | tickets.create           | Ticket           |
+| `update_ticket`     | `ticketID`                                         | `title`, `description`, `links`                         | tickets.update           | Ticket           |
+| `delete_ticket`     | `ticketID`                                         | —                                                       | tickets.delete           | `{}`             |
+| `set_ticket_status` | `ticketID`, `status`                               | —                                                       | tickets.setStatus        | Ticket           |
+| `add_comment`       | `ticketID`, `text`                                 | `attachments`                                           | tickets.addComment       | Ticket           |
+| `update_comment`    | `ticketID`, `commentID`, `text`                    | —                                                       | tickets.updateComment    | Ticket           |
+| `delete_comment`    | `ticketID`, `commentID`                            | —                                                       | tickets.deleteComment    | Ticket           |
+| `remove_attachment` | `ticketID`, `attachmentID`                         | —                                                       | tickets.removeAttachment | Ticket           |
+| `implement_ticket`  | `ticketID`                                         | —                                                       | chats.implementTicket    | ChatMeta         |
+| `list_bundles`      | `projectID`                                        | —                                                       | bundles.list             | [TicketBundle]   |
+| `get_bundle`        | `bundleID`                                         | —                                                       | bundles.get              | TicketBundle     |
+| `create_bundle`     | `projectID`, `ticketIDs`                           | `title`                                                 | bundles.create           | TicketBundle     |
+| `update_bundle`     | `bundleID`                                         | `title`, `ticketIDs`                                    | bundles.update           | TicketBundle     |
+| `set_bundle_status` | `bundleID`, `status`                               | —                                                       | bundles.setStatus        | TicketBundle     |
+| `delete_bundle`     | `bundleID`                                         | —                                                       | bundles.delete           | `{}`             |
+| `implement_bundle`  | `bundleID`                                         | —                                                       | chats.implementBundle    | ChatMeta         |
+| `ask_questions`     | `questions`                                        | —                                                       | chats.postQuestions      | text             |
+| `ask_symbol`        | `question`, `suggestions`, `recommended`           | —                                                       | chats.postSymbol         | text             |
+| `ask_color`         | `question`, `suggestions`, `recommended`           | `lightAndDark`                                          | chats.postColor          | text             |
+| `ask_sound`         | `question`, `suggestions`, `recommended`           | —                                                       | chats.postSound          | text             |
+| `ask_shortcut`      | `question`, `suggestions`, `recommended`, `inUse`  | —                                                       | chats.postShortcut       | text             |
+| `ask_font`          | `question`, `sample`, `suggestions`, `recommended` | —                                                       | chats.postFont           | text             |
+| `ask_animation`     | `question`, `suggestions`, `recommended`           | —                                                       | chats.postAnimation      | text             |
+| `show_image`        | `paths`                                            | `caption`                                               | chats.postImages         | text             |
+| `list_chats`        | `projectID`                                        | —                                                       | chats.list               | [ChatMeta]       |
+| `get_chat`          | `chatID`                                           | —                                                       | chats.get                | ChatTranscript   |
+| `rename_chat`       | `chatID`, `title`                                  | —                                                       | chats.rename             | ChatMeta         |
+| `close_chat`        | —                                                  | `chatIDs`                                               | chats.close              | `{refused}`      |
+| `search`            | `query`                                            | `scopes`, `projectID`                                   | search.query             | [SearchResult]   |
+| `list_docs`         | `projectID`                                        | —                                                       | docs.list                | [DocEntry]       |
+| `list_web_tabs`     | `projectID`                                        | —                                                       | webTabs.list             | [WebTab]         |
+| `open_web_tab`      | `projectID`, `url`                                 | `title`, `locked`                                       | webTabs.open             | WebTab           |
+| `update_web_tab`    | `projectID`, `tabID`                               | `url`, `title`, `locked`                                | webTabs.update           | WebTab           |
+| `move_web_tab`      | `projectID`, `tabID`, `toIndex`                    | —                                                       | webTabs.move             | [WebTab]         |
+| `close_web_tab`     | `projectID`, `tabID`                               | —                                                       | webTabs.close            | `{}`             |
+| `list_skills`       | —                                                  | —                                                       | skills.list              | [SkillSummary]   |
+| `get_skill`         | `name`                                             | —                                                       | skills.get               | Skill            |
+| `create_skill`      | `name`, `description`, `body`                      | —                                                       | skills.create            | Skill            |
+| `update_skill`      | `name`                                             | `newName`, `description`, `body`                        | skills.update            | Skill            |
+| `delete_skill`      | `name`                                             | —                                                       | skills.delete            | `{}`             |
+| `set_skill_enabled` | `projectID`, `name`, `enabled`                     | —                                                       | skills.setEnabled        | ProjectDetail    |
+| `open_in_app`       | `target`                                           | —                                                       | ui.open                  | `{}`             |
 
 ## Tools
 
@@ -518,7 +518,7 @@ Input schema:
 Description:
 
 ```text
-Get a project: its .hephaestus/project.yml settings (name, type, color, docs folder, build/run/test commands, sub projects, web tabs, enabled skills, chat defaults), root folder, parent, sub projects and git remote URL.
+Get a project: its .hephaestus/project.yml settings (name, type, color, icon, docs folder, build/run/test commands, sub projects, web tabs, enabled skills, chat defaults), root folder, parent, sub projects and git remote URL.
 ```
 
 Input schema:
@@ -587,15 +587,15 @@ Input schema:
 
 ### update_project
 
-- **Engine call:** projects.update with `projectID` and the given `name`, `type`, `color`, `docsPath` and `commands`. `color` is sent as given, and an empty `color` as `null`, which removes the project's color. `commands` replaces all run commands. `chatDefaults` is never sent: Claude cannot change chat defaults.
+- **Engine call:** projects.update with `projectID` and the given `name`, `type`, `color`, `icon`, `docsPath` and `commands`. `color` is sent as given, and an empty `color` as `null`, which removes the project's color. `icon` is sent as given, and an `icon` that is `null` as `null`, which removes the project's icon as an empty `icon` does ([Null values](#null-values), [projects.update](engine-api.md#projectsupdate)). Default chosen at design time. `commands` replaces all run commands. `chatDefaults` is never sent: Claude cannot change chat defaults.
 - A call that changes nothing writes nothing and returns the project.
 - **Result:** the updated `ProjectDetail`.
-- **Errors:** Those of projects.update ([Engine API](engine-api.md#projectsupdate)): unknown project (`notFound`), invalid name, type, color, docs folder or command (`invalid`).
+- **Errors:** Those of projects.update ([Engine API](engine-api.md#projectsupdate)): unknown project (`notFound`), invalid name, type, color, docs folder or command (`invalid`), an icon that is not an SF Symbol of the main device (`invalid`, `<name> is not an SF Symbol of this Mac.`).
 
 Description:
 
 ```text
-Change a project's name, type, color, docs folder or commands. Omitted arguments are left unchanged. color is a hex color #RRGGBB, and an empty color removes it. commands replaces all three commands: a command that is missing or empty is removed.
+Change a project's name, type, color, icon, docs folder or commands. Omitted arguments are left unchanged. color is a hex color #RRGGBB, and an empty color removes it. icon is the name of an SF Symbol of this Mac, for example hammer, and an empty or null icon removes it. commands replaces all three commands: a command that is missing or empty is removed.
 ```
 
 Input schema:
@@ -620,6 +620,10 @@ Input schema:
     "color": {
       "type": "string",
       "description": "Color of the project's badge in the ticket list: #RRGGBB, for example #34C759; an empty string removes it."
+    },
+    "icon": {
+      "type": "string",
+      "description": "Name of an SF Symbol of this Mac shown as the project's icon, for example hammer; an empty string or null removes it."
     },
     "docsPath": {
       "type": "string",
@@ -3188,3 +3192,4 @@ Unauthorized: missing or invalid bearer token.
 - R151: Claude can ask multiple-choice questions: the user checks options within the minimum and maximum Claude sets and adds own answers.
 - R152: A project's Tickets section lists the tickets of its sub projects too.
 - R153: A project can have a color, set in Project Settings with a hex field or the macOS color picker; the ticket list shows each ticket's project as a badge in that color.
+- R156: A project can have an icon, an SF Symbol picked in Project Settings from a popover that searches every SF Symbol of the Mac; Claude reads and sets it.

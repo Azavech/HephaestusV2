@@ -26,7 +26,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "get_project",
             description: #"""
-            Get a project: its .hephaestus/project.yml settings (name, type, color, docs folder, build/run/test commands, sub projects, web tabs, enabled skills, chat defaults), root folder, parent, sub projects and git remote URL.
+            Get a project: its .hephaestus/project.yml settings (name, type, color, icon, docs folder, build/run/test commands, sub projects, web tabs, enabled skills, chat defaults), root folder, parent, sub projects and git remote URL.
             """#,
             inputSchema: schema(#"""
             {
@@ -87,7 +87,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "update_project",
             description: #"""
-            Change a project's name, type, color, docs folder or commands. Omitted arguments are left unchanged. color is a hex color #RRGGBB, and an empty color removes it. commands replaces all three commands: a command that is missing or empty is removed.
+            Change a project's name, type, color, icon, docs folder or commands. Omitted arguments are left unchanged. color is a hex color #RRGGBB, and an empty color removes it. icon is the name of an SF Symbol of this Mac, for example hammer, and an empty or null icon removes it. commands replaces all three commands: a command that is missing or empty is removed.
             """#,
             inputSchema: schema(#"""
             {
@@ -109,6 +109,10 @@ extension MCPToolCatalog {
                 "color": {
                   "type": "string",
                   "description": "Color of the project's badge in the ticket list: #RRGGBB, for example #34C759; an empty string removes it."
+                },
+                "icon": {
+                  "type": "string",
+                  "description": "Name of an SF Symbol of this Mac shown as the project's icon, for example hammer; an empty string or null removes it."
                 },
                 "docsPath": {
                   "type": "string",

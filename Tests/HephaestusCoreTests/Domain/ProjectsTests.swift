@@ -284,6 +284,49 @@ struct ProjectsTests {
         }
     }
 
+    @Test("projects.update sets a trimmed SF Symbol as icon, refuses an unknown name, removes it with null or an empty name and emits projects.changed")
+    func updateIcon() async throws {
+        try await withDomainEngine { h in
+            try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
+            let events = await DomainEventRecorder.make(h)
+            let set = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "HEPH", icon: .set("star")))
+            #expect(set.project.icon == "star")
+            #expect(await events.wait(for: ProjectsChangedEvent.name) == ["project.updated", "projects.changed"])
+            #expect(try events.all.last!.payload(ProjectsChangedEvent.self).first?.icon == "star")
+            let folder = ProjectFolder(root: URL(fileURLWithPath: h.path("Heph")))
+            #expect(try String(contentsOf: folder.projectFile, encoding: .utf8).contains("icon: star\n"))
+
+            events.clear()
+            let trimmed = try await h.call(ProjectsUpdate.self, .init(projectID: "HEPH", icon: .set(" hammer ")), as: h.claude)
+            #expect(trimmed.project.icon == "hammer")
+            #expect(await events.wait(for: ProjectsChangedEvent.name) == ["project.updated", "projects.changed"])
+            events.clear()
+            _ = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "HEPH", icon: .set("hammer")))
+            #expect(await events.settle().isEmpty)
+
+            for unknown in ["no.such.symbol", "Star", " hammer.nope "] {
+                let name = unknown.trimmingCharacters(in: .whitespaces)
+                let refusal = EngineError(.invalid, "\(name) is not an SF Symbol of this Mac.")
+                let params = ProjectsUpdate.Params(projectID: "HEPH", icon: .set(unknown))
+                #expect(await engineError { try await h.connection.call(ProjectsUpdate.self, params) } == refusal)
+                #expect(await engineError { try await h.call(ProjectsUpdate.self, params, as: h.claude) } == refusal)
+            }
+            #expect(try await h.connection.call(ProjectsGet.self, .init(projectID: "HEPH")).project.icon == "hammer")
+
+            let cleared = try await h.call(ProjectsUpdate.self, .init(projectID: "HEPH", icon: .clear), as: h.claude)
+            #expect(cleared.project.icon == nil)
+            #expect(try !String(contentsOf: folder.projectFile, encoding: .utf8).contains("icon"))
+            #expect(try await h.connection.call(ProjectsList.self).first?.icon == nil)
+
+            // A name that is empty once trimmed removes the icon, as null does.
+            for empty in ["", "  "] {
+                _ = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "HEPH", icon: .set("star")))
+                let removed = try await h.call(ProjectsUpdate.self, .init(projectID: "HEPH", icon: .set(empty)), as: h.claude)
+                #expect(removed.project.icon == nil)
+            }
+        }
+    }
+
     @Test("projects.update refuses invalid values and chat defaults from Claude")
     func updateErrors() async throws {
         try await withDomainEngine { h in

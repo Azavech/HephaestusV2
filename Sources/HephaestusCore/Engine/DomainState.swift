@@ -213,7 +213,7 @@ struct DomainState {
         let own = ticketCounts(of: id)
         let total = descendants(of: id).map(ticketCounts(of:)).reduce(own, +)
         return ProjectSummary(id: id, name: loaded.project.name, type: loaded.project.type, color: loaded.project.color,
-                              rootPath: loaded.rootPath, parentID: loaded.parentID,
+                              icon: loaded.project.icon, rootPath: loaded.rootPath, parentID: loaded.parentID,
                               subprojectIDs: childIDs(of: id), ticketCounts: total, ownTicketCounts: own)
     }
 
