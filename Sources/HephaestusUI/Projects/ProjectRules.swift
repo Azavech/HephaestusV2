@@ -246,6 +246,19 @@ enum ProjectRules {
         return list
     }
 
+    /// An empty field, which removes the page, or `https://github.com/<owner>/<name>`, a trailing
+    /// `/` removed (docs/projects.md › Project settings, › GitHub page).
+    static func githubPageMessage(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty || GitHubPage.normalized(trimmed) != nil
+            ? nil : "Enter a GitHub page, for example https://github.com/owner/name."
+    }
+
+    /// The page as it applies: trimmed and without one trailing `/`; empty for an empty field.
+    static func normalizedGithubPage(_ text: String) -> String {
+        GitHubPage.normalized(text) ?? text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     // MARK: HephaestusV2 project
 
     /// True for the HephaestusV2 project, the device's project `HEPH`, and for its ancestors:

@@ -16,6 +16,12 @@ public struct Project: Codable, Sendable, Hashable {
     public var nextTicketNumber: Int
     public var nextBundleNumber: Int
     public var docsPath: String
+    /// The page typed in the GitHub page field, `https://github.com/<owner>/<name>`; nil when the
+    /// field is empty (docs/projects.md › GitHub page).
+    public var githubPage: String?
+    /// Whether a sub project uses its parent's settings; true when the key is absent, and without
+    /// effect for a top-level project (docs/projects.md › Sub projects).
+    public var useParentSettings: Bool
     public var subprojects: [String]
     public var commands: ProjectCommands
     public var webTabs: [WebTab]
@@ -32,7 +38,8 @@ public struct Project: Codable, Sendable, Hashable {
     public var unknownKeys: [String: JSONValue]
 
     public init(schema: Int = 1, id: ProjectID, name: String, created: Date, type: ProjectType = .none, color: String? = nil, icon: String? = nil,
-                nextTicketNumber: Int = 1, nextBundleNumber: Int = 1, docsPath: String = "docs", subprojects: [String] = [],
+                nextTicketNumber: Int = 1, nextBundleNumber: Int = 1, docsPath: String = "docs", githubPage: String? = nil,
+                useParentSettings: Bool = true, subprojects: [String] = [],
                 commands: ProjectCommands = ProjectCommands(), webTabs: [WebTab] = [], skills: [String] = [],
                 chatDefaults: ChatSettings? = nil, environments: [ProjectEnvironment] = [], deletedChats: [DeletedChat] = [],
                 commentAnswers: [CommentAnswerCost] = [], unknownKeys: [String: JSONValue] = [:]) {
@@ -46,6 +53,8 @@ public struct Project: Codable, Sendable, Hashable {
         self.nextTicketNumber = nextTicketNumber
         self.nextBundleNumber = nextBundleNumber
         self.docsPath = docsPath
+        self.githubPage = githubPage
+        self.useParentSettings = useParentSettings
         self.subprojects = subprojects
         self.commands = commands
         self.webTabs = webTabs
@@ -59,6 +68,7 @@ public struct Project: Codable, Sendable, Hashable {
 
     static let knownKeys: Set<String> = [
         "schema", "id", "name", "created", "type", "color", "icon", "nextTicketNumber", "nextBundleNumber", "docsPath",
+        "githubPage", "useParentSettings",
         "subprojects", "commands", "webTabs", "skills", "chatDefaults", "environments", "deletedChats",
         "commentAnswers",
     ]
@@ -82,6 +92,14 @@ public struct Project: Codable, Sendable, Hashable {
         nextTicketNumber = try c.value("nextTicketNumber", default: 1)
         nextBundleNumber = try c.value("nextBundleNumber", default: 1)
         docsPath = try c.value("docsPath", default: "docs")
+        // Read trimmed and without a trailing `/` (docs/data-model.md › Project file).
+        githubPage = try c.optional("githubPage", String.self).map { text in
+            guard let page = GitHubPage.normalized(text) else {
+                throw c.invalid("githubPage", "\"\(text)\" is not a page of the form https://github.com/<owner>/<name>")
+            }
+            return page
+        }
+        useParentSettings = try c.value("useParentSettings", default: true)
         subprojects = try c.value("subprojects", default: [])
         commands = try c.value("commands", default: ProjectCommands())
         webTabs = try c.value("webTabs", default: [])
@@ -112,6 +130,11 @@ public struct Project: Codable, Sendable, Hashable {
         try c.encode(nextTicketNumber, "nextTicketNumber")
         try c.encode(nextBundleNumber, "nextBundleNumber")
         try c.encode(docsPath, "docsPath")
+        // Left out of the file when the field is empty; `null` in the JSON form.
+        if githubPage != nil || !c.isYAML {
+            try c.encodeOptional(githubPage, "githubPage")
+        }
+        try c.encode(useParentSettings, "useParentSettings")
         try c.encode(subprojects, "subprojects")
         try c.encode(commands, "commands")
         try c.encode(webTabs, "webTabs")
@@ -135,6 +158,9 @@ public struct Project: Codable, Sendable, Hashable {
         guard nextTicketNumber >= 1 else { throw ValidationError.invalid("nextTicketNumber", "use a number of at least 1") }
         guard nextBundleNumber >= 1 else { throw ValidationError.invalid("nextBundleNumber", "use a number of at least 1") }
         _ = try ModelRules.relativePath(docsPath, field: "docsPath")
+        if let githubPage {
+            _ = try GitHubPage.validated(githubPage)
+        }
         for entry in subprojects {
             _ = try ModelRules.relativePath(entry, field: "subprojects")
         }
@@ -305,6 +331,52 @@ public enum ProjectIcon {
             throw ValidationError(field: "icon", message: "\(name) is not an SF Symbol of this Mac.")
         }
         return name
+    }
+}
+
+/// The key `githubPage` of the project file: a page `https://github.com/<owner>/<name>`
+/// (docs/projects.md › GitHub page).
+public enum GitHubPage {
+    /// The page of an owner and a repository name: nil when it is not a valid page.
+    public static func page(owner: String, name: String) -> String? {
+        normalized("https://github.com/\(owner)/\(name)")
+    }
+
+    /// A typed page trimmed and without one trailing `/`; nil when the result is not
+    /// `https://github.com/<owner>/<name>`, `<owner>` of ASCII letters, digits, `-` and `_`,
+    /// `<name>` of ASCII letters, digits, `.`, `-` and `_`, neither `.` nor `..`.
+    public static func normalized(_ text: String) -> String? {
+        var page = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if page.hasSuffix("/") {
+            page.removeLast()
+        }
+        let prefix = "https://github.com/"
+        guard page.hasPrefix(prefix) else { return nil }
+        let parts = page.dropFirst(prefix.count).split(separator: "/", omittingEmptySubsequences: false)
+        guard parts.count == 2, isOwner(parts[0]), isName(parts[1]) else { return nil }
+        return page
+    }
+
+    /// The page as stored; `invalid` for anything else than a page (docs/engine-api.md ›
+    /// projects.update).
+    public static func validated(_ text: String) throws -> String {
+        guard let page = normalized(text) else {
+            throw ValidationError.invalid("githubPage", "use a page of the form https://github.com/<owner>/<name>")
+        }
+        return page
+    }
+
+    private static func isOwner(_ text: Substring) -> Bool {
+        !text.isEmpty && text.unicodeScalars.allSatisfy { isLetterOrDigit($0) || $0 == "-" || $0 == "_" }
+    }
+
+    private static func isName(_ text: Substring) -> Bool {
+        !text.isEmpty && text != "." && text != ".."
+            && text.unicodeScalars.allSatisfy { isLetterOrDigit($0) || $0 == "." || $0 == "-" || $0 == "_" }
+    }
+
+    private static func isLetterOrDigit(_ scalar: Unicode.Scalar) -> Bool {
+        ("a"..."z").contains(scalar) || ("A"..."Z").contains(scalar) || ("0"..."9").contains(scalar)
     }
 }
 

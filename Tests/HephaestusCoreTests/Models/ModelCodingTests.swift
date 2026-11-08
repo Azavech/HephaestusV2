@@ -307,6 +307,49 @@ struct ModelCodingTests {
         }
     }
 
+    @Test("The GitHub page is written after docsPath when set, left out when absent, read without a trailing /, and refuses other values")
+    func projectGithubPage() throws {
+        let plain = Project(id: "WEB", name: "Website", created: Self.created)
+        let plainYAML = try YAMLCoding.encode(plain)
+        #expect(!plainYAML.contains("githubPage"))
+        #expect(try YAMLCoding.decode(Project.self, from: plainYAML).githubPage == nil)
+        let plainJSON = try JSONDecoder().decode(JSONValue.self, from: try EngineJSON.encode(plain))
+        #expect(plainJSON.objectValue?["githubPage"] == .null)
+
+        let linked = Project(id: "WEB", name: "Website", created: Self.created, githubPage: "https://github.com/owner/name")
+        let yaml = try YAMLCoding.encode(linked)
+        #expect(yaml.contains("docsPath: docs\ngithubPage: https://github.com/owner/name\nuseParentSettings: true\nsubprojects"))
+        #expect(try YAMLCoding.decode(Project.self, from: yaml) == linked)
+        #expect(try EngineJSON.decode(Project.self, from: try EngineJSON.encode(linked)).githubPage == "https://github.com/owner/name")
+
+        let slash = try YAMLCoding.decode(Project.self, from: "id: WEB\nname: W\ncreated: 2026-10-31T09:30:00Z\ngithubPage: 'https://github.com/owner/name/ '\n")
+        #expect(slash.githubPage == "https://github.com/owner/name")
+        for invalid in ["github.com/x", "http://github.com/owner/name", "https://github.com/owner", "https://github.com/owner/name/more",
+                        "https://example.com/owner/name", "''"] {
+            #expect(throws: (any Error).self) {
+                try YAMLCoding.decode(Project.self, from: "id: WEB\nname: W\ncreated: 2026-10-31T09:30:00Z\ngithubPage: \(invalid)\n")
+            }
+        }
+        #expect(throws: (any Error).self) {
+            try Project(id: "WEB", name: "W", created: Self.created, githubPage: "github.com/x").validate()
+        }
+    }
+
+    @Test("useParentSettings is true when the key is absent, always written, and keeps false")
+    func projectUseParentSettings() throws {
+        let minimal = try YAMLCoding.decode(Project.self, from: "id: WEB\nname: W\ncreated: 2026-10-31T09:30:00Z\n")
+        #expect(minimal.useParentSettings)
+        #expect(try YAMLCoding.encode(minimal).contains("useParentSettings: true\n"))
+        let off = try YAMLCoding.decode(Project.self, from: "id: WEB\nname: W\ncreated: 2026-10-31T09:30:00Z\nuseParentSettings: no\n")
+        #expect(!off.useParentSettings)
+        let yaml = try YAMLCoding.encode(off)
+        #expect(yaml.contains("useParentSettings: false\n"))
+        #expect(try YAMLCoding.decode(Project.self, from: yaml) == off)
+        let json = try JSONDecoder().decode(JSONValue.self, from: try EngineJSON.encode(off))
+        #expect(json.objectValue?["useParentSettings"] == .bool(false))
+        #expect(off.unknownKeys.isEmpty)
+    }
+
     @Test("Booleans accept the YAML 1.1 spellings")
     func booleanSpellings() throws {
         for (text, value) in [("yes", true), ("no", false), ("on", true), ("off", false), ("True", true), ("FALSE", false)] {

@@ -165,6 +165,7 @@ extension Engine {
             parentID = domain.innermostProject(containing: rootPath)
             try register(rootPath: rootPath, parentID: parentID)
         }
+        let pagesBefore = githubPages()
         loadTree(rootPath: rootPath, parentID: parentID, adoptingTopLevel: true)
         guard domain.projectID(atRoot: rootPath) == project.id else {
             throw EngineError(.internal, "Internal error: \(folder.projectFile.path) cannot be loaded.")
@@ -180,6 +181,8 @@ extension Engine {
             emitProjectUpdated(parentID, origin: actor)
         }
         emitProjectUpdated(project.id, origin: actor)
+        // A top-level project it adopts as a sub project may now use its page.
+        emitGithubPageChanges(since: pagesBefore, except: Set([project.id, parentID].compactMap { $0 }), origin: actor)
         emitProjectsChanged(origin: actor)
         updateFileWatching()
         return projectDetail(project.id)!
@@ -223,6 +226,17 @@ extension Engine {
             }
             new.docsPath = path
         }
+        switch params.githubPage {
+        case .keep:
+            break
+        case .clear:
+            new.githubPage = nil
+        case .set(let page):
+            new.githubPage = try validated { try GitHubPage.validated(page) }
+        }
+        if let useParentSettings = params.useParentSettings {
+            new.useParentSettings = useParentSettings
+        }
         if let commands = params.commands {
             var normalized = commands.normalized()
             normalized.unknownKeys = old.commands.unknownKeys
@@ -244,8 +258,11 @@ extension Engine {
             new.environments = try validated { try ProjectEnvironment.normalized(environments, keeping: old.environments) }
         }
         guard new != old else { return projectDetail(id)! }
+        let pagesBefore = githubPages()
         try saveProject(new)
         emitProjectUpdated(id, origin: actor)
+        // The sub projects that use its settings follow (docs/projects.md › GitHub page).
+        emitGithubPageChanges(since: pagesBefore, except: [id], origin: actor)
         if new.name != old.name || new.type != old.type || new.color != old.color || new.icon != old.icon {
             emitProjectsChanged(origin: actor)
         }

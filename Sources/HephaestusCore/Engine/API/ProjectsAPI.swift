@@ -79,6 +79,11 @@ public enum ProjectsUpdate: EngineMethod {
         public var icon: Patch<String> = .keep
         /// Docs folder as a project path.
         public var docsPath: String?
+        /// Clearable: the page of the GitHub page field, `https://github.com/<owner>/<name>`, stored
+        /// trimmed and without a trailing `/`; null removes it (docs/projects.md › GitHub page).
+        public var githubPage: Patch<String> = .keep
+        /// Whether a sub project uses its parent's settings (docs/projects.md › Sub projects).
+        public var useParentSettings: Bool?
         /// Replaces all run commands.
         public var commands: ProjectCommands?
         /// Clearable: null removes the project's chat defaults. Must be absent for claude.
@@ -88,7 +93,8 @@ public enum ProjectsUpdate: EngineMethod {
         public var environments: [ProjectEnvironment]?
 
         public init(projectID: ProjectID, name: String? = nil, type: ProjectType? = nil, color: Patch<String> = .keep,
-                    icon: Patch<String> = .keep, docsPath: String? = nil, commands: ProjectCommands? = nil,
+                    icon: Patch<String> = .keep, docsPath: String? = nil, githubPage: Patch<String> = .keep,
+                    useParentSettings: Bool? = nil, commands: ProjectCommands? = nil,
                     chatDefaults: Patch<ChatSettings> = .keep, environments: [ProjectEnvironment]? = nil) {
             self.projectID = projectID
             self.name = name
@@ -96,6 +102,8 @@ public enum ProjectsUpdate: EngineMethod {
             self.color = color
             self.icon = icon
             self.docsPath = docsPath
+            self.githubPage = githubPage
+            self.useParentSettings = useParentSettings
             self.commands = commands
             self.chatDefaults = chatDefaults
             self.environments = environments

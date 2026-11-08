@@ -33,6 +33,7 @@ private struct ProjectSettingsForm: View {
     let detail: ProjectDetail
 
     @State private var typeFailure: String?
+    @State private var parentSettingsFailure: String?
     @State private var chatDefaultsFailure: String?
 
     private var project: Project { detail.project }
@@ -85,12 +86,20 @@ private struct ProjectSettingsForm: View {
                     row("Parent") {
                         Text("\(workspace.project(parentID)?.name ?? parentID) (\(parentID))")
                     }
+                    row("") {
+                        Toggle("Use parent settings", isOn: parentSettingsBinding)
+                            .toggleStyle(.checkbox)
+                        FieldMessage(text: parentSettingsFailure)
+                    }
                 }
                 row("Docs folder") {
                     ProjectSettingsTextField(title: "Docs folder", prompt: "docs", monospaced: true, value: project.docsPath,
                                              validate: { ProjectRules.docsPathMessage($0) }) { path in
                         await update(ProjectsUpdate.Params(projectID: project.id, docsPath: path))
                     }
+                }
+                row("GitHub page") {
+                    githubPageField
                 }
                 row("Build command") {
                     commandField(.build, placeholder: "make build")
@@ -162,6 +171,30 @@ private struct ProjectSettingsForm: View {
         }
     }
 
+    /// True for a sub project whose `Use parent settings` is on (docs/projects.md › Sub projects).
+    private var usesParentSettings: Bool {
+        detail.parentID != nil && project.useParentSettings
+    }
+
+    /// The GitHub page field in SF Mono, whose placeholder is the origin's page; an empty field
+    /// removes the page. While the project uses its parent's settings it shows the parent's page,
+    /// disabled (docs/projects.md › Project settings).
+    @ViewBuilder private var githubPageField: some View {
+        if usesParentSettings {
+            TextField("GitHub page", text: .constant(detail.githubPage ?? ""), prompt: Text(""))
+                .labelsHidden()
+                .font(.system(.body, design: .monospaced))
+                .disabled(true)
+        } else {
+            ProjectSettingsTextField(title: "GitHub page", prompt: detail.originGithubPage, monospaced: true,
+                                     value: project.githubPage ?? "", writesBack: true,
+                                     validate: { ProjectRules.githubPageMessage($0) },
+                                     normalize: { ProjectRules.normalizedGithubPage($0) }) { page in
+                await update(ProjectsUpdate.Params(projectID: project.id, githubPage: page.isEmpty ? .clear : .set(page)))
+            }
+        }
+    }
+
     /// A single-line command field in SF Mono; empty means not set. It applies the whole
     /// `ProjectCommands` with the changed command and the two stored ones.
     private func commandField(_ kind: RunKind, placeholder: String) -> some View {
@@ -220,6 +253,16 @@ private struct ProjectSettingsForm: View {
             guard type != project.type else { return }
             Task {
                 typeFailure = await update(ProjectsUpdate.Params(projectID: project.id, type: type))
+            }
+        })
+    }
+
+    /// The `Use parent settings` checkbox applies its state as soon as it changes.
+    private var parentSettingsBinding: Binding<Bool> {
+        Binding(get: { project.useParentSettings }, set: { on in
+            guard on != project.useParentSettings else { return }
+            Task {
+                parentSettingsFailure = await update(ProjectsUpdate.Params(projectID: project.id, useParentSettings: on))
             }
         })
     }
@@ -706,12 +749,15 @@ private struct ProjectIconPopover: View {
 /// A text field of the section, applied on Return or when it loses the focus. Its validation
 /// message shows under it while the text is invalid, and an invalid value is not applied; a value
 /// equal to the stored one is not applied either. While it is not focused, it shows the stored
-/// value again whenever that value changes.
+/// value again whenever that value changes. With `writesBack`, a valid value shows normalized as
+/// soon as it applies. A field removed while it holds a new value applies it, as when it loses
+/// the focus.
 private struct ProjectSettingsTextField: View {
     let title: String
     var prompt: String?
     var monospaced = false
     let value: String
+    var writesBack = false
     var validate: (String) -> String? = { _ in nil }
     var normalize: (String) -> String = { $0 }
     /// Applies the normalized value; returns the engine's message, or nil on success.
@@ -743,12 +789,16 @@ private struct ProjectSettingsTextField: View {
                     text = newValue
                 }
             }
+            .onDisappear(perform: commit)
         FieldMessage(text: validate(text) ?? failure)
     }
 
     private func commit() {
         guard validate(text) == nil else { return }
         let normalized = normalize(text)
+        if writesBack {
+            text = normalized
+        }
         guard normalized != value else { return }
         Task {
             failure = await apply(normalized)

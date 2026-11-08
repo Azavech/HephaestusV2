@@ -2,20 +2,24 @@ import Darwin
 import Foundation
 
 /// The tools the files use on the main device: `git` for `FileEntry.isIgnored`, `gofmt` and
-/// `swift-format` for format on save (docs/architecture.md › Child processes, rule 5), with the
-/// environment the engine gives every child process.
+/// `swift-format` for format on save, `ssh` for the SSH host aliases of the GitHub page
+/// (docs/architecture.md › Child processes, rule 5), with the environment the engine gives every
+/// child process.
 struct FileTools: Sendable, Equatable {
     /// The login-shell environment captured at launch, without any `HEPHAESTUS_*` variable.
     var environment: [String: String]
     var git: String?
     var gofmt: String?
     var swiftFormat: String?
+    var ssh: String?
 
-    init(environment: [String: String], git: String? = nil, gofmt: String? = nil, swiftFormat: String? = nil) {
+    init(environment: [String: String], git: String? = nil, gofmt: String? = nil, swiftFormat: String? = nil,
+         ssh: String? = nil) {
         self.environment = ProcessEnvironment.withoutHephaestusVariables(environment)
         self.git = git
         self.gofmt = gofmt
         self.swiftFormat = swiftFormat
+        self.ssh = ssh
     }
 
     /// Before the lookup has run, no tool is known: nothing is formatted and `isIgnored` is
@@ -57,8 +61,10 @@ struct FileTools: Sendable, Equatable {
                 }
             }
         }
-        log?.info(.files, "tools: git \(git ?? "not found"), gofmt \(gofmt ?? "not found"), swift-format \(swiftFormat ?? "not found")")
-        return FileTools(environment: environment, git: git, gofmt: gofmt, swiftFormat: swiftFormat)
+        let ssh = executable(named: "ssh", inPATH: path)
+        log?.info(.files, "tools: git \(git ?? "not found"), gofmt \(gofmt ?? "not found"), swift-format \(swiftFormat ?? "not found"), "
+                  + "ssh \(ssh ?? "not found")")
+        return FileTools(environment: environment, git: git, gofmt: gofmt, swiftFormat: swiftFormat, ssh: ssh)
     }
 
     /// The first executable file named `name` in the directories of a `PATH` value. Relative
@@ -127,6 +133,35 @@ struct FileTools: Sendable, Equatable {
             return nil
         }
         return formatted
+    }
+
+    // MARK: ssh -G
+
+    /// Timeout of `ssh -G <alias>` (docs/architecture.md › Child processes, the table of tool runs).
+    static let sshTimeout: Duration = .seconds(5)
+
+    /// The host name that `ssh -G <alias>`, run in `directory`, prints for an SSH host alias
+    /// (docs/projects.md › GitHub page); nil without `ssh`, for an alias that starts with `-`,
+    /// when it prints none, exits with a non-zero status, fails to start or times out.
+    func sshHostName(alias: String, in directory: String, timeout: Duration = FileTools.sshTimeout) async -> String? {
+        guard let ssh, !alias.isEmpty, !alias.hasPrefix("-") else { return nil }
+        let request = ChildProcessRequest(executable: ssh, arguments: ["-G", alias], environment: environment,
+                                          currentDirectory: directory)
+        guard let result = try? await ChildProcessRunner.run(request, timeout: timeout), !result.timedOut,
+              result.termination.isSuccess else { return nil }
+        return Self.hostName(inSSHConfiguration: result.standardOutputText)
+    }
+
+    /// The value of the first `hostname` line of the output of `ssh -G`.
+    static func hostName(inSSHConfiguration text: String) -> String? {
+        for line in text.split(whereSeparator: \.isNewline) {
+            let parts = line.trimmingCharacters(in: .whitespaces).split(separator: " ", maxSplits: 1)
+            if parts.count == 2, parts[0].lowercased() == "hostname" {
+                let value = parts[1].trimmingCharacters(in: .whitespaces)
+                return value.isEmpty ? nil : value
+            }
+        }
+        return nil
     }
 
     // MARK: git check-ignore

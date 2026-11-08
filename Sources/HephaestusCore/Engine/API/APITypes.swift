@@ -152,14 +152,21 @@ public struct ProjectDetail: Codable, Sendable, Hashable {
     /// `git config --get remote.origin.url` run in the root; absent outside a git work tree or
     /// without an `origin` remote.
     public var gitRemoteURL: String?
+    /// The project's resolved GitHub page; absent when it has none (docs/projects.md › GitHub page).
+    public var githubPage: String?
+    /// The page of the project's origin; absent when the origin is not on GitHub. Project Settings
+    /// shows it as the GitHub page field's placeholder.
+    public var originGithubPage: String?
 
     public init(project: Project, rootPath: String, parentID: ProjectID? = nil, subprojects: [ProjectSummary] = [],
-                gitRemoteURL: String? = nil) {
+                gitRemoteURL: String? = nil, githubPage: String? = nil, originGithubPage: String? = nil) {
         self.project = project
         self.rootPath = rootPath
         self.parentID = parentID
         self.subprojects = subprojects
         self.gitRemoteURL = gitRemoteURL
+        self.githubPage = githubPage
+        self.originGithubPage = originGithubPage
     }
 }
 

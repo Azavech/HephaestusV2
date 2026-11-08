@@ -242,6 +242,7 @@ extension Engine {
             recordApplied(path, data)
             guard let old = domain.project(id), new != old else { return }
             let summariesBefore = projectSummaries()
+            let pagesBefore = githubPages()
             domain.setProject(new)
             var listChanged = new.name != old.name
             var removedIDs: [ProjectID] = []
@@ -259,6 +260,8 @@ extension Engine {
                 }
             }
             emitProjectUpdated(id, origin: .system)
+            // The sub projects that use its settings follow (docs/projects.md › GitHub page).
+            emitGithubPageChanges(since: pagesBefore, except: [id], origin: .system)
             emitProjectsRemoved(removedIDs, origin: .system)
             if !removedIDs.isEmpty {
                 terminateChatProcesses(inProjects: removedIDs)

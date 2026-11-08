@@ -7,7 +7,7 @@ import Foundation
 final class FileService {
     // MARK: Tools and Trash
 
-    /// `git`, `gofmt` and `swift-format`, set by `lookUpFileTools(environment:)`.
+    /// `git`, `gofmt`, `swift-format` and `ssh`, set by `lookUpFileTools(environment:)`.
     var tools = FileTools.notLookedUp
     /// True once a test set the tools: the lookup of the engine start does not replace them.
     var toolsSetByTest = false
@@ -24,6 +24,14 @@ final class FileService {
     var gitRemoteURLs: [String: String] = [:]
     /// The roots whose remote is being read; true when another read was asked for meanwhile.
     var gitRemoteReads: [String: Bool] = [:]
+
+    // MARK: GitHub pages (docs/projects.md › GitHub page, Files/GitHubPages.swift)
+
+    /// The host name `ssh -G` printed for each SSH host alias, `""` when it printed none or
+    /// failed; no entry before the first run.
+    var sshHostNames: [String: String] = [:]
+    /// The aliases whose `ssh -G` runs; true when another run was asked for meanwhile.
+    var sshHostNameReads: [String: Bool] = [:]
 
     // MARK: Watching (docs/data-model.md › Watching)
 
@@ -149,7 +157,7 @@ extension Engine {
         }
     }
 
-    /// Looks up `git`, `gofmt` and `swift-format` in the captured login-shell environment
+    /// Looks up `git`, `gofmt`, `swift-format` and `ssh` in the captured login-shell environment
     /// (docs/architecture.md › Startup step 7 and › Child processes, rule 5), then reads the remote
     /// of every loaded project (docs/engine-api.md › ProjectDetail) and runs the launch check of
     /// the HephaestusV2 project (docs/projects.md › Launch check and clone). Runs once, after the

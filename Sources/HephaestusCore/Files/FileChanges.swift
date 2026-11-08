@@ -149,7 +149,34 @@ extension Engine {
         guard files.isWatching else { return }
         await processAppearedProjectFiles(projectEvents)
         guard files.isWatching else { return }
+        refreshGitRemotes(for: projectEvents)
         emitFilesChanged(for: projectEvents)
+    }
+
+    /// A `.git/config` changed under a watched root: the origin of every loaded project whose
+    /// root lies in the folder that holds that `.git` is read again; for a folder whose events
+    /// FSEvents dropped, every loaded root inside it (docs/engine-api.md › ProjectDetail).
+    private func refreshGitRemotes(for events: [FileWatcher.Event]) {
+        let roots = loadedProjectRoots()
+        var folders: Set<String> = []
+        for root in roots {
+            for event in events {
+                guard let path = root.projectPath(of: event) else { continue }
+                if path == ".git/config" || (path.isEmpty && event.mustScanSubdirectories) {
+                    folders.insert(root.path)
+                } else if path.hasSuffix("/.git/config") {
+                    folders.insert(root.path + "/" + path.dropLast("/.git/config".count))
+                } else if event.mustScanSubdirectories {
+                    folders.insert(root.path + "/" + path)
+                }
+            }
+        }
+        guard !folders.isEmpty else { return }
+        for root in roots where folders.contains(where: { ProjectPaths.isSameOrInside(root.path, $0) }) {
+            if let rootPath = domain.projects[root.id]?.rootPath {
+                refreshGitRemoteURL(root: rootPath)
+            }
+        }
     }
 
     // MARK: Project data files
