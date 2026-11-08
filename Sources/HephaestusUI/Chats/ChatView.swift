@@ -336,8 +336,16 @@ private struct ChatViewContent: View {
                 .padding(.horizontal, 10)
                 .padding(.top, 8)
                 // Ticket and bundle ids of the cards open with the chat's window choice, also in a
-                // ticket's or a bundle's Chats tab (docs/chats.md › Links, images and files).
+                // ticket's or a bundle's Chats tab (docs/chats.md › Links, images and files). Each
+                // card reads only the markers it sets itself: those of the ticket descriptions
+                // around a ticket's Chats tab stay out (docs/documentation-viewer.md › Images).
                 .transformEnvironment(\.markdownContext) { [weak model, projectIdentifiers = workspace.projectIdentifiers] context in
+                    context.options.isSymbolAvailable = nil
+                    context.options.colorSwatch = nil
+                    context.options.readsSoundMarkers = false
+                    context.options.shortcutKeys = nil
+                    context.options.fontMarker = nil
+                    context.options.animationCurve = nil
                     context.options.projectIdentifiers = projectIdentifiers
                     context.openID = { id in model?.openID(id) }
                     context.playSound = { name in model?.playSound(name) }

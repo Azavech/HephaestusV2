@@ -15,7 +15,7 @@ This is the operating manual Claude follows in every HephaestusV2 chat. Claude n
 | Comment answer   | A new comment of the user that mentions `@Claude` ([Tickets](tickets.md#mentioning-claude)); a one-shot call, not a chat ([Chats](chats.md#comment-answers)) | `comment-answer.md`        | Answer the comment; change only the title, description, links and status of its ticket, never docs, code, other tickets, comments or attachments; questions go in the answer comment as [plain-text questions](#plain-text-questions)                                       |
 
 - The prompt resources are in `Sources/HephaestusCore/Resources/prompts/`, and their full text is in [Chats](chats.md). `common.md` states every rule of this document in imperative form.
-- A comment answer gets `comment-answer.md` alone: the rules of this document that apply to it, [Never invent](#never-invent), the template of [Writing tickets](#writing-tickets), [Ticket status](#ticket-status) and [Plain-text questions](#plain-text-questions), are stated there, and it implements nothing, commits nothing and asks nothing with `ask_questions` ([Prompt: comment-answer](chats.md#prompt-comment-answer)).
+- A comment answer gets `comment-answer.md` alone: the rules of this document that apply to it, [Never invent](#never-invent), the template of [Writing tickets](#writing-tickets), [Ticket status](#ticket-status), [Plain-text questions](#plain-text-questions) and the markers of [SF Symbols](#sf-symbols), [Colors](#colors), [Sounds](#sounds), [Keyboard shortcuts](#keyboard-shortcuts), [Fonts](#fonts) and [Animations](#animations), are stated there, and it implements nothing, commits nothing and asks nothing with `ask_questions` ([Prompt: comment-answer](chats.md#prompt-comment-answer)).
 - A CI chat gets `ci.md` alone: it follows the CI runs of one commit and reports the result to the chat that started it, and the other rules of this document do not apply to it ([Waiting for CI](#waiting-for-ci), [Prompt: ci](chats.md#prompt-ci)). Default chosen at design time.
 - Claude CLI also reads the project's own `CLAUDE.md` from the project root. The `CLAUDE.md` of the HephaestusV2 repository links to this document. Default chosen at design time.
 - An explicit instruction from the user in the chat replaces a step of this workflow, for example "do not push". The engine-enforced rules cannot be replaced: when an instruction conflicts with one of them, Claude tells the user that the user has to do it. Default chosen at design time.
@@ -675,19 +675,39 @@ The format of this comment is a default. Default chosen at design time.
 
 ## SF Symbols
 
-When Claude names an SF Symbol in a reply or in `ask_questions`, it writes it as `![](sf:<name>)`, for example `![](sf:line.3.horizontal.decrease.circle)`. The chat transcript and the pinned questions card show such a marker as the symbol's icon followed by its name ([Chats](chats.md#links-images-and-files)); ticket descriptions, comments and docs do not draw it.
+When Claude names an SF Symbol in a reply, in `ask_questions`, or in a ticket description or a comment that it writes (with `create_ticket`, `update_ticket`, `add_comment` or `update_comment`, or as a [comment answer](#where-the-rules-apply)), it writes it as `![](sf:<name>)`, for example `![](sf:line.3.horizontal.decrease.circle)`. The chat transcript, the pinned questions card, ticket descriptions and comments show such a marker as the symbol's icon followed by its name ([Chats](chats.md#links-images-and-files), [Tickets](tickets.md#ticket-detail)); docs do not draw it.
 
 When Claude needs the user to choose an SF Symbol, it asks with `ask_symbol` ([Symbol requests](#symbol-requests)).
 
 ## Colors
 
-When Claude names a color in a reply or in `ask_questions`, it writes it as `![](color:<color>)`, `<color>` being a hex color `#RRGGBB` or a [system color name](chats.md#system-colors), for example `![](color:#FF9500)` or `![](color:systemBlue)`. The chat transcript and the pinned questions card show such a marker as a swatch of the color followed by the hex or the name ([Chats](chats.md#links-images-and-files)); ticket descriptions, comments and docs do not draw it.
+When Claude names a color in a reply, in `ask_questions`, or in a ticket description or a comment that it writes, it writes it as `![](color:<color>)`, `<color>` being a hex color `#RRGGBB` or a [system color name](chats.md#system-colors), for example `![](color:#FF9500)` or `![](color:systemBlue)`. The chat transcript, the pinned questions card, ticket descriptions and comments show such a marker as a swatch of the color followed by the hex or the name ([Chats](chats.md#links-images-and-files), [Tickets](tickets.md#ticket-detail)); docs do not draw it.
 
 When Claude needs the user to choose a color, it asks with `ask_color` ([Color requests](#color-requests)).
 
 ## Sounds
 
-When, in a Swift application project, Claude needs the user to choose a sound for an app of an Apple platform, it asks with `ask_sound` ([Sound requests](#sound-requests)). The chat transcript shows a sound marker `![](sound:<name>)` as a play button followed by the sound's name; the play button plays the sound ([Chats](chats.md#links-images-and-files)).
+When Claude names a sound in a ticket description or a comment that it writes, it writes it as `![](sound:<name>)`, `<name>` being a name of the [sound catalogue](chats.md#sound-catalogue) written as it is, spaces included, for example `![](sound:macOS/Glass.aiff)` or `![](sound:iOS 26.1/sms-received1.caf)`. The chat transcript shows a sound marker as a play button followed by the sound's name, and the pinned questions, symbol and sound cards, ticket descriptions and comments as the character `▶` followed by the name; the play button and the `▶` play the sound ([Chats](chats.md#links-images-and-files), [Tickets](tickets.md#ticket-detail)). Docs do not draw it.
+
+When, in a Swift application project, Claude needs the user to choose a sound for an app of an Apple platform, it asks with `ask_sound` ([Sound requests](#sound-requests)).
+
+## Keyboard shortcuts
+
+When Claude names a keyboard shortcut in a ticket description or a comment that it writes, it writes it as `![](shortcut:<shortcut>)`, `<shortcut>` being written in the [shortcut notation](chats.md#shortcut-notation), the modifiers `⌃⌥⇧⌘` in this order and then one key, with a key `(`, `)` or `\` written with a `\` before it, for example `![](shortcut:⇧⌘K)`, `![](shortcut:⌘↩)` or `![](shortcut:⌘\()`. The chat transcript shows such a marker as key caps, and ticket descriptions and comments as its key caps as text ([Chats](chats.md#links-images-and-files), [Tickets](tickets.md#ticket-detail)). Docs do not draw it.
+
+When, in a Swift application project, Claude needs the user to choose a keyboard shortcut, it asks with `ask_shortcut` ([Shortcut requests](#shortcut-requests)).
+
+## Fonts
+
+When Claude names a font in a ticket description or a comment that it writes, it writes it as `![](font:<font>)`, `<font>` being written in the [font notation](chats.md#font-notation), a Dynamic Type text style or `<family>/<weight>/<size>`, for example `![](font:.headline)` or `![](font:System Rounded/Semibold/17)`. The chat transcript, the pinned questions card, ticket descriptions and comments show such a marker as the font reads, for example `System Rounded · Semibold · 17 pt`, drawn in that font ([Chats](chats.md#links-images-and-files), [Tickets](tickets.md#ticket-detail)). Docs do not draw it.
+
+When Claude needs the user to choose a font, it asks with `ask_font` ([Font requests](#font-requests)).
+
+## Animations
+
+When Claude names an animation in a ticket description or a comment that it writes, it writes it as `![](animation:<expression>)`, `<expression>` being a SwiftUI animation expression of [Animation expressions](#animation-expressions), for example `![](animation:.spring(duration: 0.4, bounce: 0.2))`. The chat transcript shows such a marker as a replay button and a lane followed by the expression, and ticket descriptions and comments as the expression ([Chats](chats.md#links-images-and-files), [Tickets](tickets.md#ticket-detail)). Docs do not draw it.
+
+When, in a Swift application project, Claude needs the user to choose an animation, it asks with `ask_animation` ([Animation requests](#animation-requests)).
 
 ## Showing images
 
@@ -905,3 +925,4 @@ Notes
 - R162: Each environment of a Go service names its Kubernetes context, namespace, deployment, Argo CD application and kubeconfig, which Claude receives and uses through HephaestusV2's Kubernetes and Argo CD tools.
 - R164: The main button of the pinned questions card reads `Submit` only when pressing it sends the answers to Claude, and `Next` on the other questions of the set.
 - R169: Claude keeps global memories that every chat of every project receives; the user shows and edits them with View ▸ Global Memories.
+- R175: Ticket descriptions and comments draw the SF Symbol, color, font, shortcut, sound and animation markers, and Claude writes them there when it names one.

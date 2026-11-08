@@ -11,6 +11,10 @@ struct TicketDetailView: View {
     let projectID: String
     let ticketID: String
     @State private var editor: DescriptionEditorModel
+    /// The project font files that the font markers of the description and the comments read.
+    @State private var projectFonts: ProjectFonts?
+    /// Incremented when faces of `projectFonts` were read, so that the font markers are drawn again.
+    @State private var fontFacesRevision = 0
 
     init(window: WindowState, workspace: DeviceWorkspace, projectID: String, ticketID: String) {
         self.window = window
@@ -29,6 +33,11 @@ struct TicketDetailView: View {
     }
 
     var body: some View {
+        let markdownContext = TicketMarkdown.context(projectID: projectID, workspace: workspace, window: window)
+        let faces = ticket.map {
+            TicketMarkdown.undrawnFaces(in: [TemplateHeadingMarkdown.source($0.description)] + $0.comments.map(\.text),
+                                        options: markdownContext.options)
+        } ?? []
         Group {
             if let ticket {
                 VStack(spacing: 0) {
@@ -57,7 +66,24 @@ struct TicketDetailView: View {
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
-        .environment(\.markdownContext, TicketMarkdown.context(projectID: projectID, workspace: workspace, window: window))
+        .environment(\.markdownContext, markdownContext)
+        .environment(\.markdownFontFacesRevision, fontFacesRevision)
+        // The font markers of a family of the project's font files are drawn again in its face as
+        // soon as that face is read through the window's engine connection (docs/tickets.md ›
+        // Ticket detail). A face read leaves `faces`, which starts the task again with the others.
+        .task(id: faces) {
+            guard !faces.isEmpty else { return }
+            let fonts = projectFonts.flatMap { $0.projectID == projectID ? $0 : nil }
+                ?? ProjectFonts(connection: workspace.connection, projectID: projectID)
+            projectFonts = fonts
+            for face in faces {
+                let read = await TicketMarkdown.loadFaces([face], with: fonts)
+                if Task.isCancelled { return }
+                if read {
+                    fontFacesRevision += 1
+                }
+            }
+        }
         .onAppear {
             editor.workspace = workspace
             editor.window = window

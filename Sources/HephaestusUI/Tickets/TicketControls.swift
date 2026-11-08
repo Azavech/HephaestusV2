@@ -159,14 +159,19 @@ struct TicketPendingFileChip: View {
 
 /// The Markdown context of a project's ticket descriptions and comments: the renderer options of
 /// docs/documentation-viewer.md › Renderer (`baseDirectory` "", the project's root path, the
-/// identifiers of every project of the device), the link and id clicks of docs/tickets.md › Ticket
-/// detail and project images read with `files.read`.
+/// marker options of the chat, the identifiers of every project of the device), the link, id and
+/// sound marker clicks of docs/tickets.md › Ticket detail and project images read with `files.read`.
 @MainActor
 enum TicketMarkdown {
     static func context(projectID: String, workspace: DeviceWorkspace, window: WindowState) -> MarkdownContext {
         let rootPath = workspace.project(projectID)?.rootPath
         return MarkdownContext(
+            // The SF Symbols, colors and fonts of this Mac, as in a chat (docs/chats.md › Links,
+            // images and files).
             options: MarkdownRenderOptions(baseDirectory: "", projectRootPath: rootPath, stripFrontMatter: false,
+                                           isSymbolAvailable: SFSymbols.isAvailable, colorSwatch: ColorSwatches.swatch,
+                                           readsSoundMarkers: true, shortcutKeys: { KeyShortcut.keyCaps(of: $0) },
+                                           fontMarker: FontMarkers.marker, animationCurve: AnimationExpression.markdownCurve,
                                            projectIdentifiers: workspace.projectIdentifiers),
             openLink: { [weak workspace, weak window] destination in
                 guard let workspace, let window else { return }
@@ -183,8 +188,90 @@ enum TicketMarkdown {
                       let base64 = content.dataBase64, let data = Data(base64Encoded: base64)
                 else { return nil }
                 return NSImage(data: data)
+            },
+            // The ▶ of a sound marker plays the sound of the ticket's project, read through the
+            // window's engine connection (docs/chats.md › Sound playback).
+            playSound: { [weak workspace, weak window] name in
+                guard let workspace, let window else { return }
+                Task {
+                    do {
+                        try await SoundPlayer.play(name, projectID: projectID, workspace: workspace)
+                    } catch {
+                        window.alert = .failure("Play Sound", error)
+                    }
+                }
             }
         )
+    }
+
+    /// A face that a font marker names: its family and its weight.
+    struct FontFaceName: Hashable {
+        var family: String
+        var weight: String
+    }
+
+    /// The faces of the family fonts named by the font markers of the texts that this Mac cannot
+    /// draw yet, in the order of the texts: faces to read from the project's font files
+    /// (docs/tickets.md › Ticket detail). The texts are rendered as the views render them.
+    static func undrawnFaces(in texts: [String], options: MarkdownRenderOptions) -> [FontFaceName] {
+        var faces: [FontFaceName] = []
+        for text in texts {
+            collectFaces(in: MarkdownBlockCache.blocks(text, options: options), into: &faces)
+        }
+        return faces
+    }
+
+    /// Reads the faces from the project's font files with `files.fonts` and `files.read` and
+    /// registers them in `FontFaces` (docs/chats.md › Font catalogue); true when one was read.
+    static func loadFaces(_ faces: [FontFaceName], with fonts: ProjectFonts) async -> Bool {
+        var loaded = false
+        for face in faces {
+            if await fonts.descriptor(family: face.family, weight: face.weight) != nil {
+                loaded = true
+            }
+        }
+        return loaded
+    }
+
+    private static func collectFaces(in blocks: [MarkdownBlock], into faces: inout [FontFaceName]) {
+        for block in blocks {
+            switch block {
+            case .heading(_, _, let content), .paragraph(let content):
+                collectFaces(in: content, into: &faces)
+            case .blockQuote(let children):
+                collectFaces(in: children, into: &faces)
+            case .list(let list):
+                for item in list.items {
+                    collectFaces(in: item.blocks, into: &faces)
+                }
+            case .table(let table):
+                for cell in table.header + table.rows.flatMap({ $0 }) {
+                    collectFaces(in: cell, into: &faces)
+                }
+            case .codeBlock, .thematicBreak, .rawHTML:
+                break
+            }
+        }
+    }
+
+    private static func collectFaces(in inlines: [MarkdownInline], into faces: inout [FontFaceName]) {
+        for inline in inlines {
+            switch inline {
+            case .font(let marker):
+                guard case .family(let family, let weight, _)? = FontNotation(marker.font),
+                      FontFaces.systemDesign(family) == nil,
+                      FontFaces.ctFont(family: family, weight: weight, size: 13) == nil
+                else { continue }
+                let face = FontFaceName(family: family, weight: weight)
+                if !faces.contains(face) {
+                    faces.append(face)
+                }
+            case .emphasis(let content), .strong(let content), .strikethrough(let content), .link(_, _, let content):
+                collectFaces(in: content, into: &faces)
+            default:
+                break
+            }
+        }
     }
 
     /// A relative link resolves against the project root; a Markdown file of the docs folder opens

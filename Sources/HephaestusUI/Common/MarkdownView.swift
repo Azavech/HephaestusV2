@@ -61,6 +61,9 @@ struct MarkdownLinkActions: ViewModifier {
 
 extension EnvironmentValues {
     @Entry var markdownContext = MarkdownContext()
+    /// Changed by a view that has read the faces its font markers name, so that their labels are
+    /// drawn again in them (docs/tickets.md › Ticket detail).
+    @Entry var markdownFontFacesRevision = 0
 }
 
 /// Markdown rendered as native views, for ticket descriptions and comments.
@@ -94,7 +97,7 @@ private struct MarkdownBlockView: View {
         switch block {
         case .heading(let level, _, let content):
             VStack(alignment: .leading, spacing: 4) {
-                MarkdownInlinesView(inlines: content, font: headingFont(level))
+                MarkdownInlinesView(inlines: content, font: headingFont(level), size: headingSize(level))
                     .foregroundStyle(level == 6 ? Color.secondary : Color.primary)
                 if level <= 2 {
                     Divider()
@@ -102,7 +105,7 @@ private struct MarkdownBlockView: View {
             }
             .padding(.top, level <= 2 ? 6 : 4)
         case .paragraph(let content):
-            MarkdownInlinesView(inlines: content, font: .system(size: markdownBaseSize))
+            MarkdownInlinesView(inlines: content, font: .system(size: markdownBaseSize), size: markdownBaseSize)
         case .blockQuote(let blocks):
             HStack(alignment: .top, spacing: 10) {
                 Rectangle()
@@ -132,9 +135,12 @@ private struct MarkdownBlockView: View {
     }
 
     private func headingFont(_ level: Int) -> Font {
+        .system(size: headingSize(level), weight: .semibold)
+    }
+
+    private func headingSize(_ level: Int) -> CGFloat {
         let factors: [CGFloat] = [1.8, 1.45, 1.2, 1, 0.9, 0.85]
-        let factor = factors[max(0, min(5, level - 1))]
-        return .system(size: markdownBaseSize * factor, weight: .semibold)
+        return markdownBaseSize * factors[max(0, min(5, level - 1))]
     }
 }
 
@@ -175,23 +181,28 @@ private struct MarkdownListView: View {
 
 // MARK: - Inlines
 
-/// A run of inlines: text runs become one `Text`; images are views of their own.
+/// A run of inlines: text runs become one `Text`; images are views of their own. `size` is the
+/// point size of `font`, at which font markers are drawn.
 private struct MarkdownInlinesView: View {
     let inlines: [MarkdownInline]
     let font: Font
+    let size: CGFloat
     @Environment(\.markdownContext) private var context
+    @Environment(\.markdownFontFacesRevision) private var fontFacesRevision
 
     var body: some View {
         let segments = MarkdownInlineSegments.split(inlines)
         let mentions = context.highlightsMentions
+        // Read so that the font markers are drawn again once their faces are read.
+        let _ = fontFacesRevision
         if segments.count == 1, case .text(let runs) = segments[0] {
-            MarkdownAttributed.text(runs, highlightsMentions: mentions).font(font)
+            MarkdownAttributed.text(runs, highlightsMentions: mentions, size: size).font(font)
         } else {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
                     switch segment {
                     case .text(let runs):
-                        MarkdownAttributed.text(runs, highlightsMentions: mentions).font(font)
+                        MarkdownAttributed.text(runs, highlightsMentions: mentions, size: size).font(font)
                     case .image(let source, let alt, let title):
                         MarkdownImageView(source: source, alt: alt, title: title)
                     }
@@ -232,11 +243,13 @@ private enum MarkdownInlineSegments {
 /// Inlines as a `Text`: emphasis, strong, code, strikethrough and links as attributes of the text,
 /// each SF Symbol as its image followed by a space and its name
 /// (docs/documentation-viewer.md › SF Symbol markers), and each font marker as its label in its
-/// font at the size of Markdown text (docs/chats.md › Links, images and files).
+/// font at `size`, the size of the text around it, 13 points when nil (docs/chats.md › Links,
+/// images and files, docs/tickets.md › Ticket detail).
 enum MarkdownAttributed {
-    static func text(_ inlines: [MarkdownInline], highlightsMentions: Bool = false) -> Text {
+    static func text(_ inlines: [MarkdownInline], highlightsMentions: Bool = false, size: CGFloat? = nil) -> Text {
         var builder = Builder()
         builder.highlightsMentions = highlightsMentions
+        builder.markerSize = size ?? markdownBaseSize
         builder.append(inlines, intent: [], link: nil)
         builder.flush()
         guard var result = builder.parts.first else { return Text(verbatim: "") }
@@ -251,6 +264,8 @@ enum MarkdownAttributed {
         var parts: [Text] = []
         var current = AttributedString()
         var highlightsMentions = false
+        /// The point size of the font markers.
+        var markerSize = markdownBaseSize
         /// The last character appended, for the whole-word rule of the mentions.
         var previous: Character?
 
@@ -297,7 +312,7 @@ enum MarkdownAttributed {
                 case .font(let marker):
                     var run = MarkdownAttributed.run(marker.label, intent: intent, link: link)
                     if let font = FontNotation(marker.font) {
-                        run.font = FontFaces.markerFont(font, size: markdownBaseSize)
+                        run.font = FontFaces.markerFont(font, size: markerSize)
                     }
                     current.append(run)
                 case .itemID(let id, let code):
@@ -549,8 +564,11 @@ enum MarkdownColors {
 
 private struct MarkdownTableView: View {
     let table: MarkdownTable
+    @Environment(\.markdownFontFacesRevision) private var fontFacesRevision
 
     var body: some View {
+        // Read so that the font markers of the cells are drawn again once their faces are read.
+        let _ = fontFacesRevision
         ScrollView(.horizontal) {
             Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
                 GridRow {

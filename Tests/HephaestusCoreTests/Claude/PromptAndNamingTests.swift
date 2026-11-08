@@ -604,9 +604,10 @@ struct PromptAndNamingTests {
         #expect(answer.contains("Put every true unknown into them and no point with an evident answer,"))
     }
 
-    @Test("The rendered common prompt tells Claude to write an SF Symbol as ![](sf:<name>)")
+    @Test("The rendered common prompt tells Claude to write an SF Symbol as ![](sf:<name>) in replies, ask_questions, ticket descriptions and comments")
     func sfSymbolPrompt() throws {
-        let rule = "# SF Symbols\n\nWhen you name an SF Symbol in a reply or in ask_questions, write it as ![](sf:<name>), "
+        let rule = "# SF Symbols\n\nWhen you name an SF Symbol in a reply, in ask_questions, or in a ticket description or a comment that "
+            + "you write (create_ticket, update_ticket, add_comment, update_comment), write it as ![](sf:<name>), "
             + "for example ![](sf:line.3.horizontal.decrease.circle): HephaestusV2 shows the symbol's icon followed by its name there.\n\n"
         let values = ["projectName": "Hephaestus V2", "projectID": "HEPH", "projectRoot": "/Users/example/Developer/HephaestusV2",
                       "deviceName": "Studio", "docsPath": "docs"]
@@ -646,7 +647,8 @@ struct PromptAndNamingTests {
         let lower = try #require(common.range(of: "# Colors\n\n")).lowerBound
         let upper = try #require(common.range(of: "# Sounds")).lowerBound
         let section = String(common[lower..<upper])
-        #expect(section.contains("When you name a color in a reply or in ask_questions, write it as ![](color:<color>)"))
+        #expect(section.contains("When you name a color in a reply, in ask_questions, or in a ticket description or a comment that you write, "
+            + "write it as ![](color:<color>)"))
         #expect(section.contains("When you need the user to choose a color, ask with ask_color, never with color values as options of ask_questions"))
         #expect(section.contains("When the destination of the color supports light and dark appearances, for example an asset catalog "
             + "color set, set lightAndDark"))
@@ -658,6 +660,43 @@ struct PromptAndNamingTests {
         for kind in [ChatKind.project, .ticket, .bundle, .feedback] {
             #expect(Prompts.systemPrompt(kind: kind, values: values).contains(section), "\(kind)")
         }
+    }
+
+    @Test("The common prompt tells Claude to write sound, shortcut, font and animation markers in ticket descriptions and comments")
+    func ticketMarkersPrompt() throws {
+        let common = Prompts.text(.common)
+        func section(_ heading: String, before next: String) throws -> String {
+            let lower = try #require(common.range(of: "# \(heading)\n")).lowerBound
+            let upper = try #require(common.range(of: "# \(next)\n")).lowerBound
+            return String(common[lower..<upper])
+        }
+        #expect(try section("Sounds", before: "Keyboard shortcuts").contains("When you name a sound in a ticket description or a comment "
+            + "that you write, write it as ![](sound:<name>), <name> being a sound name as above, written as it is, spaces included"))
+        #expect(try section("Keyboard shortcuts", before: "Fonts").contains("When you name a keyboard shortcut in a ticket description or a "
+            + "comment that you write, write it as ![](shortcut:<shortcut>), <shortcut> being in this menu notation, its key an uppercase "
+            + "letter, a digit or punctuation as typed without Shift, ↩ ⌤ ⎋ ⇥ Space ⌫ ⌦ ← → ↑ ↓ ↖ ↘ ⇞ ⇟, or F1 to F20, with a key (, ) or \\ "
+            + "written with a \\ before it"))
+        #expect(try section("Fonts", before: "Animations").contains("When you name a font in a ticket description or a comment that you "
+            + "write, write it as ![](font:<font>)"))
+        #expect(try section("Animations", before: "Images").contains("When you name an animation in a ticket description or a comment "
+            + "that you write, write it as ![](animation:<expression>)"))
+    }
+
+    @Test("The comment-answer prompt tells Claude to write the six markers in its answer and in the ticket's description")
+    func commentAnswerMarkersPrompt() throws {
+        let answer = Prompts.text(.commentAnswer)
+        let lower = try #require(answer.range(of: "# Markers\n")).lowerBound
+        let upper = try #require(answer.range(of: "# Questions\n")).lowerBound
+        let section = String(answer[lower..<upper])
+        #expect(section.contains("When you name an SF Symbol, a color, a font, a keyboard shortcut, a sound or an animation in your reply "
+            + "or in the ticket's description, write it as its marker, which HephaestusV2 draws there:"))
+        for marker in ["![](sf:<name>)", "![](color:<color>)", "![](font:<font>)", "![](shortcut:<shortcut>)", "![](sound:<name>)",
+                       "![](animation:<expression>)"] {
+            #expect(section.contains("as \(marker), "), "\(marker)")
+        }
+        #expect(section.contains("the modifiers ⌃ ⌥ ⇧ ⌘ in this order, then one key, an uppercase letter, a digit or punctuation as typed "
+            + "without Shift, ↩ ⌤ ⎋ ⇥ Space ⌫ ⌦ ← → ↑ ↓ ↖ ↘ ⇞ ⇟, or F1 to F20"))
+        #expect(section.contains("<runtime> being the runtime's name in xcrun simctl list runtimes"))
     }
 
     @Test("The common prompt tells Claude to use ask_sound in a Swift application project to have the user choose a sound")
