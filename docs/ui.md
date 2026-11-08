@@ -81,6 +81,10 @@ The sidebar, the centre column and the inspector are the three panes of one `NSS
 
 The sidebar pane and the inspector pane are frosted: each is drawn over an `NSVisualEffectView` with the material `.sidebar` and the blending mode `.behindWindow`, so the desktop and the windows behind the app show through them, blurred, as in the sidebars of Finder or Music. The material follows the light and dark appearance and the window's active state (`.followsWindowActiveState`), and macOS makes it opaque when Reduce Transparency is on. The text and controls of the panes are drawn over the material without vibrancy. The centre column, the toolbar and the status bar keep their opaque backgrounds. The capture of [Screenshot capture](feedback.md#screenshot-capture) cannot render what is behind the window, so it fills the frosted areas with an opaque colour close to the material. The state and the absence of vibrancy are Default chosen at design time.
 
+The toolbar is one plain band across the whole window width, whatever the window shows under it: its background is the window background colour (`NSColor.windowBackgroundColor`), opaque, in light and dark appearance, and only the window's close, minimise and zoom buttons and the toolbar items are drawn on it. No pane background, header, scrolled content or divider of the columns shows in the band, neither between the columns nor inside the centre column: the sidebar, the centre column with its panes, the inspector and the dividers between them are seen from the toolbar's bottom edge down, in every section and at every width of the panes.
+
+SwiftUI lays the split views and their panes out under the toolbar whatever padding or safe-area modifier their container gets (checked on macOS 27.2), so the band is the toolbar's own opaque background, which covers the part of the columns under the toolbar: `toolbarBackground(_:for:)` with that colour and `toolbarBackgroundVisibility(_:for:)` set to `visible`, both for the `windowToolbar` placement. No line separates the band from the columns, not even above the scroll views at the top of the sidebar, Dashboard, Costs and Project Settings: macOS draws no scroll edge line under an opaque toolbar background. Drawing the band as the toolbar's background over the columns, which stay laid out under the toolbar, is Default chosen at design time.
+
 The welcome view and the reconnect view replace the sidebar, the content and the inspector ([Empty states](#empty-states)). Only the search panel ([Search panel](search.md#search-panel)) is drawn over the columns.
 
 ## Toolbar
@@ -93,7 +97,7 @@ The welcome view and the reconnect view replace the sidebar, the content and the
 | Trailing  | New Chat            | `plus.bubble`     | New Chat in the [inspector](#inspector).                                   | ⌥⌘N      | the device is connected and a project is active | `New Chat (⌥⌘N)`                                       |
 | Trailing  | Project Chat        | `sidebar.right`   | Shows or hides the [inspector](#inspector).                                | ⌥⌘0      | a project is active                             | `Show Project Chat (⌥⌘0)` or `Hide Project Chat (⌥⌘0)` |
 
-The leading item follows the window buttons. The toolbar shows no window title, and it cannot be customised. The symbols and the tooltips are design-time choices. Default chosen at design time.
+The leading item follows the window buttons. The toolbar shows no window title, and it cannot be customised. Its background is the plain band of [Main window layout](#main-window-layout). The symbols and the tooltips are design-time choices. Default chosen at design time.
 
 ## Breadcrumb selector
 
@@ -109,6 +113,7 @@ The principal toolbar item shows up to three segments separated by the symbol `c
 - Choosing a device changes only this window: the window shows the reconnect view until the device's workspace is connected, then the device's default project ([Project selector](projects.md#project-selector)).
 - A segment title longer than 240 points is truncated in the middle.
 - The selector has 12 points of horizontal padding on each side, between the border of the toolbar item's pill and its first and last segments.
+- The pill sits on the plain band of the toolbar ([Main window layout](#main-window-layout)): in every section, at every width of the panes and in light and dark appearance, only that band shows behind it, with no change of colour and no divider.
 - While the window's device is not connected, the Project and Sub project segments are disabled and show their last titles dimmed.
 
 The segment icons, the dot in the Device title, the 240-point truncation and the disabled state are design-time choices. Default chosen at design time.

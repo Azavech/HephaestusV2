@@ -71,6 +71,10 @@ struct MainWindowView: View {
             MainToolbar(state: state, workspace: workspace)
         }
         .toolbar(removing: .title)
+        // One plain band across the window: SwiftUI lays the split views and their panes out under
+        // the toolbar, so its opaque background covers them (docs/ui.md › Main window layout).
+        .toolbarBackground(Color(nsColor: .windowBackgroundColor), for: .windowToolbar)
+        .toolbarBackgroundVisibility(.visible, for: .windowToolbar)
         .navigationTitle(title(workspace))
         .registersWindow(.main(state.id), in: app)
         .focusedSceneValue(\.windowState, state)
