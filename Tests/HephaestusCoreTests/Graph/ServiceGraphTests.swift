@@ -68,6 +68,31 @@ enum GraphFixtures {
         }
         return ServiceGraph.build(services: inputs)
     }()
+
+    /// A graph of services, each with the services it calls, and a Cluster, a bucket, both or none.
+    static func build(_ services: [(name: String, calls: [String], cluster: Bool, bucket: Bool)]) -> ServiceGraph {
+        ServiceGraph.build(services: services.map { service in
+            var requirements = service.calls.map { "github.com/example/\($0)/client" }
+            if service.cluster {
+                requirements.append("github.com/example/yc-shared/gormpg")
+            }
+            if service.bucket {
+                requirements.append("github.com/example/yc-shared/s3store")
+            }
+            return GraphServiceInput(name: service.name, repository: "github.com/example/\(service.name)",
+                                     sources: ServiceSources(requirements: requirements, values: ValuesFile(text: "")))
+        })
+    }
+
+    /// Two services that call nothing: one with a Cluster and a bucket, one with a Cluster.
+    static let apart = build([("comics", [], true, true), ("board", [], true, false)])
+
+    /// Six services calling each other, with Clusters and a bucket, and two services alone, one with a Cluster.
+    static let calledAndAlone = build([
+        ("auth", ["billing"], true, false), ("billing", ["payments", "catalog"], true, false), ("catalog", [], true, true),
+        ("orders", ["payments", "catalog"], false, false), ("payments", [], true, false), ("search", ["payments"], true, false),
+        ("media", [], false, false), ("users", [], true, false),
+    ])
 }
 
 @Suite("Graph sources")
@@ -275,7 +300,7 @@ struct GraphLayoutTests {
 
     @Test("Every box has a place; a box of a ring at its distance from its service, two of a ring 110 apart, any other two 130")
     func noOverlap() throws {
-        for graph in [GraphFixtures.large, GraphFixtures.graph] {
+        for graph in [GraphFixtures.large, GraphFixtures.graph, GraphFixtures.apart, GraphFixtures.calledAndAlone] {
             let layout = GraphLayout(graph: graph)
             let ids = graph.boxes.map(\.id)
             let points = try ids.map { try #require(layout.positions[$0]) }
@@ -305,6 +330,77 @@ struct GraphLayoutTests {
     @Test("The same graph gets the same layout")
     func stable() {
         #expect(GraphLayout(graph: GraphFixtures.large) == GraphLayout(graph: GraphFixtures.large))
+    }
+
+    /// The rectangle around the centres of some boxes.
+    static func outline(_ layout: GraphLayout, _ ids: [String]) throws -> GraphLayout.Outline {
+        GraphLayout.Outline(points: try ids.map { id in
+            let point = try #require(layout.positions[id])
+            return (point.x, point.y)
+        })
+    }
+
+    @Test("A graph of a single group keeps the positions it had before the graph was split into groups, up to a translation")
+    func singleGroup() throws {
+        let before: [(id: String, x: Double, y: Double)] = [
+            ("service/back", 184.7668, 475.7673), ("service/front", 90.0000, 680.9386), ("service/value", 304.8439, 179.2708),
+            ("cluster/back", 98.6676, 435.6186), ("bucket/back", 279.7668, 475.7673), ("cluster/value", 337.3358, 90.0000),
+        ]
+        let layout = GraphLayout(graph: GraphFixtures.graph)
+        let origin = try #require(layout.positions[before[0].id])
+        for box in before {
+            let point = try #require(layout.positions[box.id])
+            #expect(abs(point.x - origin.x - (box.x - before[0].x)) < 0.01, "\(box.id)")
+            #expect(abs(point.y - origin.y - (box.y - before[0].y)) < 0.01, "\(box.id)")
+        }
+    }
+
+    @Test("Two services that call nothing, each with its ring, sit side by side, their outlines 200 to 210 points apart")
+    func apart() throws {
+        let layout = GraphLayout(graph: GraphFixtures.apart)
+        let comics = try Self.outline(layout, ["service/comics", "cluster/comics", "bucket/comics"])
+        let board = try Self.outline(layout, ["service/board", "cluster/board"])
+        let distance = comics.distance(to: board)
+        #expect(distance >= GraphLayout.groupGap - 0.001 && distance <= 210, "\(distance)")
+    }
+
+    @Test("A service alone sits outside the outline of a group, the nearest nodes of two groups 200 apart, each group laid out as on its own")
+    func groups() throws {
+        let graph = GraphFixtures.calledAndAlone
+        let layout = GraphLayout(graph: graph)
+        let called = ["auth", "billing", "catalog", "orders", "payments", "search"].map { "service/\($0)" }
+            + ["cluster/auth", "cluster/billing", "cluster/catalog", "bucket/catalog", "cluster/payments", "cluster/search"]
+        let groups = [called, ["service/media"], ["service/users", "cluster/users"]]
+        #expect(Set(groups.flatMap { $0 }) == Set(graph.boxes.map(\.id)))
+
+        let outline = try Self.outline(layout, called)
+        for id in groups.dropFirst().flatMap({ $0 }) {
+            let point = try #require(layout.positions[id])
+            let inside = point.x >= outline.minX && point.x <= outline.maxX && point.y >= outline.minY && point.y <= outline.maxY
+            #expect(!inside, "\(id)")
+        }
+
+        for i in groups.indices {
+            for j in groups.indices where j > i {
+                for a in groups[i] {
+                    for b in groups[j] {
+                        let distance = Self.distance(try #require(layout.positions[a]), try #require(layout.positions[b]))
+                        #expect(distance >= GraphLayout.groupGap - 0.001, "\(a) and \(b)")
+                    }
+                }
+            }
+        }
+
+        let group = Set(called)
+        let alone = GraphLayout(graph: graph.keeping(boxes: group, arrows: Set(graph.arrows.filter { group.contains($0.from.id) }.map(\.id))))
+        let origin = try #require(layout.positions[called[0]])
+        let aloneOrigin = try #require(alone.positions[called[0]])
+        for id in called {
+            let point = try #require(layout.positions[id])
+            let alonePoint = try #require(alone.positions[id])
+            #expect(abs(point.x - origin.x - (alonePoint.x - aloneOrigin.x)) < 0.01, "\(id)")
+            #expect(abs(point.y - origin.y - (alonePoint.y - aloneOrigin.y)) < 0.01, "\(id)")
+        }
     }
 
     @Test("The layout spreads over the plane: neither a line nor a column")

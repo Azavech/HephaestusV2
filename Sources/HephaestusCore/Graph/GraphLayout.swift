@@ -1,10 +1,12 @@
 import Foundation
 
-/// Where each box goes (docs/graph.md › Layout of the graph), after the service map of AWS X-Ray: round nodes spread over the whole plane. The services are placed
-/// by a force-directed layout (Fruchterman and Reingold): they push each other away, a call pulls its two services together,
-/// and a weak pull to the centre keeps the parts that call nothing in sight. There are no columns: a service is placed by its
-/// calls, not by its depth in the calls. The Cluster, redis and bucket of a service sit on a ring around it, each in the
-/// widest gap left by its arrows to the other services; a service keeps the room of its ring free, so no two nodes overlap.
+/// Where each box goes (docs/graph.md › Layout of the graph), after the service map of AWS X-Ray: round nodes spread over the whole plane. The services linked by
+/// calls form a group, with the boxes of their rings; each group is laid out on its own by a force-directed layout (Fruchterman
+/// and Reingold): its services push each other away, a call pulls its two services together, and a weak pull to the centre of
+/// the group keeps them close. There are no columns: a service is placed by its calls, not by its depth in the calls. The
+/// Cluster, redis and bucket of a service sit on a ring around it, each in the widest gap left by its arrows to the other
+/// services; a service keeps the room of its ring free, so no two nodes overlap. The biggest group goes in the middle, and each
+/// other group as close to its centre as it can, its outline groupGap from the outline of every group placed before it.
 /// It starts from the same place each time, so the same graph gets the same positions.
 public struct GraphLayout: Sendable, Equatable {
     public struct Point: Sendable, Equatable {
@@ -25,6 +27,8 @@ public struct GraphLayout: Sendable, Equatable {
     public static let ringSpacing = 110.0
     /// the room around the nodes
     public static let margin = 90.0
+    /// the least distance between the outlines of two groups, the rectangles around the centres of their nodes
+    public static let groupGap = 200.0
 
     /// the centre of each box, by id, from (margin, margin)
     public let positions: [String: Point]
@@ -53,13 +57,9 @@ public struct GraphLayout: Sendable, Equatable {
         }
 
         // the services, and the boxes no service calls
-        let core = graph.boxes.map(\.id).filter { !onRing.contains($0) }
+        let coreBoxes = graph.boxes.filter { !onRing.contains($0.id) }
+        let core = coreBoxes.map(\.id)
         let index = Dictionary(core.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
-        let radius = core.map { Self.footprint(ring: rings[$0]?.count ?? 0) }
-
-        var x = [Double](repeating: 0, count: core.count)
-        var y = [Double](repeating: 0, count: core.count)
-        Self.start(core: core, x: &x, y: &y)
 
         // each pair of linked nodes once, whatever the direction of its arrows; an arrow from or to a box of a ring links its
         // service (a topic on the ring of the service publishing to it pulls the service consuming it near that service)
@@ -78,27 +78,39 @@ public struct GraphLayout: Sendable, Equatable {
         }
         let sortedLinks = Array(links).sorted { ($0[0], $0[1]) < ($1[0], $1[1]) }
 
-        Self.spread(links: sortedLinks, iterations: iterations, x: &x, y: &y)
-        Self.separate(radius: radius, x: &x, y: &y)
+        // each group laid out on its own, then the biggest first, groups of as many services by the id of their first box
+        let order = Dictionary(graph.boxes.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let groups = Self.groups(count: core.count, links: sortedLinks).map { members -> (nodes: [(id: String, point: (Double, Double))], services: Int, first: String) in
+            let local = Dictionary(uniqueKeysWithValues: members.enumerated().map { ($1, $0) })
+            let groupLinks = sortedLinks.compactMap { link -> [Int]? in
+                guard let from = local[link[0]], let to = local[link[1]] else { return nil }
+                return [from, to]
+            }
+            let nodes = Self.layOut(core: members.map { core[$0] }, links: groupLinks, rings: rings, iterations: iterations)
+            let services = members.filter { coreBoxes[$0].kind == .service }.count
+            let first = nodes.map(\.id).min { (order[$0] ?? 0, $0) < (order[$1] ?? 0, $1) } ?? ""
+            return (nodes, services, first)
+        }
+        .sorted { $0.services != $1.services ? $0.services > $1.services : $0.first < $1.first }
 
         var points: [String: (Double, Double)] = [:]
-        for (i, id) in core.enumerated() {
-            points[id] = (x[i], y[i])
-        }
-
-        for (i, id) in core.enumerated() {
-            guard let ring = rings[id] else { continue }
-
-            // the directions of the arrows of the service to and from the other nodes
-            let linked = sortedLinks.compactMap { link -> Double? in
-                guard link.contains(i) else { return nil }
-                let other = link[0] == i ? link[1] : link[0]
-                return atan2(y[other] - y[i], x[other] - x[i])
+        var placed: [Outline] = []
+        var origin: (Double, Double)?
+        for group in groups {
+            let outline = Outline(points: group.nodes.map(\.point))
+            // the centre of the group: the mean of the centres of its nodes, summed in their order
+            let count = Double(group.nodes.count)
+            let centre = (group.nodes.reduce(0) { $0 + $1.point.0 } / count, group.nodes.reduce(0) { $0 + $1.point.1 } / count)
+            var shift = (0.0, 0.0)
+            if let origin {
+                let place = Self.place(outline, centre: centre, around: origin, among: placed)
+                shift = (place.0 - centre.0, place.1 - centre.1)
+            } else {
+                origin = centre
             }
-
-            let distance = Self.ringRadius(count: ring.count)
-            for (box, angle) in zip(ring, Self.ringAngles(count: ring.count, avoiding: linked)) {
-                points[box] = (x[i] + distance * cos(angle), y[i] + distance * sin(angle))
+            placed.append(outline.moved(by: shift))
+            for node in group.nodes {
+                points[node.id] = (node.point.0 + shift.0, node.point.1 + shift.1)
             }
         }
 
@@ -111,6 +123,116 @@ public struct GraphLayout: Sendable, Equatable {
         self.rings = Dictionary(rings.flatMap { owner, boxes in boxes.map { ($0, owner) } }, uniquingKeysWith: { first, _ in first })
         width = maxX - minX + 2 * Self.margin
         height = maxY - minY + 2 * Self.margin
+    }
+
+    /// The rectangle around the centres of the nodes of a group.
+    struct Outline {
+        let minX: Double
+        let minY: Double
+        let maxX: Double
+        let maxY: Double
+
+        init(minX: Double, minY: Double, maxX: Double, maxY: Double) {
+            self.minX = minX
+            self.minY = minY
+            self.maxX = maxX
+            self.maxY = maxY
+        }
+
+        init(points: [(Double, Double)]) {
+            self.init(minX: points.map(\.0).min() ?? 0, minY: points.map(\.1).min() ?? 0,
+                      maxX: points.map(\.0).max() ?? 0, maxY: points.map(\.1).max() ?? 0)
+        }
+
+        func moved(by shift: (Double, Double)) -> Outline {
+            Outline(minX: minX + shift.0, minY: minY + shift.1, maxX: maxX + shift.0, maxY: maxY + shift.1)
+        }
+
+        /// the distance between the nearest points of the two rectangles, 0 when they meet
+        func distance(to other: Outline) -> Double {
+            let dx = max(0, other.minX - maxX, minX - other.maxX)
+            let dy = max(0, other.minY - maxY, minY - other.maxY)
+            return (dx * dx + dy * dy).squareRoot()
+        }
+    }
+
+    /// the nodes joined by links, each group in the order of the nodes
+    static func groups(count: Int, links: [[Int]]) -> [[Int]] {
+        var neighbours = [[Int]](repeating: [], count: count)
+        for link in links {
+            neighbours[link[0]].append(link[1])
+            neighbours[link[1]].append(link[0])
+        }
+
+        var grouped = [Bool](repeating: false, count: count)
+        var groups: [[Int]] = []
+        for node in 0..<count where !grouped[node] {
+            grouped[node] = true
+            var members = [node]
+            var next = 0
+            while next < members.count {
+                for other in neighbours[members[next]] where !grouped[other] {
+                    grouped[other] = true
+                    members.append(other)
+                }
+                next += 1
+            }
+            groups.append(members.sorted())
+        }
+
+        return groups
+    }
+
+    /// The place of the centre of a group: the first one, looked for at distances from the centre of the biggest group growing
+    /// by 10 points and at each distance every 5 degrees from the right, clockwise, where its outline is groupGap from every
+    /// outline placed
+    static func place(_ outline: Outline, centre: (Double, Double), around origin: (Double, Double), among placed: [Outline]) -> (Double, Double) {
+        var distance = 0.0
+
+        while true {
+            for step in 0..<(distance == 0 ? 1 : 72) {
+                let angle = Double(step) * .pi / 36
+                let x = origin.0 + distance * cos(angle)
+                let y = origin.1 + distance * sin(angle)
+                let moved = outline.moved(by: (x - centre.0, y - centre.1))
+                if placed.allSatisfy({ moved.distance(to: $0) >= groupGap }) {
+                    return (x, y)
+                }
+            }
+            distance += 10
+        }
+    }
+
+    /// The layout of a group on its own: its nodes from the same start, the forces, their separation, then the boxes of their
+    /// rings; the nodes in their order, then the boxes of each ring
+    private static func layOut(core: [String], links: [[Int]], rings: [String: [String]], iterations: Int) -> [(id: String, point: (Double, Double))] {
+        let radius = core.map { footprint(ring: rings[$0]?.count ?? 0) }
+
+        var x = [Double](repeating: 0, count: core.count)
+        var y = [Double](repeating: 0, count: core.count)
+        start(core: core, x: &x, y: &y)
+        spread(links: links, iterations: iterations, x: &x, y: &y)
+        separate(radius: radius, x: &x, y: &y)
+
+        var nodes = core.enumerated().map { (id: $1, point: (x[$0], y[$0])) }
+
+        for (i, id) in core.enumerated() {
+            guard let ring = rings[id] else { continue }
+
+            // the directions of the arrows of the service to and from the other nodes
+            let linked = links.compactMap { link -> Double? in
+                guard link.contains(i) else { return nil }
+                let other = link[0] == i ? link[1] : link[0]
+                return atan2(y[other] - y[i], x[other] - x[i])
+            }
+
+            let distance = ringRadius(count: ring.count)
+            for (box, angle) in zip(ring, ringAngles(count: ring.count, avoiding: linked)) {
+                nodes.append((id: box, point: (x[i] + distance * cos(angle), y[i] + distance * sin(angle))))
+            }
+        }
+
+        return nodes
     }
 
     /// the distance from a service to its ring: the orbit, more when two boxes of the ring would be closer than ringSpacing
