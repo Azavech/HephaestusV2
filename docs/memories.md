@@ -262,13 +262,14 @@ The Memories section of the active project has two columns: the list and the edi
 
 - The body's mode starts as Preview and is kept when the window selects another memory or `MEMORY.md` of the same project, also after the editor closed, for example after Move to Trash (`ProjectViewState.memoryBodyMode`, [WindowState](ui.md#windowstate)). New Memory sets it to Edit. Default chosen at design time.
 - Preview renders the body natively with `MarkdownBlockRenderer` and the options of the Skills editor: links in the preview do nothing and project images show as blocked ([Editor](skills.md#editor)). Default chosen at design time.
+- Preview draws the SF Symbol, color, font, shortcut, sound and animation markers as the Skills editor's preview does ([Editor](skills.md#editor), [Marker setup](documentation-viewer.md#marker-setup)): a click on the `▶` of a sound marker, the only link of the preview that acts, plays the sound of the section's project, and a failure shows the alert `Play Sound failed`; the font markers of a family of the project's font files are drawn in that face once it is read with `files.fonts` and `files.read` from that project.
 - Saving without choosing a type keeps the file's `metadata.type`.
 - The segmented picker is Default chosen at design time.
 - An inherited memory, read with `memories.get` and the `projectID` of its ancestor, shows read-only: the Name field and the Type picker are disabled, the description shows dimmed in its field without editing, the header has no `Revert` and `Save`, and ⌘S does nothing. Its body shows in Preview, with the mode picker disabled and `memoryBodyMode` unchanged; its footer is the path of the file in the inherited folder. It is changed in the Memories section of its ancestor. Showing the body in Preview only is Default chosen at design time.
 
 ### MEMORY.md editor
 
-Selecting the `MEMORY.md` row shows the whole file in the Markdown editor, with the modes Edit, Preview and Split. Its header shows the title `MEMORY.md` and the buttons `Revert` and `Save` (⌘S); its footer is the path of `MEMORY.md`, home folder written `~`, with `Reveal in Finder` when the window's device is This Mac. Saving calls `memories.writeIndex` with the whole text. The title of the header is Default chosen at design time.
+Selecting the `MEMORY.md` row shows the whole file in the Markdown editor, with the modes Edit, Preview and Split. Its header shows the title `MEMORY.md` and the buttons `Revert` and `Save` (⌘S); its footer is the path of `MEMORY.md`, home folder written `~`, with `Reveal in Finder` when the window's device is This Mac. Saving calls `memories.writeIndex` with the whole text. Its Preview renders and draws markers as the memory editor's ([Memory editor](#memory-editor)). The title of the header is Default chosen at design time.
 
 ### Saving
 
@@ -353,6 +354,7 @@ The view has the list, the memory editor, the MEMORY.md editor, the New Memory s
 - A click on a row of the sidebar's Sub Projects category also leaves the view: it shows that sub project's Dashboard ([Sidebar](ui.md#sidebar)).
 - Switching project or device keeps the view: it then shows the global memories of the window's device. Each device keeps its own selection, editor and mode in the window, as the projects do in `projectStates`.
 - File ▸ Save (⌘S) saves the memory form or `MEMORY.md` of the view, as in the Memories section ([Menus and keyboard shortcuts](ui.md#menus-and-keyboard-shortcuts)).
+- The previews of the memory editor and of the `MEMORY.md` editor draw the markers as in the Memories section, with the window's active project: a click on `▶` plays the sound of that project, and the font markers read the faces of its font files. In a window without active project, a click on `▶` shows the alert `Play Sound failed` with the message `This window has no project.`, and the font markers use only the fonts of the Mac that shows the window ([Marker setup](documentation-viewer.md#marker-setup)).
 
 The header, the symbol of the empty state, the place in a window whose device has no project and leaving it there through a project, leaving the view by anything that selects a section, and keeping it when the window switches project or device are Default chosen at design time.
 
@@ -368,3 +370,4 @@ The header, the symbol of the empty state, the place in a window whose device ha
 - R167: A sub project's chats always receive the memories of its parent projects, which its Memories section lists read-only.
 - R168: The header bars at the top of the panes of the main window's centre column, and the inspector's header, are all 36 points high, so that their bottom separators lie on one line.
 - R169: Claude keeps global memories that every chat of every project receives; the user shows and edits them with View ▸ Global Memories.
+- R189: Every Markdown view of the app draws the SF Symbol, color, font, shortcut, sound and animation markers the same way, and a click on ▶ plays the sound.

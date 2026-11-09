@@ -19,6 +19,10 @@ struct MarkdownContext {
     /// Called with the name of a sound marker whose play button was clicked
     /// (docs/documentation-viewer.md › Sound markers).
     var playSound: (@MainActor (String) -> Void)?
+    /// Reads a face of the project's font files that a font marker names; true once it is read
+    /// (docs/documentation-viewer.md › Marker setup). Without it, font markers use only the fonts
+    /// of this Mac.
+    var loadFontFace: (@MainActor (MarkdownMarkers.FontFaceName) async -> Bool)?
     /// Draws the mentions of Claude outside links in the accent color, for ticket comments
     /// (docs/tickets.md › Mentioning Claude).
     var highlightsMentions = false
@@ -66,13 +70,20 @@ extension EnvironmentValues {
     @Entry var markdownFontFacesRevision = 0
 }
 
-/// Markdown rendered as native views, for ticket descriptions and comments.
+/// Markdown rendered as native views: ticket descriptions and comments, the questions of the
+/// pinned cards, the previews of skills and memories and release notes. The faces of the
+/// project's font files that its font markers name are read with the context's `loadFontFace`,
+/// and the labels drawn again once a face is read (docs/documentation-viewer.md › Marker setup).
 struct MarkdownView: View {
     let markdown: String
     @Environment(\.markdownContext) private var context
+    /// Incremented when a face of `faces` was read.
+    @State private var fontFacesRevision = 0
 
     var body: some View {
         let blocks = MarkdownBlockCache.blocks(markdown, options: context.options)
+        let load = context.loadFontFace
+        let faces = load == nil ? [] : MarkdownMarkers.undrawnFaces(in: blocks)
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 MarkdownBlockView(block: block, depth: 0)
@@ -81,6 +92,18 @@ struct MarkdownView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .textSelection(.enabled)
         .modifier(MarkdownLinkActions())
+        .environment(\.markdownFontFacesRevision, fontFacesRevision)
+        // A face read leaves `faces`, which starts the task again with the others.
+        .task(id: faces) {
+            guard let load else { return }
+            for face in faces {
+                let read = await load(face)
+                if Task.isCancelled { return }
+                if read {
+                    fontFacesRevision += 1
+                }
+            }
+        }
     }
 }
 
@@ -191,6 +214,12 @@ private struct MarkdownInlinesView: View {
     @Environment(\.markdownFontFacesRevision) private var fontFacesRevision
 
     var body: some View {
+        content
+            .preference(key: MarkdownDrawnSymbols.self, value: MarkdownDrawnSymbols.names(in: inlines))
+    }
+
+    @ViewBuilder
+    private var content: some View {
         let segments = MarkdownInlineSegments.split(inlines)
         let mentions = context.highlightsMentions
         // Read so that the font markers are drawn again once their faces are read.
@@ -209,6 +238,38 @@ private struct MarkdownInlinesView: View {
                 }
             }
         }
+    }
+}
+
+/// The names of the SF Symbols that the inline views draw, in order; read by the tests of the
+/// views that show Markdown, which have no accessibility tree.
+struct MarkdownDrawnSymbols: PreferenceKey {
+    static let defaultValue: [String] = []
+
+    static func reduce(value: inout [String], nextValue: () -> [String]) {
+        value += nextValue()
+    }
+
+    static func names(in inlines: [MarkdownInline]) -> [String] {
+        inlines.flatMap { inline -> [String] in
+            switch inline {
+            case .symbol(let name):
+                return [name]
+            case .emphasis(let content), .strong(let content), .strikethrough(let content), .link(_, _, let content):
+                return names(in: content)
+            default:
+                return []
+            }
+        }
+    }
+}
+
+/// The alt texts of the blocked images that the inline views draw as dashed labels, in order.
+struct MarkdownBlockedImages: PreferenceKey {
+    static let defaultValue: [String] = []
+
+    static func reduce(value: inout [String], nextValue: () -> [String]) {
+        value += nextValue()
     }
 }
 
@@ -246,9 +307,13 @@ private enum MarkdownInlineSegments {
 /// font at `size`, the size of the text around it, 13 points when nil (docs/chats.md › Links,
 /// images and files, docs/tickets.md › Ticket detail).
 enum MarkdownAttributed {
-    static func text(_ inlines: [MarkdownInline], highlightsMentions: Bool = false, size: CGFloat? = nil) -> Text {
+    /// With `soundLinks` false, the `▶` of a sound marker is text, for texts where a click chooses
+    /// something else, such as the option rows of the pinned questions card.
+    static func text(_ inlines: [MarkdownInline], highlightsMentions: Bool = false, size: CGFloat? = nil,
+                     soundLinks: Bool = true) -> Text {
         var builder = Builder()
         builder.highlightsMentions = highlightsMentions
+        builder.soundLinks = soundLinks
         builder.markerSize = size ?? markdownBaseSize
         builder.append(inlines, intent: [], link: nil)
         builder.flush()
@@ -264,6 +329,8 @@ enum MarkdownAttributed {
         var parts: [Text] = []
         var current = AttributedString()
         var highlightsMentions = false
+        /// The `▶` of a sound marker is a link that plays the sound.
+        var soundLinks = true
         /// The point size of the font markers.
         var markerSize = markdownBaseSize
         /// The last character appended, for the whole-word rule of the mentions.
@@ -303,8 +370,8 @@ enum MarkdownAttributed {
                     current.append(MarkdownAttributed.run(" " + color, intent: intent, link: link))
                 case .sound(let name):
                     // The play button is `▶` drawn as a link, then a space and the name.
-                    current.append(MarkdownAttributed.run("\u{25B6}\u{FE0E}", intent: intent,
-                                                          link: MarkdownLinkURL.url(for: MarkdownAttributed.soundDestination(name))))
+                    let play = soundLinks ? MarkdownLinkURL.url(for: MarkdownAttributed.soundDestination(name)) : link
+                    current.append(MarkdownAttributed.run("\u{25B6}\u{FE0E}", intent: intent, link: play))
                     current.append(MarkdownAttributed.run(" " + name, intent: intent, link: link))
                 case .shortcut(let caps):
                     // A shortcut marker: its key caps as text.
@@ -442,6 +509,7 @@ private struct MarkdownImageView: View {
             case .blocked:
                 BrokenImageLabel(text: alt)
                     .help("Image not loaded")
+                    .preference(key: MarkdownBlockedImages.self, value: [alt])
             }
         }
         .help(title ?? "")

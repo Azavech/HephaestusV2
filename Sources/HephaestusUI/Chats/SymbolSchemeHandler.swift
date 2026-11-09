@@ -49,8 +49,8 @@ enum SFSymbols {
     }
 }
 
-/// Registered for `hephaestus-symbol` on the transcript web view: answers a GET whose host is
-/// `symbol` with the PNG of the symbol named by the path, without an engine call.
+/// Registered for `hephaestus-symbol` on the transcript web view and the doc preview: answers a
+/// GET whose host is `symbol` with the PNG of the symbol named by the path, without an engine call.
 @MainActor
 final class SymbolSchemeHandler: NSObject, WKURLSchemeHandler {
     static let scheme = "hephaestus-symbol"

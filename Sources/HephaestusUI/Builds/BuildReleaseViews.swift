@@ -82,9 +82,11 @@ struct BuildReleaseDetailView: View {
             }
             .textSelection(.enabled)
             if !release.notes.isEmpty {
-                // The shared renderer with the default context: links do nothing, project images
+                // The shared renderer with the markers of every Markdown view: the ▶ of a sound
+                // marker plays the sound of the project, other links do nothing, project images
                 // show as blocked and web images load (docs/builds.md › Release details).
                 MarkdownView(markdown: release.notes)
+                    .markdownMarkers(projectID: model.projectID, workspace: model.workspace, window: model.window)
             }
             if !release.assets.isEmpty {
                 assets

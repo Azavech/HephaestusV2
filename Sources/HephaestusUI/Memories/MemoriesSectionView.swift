@@ -43,6 +43,10 @@ struct MemoriesSectionView: View {
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        // The previews draw the markers of every Markdown view with the section's project, or the
+        // window's active project in the Global Memories view (docs/memories.md › Memory editor,
+        // › Global Memories view).
+        .markdownMarkers(projectID: scope.projectID ?? window.projectID, workspace: workspace, window: window)
         .onAppear {
             commands.window = window
             commands.scope = scope

@@ -85,6 +85,18 @@ struct TicketMarkersTests {
         })
     }
 
+    /// The faces of the texts that this Mac cannot draw yet, in order, the texts rendered as the
+    /// ticket detail renders them.
+    static func undrawnFaces(_ texts: [String], _ options: MarkdownRenderOptions) -> [MarkdownMarkers.FontFaceName] {
+        var faces: [MarkdownMarkers.FontFaceName] = []
+        for text in texts {
+            for face in MarkdownMarkers.undrawnFaces(in: MarkdownBlockRenderer.render(text, options: options)) where !faces.contains(face) {
+                faces.append(face)
+            }
+        }
+        return faces
+    }
+
     /// The inlines with each run of adjacent `.text` inlines joined into one.
     static func joined(_ inlines: [MarkdownInline]) -> [MarkdownInline] {
         var result: [MarkdownInline] = []
@@ -164,9 +176,9 @@ struct TicketMarkersTests {
             + "Expected\n![](font:System Rounded/Semibold/17) ![](font:.headline) ![](font:Helvetica Neue/Bold/12) "
             + "`![](font:Heph Code Sans/Bold/12)`")
         let comment = "## ![](font:Heph Missing Sans/Bold/17) and *![](font:Heph Missing Sans/Light/15)*"
-        #expect(TicketMarkdown.undrawnFaces(in: [description, comment], options: options) == [
-            TicketMarkdown.FontFaceName(family: "Heph Missing Sans", weight: "Bold"),
-            TicketMarkdown.FontFaceName(family: "Heph Missing Sans", weight: "Light"),
+        #expect(Self.undrawnFaces([description, comment], options) == [
+            MarkdownMarkers.FontFaceName(family: "Heph Missing Sans", weight: "Bold"),
+            MarkdownMarkers.FontFaceName(family: "Heph Missing Sans", weight: "Light"),
         ])
     }
 
@@ -177,13 +189,13 @@ struct TicketMarkersTests {
         let workspace = DeviceWorkspace(deviceID: "device", connection: connection, isLocal: true)
         let options = TicketMarkdown.context(projectID: "DEMO", workspace: workspace, window: WindowState(deviceID: "device")).options
         let text = "![](font:\(family)/Bold/17) ![](font:\(family)/Black/17)"
-        let faces = TicketMarkdown.undrawnFaces(in: [text], options: options)
+        let faces = Self.undrawnFaces([text], options)
         #expect(faces.map(\.weight) == ["Bold", "Black"])
         let fonts = ProjectFonts(connection: connection, projectID: "DEMO")
-        #expect(await TicketMarkdown.loadFaces(faces, with: fonts))
+        #expect(await MarkdownMarkers.loadFaces(faces, with: fonts))
         #expect(connection.calls == ["files.fonts DEMO", "files.read DEMO Fonts/Brand.otf"])
         #expect(FontFaces.ctFont(family: family, weight: "Bold", size: 13) != nil)
-        #expect(TicketMarkdown.undrawnFaces(in: [text], options: options).map(\.weight) == ["Black"])
+        #expect(Self.undrawnFaces([text], options).map(\.weight) == ["Black"])
     }
 
     @Test("The ▶ of a sound marker reads the sound of the ticket's project; a failure shows the alert Play Sound failed")

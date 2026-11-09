@@ -27,9 +27,6 @@ struct ShortcutCard: View {
                 .buttonStyle(.borderless)
             }
             MarkdownView(markdown: request.question)
-                .transformEnvironment(\.markdownContext) { context in
-                    context.options.isSymbolAvailable = SFSymbols.isAvailable
-                }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
             FlowLayout(spacing: 6) {

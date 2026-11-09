@@ -51,10 +51,6 @@ struct SoundCard: View {
                 .buttonStyle(.borderless)
             }
             MarkdownView(markdown: request.question)
-                .transformEnvironment(\.markdownContext) { context in
-                    context.options.isSymbolAvailable = SFSymbols.isAvailable
-                    context.options.readsSoundMarkers = true
-                }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
             TextField("Search sounds", text: $model.soundSearch)

@@ -44,6 +44,7 @@ struct SkillEditorView: View {
                         otherFrontmatterPart
                     }
                     SkillBodyPart(editor: editor, form: form, workspace: workspace)
+                        .markdownMarkers(projectID: projectID, workspace: workspace, window: window)
                     SkillFilesPart(editor: editor, window: window, workspace: workspace)
                 }
                 .padding(16)
@@ -314,8 +315,9 @@ private struct SkillBodyPart: View {
             })
     }
 
-    /// The shared Markdown renderer, natively, with the default options and context: links do
-    /// nothing and project images show as blocked (docs/skills.md › Editor).
+    /// The shared Markdown renderer, natively, with the default options and the markers of every
+    /// Markdown view, set by the editor: the ▶ of a sound marker plays the sound of the project,
+    /// other links do nothing and project images show as blocked (docs/skills.md › Editor).
     private func preview(_ text: String) -> some View {
         ScrollView {
             MarkdownView(markdown: text)

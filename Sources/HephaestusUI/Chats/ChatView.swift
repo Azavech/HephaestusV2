@@ -335,20 +335,15 @@ private struct ChatViewContent: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.top, 8)
-                // Ticket and bundle ids of the cards open with the chat's window choice, also in a
-                // ticket's or a bundle's Chats tab (docs/chats.md › Links, images and files). Each
-                // card reads only the markers it sets itself: those of the ticket descriptions
-                // around a ticket's Chats tab stay out (docs/documentation-viewer.md › Images).
+                // Every card reads the six kinds of markers of every Markdown view, and its ▶ plays
+                // the sound of the chat's project, also in a ticket's or a bundle's Chats tab;
+                // ticket and bundle ids open with the chat's window choice (docs/chats.md › Links,
+                // images and files, docs/documentation-viewer.md › Marker setup).
+                .markdownFontFaces(projectID: model.chatProjectID, workspace: workspace)
                 .transformEnvironment(\.markdownContext) { [weak model, projectIdentifiers = workspace.projectIdentifiers] context in
-                    context.options.isSymbolAvailable = nil
-                    context.options.colorSwatch = nil
-                    context.options.readsSoundMarkers = false
-                    context.options.shortcutKeys = nil
-                    context.options.fontMarker = nil
-                    context.options.animationCurve = nil
-                    context.options.projectIdentifiers = projectIdentifiers
-                    context.openID = { id in model?.openID(id) }
-                    context.playSound = { name in model?.playSound(name) }
+                    context = ChatView.cardsContext(context, projectIdentifiers: projectIdentifiers,
+                                                    openID: { id in model?.openID(id) },
+                                                    playSound: { name in model?.playSound(name) })
                 }
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
                     cardsHeight = height
@@ -361,6 +356,22 @@ private struct ChatViewContent: View {
             .scrollDisabled(cardsHeight + 1 <= max(maxHeight, 80))
             .frame(height: min(cardsHeight + 1, max(maxHeight, 80)))
         }
+    }
+}
+
+extension ChatView {
+    /// The Markdown context of the pinned cards, from the context around the chat view: the marker
+    /// options of every Markdown view, the identifiers of the device's projects, and the id and
+    /// ▶ clicks of the chat (docs/chats.md › Links, images and files).
+    static func cardsContext(_ context: MarkdownContext, projectIdentifiers: Set<String>,
+                             openID: @escaping @MainActor (String) -> Void,
+                             playSound: @escaping @MainActor (String) -> Void) -> MarkdownContext {
+        var context = context
+        context.options = MarkdownMarkers.options(context.options)
+        context.options.projectIdentifiers = projectIdentifiers
+        context.openID = openID
+        context.playSound = playSound
+        return context
     }
 }
 

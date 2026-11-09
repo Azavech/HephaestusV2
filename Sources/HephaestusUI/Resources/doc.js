@@ -1,5 +1,6 @@
 // OWNER: ui-code-docs — the preview page's script: HephaestusDoc.render and scrollToFragment, link
-// clicks, Copy buttons and broken images (docs/documentation-viewer.md › Preview web view).
+// clicks, Copy buttons, broken images and the markers drawn by markdown.js
+// (docs/documentation-viewer.md › Preview web view).
 "use strict";
 
 (function () {
@@ -42,6 +43,10 @@
     }
     var scrollY = window.scrollY;
     root.innerHTML = typeof options.html === "string" ? options.html : "";
+    // The markers: icons, swatches and fonts (markdown.js).
+    if (window.HephaestusMarkdown) {
+      window.HephaestusMarkdown.decorate(root);
+    }
     if (options.keepScroll) {
       var maximum = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
       window.scrollTo(0, Math.min(scrollY, maximum));
@@ -104,6 +109,12 @@
   }
 
   document.addEventListener("click", function (event) {
+    // The play button of a sound marker sends playSound, the replay button of an animation marker
+    // plays its lane (markdown.js).
+    if (window.HephaestusMarkdown && window.HephaestusMarkdown.handleClick(event.target)) {
+      event.preventDefault();
+      return;
+    }
     var button = event.target && event.target.closest ? event.target.closest("button.md-copy") : null;
     if (button) {
       event.preventDefault();

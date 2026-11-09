@@ -42,10 +42,6 @@ struct FontCard: View {
                 .buttonStyle(.borderless)
             }
             MarkdownView(markdown: request.question)
-                .transformEnvironment(\.markdownContext) { context in
-                    context.options.isSymbolAvailable = SFSymbols.isAvailable
-                    context.options.fontMarker = FontMarkers.marker
-                }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
             TextField("Search fonts", text: $model.fontSearch)

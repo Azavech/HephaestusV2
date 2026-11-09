@@ -52,67 +52,9 @@
         icons[i].appendChild(iconElement(icons[i].getAttribute("data-icon")));
       }
     }
-    // SF Symbol markers: the icon is the text color through a mask that holds the symbol's image
-    // (docs/chats.md › Links, images and files).
-    var symbols = element.querySelectorAll(".md-symbol-icon[data-symbol]");
-    for (var j = 0; j < symbols.length; j++) {
-      var mask = 'url("hephaestus-symbol://symbol/' + encodeURIComponent(symbols[j].getAttribute("data-symbol")) + '")';
-      symbols[j].style.webkitMaskImage = mask;
-      symbols[j].style.maskImage = mask;
-    }
-    // Color markers: the swatch takes the light or dark value of its marker through two CSS
-    // variables (docs/chats.md › Links, images and files).
-    var swatches = element.querySelectorAll(".md-color-swatch[data-light][data-dark]");
-    for (var k = 0; k < swatches.length; k++) {
-      swatches[k].style.setProperty("--md-color-light", swatches[k].getAttribute("data-light"));
-      swatches[k].style.setProperty("--md-color-dark", swatches[k].getAttribute("data-dark"));
-    }
-    // Font markers: the label in the family and weight of the marker, or in the face loaded from
-    // its `data-font-face` URL (docs/chats.md › Links, images and files).
-    var fonts = element.querySelectorAll(".md-font[data-font-family]");
-    for (var m = 0; m < fonts.length; m++) {
-      var family = fonts[m].getAttribute("data-font-family");
-      var source = fonts[m].getAttribute("data-font-face");
-      fonts[m].style.fontFamily = source ? '"' + fontFaceName(source) + '", ' + family : family;
-      fonts[m].style.fontWeight = fonts[m].getAttribute("data-font-weight") || "400";
-    }
-  }
-
-  /// The page's font names of the faces loaded so far, by URL.
-  var fontFaces = new Map();
-
-  /// The name of the face of a `hephaestus-font` URL, added to the page's fonts the first time.
-  function fontFaceName(source) {
-    var name = fontFaces.get(source);
-    if (!name) {
-      name = "hephaestus-face-" + (fontFaces.size + 1);
-      fontFaces.set(source, name);
-      var face = new FontFace(name, 'url("' + source + '")');
-      document.fonts.add(face);
-      face.load().catch(function () {});
-    }
-    return name;
-  }
-
-  // MARK: Animation markers (docs/chats.md › Links, images and files)
-
-  /// Plays the lane of an animation marker: the circle starts again from the left end and moves
-  /// to the right end with the marker's duration and easing, then stays there.
-  function playAnimation(marker) {
-    var lane = marker.querySelector(".md-animation-lane");
-    var dot = marker.querySelector(".md-animation-dot");
-    if (!lane || !dot || !dot.animate) return;
-    dot.getAnimations().forEach(function (animation) {
-      animation.cancel();
-    });
-    var travel = Math.max(0, lane.clientWidth - dot.offsetWidth);
-    var duration = Math.max(0, parseFloat(marker.getAttribute("data-duration")) || 0) * 1000;
-    var frames = [{ transform: "translateX(0px)" }, { transform: "translateX(" + travel + "px)" }];
-    try {
-      dot.animate(frames, { duration: duration, easing: marker.getAttribute("data-easing") || "linear", fill: "forwards" });
-    } catch (e) {
-      dot.animate(frames, { duration: duration, easing: "linear", fill: "forwards" });
-    }
+    // The markers: icons, swatches and fonts (markdown.js, docs/chats.md › Links, images and
+    // files).
+    window.HephaestusMarkdown.decorate(element);
   }
 
   // MARK: Page structure
@@ -448,20 +390,9 @@
       return;
     }
 
-    // The play button of a sound marker (docs/chats.md › Links, images and files).
-    var play = target.closest(".md-sound-play");
-    if (play) {
-      post({ action: "playSound", name: play.getAttribute("data-sound") || "" });
-      return;
-    }
-
-    // The replay button of an animation marker (docs/chats.md › Links, images and files).
-    var replay = target.closest(".md-animation-play");
-    if (replay) {
-      var marker = replay.closest(".md-animation");
-      if (marker) playAnimation(marker);
-      return;
-    }
+    // The play button of a sound marker and the replay button of an animation marker (markdown.js,
+    // docs/chats.md › Links, images and files).
+    if (window.HephaestusMarkdown.handleClick(target)) return;
 
     var codeCopy = target.closest(".md-copy");
     if (codeCopy) {

@@ -53,12 +53,6 @@ struct SymbolCard: View {
                 .buttonStyle(.borderless)
             }
             MarkdownView(markdown: request.question)
-                .transformEnvironment(\.markdownContext) { context in
-                    context.options.isSymbolAvailable = SFSymbols.isAvailable
-                    context.options.colorSwatch = ColorSwatches.swatch
-                    context.options.readsSoundMarkers = true
-                    context.options.fontMarker = FontMarkers.marker
-                }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
             TextField("Search symbols", text: $model.symbolSearch)

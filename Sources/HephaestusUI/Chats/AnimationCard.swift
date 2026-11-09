@@ -26,9 +26,6 @@ struct AnimationCard: View {
                 .buttonStyle(.borderless)
             }
             MarkdownView(markdown: request.question)
-                .transformEnvironment(\.markdownContext) { context in
-                    context.options.isSymbolAvailable = SFSymbols.isAvailable
-                }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
             VStack(alignment: .leading, spacing: 6) {

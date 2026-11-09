@@ -5,7 +5,7 @@ import HephaestusText
 import SwiftUI
 import WebKit
 
-/// The `WKWebView` loading `doc.html`, `doc.js` and `markdown.css`, with its find bar.
+/// The `WKWebView` loading `doc.html`, `markdown.js`, `doc.js` and `markdown.css`, with its find bar.
 struct DocPreviewView: View {
     let text: String
     /// Project path of the doc; its folder is the renderer's `baseDirectory`.
@@ -162,7 +162,9 @@ final class DocPreviewController: NSObject, WKNavigationDelegate {
         super.init()
     }
 
-    /// Sets the engine and the window; creates the web view with its scheme handler once.
+    /// Sets the engine and the window; creates the web view with its scheme handlers once: the
+    /// project's files, and the SF Symbols and font faces of the markers
+    /// (docs/documentation-viewer.md › Preview web view).
     func configure(workspace: DeviceWorkspace, projectID: String, window: WindowState?) {
         self.window = window
         if let window {
@@ -175,6 +177,9 @@ final class DocPreviewController: NSObject, WKNavigationDelegate {
         let handler = ResourceSchemeHandler(connection: workspace.connection, projectID: projectID)
         configuration.setURLSchemeHandler(handler, forURLScheme: ResourceSchemeHandler.fileScheme)
         configuration.setURLSchemeHandler(handler, forURLScheme: ResourceSchemeHandler.attachmentScheme)
+        configuration.setURLSchemeHandler(SymbolSchemeHandler(), forURLScheme: SymbolSchemeHandler.scheme)
+        configuration.setURLSchemeHandler(FontSchemeHandler(connection: workspace.connection, projectID: projectID),
+                                          forURLScheme: FontSchemeHandler.scheme)
         configuration.userContentController.add(WeakScriptMessageHandler(self), name: "hephaestus")
         let view = PreviewWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = self
@@ -213,9 +218,7 @@ final class DocPreviewController: NSObject, WKNavigationDelegate {
         renderGeneration += 1
         let generation = renderGeneration
         let path = docPath
-        let options = MarkdownRenderOptions(baseDirectory: ProjectPaths.parent(of: path),
-                                            projectRootPath: workspace.project(projectID)?.rootPath,
-                                            stripFrontMatter: true)
+        let options = Self.renderOptions(docPath: path, projectRootPath: workspace.project(projectID)?.rootPath)
         let source = text
         let html = await Task.detached(priority: .userInitiated) {
             MarkdownHTMLRenderer.render(source, options: options)
@@ -236,6 +239,14 @@ final class DocPreviewController: NSObject, WKNavigationDelegate {
         guard let data = try? JSONSerialization.data(withJSONObject: payload),
               let json = String(data: data, encoding: .utf8) else { return }
         _ = try? await webView.evaluateJavaScript("HephaestusDoc.render(\(json))")
+    }
+
+    /// The options of a doc: its folder, the project's root path, the front matter removed and the
+    /// marker options of every Markdown view (docs/documentation-viewer.md › Renderer, › Marker
+    /// setup); no id is linked.
+    nonisolated static func renderOptions(docPath: String, projectRootPath: String?) -> MarkdownRenderOptions {
+        MarkdownMarkers.options(MarkdownRenderOptions(baseDirectory: ProjectPaths.parent(of: docPath),
+                                                      projectRootPath: projectRootPath, stripFrontMatter: true))
     }
 
     /// True when the preview shows the doc at `path`, rendered.
@@ -267,6 +278,10 @@ final class DocPreviewController: NSObject, WKNavigationDelegate {
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             pasteboard.setString(text, forType: .string)
+        case "playSound":
+            // The ▶ of a sound marker plays the sound of the doc's project.
+            guard let name = message["name"] as? String, let workspace, let window else { return }
+            MarkdownMarkers.playSound(projectID: projectID, workspace: workspace, window: window)(name)
         default:
             // Messages with an unknown action are ignored.
             break

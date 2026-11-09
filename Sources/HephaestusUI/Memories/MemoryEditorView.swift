@@ -306,8 +306,9 @@ private struct MemoryMarkdownEditor: View {
             })
     }
 
-    /// The shared Markdown renderer, natively, with the options of the Skills editor: links do
-    /// nothing and project images show as blocked.
+    /// The shared Markdown renderer, natively, with the options and the markers of the Skills
+    /// editor, set by the Memories section: the ▶ of a sound marker plays the sound of the project,
+    /// other links do nothing and project images show as blocked.
     private func preview(_ text: String) -> some View {
         ScrollView {
             MarkdownView(markdown: text)

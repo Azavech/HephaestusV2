@@ -49,6 +49,19 @@ article#doc { padding: 12px 28px 40px; }
 .md .md-raw-html { white-space: pre-wrap; }
 .md .md-image-blocked, .md .md-image-broken { display: inline-block; border: 1px dashed var(--md-rule); padding: 2px 6px; font-size: 12px; color: var(--md-secondary); }
 
+/* Markers, inside .md or in the plain texts of the transcript's cards; markdown.js sets the mask
+   of the icons, the colors of the swatches and the fonts (docs/documentation-viewer.md › Styling,
+   docs/chats.md › Links, images and files). */
+.md-symbol-icon { display: inline-block; width: 1.25em; height: 1em; margin-right: 0.25em; vertical-align: -0.15em; background-color: currentColor; -webkit-mask-size: contain; mask-size: contain; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-position: center; mask-position: center; }
+.md-color-swatch { display: inline-block; box-sizing: border-box; width: 0.9em; height: 0.9em; margin-right: 0.25em; vertical-align: -0.1em; border-radius: 0.2em; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); background-color: var(--md-color-light); }
+.md-sound-play { display: inline; margin: 0; padding: 0; border: none; background: none; color: var(--md-link); font: inherit; line-height: inherit; cursor: pointer; }
+.md-shortcut kbd { display: inline-block; min-width: 1em; margin-right: 0.15em; padding: 0 0.3em; border: 1px solid currentColor; border-radius: 0.3em; font: inherit; font-size: 0.9em; line-height: 1.35; text-align: center; opacity: 0.9; }
+.md-shortcut kbd:last-child { margin-right: 0; }
+.md-animation { display: inline-flex; align-items: center; gap: 0.35em; vertical-align: -0.1em; }
+.md-animation-play { display: inline-flex; align-items: center; padding: 0; border: none; background: none; color: inherit; font: inherit; cursor: pointer; }
+.md-animation-lane { position: relative; display: inline-block; width: 3em; height: 0.8em; border-radius: 0.4em; background-color: color-mix(in srgb, currentColor 20%, transparent); }
+.md-animation-dot { position: absolute; left: 0; top: 0; width: 0.8em; height: 0.8em; border-radius: 50%; background-color: currentColor; }
+
 .tok-keyword { color: #9B2393; font-weight: 600; }
 .tok-type { color: #3900A0; }
 .tok-builtin { color: #6C36A9; }
@@ -78,6 +91,8 @@ article#doc { padding: 12px 28px 40px; }
     --md-link: #4BA3FF;
     --md-page: #1F1F24;
   }
+
+  .md-color-swatch { background-color: var(--md-color-dark); }
 
   .tok-keyword { color: #FF7AB2; }
   .tok-type { color: #DABAFF; }

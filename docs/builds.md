@@ -170,6 +170,7 @@ Clicking a release selects it (`ProjectViewState.selectedReleaseTag`) and shows 
 
 - The badge of the details is the badge of the release's row, since `gh release view` does not tell which release is the latest; a release that is no longer listed shows no badge.
 - The notes render natively with `MarkdownBlockRenderer` and the options of the Skills editor: links do nothing and project images show as blocked ([Editor](skills.md#editor)); images with an `http` or `https` source load from the network on the Mac that shows the window ([Images](documentation-viewer.md#images)). Default chosen at design time.
+- The notes draw the SF Symbol, color, font, shortcut, sound and animation markers as the Skills editor's preview does ([Editor](skills.md#editor), [Marker setup](documentation-viewer.md#marker-setup)): a click on the `▶` of a sound marker, the only link of the notes that acts, plays the sound of the section's project, and a failure shows the alert `Play Sound failed`; the font markers of a family of the project's font files are drawn in that face once it is read with `files.fonts` and `files.read` from that project.
 - The source code archives that GitHub adds to every release are not assets and are not listed.
 - The layout of the details and the order of the parts, the heading `Assets`, the size style and taking the badge from the list row are Default chosen at design time.
 
@@ -250,3 +251,4 @@ Clicking a release selects it (`ProjectViewState.selectedReleaseTag`) and shows 
 ## Requirements covered
 
 - R173: A project with a GitHub page has a Builds section that tracks its workflow runs and releases, re-runs and cancels runs and downloads release assets.
+- R189: Every Markdown view of the app draws the SF Symbol, color, font, shortcut, sound and animation markers the same way, and a click on ▶ plays the sound.

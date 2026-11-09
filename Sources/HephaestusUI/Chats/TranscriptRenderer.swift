@@ -363,7 +363,7 @@ enum TranscriptRenderer {
         for name in request.suggestions {
             let line = "![](sf:\(name))" + (name == request.recommended ? " (recommended)" : "")
             // Suggestion lines show ids as text (docs/chats.md › Item rendering).
-            html += "<li>\(MarkdownSymbolMarkers.html(line, isSymbolAvailable: SFSymbols.isAvailable))</li>"
+            html += "<li>\(MarkdownMarkers.html(line))</li>"
         }
         html += "</ul>"
         if let answer = request.answer {
@@ -382,7 +382,7 @@ enum TranscriptRenderer {
         for suggestion in request.suggestions {
             let line = ColorAnswer.markers(suggestion) + (suggestion.isSame(as: request.recommended) ? " (recommended)" : "")
             // Suggestion lines show ids as text (docs/chats.md › Item rendering).
-            html += "<li>\(MarkdownSymbolMarkers.html(line, isSymbolAvailable: SFSymbols.isAvailable, colorSwatch: ColorSwatches.swatch))</li>"
+            html += "<li>\(MarkdownMarkers.html(line))</li>"
         }
         html += "</ul>"
         if let answer = request.answer {
@@ -401,7 +401,7 @@ enum TranscriptRenderer {
         for name in request.suggestions {
             let line = "![](sound:\(name))" + (name == request.recommended ? " (recommended)" : "")
             // Suggestion lines show ids as text (docs/chats.md › Item rendering).
-            html += "<li>\(MarkdownSymbolMarkers.html(line, isSymbolAvailable: { _ in false }, readsSoundMarkers: true, projectIdentifiers: []))</li>"
+            html += "<li>\(MarkdownMarkers.html(line))</li>"
         }
         html += "</ul>"
         if let answer = request.answer {
@@ -443,7 +443,7 @@ enum TranscriptRenderer {
         for font in request.suggestions {
             let line = "![](font:\(font))" + (font == request.recommended ? " (recommended)" : "")
             // Suggestion lines show ids as text (docs/chats.md › Item rendering).
-            html += "<li>\(MarkdownSymbolMarkers.html(line, isSymbolAvailable: SFSymbols.isAvailable, fontMarker: FontMarkers.marker))</li>"
+            html += "<li>\(MarkdownMarkers.html(line))</li>"
         }
         html += "</ul>"
         if let answer = request.answer {
@@ -462,7 +462,7 @@ enum TranscriptRenderer {
         for expression in request.suggestions {
             let line = "![](animation:\(expression))" + (expression == request.recommended ? " (recommended)" : "")
             // Suggestion lines show ids as text (docs/chats.md › Item rendering).
-            html += "<li>\(MarkdownSymbolMarkers.html(line, isSymbolAvailable: SFSymbols.isAvailable, animationCurve: AnimationExpression.markdownCurve))</li>"
+            html += "<li>\(MarkdownMarkers.html(line))</li>"
         }
         html += "</ul>"
         if let answer = request.answer {
@@ -482,27 +482,20 @@ enum TranscriptRenderer {
     // MARK: Helpers
 
     /// Markdown inside an element of the class `md` (docs/documentation-viewer.md › Styling), with
-    /// the SF Symbols and the colors of this Mac, the sound markers, shortcut markers as key caps,
-    /// font markers in their font, animation markers with their lane and the ids of the device's
-    /// projects as links (docs/chats.md › Links, images and files).
+    /// the marker options of every Markdown view (docs/documentation-viewer.md › Marker setup) and
+    /// the ids of the device's projects as links (docs/chats.md › Links, images and files).
     static func markdown(_ text: String, context: TranscriptRenderContext, softBreaksAsLineBreaks: Bool = false) -> String {
-        let options = MarkdownRenderOptions(baseDirectory: "", projectRootPath: context.projectRootPath, stripFrontMatter: false,
-                                            isSymbolAvailable: SFSymbols.isAvailable, colorSwatch: ColorSwatches.swatch,
-                                            readsSoundMarkers: true, shortcutKeys: { KeyShortcut.keyCaps(of: $0) },
-                                            fontMarker: FontMarkers.marker, animationCurve: AnimationExpression.markdownCurve,
-                                            projectIdentifiers: context.projectIdentifiers, softBreaksAsLineBreaks: softBreaksAsLineBreaks)
+        let options = MarkdownMarkers.options(MarkdownRenderOptions(baseDirectory: "", projectRootPath: context.projectRootPath,
+                                                                    stripFrontMatter: false,
+                                                                    projectIdentifiers: context.projectIdentifiers,
+                                                                    softBreaksAsLineBreaks: softBreaksAsLineBreaks))
         return "<div class=\"md\">" + MarkdownHTMLRenderer.render(text, options: options) + "</div>"
     }
 
-    /// Plain text, escaped, in which each SF Symbol marker of this Mac, each color marker, each
-    /// sound marker, each shortcut marker, each font marker and each animation marker is drawn
-    /// (docs/documentation-viewer.md › SF Symbol markers, › Color markers, › Sound markers,
-    /// › Shortcut markers, › Font markers, › Animation markers) and each id of the device's
-    /// projects is a link.
+    /// Plain text, escaped, in which the six kinds of markers are drawn
+    /// (docs/documentation-viewer.md › Marker setup) and each id of the device's projects is a link.
     static func symbolText(_ text: String, context: TranscriptRenderContext) -> String {
-        MarkdownSymbolMarkers.html(text, isSymbolAvailable: SFSymbols.isAvailable, colorSwatch: ColorSwatches.swatch,
-                                   readsSoundMarkers: true, shortcutKeys: KeyShortcut.keyCaps(of:), fontMarker: FontMarkers.marker,
-                                   animationCurve: AnimationExpression.markdownCurve, projectIdentifiers: context.projectIdentifiers)
+        MarkdownMarkers.html(text, projectIdentifiers: context.projectIdentifiers)
     }
 
     /// Plain text, escaped, in which each id of the device's projects is a link

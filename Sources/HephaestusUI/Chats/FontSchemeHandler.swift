@@ -222,9 +222,10 @@ final class ProjectFonts {
     }
 }
 
-/// Registered for `hephaestus-font` on the transcript web view: answers a GET whose host is `face`
-/// with the font of the face named by the path, `/<family>/<weight>`, rebuilt as one OpenType font:
-/// a face installed on this Mac, else a face of the chat's project read through the engine.
+/// Registered for `hephaestus-font` on the transcript web view and the doc preview: answers a GET
+/// whose host is `face` with the font of the face named by the path, `/<family>/<weight>`, rebuilt
+/// as one OpenType font: a face installed on this Mac, else a face of the web view's project read
+/// through the engine.
 @MainActor
 final class FontSchemeHandler: NSObject, WKURLSchemeHandler {
     nonisolated static let scheme = "hephaestus-font"
