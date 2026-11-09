@@ -36,10 +36,13 @@ public struct AppCommands: Commands {
         CommandGroup(after: .textEditing) {
             ToggleCommentCommand()
         }
-        CommandGroup(replacing: .sidebar) {
+        // The View items replace the toolbar group, the first group of the View menu. SwiftUI keeps
+        // the separator between the toolbar and sidebar groups even when one of them is empty: with
+        // an empty toolbar group the menu would start with it; here it ends the View items.
+        CommandGroup(replacing: .toolbar) {
             ViewCommands(app: app)
         }
-        CommandGroup(replacing: .toolbar) {}
+        CommandGroup(replacing: .sidebar) {}
         CommandMenu("Navigate") {
             NavigateCommands()
         }
@@ -253,7 +256,6 @@ private struct ViewCommands: View {
         }
         .keyboardShortcut("0", modifiers: [.command, .option])
         .disabled(!hasProject)
-        Divider()
     }
 }
 
