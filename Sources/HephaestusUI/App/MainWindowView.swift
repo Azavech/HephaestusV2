@@ -124,10 +124,14 @@ private struct MainWindowColumns: View {
             } else if !workspace.hasSnapshot {
                 LoadingStateView(text: "Loading \(workspace.deviceName)…")
             } else if workspace.projects.isEmpty {
-                // The Global Memories view takes the welcome view's place (docs/ui.md › Welcome view).
+                // The Global Memories view and the Internal Skills view take the welcome view's place
+                // (docs/ui.md › Welcome view).
                 if state.showsGlobalMemories {
                     GlobalMemoriesView(window: state, workspace: workspace)
                         .id("\(workspace.deviceID)/global")
+                } else if state.showsInternalSkills {
+                    InternalSkillsView(window: state, workspace: workspace)
+                        .id("\(workspace.deviceID)/internalSkills")
                 } else {
                     WelcomeView(window: state, workspace: workspace)
                 }
@@ -244,9 +248,10 @@ private struct APIExplorerState: Hashable {
 }
 
 /// The centre column: the section the sidebar selects, once the project's data is loaded, the
-/// Global Memories view, which needs no project data (docs/memories.md › Global Memories view), or
-/// the Dashboard of a sub project shown from the sidebar, once its data is loaded
-/// (docs/dashboard.md › Section).
+/// Global Memories view or the Internal Skills view, which need no project data
+/// (docs/memories.md › Global Memories view, docs/skills.md › Internal Skills view), or the
+/// Dashboard of a sub project shown from the sidebar, once its data is loaded (docs/dashboard.md ›
+/// Section).
 private struct SectionContent: View {
     let state: WindowState
     let workspace: DeviceWorkspace
@@ -256,6 +261,9 @@ private struct SectionContent: View {
         if state.showsGlobalMemories {
             GlobalMemoriesView(window: state, workspace: workspace)
                 .id("\(workspace.deviceID)/global")
+        } else if state.showsInternalSkills {
+            InternalSkillsView(window: state, workspace: workspace)
+                .id("\(workspace.deviceID)/internalSkills")
         } else if let subProjectID = state.subProjectDashboardID, let subProject = workspace.project(subProjectID) {
             loaded(subProject) {
                 DashboardView(window: state, workspace: workspace, projectID: subProjectID, showsHeader: true)
@@ -307,7 +315,7 @@ private struct SectionContent: View {
             BuildsSectionView(window: state, workspace: workspace, projectID: projectID)
                 .id("\(workspace.deviceID)/\(projectID)")
         case .skills:
-            SkillsSectionView(window: state, workspace: workspace, projectID: projectID)
+            SkillsSectionView(window: state, workspace: workspace, scope: .project(projectID))
         case .memories:
             MemoriesSectionView(window: state, workspace: workspace, scope: .project(projectID))
                 .id("\(workspace.deviceID)/\(projectID)")

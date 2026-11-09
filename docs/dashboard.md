@@ -19,7 +19,7 @@ A click on a row of the sidebar's Sub Projects category shows the Dashboard of t
 
 - A sub project's Dashboard has a pane header 36 points high, with the sub project's name in the headline font, above the bar with the `Edit` button ([Pane headers](ui.md#pane-headers)). The active project's Dashboard has no pane header.
 - While the sub project is loading, or after its loading failed, the centre column shows the loading or failure state of [Empty states](ui.md#empty-states) in place of its Dashboard, as for a section of the active project.
-- The window leaves it as [Sidebar](ui.md#sidebar) specifies: by anything that selects a section, by View ▸ Global Memories, by a switch of project or device, and when the sub project is removed, hidden or no longer loaded.
+- The window leaves it as [Sidebar](ui.md#sidebar) specifies: by anything that selects a section, by View ▸ Global Memories and View ▸ Internal Skills, by a switch of project or device, and when the sub project is removed, hidden or no longer loaded.
 
 The pane header and the sub project's own Dashboard come from the user. The headline font and the loading and failure states are design-time choices. Default chosen at design time.
 

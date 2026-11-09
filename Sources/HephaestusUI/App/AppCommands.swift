@@ -228,6 +228,13 @@ private struct ViewCommands: View {
         }
         .keyboardShortcut("m", modifiers: [.command, .shift])
         .disabled(!(window?.isConnected ?? false))
+        // docs/skills.md › Internal Skills view: enabled in a main window whose device is
+        // connected, with or without project.
+        Button("Internal Skills") {
+            window?.showsInternalSkills = true
+        }
+        .keyboardShortcut("i", modifiers: [.command, .shift])
+        .disabled(!(window?.canShowInternalSkills ?? false))
         // Enabled while the active project's sidebar shows the row (docs/openapi.md › Availability).
         Button(ProjectSection.apiExplorer.title) {
             window?.section = .apiExplorer

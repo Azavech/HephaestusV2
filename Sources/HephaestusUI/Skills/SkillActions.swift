@@ -5,45 +5,44 @@ import AppKit
 import HephaestusCore
 import SwiftUI
 
-/// The actions of the Skills section that outlive a view: selection with the unsaved changes
-/// prompt and the Move to Trash confirmations.
+/// The actions of the Skills section and of the Internal Skills view that outlive a view:
+/// selection with the unsaved changes prompt and the Move to Trash confirmations.
 @MainActor
 enum SkillActions {
-    /// Selects a skill of a project in a window, or clears the selection with nil. When the shown
-    /// skill has unsaved changes, `Do you want to save the changes to “<name>”?` asks first;
-    /// Cancel keeps the current selection and returns false (docs/skills.md › Saving).
-    /// `startEditing` opens the skill's body in Edit mode with the keyboard focus (New Skill sheet).
+    /// Selects a skill of a project's Skills section, or of the Internal Skills view, in a window,
+    /// or clears the selection with nil. When the shown skill has unsaved changes, `Do you want to
+    /// save the changes to “<name>”?` asks first; Cancel keeps the current selection and returns
+    /// false (docs/skills.md › Saving). `startEditing` opens the skill's body in Edit mode with the
+    /// keyboard focus (New Skill sheet).
     @discardableResult
-    static func select(_ name: String?, window: WindowState, workspace: DeviceWorkspace, projectID: String,
+    static func select(_ name: String?, window: WindowState, workspace: DeviceWorkspace, scope: SkillsScope,
                        startEditing: Bool = false) async -> Bool {
-        let key = ProjectKey(deviceID: workspace.deviceID, projectID: projectID)
-        let current = window.projectStates[key]
-        if current?.selectedSkillName == name, !startEditing { return true }
-        if let editor = current?.skillEditor, editor.skillName != name {
+        let current = window.skillViewState(scope, deviceID: workspace.deviceID)
+        if current.selectedSkillName == name, !startEditing { return true }
+        if let editor = current.skillEditor, editor.skillName != name {
             let unsaved = editor.unsavedEditors
             if !unsaved.isEmpty {
                 guard await UnsavedChangesPrompt.confirm(unsaved, in: window) else { return false }
             }
         }
-        var state = window.projectStates[key] ?? ProjectViewState()
-        state.selectedSkillName = name
-        if let name {
-            if startEditing || state.skillEditor?.skillName != name {
-                let editor = SkillEditorState(skillName: name, projectID: projectID,
-                                              bodyMode: startEditing ? .edit : state.skillEditor?.bodyMode ?? .preview)
-                editor.attach(window: window, workspace: workspace)
-                if startEditing {
-                    editor.bodyFocusRequest += 1
-                }
-                state.skillEditor = editor
-                Task {
-                    await editor.refresh()
-                }
+        window.updateSkillViewState(scope, deviceID: workspace.deviceID) { state in
+            state.selectedSkillName = name
+            guard let name else {
+                state.skillEditor = nil
+                return
             }
-        } else {
-            state.skillEditor = nil
+            guard startEditing || state.skillEditor?.skillName != name else { return }
+            let editor = SkillEditorState(skillName: name, scope: scope,
+                                          bodyMode: startEditing ? .edit : state.skillEditor?.bodyMode ?? .preview)
+            editor.attach(window: window, workspace: workspace)
+            if startEditing {
+                editor.bodyFocusRequest += 1
+            }
+            state.skillEditor = editor
+            Task {
+                await editor.refresh()
+            }
         }
-        window.projectStates[key] = state
         return true
     }
 
@@ -60,11 +59,12 @@ enum SkillActions {
             window.alert = .failure("Move to Trash", error)
             return
         }
-        let key = ProjectKey(deviceID: workspace.deviceID, projectID: projectID)
-        guard var state = window.projectStates[key], state.selectedSkillName == name else { return }
-        state.selectedSkillName = nil
-        state.skillEditor = nil
-        window.projectStates[key] = state
+        let scope = SkillsScope.project(projectID)
+        guard window.skillViewState(scope, deviceID: workspace.deviceID).selectedSkillName == name else { return }
+        window.updateSkillViewState(scope, deviceID: workspace.deviceID) {
+            $0.selectedSkillName = nil
+            $0.skillEditor = nil
+        }
     }
 
     /// An extra file's Move to Trash: the alert `Move “<path>” to the Trash?`, then

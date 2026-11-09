@@ -1,15 +1,17 @@
-// OWNER: ui-skills-feedback — the Skills section: library list and editor (docs/skills.md › Skills section).
+// OWNER: ui-skills-feedback — the Skills section and the Internal Skills view: library list and
+// editor (docs/skills.md › Skills section, › Internal Skills view).
 import HephaestusCore
 import SwiftUI
 
 /// The skills library with the active project's enablement (`ProjectViewState.selectedSkillName`,
-/// `skillEditor`): the library list and the editor of the selected skill, in two columns
-/// (docs/skills.md › Skills section). A selected skill that does not exist shows
-/// `NotFoundView(kind: "Skill", id:)`.
+/// `skillEditor`), or the internal skills of the window's device (`SkillViewState`): the library
+/// list and the editor of the selected skill, in two columns (docs/skills.md › Skills section, ›
+/// Internal Skills view). A selected skill that does not exist, or that the view does not list,
+/// shows `NotFoundView(kind: "Skill", id:)`.
 struct SkillsSectionView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
-    let projectID: String
+    let scope: SkillsScope
 
     @State private var commands = SkillsSectionCommands()
     @State private var filter = ""
@@ -18,25 +20,21 @@ struct SkillsSectionView: View {
     /// True once a `skills.list` call of this view answered.
     @State private var listLoaded = false
 
-    private var key: ProjectKey {
-        ProjectKey(deviceID: workspace.deviceID, projectID: projectID)
-    }
-
-    private var viewState: ProjectViewState? {
-        window.projectStates[key]
+    private var viewState: SkillViewState {
+        window.skillViewState(scope, deviceID: workspace.deviceID)
     }
 
     private var selectedName: String? {
-        viewState?.selectedSkillName
+        viewState.selectedSkillName
     }
 
     var body: some View {
         Group {
-            if showsLibraryEmptyState {
+            if let projectID = scope.projectID, showsLibraryEmptyState {
                 SkillsLibraryEmptyView(window: window, workspace: workspace, projectID: projectID)
             } else {
                 HSplitView {
-                    SkillLibraryList(window: window, workspace: workspace, projectID: projectID, filter: $filter,
+                    SkillLibraryList(window: window, workspace: workspace, scope: scope, filter: $filter,
                                      listError: listError)
                         .frame(minWidth: 220, idealWidth: 260, maxWidth: 420, maxHeight: .infinity)
                     editorColumn
@@ -47,7 +45,8 @@ struct SkillsSectionView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             commands.window = window
-            commands.key = key
+            commands.scope = scope
+            commands.deviceID = workspace.deviceID
             window.sectionCommands = commands
             ensureEditor()
         }
@@ -59,22 +58,23 @@ struct SkillsSectionView: View {
             // On appearing and after every reconnection: the library list, then the shown skill
             // (docs/remote.md › After a reconnect).
             await loadList()
-            await viewState?.skillEditor?.refresh()
+            await viewState.skillEditor?.refresh()
         }
         .task {
             for await event in workspace.events() {
                 guard case .skillsChanged = event.event else { continue }
                 listError = nil
                 listLoaded = true
-                await viewState?.skillEditor?.refresh()
+                await viewState.skillEditor?.refresh()
             }
         }
     }
 
-    /// `Library empty`: the library has no skill that the list shows and no skill is selected.
+    /// `Library empty`: the library has no skill that the list shows and no skill is selected. The
+    /// Internal Skills view has no such state: its empty list shows no row.
     private var showsLibraryEmptyState: Bool {
         listError == nil && (listLoaded || workspace.hasSnapshot)
-            && SkillsVisibility.listed(workspace.skills, projectID: projectID).isEmpty && selectedName == nil
+            && SkillsVisibility.listed(workspace.skills, in: scope).isEmpty && selectedName == nil
     }
 
     // MARK: Editor column
@@ -82,16 +82,16 @@ struct SkillsSectionView: View {
     @ViewBuilder
     private var editorColumn: some View {
         if let name = selectedName {
-            if !SkillsVisibility.isListed(name, projectID: projectID) {
-                // An internal skill is shown only in the HephaestusV2 project (docs/skills.md ›
-                // Internal skills).
+            if !SkillsVisibility.isListed(name, in: scope) {
+                // An internal skill is shown only in the Internal Skills view, which shows nothing
+                // else (docs/skills.md › Availability).
                 NotFoundView(kind: "Skill", id: name)
-            } else if let editor = viewState?.skillEditor, editor.skillName == name {
+            } else if let editor = viewState.skillEditor, editor.skillName == name {
                 if editor.isMissing {
                     NotFoundView(kind: "Skill", id: name)
                 } else if editor.hasLoaded {
                     SkillEditorView(editor: editor, form: editor.form, window: window, workspace: workspace,
-                                    projectID: projectID)
+                                    scope: scope)
                 } else if let error = editor.loadError {
                     SkillLoadFailedView(message: error.message) {
                         Task { await editor.refresh() }
@@ -138,38 +138,55 @@ struct SkillsSectionView: View {
     /// Keeps the editor on the selected skill: a selection made by navigation (`skill` target)
     /// or kept from earlier gets its editor here.
     private func ensureEditor() {
-        guard var state = viewState else { return }
+        let state = viewState
         state.skillEditor?.attach(window: window, workspace: workspace)
         guard let name = state.selectedSkillName else {
             if state.skillEditor != nil {
-                state.skillEditor = nil
-                window.projectStates[key] = state
+                window.updateSkillViewState(scope, deviceID: workspace.deviceID) { $0.skillEditor = nil }
             }
             return
         }
         guard state.skillEditor?.skillName != name else { return }
-        let editor = SkillEditorState(skillName: name, projectID: projectID, bodyMode: state.skillEditor?.bodyMode ?? .preview)
+        let editor = SkillEditorState(skillName: name, scope: scope, bodyMode: state.skillEditor?.bodyMode ?? .preview)
         editor.attach(window: window, workspace: workspace)
-        state.skillEditor = editor
-        window.projectStates[key] = state
+        window.updateSkillViewState(scope, deviceID: workspace.deviceID) { $0.skillEditor = editor }
         Task {
             await editor.refresh()
         }
     }
 
-    /// Leaving the section with unsaved changes asks `Do you want to save the changes to
-    /// “<name>”?`; Cancel, or a failed save, shows the Skills section again and Don't Save
-    /// discards the changes (docs/skills.md › Saving). Switching project or device keeps the
-    /// editor in the window's state, as every unsaved editor of a project
+    /// The window still shows this view: the project's Skills section, or the Internal Skills
+    /// view.
+    private var isShown: Bool {
+        switch scope {
+        case .project: return window.shownSection == .skills
+        case .internalSkills: return window.showsInternalSkills
+        }
+    }
+
+    /// Cancel of the unsaved changes prompt shows the view again.
+    private func showAgain() {
+        switch scope {
+        case .project(let projectID):
+            if window.projectID == projectID {
+                window.section = .skills
+            }
+        case .internalSkills:
+            window.showsInternalSkills = true
+        }
+    }
+
+    /// Leaving the section, or the Internal Skills view, with unsaved changes asks `Do you want to
+    /// save the changes to “<name>”?`; Cancel, or a failed save, shows it again and Don't Save
+    /// discards the changes (docs/skills.md › Saving, › Internal Skills view). Switching project or
+    /// device keeps the editor in the window's state, as every unsaved editor of a project
     /// (docs/ui.md › WindowState).
     private func sectionDidDisappear() {
         if window.sectionCommands === commands {
             window.sectionCommands = nil
         }
-        guard window.shownSection != .skills, window.app?.windows[window.id] != nil,
-              let editor = viewState?.skillEditor, !editor.unsavedEditors.isEmpty else { return }
-        let window = window
-        let projectID = projectID
+        guard !isShown, window.app?.windows[window.id] != nil,
+              let editor = viewState.skillEditor, !editor.unsavedEditors.isEmpty else { return }
         Task {
             let unsaved = editor.unsavedEditors
             guard !unsaved.isEmpty else { return }
@@ -177,23 +194,25 @@ struct SkillsSectionView: View {
                 if !editor.unsavedEditors.isEmpty {
                     editor.discardChanges()
                 }
-            } else if window.projectID == projectID {
-                window.section = .skills
+            } else {
+                showAgain()
             }
         }
     }
 }
 
-/// File ▸ Save (⌘S) in the Skills section: the form when it has changes and the open extra file
-/// when it has changes (docs/ui.md › Menus and keyboard shortcuts, Save).
+/// File ▸ Save (⌘S) in the Skills section and the Internal Skills view: the form when it has
+/// changes and the open extra file when it has changes (docs/ui.md › Menus and keyboard shortcuts,
+/// Save).
 @MainActor @Observable
 final class SkillsSectionCommands: SectionCommandHandler {
     @ObservationIgnored weak var window: WindowState?
-    @ObservationIgnored var key: ProjectKey?
+    @ObservationIgnored var scope: SkillsScope?
+    @ObservationIgnored var deviceID: String?
 
     private var editor: SkillEditorState? {
-        guard let window, let key else { return nil }
-        return window.projectStates[key]?.skillEditor
+        guard let window, let scope, let deviceID else { return nil }
+        return window.skillViewState(scope, deviceID: deviceID).skillEditor
     }
 
     var canSave: Bool {
@@ -250,31 +269,29 @@ private struct SkillLoadFailedView: View {
 // MARK: - Library list
 
 /// The library list: a filter field, the skills sorted by name with the enabled mark, the
-/// `Missing from Library` group and the bottom bar (docs/skills.md › Library list).
+/// `Missing from Library` group and the bottom bar; in the Internal Skills view, the internal
+/// skills only, without group and bottom bar (docs/skills.md › Library list, › Internal Skills
+/// view).
 private struct SkillLibraryList: View {
     let window: WindowState
     let workspace: DeviceWorkspace
-    let projectID: String
+    let scope: SkillsScope
     @Binding var filter: String
     let listError: String?
 
-    private var key: ProjectKey {
-        ProjectKey(deviceID: workspace.deviceID, projectID: projectID)
-    }
-
     private var selectedName: String? {
-        window.projectStates[key]?.selectedSkillName
+        window.skillViewState(scope, deviceID: workspace.deviceID).selectedSkillName
     }
 
-    /// The active project's enabled skills, in enabling order.
+    /// The active project's enabled skills, in enabling order; none in the Internal Skills view.
     private var enabledNames: [String] {
-        workspace.details[projectID]?.project.skills ?? []
+        scope.projectID.flatMap { workspace.details[$0]?.project.skills } ?? []
     }
 
     /// The skills the list shows whose name or description contains the filter,
     /// case-insensitively, by name.
     private var filteredSkills: [SkillSummary] {
-        let skills = SkillsVisibility.listed(workspace.skills, projectID: projectID).sorted { $0.name < $1.name }
+        let skills = SkillsVisibility.listed(workspace.skills, in: scope).sorted { $0.name < $1.name }
         guard !filter.isEmpty else { return skills }
         return skills.filter {
             $0.name.range(of: filter, options: .caseInsensitive) != nil
@@ -298,8 +315,11 @@ private struct SkillLibraryList: View {
             Divider()
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            Divider()
-            bottomBar
+            // The internal skills are never created or moved to the Trash: no `+` or `−`.
+            if let projectID = scope.projectID {
+                Divider()
+                bottomBar(projectID)
+            }
         }
         .background(Color(nsColor: .controlBackgroundColor))
     }
@@ -323,10 +343,11 @@ private struct SkillLibraryList: View {
                         .selectionDisabled()
                 }
                 ForEach(skills, id: \.name) { skill in
+                    // An internal skill is always enabled (docs/skills.md › Internal Skills view).
                     SkillRow(skill: skill, isEnabled: enabled.contains(skill.name) || InternalSkills.isInternal(skill.name))
                         .tag(skill.name)
                 }
-                if !missing.isEmpty {
+                if let projectID = scope.projectID, !missing.isEmpty {
                     Section("Missing from Library") {
                         ForEach(missing, id: \.self) { name in
                             MissingSkillRow(name: name, workspace: workspace, window: window, projectID: projectID)
@@ -338,11 +359,11 @@ private struct SkillLibraryList: View {
             .listStyle(.inset)
             .onKeyPress(keys: [.delete]) { press in
                 // ⌫ or ⌘⌫ with a list row selected (docs/skills.md › Keyboard).
-                guard press.modifiers.isEmpty || press.modifiers == .command, let name = selectedName,
-                      !InternalSkills.isInternal(name) else {
+                guard press.modifiers.isEmpty || press.modifiers == .command, let projectID = scope.projectID,
+                      let name = selectedName, !InternalSkills.isInternal(name) else {
                     return .ignored
                 }
-                trash(name)
+                trash(name, projectID: projectID)
                 return .handled
             }
         }
@@ -353,14 +374,14 @@ private struct SkillLibraryList: View {
         Binding(get: { selectedName }, set: { name in
             guard name != selectedName else { return }
             Task {
-                await SkillActions.select(name, window: window, workspace: workspace, projectID: projectID)
+                await SkillActions.select(name, window: window, workspace: workspace, scope: scope)
             }
         })
     }
 
     /// `+` (New Skill…) and `−` (Move to Trash…, disabled without a selection and for an internal
     /// skill).
-    private var bottomBar: some View {
+    private func bottomBar(_ projectID: String) -> some View {
         HStack(spacing: 2) {
             Button {
                 window.sheet = .newSkill(projectID: projectID)
@@ -372,7 +393,7 @@ private struct SkillLibraryList: View {
             .accessibilityLabel("New Skill…")
             Button {
                 if let selectedName {
-                    trash(selectedName)
+                    trash(selectedName, projectID: projectID)
                 }
             } label: {
                 Image(systemName: "minus")
@@ -388,7 +409,7 @@ private struct SkillLibraryList: View {
         .frame(height: 28)
     }
 
-    private func trash(_ name: String) {
+    private func trash(_ name: String, projectID: String) {
         Task {
             await SkillActions.trashSkill(name, window: window, workspace: workspace, projectID: projectID)
         }
@@ -503,16 +524,20 @@ private struct SkillsLibraryEmptyView: View {
     }
 }
 
-/// The internal skills are listed and edited only in the Skills section of the HephaestusV2
-/// project, the device's project `HEPH` (docs/skills.md › Internal skills).
+/// The internal skills are listed and edited only in the Internal Skills view, which lists nothing
+/// else; the Skills section of every project, the HephaestusV2 project included, leaves them out
+/// (docs/skills.md › Availability).
 enum SkillsVisibility {
-    /// True when the Skills section of `projectID` lists the skill `name`.
-    static func isListed(_ name: String, projectID: String) -> Bool {
-        projectID == HephaestusRepository.identifier || !InternalSkills.isInternal(name)
+    /// True when the view of `scope` lists the skill `name`.
+    static func isListed(_ name: String, in scope: SkillsScope) -> Bool {
+        switch scope {
+        case .project: return !InternalSkills.isInternal(name)
+        case .internalSkills: return InternalSkills.isInternal(name)
+        }
     }
 
-    /// The skills of the library that the Skills section of `projectID` lists.
-    static func listed(_ skills: [SkillSummary], projectID: String) -> [SkillSummary] {
-        skills.filter { isListed($0.name, projectID: projectID) }
+    /// The skills of the library that the view of `scope` lists.
+    static func listed(_ skills: [SkillSummary], in scope: SkillsScope) -> [SkillSummary] {
+        skills.filter { isListed($0.name, in: scope) }
     }
 }

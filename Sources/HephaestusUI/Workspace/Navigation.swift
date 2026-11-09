@@ -100,6 +100,14 @@ extension WindowState {
         }
         pendingTarget = nil
 
+        // An internal skill resolves no project: the window shows the Internal Skills view of its
+        // device, keeping its project and section, and leaves a sub project's Dashboard
+        // (docs/skills.md › Search and navigation).
+        if case .skill(let name) = target, InternalSkills.isInternal(name) {
+            await showInternalSkill(name, in: workspace)
+            return
+        }
+
         // Step 3: the project.
         let resolvedProjectID: String?
         switch target {
@@ -114,14 +122,8 @@ extension WindowState {
             // Without the chat's metadata, the active project, else the default one; the Chats
             // section then shows the not-found text (docs/ui.md › Resolving a target).
             resolvedProjectID = workspace.chats[chatID.uuidString]?.projectID ?? projectID ?? defaultProjectID(in: workspace)
-        case .skill(let name):
-            // An internal skill shows in the HephaestusV2 project when the device has it
-            // (docs/skills.md › Internal skills).
-            if InternalSkills.isInternal(name), workspace.project(HephaestusRepository.identifier) != nil {
-                resolvedProjectID = HephaestusRepository.identifier
-            } else {
-                resolvedProjectID = projectID ?? defaultProjectID(in: workspace)
-            }
+        case .skill:
+            resolvedProjectID = projectID ?? defaultProjectID(in: workspace)
             guard resolvedProjectID != nil else { return }
         }
         guard let resolvedProjectID, workspace.project(resolvedProjectID) != nil else {

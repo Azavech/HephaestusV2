@@ -222,6 +222,7 @@ final class WebTabsController: SectionCommandHandler {
         _ = window.sheet
         _ = window.section
         _ = window.showsGlobalMemories
+        _ = window.showsInternalSkills
         _ = window.subProjectDashboardID
         guard let projectID = window.projectID else { return }
         _ = window.projectStates[ProjectKey(deviceID: window.deviceID, projectID: projectID)]?.selectedWebTabID

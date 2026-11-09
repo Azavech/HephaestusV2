@@ -17,9 +17,10 @@ struct NewSkillFileSheet: View {
     @State private var failure: String?
     @FocusState private var pathFocused: Bool
 
-    /// The editor of the skill in the window's active project.
+    /// The editor of the skill in the active project's Skills section, or in the Internal Skills
+    /// view.
     private var editor: SkillEditorState? {
-        guard let editor = window.viewState.skillEditor, editor.skillName == skillName else { return nil }
+        guard let editor = window.shownSkillEditor, editor.skillName == skillName else { return nil }
         return editor
     }
 

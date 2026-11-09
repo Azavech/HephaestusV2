@@ -33,19 +33,31 @@ final class WindowState: Identifiable {
         }
     }
     /// The selected sidebar section. Selecting a section, the selected one included, leaves the
-    /// Global Memories view (docs/memories.md › Global Memories view) and a sub project's
-    /// Dashboard (docs/ui.md › Sidebar).
+    /// Global Memories view (docs/memories.md › Global Memories view), the Internal Skills view
+    /// (docs/skills.md › Internal Skills view) and a sub project's Dashboard (docs/ui.md › Sidebar).
     var section: ProjectSection = .dashboard {
         didSet {
             showsGlobalMemories = false
+            showsInternalSkills = false
             subProjectDashboardID = nil
         }
     }
     /// The centre column shows the Global Memories view; no sidebar row is selected. Showing it
-    /// leaves a sub project's Dashboard.
+    /// leaves the Internal Skills view and a sub project's Dashboard.
     var showsGlobalMemories = false {
         didSet {
             if showsGlobalMemories {
+                showsInternalSkills = false
+                subProjectDashboardID = nil
+            }
+        }
+    }
+    /// The centre column shows the Internal Skills view; no sidebar row is selected. Showing it
+    /// leaves the Global Memories view and a sub project's Dashboard.
+    var showsInternalSkills = false {
+        didSet {
+            if showsInternalSkills {
+                showsGlobalMemories = false
                 subProjectDashboardID = nil
             }
         }
@@ -62,6 +74,9 @@ final class WindowState: Identifiable {
     /// The Global Memories view's selected row, editor and mode for each device the window showed,
     /// by device id.
     var globalMemoryStates: [String: MemoryViewState] = [:]
+    /// The Internal Skills view's selected skill and editor for each device the window showed, by
+    /// device id.
+    var internalSkillStates: [String: SkillViewState] = [:]
     /// Last active project per device in this window.
     var lastProjectByDevice: [String: String] = [:]
     /// Search panel shown.
@@ -99,10 +114,10 @@ final class WindowState: Identifiable {
         self.deviceID = deviceID
     }
 
-    /// The section the centre column shows: nil while it shows the Global Memories view or a sub
-    /// project's Dashboard.
+    /// The section the centre column shows: nil while it shows the Global Memories view, the
+    /// Internal Skills view or a sub project's Dashboard.
     var shownSection: ProjectSection? {
-        showsGlobalMemories || subProjectDashboardID != nil ? nil : section
+        showsGlobalMemories || showsInternalSkills || subProjectDashboardID != nil ? nil : section
     }
 
     /// The key of the active project.
@@ -129,8 +144,8 @@ final class WindowState: Identifiable {
     }
 
     /// The editors of this window with unsaved changes, in every project it showed, then those of
-    /// its Global Memories view for each device, which belong to no project (docs/ui.md › Unsaved
-    /// changes and quitting).
+    /// its Global Memories view and its Internal Skills view for each device, which belong to no
+    /// project (docs/ui.md › Unsaved changes and quitting).
     func unsavedEditors(deviceID: String? = nil, projectIDs: Set<String>? = nil) -> [any UnsavedEditor] {
         let projects = projectStates
             .filter { key, _ in
@@ -143,7 +158,11 @@ final class WindowState: Identifiable {
             .filter { deviceID == nil || $0.key == deviceID }
             .sorted { $0.key < $1.key }
             .flatMap { $0.value.memoryEditor?.unsavedEditors ?? [] }
-        return projects + global
+        let skills = internalSkillStates
+            .filter { deviceID == nil || $0.key == deviceID }
+            .sorted { $0.key < $1.key }
+            .flatMap { $0.value.skillEditor?.unsavedEditors ?? [] }
+        return projects + global + skills
     }
 
     /// The `@SceneStorage` value: the persisted properties as JSON (docs/ui.md › Persistence).
@@ -169,8 +188,9 @@ final class WindowState: Identifiable {
 
 extension WindowState: @MainActor Codable {
     enum CodingKeys: String, CodingKey {
-        case id, deviceID, projectID, section, showsGlobalMemories, subProjectDashboardID, sidebarVisible, inspectorVisible,
-             inspectorWidth, projectStates, globalMemoryStates, lastProjectByDevice, searchVisible, search, sheet, pendingTarget
+        case id, deviceID, projectID, section, showsGlobalMemories, showsInternalSkills, subProjectDashboardID, sidebarVisible,
+             inspectorVisible, inspectorWidth, projectStates, globalMemoryStates, internalSkillStates, lastProjectByDevice,
+             searchVisible, search, sheet, pendingTarget
     }
 
     /// One entry of `projectStates`.
@@ -185,9 +205,10 @@ extension WindowState: @MainActor Codable {
         self.init(id: try c.decode(UUID.self, forKey: .id), deviceID: try c.decode(String.self, forKey: .deviceID))
         projectID = try c.decodeIfPresent(String.self, forKey: .projectID)
         section = try c.decodeIfPresent(ProjectSection.self, forKey: .section) ?? .dashboard
-        // After the section, which leaves the view.
+        // After the section, which leaves the views.
         showsGlobalMemories = try c.decodeIfPresent(Bool.self, forKey: .showsGlobalMemories) ?? false
-        // After the project, the section and the view, which leave the sub project's Dashboard. The
+        showsInternalSkills = try c.decodeIfPresent(Bool.self, forKey: .showsInternalSkills) ?? false
+        // After the project, the section and the views, which leave the sub project's Dashboard. The
         // window checks it once the device's projects are known (docs/ui.md › WindowState).
         subProjectDashboardID = try c.decodeIfPresent(String.self, forKey: .subProjectDashboardID)
         sidebarVisible = try c.decodeIfPresent(Bool.self, forKey: .sidebarVisible) ?? true
@@ -195,6 +216,7 @@ extension WindowState: @MainActor Codable {
         inspectorWidth = try c.decodeIfPresent(Double.self, forKey: .inspectorWidth) ?? 380
         lastProjectByDevice = try c.decodeIfPresent([String: String].self, forKey: .lastProjectByDevice) ?? [:]
         globalMemoryStates = try c.decodeIfPresent([String: MemoryViewState].self, forKey: .globalMemoryStates) ?? [:]
+        internalSkillStates = try c.decodeIfPresent([String: SkillViewState].self, forKey: .internalSkillStates) ?? [:]
         if c.contains(.projectStates) {
             var entries = try c.nestedUnkeyedContainer(forKey: .projectStates)
             while !entries.isAtEnd {
@@ -220,6 +242,7 @@ extension WindowState: @MainActor Codable {
         try c.encodeIfPresent(projectID, forKey: .projectID)
         try c.encode(section, forKey: .section)
         try c.encode(showsGlobalMemories, forKey: .showsGlobalMemories)
+        try c.encode(showsInternalSkills, forKey: .showsInternalSkills)
         try c.encodeIfPresent(subProjectDashboardID, forKey: .subProjectDashboardID)
         try c.encode(sidebarVisible, forKey: .sidebarVisible)
         try c.encode(inspectorVisible, forKey: .inspectorVisible)
@@ -242,6 +265,7 @@ extension WindowState: @MainActor Codable {
         }
         // Persisted: the entry of the window's device only (docs/ui.md › WindowState).
         try c.encode(persistedOnly ? globalMemoryStates.filter { $0.key == deviceID } : globalMemoryStates, forKey: .globalMemoryStates)
+        try c.encode(persistedOnly ? internalSkillStates.filter { $0.key == deviceID } : internalSkillStates, forKey: .internalSkillStates)
         try c.encode(lastProjectByDevice, forKey: .lastProjectByDevice)
         guard !persistedOnly else { return }
         try c.encode(searchVisible, forKey: .searchVisible)
@@ -512,6 +536,85 @@ extension WindowState {
             change(&state)
             globalMemoryStates[deviceID] = state
         }
+    }
+}
+
+// MARK: - Skills views
+
+/// The view a skill editor belongs to: the Skills section of a project, or the Internal Skills
+/// view of the window's device (docs/skills.md › Skills section, › Internal Skills view).
+enum SkillsScope: Hashable {
+    case project(String)
+    case internalSkills
+
+    /// The project of the Skills section; nil for the Internal Skills view.
+    var projectID: String? {
+        if case .project(let projectID) = self { return projectID }
+        return nil
+    }
+}
+
+/// The state of the Internal Skills view for one device (docs/ui.md › WindowState): the fields of
+/// the same names of `ProjectViewState`; the editor keeps the body's mode. Only
+/// `selectedSkillName` is encoded.
+struct SkillViewState {
+    var selectedSkillName: String?
+    /// The skill form and the open extra file shown, with their unsaved changes.
+    var skillEditor: SkillEditorState?
+}
+
+extension SkillViewState: Codable {
+    enum CodingKeys: String, CodingKey {
+        case selectedSkillName
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        selectedSkillName = try c.decodeIfPresent(String.self, forKey: .selectedSkillName)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(selectedSkillName, forKey: .selectedSkillName)
+    }
+}
+
+extension WindowState {
+    /// The state of a skills view of this window on a device: the Skills section of a project,
+    /// from its entry of `projectStates`, or the Internal Skills view, from `internalSkillStates`.
+    func skillViewState(_ scope: SkillsScope, deviceID: String) -> SkillViewState {
+        switch scope {
+        case .project(let projectID):
+            guard let state = projectStates[ProjectKey(deviceID: deviceID, projectID: projectID)] else { return SkillViewState() }
+            return SkillViewState(selectedSkillName: state.selectedSkillName, skillEditor: state.skillEditor)
+        case .internalSkills:
+            return internalSkillStates[deviceID] ?? SkillViewState()
+        }
+    }
+
+    /// Changes the state of a skills view of this window on a device, creating its entry when
+    /// needed.
+    func updateSkillViewState(_ scope: SkillsScope, deviceID: String, _ change: (inout SkillViewState) -> Void) {
+        switch scope {
+        case .project(let projectID):
+            let key = ProjectKey(deviceID: deviceID, projectID: projectID)
+            var state = projectStates[key] ?? ProjectViewState()
+            var skills = SkillViewState(selectedSkillName: state.selectedSkillName, skillEditor: state.skillEditor)
+            change(&skills)
+            state.selectedSkillName = skills.selectedSkillName
+            state.skillEditor = skills.skillEditor
+            projectStates[key] = state
+        case .internalSkills:
+            var state = internalSkillStates[deviceID] ?? SkillViewState()
+            change(&state)
+            internalSkillStates[deviceID] = state
+        }
+    }
+
+    /// The skill editor of the view the centre column shows: the Internal Skills view's, or the
+    /// active project's Skills section's.
+    var shownSkillEditor: SkillEditorState? {
+        showsInternalSkills ? internalSkillStates[deviceID]?.skillEditor : viewState.skillEditor
     }
 }
 

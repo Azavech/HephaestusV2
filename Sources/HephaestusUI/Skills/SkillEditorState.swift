@@ -1,21 +1,24 @@
-// OWNER: ui-skills-feedback — the skill form and the open extra file of the Skills section, kept per
-// window and project (docs/skills.md › Editor, › Saving).
+// OWNER: ui-skills-feedback — the skill form and the open extra file of the Skills section and of
+// the Internal Skills view, kept per window and project or device (docs/skills.md › Editor, ›
+// Saving, › Internal Skills view).
 import Foundation
 import HephaestusCore
 import Observation
 import SwiftUI
 
-/// The edited skill of a window (`ProjectViewState.skillEditor`): the form (name, description,
-/// body) and the open extra file, with their unsaved changes (docs/skills.md › Editor, › Saving).
-/// It lives in the window's state, so returning to the project restores it, unsaved changes
-/// included (docs/ui.md › WindowState).
+/// The edited skill of a window (`ProjectViewState.skillEditor`, or `SkillViewState.skillEditor`
+/// of the Internal Skills view): the form (name, description, body) and the open extra file, with
+/// their unsaved changes (docs/skills.md › Editor, › Saving). It lives in the window's state, so
+/// returning to the project or the view restores it, unsaved changes included (docs/ui.md ›
+/// WindowState).
 @MainActor @Observable
 final class SkillEditorState {
     /// The skill the form shows: its saved name, which follows a rename made by this form.
     private(set) var skillName: String
-    let projectID: String
+    /// The Skills section or the Internal Skills view the editor belongs to.
+    let scope: SkillsScope
     /// The body's mode: Edit, Preview or Split; it starts as Preview and is kept when the window
-    /// selects another skill of the project (docs/skills.md › Editor).
+    /// selects another skill of the project or of the view (docs/skills.md › Editor).
     var bodyMode: DocMode
     /// The form: name, description and body.
     let form: SkillForm
@@ -46,9 +49,9 @@ final class SkillEditorState {
     /// Discards the answers of fetches overtaken by a newer one.
     @ObservationIgnored private var fetchGeneration = 0
 
-    init(skillName: String, projectID: String, bodyMode: DocMode = .preview) {
+    init(skillName: String, scope: SkillsScope, bodyMode: DocMode = .preview) {
         self.skillName = skillName
-        self.projectID = projectID
+        self.scope = scope
         self.bodyMode = bodyMode
         form = SkillForm()
         form.editor = self
@@ -284,7 +287,7 @@ final class SkillEditorState {
             conflict?.skillMissing = false
             normalizeConflict()
             if oldName != skill.name {
-                window?.updateViewState(of: projectID) {
+                window?.updateSkillViewState(scope, deviceID: workspace.deviceID) {
                     if $0.selectedSkillName == oldName {
                         $0.selectedSkillName = skill.name
                     }

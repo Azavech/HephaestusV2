@@ -144,7 +144,7 @@ struct NewSkillSheet: View {
                 }
             }
             dismiss()
-            await SkillActions.select(name, window: window, workspace: workspace, projectID: projectID, startEditing: true)
+            await SkillActions.select(name, window: window, workspace: workspace, scope: .project(projectID), startEditing: true)
             // A created skill whose enabling failed is still selected, then the failure shows
             // (docs/skills.md › New Skill sheet).
             if let enableError {

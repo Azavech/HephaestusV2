@@ -838,6 +838,6 @@ Shortcuts of this document. All global shortcuts are listed in [UI](ui.md).
 - R175: Ticket descriptions and comments draw the SF Symbol, color, font, shortcut, sound and animation markers, and Claude writes them there when it names one.
 - R179: The Chats section lists, in one list, only the chats the user starts in the project (project and feedback chats) and the chats whose ticket or bundle was deleted; ticket, bundle and CI chats show only on their ticket or bundle.
 - R180: The detail of a ticket or a bundle lists, in a Mentioned In tab, the other chats of the device that mention it.
-- R181: Feedback, Implement and Implement All start their chat by calling the internal skills feedback, implement-ticket and implement-bundle, which, with finish-implementation, hold the instructions of these tasks, are always active in every project, and are shown and edited only in the HephaestusV2 project.
+- R181: Feedback, Implement and Implement All start their chat by calling the internal skills feedback, implement-ticket and implement-bundle, which, with finish-implementation, hold the instructions of these tasks, are always active in every project, and are shown and edited only with View ▸ Internal Skills.
 - R188: The user selects the context window of each chat, Auto, 200K or 1M; a running chat takes a new window once its turn and background work end.
 - R189: Every Markdown view of the app draws the SF Symbol, color, font, shortcut, sound and animation markers the same way, and a click on ▶ plays the sound.

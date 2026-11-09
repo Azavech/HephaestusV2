@@ -4,13 +4,14 @@ import AppKit
 import HephaestusCore
 import SwiftUI
 
-/// The editor of the selected skill (docs/skills.md › Editor).
+/// The editor of the selected skill, in the Skills section or the Internal Skills view
+/// (docs/skills.md › Editor, › Internal Skills view).
 struct SkillEditorView: View {
     let editor: SkillEditorState
     @Bindable var form: SkillForm
     let window: WindowState
     let workspace: DeviceWorkspace
-    let projectID: String
+    let scope: SkillsScope
 
     /// The value of the Enabled toggle while `skills.setEnabled` runs and until the project's
     /// `project.updated` shows it.
@@ -44,7 +45,7 @@ struct SkillEditorView: View {
                         otherFrontmatterPart
                     }
                     SkillBodyPart(editor: editor, form: form, workspace: workspace)
-                        .markdownMarkers(projectID: projectID, workspace: workspace, window: window)
+                        .markdownMarkers(projectID: scope.projectID ?? window.projectID, workspace: workspace, window: window)
                     SkillFilesPart(editor: editor, window: window, workspace: workspace)
                 }
                 .padding(16)
@@ -56,7 +57,7 @@ struct SkillEditorView: View {
 
     // MARK: Header
 
-    private var projectName: String {
+    private func projectName(_ projectID: String) -> String {
         workspace.project(projectID)?.name ?? projectID
     }
 
@@ -90,8 +91,8 @@ struct SkillEditorView: View {
         }
     }
 
-    /// The row just under the header's separator: the name's validation message, the caption and
-    /// the Enabled toggle, which do not fit on the header's row.
+    /// The row just under the header's separator: the name's validation message, the caption and,
+    /// in the Skills section, the Enabled toggle, which do not fit on the header's row.
     private var underHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let message = form.nameMessage(library: workspace.skills) {
@@ -103,12 +104,13 @@ struct SkillEditorView: View {
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                 Spacer(minLength: 12)
-                // An internal skill is always enabled: its toggle is on and cannot be turned off
-                // (docs/skills.md › Internal skills).
-                Toggle("Enabled in \(projectName)", isOn: editor.isInternal ? .constant(true) : enabledBinding)
-                    .toggleStyle(.switch)
-                    .controlSize(.small)
-                    .disabled(editor.isInternal)
+                // The Internal Skills view has no toggle: the internal skills stay active in every
+                // project (docs/skills.md › Internal Skills view).
+                if let projectID = scope.projectID {
+                    Toggle("Enabled in \(projectName(projectID))", isOn: enabledBinding(projectID))
+                        .toggleStyle(.switch)
+                        .controlSize(.small)
+                }
             }
         }
         .onChange(of: isEnabledInProject) { _, enabled in
@@ -120,12 +122,12 @@ struct SkillEditorView: View {
 
     /// Whether the saved name is in the active project's `skills`.
     private var isEnabledInProject: Bool {
-        workspace.details[projectID]?.project.skills.contains(editor.skillName) ?? false
+        scope.projectID.flatMap { workspace.details[$0]?.project.skills.contains(editor.skillName) } ?? false
     }
 
     /// `Enabled in <project name>` applies at once through `skills.setEnabled`, using the saved
     /// name (docs/skills.md › Editor).
-    private var enabledBinding: Binding<Bool> {
+    private func enabledBinding(_ projectID: String) -> Binding<Bool> {
         Binding(get: { pendingEnabled ?? isEnabledInProject }, set: { enabled in
             let name = editor.skillName
             pendingEnabled = enabled
@@ -137,7 +139,7 @@ struct SkillEditorView: View {
                     }
                 } catch {
                     pendingEnabled = nil
-                    window.alert = .failure("Enabled in \(projectName)", error)
+                    window.alert = .failure("Enabled in \(projectName(projectID))", error)
                 }
             }
         })

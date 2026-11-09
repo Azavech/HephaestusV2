@@ -168,8 +168,8 @@ final class FeedbackController {
             var result = context(receiving: state.deviceID)
             if let projectID = state.projectID {
                 result.projectID = projectID
-                // No section and no item while the Global Memories view shows (docs/feedback.md ›
-                // Feedback context).
+                // No section and no item while the Global Memories view or the Internal Skills view
+                // shows (docs/feedback.md › Feedback context).
                 result.section = state.shownSection
                 if let workspace = app.workspaces[state.deviceID] {
                     result.item = Self.selectedItem(of: state, in: workspace, projectID: projectID)

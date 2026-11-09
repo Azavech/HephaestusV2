@@ -352,6 +352,7 @@ The view has the list, the memory editor, the MEMORY.md editor, the New Memory s
 
 - Leaving the view while its editor has unsaved changes asks the prompt of [Saving](#saving): Save saves and goes on, a failed save or Cancel shows the view again, and Don't Save discards the changes.
 - A click on a row of the sidebar's Sub Projects category also leaves the view: it shows that sub project's Dashboard ([Sidebar](ui.md#sidebar)).
+- View ▸ Internal Skills (⇧⌘I) also leaves the view: it shows the [Internal Skills view](skills.md#internal-skills-view) in its place, and View ▸ Global Memories leaves that view in turn.
 - Switching project or device keeps the view: it then shows the global memories of the window's device. Each device keeps its own selection, editor and mode in the window, as the projects do in `projectStates`.
 - File ▸ Save (⌘S) saves the memory form or `MEMORY.md` of the view, as in the Memories section ([Menus and keyboard shortcuts](ui.md#menus-and-keyboard-shortcuts)).
 - The previews of the memory editor and of the `MEMORY.md` editor draw the markers as in the Memories section, with the window's active project: a click on `▶` plays the sound of that project, and the font markers read the faces of its font files. In a window without active project, a click on `▶` shows the alert `Play Sound failed` with the message `This window has no project.`, and the font markers use only the fonts of the Mac that shows the window ([Marker setup](documentation-viewer.md#marker-setup)).
@@ -371,3 +372,4 @@ The header, the symbol of the empty state, the place in a window whose device ha
 - R168: The header bars at the top of the panes of the main window's centre column, and the inspector's header, are all 36 points high, so that their bottom separators lie on one line.
 - R169: Claude keeps global memories that every chat of every project receives; the user shows and edits them with View ▸ Global Memories.
 - R189: Every Markdown view of the app draws the SF Symbol, color, font, shortcut, sound and animation markers the same way, and a click on ▶ plays the sound.
+- R191: The user shows and edits the internal skills with View ▸ Internal Skills, outside any project.

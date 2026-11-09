@@ -139,15 +139,17 @@ struct SidebarSubProject: Equatable, Identifiable {
 
 extension WindowState {
     /// A click on a row of the sidebar's Sub Projects category: shows the project's Dashboard
-    /// without activating it, leaving the Global Memories view; the window keeps its section
-    /// (docs/ui.md › Sidebar).
+    /// without activating it, leaving the Global Memories view and the Internal Skills view; the
+    /// window keeps its section (docs/ui.md › Sidebar).
     func showSubProject(_ projectID: String) {
         showsGlobalMemories = false
+        showsInternalSkills = false
         subProjectDashboardID = projectID
     }
 
     /// Whether the sidebar shows a section row as selected: the selected section, unless the
-    /// window shows the Global Memories view or a sub project's Dashboard.
+    /// window shows the Global Memories view, the Internal Skills view or a sub project's
+    /// Dashboard.
     func isRowSelected(_ section: ProjectSection) -> Bool {
         shownSection == section
     }
@@ -202,8 +204,8 @@ struct SidebarView: View {
     }
 
     private func row(_ section: ProjectSection) -> some View {
-        // No section row is selected while the Global Memories view or a sub project's Dashboard
-        // shows (docs/ui.md › Sidebar).
+        // No section row is selected while the Global Memories view, the Internal Skills view or a
+        // sub project's Dashboard shows (docs/ui.md › Sidebar).
         let selected = window.isRowSelected(section)
         return Button {
             window.section = section

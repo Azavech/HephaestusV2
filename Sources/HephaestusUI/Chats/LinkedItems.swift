@@ -77,7 +77,7 @@ extension ProjectViewState {
     /// The items open in the centre column while `section` is shown (docs/ui.md › Inspector):
     /// every selected ticket in ticket number order, every selected chat (put in list order by
     /// `LinkedItems.linked`), or the section's selected item; none without section, while the
-    /// Global Memories view shows.
+    /// Global Memories view or the Internal Skills view shows.
     func openItems(in section: ProjectSection?) -> [LinkedItemRef] {
         guard let section else { return [] }
         switch section {

@@ -174,12 +174,12 @@ struct MarkdownMarkersTests {
     func skillsPreview() throws {
         let workspace = DeviceWorkspace(deviceID: "device", connection: OfflineConnection(), isLocal: true)
         let window = WindowState(deviceID: "device")
-        let editor = SkillEditorState(skillName: "comment-answer", projectID: "DEMO")
+        let editor = SkillEditorState(skillName: "comment-answer", scope: .project("DEMO"))
         editor.form.body.text = "- an SF Symbol as ![](sf:<name>), for example ![](sf:line.3.horizontal.decrease.circle)\n"
             + "- a color as ![](color:#FF9500) and a sound as ![](sound:macOS/Glass.aiff)\n"
         let drawn = Drawn()
         let host = NSHostingView(rootView: SkillEditorView(editor: editor, form: editor.form, window: window, workspace: workspace,
-                                                           projectID: "DEMO")
+                                                           scope: .project("DEMO"))
             .frame(width: 900, height: 900)
             .onPreferenceChange(MarkdownDrawnSymbols.self) { drawn.symbols = $0 }
             .onPreferenceChange(MarkdownBlockedImages.self) { drawn.blocked = $0 })
