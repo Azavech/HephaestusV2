@@ -1,6 +1,7 @@
 // OWNER: ui-code-docs — Quick Look of a binary file's temporary copy (docs/code-editor.md › Large
 // and binary files).
 import AppKit
+import HephaestusCore
 import Quartz
 
 /// Writes a file's bytes to `<temporary folder>/HephaestusV2/Files/<UUID>/<name>` on the Mac that
@@ -14,14 +15,9 @@ final class QuickLookPresenter: NSResponder, QLPreviewPanelDataSource, QLPreview
     private weak var hostWindow: NSWindow?
 
     func show(data: Data, name: String) {
-        let folder = FileManager.default.temporaryDirectory
-            .appendingPathComponent("HephaestusV2", isDirectory: true)
-            .appendingPathComponent("Files", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        let file = folder.appendingPathComponent(name.isEmpty ? "file" : name)
+        let file: URL
         do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try data.write(to: file, options: .atomic)
+            file = try OpenAPIResponseFiles.write(data, name: name)
         } catch {
             NSSound.beep()
             return

@@ -2,9 +2,9 @@ import Foundation
 import Testing
 @testable import HephaestusCore
 
-/// docs/chats.md › Close chat hook and docs/mcp.md › Pre-tool-use hook: only a `close_chat` call
-/// that names no other chats than the calling chat and the chats it orchestrates is approved
-/// without the permission mode.
+/// docs/chats.md › Close chat hook, › API call hook and docs/mcp.md › Pre-tool-use hook: only a
+/// `close_chat` call that names no other chats than the calling chat and the chats it orchestrates,
+/// and an `api_call` whose method is `GET` or `HEAD`, are approved without the permission mode.
 @Suite("Close chat hook")
 struct CloseChatHookTests {
     static let chatID = UUID(uuidString: "3F2504E0-4F89-11D3-9A0C-0305E82C3301")!
@@ -163,5 +163,46 @@ struct CloseChatHookTests {
             #expect(try await MCPHTTP.request(port: port, path: CloseChatHook.path, token: external, body: own).status == 401)
             #expect(try await MCPHTTP.request(port: port, method: "GET", path: CloseChatHook.path, token: hookToken).status == 405)
         }
+    }
+
+    // MARK: API call hook (docs/chats.md › API call hook)
+
+    @Test("An api_call whose operation's method is GET or HEAD is allowed in every permission mode", arguments: CloseChatHookTests.permissionModes)
+    func apiCallReadAllowed(permissionMode: String) {
+        for input in [
+            #"{"environment":"production","operation":"GET /device"}"#,
+            #"{"environment":"staging","operation":"HEAD /pets/{petId}","parameters":{"path:petId":"42"}}"#,
+            #"{"operation":"GET /"}"#,
+        ] {
+            #expect(Self.answer(Self.body(tool: "mcp__hephaestus__api_call", input: input, permissionMode: permissionMode)) == Self.allow,
+                    "\(input)")
+        }
+    }
+
+    @Test("An api_call of another method, or without a string operation, makes no decision", arguments: [
+        #"{"environment":"production","operation":"POST /device/{device_id}"}"#,
+        #"{"environment":"production","operation":"PUT /device"}"#,
+        #"{"environment":"production","operation":"PATCH /device"}"#,
+        #"{"environment":"production","operation":"DELETE /device/{device_id}"}"#,
+        #"{"environment":"production","operation":"OPTIONS /device"}"#,
+        #"{"environment":"production","operation":"get /device"}"#,
+        #"{"environment":"production","operation":"GET"}"#,
+        #"{"environment":"production","operation":"GETTER /device"}"#,
+        #"{"environment":"production","operation":" GET /device"}"#,
+        #"{"environment":"production","operation":["GET /device"]}"#,
+        #"{"environment":"production"}"#,
+        "[]",
+    ])
+    func apiCallOtherNoDecision(input: String) {
+        #expect(Self.answer(Self.body(tool: "mcp__hephaestus__api_call", input: input)) == "{}")
+        #expect(Self.answer(Self.body(tool: "mcp__hephaestus__api_call", input: input, permissionMode: "dontAsk")) == "{}")
+    }
+
+    @Test("A GET operation of another tool, close_chat included, gets no api_call decision")
+    func apiCallOtherTools() {
+        #expect(Self.answer(Self.body(tool: "mcp__hephaestus__api_operations", input: #"{"operation":"GET /device"}"#)) == "{}")
+        #expect(Self.answer(Self.body(tool: "mcp__hephaestus__k8s_restart", input: #"{"operation":"GET /device"}"#)) == "{}")
+        #expect(Self.answer(Self.body(input: #"{"chatIDs":["B5A4C3D2-E1F0-4A9B-8C7D-6E5F4A3B2C1D"],"operation":"GET /device"}"#)) == "{}")
+        #expect(CloseChatHook.matcher == "mcp__hephaestus__close_chat|mcp__hephaestus__api_call")
     }
 }

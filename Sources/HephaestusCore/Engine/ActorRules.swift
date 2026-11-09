@@ -79,6 +79,10 @@ enum ActorRules {
     /// token (docs/engine-api.md › Kubernetes and Argo CD).
     static let ownChatKubernetesOnly = EngineError(.forbidden, "Only the chat's own Claude can use the Kubernetes and Argo CD tools.")
 
+    /// The message of the API methods, and of their tools with the external token
+    /// (docs/engine-api.md › API).
+    static let ownChatAPIOnly = EngineError(.forbidden, "Only the chat's own Claude can use the API tools.")
+
     /// chats.close: a chat other than the actor's own must belong to the project of the actor's
     /// chat (docs/engine-api.md › chats.close).
     static func otherProjectChat(_ chatID: ChatID) -> EngineError {

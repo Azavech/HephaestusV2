@@ -1,13 +1,13 @@
 import Foundation
 
-// The tools of docs/mcp.md › Tool catalogue, › Kubernetes and Argo CD tools and › Debug tools, in
-// `tools/list` order, with the exact descriptions and input schemas of docs/mcp.md › Tools,
-// › Kubernetes and Argo CD tools and › Debug tools. Generated from docs/mcp.md; the docs
+// The tools of docs/mcp.md › Tool catalogue, › Kubernetes and Argo CD tools, › API tools and
+// › Debug tools, in `tools/list` order, with the exact descriptions and input schemas of
+// docs/mcp.md › Tools, › Kubernetes and Argo CD tools, › API tools and › Debug tools. Generated from docs/mcp.md; the docs
 // conformance tests compare it with the docs.
 
 extension MCPToolCatalog {
     /// The 50 tools of docs/mcp.md › Tool catalogue, then the 9 tools of docs/mcp.md › Kubernetes
-    /// and Argo CD tools, in `tools/list` order.
+    /// and Argo CD tools and the 2 tools of docs/mcp.md › API tools, in `tools/list` order.
     public static let tools: [MCPToolDefinition] = [
         MCPToolDefinition(
             name: "list_projects",
@@ -1793,6 +1793,70 @@ extension MCPToolCatalog {
             isDebug: false,
             engineMethod: "argoCD.sync",
             handling: .kubernetesText
+        ),
+        MCPToolDefinition(
+            name: "api_operations",
+            description: #"""
+            List the operations of the OpenAPI contract of this Go service project, the file openapi/contract.yaml that the API Explorer shows, read from disk with its $ref pointers resolved: for each operation, its key <METHOD> <path> for api_call, its operationId, tags, summary and description, its parameters with their location, whether they are required and their schema, its request body and its responses with the schema of each media type, and the names of the security schemes whose stored credentials api_call sends. Only available in projects of type Go service, in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "api.operations",
+            handling: .serviceAPI
+        ),
+        MCPToolDefinition(
+            name: "api_call",
+            description: #"""
+            Call an operation of the OpenAPI contract of this Go service project on an environment of the project, as the API Explorer's request form sends it, and return the response's status, reason phrase, duration in milliseconds, headers and body. operation is an operation key <METHOD> <path> that api_operations lists, for example GET /pets/{petId}. parameters holds the values of the operation's parameters keyed <in>:<name>, for example path:petId or query:limit, sent as given. body is the request body, sent with mediaType, one of the operation's request media types (the first one when omitted). headers are added to the request, each replacing a header of the same name. HephaestusV2 sends the credentials and the added headers stored in the API Explorer of this Mac and never shows them. A UTF-8 text body smaller than 50 KB is returned as text; a larger or binary body is written to a file whose path, size and Content-Type are returned. GET and HEAD calls run without a permission prompt. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 sends the request to its URL, with its Allow invalid certificates setting. Only available in projects of type Go service, in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "environment": {
+                  "type": "string",
+                  "description": "Name of an environment of the project, for example staging."
+                },
+                "operation": {
+                  "type": "string",
+                  "description": "Operation key <METHOD> <path> that api_operations lists, for example GET /pets/{petId}."
+                },
+                "parameters": {
+                  "type": "object",
+                  "description": "Values of the operation's parameters keyed <in>:<name>, for example path:petId or query:limit; a parameter left out is sent as an empty field of the API Explorer.",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "body": {
+                  "type": "string",
+                  "description": "Request body, for example a JSON text; no body when omitted or empty."
+                },
+                "mediaType": {
+                  "type": "string",
+                  "description": "Media type of the body, one of the operation's request media types; the first one when omitted."
+                },
+                "headers": {
+                  "type": "object",
+                  "description": "Headers to add, keyed by name; each replaces a header of the same name, compared case-insensitively.",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": ["environment", "operation"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "api.call",
+            handling: .serviceAPICall
         ),
     ]
 

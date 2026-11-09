@@ -56,6 +56,12 @@ public actor Engine {
     /// The timeouts of kubectl and the clock of the pods' ages (Kubernetes/Kubectl.swift); tests
     /// change them.
     var kubectl = Kubectl()
+    /// Sends the requests of `api.call` (Engine/Handlers/ServiceAPIHandlers.swift); tests replace it.
+    var apiRequestSender: APIRequestSender = { request, allowInvalidCertificates in
+        try await OpenAPIHTTPClient.send(request, allowInvalidCertificates: allowInvalidCertificates)
+    }
+    /// The temporary folder of the body files of `api.call` (docs/mcp.md › api_call); tests change it.
+    var apiResponseFolder = FileManager.default.temporaryDirectory
     /// Claude CLI location, status and models (Claude/ClaudeCLI.swift).
     let claudeCLI = ClaudeCLI()
     /// Chat processes (Claude/ChatManager.swift).
@@ -355,6 +361,7 @@ public actor Engine {
         registerDeviceHandlers()
         registerProjectHandlers()
         registerKubernetesHandlers()
+        registerServiceAPIHandlers()
         registerTicketHandlers()
         registerAttachmentHandlers()
         registerBundleHandlers()

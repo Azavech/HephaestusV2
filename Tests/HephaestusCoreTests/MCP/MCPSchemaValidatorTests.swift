@@ -134,4 +134,18 @@ struct MCPSchemaValidatorTests {
         let normalized = MCPSchemaValidator.normalizingIntegers(.object(["toIndex": .double(3)]), schema: try Self.schema("move_web_tab"))
         #expect(normalized == .object(["toIndex": .int(3)]))
     }
+
+    @Test("A schema as additionalProperties checks every property not in properties, after the listed ones, in ascending order of name")
+    func additionalPropertiesSchema() throws {
+        #expect(try Self.message("api_call", #"{"environment":"staging","operation":"GET /pets","parameters":{"path:petId":"42","query:q":""},"headers":{}}"#) == nil)
+        // The listed properties come first: operation's type before the parameters.
+        #expect(try Self.message("api_call", #"{"environment":"staging","operation":1,"parameters":{"path:petId":2}}"#)
+            == "operation: must be a string.")
+        #expect(try Self.message("api_call", #"{"environment":"staging","operation":"GET /","headers":{"b":"1","a":2,"c":3}}"#)
+            == "headers.a: must be a string.")
+        let schema = try jsonValue(#"{"type":"object","properties":{"name":{"type":"string"}},"additionalProperties":{"type":"integer"}}"#)
+        #expect(try Self.message(#"{"name":"x","count":2}"#, against: schema) == nil)
+        #expect(try Self.message(#"{"name":3,"count":"2"}"#, against: schema) == "name: must be a string.")
+        #expect(try Self.message(#"{"name":"x","b":"2","a":1}"#, against: schema) == "b: must be an integer.")
+    }
 }

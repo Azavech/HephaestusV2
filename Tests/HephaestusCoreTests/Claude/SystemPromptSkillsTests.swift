@@ -22,10 +22,26 @@ struct SystemPromptSkillsTests {
         .ticket: "44085b9358cd845f1c343ef6b5430c5233976cce3b8ef744fd1471012cb18871",
     ]
 
-    @Test("The text of each unedited default is the prompt of the previous release, byte for byte")
+    /// The text the common default gained since that release: the API tools (HEPH-128).
+    static let commonAdditions = [
+        "- The API of a Go service project: api_operations (lists the operations of its OpenAPI contract openapi/contract.yaml), "
+            + "api_call (calls one of them on an environment of the project, with the credentials and headers stored in the API Explorer).\n",
+        " When the project root holds openapi/contract.yaml, read and change the service through its API with api_operations and api_call "
+            + "and the environment's name, never with curl and a guessed URL, certificate flags or credentials: api_call uses the environment's "
+            + "URL and certificate setting and the credentials and headers stored in the API Explorer.",
+    ]
+
+    @Test("The text of each unedited default is the prompt of the previous release, byte for byte, but for the text the common default gained since")
     func defaultsAreThePreviousPrompts() throws {
         for skill in PromptSkill.allCases {
-            #expect(AtomicFile.sha256(Data(Prompts.text(skill).utf8)) == Self.previousReleaseDigests[skill], "\(skill.rawValue)")
+            var text = Prompts.text(skill)
+            if skill == .common {
+                for addition in Self.commonAdditions {
+                    #expect(text.contains(addition))
+                    text = text.replacingOccurrences(of: addition, with: "")
+                }
+            }
+            #expect(AtomicFile.sha256(Data(text.utf8)) == Self.previousReleaseDigests[skill], "\(skill.rawValue)")
             // The default's body is a blank line, the text and a final newline.
             let data = try #require(InternalSkills.defaultContent(skill.rawValue))
             #expect(try SkillDocument.parse(data, folderName: skill.rawValue).body == "\n" + Prompts.text(skill) + "\n")

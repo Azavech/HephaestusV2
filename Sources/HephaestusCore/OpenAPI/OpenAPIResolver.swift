@@ -61,6 +61,43 @@ public final class OpenAPIResolver: Sendable {
         return OpenAPIResolution(node: nil, ref: first, keys: keys)
     }
 
+    /// A value as JSON with every `$ref` replaced by its target, the target's other members
+    /// ignored (docs/mcp.md › Schemas in results). A ref whose target is already on the way from
+    /// the top, `chain` holding the targets of the refs followed so far, stays `{"$ref": <ref>}`; a
+    /// ref that cannot be resolved becomes `{"$ref": <ref>, "unresolved": true}`.
+    public func resolvedJSON(_ node: OpenAPINode, chain: [String] = []) -> JSONValue {
+        switch node.value {
+        case .null:
+            return .null
+        case .bool(let value):
+            return .bool(value)
+        case .number(let text):
+            if let integer = Int(text) { return .int(integer) }
+            if let number = Double(text), number.isFinite { return .double(number) }
+            return .string(text)
+        case .string(let text):
+            return .string(text)
+        case .array(let items):
+            return .array(items.map { resolvedJSON(OpenAPINode(value: $0, file: node.file), chain: chain) })
+        case .object(let members):
+            if case .string(let ref)? = node.value["$ref"] {
+                let resolution = resolve(node)
+                guard let target = resolution.node else {
+                    return .object(["$ref": .string(ref), "unresolved": .bool(true)])
+                }
+                if resolution.keys.contains(where: chain.contains) {
+                    return .object(["$ref": .string(ref)])
+                }
+                return resolvedJSON(target, chain: chain + resolution.keys)
+            }
+            var object: [String: JSONValue] = [:]
+            for member in members {
+                object[member.key] = resolvedJSON(OpenAPINode(value: member.value, file: node.file), chain: chain)
+            }
+            return .object(object)
+        }
+    }
+
     /// The node at a ref from `file`, or nil.
     public func value(atRef ref: String, from file: String) -> OpenAPINode? {
         resolve(OpenAPINode(value: .object([OpenAPIMember(key: "$ref", value: .string(ref))]), file: file)).node

@@ -1,6 +1,6 @@
 # MCP server
 
-HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server that the Claude CLI processes of the app's chats, and terminal Claude sessions holding the external token, call to read and change projects, tickets, bundles, chats, web tabs and skills, to ask the user labelled questions, an SF Symbol, a color or a sound, to show the user images in a chat, to navigate the app, and to inspect and operate the Kubernetes deployments and Argo CD applications of the environments of Go services. The server implements MCP's Streamable HTTP transport limited to JSON answers: JSON-RPC 2.0 messages are POSTed to `http://127.0.0.1:47820/mcp`, each one authenticated by a bearer token that identifies the calling chat. Every tool call runs an engine method with the actor `claude`, so it is validated like any other call and emits the same events, which every connected client, local or remote, receives live. This document specifies the transport, the authentication, the JSON-RPC handling, every tool with its exact description and input schema, the results and errors, the actor rules, external use and the debug tools.
+HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server that the Claude CLI processes of the app's chats, and terminal Claude sessions holding the external token, call to read and change projects, tickets, bundles, chats, web tabs and skills, to ask the user labelled questions, an SF Symbol, a color or a sound, to show the user images in a chat, to navigate the app, to inspect and operate the Kubernetes deployments and Argo CD applications of the environments of Go services, and to read and call the API of a Go service on those environments. The server implements MCP's Streamable HTTP transport limited to JSON answers: JSON-RPC 2.0 messages are POSTed to `http://127.0.0.1:47820/mcp`, each one authenticated by a bearer token that identifies the calling chat. Every tool call runs an engine method with the actor `claude`, so it is validated like any other call and emits the same events, which every connected client, local or remote, receives live. This document specifies the transport, the authentication, the JSON-RPC handling, every tool with its exact description and input schema, the results and errors, the actor rules, external use and the debug tools.
 
 ## Overview
 
@@ -14,7 +14,7 @@ HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server th
 | JSON-RPC methods  | `initialize`, `ping`, `tools/list`, `tools/call`; every notification is accepted and ignored                                                             |
 | Server name       | `hephaestus`, in `serverInfo` and as the server's key in Claude's MCP configuration, so Claude names the tools `mcp__hephaestus__<tool>`                 |
 | Authentication    | `Authorization: Bearer <token>` with a chat token, an answer token or the external token on `/mcp`, with a hook token on the hook paths                  |
-| Tools             | 50 [catalogue](#tool-catalogue) and 9 [Kubernetes](#kubernetes-and-argo-cd-tools) tools; 4 [debug tools](#debug-tools) when `HEPHAESTUS_DEBUG_TOOLS=1`   |
+| Tools             | 50 [catalogue](#tool-catalogue), 9 [Kubernetes](#kubernetes-and-argo-cd-tools), 2 [API](#api-tools); 4 [debug](#debug-tools): `HEPHAESTUS_DEBUG_TOOLS=1` |
 
 Every tool call runs an engine method ([Engine API](engine-api.md)) with the actor `claude`. The engine validates it exactly as it validates a call from the UI or from a remote device and emits the same events, so every client, local or remote, shows the change live.
 
@@ -24,7 +24,7 @@ Every tool call runs an engine method ([Engine API](engine-api.md)) with the act
 | Terminal Claude session on the main device   | `claude mcp add` command copied from Settings > MCP ([External use](#external-use))              | The external token            | `claude` with chatID `external` |
 | Claude process of a comment answer           | `--mcp-config` file written by the engine for each call ([Chats](chats.md#answer-command))       | The answer token of that call | `claude` with chatID `answer`   |
 | Linked items hook of a chat's Claude process | `UserPromptSubmit` hook of the `--settings` of each launch ([Chats](chats.md#linked-items-hook)) | The hook token of that launch | none                            |
-| Close chat hook of a chat's Claude process   | `PreToolUse` hook of the `--settings` of each launch ([Chats](chats.md#close-chat-hook))         | The hook token of that launch | none                            |
+| Pre-tool-use hook of a chat's Claude process | `PreToolUse` hook of the `--settings` of each launch ([Chats](chats.md#close-chat-hook))         | The hook token of that launch | none                            |
 
 Remote devices never call the MCP server: Claude processes run on the main device only and the server listens on the loopback interface ([Remote devices](remote.md)).
 
@@ -126,14 +126,14 @@ The server never sends `Mcp-Session-Id` or any `Access-Control-*` header.
 | -------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | Chat token     | Each time the engine launches the chat's Claude process                             | Engine memory and the chat's MCP config file `Runtime/mcp/<chatID>.json`, file mode 0600, deleted when the process exits ([Chats](chats.md#mcp-configuration-file)) | That process exits, whatever the reason: idle termination, interruption, crash, chat deletion or app quit | `claude` with the chat's id                                                                                                            |
 | External token | At launch when `secrets.json` holds none ([Data model](data-model.md#secrets-file)) | `mcpExternalToken` in `secrets.json`, file mode 0600                                                                                                                | Regenerate in Settings > MCP                                                                              | `claude` with chatID `external`                                                                                                        |
-| Hook token     | Each time the engine launches the chat's Claude process, with its chat token        | Engine memory and the environment variable `HEPHAESTUS_HOOK_TOKEN` of that process ([Chats](chats.md#linked-items-hook))                                            | That process exits, whatever the reason                                                                   | none: it only gives its chat's linked items and `close_chat` decisions ([hooks](#user-prompt-hook))                                    |
+| Hook token     | Each time the engine launches the chat's Claude process, with its chat token        | Engine memory and the environment variable `HEPHAESTUS_HOOK_TOKEN` of that process ([Chats](chats.md#linked-items-hook))                                            | That process exits, whatever the reason                                                                   | none: it only gives its chat's linked items and `close_chat` and `api_call` decisions ([hooks](#user-prompt-hook))                     |
 | Answer token   | Each time the engine starts a [comment answer](chats.md#comment-answers) call       | Engine memory and the call's MCP config file `Runtime/mcp/answer-<answer id>.json`, file mode 0600, deleted when the call ends ([Chats](chats.md#answer-command))   | That call ends, whatever the reason: success, failure, timeout, stop or app quit                          | `claude` with chatID `answer`, limited to the tools of a comment answer and to the ticket of its comment ([Actor rules](#actor-rules)) |
 
 The chat tokens, the answer tokens and the hook tokens are created, kept and revoked as this table states. Default chosen at design time.
 
 - A relaunch of a chat's process issues a new token. Sub-agents of the chat run in the same process and use the same token.
 - The external token is read and regenerated only through the external MCP token service of the windows of this Mac; no engine method or MCP tool exposes it ([Architecture](architecture.md#local-only-services)). Regenerate (Settings > MCP, [UI](ui.md)) replaces it at once: requests with the old token get 401, and terminal sessions must add the server again ([External use](#external-use)). When `secrets.json` cannot be written, the old token stays valid and Settings shows the alert `Regenerate failed` with the storage error's message. Default chosen at design time.
-- A chat token identifies the calling chat: `ask_questions` posts its questions to that chat, `ask_symbol` its symbol request, `ask_color` its color request, `ask_sound` its sound request, `ask_shortcut` its shortcut request, `ask_font` its font request, `ask_animation` its animation request, `close_chat` closes that chat or chats of its project, `watch_ci` makes that chat the orchestrator of the CI chat it starts, the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) act on the environments of that chat's project and keep their port forwards with that chat, and `open_in_app` reaches that chat's driving device.
+- A chat token identifies the calling chat: `ask_questions` posts its questions to that chat, `ask_symbol` its symbol request, `ask_color` its color request, `ask_sound` its sound request, `ask_shortcut` its shortcut request, `ask_font` its font request, `ask_animation` its animation request, `close_chat` closes that chat or chats of its project, `watch_ci` makes that chat the orchestrator of the CI chat it starts, the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) act on the environments of that chat's project and keep their port forwards with that chat, the [API tools](#api-tools) read the contract of that chat's project and call it on its environments, and `open_in_app` reaches that chat's driving device.
 - Tokens are never logged.
 
 ## User prompt hook
@@ -155,7 +155,7 @@ The Claude process of a chat sends `POST /hooks/user-prompt-submit` before Claud
 
 ## Pre-tool-use hook
 
-The Claude process of a chat sends `POST /hooks/pre-tool-use` before each call of `close_chat`, through the `PreToolUse` hook of its `--settings`, whose matcher limits it to that tool ([Chats](chats.md#close-chat-hook)). The request goes through steps 1 to 8 of [Request handling](#request-handling) with a hook token. Its body is the hook input of the Claude CLI, a JSON object whose `tool_name` is the tool's name and `tool_input` the call's arguments, for example:
+The Claude process of a chat sends `POST /hooks/pre-tool-use` before each call of `close_chat` and of `api_call`, through the `PreToolUse` hook of its `--settings`, whose matcher limits it to these two tools ([Chats](chats.md#close-chat-hook), [API call hook](chats.md#api-call-hook)). The request goes through steps 1 to 8 of [Request handling](#request-handling) with a hook token. Its body is the hook input of the Claude CLI, a JSON object whose `tool_name` is the tool's name and `tool_input` the call's arguments, for example:
 
 ```json
 {"session_id":"3f2504e0-4f89-11d3-9a0c-0305e82c3301","transcript_path":"/Users/example/.claude/projects/-Users-example-Developer-HephaestusV2/3f2504e0-4f89-11d3-9a0c-0305e82c3301.jsonl","cwd":"/Users/example/Developer/HephaestusV2","permission_mode":"default","hook_event_name":"PreToolUse","tool_name":"mcp__hephaestus__close_chat","tool_input":{},"tool_use_id":"toolu_01A2B3C4D5E6F7G8H9J0K1L2"}
@@ -167,7 +167,8 @@ The Claude process of a chat sends `POST /hooks/pre-tool-use` before each call o
 {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}
 ```
 
-- Otherwise the answer is 200 with the body `{}`, which makes no decision: the call follows the chat's permission mode, as a tool that is not pre-approved does ([Chats](chats.md#command-line)). This covers a `chatIDs` that names another chat, an unknown chat or an id that is not a UUID, or holds an element that is not a string, another tool, and a body that is not a JSON object. Default chosen at design time.
+- When `tool_name` is `mcp__hephaestus__api_call` and `tool_input` is an object whose `operation` is a string that starts with `GET ` or `HEAD `, an operation key whose method is `GET` or `HEAD` ([api_call](#api_call)), the answer is the same decision `allow`, so the call runs without a permission prompt in every permission mode.
+- Otherwise the answer is 200 with the body `{}`, which makes no decision: the call follows the chat's permission mode, as a tool that is not pre-approved does ([Chats](chats.md#command-line)). This covers a `chatIDs` that names another chat, an unknown chat or an id that is not a UUID, or holds an element that is not a string, an `api_call` whose `operation` is missing, is not a string or has another method, such as `POST`, `PUT`, `PATCH` or `DELETE`, another tool, and a body that is not a JSON object. Default chosen at design time.
 - The request runs no engine method, emits no event and is not logged, unless it is rejected ([Logging](#logging)).
 
 ## JSON-RPC
@@ -256,9 +257,9 @@ The result is `{}`.
 ### tools/list
 
 - `params`, when present, must be an object (-32602 otherwise); its members, `cursor` included, are ignored. Default chosen at design time.
-- The result is `{"tools": [...]}`, holding every tool of the [tool catalogue](#tool-catalogue) in its order, then the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) in the order of their table, followed, when debug tools are enabled, by the [debug tools](#debug-tools) in the order of their table. There is no `nextCursor`.
+- The result is `{"tools": [...]}`, holding every tool of the [tool catalogue](#tool-catalogue) in its order, then the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) in the order of their table, then the [API tools](#api-tools) in the order of their table, followed, when debug tools are enabled, by the [debug tools](#debug-tools) in the order of their table. There is no `nextCursor`.
 - The list is the same for every token. Default chosen at design time.
-- Each tool is an object with `name`, `description` and `inputSchema`, with the exact values given in [Tools](#tools) and [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools); there is no `title`, `annotations`, `outputSchema` or `_meta`. Default chosen at design time.
+- Each tool is an object with `name`, `description` and `inputSchema`, with the exact values given in [Tools](#tools), [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) and [API tools](#api-tools); there is no `title`, `annotations`, `outputSchema` or `_meta`. Default chosen at design time.
 
 The element for `get_bundle`:
 
@@ -291,7 +292,7 @@ The element for `get_bundle`:
 The call goes through these steps:
 
 1. The JSON-RPC checks of `name` and `arguments` ([Protocol errors](#protocol-errors)).
-2. Availability for the token: `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font`, `ask_animation`, `close_chat` and the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) with the external token or an answer token fail; with an answer token, every tool other than the [tools of a comment answer](#actor-rules) fails.
+2. Availability for the token: `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font`, `ask_animation`, `close_chat`, the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) and the [API tools](#api-tools) with the external token or an answer token fail; with an answer token, every tool other than the [tools of a comment answer](#actor-rules) fails.
 3. [Argument validation](#argument-validation) against the tool's input schema.
 4. The rules of the tool, given in its section.
 5. [Path expansion](#path-expansion).
@@ -348,7 +349,7 @@ The server validates `arguments` against the tool's `inputSchema` with its own v
 | type                 | `object`, `array`, `string`, `boolean` or `integer`. An integer is a JSON number with an integral value; `true` and `false` are not integers. |
 | properties           | Schemas of the object's properties.                                                                                                           |
 | required             | Properties that must be present.                                                                                                              |
-| additionalProperties | Always `false`: a property not listed in `properties` is refused. Default chosen at design time.                                              |
+| additionalProperties | `false`: a property not listed in `properties` is refused; a schema: every such property must match it. Default chosen at design time.        |
 | items                | Schema of every element of the array.                                                                                                         |
 | enum                 | The string must be one of the listed values.                                                                                                  |
 | minimum, maximum     | Inclusive bounds on the integer.                                                                                                              |
@@ -360,7 +361,7 @@ A property whose value is `null` is removed before validation, at every depth, a
 
 ### Validation order
 
-Validation stops at the first violation. Within each object: first the properties missing from `properties`, in ascending order of name; then the missing `required` properties, in the order of `required`; then each present property in the order of `properties`, checked completely before the next one. For one value the checks run in this order: `type`, then `enum` for a string, `minimum` and `maximum` for an integer, the elements in order for an array, and the object rules, recursively, for an object. Default chosen at design time.
+Validation stops at the first violation. Within each object: first the properties missing from `properties`, in ascending order of name, when `additionalProperties` is `false`; then the missing `required` properties, in the order of `required`; then each present property in the order of `properties`, checked completely before the next one; then, when `additionalProperties` is a schema, the properties missing from `properties`, in ascending order of name, each against that schema. Only the `parameters` and `headers` of [api_call](#api_call) have a schema as `additionalProperties`. For one value the checks run in this order: `type`, then `enum` for a string, `minimum` and `maximum` for an integer, the elements in order for an array, and the object rules, recursively, for an object. Default chosen at design time.
 
 ### Validation messages
 
@@ -416,6 +417,7 @@ A chat token runs every engine call as the actor `claude` with the chat's id, th
 | Shortcut requests are posted only in Swift application projects                                                                                                                                                                                                                                               | `ask_shortcut`, chats.postShortcut ([Workflow](workflow.md#shortcut-requests))                                                                                                                                                         | `forbidden`            |
 | Animation requests are posted only in Swift application projects                                                                                                                                                                                                                                              | `ask_animation`, chats.postAnimation ([Workflow](workflow.md#animation-requests))                                                                                                                                                      | `forbidden`            |
 | Only the chat's own Claude uses the Kubernetes and Argo CD tools (`Only the chat's own Claude can use the Kubernetes and Argo CD tools.`), only in a project of type Go service (`<tool> is only available in Go service projects.`)                                                                          | MCP server, step 2 of [tools/call](#toolscall); the methods of [Kubernetes and Argo CD](engine-api.md#kubernetes-and-argo-cd)                                                                                                          | `forbidden`            |
+| Only the chat's own Claude uses the API tools (`Only the chat's own Claude can use the API tools.`), only in a project of type Go service (`<tool> is only available in Go service projects.`)                                                                                                                | MCP server, step 2 of [tools/call](#toolscall); the methods of [API](engine-api.md#api)                                                                                                                                                | `forbidden`            |
 | A chat stops only its own port forwards, which end when its Claude process exits                                                                                                                                                                                                                              | kubernetes.stopForward ([k8s_stop_port_forward](#k8s_stop_port_forward)), the engine ([k8s_port_forward](#k8s_port_forward))                                                                                                           | `notFound`             |
 | Claude closes only chats of the calling chat's project; the external token closes no chat                                                                                                                                                                                                                     | `close_chat`, chats.close; `close_chat` with `chatIDs` reports the refused chats in its result ([close_chat](#close_chat))                                                                                                             | `forbidden`            |
 | Claude never closes another chat while a turn is in progress in it                                                                                                                                                                                                                                            | chats.close; `close_chat` with `chatIDs` reports the refused chats in its result ([close_chat](#close_chat))                                                                                                                           | `conflict`             |
@@ -426,11 +428,11 @@ A chat token runs every engine call as the actor `claude` with the chat's id, th
 | Claude never unlocks a web tab, so it never closes a locked tab                                                                                                                                                                                                                                               | webTabs.update, webTabs.close ([Engine API](engine-api.md#rules-for-claude))                                                                                                                                                           | `forbidden`            |
 | A chat never removes the project it belongs to                                                                                                                                                                                                                                                                | projects.remove ([Engine API](engine-api.md#rules-for-claude))                                                                                                                                                                         | `forbidden`            |
 
-The tools are not limited to the calling chat's project: a chat may read and change every project of the device. Default chosen at design time. Only `close_chat` and the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) are: `close_chat` closes chats of the calling chat's project only ([close_chat](#close_chat)), and the Kubernetes and Argo CD tools act on the environments of the calling chat's project and on the port forwards of the calling chat only. The MCP server asks the user nothing itself; the Claude CLI asks before tool calls according to the chat's permission mode and the app shows those requests ([Chats](chats.md)). The workflow Claude follows with these tools is in [Workflow](workflow.md).
+The tools are not limited to the calling chat's project: a chat may read and change every project of the device. Default chosen at design time. Only `close_chat`, the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) and the [API tools](#api-tools) are: `close_chat` closes chats of the calling chat's project only ([close_chat](#close_chat)), the Kubernetes and Argo CD tools act on the environments of the calling chat's project and on the port forwards of the calling chat only, and the API tools read the contract of the calling chat's project and call it on that project's environments only. The MCP server asks the user nothing itself; the Claude CLI asks before tool calls according to the chat's permission mode and the app shows those requests ([Chats](chats.md)). The workflow Claude follows with these tools is in [Workflow](workflow.md).
 
 ## Tool catalogue
 
-The table lists the tools in the order of `tools/list`; the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) follow them, in the table of their section. "Required inputs" holds the names in the tool's `inputSchema.required` and "Optional inputs" its other top-level properties; `—` means none. The result types are defined in [Engine API](engine-api.md#api-types) and [Data model](data-model.md); `{}` is an empty result, `text` the plain text of [ask_questions](#ask_questions), [ask_symbol](#ask_symbol), [ask_color](#ask_color), [ask_sound](#ask_sound), [ask_shortcut](#ask_shortcut), [ask_font](#ask_font), [ask_animation](#ask_animation) and [show_image](#show_image), and `{refused}` the result of [close_chat](#close_chat): `{}` without `chatIDs`, the object that lists the refused chats with it. The [conformance test](#conformance) reads this table.
+The table lists the tools in the order of `tools/list`; the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) follow them, then the [API tools](#api-tools), each in the table of their section. "Required inputs" holds the names in the tool's `inputSchema.required` and "Optional inputs" its other top-level properties; `—` means none. The result types are defined in [Engine API](engine-api.md#api-types) and [Data model](data-model.md); `{}` is an empty result, `text` the plain text of [ask_questions](#ask_questions), [ask_symbol](#ask_symbol), [ask_color](#ask_color), [ask_sound](#ask_sound), [ask_shortcut](#ask_shortcut), [ask_font](#ask_font), [ask_animation](#ask_animation) and [show_image](#show_image), and `{refused}` the result of [close_chat](#close_chat): `{}` without `chatIDs`, the object that lists the refused chats with it. The [conformance test](#conformance) reads this table.
 
 | Tool                | Required inputs                                    | Optional inputs                             | Engine method            | Result           |
 | ------------------- | -------------------------------------------------- | ------------------------------------------- | ------------------------ | ---------------- |
@@ -2983,6 +2985,131 @@ Input schema:
 }
 ```
 
+## API tools
+
+These two tools let Claude use the API of a Go service as the [API Explorer](openapi.md#api-explorer) does, so that it never reads the contract itself or calls the API with curl, guessing the base URL, the certificate flags and the credentials: `api_operations` lists the operations of the contract the API Explorer shows, the file `openapi/contract.yaml` of the project root, and `api_call` sends the request of one of them to an environment of the project ([Environments](projects.md#environments)), with the credentials and the added headers stored in the API Explorer ([Stored values](openapi.md#stored-values)). `tools/list` lists them after the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools), in the order of the table below, which has the format of the tool catalogue; the [conformance test](#conformance) reads it with the other tool tables.
+
+| Tool             | Required inputs            | Optional inputs                              | Engine method  | Result        |
+| ---------------- | -------------------------- | -------------------------------------------- | -------------- | ------------- |
+| `api_operations` | —                          | —                                            | api.operations | APIContract   |
+| `api_call`       | `environment`, `operation` | `parameters`, `body`, `mediaType`, `headers` | api.call       | APICallResult |
+
+The result types are defined in [Engine API](engine-api.md#api). The tool names, their inputs, what their results hold, the availability, the request built as the request form builds it, the stored credentials and headers, the 50 KB threshold, the file of a large or binary body, the `unavailable` failure and the permissions come from the user; the error texts, the JSON layout of the results, the schemas in the results and the input schemas are design-time choices. Default chosen at design time.
+
+### Rules of the API tools
+
+Both tools follow these rules, in this order; the section of each tool adds its checks and its result.
+
+1. **Availability:** chat tokens only. With the external token the call fails before argument validation with `Only the chat's own Claude can use the API tools.` (`forbidden`); a comment answer cannot call them ([Actor rules](#actor-rules)). The tools are listed for every token and in every project.
+2. **Engine call:** the tool's engine method with `chatID` = the calling chat and the arguments as given, except that `api_call` sends its optional arguments in `options` ([api.call](engine-api.md#apicall)).
+3. **Project type:** the project is the calling chat's project, which must have the type `goService` ([Project types](projects.md#project-types)). In a project of another type the call fails with `forbidden` and `<tool> is only available in Go service projects.`, for example `api_call is only available in Go service projects.`
+4. **Contract:** the engine reads `openapi/contract.yaml` of the project root from disk on the main device at each call, then the files its `$ref` pointers name, with the rules of [$ref resolution](openapi.md#ref-resolution), every file being read from disk: an editor tab's unsaved text is not used. A missing file, a file that cannot be read, that is not UTF-8 text or is larger than 20 MiB, and a text that is not an OpenAPI 3.x contract by the rules of [Detection](openapi.md#detection) for a `yaml` file fail with `invalid` and `<project identifier> has no OpenAPI 3.x contract at openapi/contract.yaml.`; a contract whose text cannot be parsed, which the Contract view shows as `The contract could not be read.`, fails with `invalid` and `The contract openapi/contract.yaml could not be read: <parser message>`, ending with a period.
+5. **Asking:** the tools ask the user nothing, so they run in an implement chat whose metadata holds `questionsBlocked` and while a question set or another request waits for an answer ([Workflow](workflow.md#implement-chats)).
+6. **Permission:** `api_operations` only reads the contract: it is pre-approved and runs without a permission prompt in every permission mode ([Chats](chats.md#command-line)). `api_call` is not pre-approved: the [pre-tool-use hook](#pre-tool-use-hook) approves, in every permission mode, a call whose operation's method is `GET` or `HEAD`, and a call of any other method follows the chat's permission mode, so in Ask Every Time the user approves each `POST`, `PUT`, `PATCH` or `DELETE` call, and Don't Ask denies it ([API call hook](chats.md#api-call-hook)).
+7. **API Explorer:** the tools change nothing in the API Explorer: their requests and responses do not show there, and they change none of its [stored values](openapi.md#stored-values).
+
+### Schemas in results
+
+Each `schema` of an `api_operations` result is the schema of the contract as a JSON value, its refs resolved:
+
+- An object of the schema, at any depth, that has a `$ref` string member is replaced by the ref's target, its other members ignored, as in [$ref resolution](openapi.md#ref-resolution).
+- A ref whose target is already on the way from the top of the schema, a circular schema, stays `{"$ref": "<ref as written>"}`, so that the value ends.
+- A ref that cannot be resolved becomes `{"$ref": "<ref as written>", "unresolved": true}`.
+- YAML values are written as JSON: numbers as numbers, other scalars as in the YAML file. The members of every object are sorted by name, as in every result of the engine ([JSON encoding](engine-api.md#json-encoding)).
+
+Default chosen at design time.
+
+### api_operations
+
+- **Engine call:** api.operations with `chatID` ([Engine API](engine-api.md#apioperations)).
+- **Result:** the [APIContract](engine-api.md#apicontract): the contract's path, `info.title` and `info.version`, then each operation in the order of the Contract view's list (the order of `paths`, and inside a path the order `get`, `put`, `post`, `delete`, `options`, `head`, `patch`, `trace`, [List](openapi.md#list)), with what its [Operation detail](openapi.md#operation-detail) shows: the operation key `<METHOD> <path>`, which [Stored values](openapi.md#stored-values) uses and `api_call` takes; its `operationId`, tags, summary and description; its parameters, the path item's merged with the operation's, each with its name, location, whether it is required, its description and its schema; its request body, with whether it is required, its description and each media type with its schema; its responses, in the contract's order, each with its code, its description and each media type with its schema; and the names of the security schemes whose credentials `api_call` sends ([Credentials](openapi.md#credentials)), never their stored values. A parameter, a request body or a response whose ref cannot be resolved is listed with the ref as written.
+- **Errors:** those of the [rules](#rules-of-the-api-tools).
+
+Description:
+
+```text
+List the operations of the OpenAPI contract of this Go service project, the file openapi/contract.yaml that the API Explorer shows, read from disk with its $ref pointers resolved: for each operation, its key <METHOD> <path> for api_call, its operationId, tags, summary and description, its parameters with their location, whether they are required and their schema, its request body and its responses with the schema of each media type, and the names of the security schemes whose stored credentials api_call sends. Only available in projects of type Go service, in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}
+```
+
+### api_call
+
+- **Engine call:** api.call with `chatID`, `environment`, `operation` and `options` holding `parameters`, `body`, `mediaType` and `headers` as given ([Engine API](engine-api.md#apicall)).
+- **Checks**, after the [rules](#rules-of-the-api-tools), in this order, each failing with `invalid`; the messages name the optional arguments as the method's params, inside `options` ([api.call](engine-api.md#apicall)):
+  1. `environment` names an environment of the chat's project, compared exactly, letter case included, as for the [Kubernetes tools](#rules-of-the-kubernetes-tools): `environment: <project identifier> has no environment named “<name>”.`
+  2. The environment has a URL: `Environment “<name>” has no URL; the user sets its API Access in Project Settings.`; its URL and port keep the rules of [Project environment](data-model.md#project-environment): `Environment “<name>” has an invalid URL or port.`
+  3. `operation` is the key of an operation of the contract, compared exactly: `operation: openapi/contract.yaml has no operation “<operation>”.`
+  4. Each key of `parameters` is `<in>:<name>` of a parameter of the operation, `in` being `path`, `query`, `header` or `cookie`, checked in ascending order of key: `options.parameters: <operation> has no parameter “<key>”.`
+  5. `mediaType` and a `body` that is not empty need a request body: `options.mediaType: <operation> has no request body.`, `options.body: <operation> has no request body.`; `mediaType` is one of its media types, compared exactly: `options.mediaType: <operation> has no request media type “<mediaType>”.`
+- **Request:** built as the request form builds it ([Sending a request](openapi.md#sending-a-request)), the arguments standing for the form's values:
+  1. **Base URL**, **Path**, **Query**, **Method** and **Body** as in steps 1 to 4 and 6: the environment's base URL; the path parameters of `parameters`, percent-encoded; the query parameters of `parameters` with a value that is not empty, in the order of the operation's parameters, then the API keys sent in the query; the operation's method; `body`'s UTF-8 bytes when the operation has a request body and `body` is not empty. A parameter missing from `parameters` counts as an empty field of the form; values are sent as given.
+  2. **Headers** as in step 5: the header parameters, `Cookie`, the API keys sent in a header, `Authorization`, `Content-Type: <media type>` when a body is sent, `<media type>` being `mediaType`, else the request body's first media type; then the added headers stored in the API Explorer, then the entries of `headers` in ascending order of name, each whose name is not empty replacing a header of the same name, compared case-insensitively.
+  3. **Client** and **Duration** as in steps 8 and 9: the request runs on the main device, in the engine, with the client of the Contract view (`URLSession` with an ephemeral configuration, redirects followed, the system's 60 s timeout without data), and the environment's `Allow invalid certificates` applies as there. The localhost rewrite of remote windows (step 7) does not apply: the main device sends the request, whatever device shows the chat.
+- **Credentials:** the request sends the credentials and the added headers stored in `openapi-requests.json` of the main device for the contract `openapi/contract.yaml` of the chat's project, under the main device's id ([Stored values](openapi.md#stored-values)): the values typed in the API Explorer and in the Code section Contract views of the main device's windows. The credentials are those of the schemes that the operation's security names, by the rules of [Credentials](openapi.md#credentials); a scheme without a stored value sends nothing, as an empty field. The values typed in a window of another Mac are stored on that Mac and are not used. The file is read at each call, so a value typed less than 500 ms before, not written yet, is not used yet.
+- **Result:** the [APICallResult](engine-api.md#apicallresult): `status`, the code; `reason`, its reason phrase from RFC 9110 and RFC 6585, absent for another code ([Response](openapi.md#response)); `milliseconds`, the duration; `headers`, the response headers sorted by name; and the body:
+  - nothing for an empty body;
+  - `body`, the text as received, for a UTF-8 text body smaller than 50 KB (51,200 bytes);
+  - `bodyFile`, for a UTF-8 text body of 50 KB or more and for a binary body whatever its size: the absolute path of a file on the main device that holds the body, its size in bytes and its `Content-Type`. The file is written as Quick Look's is ([Response](openapi.md#response)): `<temporary folder>/HephaestusV2/Files/<UUID>/response.<extension>`, the extension coming from the media type of `Content-Type`, `response` alone when it has none. The app does not delete it.
+- Neither the result nor an error shows a credential or a stored header value: the result holds the response only, never the URL, the headers or the body sent.
+- **Errors:** those of the [rules](#rules-of-the-api-tools) and the checks above; the request fails without a response, for example without network, on a refused connection, a timeout or a server certificate that the system does not trust while the environment's `Allow invalid certificates` is off (`unavailable`, `The request failed: <localized description>`, ending with a period); the body file cannot be written (`internal`).
+
+Description:
+
+```text
+Call an operation of the OpenAPI contract of this Go service project on an environment of the project, as the API Explorer's request form sends it, and return the response's status, reason phrase, duration in milliseconds, headers and body. operation is an operation key <METHOD> <path> that api_operations lists, for example GET /pets/{petId}. parameters holds the values of the operation's parameters keyed <in>:<name>, for example path:petId or query:limit, sent as given. body is the request body, sent with mediaType, one of the operation's request media types (the first one when omitted). headers are added to the request, each replacing a header of the same name. HephaestusV2 sends the credentials and the added headers stored in the API Explorer of this Mac and never shows them. A UTF-8 text body smaller than 50 KB is returned as text; a larger or binary body is written to a file whose path, size and Content-Type are returned. GET and HEAD calls run without a permission prompt. environment is the name of one of the project's environments, as get_project lists them; HephaestusV2 sends the request to its URL, with its Allow invalid certificates setting. Only available in projects of type Go service, in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "environment": {
+      "type": "string",
+      "description": "Name of an environment of the project, for example staging."
+    },
+    "operation": {
+      "type": "string",
+      "description": "Operation key <METHOD> <path> that api_operations lists, for example GET /pets/{petId}."
+    },
+    "parameters": {
+      "type": "object",
+      "description": "Values of the operation's parameters keyed <in>:<name>, for example path:petId or query:limit; a parameter left out is sent as an empty field of the API Explorer.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "body": {
+      "type": "string",
+      "description": "Request body, for example a JSON text; no body when omitted or empty."
+    },
+    "mediaType": {
+      "type": "string",
+      "description": "Media type of the body, one of the operation's request media types; the first one when omitted."
+    },
+    "headers": {
+      "type": "object",
+      "description": "Headers to add, keyed by name; each replaces a header of the same name, compared case-insensitively.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "required": ["environment", "operation"],
+  "additionalProperties": false
+}
+```
+
 ## External use
 
 Terminal Claude sessions on the main device use the server with the external token. Settings > MCP ([UI](ui.md)) shows the effective port, the external token with Copy and Regenerate, and this command with the port and the token filled in, ready to copy:
@@ -2992,7 +3119,7 @@ claude mcp add --transport http hephaestus http://127.0.0.1:47820/mcp --header "
 ```
 
 - Calls run as `claude` with chatID `external`: the [actor rules](#actor-rules) apply, tickets created this way have `createdBy: claude` and comments `author: claude`.
-- `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font` and `ask_animation` fail, so Claude asks its questions in plain text ([Workflow](workflow.md#plain-text-questions)); `close_chat` fails, as there is no chat to close; `watch_ci` fails, as there is no chat to report to; the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) fail, as they act on the environments of the calling chat's project; `open_in_app` makes every client navigate.
+- `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font` and `ask_animation` fail, so Claude asks its questions in plain text ([Workflow](workflow.md#plain-text-questions)); `close_chat` fails, as there is no chat to close; `watch_ci` fails, as there is no chat to report to; the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) and the [API tools](#api-tools) fail, as they act on the environments of the calling chat's project; `open_in_app` makes every client navigate.
 - These sessions do not receive the app's system prompts ([Chats](chats.md)); the tool descriptions state what Claude needs: the ticket template, the statuses Claude may set and how questions are asked.
 - The token survives app restarts and updates. After Regenerate or a port change, the server must be removed with `claude mcp remove hephaestus` and the new command run, as `claude mcp add` refuses a name that already exists.
 
@@ -3239,6 +3366,7 @@ The server writes these messages to `Logs/engine.log` with the component `mcp`, 
 - The debug tools exist only when debug tools are enabled; then every holder of a token of that process can capture its windows and click in them.
 - Attachment paths may name any file the app can read; the Claude CLI asks the user before the call according to the chat's permission mode ([Chats](chats.md)).
 - The [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) run kubectl with the user's kubeconfig files, so they can do in a cluster what the user's credentials allow. Only the four tools that read are pre-approved; the tools that change a cluster, or open a port of the Mac, follow the chat's permission mode. Their values reach kubectl as single arguments, never through a shell.
+- The [API tools](#api-tools) send requests with the credentials stored in the API Explorer, so they can do on a Go service what these credentials allow. Only the calls whose method is `GET` or `HEAD` run without a permission prompt; the others follow the chat's permission mode. The results and errors never show a credential or a stored header value.
 - The security model of the whole app is in [Architecture](architecture.md#security-overview).
 
 ## Swift shape
@@ -3274,7 +3402,7 @@ The docs conformance tests of HephaestusCoreTests ([CI](ci.md)) check this docum
 3. With debug tools enabled, `tools/list` returns those tools followed by the tools of the `debug_` rows, in table order.
 4. For every tool, the set of names in `inputSchema.required` equals the row's required inputs.
 
-Only debug tools have names starting with `debug_`, and no other table of this document has a backticked name alone in its first cell. The descriptions and input schemas given in [Tools](#tools), [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) and [Debug tools](#debug-tools) are normative: `MCPToolCatalog` reproduces them, the order of JSON members and whitespace aside.
+Only debug tools have names starting with `debug_`, and no other table of this document has a backticked name alone in its first cell. The descriptions and input schemas given in [Tools](#tools), [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools), [API tools](#api-tools) and [Debug tools](#debug-tools) are normative: `MCPToolCatalog` reproduces them, the order of JSON members and whitespace aside.
 
 ## Examples
 
@@ -3483,3 +3611,4 @@ Unauthorized: missing or invalid bearer token.
 - R172: A project with a GitHub page always has two locked web tabs, its GitHub page and its CI page, first in the tab strip.
 - R174: A sub project that uses its parent's settings inherits its parent's environments and changes their URL, port, deployment and Argo CD application.
 - R182: Each environment of a Go service has an `Allow invalid certificates` setting, off by default and changeable by a sub project that inherits the environment, with which the Contract view's requests to it accept any invalid server certificate.
+- R190: Every chat of a Go service project whose API Explorer shows a contract lists the contract's operations and calls them on an environment through HephaestusV2's API tools, with the credentials and headers stored in the API Explorer; GET and HEAD calls run without a permission prompt.

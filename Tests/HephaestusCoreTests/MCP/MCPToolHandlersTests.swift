@@ -938,4 +938,86 @@ struct MCPToolHandlersTests {
         #expect(try await Self.call(Self.handlers(engine), tool, arguments) == .failure(MCPToolError(code: .invalid, message: message)))
         #expect(engine.calls.isEmpty)
     }
+
+    // MARK: API tools (docs/mcp.md › API tools)
+
+    @Test("API tools: the method of the table with chatID, the calling chat; api_call sends its optional arguments in options")
+    func serviceAPIParams() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        let chatID = #""chatID":"\#(Self.chatID.uuidString)""#
+        let cases: [(tool: String, arguments: String, method: String, params: String)] = [
+            ("api_operations", "{}", "api.operations", #"{\#(chatID)}"#),
+            ("api_operations", #"{"extra":null}"#, "api.operations", #"{\#(chatID)}"#),
+            ("api_call", #"{"environment":"staging","operation":"GET /pets"}"#, "api.call",
+             #"{\#(chatID),"environment":"staging","operation":"GET /pets"}"#),
+            ("api_call",
+             #"{"environment":"staging","operation":"POST /pets/{petId}","parameters":{"path:petId":"42","query:verbose":""},"body":"{}","mediaType":"application/json","headers":{"X-Trace":"t1"}}"#,
+             "api.call",
+             #"{\#(chatID),"environment":"staging","operation":"POST /pets/{petId}","options":{"parameters":{"path:petId":"42","query:verbose":""},"body":"{}","mediaType":"application/json","headers":{"X-Trace":"t1"}}}"#),
+            ("api_call", #"{"environment":"staging","operation":"GET /pets","headers":{},"body":null}"#, "api.call",
+             #"{\#(chatID),"environment":"staging","operation":"GET /pets","options":{"headers":{}}}"#),
+        ]
+        for (tool, arguments, method, params) in cases {
+            let count = engine.calls.count
+            #expect(try await Self.call(handlers, tool, arguments) == .success("{}"), "\(tool) \(arguments)")
+            #expect(engine.calls.count == count + 1, "\(tool)")
+            let call = try #require(engine.calls.last)
+            #expect(call.method == method, "\(tool)")
+            #expect(call.params == (try jsonValue(params)), "\(tool) \(arguments)")
+            #expect(call.actor == Self.chat, "\(tool)")
+        }
+    }
+
+    @Test("API tools return the method's JSON unchanged, and its errors as tool errors")
+    func serviceAPIResults() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        let contract = #"{"operations":[{"operation":"GET /pets","parameters":[],"responses":[],"security":["bearerAuth"],"tags":["pets"]}],"path":"openapi/contract.yaml","title":"Pet Store","version":"1.2.0"}"#
+        let response = #"{"body":"[]","headers":[{"name":"Content-Type","value":"application/json"}],"milliseconds":12,"reason":"OK","status":200}"#
+        engine.answer("api.operations", .success(contract))
+        engine.answer("api.call", .success(response))
+        #expect(try await Self.call(handlers, "api_operations", "{}") == .success(contract))
+        #expect(try await Self.call(handlers, "api_call", #"{"environment":"staging","operation":"GET /pets"}"#) == .success(response))
+        let failure = EngineError(.unavailable, "The request failed: Could not connect to the server.")
+        engine.answer("api.call", .failure(failure))
+        #expect(try await Self.call(handlers, "api_call", #"{"environment":"staging","operation":"GET /pets"}"#)
+            == .failure(MCPToolError(code: .unavailable, message: failure.message)))
+    }
+
+    @Test("API tools: the external token fails before argument validation, and an answer token gets the message of a comment answer, without an engine call")
+    func serviceAPITokens() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        let refused = MCPToolError(code: .forbidden, message: "Only the chat's own Claude can use the API tools.")
+        for (tool, arguments) in [("api_operations", "{}"), ("api_call", #"{"environment":"staging","operation":"GET /pets"}"#)] {
+            #expect(try await Self.call(handlers, tool, arguments, actor: Self.external) == .failure(refused), "\(tool)")
+            #expect(try await Self.call(handlers, tool, #"{"environment":1,"unknown":true}"#, actor: Self.external) == .failure(refused))
+            let definition = try #require(MCPToolCatalog.tool(named: tool, debugTools: false))
+            let result = await handlers.call(definition, arguments: try jsonValue(arguments), actor: .claude(chatID: Actor.answerChatID),
+                                             answerTicketID: "HEPH-12")
+            #expect(result == .failure(MCPToolError(code: .forbidden, message: "\(tool) is not available to a comment answer.")), "\(tool)")
+        }
+        #expect(engine.calls.isEmpty)
+    }
+
+    @Test("API tools: their schemas refuse missing, unknown and mistyped arguments, parameters and headers being objects of strings", arguments: [
+        ("api_operations", #"{"environment":"staging"}"#, "environment: unknown argument."),
+        ("api_call", #"{"operation":"GET /pets"}"#, "environment: required."),
+        ("api_call", #"{"environment":"staging"}"#, "operation: required."),
+        ("api_call", #"{"environment":"staging","operation":"GET /pets","options":{}}"#, "options: unknown argument."),
+        ("api_call", #"{"environment":"staging","operation":"GET /pets","parameters":["path:petId"]}"#, "parameters: must be an object."),
+        ("api_call", #"{"environment":"staging","operation":"GET /pets","parameters":{"query:limit":10}}"#,
+         "parameters.query:limit: must be a string."),
+        ("api_call", #"{"environment":"staging","operation":"GET /pets","parameters":{"path:petId":"1","query:b":true,"query:a":2}}"#,
+         "parameters.query:a: must be a string."),
+        ("api_call", #"{"environment":"staging","operation":"GET /pets","headers":{"X-Trace":["t1"]}}"#, "headers.X-Trace: must be a string."),
+        ("api_call", #"{"environment":"staging","operation":"GET /pets","body":{"name":"Rex"}}"#, "body: must be a string."),
+        ("api_call", #"{"environment":"staging","operation":"GET /pets","mediaType":1}"#, "mediaType: must be a string."),
+    ])
+    func serviceAPISchemas(tool: String, arguments: String, message: String) async throws {
+        let engine = RecordedEngine()
+        #expect(try await Self.call(Self.handlers(engine), tool, arguments) == .failure(MCPToolError(code: .invalid, message: message)))
+        #expect(engine.calls.isEmpty)
+    }
 }

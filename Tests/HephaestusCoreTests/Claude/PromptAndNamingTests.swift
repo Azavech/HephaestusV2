@@ -137,7 +137,7 @@ struct PromptAndNamingTests {
     ]
 
     /// The line of `{{environments}}` that follows its blank line.
-    static let environmentsHeader = "The project's environments, where the Go service runs; the Kubernetes and Argo CD tools take an environment's name:"
+    static let environmentsHeader = "The project's environments, where the Go service runs; the Kubernetes, Argo CD and API tools take an environment's name:"
 
     @Test("{{environments}} of a Go service: a blank line, then the example of docs/chats.md › Rendered blocks")
     func environmentsBlock() throws {
@@ -227,6 +227,22 @@ struct PromptAndNamingTests {
         #expect(!none.contains(Self.environmentsHeader))
     }
 
+    @Test("The common prompt lists the API tools and tells Claude to call the service's API with them, not curl; api_operations is pre-approved")
+    func apiToolsPrompt() throws {
+        let common = Prompts.text(.common)
+        #expect(common.contains("- The API of a Go service project: api_operations (lists the operations of its OpenAPI contract "
+            + "openapi/contract.yaml), api_call (calls one of them on an environment of the project, with the credentials and headers stored "
+            + "in the API Explorer).\n"))
+        let lower = try #require(common.range(of: "# Environments of a Go service")).lowerBound
+        let upper = try #require(common.range(of: "# When the project is HephaestusV2")).lowerBound
+        let section = String(common[lower..<upper])
+        #expect(section.contains("read and change the service through its API with api_operations and api_call and the environment's name, "
+            + "never with curl and a guessed URL, certificate flags or credentials"))
+        let tools = ClaudeCommandLine.preApprovedTools.split(separator: ",").map(String.init)
+        #expect(tools.last == "mcp__hephaestus__api_operations")
+        #expect(!tools.contains("mcp__hephaestus__api_call"))
+    }
+
     @Test("The common prompt lists the Kubernetes and Argo CD tools and tells Claude to use them with an environment's name; the four that read are pre-approved")
     func kubernetesToolsPrompt() throws {
         let common = Prompts.text(.common)
@@ -241,7 +257,7 @@ struct PromptAndNamingTests {
         #expect(!common.contains("kubectl context"))
         #expect(section.contains("Stop a port forward with k8s_stop_port_forward once you no longer need it."))
         #expect(ClaudeCommandLine.preApprovedTools.hasSuffix(",mcp__hephaestus__get_chat,mcp__hephaestus__k8s_status,mcp__hephaestus__k8s_logs,"
-            + "mcp__hephaestus__k8s_events,mcp__hephaestus__argocd_status"))
+            + "mcp__hephaestus__k8s_events,mcp__hephaestus__argocd_status,mcp__hephaestus__api_operations"))
     }
 
     @Test("{{globalMemories}}: the folder and the trimmed text of MEMORY.md, at most 200 lines and 25,000 characters")
@@ -294,7 +310,7 @@ struct PromptAndNamingTests {
             "projectName": "Hephaestus V2", "projectID": "HEPH", "projectRoot": "/Users/example/Developer/HephaestusV2",
             "workingDirectory": "It is your working directory.",
             "deviceName": "Studio", "docsPath": "docs", "projectType": "Go service",
-            "environments": "\n\nThe project's environments, where the Go service runs; the Kubernetes and Argo CD tools take an environment's name:\n"
+            "environments": "\n\nThe project's environments, where the Go service runs; the Kubernetes, Argo CD and API tools take an environment's name:\n"
                 + "- staging: https://staging.example.com; deployment: orders-api",
             "ticketID": "HEPH-12", "ticket": "ID: HEPH-12", "bundleID": "HEPH-B2", "bundle": "ID: HEPH-B2",
             "githubRepository": "Azavech/HephaestusV2", "parentMemories": "",
@@ -310,7 +326,7 @@ struct PromptAndNamingTests {
         #expect(prompt.hasPrefix("You are Claude, working inside HephaestusV2"))
         #expect(prompt.contains("The project's root folder is /Users/example/Developer/HephaestusV2 on the device Studio. It is your working directory. "))
         #expect(prompt.contains("of the project. The project's type is Go service.\n\nThe project's environments, where the Go service runs; "
-            + "the Kubernetes and Argo CD tools take an environment's name:\n- staging: https://staging.example.com; deployment: orders-api\n\n"
+            + "the Kubernetes, Argo CD and API tools take an environment's name:\n- staging: https://staging.example.com; deployment: orders-api\n\n"
             + "These rules apply in every chat."))
         #expect(prompt.contains("\n\n# This chat\n\nThis is the chat of ticket HEPH-12"))
         // The memories of the parent projects follow the first paragraph and, in a Go service project, its environments.

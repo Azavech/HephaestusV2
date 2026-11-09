@@ -1,4 +1,5 @@
 import Foundation
+import UniformTypeIdentifiers
 
 /// The response of a request sent from a form (docs/openapi.md › Response).
 public struct OpenAPIHTTPResponse: Sendable {
@@ -23,13 +24,60 @@ public struct OpenAPIHTTPResponse: Sendable {
     public var statusText: String {
         OpenAPIHTTPClient.reasonPhrases[status].map { "\(status) \($0)" } ?? String(status)
     }
+
+    /// The body as text when it is UTF-8 text, valid UTF-8 without NUL bytes; nil for a binary
+    /// body (docs/openapi.md › Response).
+    public var bodyText: String? {
+        guard let text = String(data: body, encoding: .utf8), !text.contains("\0") else { return nil }
+        return text
+    }
+}
+
+/// The files that hold a response body on the Mac that received it: Quick Look's, and those of
+/// `api_call` (docs/openapi.md › Response, docs/mcp.md › api_call).
+public enum OpenAPIResponseFiles {
+    /// `response.<extension>`, the extension coming from the media type of `contentType`;
+    /// `response` alone when it has none.
+    public static func name(contentType: String?) -> String {
+        let essence = contentType.map(OpenAPISample.essence(of:)) ?? ""
+        if let fileExtension = UTType(mimeType: essence)?.preferredFilenameExtension {
+            return "response.\(fileExtension)"
+        }
+        return "response"
+    }
+
+    /// Writes `data` to `<temporary folder>/HephaestusV2/Files/<UUID>/<name>`, `file` for an empty
+    /// name, and returns the file.
+    public static func write(_ data: Data, name: String,
+                             temporaryFolder: URL = FileManager.default.temporaryDirectory) throws -> URL {
+        let folder = temporaryFolder
+            .appendingPathComponent("HephaestusV2", isDirectory: true)
+            .appendingPathComponent("Files", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let file = folder.appendingPathComponent(name.isEmpty ? "file" : name)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try data.write(to: file, options: .atomic)
+        return file
+    }
 }
 
 /// Sends the requests of the forms with `URLSession` on the Mac that shows the window
 /// (docs/openapi.md › Sending a request).
 public enum OpenAPIHTTPClient {
+    /// The ephemeral session of the requests with the system's certificate check, and that of the
+    /// requests that accept any server certificate. They never share a connection or a TLS session,
+    /// so a server trusted for a request with `Allow invalid certificates` on is checked again for a
+    /// request with it off (docs/openapi.md › Sending a request).
+    static let checkingSession = makeSession()
+    static let permissiveSession = makeSession()
+
+    /// The session of a request.
+    static func session(allowInvalidCertificates: Bool) -> URLSession {
+        allowInvalidCertificates ? permissiveSession : checkingSession
+    }
+
     /// An ephemeral session without cookie storage, cache or credential storage.
-    static let session: URLSession = {
+    private static func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil
         configuration.httpShouldSetCookies = false
@@ -38,7 +86,7 @@ public enum OpenAPIHTTPClient {
         configuration.urlCredentialStorage = nil
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         return URLSession(configuration: configuration)
-    }()
+    }
 
     /// Sends a request; `rewrite` changes the URL of the request and of each redirect (the localhost
     /// rewrite of windows that show a remote device). With `allowInvalidCertificates`, the request
@@ -53,7 +101,7 @@ public enum OpenAPIHTTPClient {
         let delegate = TaskDelegate(rewrite: rewrite, allowInvalidCertificates: allowInvalidCertificates)
         let clock = ContinuousClock()
         let start = clock.now
-        let (data, response) = try await session.data(for: request, delegate: delegate)
+        let (data, response) = try await session(allowInvalidCertificates: allowInvalidCertificates).data(for: request, delegate: delegate)
         let elapsed = clock.now - start
         let milliseconds = Int(elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000)
         guard let http = response as? HTTPURLResponse else {

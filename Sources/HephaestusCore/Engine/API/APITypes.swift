@@ -1532,3 +1532,177 @@ public struct ArgoCDOperation: Codable, Sendable, Hashable {
         self.initiatedBy = initiatedBy
     }
 }
+
+// MARK: - API (docs/engine-api.md › API)
+
+/// The operations of the contract `openapi/contract.yaml` of a Go service project
+/// (docs/engine-api.md › APIContract).
+public struct APIContract: Codable, Sendable, Hashable {
+    /// `openapi/contract.yaml`.
+    public var path: String
+    /// `info.title`; `""` when absent.
+    public var title: String
+    /// `info.version`; `""` when absent.
+    public var version: String
+    /// In the order of the Contract view's list.
+    public var operations: [APIContractOperation]
+
+    public init(path: String, title: String, version: String, operations: [APIContractOperation]) {
+        self.path = path
+        self.title = title
+        self.version = version
+        self.operations = operations
+    }
+}
+
+/// An operation of an `APIContract` (docs/engine-api.md › APIContractOperation).
+public struct APIContractOperation: Codable, Sendable, Hashable {
+    /// `<METHOD> <path>`, the method in uppercase.
+    public var operation: String
+    public var operationId: String?
+    public var tags: [String]
+    public var summary: String?
+    public var description: String?
+    /// The path item's parameters merged with the operation's.
+    public var parameters: [APIContractParameter]
+    /// The refs, as written, of the parameters whose ref cannot be resolved; nil when none.
+    public var unresolvedParameters: [String]?
+    public var requestBody: APIContractBody?
+    public var responses: [APIContractResponse]
+    /// The names of the security schemes whose credentials `api.call` sends.
+    public var security: [String]
+
+    public init(operation: String, operationId: String? = nil, tags: [String] = [], summary: String? = nil, description: String? = nil,
+                parameters: [APIContractParameter] = [], unresolvedParameters: [String]? = nil, requestBody: APIContractBody? = nil,
+                responses: [APIContractResponse] = [], security: [String] = []) {
+        self.operation = operation
+        self.operationId = operationId
+        self.tags = tags
+        self.summary = summary
+        self.description = description
+        self.parameters = parameters
+        self.unresolvedParameters = unresolvedParameters
+        self.requestBody = requestBody
+        self.responses = responses
+        self.security = security
+    }
+}
+
+/// A parameter of an `APIContractOperation` (docs/engine-api.md › APIContractParameter).
+public struct APIContractParameter: Codable, Sendable, Hashable {
+    public var name: String
+    /// `path`, `query`, `header` or `cookie`.
+    public var `in`: String
+    public var required: Bool
+    public var description: String?
+    /// The schema with its refs resolved (docs/mcp.md › Schemas in results).
+    public var schema: JSONValue?
+
+    public init(name: String, in location: String, required: Bool, description: String? = nil, schema: JSONValue? = nil) {
+        self.name = name
+        self.in = location
+        self.required = required
+        self.description = description
+        self.schema = schema
+    }
+}
+
+/// The request body of an `APIContractOperation` (docs/engine-api.md › APIContractBody).
+public struct APIContractBody: Codable, Sendable, Hashable {
+    public var required: Bool
+    public var description: String?
+    public var content: [APIContractMedia]
+    /// The ref as written when it cannot be resolved.
+    public var unresolvedRef: String?
+
+    public init(required: Bool, description: String? = nil, content: [APIContractMedia] = [], unresolvedRef: String? = nil) {
+        self.required = required
+        self.description = description
+        self.content = content
+        self.unresolvedRef = unresolvedRef
+    }
+}
+
+/// A response of an `APIContractOperation` (docs/engine-api.md › APIContractResponse).
+public struct APIContractResponse: Codable, Sendable, Hashable {
+    public var code: String
+    public var description: String?
+    public var content: [APIContractMedia]
+    /// The ref as written when it cannot be resolved.
+    public var unresolvedRef: String?
+
+    public init(code: String, description: String? = nil, content: [APIContractMedia] = [], unresolvedRef: String? = nil) {
+        self.code = code
+        self.description = description
+        self.content = content
+        self.unresolvedRef = unresolvedRef
+    }
+}
+
+/// A media type of a request body or a response (docs/engine-api.md › APIContractMedia).
+public struct APIContractMedia: Codable, Sendable, Hashable {
+    public var mediaType: String
+    /// The schema with its refs resolved (docs/mcp.md › Schemas in results).
+    public var schema: JSONValue?
+
+    public init(mediaType: String, schema: JSONValue? = nil) {
+        self.mediaType = mediaType
+        self.schema = schema
+    }
+}
+
+/// The `options` of `api.call` (docs/engine-api.md › APICallOptions).
+public struct APICallOptions: Codable, Sendable, Hashable {
+    /// By `<in>:<name>`.
+    public var parameters: [String: String]?
+    public var body: String?
+    public var mediaType: String?
+    /// By header name.
+    public var headers: [String: String]?
+
+    public init(parameters: [String: String]? = nil, body: String? = nil, mediaType: String? = nil, headers: [String: String]? = nil) {
+        self.parameters = parameters
+        self.body = body
+        self.mediaType = mediaType
+        self.headers = headers
+    }
+}
+
+/// The response of an `api.call` request (docs/engine-api.md › APICallResult).
+public struct APICallResult: Codable, Sendable, Hashable {
+    public var status: Int
+    /// The reason phrase; nil for a code without one.
+    public var reason: String?
+    public var milliseconds: Int
+    /// Sorted by name, case-insensitively.
+    public var headers: [OpenAPIHeader]
+    /// A UTF-8 text body smaller than 51,200 bytes.
+    public var body: String?
+    /// A larger text body, or a binary body, written to a file.
+    public var bodyFile: APIBodyFile?
+
+    public init(status: Int, reason: String? = nil, milliseconds: Int, headers: [OpenAPIHeader] = [], body: String? = nil,
+                bodyFile: APIBodyFile? = nil) {
+        self.status = status
+        self.reason = reason
+        self.milliseconds = milliseconds
+        self.headers = headers
+        self.body = body
+        self.bodyFile = bodyFile
+    }
+}
+
+/// The file of a response body (docs/engine-api.md › APIBodyFile).
+public struct APIBodyFile: Codable, Sendable, Hashable {
+    /// Absolute path on the main device.
+    public var path: String
+    /// In bytes.
+    public var size: Int
+    public var contentType: String?
+
+    public init(path: String, size: Int, contentType: String? = nil) {
+        self.path = path
+        self.size = size
+        self.contentType = contentType
+    }
+}

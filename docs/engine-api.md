@@ -113,8 +113,8 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | MCP request with an answer token       | claude, chatID `answer` ([Comment answers](chats.md#comment-answers)) |
 | Engine-internal work and tests         | system                                                                |
 
-- **user** may call every method except `chats.postQuestions`, `chats.postSymbol`, `chats.postColor`, `chats.postSound`, `chats.postShortcut`, `chats.postFont`, `chats.postAnimation`, `chats.postImages`, `chats.watchCI` and the methods of [Kubernetes and Argo CD](#kubernetes-and-argo-cd) with a `chatID` param. Local and remote users have the same rights.
-- **claude** may call only the 59 methods that MCP tools map to (the Actors column says "claude"), with the rules below. Any other method fails with `forbidden` before its params are decoded.
+- **user** may call every method except `chats.postQuestions`, `chats.postSymbol`, `chats.postColor`, `chats.postSound`, `chats.postShortcut`, `chats.postFont`, `chats.postAnimation`, `chats.postImages`, `chats.watchCI`, the methods of [Kubernetes and Argo CD](#kubernetes-and-argo-cd) with a `chatID` param and the methods of [API](#api). Local and remote users have the same rights.
+- **claude** may call only the 61 methods that MCP tools map to (the Actors column says "claude"), with the rules below. Any other method fails with `forbidden` before its params are decoded.
 - **system** may call every method, without restrictions.
 
 ### Rules for Claude
@@ -136,6 +136,7 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | chats.postShortcut                                                                                                               | The chat's project must have the type `swiftApplication` (`ask_shortcut is available only in Swift application projects.`) ([Projects](projects.md#project-types)).                                                                                                                                                                                | forbidden |
 | chats.postAnimation                                                                                                              | The chat's project must have the type `swiftApplication` (`ask_animation is available only in Swift application projects.`) ([Projects](projects.md#project-types)).                                                                                                                                                                               | forbidden |
 | The methods of [Kubernetes and Argo CD](#kubernetes-and-argo-cd)                                                                 | Only the chat's own Claude may call them: the actor's chatID must equal the `chatID` param; the external token is refused (`Only the chat's own Claude can use the Kubernetes and Argo CD tools.`). The chat's project must have the type `goService` (`<tool> is only available in Go service projects.`).                                        | forbidden |
+| The methods of [API](#api)                                                                                                       | Only the chat's own Claude may call them: the actor's chatID must equal the `chatID` param; the external token is refused (`Only the chat's own Claude can use the API tools.`). The chat's project must have the type `goService` (`<tool> is only available in Go service projects.`).                                                           | forbidden |
 | chats.close                                                                                                                      | The external token is refused (`Only the chat's own Claude can close its chat.`).                                                                                                                                                                                                                                                                  | forbidden |
 | chats.close                                                                                                                      | A chat other than the actor's own must belong to its project (`Chat <chatID> belongs to another project.`).                                                                                                                                                                                                                                        | forbidden |
 | chats.close                                                                                                                      | A chat other than the actor's own must have no turn in progress (`Chat <chatID> has a turn in progress.`).                                                                                                                                                                                                                                         | conflict  |
@@ -159,7 +160,7 @@ A failed call returns an [EngineError](#engineerror) `{code, message}`.
 | invalid     | The params do not decode or break a validation rule.                                                                                                                                                                                                                                                                                                                                             |
 | conflict    | The call clashes with the current state: an id or a file already exists, a file changed since `expectedModified`, a question set, a symbol request, a color request, a sound request, a shortcut request, a font request or an animation request is waiting or already answered, a ticket to implement is done, a bundle to implement is in progress or done, a workflow to stop is not running. |
 | forbidden   | The actor may not do this: a method or param not open to the actor, a ticket or bundle status rule, a locked web tab, a protected path.                                                                                                                                                                                                                                                          |
-| unavailable | A required service is missing or fails: the Claude CLI, the Trash, the skills library folder, a memory folder, the GitHub CLI, its login or GitHub ([Builds](builds.md#failures)), or the connection to the device.                                                                                                                                                                              |
+| unavailable | A required service is missing or fails: the Claude CLI, the Trash, the skills library folder, a memory folder, the GitHub CLI, its login or GitHub ([Builds](builds.md#failures)), the server of an [api.call](#apicall) request, or the connection to the device.                                                                                                                               |
 | internal    | Unexpected failure: file system error, process start failure, encoding failure.                                                                                                                                                                                                                                                                                                                  |
 
 ### Dispatcher errors
@@ -217,6 +218,8 @@ The first column lists every engine method; it is the list the docs conformance 
 | `kubernetes.namespaces`          | KubernetesNamespaces          | projectID, kubeconfig                                      | [String]         | user         |
 | `kubernetes.deployments`         | KubernetesDeployments         | projectID, kubeconfig, namespace?                          | [String]         | user         |
 | `kubernetes.pods`                | KubernetesPods                | projectID, environment                                     | [PodStatus]      | user         |
+| `api.operations`                 | APIOperations                 | chatID                                                     | APIContract      | claude       |
+| `api.call`                       | APICall                       | chatID, environment, operation, options?                   | APICallResult    | claude       |
 | `tickets.list`                   | TicketsList                   | projectID, includeSubprojects?                             | [Ticket]         | user, claude |
 | `tickets.get`                    | TicketsGet                    | ticketID                                                   | Ticket           | user, claude |
 | `tickets.create`                 | TicketsCreate                 | projectID, title?, description, attachments?               | Ticket           | user, claude |
@@ -764,6 +767,55 @@ The method makes these checks, in this order, and fails at the first one that fa
 Events: none.
 
 The method, its user-only actor, its params and its checks are design-time choices. Default chosen at design time.
+
+## API
+
+The methods behind the [API tools](mcp.md#api-tools): `api.operations` reads the OpenAPI contract `openapi/contract.yaml` of the calling chat's project, the contract of the [API Explorer](openapi.md#api-explorer), and `api.call` sends the request of one of its operations to an environment of that project, an inherited one with the project's changes included ([Inherited environments](projects.md#inherited-environments)), with the credentials and the added headers stored on the main device ([Stored values](openapi.md#stored-values)). Only the chat's own Claude calls them, through these tools, which fill `chatID` from their token. The reading of the contract, the request and the result are those of the tools, in [MCP server](mcp.md#api-tools). The methods emit no events: their results go to the caller only. The method names and their result types are Default chosen at design time.
+
+Both methods make these checks, in this order, and fail at the first one that fails; `api.call` then makes its own.
+
+| Check | Error     | Message                                                                                                                                                                                                                 |
+| ----- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | forbidden | The actor is not the Claude of the chat `chatID`, the external token included: `Only the chat's own Claude can use the API tools.`                                                                                      |
+| 2     | notFound  | No such chat: `Chat <chatID> not found.`                                                                                                                                                                                |
+| 3     | forbidden | The chat's project does not have the type `goService`: `<tool> is only available in Go service projects.`, `<tool>` being the method's MCP tool, `api_operations` or `api_call`.                                        |
+| 4     | invalid   | The project root has no `openapi/contract.yaml` that is an OpenAPI 3.x contract ([Rules of the API tools](mcp.md#rules-of-the-api-tools)): `<project identifier> has no OpenAPI 3.x contract at openapi/contract.yaml.` |
+| 5     | invalid   | The contract's text cannot be parsed: `The contract openapi/contract.yaml could not be read: <parser message>`, ending with a period.                                                                                   |
+
+`chatID` that is not a UUID, and a param that breaks the params table of the method, fail with the `invalid` of [Dispatcher errors](#dispatcher-errors) before check 1.
+
+### api.operations
+
+Swift type `APIOperations` · actors: claude (the chat's own Claude only) · result: [APIContract](#apicontract)
+
+| Param  | Type   | Required | Description                          |
+| ------ | ------ | -------- | ------------------------------------ |
+| chatID | ChatID | yes      | Chat id; must be the actor's chatID. |
+
+Reads the contract from disk on the main device, with its `$ref` pointers resolved, and returns its operations in the order of the Contract view's list ([api_operations](mcp.md#api_operations)). Errors: the [checks](#api).
+
+Events: none.
+
+### api.call
+
+Swift type `APICall` · actors: claude (the chat's own Claude only) · result: [APICallResult](#apicallresult)
+
+| Param       | Type                              | Required | Description                                                                                |
+| ----------- | --------------------------------- | -------- | ------------------------------------------------------------------------------------------ |
+| chatID      | ChatID                            | yes      | Chat id; must be the actor's chatID.                                                       |
+| environment | String                            | yes      | Name of an environment of the chat's project.                                              |
+| operation   | String                            | yes      | Operation key `<METHOD> <path>`, as [api.operations](#apioperations) returns it.           |
+| options     | [APICallOptions](#apicalloptions) | no       | The parameters, the body, its media type and the headers to add; none of them when absent. |
+
+Reads the contract, builds the request of the operation as the request form builds it, with the credentials and the added headers stored for `openapi/contract.yaml` of the chat's project under the main device's id, sends it from the engine and returns the response ([api_call](mcp.md#api_call)).
+
+| Error       | When                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid     | After the [checks](#api), in this order: an unknown environment (`environment: <project identifier> has no environment named “<name>”.`); an environment without a URL, or whose URL or port breaks the rules of [Project environment](data-model.md#project-environment); an unknown operation; an unknown parameter key; a `mediaType` or a `body` for an operation without request body; an unknown media type. The messages are those of [api_call](mcp.md#api_call). |
+| unavailable | The request fails without a response: `The request failed: <localized description>`, ending with a period.                                                                                                                                                                                                                                                                                                                                                                |
+| internal    | The file of a large or binary body cannot be written: `Internal error: <localized description>.`                                                                                                                                                                                                                                                                                                                                                                          |
+
+Events: none.
 
 ## Tickets
 
@@ -3398,6 +3450,146 @@ The state of an Argo CD Application, the result of [argoCD.status](#argocdstatus
 | revision    | String | no       | `syncResult.revision`, else `operation.sync.revision`.                                     |
 | initiatedBy | String | no       | `operation.initiatedBy.username`, or `automated` when Argo CD's automated sync started it. |
 
+### APIContract
+
+The operations of the contract `openapi/contract.yaml` of a Go service project, the result of [api.operations](#apioperations) ([api_operations](mcp.md#api_operations)).
+
+| Field      | Type                                            | Required | Description                                                                         |
+| ---------- | ----------------------------------------------- | -------- | ----------------------------------------------------------------------------------- |
+| path       | String                                          | yes      | The contract's project path, `openapi/contract.yaml`.                               |
+| title      | String                                          | yes      | `info.title`; `""` when absent.                                                     |
+| version    | String                                          | yes      | `info.version`; `""` when absent.                                                   |
+| operations | [[APIContractOperation](#apicontractoperation)] | yes      | The operations, in the order of the Contract view's list ([List](openapi.md#list)). |
+
+```json
+{
+  "operations": [
+    {
+      "operation": "GET /pets/{petId}",
+      "operationId": "showPetById",
+      "parameters": [
+        {"description": "The id of the pet.", "in": "path", "name": "petId", "required": true, "schema": {"type": "string"}}
+      ],
+      "responses": [
+        {"code": "200", "content": [{"mediaType": "application/json", "schema": {"properties": {"id": {"type": "string"}, "name": {"type": "string"}}, "required": ["id", "name"], "type": "object"}}], "description": "The pet."},
+        {"code": "404", "content": [], "description": "No pet has this id."}
+      ],
+      "security": ["bearerAuth"],
+      "summary": "Info for a specific pet",
+      "tags": ["pets"]
+    }
+  ],
+  "path": "openapi/contract.yaml",
+  "title": "Pet Store",
+  "version": "1.2.0"
+}
+```
+
+### APIContractOperation
+
+| Field                | Type                                            | Required | Description                                                                                                                                                        |
+| -------------------- | ----------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| operation            | String                                          | yes      | The operation key `<METHOD> <path>`, the method in uppercase, for example `GET /pets/{petId}` ([Stored values](openapi.md#stored-values)).                         |
+| operationId          | String                                          | no       | `operationId`.                                                                                                                                                     |
+| tags                 | [String]                                        | yes      | `tags`, in order; empty when absent.                                                                                                                               |
+| summary              | String                                          | no       | `summary`.                                                                                                                                                         |
+| description          | String                                          | no       | `description`.                                                                                                                                                     |
+| parameters           | [[APIContractParameter](#apicontractparameter)] | yes      | The path item's parameters merged with the operation's, an operation parameter replacing the path item's parameter with the same `name` and `in`, in that order.   |
+| unresolvedParameters | [String]                                        | no       | The refs, as written, of the parameters whose ref cannot be resolved; absent when there is none.                                                                   |
+| requestBody          | [APIContractBody](#apicontractbody)             | no       | The request body; absent when the operation has none.                                                                                                              |
+| responses            | [[APIContractResponse](#apicontractresponse)]   | yes      | The members of `responses`, in the contract's order.                                                                                                               |
+| security             | [String]                                        | yes      | The names of the security schemes whose credentials [api.call](#apicall) sends, in their order ([Credentials](openapi.md#credentials)); never their stored values. |
+
+### APIContractParameter
+
+| Field       | Type      | Required | Description                                                                                                                                        |
+| ----------- | --------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| name        | String    | yes      | `name`.                                                                                                                                            |
+| in          | String    | yes      | `path`, `query`, `header` or `cookie`.                                                                                                             |
+| required    | Bool      | yes      | true for a path parameter and for a parameter whose `required` is true.                                                                            |
+| description | String    | no       | `description`.                                                                                                                                     |
+| schema      | JSONValue | no       | `schema`, else the schema of the first media type of `content`, written as in [Schemas in results](mcp.md#schemas-in-results); absent without one. |
+
+### APIContractBody
+
+| Field         | Type                                    | Required | Description                                                                            |
+| ------------- | --------------------------------------- | -------- | -------------------------------------------------------------------------------------- |
+| required      | Bool                                    | yes      | `required`; false when absent.                                                         |
+| description   | String                                  | no       | `description`.                                                                         |
+| content       | [[APIContractMedia](#apicontractmedia)] | yes      | The members of `content`, in order.                                                    |
+| unresolvedRef | String                                  | no       | The ref as written when the request body's ref cannot be resolved; `content` is empty. |
+
+### APIContractResponse
+
+| Field         | Type                                    | Required | Description                                                                        |
+| ------------- | --------------------------------------- | -------- | ---------------------------------------------------------------------------------- |
+| code          | String                                  | yes      | The member's name, for example `200` or `default`.                                 |
+| description   | String                                  | no       | `description`.                                                                     |
+| content       | [[APIContractMedia](#apicontractmedia)] | yes      | The members of `content`, in order.                                                |
+| unresolvedRef | String                                  | no       | The ref as written when the response's ref cannot be resolved; `content` is empty. |
+
+### APIContractMedia
+
+| Field     | Type      | Required | Description                                                                                  |
+| --------- | --------- | -------- | -------------------------------------------------------------------------------------------- |
+| mediaType | String    | yes      | The media type's name, for example `application/json`.                                       |
+| schema    | JSONValue | no       | `schema`, written as in [Schemas in results](mcp.md#schemas-in-results); absent without one. |
+
+### APICallOptions
+
+The `options` of [api.call](#apicall), the optional arguments of [api_call](mcp.md#api_call).
+
+| Field      | Type             | Required | Description                                                                                                   |
+| ---------- | ---------------- | -------- | ------------------------------------------------------------------------------------------------------------- |
+| parameters | [String: String] | no       | The values of the operation's parameters, keyed `<in>:<name>`; a parameter left out counts as an empty field. |
+| body       | String           | no       | The request body; no body when absent or empty.                                                               |
+| mediaType  | String           | no       | One of the operation's request media types; the first one when absent.                                        |
+| headers    | [String: String] | no       | The headers to add, keyed by name, each replacing a header of the same name, compared case-insensitively.     |
+
+### APICallResult
+
+The response of an [api.call](#apicall) request ([api_call](mcp.md#api_call)). It never holds the URL, the headers or the body sent.
+
+| Field        | Type                              | Required | Description                                                                                                      |
+| ------------ | --------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
+| status       | Int                               | yes      | The status code.                                                                                                 |
+| reason       | String                            | no       | Its reason phrase from RFC 9110 and RFC 6585 ([Response](openapi.md#response)); absent for another code.         |
+| milliseconds | Int                               | yes      | From the start of the request to the last byte of the response body.                                             |
+| headers      | [[OpenAPIHeader](#openapiheader)] | yes      | The response headers, sorted by name, compared case-insensitively.                                               |
+| body         | String                            | no       | A UTF-8 text body smaller than 51,200 bytes, as received; absent for an empty body and for a body in `bodyFile`. |
+| bodyFile     | [APIBodyFile](#apibodyfile)       | no       | A UTF-8 text body of 51,200 bytes or more, or a binary body, written to a file; absent otherwise.                |
+
+```json
+{
+  "body": "{\"id\":\"42\",\"name\":\"Rex\"}",
+  "headers": [
+    {"name": "Content-Length", "value": "25"},
+    {"name": "Content-Type", "value": "application/json"},
+    {"name": "Date", "value": "Sun, 08 Nov 2026 22:09:12 GMT"}
+  ],
+  "milliseconds": 71,
+  "reason": "OK",
+  "status": 200
+}
+```
+
+### OpenAPIHeader
+
+A header of [APICallResult](#apicallresult), declared with the OpenAPI types in `Sources/HephaestusCore/OpenAPI/`.
+
+| Field | Type   | Required | Description         |
+| ----- | ------ | -------- | ------------------- |
+| name  | String | yes      | The header's name.  |
+| value | String | yes      | The header's value. |
+
+### APIBodyFile
+
+| Field       | Type   | Required | Description                                                                                                                          |
+| ----------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| path        | String | yes      | Absolute path on the main device: `<temporary folder>/HephaestusV2/Files/<UUID>/response.<extension>` ([api_call](mcp.md#api_call)). |
+| size        | Int    | yes      | The body's size in bytes.                                                                                                            |
+| contentType | String | no       | The response's `Content-Type`; absent when it has none.                                                                              |
+
 ### FileEntry
 
 | Field       | Type   | Required | Description                                                                                                                                                                                                                                                                             |
@@ -4246,19 +4438,19 @@ The `builds.getRelease` result.
 
 ### Files
 
-| Path (under Sources/HephaestusCore/Engine/) | Content                                                                                                                                                                                                                                                                                                                                                |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Engine.swift                                | The `Engine` actor, its dispatcher and its event subscriptions.                                                                                                                                                                                                                                                                                        |
-| Actor.swift                                 | `Actor`, `ActorKind`.                                                                                                                                                                                                                                                                                                                                  |
-| EngineError.swift                           | `EngineError`.                                                                                                                                                                                                                                                                                                                                         |
-| EngineConnection.swift                      | `EngineConnection`, `ConnectionState`.                                                                                                                                                                                                                                                                                                                 |
-| LocalEngineConnection.swift                 | The in-process connection.                                                                                                                                                                                                                                                                                                                             |
-| API/EngineMethod.swift                      | `EngineMethod`, `EngineEvent`, `Empty`, `Patch`.                                                                                                                                                                                                                                                                                                       |
-| API/EngineJSON.swift                        | The JSON encoder and decoder of the API.                                                                                                                                                                                                                                                                                                               |
-| API/APITypes.swift                          | The other types of [API types](#api-types).                                                                                                                                                                                                                                                                                                            |
-| API/(Area)API.swift                         | The method declarations of one area: `DeviceAPI` (device.info, snapshot.get), `ProjectsAPI`, `TicketsAPI`, `AttachmentsAPI`, `BundlesAPI`, `ChatsAPI`, `SoundsAPI`, `ClaudeAPI`, `FilesAPI`, `DocsAPI`, `FSAPI`, `WebTabsAPI`, `SearchAPI`, `SkillsAPI`, `MemoriesAPI`, `BuildsAPI`, `SettingsAPI`, `UIAPI`, `KubernetesAPI` (kubernetes.*, argoCD.*). |
-| API/Events.swift                            | One `EngineEvent` type per event, with the payload types.                                                                                                                                                                                                                                                                                              |
-| Handlers/(Area)Handlers.swift               | `register<Area>Handlers()` and the handlers of one area.                                                                                                                                                                                                                                                                                               |
+| Path (under Sources/HephaestusCore/Engine/) | Content                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Engine.swift                                | The `Engine` actor, its dispatcher and its event subscriptions.                                                                                                                                                                                                                                                                                                              |
+| Actor.swift                                 | `Actor`, `ActorKind`.                                                                                                                                                                                                                                                                                                                                                        |
+| EngineError.swift                           | `EngineError`.                                                                                                                                                                                                                                                                                                                                                               |
+| EngineConnection.swift                      | `EngineConnection`, `ConnectionState`.                                                                                                                                                                                                                                                                                                                                       |
+| LocalEngineConnection.swift                 | The in-process connection.                                                                                                                                                                                                                                                                                                                                                   |
+| API/EngineMethod.swift                      | `EngineMethod`, `EngineEvent`, `Empty`, `Patch`.                                                                                                                                                                                                                                                                                                                             |
+| API/EngineJSON.swift                        | The JSON encoder and decoder of the API.                                                                                                                                                                                                                                                                                                                                     |
+| API/APITypes.swift                          | The other types of [API types](#api-types).                                                                                                                                                                                                                                                                                                                                  |
+| API/(Area)API.swift                         | The method declarations of one area: `DeviceAPI` (device.info, snapshot.get), `ProjectsAPI`, `TicketsAPI`, `AttachmentsAPI`, `BundlesAPI`, `ChatsAPI`, `SoundsAPI`, `ClaudeAPI`, `FilesAPI`, `DocsAPI`, `FSAPI`, `WebTabsAPI`, `SearchAPI`, `SkillsAPI`, `MemoriesAPI`, `BuildsAPI`, `SettingsAPI`, `UIAPI`, `KubernetesAPI` (kubernetes.*, argoCD.*), `ServiceAPI` (api.*). |
+| API/Events.swift                            | One `EngineEvent` type per event, with the payload types.                                                                                                                                                                                                                                                                                                                    |
+| Handlers/(Area)Handlers.swift               | `register<Area>Handlers()` and the handlers of one area.                                                                                                                                                                                                                                                                                                                     |
 
 `RemoteEngineConnection` lives in `Sources/HephaestusCore/Sync/` ([Remote devices](remote.md)); the MCP server in `Sources/HephaestusCore/MCP/` ([MCP server](mcp.md)).
 
@@ -4389,7 +4581,7 @@ public actor Engine {
 4. Run the handler with the decoded params and the actor. An `EngineError` is rethrown as is; any other error becomes `internal` and is logged.
 5. Encode the result with `EngineJSON.encoder()`.
 
-The handlers are registered at engine start by `registerDeviceHandlers()`, `registerProjectHandlers()`, `registerTicketHandlers()`, `registerAttachmentHandlers()`, `registerBundleHandlers()`, `registerChatHandlers()`, `registerClaudeHandlers()`, `registerFileHandlers()`, `registerDocHandlers()`, `registerFSHandlers()`, `registerWebTabHandlers()`, `registerSearchHandlers()`, `registerSkillHandlers()`, `registerMemoryHandlers()`, `registerBuildHandlers()`, `registerSettingsHandlers()`, `registerUIHandlers()` and `registerKubernetesHandlers()`. The `actors` set of each registration is the Actors column of the [Method index](#method-index). Parameter-level rules for Claude ([Rules for Claude](#rules-for-claude)) are checked by the handlers.
+The handlers are registered at engine start by `registerDeviceHandlers()`, `registerProjectHandlers()`, `registerTicketHandlers()`, `registerAttachmentHandlers()`, `registerBundleHandlers()`, `registerChatHandlers()`, `registerClaudeHandlers()`, `registerFileHandlers()`, `registerDocHandlers()`, `registerFSHandlers()`, `registerWebTabHandlers()`, `registerSearchHandlers()`, `registerSkillHandlers()`, `registerMemoryHandlers()`, `registerBuildHandlers()`, `registerSettingsHandlers()`, `registerUIHandlers()`, `registerKubernetesHandlers()` and `registerServiceAPIHandlers()`. The `actors` set of each registration is the Actors column of the [Method index](#method-index). Parameter-level rules for Claude ([Rules for Claude](#rules-for-claude)) are checked by the handlers.
 
 `emit` encodes the envelope once with `EngineJSON.encoder()` and yields the same bytes to every subscriber: each `LocalEngineConnection` and each remote device session.
 

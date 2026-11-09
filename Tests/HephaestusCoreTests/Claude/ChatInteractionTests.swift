@@ -567,7 +567,7 @@ struct ChatInteractionTests {
             let go = try await bed.createChat(message: "Plan")
             let goPrompt = try await systemPrompt(go, 1)
             #expect(goPrompt.contains(" of the project. The project's type is Go service.\n\nThe project's environments, where the Go service runs; "
-                + "the Kubernetes and Argo CD tools take an environment's name:\n- none: the user adds them in Project Settings\n\n"
+                + "the Kubernetes, Argo CD and API tools take an environment's name:\n- none: the user adds them in Project Settings\n\n"
                 + "These rules apply in every chat. "))
             #expect(goPrompt.contains("\n\n# Environments of a Go service\n\nWhen the project's type is Go service, its environments"))
             #expect(!goPrompt.contains("{{"))
@@ -582,7 +582,7 @@ struct ChatInteractionTests {
                 #expect(process.request.arguments.contains(chat.id.uuidString))
                 return try #require(process.request.arguments.firstIndex(of: "--append-system-prompt").map { process.request.arguments[$0 + 1] })
             }
-            let header = "The project's environments, where the Go service runs; the Kubernetes and Argo CD tools take an environment's name:"
+            let header = "The project's environments, where the Go service runs; the Kubernetes, Argo CD and API tools take an environment's name:"
             let environments = [
                 ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
                 ProjectEnvironment(name: "staging", url: "https://staging.example.com/", namespace: "orders",
@@ -621,7 +621,7 @@ struct ChatInteractionTests {
     @Test("The system prompt of a sub project's chat lists the environments it inherits, with its changes, before its own")
     func inheritedEnvironmentsInSystemPrompt() async throws {
         try await withChatEngine { bed in
-            let header = "The project's environments, where the Go service runs; the Kubernetes and Argo CD tools take an environment's name:"
+            let header = "The project's environments, where the Go service runs; the Kubernetes, Argo CD and API tools take an environment's name:"
             _ = try await bed.connection.call(ProjectsUpdate.self, .init(projectID: "DEMO", type: .goService, environments: [
                 ProjectEnvironment(name: "local", url: "http://127.0.0.1", port: 8080),
                 ProjectEnvironment(name: "staging", url: "https://staging.example.com", deployment: "orders-api"),

@@ -85,6 +85,12 @@ public enum MCPToolHandling: String, Sendable, Hashable, CaseIterable {
     /// plain-text result: the `output` of the method's KubectlOutput (docs/mcp.md › Kubectl
     /// output).
     case kubernetesText
+    /// `api_operations`: chat tokens only, `chatID` from the token, the method's JSON as the
+    /// result (docs/mcp.md › Rules of the API tools).
+    case serviceAPI
+    /// `api_call`: chat tokens only, `chatID` from the token, the optional arguments in `options`,
+    /// the method's JSON as the result (docs/mcp.md › api_call).
+    case serviceAPICall
     /// A debug tool: `MCPDebugUI`, not an engine method.
     case debugUI
 }
@@ -92,8 +98,8 @@ public enum MCPToolHandling: String, Sendable, Hashable, CaseIterable {
 /// The tools of the MCP server, with the exact texts and schemas of docs/mcp.md (the lists are
 /// in MCPToolCatalog+Tools.swift).
 public enum MCPToolCatalog {
-    /// The tools `tools/list` returns: the catalogue and the Kubernetes and Argo CD tools, then
-    /// the debug tools when they are enabled.
+    /// The tools `tools/list` returns: the catalogue, the Kubernetes and Argo CD tools and the API
+    /// tools, then the debug tools when they are enabled.
     public static func listedTools(debugTools: Bool) -> [MCPToolDefinition] {
         debugTools ? tools + Self.debugTools : tools
     }

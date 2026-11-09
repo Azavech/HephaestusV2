@@ -72,6 +72,8 @@ struct EngineJSONTests {
         "### ClusterEvent": roundTrip([ClusterEvent].self),
         "### PortForward": roundTrip(PortForward.self),
         "### ArgoCDAppStatus": roundTrip(ArgoCDAppStatus.self),
+        "### APIContract": roundTrip(APIContract.self),
+        "### APICallResult": roundTrip(APICallResult.self),
         "### FileEntry": roundTrip(FileEntry.self),
         "### FileContent": roundTrip(FileContent.self),
         "### FontFamily": roundTrip([FontFamily].self),

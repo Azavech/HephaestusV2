@@ -4,7 +4,6 @@ import Foundation
 import HephaestusCore
 import HephaestusText
 import Observation
-import UniformTypeIdentifiers
 
 /// The state of one tab's Contract view, held by its buffer and never persisted.
 @MainActor @Observable
@@ -342,19 +341,7 @@ final class OpenAPIContractModel {
             operation.parameters.filter { $0.location == location }
         }
         let parameters = ordered.map { (location: $0.location, name: $0.name, value: values.parameters[$0.id] ?? "") }
-        let credentials: [OpenAPICredential] = contract.credentialSchemes(for: operation).compactMap { scheme in
-            let credential = stored?.credentials[scheme.name] ?? OpenAPIStoredCredential()
-            switch scheme.kind {
-            case .apiKey(let name, let location):
-                return .apiKey(name: name, location: location, value: credential.value ?? "")
-            case .basic:
-                return .basic(username: credential.username ?? "", password: credential.password ?? "")
-            case .bearer:
-                return .bearer(token: credential.token ?? "")
-            case .unsupported:
-                return nil
-            }
-        }
+        let credentials = contract.credentials(for: operation, stored: stored?.credentials ?? [:])
         let media = mediaType(operation)
         let body = media.map { bodyModel(operation, $0).text } ?? ""
         return OpenAPIRequestInput(baseURL: environment?.baseURL ?? "", method: operation.method, path: operation.path,
@@ -461,7 +448,7 @@ struct OpenAPIResponseBody: Sendable {
             kind = .empty
             return
         }
-        guard let text = String(data: response.body, encoding: .utf8), !text.contains("\0") else {
+        guard let text = response.bodyText else {
             kind = .binary(response.body)
             return
         }
@@ -474,11 +461,7 @@ struct OpenAPIResponseBody: Sendable {
 
     /// `response.<extension>` from the media type, or `response`.
     var quickLookName: String {
-        let essence = contentType.map(OpenAPISample.essence(of:)) ?? ""
-        if let ext = UTType(mimeType: essence)?.preferredFilenameExtension {
-            return "response.\(ext)"
-        }
-        return "response"
+        OpenAPIResponseFiles.name(contentType: contentType)
     }
 }
 

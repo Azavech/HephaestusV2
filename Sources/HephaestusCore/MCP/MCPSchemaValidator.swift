@@ -2,7 +2,7 @@ import Foundation
 
 /// The validator of tool arguments (docs/mcp.md › Argument validation). It handles exactly the
 /// keywords of the input schemas: `type` (`object`, `array`, `string`, `boolean`, `integer`),
-/// `properties`, `required`, `additionalProperties` (always `false`), `items`, `enum`,
+/// `properties`, `required`, `additionalProperties` (`false` or a schema), `items`, `enum`,
 /// `minimum`, `maximum`; `description` is not checked. Every other rule on values is the
 /// engine's.
 public struct MCPSchemaValidator: Sendable {
@@ -53,9 +53,11 @@ public struct MCPSchemaValidator: Sendable {
         return nil
     }
 
-    /// Within an object: the properties missing from `properties` in ascending order of name,
-    /// then the missing `required` properties in the order of `required`, then each present
-    /// property in the order of `properties`, checked completely before the next one.
+    /// Within an object: the properties missing from `properties` in ascending order of name when
+    /// `additionalProperties` is `false`, then the missing `required` properties in the order of
+    /// `required`, then each present property in the order of `properties`, checked completely
+    /// before the next one, then, when `additionalProperties` is a schema, the properties missing
+    /// from `properties` in ascending order of name against it.
     private func checkObject(_ object: [String: JSONValue], schema: [String: JSONValue], path: String) -> MCPToolError? {
         let properties = schema["properties"]?.objectValue ?? [:]
         if schema["additionalProperties"] == .bool(false) {
@@ -69,6 +71,13 @@ public struct MCPSchemaValidator: Sendable {
         for name in Self.propertyOrder(of: properties) {
             if let value = object[name], let error = check(value, schema: properties[name]!, path: Self.child(path, name)) {
                 return error
+            }
+        }
+        if case .object(let additional)? = schema["additionalProperties"] {
+            for name in object.keys.sorted(by: JSONValue.codePointOrder) where properties[name] == nil {
+                if let error = check(object[name]!, schema: .object(additional), path: Self.child(path, name)) {
+                    return error
+                }
             }
         }
         return nil

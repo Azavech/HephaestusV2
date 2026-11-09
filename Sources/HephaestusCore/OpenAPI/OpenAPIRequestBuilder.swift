@@ -1,7 +1,7 @@
 import Foundation
 
 /// A name and a value, in order: request and response headers, added headers.
-public struct OpenAPIHeader: Sendable, Equatable, Codable {
+public struct OpenAPIHeader: Sendable, Hashable, Codable {
     public var name: String
     public var value: String
 

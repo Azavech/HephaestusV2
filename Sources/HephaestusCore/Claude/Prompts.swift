@@ -96,7 +96,7 @@ enum Prompts {
             return "- \(environment.name)" + (address ?? "") + details.joined()
         }
         let currentLine = lines.isEmpty ? nil : (current ?? environments.first?.name).map(currentEnvironmentLine)
-        return "\n\nThe project's environments, where the Go service runs; the Kubernetes and Argo CD tools take an environment's name:\n"
+        return "\n\nThe project's environments, where the Go service runs; the Kubernetes, Argo CD and API tools take an environment's name:\n"
             + (lines.isEmpty ? "- none: the user adds them in Project Settings" : (lines + [currentLine].compactMap { $0 }).joined(separator: "\n"))
     }
 

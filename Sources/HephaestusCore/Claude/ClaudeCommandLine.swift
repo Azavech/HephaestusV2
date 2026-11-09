@@ -4,13 +4,14 @@ import Foundation
 /// › Command) and the files written for a launch.
 enum ClaudeCommandLine {
     /// Row 14: the tools that run in every permission mode (docs/chats.md › Command line); the
-    /// four Kubernetes and Argo CD tools that only read the cluster come last.
+    /// four Kubernetes and Argo CD tools that only read the cluster, then `api_operations`, come
+    /// last.
     static let preApprovedTools = [
         "ask_questions", "ask_symbol", "ask_color", "ask_sound", "ask_shortcut", "ask_font", "ask_animation", "show_image",
         "list_projects", "get_project", "list_tickets", "get_ticket", "create_ticket", "update_ticket", "set_ticket_status",
         "add_comment", "update_comment", "list_bundles", "get_bundle", "create_bundle", "update_bundle", "search", "list_docs",
         "list_web_tabs", "list_skills", "get_skill", "list_chats", "get_chat",
-        "k8s_status", "k8s_logs", "k8s_events", "argocd_status",
+        "k8s_status", "k8s_logs", "k8s_events", "argocd_status", "api_operations",
     ].map { "mcp__hephaestus__\($0)" }.joined(separator: ",")
 
     /// The argv of a chat process, the CLI path first; no shell is involved. `readFolders` are the
@@ -48,7 +49,7 @@ enum ClaudeCommandLine {
     }
 
     /// Row 18: the `UserPromptSubmit` hook of the linked items hook and the `PreToolUse` hook of
-    /// the close chat hook, after `"ultracode":true` when ultracode is on and after the `Read`
+    /// the close chat hook and the API call hook, after `"ultracode":true` when ultracode is on and after the `Read`
     /// rules of the inherited memory folders (docs/chats.md › Command line, › Linked items hook,
     /// › Close chat hook). The CLI reads the token from the process's environment, so it is not
     /// part of the arguments.
@@ -60,7 +61,7 @@ enum ClaudeCommandLine {
                 + #""allowedEnvVars":[\#(ControlLines.string(variable))],"timeout":\#(LinkedItemsHook.timeoutSeconds)}"#
         }
         let hooks = #""hooks":{"UserPromptSubmit":[{"hooks":[\#(hook(LinkedItemsHook.path))]}],"#
-            + #""PreToolUse":[{"matcher":\#(ControlLines.string(CloseChatHook.toolName)),"hooks":[\#(hook(CloseChatHook.path))]}]}"#
+            + #""PreToolUse":[{"matcher":\#(ControlLines.string(CloseChatHook.matcher)),"hooks":[\#(hook(CloseChatHook.path))]}]}"#
         let rules = readFolders.compactMap(readRule)
         let permissions = rules.isEmpty ? "" : #""permissions":{"allow":[\#(rules.map(ControlLines.string).joined(separator: ","))]},"#
         return "{" + (ultracode ? #""ultracode":true,"# : "") + permissions + hooks + "}"

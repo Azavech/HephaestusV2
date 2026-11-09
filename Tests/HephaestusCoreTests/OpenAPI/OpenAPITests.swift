@@ -455,6 +455,13 @@ struct OpenAPIRequestTests {
         hv+wt844KpNKKktuzDK+2T0RamadXj7kAiEAwjQbUSO7/1AUkahOcKgAlLRccqNtJPbRbctMofZa+gQ=
         """
 
+    @Test("Requests with and without Allow invalid certificates use separate sessions, each kept between requests")
+    func separateSessions() {
+        #expect(OpenAPIHTTPClient.session(allowInvalidCertificates: true) !== OpenAPIHTTPClient.session(allowInvalidCertificates: false))
+        #expect(OpenAPIHTTPClient.session(allowInvalidCertificates: true) === OpenAPIHTTPClient.session(allowInvalidCertificates: true))
+        #expect(OpenAPIHTTPClient.session(allowInvalidCertificates: false) === OpenAPIHTTPClient.session(allowInvalidCertificates: false))
+    }
+
     @Test("With Allow invalid certificates, a server trust challenge trusts the server; without it, and for other challenges, the default handling applies")
     func trustDecision() throws {
         let data = try #require(Data(base64Encoded: Self.selfSignedCertificate))

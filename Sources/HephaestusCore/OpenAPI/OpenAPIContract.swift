@@ -51,6 +51,25 @@ public struct OpenAPIContract: Sendable {
         }
         return names.compactMap { name in supported.first { $0.name == name } }
     }
+
+    /// The credentials an operation's request sends: those of `credentialSchemes(for:)`, with the
+    /// values stored for each scheme, empty when none is stored (docs/openapi.md › Credentials,
+    /// › Stored values).
+    public func credentials(for operation: OpenAPIOperation, stored: [String: OpenAPIStoredCredential]) -> [OpenAPICredential] {
+        credentialSchemes(for: operation).compactMap { scheme in
+            let credential = stored[scheme.name] ?? OpenAPIStoredCredential()
+            switch scheme.kind {
+            case .apiKey(let name, let location):
+                return .apiKey(name: name, location: location, value: credential.value ?? "")
+            case .basic:
+                return .basic(username: credential.username ?? "", password: credential.password ?? "")
+            case .bearer:
+                return .bearer(token: credential.token ?? "")
+            case .unsupported:
+                return nil
+            }
+        }
+    }
 }
 
 public struct OpenAPIInfo: Sendable {
@@ -127,6 +146,7 @@ public struct OpenAPIOperation: Sendable, Identifiable {
     /// Lowercase, as in the contract.
     public var method: String
     public var path: String
+    public var operationId: String?
     public var summary: String?
     public var description: String?
     public var tags: [String]
@@ -254,6 +274,7 @@ struct OpenAPIContractBuilder {
                 operations.append(OpenAPIOperation(
                     method: method,
                     path: member.key,
+                    operationId: operationValue["operationId"]?.scalarText,
                     summary: operationValue["summary"]?.stringValue,
                     description: operationValue["description"]?.stringValue,
                     tags: (operationValue["tags"]?.arrayValue ?? []).compactMap(\.scalarText),
@@ -444,6 +465,14 @@ public struct OpenAPISchema: Sendable {
     public var items: OpenAPISchema? {
         guard !isCircular, let items = value["items"], items.members != nil else { return nil }
         return child(items)
+    }
+
+    /// The schema as a JSON value with its refs resolved (docs/mcp.md › Schemas in results): an
+    /// unresolved ref is `{"$ref": <ref>, "unresolved": true}`, a circular one `{"$ref": <ref>}`.
+    public var resolvedJSON: JSONValue {
+        guard let node else { return .object(["$ref": .string(ref ?? ""), "unresolved": .bool(true)]) }
+        if isCircular { return .object(["$ref": .string(ref ?? "")]) }
+        return resolver.resolvedJSON(node, chain: chain)
     }
 
     /// `additionalProperties` when it is a schema.

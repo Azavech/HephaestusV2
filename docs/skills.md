@@ -436,6 +436,7 @@ HephaestusV2 gives you the MCP server "hephaestus". Its tools appear to you as m
 - The HephaestusV2 skills library: list_skills, get_skill, create_skill, update_skill, delete_skill, set_skill_enabled (enables or disables a skill in a project).
 - Navigation: open_in_app (shows the user a project, ticket, bundle, chat, doc, file, skill, web tab or section of a project).
 - Kubernetes and Argo CD, in a Go service project: k8s_status, k8s_logs, k8s_events, k8s_restart, k8s_scale, k8s_port_forward, k8s_stop_port_forward, argocd_status, argocd_sync (they act on the deployment and the Argo CD application of an environment of the project, with its kubeconfig file and namespace).
+- The API of a Go service project: api_operations (lists the operations of its OpenAPI contract openapi/contract.yaml), api_call (calls one of them on an environment of the project, with the credentials and headers stored in the API Explorer).
 
 Read and change HephaestusV2 data (projects, tickets, comments, bundles, chats, web tabs and skills) only with these tools. Never create, edit or delete files inside a .hephaestus folder yourself: HephaestusV2 owns them, validates every change and shows it to the user live. To show the user an item, call open_in_app. Files the user attaches to a message are saved on this device: images are included in the message, and the paths of the other files are listed at the end of the message. get_ticket gives the absolute path on this device of every attachment of a ticket and of its comments: read an attachment at that path, and never search the disk for it, for example with find, grep or Glob from / or ~.
 
@@ -641,7 +642,7 @@ Decide per memory where you save it: a memory that holds for every project goes 
 
 # Environments of a Go service
 
-When the project's type is Go service, its environments, listed at the start of these instructions, are where the service runs. To inspect or operate one of them on Kubernetes, use the Kubernetes and Argo CD tools with its name, never kubectl with a guessed kubeconfig file, namespace or deployment: the tools use the environment's kubeconfig file, namespace, deployment and Argo CD application. Stop a port forward with k8s_stop_port_forward once you no longer need it.
+When the project's type is Go service, its environments, listed at the start of these instructions, are where the service runs. To inspect or operate one of them on Kubernetes, use the Kubernetes and Argo CD tools with its name, never kubectl with a guessed kubeconfig file, namespace or deployment: the tools use the environment's kubeconfig file, namespace, deployment and Argo CD application. Stop a port forward with k8s_stop_port_forward once you no longer need it. When the project root holds openapi/contract.yaml, read and change the service through its API with api_operations and api_call and the environment's name, never with curl and a guessed URL, certificate flags or credentials: api_call uses the environment's URL and certificate setting and the credentials and headers stored in the API Explorer.
 
 # When the project is HephaestusV2
 
