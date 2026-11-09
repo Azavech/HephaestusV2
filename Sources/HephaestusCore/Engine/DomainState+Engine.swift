@@ -227,7 +227,8 @@ extension Engine {
                              subprojects: subprojects, gitRemoteURL: remoteURL, githubPage: githubPage(of: id),
                              originGithubPage: originGithubPage(root: loaded.rootPath),
                              environments: environments.environments, inheritedEnvironments: environments.inherited,
-                             currentEnvironment: currentEnvironment(of: id, in: environments.environments))
+                             currentEnvironment: currentEnvironment(of: id, in: environments.environments),
+                             graphEnabled: graphEnabled(of: id))
     }
 
     /// `project.updated` with the current ProjectDetail.

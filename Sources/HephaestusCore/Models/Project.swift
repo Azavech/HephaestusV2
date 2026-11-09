@@ -26,6 +26,9 @@ public struct Project: Codable, Sendable, Hashable {
     public var webTabs: [WebTab]
     public var skills: [String]
     public var chatDefaults: ChatSettings?
+    /// Whether the Graph of a Go service is enabled; false when the key is absent
+    /// (docs/graph.md › Enabling).
+    public var graphEnabled: Bool
     /// The environments of a Go service, in the order they were added (docs/projects.md ›
     /// Environments).
     public var environments: [ProjectEnvironment]
@@ -35,6 +38,9 @@ public struct Project: Codable, Sendable, Hashable {
     /// The widgets of the project's Dashboard, in their order; nil when the project has no stored
     /// list, which shows `DashboardWidget.defaultList` (docs/dashboard.md › Widgets).
     public var dashboardWidgets: [DashboardWidget]?
+    /// The time window of the Dashboard's graph widgets; nil is `hour` (docs/dashboard.md › Graph
+    /// widgets).
+    public var dashboardGraphWindow: GraphWindow?
     /// The costs of the deleted chats, in deletion order (docs/costs.md › Deleted chats).
     public var deletedChats: [DeletedChat]
     /// The costs of the comment answers, in the order the calls ended, deleted tickets' included
@@ -45,9 +51,9 @@ public struct Project: Codable, Sendable, Hashable {
     public init(schema: Int = 1, id: ProjectID, name: String, created: Date, type: ProjectType = .none, color: String? = nil, icon: String? = nil,
                 nextTicketNumber: Int = 1, nextBundleNumber: Int = 1, docsPath: String = "docs", githubPage: String? = nil,
                 useParentSettings: Bool = true, subprojects: [String] = [], webTabs: [WebTab] = [], skills: [String] = [],
-                chatDefaults: ChatSettings? = nil, environments: [ProjectEnvironment] = [],
+                chatDefaults: ChatSettings? = nil, graphEnabled: Bool = false, environments: [ProjectEnvironment] = [],
                 environmentOverrides: [String: EnvironmentOverride] = [:], dashboardWidgets: [DashboardWidget]? = nil,
-                deletedChats: [DeletedChat] = [], commentAnswers: [CommentAnswerCost] = [], unknownKeys: [String: JSONValue] = [:]) {
+                dashboardGraphWindow: GraphWindow? = nil, deletedChats: [DeletedChat] = [], commentAnswers: [CommentAnswerCost] = [], unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
         self.id = id
         self.name = name
@@ -64,9 +70,11 @@ public struct Project: Codable, Sendable, Hashable {
         self.webTabs = webTabs
         self.skills = skills
         self.chatDefaults = chatDefaults
+        self.graphEnabled = graphEnabled
         self.environments = environments
         self.environmentOverrides = environmentOverrides
         self.dashboardWidgets = dashboardWidgets
+        self.dashboardGraphWindow = dashboardGraphWindow
         self.deletedChats = deletedChats
         self.commentAnswers = commentAnswers
         self.unknownKeys = unknownKeys
@@ -76,8 +84,8 @@ public struct Project: Codable, Sendable, Hashable {
     static let knownKeys: Set<String> = [
         "schema", "id", "name", "created", "type", "color", "icon", "nextTicketNumber", "nextBundleNumber", "docsPath",
         "githubPage", "useParentSettings",
-        "subprojects", "webTabs", "skills", "chatDefaults", "environments", "environmentOverrides", "dashboardWidgets", "deletedChats",
-        "commentAnswers",
+        "subprojects", "webTabs", "skills", "chatDefaults", "graphEnabled", "environments", "environmentOverrides", "dashboardWidgets",
+        "dashboardGraphWindow", "deletedChats", "commentAnswers",
     ]
 
     public init(from decoder: Decoder) throws {
@@ -112,9 +120,11 @@ public struct Project: Codable, Sendable, Hashable {
         skills = try c.value("skills", default: [])
         try c.checkAll("skills", skills, Identifiers.isSkillName, "skill name")
         chatDefaults = try c.optional("chatDefaults")
+        graphEnabled = try c.value("graphEnabled", default: false)
         environments = try c.value("environments", default: [])
         environmentOverrides = try c.value("environmentOverrides", default: [:])
         dashboardWidgets = try c.optional("dashboardWidgets")
+        dashboardGraphWindow = try c.optional("dashboardGraphWindow")
         deletedChats = try c.value("deletedChats", default: [])
         commentAnswers = try c.value("commentAnswers", default: [])
         unknownKeys = try c.unknownKeys(known: Self.knownKeys)
@@ -147,12 +157,20 @@ public struct Project: Codable, Sendable, Hashable {
         try c.encode(webTabs, "webTabs")
         try c.encode(skills, "skills")
         try c.encodeOptional(chatDefaults, "chatDefaults")
+        // Left out of the file while it is false; always written in the JSON form.
+        if graphEnabled || !c.isYAML {
+            try c.encode(graphEnabled, "graphEnabled")
+        }
         try c.encode(environments, "environments")
         // The names in Unicode code point order (docs/data-model.md › Project file).
         try c.encode(EnvironmentOverride.SortedMap(environmentOverrides), "environmentOverrides")
         // Left out of the file when there is no stored list; `null` in the JSON form.
         if dashboardWidgets != nil || !c.isYAML {
             try c.encodeOptional(dashboardWidgets, "dashboardWidgets")
+        }
+        // Left out of the file when the Dashboard keeps the default window; `null` in the JSON form.
+        if dashboardGraphWindow != nil || !c.isYAML {
+            try c.encodeOptional(dashboardGraphWindow, "dashboardGraphWindow")
         }
         try c.encode(deletedChats, "deletedChats")
         try c.encode(commentAnswers, "commentAnswers")
@@ -203,6 +221,12 @@ public struct Project: Codable, Sendable, Hashable {
     /// project has none (docs/dashboard.md › Widgets).
     public var dashboardWidgetList: [DashboardWidget] {
         dashboardWidgets ?? DashboardWidget.defaultList
+    }
+
+    /// The time window of the Dashboard's graph widgets: the stored one, else `hour`
+    /// (docs/dashboard.md › Graph widgets).
+    public var dashboardGraphWindowValue: GraphWindow {
+        dashboardGraphWindow ?? .hour
     }
 
     /// The cost of the deleted chats (docs/costs.md › Project totals).
@@ -456,6 +480,9 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
     public var namespace: String?
     /// The name of the Kubernetes Deployment that runs the service.
     public var deployment: String?
+    /// The Kubernetes Service of the environment's Jaeger, `<namespace>/<name>`, which the Graph
+    /// reads (docs/graph.md › Jaeger).
+    public var jaeger: String?
     /// The Argo CD Application that deploys the service: `<name>`, in the namespace `argocd`, or
     /// `<namespace>/<name>` ([ArgoCDApplicationRef]).
     public var argoCDApplication: String?
@@ -465,7 +492,7 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
     public var unknownKeys: [String: JSONValue]
 
     public init(name: String, url: String? = nil, port: Int? = nil, allowInvalidCertificates: Bool = false,
-                namespace: String? = nil, deployment: String? = nil, argoCDApplication: String? = nil,
+                namespace: String? = nil, deployment: String? = nil, jaeger: String? = nil, argoCDApplication: String? = nil,
                 kubeconfig: String? = nil, unknownKeys: [String: JSONValue] = [:]) {
         self.name = name
         self.url = url
@@ -473,6 +500,7 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
         self.allowInvalidCertificates = allowInvalidCertificates
         self.namespace = namespace
         self.deployment = deployment
+        self.jaeger = jaeger
         self.argoCDApplication = argoCDApplication
         self.kubeconfig = kubeconfig
         self.unknownKeys = unknownKeys
@@ -480,7 +508,7 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
 
     /// A `context` key, the kubectl context of earlier versions, is not known: it is kept as an
     /// unknown key and no longer used (docs/data-model.md › Project environment).
-    static let knownKeys: Set<String> = ["name", "url", "port", "allowInvalidCertificates", "namespace", "deployment",
+    static let knownKeys: Set<String> = ["name", "url", "port", "allowInvalidCertificates", "namespace", "deployment", "jaeger",
                                          "argoCDApplication", "kubeconfig"]
 
     public init(from decoder: Decoder) throws {
@@ -493,6 +521,7 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
         allowInvalidCertificates = try c.value("allowInvalidCertificates", default: false)
         namespace = ModelRules.trimmedOrNil(try c.optional("namespace", String.self))
         deployment = ModelRules.trimmedOrNil(try c.optional("deployment", String.self))
+        jaeger = ModelRules.trimmedOrNil(try c.optional("jaeger", String.self))
         argoCDApplication = ModelRules.trimmedOrNil(try c.optional("argoCDApplication", String.self))
         kubeconfig = ModelRules.trimmedOrNil(try c.optional("kubeconfig", String.self))
         unknownKeys = try c.unknownKeys(known: Self.knownKeys)
@@ -506,6 +535,7 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
         try c.encode(allowInvalidCertificates, "allowInvalidCertificates")
         try c.encodeOptional(namespace, "namespace")
         try c.encodeOptional(deployment, "deployment")
+        try c.encodeOptional(jaeger, "jaeger")
         try c.encodeOptional(argoCDApplication, "argoCDApplication")
         try c.encodeOptional(kubeconfig, "kubeconfig")
         try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
@@ -554,6 +584,7 @@ public struct ProjectEnvironment: Codable, Sendable, Hashable {
         }
         copy.namespace = try ModelRules.environmentLine(namespace, field: field, what: "a namespace")
         copy.deployment = try ModelRules.environmentLine(deployment, field: field, what: "a deployment")
+        copy.jaeger = try ModelRules.environmentJaeger(jaeger, field: field)
         copy.argoCDApplication = try ModelRules.environmentArgoCDApplication(argoCDApplication, field: field)
         copy.kubeconfig = try ModelRules.environmentKubeconfig(kubeconfig, field: field)
         return copy
@@ -596,29 +627,33 @@ public struct EnvironmentOverride: Codable, Sendable, Hashable {
     public var port: Int?
     public var allowInvalidCertificates: Bool?
     public var deployment: String?
+    /// `<namespace>/<name>`, as `ProjectEnvironment.jaeger`.
+    public var jaeger: String?
     /// `<name>` or `<namespace>/<name>`, as `ProjectEnvironment.argoCDApplication`.
     public var argoCDApplication: String?
     public var unknownKeys: [String: JSONValue]
 
     public init(url: String? = nil, port: Int? = nil, allowInvalidCertificates: Bool? = nil, deployment: String? = nil,
-                argoCDApplication: String? = nil, unknownKeys: [String: JSONValue] = [:]) {
+                jaeger: String? = nil, argoCDApplication: String? = nil, unknownKeys: [String: JSONValue] = [:]) {
         self.url = url
         self.port = port
         self.allowInvalidCertificates = allowInvalidCertificates
         self.deployment = deployment
+        self.jaeger = jaeger
         self.argoCDApplication = argoCDApplication
         self.unknownKeys = unknownKeys
     }
 
-    static let knownKeys: Set<String> = ["url", "port", "allowInvalidCertificates", "deployment", "argoCDApplication"]
+    static let knownKeys: Set<String> = ["url", "port", "allowInvalidCertificates", "deployment", "jaeger", "argoCDApplication"]
 
-    /// The three string keys are read trimmed, an empty value being null.
+    /// The four string keys are read trimmed, an empty value being null.
     public init(from decoder: Decoder) throws {
         let c = try ModelDecodingContainer(decoder)
         url = ModelRules.trimmedOrNil(try c.optional("url", String.self))
         port = try c.optional("port")
         allowInvalidCertificates = try c.optional("allowInvalidCertificates")
         deployment = ModelRules.trimmedOrNil(try c.optional("deployment", String.self))
+        jaeger = ModelRules.trimmedOrNil(try c.optional("jaeger", String.self))
         argoCDApplication = ModelRules.trimmedOrNil(try c.optional("argoCDApplication", String.self))
         unknownKeys = try c.unknownKeys(known: Self.knownKeys)
     }
@@ -629,13 +664,14 @@ public struct EnvironmentOverride: Codable, Sendable, Hashable {
         try c.encodeOptional(port, "port")
         try c.encodeOptional(allowInvalidCertificates, "allowInvalidCertificates")
         try c.encodeOptional(deployment, "deployment")
+        try c.encodeOptional(jaeger, "jaeger")
         try c.encodeOptional(argoCDApplication, "argoCDApplication")
         try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
     }
 
     /// True when the change replaces none of the parent's values.
     public var isEmpty: Bool {
-        url == nil && port == nil && allowInvalidCertificates == nil && deployment == nil && argoCDApplication == nil
+        url == nil && port == nil && allowInvalidCertificates == nil && deployment == nil && jaeger == nil && argoCDApplication == nil
     }
 
     /// The parent's environment with the values this change sets; the other fields, its name
@@ -654,6 +690,9 @@ public struct EnvironmentOverride: Codable, Sendable, Hashable {
         if let deployment {
             result.deployment = deployment
         }
+        if let jaeger {
+            result.jaeger = jaeger
+        }
         if let argoCDApplication {
             result.argoCDApplication = argoCDApplication
         }
@@ -670,6 +709,7 @@ public struct EnvironmentOverride: Codable, Sendable, Hashable {
             copy.port = try ModelRules.environmentPort(port, field: field)
         }
         copy.deployment = try ModelRules.environmentLine(deployment, field: field, what: "a deployment")
+        copy.jaeger = try ModelRules.environmentJaeger(jaeger, field: field)
         copy.argoCDApplication = try ModelRules.environmentArgoCDApplication(argoCDApplication, field: field)
         return copy
     }

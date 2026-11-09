@@ -223,6 +223,13 @@ enum ProjectRules {
         return valid ? nil : "Enter an absolute path or a path starting with ~/."
     }
 
+    /// The Jaeger field: empty, or `<namespace>/<name>` after trimming (docs/projects.md ›
+    /// Environments).
+    static func environmentJaegerMessage(_ jaeger: String) -> String? {
+        guard let trimmed = ModelRules.trimmedOrNil(jaeger) else { return nil }
+        return ModelRules.isJaegerService(trimmed) ? nil : "Enter a Service as <namespace>/<name>, for example jaeger/jaeger."
+    }
+
     /// The names the Name field must not take: those of the project's own environments, the edited
     /// environment's own name excluded, and those of the environments it inherits
     /// (docs/projects.md › Inherited environments).

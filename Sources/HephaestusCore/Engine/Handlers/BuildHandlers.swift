@@ -237,7 +237,7 @@ struct BuildsContext: Sendable {
 }
 
 /// The process of one gh run, recorded when it starts.
-private final class StartedProcess: @unchecked Sendable {
+final class StartedProcess: @unchecked Sendable {
     private let lock = NSLock()
     private var current: ChildProcess?
 

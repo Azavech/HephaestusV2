@@ -134,10 +134,11 @@ The client fills the [FeedbackContext](engine-api.md#feedbackcontext) from the c
 | `memories`        | name of the selected memory; `MEMORY.md` when the index is selected           |
 | `costs`           | absent                                                                        |
 | `apiExplorer`     | absent                                                                        |
+| `graph`           | absent                                                                        |
 | `settings`        | absent                                                                        |
 | chat window       | title of the window's chat                                                    |
 
-A chat window counts as the `chats` section of its project, and `apiExplorer` has no item, as its composer links none ([Explorer view](openapi.md#explorer-view)). Default chosen at design time. While a main window shows the Global Memories view ([Global Memories view](memories.md#global-memories-view)) or the Internal Skills view ([Internal Skills view](skills.md#internal-skills-view)), the context has no `section` and no `item`; the screenshot shows the view. Default chosen at design time. The same holds while it shows a sub project's Dashboard ([Sidebar](ui.md#sidebar)): `projectID` is the active project, and the screenshot shows the sub project's Dashboard. Default chosen at design time.
+A chat window counts as the `chats` section of its project, `apiExplorer` has no item, as its composer links none ([Explorer view](openapi.md#explorer-view)), and neither has `graph`. Default chosen at design time. While a main window shows the Global Memories view ([Global Memories view](memories.md#global-memories-view)) or the Internal Skills view ([Internal Skills view](skills.md#internal-skills-view)), the context has no `section` and no `item`; the screenshot shows the view. Default chosen at design time. The same holds while it shows a sub project's Dashboard ([Sidebar](ui.md#sidebar)): `projectID` is the active project, and the screenshot shows the sub project's Dashboard. Default chosen at design time.
 
 Example, captured in a remote window of the MacBook showing the device Studio, with the GitHub tab selected:
 

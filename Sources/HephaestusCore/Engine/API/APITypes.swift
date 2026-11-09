@@ -165,13 +165,17 @@ public struct ProjectDetail: Codable, Sendable, Hashable {
     /// it, else the first of `environments`; absent without environments (docs/projects.md ›
     /// Current working environment).
     public var currentEnvironment: String?
+    /// Whether the project's Graph is enabled: its parent's for a `goService` sub project that
+    /// uses its parent's settings, its own for another `goService` project, false otherwise
+    /// (docs/graph.md › Enabling).
+    public var graphEnabled: Bool
 
     /// Without `environments`, the project's own environments apply, as a project that inherits
-    /// none has them.
+    /// none has them; without `graphEnabled`, its own `graphEnabled` for a Go service.
     public init(project: Project, rootPath: String, parentID: ProjectID? = nil, subprojects: [ProjectSummary] = [],
                 gitRemoteURL: String? = nil, githubPage: String? = nil, originGithubPage: String? = nil,
                 environments: [ProjectEnvironment]? = nil, inheritedEnvironments: [ProjectEnvironment] = [],
-                currentEnvironment: String? = nil) {
+                currentEnvironment: String? = nil, graphEnabled: Bool? = nil) {
         self.project = project
         self.rootPath = rootPath
         self.parentID = parentID
@@ -182,11 +186,12 @@ public struct ProjectDetail: Codable, Sendable, Hashable {
         self.environments = environments ?? Self.ownEnvironments(of: project)
         self.inheritedEnvironments = inheritedEnvironments
         self.currentEnvironment = currentEnvironment
+        self.graphEnabled = graphEnabled ?? (project.type == .goService && project.graphEnabled)
     }
 
     private enum CodingKeys: String, CodingKey {
         case project, rootPath, parentID, subprojects, gitRemoteURL, githubPage, originGithubPage, environments,
-             inheritedEnvironments, currentEnvironment
+             inheritedEnvironments, currentEnvironment, graphEnabled
     }
 
     /// An engine of an earlier version sends neither `environments` nor `inheritedEnvironments`:
@@ -203,6 +208,8 @@ public struct ProjectDetail: Codable, Sendable, Hashable {
         environments = try c.decodeIfPresent([ProjectEnvironment].self, forKey: .environments) ?? Self.ownEnvironments(of: project)
         inheritedEnvironments = try c.decodeIfPresent([ProjectEnvironment].self, forKey: .inheritedEnvironments) ?? []
         currentEnvironment = try c.decodeIfPresent(String.self, forKey: .currentEnvironment)
+        // An engine of an earlier version sends no `graphEnabled`: the graph is not enabled.
+        graphEnabled = try c.decodeIfPresent(Bool.self, forKey: .graphEnabled) ?? false
     }
 
     /// The current working environment as it applies: the one `currentEnvironment` names, else the
@@ -477,6 +484,8 @@ public enum ProjectSection: String, Codable, Sendable, Hashable, CaseIterable {
     case memories
     case costs
     case apiExplorer
+    /// The Graph of a Go service whose graph is enabled (docs/graph.md).
+    case graph
     case settings
 
     public init(from decoder: Decoder) throws {

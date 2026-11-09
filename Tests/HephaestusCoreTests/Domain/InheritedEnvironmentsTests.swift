@@ -75,12 +75,14 @@ struct InheritedEnvironmentsTests {
                     port: 8081
                     allowInvalidCertificates: null
                     deployment: null
+                    jaeger: null
                     argoCDApplication: null
                   staging:
                     url: https://worker.staging.example.com
                     port: null
                     allowInvalidCertificates: null
                     deployment: orders-worker
+                    jaeger: null
                     argoCDApplication: argocd/orders-worker-staging
                 deletedChats: []
 
@@ -119,6 +121,7 @@ struct InheritedEnvironmentsTests {
                     port: null
                     allowInvalidCertificates: false
                     deployment: null
+                    jaeger: null
 
                 """))
 

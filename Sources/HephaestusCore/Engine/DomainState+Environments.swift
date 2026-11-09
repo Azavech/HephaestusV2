@@ -28,6 +28,7 @@ struct ResolvedEnvironments: Equatable, Sendable {
 /// environments or current working environment the change alters get `project.updated`.
 struct InheritedSettings: Equatable, Sendable {
     var githubPage: String?
+    var graphEnabled: Bool
     var environments: ResolvedEnvironments
     var currentEnvironment: String?
 }
@@ -54,6 +55,22 @@ extension Engine {
         return ResolvedEnvironments(own: project.environments, overrides: project.environmentOverrides, inherited: inherited)
     }
 
+    /// Whether a loaded project's Graph is enabled (docs/graph.md › Enabling): never for a project
+    /// whose type is not `goService`; for a sub project that uses its parent's settings, as its
+    /// parent resolves it; otherwise its own `graphEnabled`.
+    func graphEnabled(of id: ProjectID) -> Bool {
+        var current = id
+        var visited: Set<ProjectID> = []
+        while let loaded = domain.projects[current], visited.insert(current).inserted {
+            guard loaded.project.type == .goService else { return false }
+            guard loaded.project.useParentSettings, let parentID = loaded.parentID, domain.isLoaded(parentID) else {
+                return loaded.project.graphEnabled
+            }
+            current = parentID
+        }
+        return false
+    }
+
     /// The GitHub page and the environments of every loaded project: taken before a change, so that
     /// `emitInheritedSettingsChanges(since:except:origin:)` finds the projects whose settings it
     /// changed.
@@ -63,7 +80,7 @@ extension Engine {
 
     private func inheritedSettings(of id: ProjectID) -> InheritedSettings {
         let environments = resolvedEnvironments(of: id)
-        return InheritedSettings(githubPage: githubPage(of: id), environments: environments,
+        return InheritedSettings(githubPage: githubPage(of: id), graphEnabled: graphEnabled(of: id), environments: environments,
                                  currentEnvironment: currentEnvironment(of: id, in: environments.environments))
     }
 

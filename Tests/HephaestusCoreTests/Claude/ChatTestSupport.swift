@@ -190,7 +190,8 @@ extension Engine {
 /// temporary folder, then closes the connection and shuts the engine down.
 func withChatEngine<T>(launcher: FakeClaudeLauncher = FakeClaudeLauncher(), debugTools: Bool = false, settings: HostSettings? = nil,
                        chatTimings: ChatTimings = testChatTimings(), cliTimings: ClaudeCLITimings = testCLITimings(),
-                       waitForCLI: Bool = true, prepare: (ProjectFolder, DataDirectory) throws -> Void = { _, _ in },
+                       waitForCLI: Bool = true, githubCLI: (any GitHubCLIRunning)? = nil,
+                       prepare: (ProjectFolder, DataDirectory) throws -> Void = { _, _ in },
                        _ body: (ChatTestBed) async throws -> T) async throws -> T {
     try await TestEngineSlots.withSlot { try await withTemporaryDirectory { temporary in
         let data = DataDirectory(url: temporary.appendingPathComponent("Data", isDirectory: true))
@@ -202,7 +203,8 @@ func withChatEngine<T>(launcher: FakeClaudeLauncher = FakeClaudeLauncher(), debu
         try DeviceFileStore.write(Registry(projects: [folder.root.path]), to: data)
         if let settings { try DeviceFileStore.write(settings, to: data) }
         try prepare(folder, data)
-        let engine = try await Engine(configuration: .test(dataDirectory: data.url, debugTools: debugTools, claudeLauncher: launcher))
+        let engine = try await Engine(configuration: .test(dataDirectory: data.url, debugTools: debugTools, claudeLauncher: launcher,
+                                                           githubCLI: githubCLI))
         await engine.useFileTrash(.folder(temporary.appendingPathComponent("Trash", isDirectory: true)))
         await engine.useTimings(chats: chatTimings, cli: cliTimings)
         await engine.start()

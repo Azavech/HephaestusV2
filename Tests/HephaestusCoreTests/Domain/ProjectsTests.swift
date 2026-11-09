@@ -404,6 +404,7 @@ struct ProjectsTests {
                   allowInvalidCertificates: false
                   namespace: orders
                   deployment: orders-api
+                  jaeger: null
                   argoCDApplication: argocd/orders-staging
                   kubeconfig: ~/.kube/staging.yaml
                 - name: local
@@ -412,6 +413,7 @@ struct ProjectsTests {
                   allowInvalidCertificates: false
                   namespace: null
                   deployment: null
+                  jaeger: null
                   argoCDApplication: null
                   kubeconfig: null
                 - name: preview
@@ -420,6 +422,7 @@ struct ProjectsTests {
                   allowInvalidCertificates: false
                   namespace: orders-preview
                   deployment: null
+                  jaeger: null
                   argoCDApplication: null
                   kubeconfig: null
                   context: kind-preview

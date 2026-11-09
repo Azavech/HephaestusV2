@@ -84,6 +84,9 @@ public enum ProjectsUpdate: EngineMethod {
         public var githubPage: Patch<String> = .keep
         /// Whether a sub project uses its parent's settings (docs/projects.md › Sub projects).
         public var useParentSettings: Bool?
+        /// Whether the project's Graph is enabled (docs/graph.md › Enabling); the MCP tool
+        /// `update_project` never sends it.
+        public var graphEnabled: Bool?
         /// Clearable: null removes the project's chat defaults. Must be absent for claude.
         public var chatDefaults: Patch<ChatSettings> = .keep
         /// Replaces all environments, in the given order; the MCP tool `update_project` never
@@ -95,12 +98,15 @@ public enum ProjectsUpdate: EngineMethod {
         /// Replaces the widgets of the project's Dashboard, in the given order; only the
         /// Dashboard's edit mode sends it (docs/dashboard.md › Edit mode).
         public var dashboardWidgets: [DashboardWidget]?
+        /// Clearable: the time window of the Dashboard's graph widgets; null removes it, which is
+        /// `hour` (docs/dashboard.md › Graph widgets).
+        public var dashboardGraphWindow: Patch<GraphWindow> = .keep
 
         public init(projectID: ProjectID, name: String? = nil, type: ProjectType? = nil, color: Patch<String> = .keep,
                     icon: Patch<String> = .keep, docsPath: String? = nil, githubPage: Patch<String> = .keep,
-                    useParentSettings: Bool? = nil, chatDefaults: Patch<ChatSettings> = .keep,
+                    useParentSettings: Bool? = nil, graphEnabled: Bool? = nil, chatDefaults: Patch<ChatSettings> = .keep,
                     environments: [ProjectEnvironment]? = nil, environmentOverrides: [String: EnvironmentOverride]? = nil,
-                    dashboardWidgets: [DashboardWidget]? = nil) {
+                    dashboardWidgets: [DashboardWidget]? = nil, dashboardGraphWindow: Patch<GraphWindow> = .keep) {
             self.projectID = projectID
             self.name = name
             self.type = type
@@ -109,10 +115,12 @@ public enum ProjectsUpdate: EngineMethod {
             self.docsPath = docsPath
             self.githubPage = githubPage
             self.useParentSettings = useParentSettings
+            self.graphEnabled = graphEnabled
             self.chatDefaults = chatDefaults
             self.environments = environments
             self.environmentOverrides = environmentOverrides
             self.dashboardWidgets = dashboardWidgets
+            self.dashboardGraphWindow = dashboardGraphWindow
         }
     }
     public typealias Result = ProjectDetail

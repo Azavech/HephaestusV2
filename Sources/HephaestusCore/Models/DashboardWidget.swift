@@ -21,10 +21,15 @@ public struct DashboardWidget: Codable, Sendable, Hashable, Identifiable {
     public var chatCount: Int
     /// Recent Chats widgets: the kinds of the chats listed.
     public var chatKinds: [ChatKind]
+    /// Busiest calls and Failed requests widgets: the `Number` setting, the most rows listed, 1–20
+    /// (docs/dashboard.md › Graph widgets).
+    public var count: Int
     public var unknownKeys: [String: JSONValue]
 
     /// The values of `chatCount` that `projects.update` accepts.
     public static let chatCountRange = 1...20
+    /// The values of `count` that `projects.update` accepts.
+    public static let countRange = 1...20
     /// The chat kinds a Recent Chats widget offers and lists by default, in this order
     /// (docs/data-model.md › Dashboard widget): `project`, `ticket`, `bundle` and `feedback`.
     public static let chatKindChoices: [ChatKind] = [.project, .ticket, .bundle, .feedback]
@@ -34,7 +39,7 @@ public struct DashboardWidget: Codable, Sendable, Hashable, Identifiable {
     public init(id: UUID = UUID(), kind: DashboardWidgetKind, title: String = "",
                 fields: [DashboardProjectField] = DashboardProjectField.allCases, statuses: [TicketStatus] = TicketStatus.allCases,
                 includeSubprojects: Bool = true, chatCount: Int = 5, chatKinds: [ChatKind] = DashboardWidget.chatKindChoices,
-                unknownKeys: [String: JSONValue] = [:]) {
+                count: Int = 5, unknownKeys: [String: JSONValue] = [:]) {
         self.id = id
         self.kind = kind
         self.title = title
@@ -43,6 +48,7 @@ public struct DashboardWidget: Codable, Sendable, Hashable, Identifiable {
         self.includeSubprojects = includeSubprojects
         self.chatCount = chatCount
         self.chatKinds = chatKinds
+        self.count = count
         self.unknownKeys = unknownKeys
     }
 
@@ -61,7 +67,8 @@ public struct DashboardWidget: Codable, Sendable, Hashable, Identifiable {
         case .tickets: return ["statuses", "includeSubprojects"]
         case .recentChats: return ["chatCount", "chatKinds"]
         case .cost: return ["includeSubprojects"]
-        case .instances: return []
+        case .busiestCalls, .failedRequests: return ["count"]
+        case .instances, .serviceGraph, .requestsPerMinute: return []
         }
     }
 
@@ -80,6 +87,7 @@ public struct DashboardWidget: Codable, Sendable, Hashable, Identifiable {
         includeSubprojects = keys.contains("includeSubprojects") ? try c.value("includeSubprojects", default: true) : true
         chatCount = keys.contains("chatCount") ? try c.value("chatCount", default: 5) : 5
         chatKinds = keys.contains("chatKinds") ? try c.value("chatKinds", default: Self.chatKindChoices) : Self.chatKindChoices
+        count = keys.contains("count") ? try c.value("count", default: 5) : 5
         unknownKeys = try c.unknownKeys(known: Self.knownKeys(of: kind))
     }
 
@@ -94,6 +102,7 @@ public struct DashboardWidget: Codable, Sendable, Hashable, Identifiable {
             case "statuses": try c.encode(statuses, key)
             case "includeSubprojects": try c.encode(includeSubprojects, key)
             case "chatCount": try c.encode(chatCount, key)
+            case "count": try c.encode(count, key)
             default: try c.encode(chatKinds, key)
             }
         }
@@ -116,7 +125,11 @@ public struct DashboardWidget: Codable, Sendable, Hashable, Identifiable {
                 throw ValidationError.invalid(field, "use a number of chats from 1 to 20")
             }
             try Self.checkList(chatKinds, field: field, item: "chat kind")
-        case .cost, .instances:
+        case .busiestCalls, .failedRequests:
+            guard Self.countRange.contains(count) else {
+                throw ValidationError.invalid(field, "use a number of rows from 1 to 20")
+            }
+        case .cost, .instances, .serviceGraph, .requestsPerMinute:
             break
         }
         return copy
@@ -165,6 +178,12 @@ public enum DashboardWidgetKind: String, Codable, Sendable, Hashable, CaseIterab
     /// The pods of the current working environment of a Go service (docs/dashboard.md ›
     /// Instances widget).
     case instances
+    /// The graph widgets (docs/dashboard.md › Graph widgets): the map of the Graph, the busiest
+    /// arrows, the failed requests and the requests per minute of the Dashboard's window.
+    case serviceGraph
+    case busiestCalls
+    case failedRequests
+    case requestsPerMinute
 
     public init(from decoder: Decoder) throws {
         self = try APIEnumCoding.decode(decoder)
@@ -179,13 +198,31 @@ public enum DashboardWidgetKind: String, Codable, Sendable, Hashable, CaseIterab
         case .recentChats: return "Recent Chats"
         case .cost: return "Cost"
         case .instances: return "Instances"
+        case .serviceGraph: return "Service graph"
+        case .busiestCalls: return "Busiest calls"
+        case .failedRequests: return "Failed requests"
+        case .requestsPerMinute: return "Requests per minute"
         }
     }
 
-    /// The kinds the Add Widget menu lists for a project of this type, in this order: Instances,
-    /// last, only for a Go service (docs/dashboard.md › Edit mode).
-    public static func addable(for type: ProjectType) -> [DashboardWidgetKind] {
-        allCases.filter { $0 != .instances || type == .goService }
+    /// Whether the kind is a graph widget, hidden while the project's graph is not enabled
+    /// (docs/dashboard.md › Graph widgets).
+    public var isGraph: Bool {
+        switch self {
+        case .serviceGraph, .busiestCalls, .failedRequests, .requestsPerMinute: return true
+        case .project, .tickets, .recentChats, .cost, .instances: return false
+        }
+    }
+
+    /// The kinds the Add Widget menu lists for a project of this type, in this order: Instances
+    /// only for a Go service, then the graph widgets only while the project's graph is enabled
+    /// (docs/dashboard.md › Edit mode).
+    public static func addable(for type: ProjectType, graphEnabled: Bool = false) -> [DashboardWidgetKind] {
+        allCases.filter { kind in
+            if kind == .instances { return type == .goService }
+            if kind.isGraph { return graphEnabled }
+            return true
+        }
     }
 }
 

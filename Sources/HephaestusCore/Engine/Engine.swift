@@ -60,6 +60,11 @@ public actor Engine {
     var apiRequestSender: APIRequestSender = { request, allowInvalidCertificates in
         try await OpenAPIHTTPClient.send(request, allowInvalidCertificates: allowInvalidCertificates)
     }
+    /// The source files, the port forwards to Jaeger and the shared reads of the `graph.*` methods
+    /// (Graph/GraphService.swift).
+    let graphs = GraphService()
+    /// Gets the answers of Jaeger (Graph/JaegerClient.swift); tests replace it.
+    var jaegerFetch: JaegerClient.Fetch = JaegerClient.urlSessionFetch
     /// The temporary folder of the body files of `api.call` (docs/mcp.md › api_call); tests change it.
     var apiResponseFolder = FileManager.default.temporaryDirectory
     /// Claude CLI location, status and models (Claude/ClaudeCLI.swift).
@@ -194,7 +199,8 @@ public actor Engine {
         async let portForwardProcesses: Void = stopPortForwards()
         async let kubectlProcesses: Void = stopKubectlRuns()
         async let githubRuns: Void = stopGitHubCLIRuns()
-        _ = await (chatProcesses, claudeHelpers, hephaestusClone, portForwardProcesses, kubectlProcesses, githubRuns)
+        async let jaegerForwards: Void = stopJaegerForwards()
+        _ = await (chatProcesses, claudeHelpers, hephaestusClone, portForwardProcesses, kubectlProcesses, githubRuns, jaegerForwards)
 
         await stopMCPServer()
         await stopSyncServer()
@@ -362,6 +368,7 @@ public actor Engine {
         registerProjectHandlers()
         registerKubernetesHandlers()
         registerServiceAPIHandlers()
+        registerGraphHandlers()
         registerTicketHandlers()
         registerAttachmentHandlers()
         registerBundleHandlers()

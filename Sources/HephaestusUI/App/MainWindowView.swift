@@ -223,6 +223,12 @@ private struct ProjectColumns: View {
                                        isShown: workspace.showsAPIExplorer(project.id)), initial: true) {
             state.leaveHiddenAPIExplorer(in: workspace)
         }
+        // The window leaves the Graph of a project whose graph is not enabled (docs/graph.md ›
+        // Enabling).
+        .onChange(of: GraphRowState(deviceID: workspace.deviceID, projectID: project.id, section: state.section,
+                                    isShown: workspace.details[project.id].map(\.graphEnabled)), initial: true) {
+            state.leaveHiddenGraph(in: workspace)
+        }
     }
 }
 
@@ -241,6 +247,15 @@ private struct APIExplorerFollow: Hashable {
 
 /// What makes the window check that its API Explorer section still has its row.
 private struct APIExplorerState: Hashable {
+    var deviceID: String
+    var projectID: String
+    var section: ProjectSection
+    var isShown: Bool?
+}
+
+/// What makes the window check that its project's Graph row is shown: nil `isShown` while the
+/// project's detail is loading.
+private struct GraphRowState: Hashable {
     var deviceID: String
     var projectID: String
     var section: ProjectSection
@@ -323,6 +338,9 @@ private struct SectionContent: View {
             CostsSectionView(window: state, workspace: workspace, projectID: projectID)
         case .apiExplorer:
             APIExplorerView(window: state, workspace: workspace, projectID: projectID)
+        case .graph:
+            GraphSectionView(window: state, workspace: workspace, projectID: projectID)
+                .id("\(workspace.deviceID)/\(projectID)")
         case .settings:
             ProjectSettingsView(window: state, workspace: workspace, projectID: projectID)
         }

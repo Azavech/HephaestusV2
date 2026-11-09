@@ -200,6 +200,13 @@ enum DashboardEdits {
         let range = DashboardWidget.chatCountRange
         return min(max(DashboardContent.chatLimit(of: widget) + step, range.lowerBound), range.upperBound)
     }
+
+    /// A click on the stepper of `Number`: one more or one less than the newest number, within
+    /// 1–20.
+    static func steppingCount(of widget: DashboardWidget, by step: Int) -> Int {
+        let range = DashboardWidget.countRange
+        return min(max(DashboardGraph.rowLimit(of: widget) + step, range.lowerBound), range.upperBound)
+    }
 }
 
 /// The text a dragged widget carries: the token of the Dashboard that drags it and its slot, so
@@ -330,10 +337,28 @@ private struct DashboardSection: View {
     @State private var dragging: DashboardSlot?
     /// The widget a dragged widget is over.
     @State private var dropTarget: DashboardSlot?
+    /// The graph of the graph widgets (docs/dashboard.md › Graph widgets).
+    @State private var graphFeed = DashboardGraphFeed()
 
     /// The stored list, or the default list of a project without one (docs/dashboard.md › Widgets).
     private var widgets: [DashboardWidget] {
         workspace.details[projectID]?.project.dashboardWidgetList ?? DashboardWidget.defaultList
+    }
+
+    /// Whether the project's graph is enabled: its graph widgets show and are offered
+    /// (docs/dashboard.md › Graph widgets).
+    private var graphEnabled: Bool {
+        workspace.details[projectID]?.graphEnabled == true
+    }
+
+    /// Whether the Dashboard shows a graph widget: the `Window` menu shows and the graph is read.
+    private var showsGraphWidget: Bool {
+        graphEnabled && widgets.contains { $0.kind.isGraph }
+    }
+
+    /// The time window of the graph widgets.
+    private var graphWindow: GraphWindow {
+        workspace.details[projectID]?.project.dashboardGraphWindowValue ?? .hour
     }
 
     var body: some View {
@@ -348,6 +373,12 @@ private struct DashboardSection: View {
             .onChange(of: editing) {
                 dragging = nil
             }
+            .task(id: DashboardGraphRead(environment: workspace.details[projectID]?.currentWorkingEnvironment, window: graphWindow,
+                                         active: showsGraphWidget)) {
+                guard showsGraphWidget, let environment = workspace.details[projectID]?.currentWorkingEnvironment else { return }
+                await graphFeed.read(workspace: workspace,
+                                     params: GraphRead.Params(projectID: projectID, environment: environment.name, window: graphWindow))
+            }
         }
     }
 
@@ -355,9 +386,20 @@ private struct DashboardSection: View {
         VStack(alignment: .trailing, spacing: 6) {
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
+                if showsGraphWidget {
+                    // The window of the graph widgets, stored in the project file.
+                    Picker("Window", selection: Binding(get: { graphWindow }, set: { applyGraphWindow($0) })) {
+                        ForEach(GraphWindow.allCases) { window in
+                            Text(window.label).tag(window)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                }
                 if editing {
                     Menu("Add Widget") {
-                        ForEach(DashboardWidgetKind.addable(for: workspace.project(projectID)?.type ?? ProjectType.none), id: \.self) { kind in
+                        ForEach(DashboardWidgetKind.addable(for: workspace.project(projectID)?.type ?? ProjectType.none,
+                                                            graphEnabled: graphEnabled), id: \.self) { kind in
                             Button(kind.title) {
                                 change { DashboardEdits.appending(kind, to: $0) }
                             }
@@ -377,7 +419,9 @@ private struct DashboardSection: View {
 
     private func grid(_ project: ProjectSummary) -> some View {
         let list = widgets
+        // The graph widgets are hidden while the graph is not enabled, and kept in the list.
         let items = zip(DashboardSlot.slots(of: list), list).map { DashboardItem(slot: $0, widget: $1) }
+            .filter { graphEnabled || !$0.widget.kind.isGraph }
         return DashboardColumnsLayout(spacing: 16) {
             ForEach(items, id: \.slot) { item in
                 card(item, project)
@@ -388,7 +432,7 @@ private struct DashboardSection: View {
     private func card(_ item: DashboardItem, _ project: ProjectSummary) -> some View {
         let slot = item.slot
         return DashboardWidgetCard(window: window, workspace: workspace, project: project, widget: item.widget,
-                                   editing: editing, isDropTarget: editing && dropTarget == slot,
+                                   graphFeed: graphFeed, editing: editing, isDropTarget: editing && dropTarget == slot,
                                    remove: {
                                        change { DashboardEdits.removing(slot, from: $0) }
                                    },
@@ -402,6 +446,22 @@ private struct DashboardSection: View {
                                      move: { source in
                                          change { DashboardEdits.moving(source, onto: slot, in: $0) }
                                      }))
+    }
+
+    /// Applies a window of the `Window` menu; the engine's message shows under the bar when it
+    /// fails, until the next change.
+    private func applyGraphWindow(_ window: GraphWindow) {
+        guard window != graphWindow else { return }
+        let workspace = workspace
+        let projectID = projectID
+        Task {
+            do {
+                _ = try await workspace.call(ProjectsUpdate.self, ProjectsUpdate.Params(projectID: projectID, dashboardGraphWindow: .set(window)))
+                failure = nil
+            } catch {
+                failure = errorMessage(error)
+            }
+        }
     }
 
     /// Sends a change; the engine's message shows under the bar when it fails, until the next
@@ -484,6 +544,13 @@ struct DashboardColumnsLayout: Layout {
     }
 }
 
+/// What makes the Dashboard read the graph of its graph widgets again.
+private struct DashboardGraphRead: Hashable {
+    var environment: ProjectEnvironment?
+    var window: GraphWindow
+    var active: Bool
+}
+
 /// A widget with its slot, for the layouts.
 private struct DashboardItem {
     var slot: DashboardSlot
@@ -497,6 +564,7 @@ private struct DashboardWidgetCard: View {
     let workspace: DeviceWorkspace
     let project: ProjectSummary
     let widget: DashboardWidget
+    let graphFeed: DashboardGraphFeed
     let editing: Bool
     let isDropTarget: Bool
     let remove: () -> Void
@@ -564,6 +632,9 @@ private struct DashboardWidgetCard: View {
         case .recentChats: recentChatsContent
         case .cost: costContent
         case .instances: InstancesWidgetContent(window: window, workspace: workspace, projectID: project.id)
+        case .serviceGraph, .busiestCalls, .failedRequests, .requestsPerMinute:
+            DashboardGraphWidgetContent(window: window, workspace: workspace, project: project, widget: widget, feed: graphFeed,
+                                        editing: editing)
         }
     }
 
@@ -907,7 +978,12 @@ private struct DashboardWidgetSettings: View {
                 }
             case .cost:
                 includeSubprojectsRow
-            case .instances:
+            case .busiestCalls, .failedRequests:
+                GridRow {
+                    Text("Number")
+                    countStepper
+                }
+            case .instances, .serviceGraph, .requestsPerMinute:
                 // The Title setting only.
                 EmptyView()
             }
@@ -938,6 +1014,20 @@ private struct DashboardWidgetSettings: View {
             Stepper("Number of chats",
                     onIncrement: count < range.upperBound ? { send { $0.chatCount = DashboardEdits.steppingChatCount(of: $0, by: 1) } } : nil,
                     onDecrement: count > range.lowerBound ? { send { $0.chatCount = DashboardEdits.steppingChatCount(of: $0, by: -1) } } : nil)
+                .labelsHidden()
+        }
+    }
+
+    /// The number, then the stepper of the `Number` setting, 1 to 20 (docs/dashboard.md › Settings).
+    private var countStepper: some View {
+        let count = DashboardGraph.rowLimit(of: widget)
+        let range = DashboardWidget.countRange
+        return HStack(spacing: 6) {
+            Text(String(count))
+                .monospacedDigit()
+            Stepper("Number",
+                    onIncrement: count < range.upperBound ? { send { $0.count = DashboardEdits.steppingCount(of: $0, by: 1) } } : nil,
+                    onDecrement: count > range.lowerBound ? { send { $0.count = DashboardEdits.steppingCount(of: $0, by: -1) } } : nil)
                 .labelsHidden()
         }
     }

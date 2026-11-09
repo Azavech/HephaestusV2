@@ -319,6 +319,7 @@ struct ModelCodingTests {
               allowInvalidCertificates: false
               namespace: null
               deployment: null
+              jaeger: null
               argoCDApplication: null
               kubeconfig: null
             - name: staging
@@ -327,6 +328,7 @@ struct ModelCodingTests {
               allowInvalidCertificates: true
               namespace: orders
               deployment: orders-api
+              jaeger: null
               argoCDApplication: argocd/orders-staging
               kubeconfig: ~/.kube/staging.yaml
             - name: preview
@@ -335,6 +337,7 @@ struct ModelCodingTests {
               allowInvalidCertificates: false
               namespace: null
               deployment: null
+              jaeger: null
               argoCDApplication: null
               kubeconfig: ~/.kube/preview.yaml
             environmentOverrides: {}
@@ -398,18 +401,21 @@ struct ModelCodingTests {
                 port: null
                 allowInvalidCertificates: null
                 deployment: null
+                jaeger: null
                 argoCDApplication: argocd/z
               local:
                 url: null
                 port: 8081
                 allowInvalidCertificates: true
                 deployment: null
+                jaeger: null
                 argoCDApplication: null
               staging:
                 url: https://worker.example.com
                 port: null
                 allowInvalidCertificates: null
                 deployment: orders-worker
+                jaeger: null
                 argoCDApplication: null
             deletedChats: []
 

@@ -17,7 +17,7 @@ Every change starts in these docs; the code is generated or updated to match the
 2. [architecture.md](architecture.md): the engine, its clients, the modules and the processes.
 3. [ui.md](ui.md), [projects.md](projects.md), [dashboard.md](dashboard.md) and [tickets.md](tickets.md): the windows, the projects and the tickets the user works with.
 4. [workflow.md](workflow.md), [chats.md](chats.md) and [mcp.md](mcp.md): how Claude works in the app.
-5. The other features: [web-tabs.md](web-tabs.md), [code-editor.md](code-editor.md), [openapi.md](openapi.md), [documentation-viewer.md](documentation-viewer.md), [costs.md](costs.md), [search.md](search.md), [skills.md](skills.md), [memories.md](memories.md), [builds.md](builds.md), [feedback.md](feedback.md) and [remote.md](remote.md).
+5. The other features: [web-tabs.md](web-tabs.md), [code-editor.md](code-editor.md), [openapi.md](openapi.md), [graph.md](graph.md), [documentation-viewer.md](documentation-viewer.md), [costs.md](costs.md), [search.md](search.md), [skills.md](skills.md), [memories.md](memories.md), [builds.md](builds.md), [feedback.md](feedback.md) and [remote.md](remote.md).
 6. The reference contracts, read when a feature needs them: [data-model.md](data-model.md) and [engine-api.md](engine-api.md).
 7. Delivery: [updater.md](updater.md), [ci.md](ci.md) and [development.md](development.md).
 
@@ -38,6 +38,7 @@ Every change starts in these docs; the code is generated or updated to match the
 | [web-tabs.md](web-tabs.md)                         | The integrated browser: tab strip, address bar, navigation, locked tabs, popups, downloads and website data.                                                                                            |
 | [code-editor.md](code-editor.md)                   | File tree, editor tabs, the editor, saving, changes on disk and the syntax highlighting rules for Go, Swift and the basic languages.                                                                    |
 | [openapi.md](openapi.md)                           | The Contract view of OpenAPI 3.x files in the Code section and the API Explorer: detection, Source switch, `$ref` resolution, request form, sending, response and stored values.                        |
+| [graph.md](graph.md)                               | The Graph section of a Go service: the services, postgres Clusters and buckets of its namespace, their calls and requests read from Jaeger, the layout, the navigation and the view of a request.       |
 | [documentation-viewer.md](documentation-viewer.md) | The Docs section with its Preview, Edit and Split modes, and the shared Markdown renderer.                                                                                                              |
 | [costs.md](costs.md)                               | The cost of each chat and comment answer, the project totals with sub projects, the costs of deleted chats, the Costs section and the status bar item.                                                  |
 | [search.md](search.md)                             | Search scopes, matching, ranking, sources, snippets and the search panel.                                                                                                                               |

@@ -241,6 +241,12 @@ private struct ViewCommands: View {
         }
         .keyboardShortcut(ProjectSection.apiExplorer.shortcut)
         .disabled(!(window?.showsAPIExplorer ?? false))
+        // Enabled while the active project's sidebar shows the row, without shortcut
+        // (docs/graph.md › Enabling).
+        Button(ProjectSection.graph.title) {
+            window?.section = .graph
+        }
+        .disabled(!(window?.showsGraph ?? false))
         Divider()
         let showsDoc = window?.shownSection == .docs && window?.viewState.selectedDocPath != nil
         Menu("Doc Mode") {

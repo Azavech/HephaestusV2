@@ -60,6 +60,7 @@ private struct ProjectSettingsForm: View {
 
     @State private var typeFailure: String?
     @State private var parentSettingsFailure: String?
+    @State private var graphFailure: String?
     @State private var chatDefaultsFailure: String?
 
     private var project: Project { detail.project }
@@ -147,6 +148,14 @@ private struct ProjectSettingsForm: View {
                     }
                 }
                 if project.type == .goService {
+                    row("Graph") {
+                        // The parent's graph, disabled, while the project uses its parent's settings
+                        // (docs/projects.md › Project settings).
+                        Toggle("Enable graph", isOn: graphBinding)
+                            .toggleStyle(.checkbox)
+                            .disabled(usesParentSettings)
+                        FieldMessage(text: graphFailure)
+                    }
                     // The section's rows join this grid, so that they use its label column.
                     ProjectEnvironmentsSection(workspace: workspace, detail: detail, parentName: parentName) { params in
                         await update(params)
@@ -241,6 +250,17 @@ private struct ProjectSettingsForm: View {
             guard on != project.useParentSettings else { return }
             Task {
                 parentSettingsFailure = await update(ProjectsUpdate.Params(projectID: project.id, useParentSettings: on))
+            }
+        })
+    }
+
+    /// The `Enable graph` checkbox applies its state as soon as it changes; it shows the graph that
+    /// applies, its parent's while the project uses its parent's settings.
+    private var graphBinding: Binding<Bool> {
+        Binding(get: { usesParentSettings ? detail.graphEnabled : project.graphEnabled }, set: { on in
+            guard !usesParentSettings, on != project.graphEnabled else { return }
+            Task {
+                graphFailure = await update(ProjectsUpdate.Params(projectID: project.id, graphEnabled: on))
             }
         })
     }

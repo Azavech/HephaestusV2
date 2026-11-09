@@ -24,15 +24,15 @@ struct SidebarSectionsTests {
     @Test("⌘1 to ⌘9, then ⌘0, select the listed sections, ⌘B selects Builds and ⇧⌘, selects Project Settings")
     func shortcuts() {
         for (index, section) in ProjectSection.listed.filter({ $0 != .builds }).enumerated() {
-            #expect(section.shortcut.key == KeyEquivalent(Character(String((index + 1) % 10))))
-            #expect(section.shortcut.modifiers == .command)
+            #expect(section.shortcut?.key == KeyEquivalent(Character(String((index + 1) % 10))))
+            #expect(section.shortcut?.modifiers == .command)
         }
-        #expect(ProjectSection.memories.shortcut.key == KeyEquivalent("9"))
-        #expect(ProjectSection.costs.shortcut.key == KeyEquivalent("0"))
-        #expect(ProjectSection.settings.shortcut.key == KeyEquivalent(","))
-        #expect(ProjectSection.settings.shortcut.modifiers == [.command, .shift])
-        #expect(ProjectSection.builds.shortcut.key == KeyEquivalent("b"))
-        #expect(ProjectSection.builds.shortcut.modifiers == .command)
+        #expect(ProjectSection.memories.shortcut?.key == KeyEquivalent("9"))
+        #expect(ProjectSection.costs.shortcut?.key == KeyEquivalent("0"))
+        #expect(ProjectSection.settings.shortcut?.key == KeyEquivalent(","))
+        #expect(ProjectSection.settings.shortcut?.modifiers == [.command, .shift])
+        #expect(ProjectSection.builds.shortcut?.key == KeyEquivalent("b"))
+        #expect(ProjectSection.builds.shortcut?.modifiers == .command)
     }
 
     @Test("The footer's pop-up lists the environments of a Go service in their order; another type and a Go service without environments show none")
@@ -76,13 +76,43 @@ struct SidebarSectionsTests {
     func apiExplorerRow() {
         #expect(ProjectSection.apiExplorer.title == "API Explorer")
         #expect(ProjectSection.apiExplorer.symbol == "point.3.connected.trianglepath.dotted")
-        #expect(ProjectSection.apiExplorer.shortcut.key == KeyEquivalent("e"))
-        #expect(ProjectSection.apiExplorer.shortcut.modifiers == [.command, .shift])
+        #expect(ProjectSection.apiExplorer.shortcut?.key == KeyEquivalent("e"))
+        #expect(ProjectSection.apiExplorer.shortcut?.modifiers == [.command, .shift])
         #expect(!ProjectSection.listed.contains(.apiExplorer))
         var state = ProjectViewState()
         state.selectedEditorPath = "openapi/contract.yaml"
         state.selectedDocPath = "docs/ui.md"
         #expect(state.openItems(in: .apiExplorer).isEmpty)
+    }
+
+    @Test("Graph: its title, symbol, no shortcut, not a listed row; it links no item")
+    func graphRow() {
+        #expect(ProjectSection.graph.title == "Graph")
+        #expect(ProjectSection.graph.symbol == "circle.hexagongrid")
+        #expect(ProjectSection.graph.shortcut == nil)
+        #expect(!ProjectSection.listed.contains(.graph))
+        #expect(ProjectSection.allCases.firstIndex(of: .graph) == ProjectSection.allCases.firstIndex(of: .apiExplorer)! + 1)
+        var state = ProjectViewState()
+        state.selectedDocPath = "docs/ui.md"
+        #expect(state.openItems(in: .graph).isEmpty)
+    }
+
+    @Test("A window leaves the Graph of a loaded project whose graph is not enabled; it stays while it is")
+    func leavesHiddenGraph() async {
+        let workspace = DeviceWorkspace(deviceID: "device", connection: OfflineConnection(), isLocal: true)
+        let window = WindowState(id: UUID(), deviceID: "device")
+        window.projectID = "API"
+        window.section = .graph
+        window.leaveHiddenGraph(in: workspace)
+        #expect(window.section == .graph)
+        var project = Project(id: "API", name: "API", created: Date(), type: .goService, graphEnabled: true)
+        workspace.details["API"] = ProjectDetail(project: project, rootPath: "/Users/example/api")
+        window.leaveHiddenGraph(in: workspace)
+        #expect(window.section == .graph)
+        project.graphEnabled = false
+        workspace.details["API"] = ProjectDetail(project: project, rootPath: "/Users/example/api")
+        window.leaveHiddenGraph(in: workspace)
+        #expect(window.section == .dashboard)
     }
 
     @Test("A new window opens on the Dashboard, also when its stored state has no section")
@@ -105,14 +135,23 @@ struct SidebarSectionsTests {
 /// docs/ui.md › Sidebar: the categories shown for each project type.
 @Suite("Sidebar categories")
 struct SidebarCategoriesTests {
-    @Test("Project holds every listed section; Go Service only for the Go service type, with API Explorer while it shows",
+    @Test("Project holds every listed section; Go Service only for the Go service type, with API Explorer and Graph while they show",
           arguments: ProjectType.allCases, [false, true])
     func categories(_ type: ProjectType, showsAPIExplorer: Bool) {
+        for showsGraph in [false, true] {
+            let categories = SidebarCategory.categories(for: type, showsBuilds: true, showsAPIExplorer: showsAPIExplorer,
+                                                        showsGraph: showsGraph)
+            #expect(categories.first == SidebarCategory(title: "Project", sections: ProjectSection.listed))
+            #expect(!categories.contains { $0.sections.contains(.settings) })
+            if type == .goService {
+                #expect(categories.map(\.title) == ["Project", "Go Service"])
+                #expect(categories[1].sections == (showsAPIExplorer ? [.apiExplorer] : []) + (showsGraph ? [.graph] : []))
+            } else {
+                #expect(categories.map(\.title) == ["Project"])
+            }
+        }
         let categories = SidebarCategory.categories(for: type, showsBuilds: true, showsAPIExplorer: showsAPIExplorer)
-        #expect(categories.first == SidebarCategory(title: "Project", sections: ProjectSection.listed))
-        #expect(!categories.contains { $0.sections.contains(.settings) })
         if type == .goService {
-            #expect(categories.map(\.title) == ["Project", "Go Service"])
             #expect(categories[1].sections == (showsAPIExplorer ? [.apiExplorer] : []))
         } else {
             #expect(categories.map(\.title) == ["Project"])

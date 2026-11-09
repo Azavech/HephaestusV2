@@ -242,6 +242,24 @@ public enum ModelRules {
         return (1...2).contains(parts.count) && parts.allSatisfy { !$0.isEmpty }
     }
 
+    /// Environment `jaeger`: trimmed, nil when empty, otherwise `<namespace>/<name>`
+    /// (docs/data-model.md › Project environment).
+    public static func environmentJaeger(_ value: String?, field: String) throws -> String? {
+        guard let trimmed = trimmedOrNil(value) else { return nil }
+        guard isJaegerService(trimmed) else {
+            throw ValidationError.invalid(field, "use a Jaeger as <namespace>/<name>")
+        }
+        return trimmed
+    }
+
+    /// Whether `value` is the Kubernetes Service of a Jaeger, `<namespace>/<name>`: exactly one
+    /// `/`, the parts not empty, no white space or line break.
+    public static func isJaegerService(_ value: String) -> Bool {
+        guard !value.contains(where: { $0.isWhitespace || $0.isNewline }) else { return false }
+        let parts = value.split(separator: "/", omittingEmptySubsequences: false)
+        return parts.count == 2 && parts.allSatisfy { !$0.isEmpty }
+    }
+
     /// Environment `kubeconfig`: trimmed, nil when empty, otherwise one line that is an absolute
     /// path or a path starting with `~/`.
     public static func environmentKubeconfig(_ value: String?, field: String) throws -> String? {

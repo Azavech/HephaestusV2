@@ -516,13 +516,13 @@ Input schema:
 ### get_project
 
 - **Engine call:** projects.get with `projectID`.
-- **Result:** the `ProjectDetail` ([Engine API](engine-api.md#projectdetail)). Its `githubPage` is the project's resolved [GitHub page](projects.md#github-page), absent when it has none. Its `environments` are the project's environments as they apply, each with its URL and port when it has them, `allowInvalidCertificates`, which tells whether the Contract view's requests to it accept an invalid server certificate, its namespace, deployment, Argo CD application and kubeconfig file ([Project environment](data-model.md#project-environment)): for a sub project that uses its parent's settings, its parent's environments with its changes first, then its own; `inheritedEnvironments` gives the inherited ones as its parent resolves them ([Inherited environments](projects.md#inherited-environments)). Its `currentEnvironment` names the project's [current working environment](projects.md#current-working-environment), the one to use when the user names no environment, absent when the project has no environment; no tool changes it. Its `project` holds the settings of `project.yml`, among them the page typed in Project Settings, `githubPage`; `useParentSettings`, which tells whether a sub project uses its parent's settings; its own `environments`; and `environmentOverrides`, its changes to the environments it inherits.
+- **Result:** the `ProjectDetail` ([Engine API](engine-api.md#projectdetail)). Its `githubPage` is the project's resolved [GitHub page](projects.md#github-page), absent when it has none. Its `environments` are the project's environments as they apply, each with its URL and port when it has them, `allowInvalidCertificates`, which tells whether the Contract view's requests to it accept an invalid server certificate, its namespace, deployment, Jaeger, Argo CD application and kubeconfig file ([Project environment](data-model.md#project-environment)): for a sub project that uses its parent's settings, its parent's environments with its changes first, then its own; `inheritedEnvironments` gives the inherited ones as its parent resolves them ([Inherited environments](projects.md#inherited-environments)). Its `currentEnvironment` names the project's [current working environment](projects.md#current-working-environment), the one to use when the user names no environment, absent when the project has no environment; no tool changes it. Its `graphEnabled` tells whether the project's [Graph](graph.md) is enabled, its parent's for a sub project that uses its parent's settings; no tool changes it. Its `project` holds the settings of `project.yml`, among them the page typed in Project Settings, `githubPage`; `useParentSettings`, which tells whether a sub project uses its parent's settings; its own `environments`; and `environmentOverrides`, its changes to the environments it inherits.
 - **Errors:** Those of projects.get: no project with this identifier (`notFound`), malformed identifier (`invalid`).
 
 Description:
 
 ```text
-Get a project: its .hephaestus/project.yml settings (name, type, color, icon, docs folder, GitHub page, use parent settings, sub projects, web tabs, enabled skills, chat defaults, own environments, changes to inherited environments), root folder, parent, sub projects, git remote URL, GitHub page (githubPage: its parent's for a sub project that uses its parent's settings, else the page set in Project Settings, else the page of its origin remote on GitHub) and environments (environments: those that apply, for a sub project that uses its parent's settings its parent's environments with its changes first, then its own; inheritedEnvironments: the parent's environments it inherits; currentEnvironment: the name of the current working environment, to use when the user names no environment).
+Get a project: its .hephaestus/project.yml settings (name, type, color, icon, docs folder, GitHub page, use parent settings, sub projects, web tabs, enabled skills, chat defaults, graph enabled, own environments, changes to inherited environments), root folder, parent, sub projects, git remote URL, GitHub page (githubPage: its parent's for a sub project that uses its parent's settings, else the page set in Project Settings, else the page of its origin remote on GitHub), graph (graphEnabled: whether its Graph of service calls is enabled, its parent's for a sub project that uses its parent's settings) and environments (environments: those that apply, each with its Jaeger Service as <namespace>/<name>, for a sub project that uses its parent's settings its parent's environments with its changes first, then its own; inheritedEnvironments: the parent's environments it inherits; currentEnvironment: the name of the current working environment, to use when the user names no environment).
 ```
 
 Input schema:
@@ -591,7 +591,7 @@ Input schema:
 
 ### update_project
 
-- **Engine call:** projects.update with `projectID` and the given `name`, `type`, `color`, `icon` and `docsPath`. `color` is sent as given, and an empty `color` as `null`, which removes the project's color. `icon` is sent as given, and an `icon` that is `null` as `null`, which removes the project's icon as an empty `icon` does ([Null values](#null-values), [projects.update](engine-api.md#projectsupdate)). Default chosen at design time. `chatDefaults` is never sent: Claude cannot change chat defaults. `environments`, `environmentOverrides`, `githubPage` and `useParentSettings` are never sent either: only the user changes them, in [Project settings](projects.md#project-settings), the environments and the changes of inherited environments in its [Environments](projects.md#environments) part.
+- **Engine call:** projects.update with `projectID` and the given `name`, `type`, `color`, `icon` and `docsPath`. `color` is sent as given, and an empty `color` as `null`, which removes the project's color. `icon` is sent as given, and an `icon` that is `null` as `null`, which removes the project's icon as an empty `icon` does ([Null values](#null-values), [projects.update](engine-api.md#projectsupdate)). Default chosen at design time. `chatDefaults` is never sent: Claude cannot change chat defaults. `environments`, `environmentOverrides`, `githubPage`, `useParentSettings`, `graphEnabled` and `dashboardGraphWindow` are never sent either: only the user changes them, in [Project settings](projects.md#project-settings), the environments and the changes of inherited environments in its [Environments](projects.md#environments) part.
 - A call that changes nothing writes nothing and returns the project.
 - **Result:** the updated `ProjectDetail`.
 - **Errors:** Those of projects.update ([Engine API](engine-api.md#projectsupdate)): unknown project (`notFound`), invalid name, type, color or docs folder (`invalid`), an icon that is not an SF Symbol of the main device (`invalid`, `<name> is not an SF Symbol of this Mac.`).
@@ -2614,7 +2614,7 @@ Input schema:
         "section": {
           "type": "string",
           "description": "Project section to show.",
-          "enum": ["dashboard", "tickets", "bundles", "chats", "code", "docs", "web", "builds", "skills", "memories", "costs", "apiExplorer", "settings"]
+          "enum": ["dashboard", "tickets", "bundles", "chats", "code", "docs", "web", "builds", "skills", "memories", "costs", "apiExplorer", "graph", "settings"]
         }
       },
       "required": ["kind"],
@@ -3264,7 +3264,7 @@ Input schema:
         "section": {
           "type": "string",
           "description": "Project section to show.",
-          "enum": ["dashboard", "tickets", "bundles", "chats", "code", "docs", "web", "builds", "skills", "memories", "costs", "apiExplorer", "settings"]
+          "enum": ["dashboard", "tickets", "bundles", "chats", "code", "docs", "web", "builds", "skills", "memories", "costs", "apiExplorer", "graph", "settings"]
         }
       },
       "required": ["kind"],

@@ -242,6 +242,9 @@ extension Engine {
         if let useParentSettings = params.useParentSettings {
             new.useParentSettings = useParentSettings
         }
+        if let graphEnabled = params.graphEnabled {
+            new.graphEnabled = graphEnabled
+        }
         switch params.chatDefaults {
         case .keep:
             break
@@ -268,6 +271,7 @@ extension Engine {
         if let widgets = params.dashboardWidgets {
             new.dashboardWidgets = try validated { try DashboardWidget.normalized(widgets, keeping: old.dashboardWidgets ?? []) }
         }
+        new.dashboardGraphWindow = params.dashboardGraphWindow.applied(to: old.dashboardGraphWindow)
         guard new != old else { return projectDetail(id)! }
         let settingsBefore = inheritedSettings()
         try saveProject(new)

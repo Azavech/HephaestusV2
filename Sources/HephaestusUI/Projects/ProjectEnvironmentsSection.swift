@@ -32,6 +32,7 @@ struct ProjectEnvironmentsSection: View {
     @State private var listFailure: String?
     @State private var nameMessage: String?
     @State private var kubeconfigMessage: String?
+    @State private var jaegerMessage: String?
     @State private var browseFailure: String?
     @State private var namespaceMessage: String?
     @State private var deploymentMessage: String?
@@ -162,6 +163,7 @@ struct ProjectEnvironmentsSection: View {
             listFailure = nil
             namespaceMessage = nil
             deploymentMessage = nil
+            jaegerMessage = nil
             certificatesMessage = nil
         }
         .task(id: ConnectionKey(identity: identity, kubeconfig: environment?.kubeconfig)) {
@@ -212,6 +214,13 @@ struct ProjectEnvironmentsSection: View {
             EnvironmentComboBox(title: "Deployment", value: environment.deployment ?? "", items: deployments,
                                 message: $deploymentMessage) { text in
                 await applyOwn(name) { $0.deployment = ModelRules.trimmedOrNil(text) }
+            }
+            .id(identity)
+        }
+        row("Jaeger", message: jaegerMessage) {
+            EnvironmentTextField(title: "Jaeger", prompt: "jaeger/jaeger", value: environment.jaeger ?? "",
+                                 validate: ProjectRules.environmentJaegerMessage, message: $jaegerMessage) { text in
+                await applyOwn(name) { $0.jaeger = ModelRules.trimmedOrNil(text) }
             }
             .id(identity)
         }
@@ -272,6 +281,13 @@ struct ProjectEnvironmentsSection: View {
             EnvironmentComboBox(title: "Deployment", value: change?.deployment ?? "", items: deployments,
                                 placeholder: parent.deployment ?? "", message: $deploymentMessage) { text in
                 await applyOverride(name) { $0.deployment = ModelRules.trimmedOrNil(text) }
+            }
+            .id(identity)
+        }
+        row("Jaeger", message: jaegerMessage) {
+            EnvironmentTextField(title: "Jaeger", prompt: parent.jaeger ?? "", value: change?.jaeger ?? "",
+                                 validate: ProjectRules.environmentJaegerMessage, message: $jaegerMessage) { text in
+                await applyOverride(name) { $0.jaeger = ModelRules.trimmedOrNil(text) }
             }
             .id(identity)
         }

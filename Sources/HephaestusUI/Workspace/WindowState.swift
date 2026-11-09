@@ -330,6 +330,9 @@ struct ProjectViewState {
     /// The buffer of `openapi/contract.yaml` that the API Explorer shows (docs/openapi.md ›
     /// Explorer view); never encoded.
     var apiExplorerBuffer: EditorBuffer?
+    /// The state of the Graph section (docs/graph.md); created when the section first shows; never
+    /// encoded.
+    var graphState: GraphSectionState?
     /// Filters and sort order of the ticket list, kept per window and project while the window is
     /// open (docs/tickets.md › Ticket list).
     var ticketList = TicketListState()
