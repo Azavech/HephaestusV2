@@ -13,7 +13,7 @@ struct ImageViewerWindow: View {
     @State private var currentPath: String?
     @State private var nsWindow: NSWindow?
     @State private var phase = LoadPhase.loading
-    @State private var didResize = false
+    @State private var resize = ImageViewerResize()
     /// Items of a chat whose transcript no view of the workspace holds, read with `chats.get`.
     @State private var fetchedChatItems: [ChatItem]?
     @State private var sawSource = false
@@ -59,6 +59,11 @@ struct ImageViewerWindow: View {
             if removed {
                 nsWindow?.close()
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { notification in
+            guard let window = notification.object as? NSWindow, window === nsWindow,
+                  case .loaded(let image, _) = phase else { return }
+            resizeOnce(window, to: image)
         }
         .onAppear {
             model.previous = { step(-1) }
@@ -217,7 +222,13 @@ struct ImageViewerWindow: View {
         }
         phase = .loaded(image, data)
         model.isFitted = true
-        resizeOnce(for: image)
+        if let window = nsWindow {
+            resizeOnce(window, to: image)
+        }
+        DispatchQueue.main.async {
+            model.fit()
+            model.focus()
+        }
     }
 
     private func markSourceSeen() {
@@ -239,28 +250,17 @@ struct ImageViewerWindow: View {
         }
     }
 
-    /// Once the image is decoded the window resizes once, keeping its top-left corner: to the
-    /// image's size when it fits in 80 % of the visible frame of its screen, otherwise to the
-    /// largest size with the image's proportions that fits, never smaller than 400 × 300 pt.
-    private func resizeOnce(for image: NSImage) {
-        guard !didResize, let window = nsWindow else { return }
-        didResize = true
+    /// Once the image is decoded, or when the window first leaves full screen, the window resizes
+    /// once to the image, keeping its top-left corner; never while it is in full screen. The
+    /// scroll view keeps a fitted image fitted when its size changes.
+    private func resizeOnce(_ window: NSWindow, to image: NSImage) {
+        guard resize.shouldResize(isFullScreen: window.styleMask.contains(.fullScreen)) else { return }
         let visible = (window.screen ?? NSScreen.main)?.visibleFrame.size ?? CGSize(width: 1440, height: 900)
-        let limit = CGSize(width: visible.width * 0.8, height: visible.height * 0.8)
-        var size = image.size
-        if size.width > limit.width || size.height > limit.height {
-            let scale = min(limit.width / size.width, limit.height / size.height)
-            size = CGSize(width: (size.width * scale).rounded(.down), height: (size.height * scale).rounded(.down))
-        }
-        size = CGSize(width: max(400, size.width), height: max(300, size.height))
+        let size = ImageViewerResize.contentSize(image: image.size, visibleFrame: visible)
         let oldFrame = window.frame
         var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
         frame.origin = NSPoint(x: oldFrame.minX, y: oldFrame.maxY - frame.height)
         window.setFrame(frame, display: true)
-        DispatchQueue.main.async {
-            model.fit()
-            model.focus()
-        }
     }
 
     // MARK: Toolbar
@@ -382,6 +382,34 @@ private extension ImageViewerValue {
     var isFeedback: Bool {
         if case .feedbackPreview = self { return true }
         return false
+    }
+}
+
+// MARK: - Resize
+
+/// The one-time resize of a viewer window to its image (docs/tickets.md › Image viewer): when it
+/// happens, and the content size it gives the window.
+struct ImageViewerResize {
+    private(set) var isDone = false
+
+    /// True when the window resizes now, once its image is decoded or when it leaves full screen:
+    /// never while it is in full screen, and never again once it has returned true.
+    mutating func shouldResize(isFullScreen: Bool) -> Bool {
+        guard !isDone, !isFullScreen else { return false }
+        isDone = true
+        return true
+    }
+
+    /// The image's size when it fits in 80 % of the visible frame, otherwise the largest size with
+    /// the image's proportions that fits, never smaller than 400 × 300 pt.
+    static func contentSize(image: CGSize, visibleFrame: CGSize) -> CGSize {
+        let limit = CGSize(width: visibleFrame.width * 0.8, height: visibleFrame.height * 0.8)
+        var size = image
+        if size.width > limit.width || size.height > limit.height {
+            let scale = min(limit.width / size.width, limit.height / size.height)
+            size = CGSize(width: (size.width * scale).rounded(.down), height: (size.height * scale).rounded(.down))
+        }
+        return CGSize(width: max(400, size.width), height: max(300, size.height))
     }
 }
 
