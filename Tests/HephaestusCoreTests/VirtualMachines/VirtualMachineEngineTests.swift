@@ -165,7 +165,7 @@ struct VirtualMachineEngineTests {
             let first = try await createVM(connection, image: image)
             #expect(try await connection.call(VMsList.self).runningCount == 2)
             #expect(await engineError { try await createVM(connection, image: image) } == Self.twoRunning)
-            await setup.close()
+            await setup.stop()
             #expect(try await connection.call(VMsList.self).runningCount == 1)
 
             // An install.

@@ -43,7 +43,8 @@ struct ProjectChatPanel: View {
                            bundles: workspace.bundles[projectID] ?? [:], chats: workspace.chats,
                            webTabs: workspace.webTabs[projectID] ?? [],
                            virtualMachineID: window.shownVirtualMachineID,
-                           virtualMachines: workspace.virtualMachines?.machines ?? [])
+                           virtualMachines: workspace.virtualMachines?.machines ?? [],
+                           imageSetupID: window.shownImageSetupID, setupVersions: app.imageSetupVersions)
     }
 
     private func unlink(_ ref: LinkedItemRef) {

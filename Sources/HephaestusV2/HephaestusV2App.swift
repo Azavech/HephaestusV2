@@ -13,7 +13,6 @@ struct HephaestusV2App: App {
         MainWindowScene(app: app)
         ChatWindowScene(app: app)
         ImageViewerScene(app: app)
-        ImageSetupScene(app: app)
         AboutScene(app: app)
         SettingsScene(app: app)
     }

@@ -112,7 +112,7 @@ public struct GuestTools: Sendable, Hashable {
     public static let installScriptName = "install.sh"
     /// Where the guest shows the shared folder: the mount point of the framework's automount tag.
     public static let guestMountPoint = "/Volumes/My Shared Files"
-    /// The command of step 3 of the setup window.
+    /// The command of step 3 of the setup view.
     public static let installCommand = "sh \"\(guestMountPoint)/\(installScriptName)\""
 
     public init(agent: URL, installScript: URL) {

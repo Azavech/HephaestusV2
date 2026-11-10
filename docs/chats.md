@@ -1736,18 +1736,19 @@ Compacted 2 times
 
 A chat composer links items of HephaestusV2 to the messages it sends and shows them as chips: the items open in the app, in the inspector only, and the resources the user adds, in every chat composer ([Added resources](#added-resources)).
 
-The composer of the inspector's chat, or of its draft, shows the items open in the centre column of its window ([Inspector](ui.md#inspector)) as linked item chips. Chat windows, the Chats section, and the Chats tabs and Mentioned In tabs of tickets and bundles link no open item, and neither does the inspector while its window shows the Global Memories view or the Internal Skills view. While its window shows the detail of a virtual machine, the inspector links that virtual machine ([Detail](virtual-machines.md#detail)).
+The composer of the inspector's chat, or of its draft, shows the items open in the centre column of its window ([Inspector](ui.md#inspector)) as linked item chips. Chat windows, the Chats section, and the Chats tabs and Mentioned In tabs of tickets and bundles link no open item, and neither does the inspector while its window shows the Global Memories view or the Internal Skills view. While its window shows the detail of a virtual machine, the inspector links that virtual machine ([Detail](virtual-machines.md#detail)); while it shows the setup view of an image, it links the image's setup virtual machine ([Setup view](virtual-machines.md#setup-view)).
 
-| Item            | `kind`           | Chip symbol                               | Short name                 | `<item>`                                                              |
-| --------------- | ---------------- | ----------------------------------------- | -------------------------- | --------------------------------------------------------------------- |
-| Ticket          | `ticket`         | `checklist`                               | the ticket id              | `ticket <id> “<title>”`                                               |
-| Bundle          | `bundle`         | `shippingbox`                             | the bundle id              | `bundle <id> “<title>”`                                               |
-| Chat            | `chat`           | `bubble.left.and.bubble.right`            | the chat's title           | `chat “<title>” (<chat id>)`                                          |
-| Code file       | `codeFile`       | `chevron.left.forwardslash.chevron.right` | the file name              | `code file <project path>`                                            |
-| Docs file       | `docsFile`       | `doc.text`                                | the file name              | `docs file <project path>`                                            |
-| Web tab         | `webTab`         | `globe`                                   | the title, else the URL    | `web tab “<title>” <url>`, or `web tab <url>` when the title is empty |
-| Skill           | `skill`          | `wand.and.stars`                          | the skill's name           | `skill <name>`                                                        |
-| Virtual machine | `virtualMachine` | `display`                                 | the virtual machine's name | `virtual machine “<name>” (<VM id>)`                                  |
+| Item                  | `kind`           | Chip symbol                               | Short name                 | `<item>`                                                              |
+| --------------------- | ---------------- | ----------------------------------------- | -------------------------- | --------------------------------------------------------------------- |
+| Ticket                | `ticket`         | `checklist`                               | the ticket id              | `ticket <id> “<title>”`                                               |
+| Bundle                | `bundle`         | `shippingbox`                             | the bundle id              | `bundle <id> “<title>”`                                               |
+| Chat                  | `chat`           | `bubble.left.and.bubble.right`            | the chat's title           | `chat “<title>” (<chat id>)`                                          |
+| Code file             | `codeFile`       | `chevron.left.forwardslash.chevron.right` | the file name              | `code file <project path>`                                            |
+| Docs file             | `docsFile`       | `doc.text`                                | the file name              | `docs file <project path>`                                            |
+| Web tab               | `webTab`         | `globe`                                   | the title, else the URL    | `web tab “<title>” <url>`, or `web tab <url>` when the title is empty |
+| Skill                 | `skill`          | `wand.and.stars`                          | the skill's name           | `skill <name>`                                                        |
+| Virtual machine       | `virtualMachine` | `display`                                 | the virtual machine's name | `virtual machine “<name>” (<VM id>)`                                  |
+| Setup virtual machine | `virtualMachine` | `display`                                 | `Set Up macOS <version>`   | `setup virtual machine of the image “macOS <version>” (<image id>)`   |
 
 - The chip symbol is the SF Symbol of the item's [sidebar section](ui.md#sidebar), and `display`, the symbol of the Virtual Machines tab of [Settings](ui.md#settings-window), for a virtual machine; the chip's tooltip is `<item>`.
 - × unlinks the item: its chip disappears and Send no longer passes it, for as long as it stays open ([Inspector](ui.md#inspector)).

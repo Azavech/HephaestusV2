@@ -50,6 +50,26 @@ struct VMSetupSessionTests {
         }
     }
 
+    @Test("A setup keeps running while nothing shows it, until Stop, which leaves the image in Needs setup")
+    func runsWithoutView() async throws {
+        try await withVMEngine { engine, connection, provisioner, _ in
+            let (image, session, machine) = try await Self.begin(engine, connection, provisioner)
+            await MainActor.run { machine.agentConnects(sip: .enabled) }
+            try await Task.sleep(for: .milliseconds(300))
+            // No view holds the setup: its virtual machine runs on and keeps its place.
+            #expect(await session.phase == .running)
+            #expect(await machine.calls == [.start(recovery: false)])
+            #expect(await engine.runningVMCount == 1)
+            // Set Up… shows that same setup again.
+            #expect(try await engine.beginImageSetup(image.id) === session)
+            await session.stop()
+            #expect(await session.phase == .ended)
+            #expect(await !session.finished)
+            #expect(try await Self.state(of: image, connection) == .needsSetup)
+            #expect(await engine.runningVMCount == 0)
+        }
+    }
+
     @Test("Set Up refuses an unknown image, an image that is not waiting for setup and a third virtual machine")
     func beginErrors() async throws {
         try await withVMEngine { engine, connection, provisioner, _ in
@@ -72,12 +92,12 @@ struct VMSetupSessionTests {
             #expect(await engine.runningVMCount == 2)
             #expect(await engineError { try await engine.beginImageSetup(third.id) }
                 == EngineError(.conflict, "2 virtual machines are already running."))
-            await first.close()
+            await first.stop()
             #expect(await engine.runningVMCount == 1)
             let session = try await engine.beginImageSetup(third.id)
             #expect(await session.phase == .running)
-            await second.close()
-            await session.close()
+            await second.stop()
+            await session.stop()
             #expect(await engine.runningVMCount == 0)
 
             provisioner.supportsVirtualMachines = false
@@ -171,7 +191,7 @@ struct VMSetupSessionTests {
             // An agent that refuses: stopped at once, without the wait.
             let (other, otherSession, otherMachine) = try await Self.begin(engine, connection, provisioner, build: "26B123")
             await MainActor.run {
-                otherSession.timings = VMSetupSession.Timings(finishWait: waitLimit * 10, closeWait: waitLimit * 10,
+                otherSession.timings = VMSetupSession.Timings(finishWait: waitLimit * 10, stopWait: waitLimit * 10,
                                                                restartWait: waitLimit * 10)
                 otherMachine.shutDownFailure = GuestAgentError.failed(message: "sudo: a password is required")
                 otherMachine.agentConnects(sip: .disabled)
@@ -193,8 +213,8 @@ struct VMSetupSessionTests {
         }
     }
 
-    @Test("Closing the window before Finish Setup shuts the virtual machine down and leaves the image in Needs setup")
-    func close() async throws {
+    @Test("Stop before Finish Setup shuts the virtual machine down and leaves the image in Needs setup")
+    func stop() async throws {
         try await withVMEngine { engine, connection, provisioner, _ in
             // Without the agent: stopped at once.
             let (image, session, machine) = try await Self.begin(engine, connection, provisioner)
@@ -202,7 +222,7 @@ struct VMSetupSessionTests {
             let before = try #require(try await connection.call(VMImagesList.self).first { $0.id == image.id }).diskBytes
             try Data(count: 1_048_576).write(to: VMImageStore.files(of: image.id, in: engine.dataDirectory).disk)
             let events = connection.events
-            await session.close()
+            await session.stop()
             #expect(await machine.calls == [.start(recovery: false), .stop])
             #expect(await session.phase == .ended)
             #expect(await !session.finished)
@@ -219,27 +239,27 @@ struct VMSetupSessionTests {
             #expect(secondMachine !== machine)
             // With the agent: through the agent.
             await MainActor.run { secondMachine.agentConnects(sip: .disabled) }
-            await again.close()
+            await again.stop()
             #expect(await secondMachine.calls == [.start(recovery: false), .shutDownGuest])
             #expect(try await Self.state(of: image, connection) == .needsSetup)
             #expect(try await connection.call(SettingsGet.self).defaultVMImage == nil)
-            // A closed setup ignores what comes later.
+            // A stopped setup ignores what comes later.
             await again.finish()
             await again.restartInRecovery()
             #expect(await again.phase == .ended)
         }
     }
 
-    @Test("Set Up on an image whose closed setup still shuts its guest down waits for it, then boots the image again")
+    @Test("Set Up on an image whose stopped setup still shuts its guest down waits for it, then boots the image again")
     func beginWhileShuttingDown() async throws {
         try await withVMEngine { engine, connection, provisioner, _ in
             let (image, session, machine) = try await Self.begin(engine, connection, provisioner)
             await MainActor.run {
-                session.timings.closeWait = waitLimit * 10
+                session.timings.stopWait = waitLimit * 10
                 machine.shutsDownWhenAsked = false
                 machine.agentConnects(sip: .enabled)
             }
-            let closing = Task { await session.close() }
+            let closing = Task { await session.stop() }
             await waitUntil { await machine.calls.contains(.shutDownGuest) }
             #expect(await session.isShuttingDown)
             #expect(await engine.runningVMCount == 1)
@@ -355,8 +375,8 @@ struct VMSetupSessionTests {
         }
     }
 
-    @Test("Closing the window while Restart in Recovery waits for the guest stops the virtual machine at once")
-    func closeWhileRestarting() async throws {
+    @Test("Stop while Restart in Recovery waits for the guest stops the virtual machine at once")
+    func stopWhileRestarting() async throws {
         try await withVMEngine { engine, connection, provisioner, _ in
             let (image, session, machine) = try await Self.begin(engine, connection, provisioner)
             await MainActor.run { session.timings.restartWait = waitLimit * 10 }
@@ -364,7 +384,7 @@ struct VMSetupSessionTests {
             await waitUntil { await machine.calls.contains(.requestStop) }
             #expect(await session.phase == .restarting)
             #expect(await !session.canRestartInRecovery)
-            await session.close()
+            await session.stop()
             await restart.value
             #expect(await machine.calls == [.start(recovery: false), .requestStop, .stop])
             #expect(await session.phase == .ended)

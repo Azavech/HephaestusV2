@@ -403,7 +403,7 @@ extension Engine {
 
     /// `Set Up…`: the setup of an image, with its setup virtual machine booted. An image whose
     /// setup runs or starts gives that same setup; a setup that shuts its virtual machine down,
-    /// because its window closed, is waited for first. Throws `notFound` for an unknown image,
+    /// after `Stop`, is waited for first. Throws `notFound` for an unknown image,
     /// `unavailable` on a Mac without Apple silicon, without the guest agent in the bundle or when
     /// the virtual machine cannot start, and `conflict` for an image that is not in `needsSetup`
     /// or while 2 virtual machines run.

@@ -15,13 +15,14 @@ import HephaestusCore
 final class WindowState: Identifiable {
     /// The window's identity inside `AppModel`.
     let id: UUID
-    /// The device the window shows. A switch of device leaves a sub project's Dashboard and the
-    /// detail of a virtual machine, which belongs to This Mac.
+    /// The device the window shows. A switch of device leaves a sub project's Dashboard, the
+    /// detail of a virtual machine and the setup view of an image, which belong to This Mac.
     var deviceID: String {
         didSet {
             if deviceID != oldValue {
                 subProjectDashboardID = nil
                 shownVirtualMachineID = nil
+                shownImageSetupID = nil
             }
         }
     }
@@ -36,60 +37,81 @@ final class WindowState: Identifiable {
     }
     /// The selected sidebar section. Selecting a section, the selected one included, leaves the
     /// Global Memories view (docs/memories.md › Global Memories view), the Internal Skills view
-    /// (docs/skills.md › Internal Skills view), a sub project's Dashboard (docs/ui.md › Sidebar) and
-    /// the detail of a virtual machine (docs/virtual-machines.md › Detail).
+    /// (docs/skills.md › Internal Skills view), a sub project's Dashboard (docs/ui.md › Sidebar),
+    /// the detail of a virtual machine (docs/virtual-machines.md › Detail) and the setup view of an
+    /// image (docs/virtual-machines.md › Setup view).
     var section: ProjectSection = .dashboard {
         didSet {
             showsGlobalMemories = false
             showsInternalSkills = false
             subProjectDashboardID = nil
             shownVirtualMachineID = nil
+            shownImageSetupID = nil
         }
     }
     /// The centre column shows the Global Memories view; no sidebar row is selected. Showing it
-    /// leaves the Internal Skills view, a sub project's Dashboard and the detail of a virtual
-    /// machine.
+    /// leaves the Internal Skills view, a sub project's Dashboard, the detail of a virtual machine
+    /// and the setup view of an image.
     var showsGlobalMemories = false {
         didSet {
             if showsGlobalMemories {
                 showsInternalSkills = false
                 subProjectDashboardID = nil
                 shownVirtualMachineID = nil
+                shownImageSetupID = nil
             }
         }
     }
     /// The centre column shows the Internal Skills view; no sidebar row is selected. Showing it
-    /// leaves the Global Memories view, a sub project's Dashboard and the detail of a virtual
-    /// machine.
+    /// leaves the Global Memories view, a sub project's Dashboard, the detail of a virtual machine
+    /// and the setup view of an image.
     var showsInternalSkills = false {
         didSet {
             if showsInternalSkills {
                 showsGlobalMemories = false
                 subProjectDashboardID = nil
                 shownVirtualMachineID = nil
+                shownImageSetupID = nil
             }
         }
     }
     /// The sub project whose Dashboard the centre column shows from the sidebar, without
     /// activating it; nil otherwise. Only its sidebar row is selected (docs/ui.md › Sidebar).
-    /// Showing it leaves the detail of a virtual machine.
+    /// Showing it leaves the detail of a virtual machine and the setup view of an image.
     var subProjectDashboardID: String? {
         didSet {
             if subProjectDashboardID != nil {
                 shownVirtualMachineID = nil
+                shownImageSetupID = nil
             }
         }
     }
     /// The virtual machine whose detail the centre column shows; no sidebar row is selected.
-    /// Showing it leaves the Global Memories view, the Internal Skills view and a sub project's
-    /// Dashboard; never persisted (docs/virtual-machines.md › Detail).
+    /// Showing it leaves the Global Memories view, the Internal Skills view, a sub project's
+    /// Dashboard and the setup view of an image; never persisted (docs/virtual-machines.md ›
+    /// Detail).
     var shownVirtualMachineID: UUID? {
         didSet {
             if shownVirtualMachineID != nil {
                 showsGlobalMemories = false
                 showsInternalSkills = false
                 subProjectDashboardID = nil
+                shownImageSetupID = nil
             }
+        }
+    }
+    /// The image whose setup view the centre column shows; no sidebar row is selected. Showing it
+    /// leaves the Global Memories view, the Internal Skills view, a sub project's Dashboard and the
+    /// detail of a virtual machine; never persisted (docs/virtual-machines.md › Setup view).
+    var shownImageSetupID: UUID? {
+        didSet {
+            if shownImageSetupID != nil {
+                showsGlobalMemories = false
+                showsInternalSkills = false
+                subProjectDashboardID = nil
+                shownVirtualMachineID = nil
+            }
+            leavesImageSetupAfterAlert = false
         }
     }
     var sidebarVisible = true
@@ -124,8 +146,17 @@ final class WindowState: Identifiable {
 
     // MARK: Window-only state, not part of the docs' table and never encoded
 
-    /// The alert shown on the window.
-    var alert: WindowAlert?
+    /// The alert shown on the window. Its `OK` takes the window back to its section when it is the
+    /// alert of a setup that failed (docs/virtual-machines.md › Setup view).
+    var alert: WindowAlert? {
+        didSet {
+            if alert == nil, leavesImageSetupAfterAlert {
+                shownImageSetupID = nil
+            }
+        }
+    }
+    /// True while the window shows the alert of a setup that failed, over its setup view.
+    private(set) var leavesImageSetupAfterAlert = false
     /// The composer the search panel adds a result to, from `Add Resource…` until the panel closes;
     /// nil while a result navigates (docs/search.md › Adding a resource).
     var searchPick: SearchPick?
@@ -152,9 +183,26 @@ final class WindowState: Identifiable {
     }
 
     /// The section the centre column shows: nil while it shows the Global Memories view, the
-    /// Internal Skills view, a sub project's Dashboard or the detail of a virtual machine.
+    /// Internal Skills view, a sub project's Dashboard, the detail of a virtual machine or the
+    /// setup view of an image.
     var shownSection: ProjectSection? {
-        showsGlobalMemories || showsInternalSkills || subProjectDashboardID != nil || shownVirtualMachineID != nil ? nil : section
+        showsGlobalMemories || showsInternalSkills || subProjectDashboardID != nil || shownVirtualMachineID != nil
+            || shownImageSetupID != nil ? nil : section
+    }
+
+    /// The setup of an image has ended: a window that shows its setup view goes back to its
+    /// section, after `OK` of the failure alert when `failure` is given. Returns true when the
+    /// window showed it (docs/virtual-machines.md › Setup view).
+    @discardableResult
+    func imageSetupEnded(_ imageID: UUID, failure: WindowAlert?) -> Bool {
+        guard shownImageSetupID == imageID else { return false }
+        if let failure {
+            alert = failure
+            leavesImageSetupAfterAlert = true
+        } else {
+            shownImageSetupID = nil
+        }
+        return true
     }
 
     /// The key of the active project.
@@ -227,7 +275,7 @@ extension WindowState: @MainActor Codable {
     enum CodingKeys: String, CodingKey {
         case id, deviceID, projectID, section, showsGlobalMemories, showsInternalSkills, subProjectDashboardID, sidebarVisible,
              inspectorVisible, inspectorWidth, projectStates, globalMemoryStates, internalSkillStates, lastProjectByDevice,
-             shownVirtualMachineID, searchVisible, search, sheet, pendingTarget
+             shownVirtualMachineID, shownImageSetupID, searchVisible, search, sheet, pendingTarget
     }
 
     /// One entry of `projectStates`.
@@ -265,6 +313,7 @@ extension WindowState: @MainActor Codable {
         }
         if decoder.userInfo[WindowState.persistedOnlyKey] as? Bool != true {
             shownVirtualMachineID = try c.decodeIfPresent(UUID.self, forKey: .shownVirtualMachineID)
+            shownImageSetupID = try c.decodeIfPresent(UUID.self, forKey: .shownImageSetupID)
             searchVisible = try c.decodeIfPresent(Bool.self, forKey: .searchVisible) ?? false
             search = try c.decodeIfPresent(SearchPanelState.self, forKey: .search) ?? SearchPanelState()
             sheet = try c.decodeIfPresent(WindowSheet.self, forKey: .sheet)
@@ -307,6 +356,7 @@ extension WindowState: @MainActor Codable {
         try c.encode(lastProjectByDevice, forKey: .lastProjectByDevice)
         guard !persistedOnly else { return }
         try c.encodeIfPresent(shownVirtualMachineID, forKey: .shownVirtualMachineID)
+        try c.encodeIfPresent(shownImageSetupID, forKey: .shownImageSetupID)
         try c.encode(searchVisible, forKey: .searchVisible)
         try c.encode(search, forKey: .search)
         try c.encodeIfPresent(sheet, forKey: .sheet)

@@ -5,7 +5,7 @@ import HephaestusCore
 import SwiftUI
 
 /// The texts of the images of virtual machines (docs/ui.md › Virtual Machines,
-/// docs/virtual-machines.md › Image states, › Setup window).
+/// docs/virtual-machines.md › Image states, › Setup view).
 enum VMImagePresentation {
     /// The text of the State column: `Downloading… 42%`, `Installing… 63%`, `Needs setup`, `Ready`
     /// or `Failed: <message>`.
@@ -31,12 +31,17 @@ enum VMImagePresentation {
         ByteCountFormatter.string(fromByteCount: Int64(max(0, bytes)), countStyle: .file)
     }
 
-    /// The title of the setup window: `Set Up macOS <version>`.
+    /// The title of the setup view and the name of its setup virtual machine: `Set Up macOS <version>`.
     static func setupTitle(version: String) -> String {
         "Set Up macOS \(version)"
     }
 
-    /// The status line of the setup window.
+    /// The running time of the header of the setup view at `now`: `Running · 12 min`.
+    static func setupRunningText(since startedAt: Date, now: Date) -> String {
+        "Running · \(VMRunningTime.text(since: startedAt, now: max(now, startedAt)))"
+    }
+
+    /// The status line of the setup view.
     static func agentStatusText(_ agent: GuestAgentStatus?) -> String {
         guard let agent else { return "Waiting for the agent…" }
         return agent.sip == .disabled ? "Agent connected · SIP off" : "Agent connected · SIP on"
@@ -474,7 +479,8 @@ struct VirtualMachinesSettingsPane: View {
         }
     }
 
-    /// Set Up… boots the selected image and opens its setup window, or brings it to front.
+    /// Set Up… boots the selected image, or takes its setup that runs, and shows its setup view in
+    /// a main window.
     private func setUp() {
         guard let image = selected else { return }
         let window = hostWindow.window

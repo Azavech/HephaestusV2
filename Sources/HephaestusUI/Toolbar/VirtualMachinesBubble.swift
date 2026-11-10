@@ -10,8 +10,8 @@ struct VMPopoverRow: Identifiable, Hashable {
     enum Source: Hashable {
         /// A virtual machine of the user or of Claude, by its id.
         case machine(UUID)
-        /// The setup virtual machine of an image; `closing` once its window has closed.
-        case setup(imageID: UUID, closing: Bool)
+        /// The setup virtual machine of an image, by the image's id.
+        case setup(imageID: UUID)
     }
 
     let source: Source
@@ -25,7 +25,7 @@ struct VMPopoverRow: Identifiable, Hashable {
     var id: String {
         switch source {
         case .machine(let id): return "vm/\(id.uuidString)"
-        case .setup(let imageID, _): return "setup/\(imageID.uuidString)"
+        case .setup(let imageID): return "setup/\(imageID.uuidString)"
         }
     }
 }
@@ -36,8 +36,6 @@ struct VMPopoverSetup: Hashable {
     /// The macOS version of its image.
     let version: String
     let startedAt: Date
-    /// True once its window has closed: the virtual machine still shuts down.
-    let closing: Bool
 }
 
 /// The number of the bubble and the rows of its popover (docs/virtual-machines.md › Bubble,
@@ -71,7 +69,7 @@ enum VMPopoverPresentation {
                          startedAt: machine.startedAt ?? machine.created)
         }
         let setupRows = setups.map { setup in
-            VMPopoverRow(source: .setup(imageID: setup.imageID, closing: setup.closing),
+            VMPopoverRow(source: .setup(imageID: setup.imageID),
                          name: VMImagePresentation.setupTitle(version: setup.version), startedBy: startedByUser,
                          startedAt: setup.startedAt)
         }
@@ -95,28 +93,12 @@ enum VMPopoverPresentation {
 }
 
 extension AppModel {
-    /// The setup virtual machines that run: those of the open setup windows, and those whose
-    /// window closed and that still shut down.
+    /// The setup virtual machines that run, until they have stopped, whether a window shows their
+    /// setup view or not.
     var popoverSetups: [VMPopoverSetup] {
-        let open = imageSetups.values.filter { $0.phase != .ended }.map {
-            VMPopoverSetup(imageID: $0.imageID, version: $0.version, startedAt: $0.startedAt, closing: false)
+        imageSetups.values.filter { $0.phase != .ended }.map {
+            VMPopoverSetup(imageID: $0.imageID, version: $0.version, startedAt: $0.startedAt)
         }
-        let closing = closingImageSetups.filter { $0.phase != .ended }.map {
-            VMPopoverSetup(imageID: $0.imageID, version: $0.version, startedAt: $0.startedAt, closing: true)
-        }
-        return open + closing
-    }
-
-    /// The setup session of an image that the popover lists.
-    func popoverSetupSession(_ imageID: UUID) -> VMSetupSession? {
-        imageSetups[imageID] ?? closingImageSetups.first { $0.imageID == imageID }
-    }
-
-    /// A click on the preview of a setup virtual machine: its setup window comes to front.
-    /// Nothing happens once the window has closed.
-    func showImageSetup(_ imageID: UUID) {
-        guard imageSetups[imageID] != nil else { return }
-        windowOpener?(.imageSetup(imageID))
     }
 }
 
@@ -237,8 +219,8 @@ private struct VMPopoverRowView: View {
         switch row.source {
         case .machine:
             return machineSession.map(VMPreviewSource.machine) ?? .none
-        case .setup(let imageID, _):
-            return app.popoverSetupSession(imageID).map(VMPreviewSource.setup) ?? .none
+        case .setup(let imageID):
+            return app.imageSetups[imageID].map(VMPreviewSource.setup) ?? .none
         }
     }
 
@@ -248,14 +230,14 @@ private struct VMPopoverRowView: View {
         case .machine:
             guard let phase = machineSession?.phase else { return stopping }
             return stopping || phase == .stopping || phase == .ended
-        case .setup(let imageID, let closing):
-            return closing || app.popoverSetupSession(imageID)?.isShuttingDown ?? true
+        case .setup(let imageID):
+            return app.imageSetups[imageID]?.isShuttingDown ?? true
         }
     }
 
-    /// Closes the popover and shows the virtual machine: the detail of the user's or Claude's in
-    /// this window, the setup window of a setup virtual machine. A setup virtual machine whose
-    /// window has closed has nothing to show.
+    /// Closes the popover and shows the virtual machine in this window: the detail of the user's
+    /// or Claude's, the setup view of a setup virtual machine. A setup virtual machine that shuts
+    /// down has nothing to show.
     private func open() {
         switch row.source {
         case .machine(let vmID):
@@ -263,10 +245,10 @@ private struct VMPopoverRowView: View {
             Task {
                 await window.navigate(to: .virtualMachine(vmID: vmID))
             }
-        case .setup(let imageID, let closing):
-            guard !closing else { return }
+        case .setup(let imageID):
+            guard let session = app.imageSetups[imageID], !session.isShuttingDown else { return }
             close()
-            app.showImageSetup(imageID)
+            app.showImageSetup(imageID, in: window)
         }
     }
 
@@ -283,7 +265,7 @@ private struct VMPopoverRowView: View {
                 }
                 stopping = false
             }
-        case .setup(let imageID, _):
+        case .setup(let imageID):
             app.stopImageSetup(imageID)
         }
     }

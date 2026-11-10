@@ -1,74 +1,60 @@
-// OWNER: ui-shell — the setup window of a virtual machine image (docs/virtual-machines.md › Setup
-// window; docs/ui.md › Windows).
+// OWNER: ui-shell — the setup view of a virtual machine image in the centre column of a main
+// window (docs/virtual-machines.md › Setup view; docs/ui.md › Pane headers).
 import AppKit
 import HephaestusCore
 import SwiftUI
 import Virtualization
 
-/// The setup window of an image: the screen of its setup virtual machine, the three steps, the
-/// agent's status and `Finish Setup`. It closes when the virtual machine has stopped, after the
-/// alert of a setup that failed; closing it before `Finish Setup` shuts the virtual machine down.
-struct ImageSetupWindow: View {
+/// The setup view of an image: a pane header with `Set Up macOS <version>`, its running time and
+/// `Stop`, and under it the screen of its setup virtual machine, the three steps, the agent's
+/// status and `Finish Setup`. The setup runs whether the view shows or not; the window leaves the
+/// view when the setup ends (`AppModel.imageSetupEnded`).
+struct ImageSetupView: View {
+    let window: WindowState
     let imageID: UUID
     @Environment(AppModel.self) private var app
-    @State private var hostWindow = HostWindow()
-    @State private var endHandled = false
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
             if let session = app.imageSetups[imageID] {
-                ImageSetupView(session: session)
-                    .navigationTitle(VMImagePresentation.setupTitle(version: session.version))
-                    // `initial`: a setup that ended before the window showed closes it too.
-                    .onChange(of: session.phase, initial: true) { _, phase in
-                        if phase == .ended {
-                            sessionEnded(session)
-                        }
-                    }
+                header(session)
+                Divider()
+                ImageSetupContent(session: session)
             } else {
-                // No setup runs for this image: the window has nothing to show. It closes once its
-                // root view is in it.
+                // The setup has ended: the window leaves the view, after the alert of a failure.
                 Color.clear
-                    .onAppear {
-                        DispatchQueue.main.async {
-                            hostWindow.window?.close()
-                        }
-                    }
             }
         }
-        .frame(minWidth: 900, minHeight: 500)
-        .readsHostWindow(hostWindow)
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { notification in
-            if let window = notification.object as? NSWindow, window === hostWindow.window {
-                app.imageSetupWindowClosed(imageID)
-            }
-        }
-        .onDisappear {
-            app.imageSetupWindowClosed(imageID)
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// The virtual machine has stopped: the window closes, after the failure alert of
-    /// docs/ui.md › Principles when a failure ended the setup.
-    private func sessionEnded(_ session: VMSetupSession) {
-        guard !endHandled else { return }
-        endHandled = true
-        guard let failure = session.failure else {
-            // Once the root view is in the window, for a setup that ended before it showed.
-            DispatchQueue.main.async {
-                hostWindow.window?.close()
+    /// The pane header: `Set Up macOS <version>`, `Running · <time>` and `Stop`.
+    private func header(_ session: VMSetupSession) -> some View {
+        HStack(spacing: 10) {
+            Text(VMImagePresentation.setupTitle(version: session.version))
+                .font(.headline)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .accessibilityAddTraits(.isHeader)
+            TimelineView(.periodic(from: session.startedAt, by: 60)) { context in
+                Text(VMImagePresentation.setupRunningText(since: session.startedAt, now: context.date))
             }
-            return
+            .foregroundStyle(.secondary)
+            .monospacedDigit()
+            .lineLimit(1)
+            Spacer(minLength: 8)
+            Button("Stop") {
+                app.stopImageSetup(imageID)
+            }
+            .disabled(session.isShuttingDown)
         }
-        Task {
-            await VMImagePresentation.showFailure(VMImagePresentation.failureTitle(of: session), failure, on: hostWindow.window)
-            hostWindow.window?.close()
-        }
+        .padding(.horizontal, 12)
+        .paneHeaderBar()
     }
 }
 
-/// The content of the setup window.
-struct ImageSetupView: View {
+/// The screen of the setup virtual machine and, on its right, the column of the three steps.
+struct ImageSetupContent: View {
     let session: VMSetupSession
 
     /// The proportions of the setup virtual machine's display.
@@ -81,7 +67,7 @@ struct ImageSetupView: View {
                 VirtualMachineScreen(virtualMachine: session.virtualMachine)
                     .aspectRatio(Self.displayAspectRatio, contentMode: .fit)
             }
-            .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+            .frame(minWidth: 240, maxWidth: .infinity, maxHeight: .infinity)
             Divider()
             steps
                 .padding(16)

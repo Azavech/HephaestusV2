@@ -4,8 +4,8 @@ import SwiftUI
 import Testing
 @testable import HephaestusUI
 
-/// docs/ui.md › Virtual Machines and docs/virtual-machines.md › Image states, › Setup window: the
-/// tab, the texts of the Images table and of the setup window, and the workspace's images.
+/// docs/ui.md › Virtual Machines and docs/virtual-machines.md › Image states, › Setup view: the
+/// tab, the texts of the Images table and of the setup view, and the workspace's images.
 @Suite("Virtual Machines settings")
 @MainActor
 struct VirtualMachinesSettingsTests {
@@ -45,7 +45,7 @@ struct VirtualMachinesSettingsTests {
         #expect(VMImagePresentation.diskText(-1) == VMImagePresentation.diskText(0))
     }
 
-    @Test("The setup window's title, status line and the Delete alert")
+    @Test("The setup view's title, running time, status line and the Delete alert")
     func setupTexts() {
         #expect(VMImagePresentation.setupTitle(version: "27.2.1") == "Set Up macOS 27.2.1")
         #expect(VMImagePresentation.agentStatusText(nil) == "Waiting for the agent…")

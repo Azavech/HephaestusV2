@@ -3,10 +3,11 @@ import Observation
 import Virtualization
 
 /// The setup of one image: its setup virtual machine, the status of the guest agent and the
-/// actions of the setup window (docs/virtual-machines.md › Setup). `Engine.beginImageSetup(_:)`
+/// actions of the setup view (docs/virtual-machines.md › Setup). `Engine.beginImageSetup(_:)`
 /// makes it, the image setup service of docs/architecture.md › Local-only services; the setup
-/// window shows and drives it. It ends when its virtual machine has stopped: after `finish()`,
-/// `close()`, a guest that shut down, a deleted image or the quit of the app.
+/// view of a main window shows and drives it. It runs whether a window shows it or not, and
+/// ends when its virtual machine has stopped: after `finish()`, `stop()`, a guest that shut down,
+/// a virtual machine that failed, a deleted image or the quit of the app.
 @MainActor @Observable
 public final class VMSetupSession {
     public enum Phase: Sendable, Hashable {
@@ -16,7 +17,7 @@ public final class VMSetupSession {
         case restarting
         /// The virtual machine shuts down.
         case stopping
-        /// The virtual machine has stopped: the window closes.
+        /// The virtual machine has stopped: the windows leave the setup view.
         case ended
     }
 
@@ -24,14 +25,14 @@ public final class VMSetupSession {
     struct Timings: Sendable {
         /// After `Finish Setup`.
         var finishWait: Duration = .seconds(60)
-        /// After the window closed.
-        var closeWait: Duration = .seconds(30)
+        /// After `Stop`.
+        var stopWait: Duration = .seconds(30)
         /// After `Restart in Recovery`.
         var restartWait: Duration = .seconds(30)
     }
 
     public let imageID: UUID
-    /// The macOS version of the image, for the window's title.
+    /// The macOS version of the image, for the title of the setup view.
     public let version: String
     public private(set) var phase = Phase.running
     /// The status of the guest agent while it is connected.
@@ -92,7 +93,7 @@ public final class VMSetupSession {
         startedAt = Date()
     }
 
-    // MARK: Actions of the setup window
+    // MARK: Actions of the setup view
 
     /// `Restart in Recovery`: shuts the guest down, so that macOS writes what it holds to the
     /// image's disk, then starts the virtual machine into macOS Recovery. The agent shuts the
@@ -129,16 +130,17 @@ public final class VMSetupSession {
         await end(finished: true)
     }
 
-    /// The window closed before `Finish Setup`: shuts the virtual machine down, through the agent
-    /// when it is connected, and leaves the image in Needs setup.
-    public func close() async {
+    /// `Stop` before `Finish Setup`: shuts the virtual machine down, through the agent when it is
+    /// connected, and leaves the image in Needs setup. During `Restart in Recovery`, the virtual
+    /// machine stops at once.
+    public func stop() async {
         guard phase == .running || phase == .restarting else { return }
         let hasAgent = agent != nil && phase == .running
         phase = .stopping
         if hasAgent {
-            await shutDown(wait: timings.closeWait)
+            await shutDown(wait: timings.stopWait)
         } else {
-            // A restart that waits for the guest goes on at once, and finds the session closing.
+            // A restart that waits for the guest goes on at once, and finds the session stopping.
             stopsAtOnce = true
             resumeStopWaiters()
             await machine.stop()
@@ -172,8 +174,8 @@ public final class VMSetupSession {
             // The shutdown that `Restart in Recovery` asked for is no end of the setup.
             let isRestart = phase == .restarting && isAwaitingStop && error == nil
             if phase == .running || phase == .restarting, !isRestart {
-                // The guest shut down by itself, or the virtual machine failed: the window closes
-                // and the image stays in Needs setup.
+                // The guest shut down by itself, or the virtual machine failed: the setup ends and
+                // the image stays in Needs setup.
                 phase = .stopping
                 Task {
                     await end(finished: false, failure: error)

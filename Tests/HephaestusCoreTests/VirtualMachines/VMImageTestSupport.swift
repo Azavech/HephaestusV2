@@ -306,7 +306,7 @@ final class FakeGuestMachine: GuestMachine {
 extension VMSetupSession {
     /// Short waits for the tests of a guest that does not shut down.
     func useShortWaits() {
-        timings = Timings(finishWait: .milliseconds(200), closeWait: .milliseconds(200), restartWait: .milliseconds(200))
+        timings = Timings(finishWait: .milliseconds(200), stopWait: .milliseconds(200), restartWait: .milliseconds(200))
     }
 }
 

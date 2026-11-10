@@ -704,4 +704,4 @@ The version `0.0.0` and the debug native build of `make app`, the foreground run
 - R73: CI builds a new version of the app when changes are pushed to `main`.
 - R74: The app has a second executable, the Updater.
 - R84: GitHub CI then rebuilds the app.
-- R201: Settings has a Virtual Machines tab whose Images section adds macOS images for virtual machines from the versions ipsw.me lists, downloads and installs them, prepares each one once in a setup window so that an agent in the guest gives full control of it, marks the default image and deletes images.
+- R201: Settings has a Virtual Machines tab whose Images section adds macOS images for virtual machines from the versions ipsw.me lists, downloads and installs them, prepares each one once in a setup view of the main window so that an agent in the guest gives full control of it, marks the default image and deletes images.

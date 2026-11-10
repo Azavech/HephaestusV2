@@ -512,7 +512,7 @@ final class UpdateController {
     }
 
     /// Re-evaluates the automatic restart whenever a value read by `isAppIdle` changes: chat
-    /// states and background work, the states of the images, the setup windows and the virtual
+    /// states and background work, the states of the images, the image setups and the virtual
     /// machines, editors, drafts, composers, sheets.
     private func observeIdleness() {
         withObservationTracking {

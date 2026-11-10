@@ -74,7 +74,7 @@ struct BackgroundWorkRestartTests {
             #expect(Self.automaticRestart(app) == .startsNow)
             set(.failed)
             #expect(app.updateController.isAppIdle)
-            // No setup window is open and no setup virtual machine shuts down.
+            // No setup virtual machine runs.
             #expect(!app.hasImageSetups)
         }
     }

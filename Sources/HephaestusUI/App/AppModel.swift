@@ -51,11 +51,9 @@ public final class AppModel {
     private(set) var minimizedQuestionSets: [String: String]
     /// The last status received from the Updater.
     var updaterStatus = UpdaterStatus.initial
-    /// The setup virtual machines whose setup window is open, by image id
-    /// (docs/virtual-machines.md › Setup window).
+    /// The setups whose virtual machine runs, by image id, from `Set Up…` until the virtual machine
+    /// has stopped, whether a window shows them or not (docs/virtual-machines.md › Setup view).
     private(set) var imageSetups: [UUID: VMSetupSession] = [:]
-    /// The setups whose window closed and whose virtual machine still shuts down.
-    private(set) var closingImageSetups: [VMSetupSession] = []
 
     // MARK: Local-only services (docs/architecture.md › Local-only services)
 
@@ -430,49 +428,92 @@ public final class AppModel {
         windowOpener?(.about)
     }
 
-    /// `Set Up…`: boots the image through the image setup service and opens its setup window, or
-    /// brings that window to front (docs/virtual-machines.md › Setup). Throws EngineError.
+    /// `Set Up…`: boots the image through the image setup service, or takes its setup that runs,
+    /// and shows its setup view in the window that `Show` chooses; a setup that shuts down after
+    /// `Stop` is waited for by the service first (docs/virtual-machines.md › Setup). Throws
+    /// EngineError.
     func openImageSetup(_ imageID: UUID) async throws {
-        if imageSetups[imageID] != nil {
-            windowOpener?(.imageSetup(imageID))
-            return
-        }
-        let session = try await engine.beginImageSetup(imageID)
-        guard session.phase != .ended else {
-            // The virtual machine stopped while it started.
-            if let failure = session.failure {
-                throw EngineError(.unavailable, failure)
+        if imageSetups[imageID].map({ $0.isShuttingDown }) ?? true {
+            let session = try await engine.beginImageSetup(imageID)
+            guard session.phase != .ended else {
+                // The virtual machine stopped while it started.
+                if let failure = session.failure {
+                    throw EngineError(.unavailable, failure)
+                }
+                return
             }
+            addImageSetup(session)
+        }
+        showImageSetup(imageID)
+    }
+
+    /// Keeps a setup that runs until its virtual machine has stopped.
+    private func addImageSetup(_ session: VMSetupSession) {
+        guard imageSetups[session.imageID] !== session else { return }
+        imageSetups[session.imageID] = session
+        Task { [weak self] in
+            await session.waitUntilEnded()
+            self?.imageSetupEnded(session)
+        }
+    }
+
+    /// Shows the setup view of an image whose setup runs: in `window` for a click on a preview of
+    /// the Virtual Machines popover; otherwise in the most recently key main window that shows This
+    /// Mac, ordered front and made key, or in a new main window on This Mac (docs/ui.md › Choosing
+    /// the window).
+    func showImageSetup(_ imageID: UUID, in window: WindowState? = nil) {
+        guard let session = imageSetups[imageID], !session.isShuttingDown else { return }
+        if let window {
+            guard window.deviceID == localDeviceID else { return }
+            window.shownImageSetupID = imageID
             return
         }
-        imageSetups[imageID] = session
-        windowOpener?(.imageSetup(imageID))
-    }
-
-    /// The setup window of an image closed: before `Finish Setup`, its virtual machine shuts down
-    /// and the image stays in Needs setup.
-    func imageSetupWindowClosed(_ imageID: UUID) {
-        guard let session = imageSetups.removeValue(forKey: imageID) else { return }
-        closingImageSetups.append(session)
-        Task {
-            await session.close()
-            // A window closed during `Finish Setup` leaves a virtual machine that still shuts down.
-            await session.waitUntilEnded()
-            closingImageSetups.removeAll { $0 === session }
+        guard let chosen = mainWindowsByKeyOrder.first(where: { $0.deviceID == localDeviceID }) else {
+            let state = WindowState(deviceID: localDeviceID)
+            state.needsDefaultProject = true
+            state.shownImageSetupID = imageID
+            openMainWindow(state)
+            return
         }
+        windowRegistry.window(forMain: chosen.id)?.makeKeyAndOrderFront(nil)
+        chosen.shownImageSetupID = imageID
     }
 
-    /// True while a setup window is open or the virtual machine of a closed one still shuts
-    /// down: the app is not idle then (docs/updater.md › Restart rules).
-    var hasImageSetups: Bool { !imageSetups.isEmpty || !closingImageSetups.isEmpty }
-
-    /// `Stop` of the Virtual Machines popover for a setup virtual machine: it shuts down as when
-    /// its window closes, and the window closes once it has stopped (docs/virtual-machines.md ›
-    /// Stop).
+    /// `Stop` of the setup view and of the Virtual Machines popover: the setup virtual machine
+    /// shuts down and its image stays in Needs setup (docs/virtual-machines.md › Setup view).
     func stopImageSetup(_ imageID: UUID) {
         guard let session = imageSetups[imageID] else { return }
         Task {
-            await session.close()
+            await session.stop()
+        }
+    }
+
+    /// True while a setup virtual machine runs, until it has stopped: the app is not idle then
+    /// (docs/updater.md › Restart rules).
+    var hasImageSetups: Bool { !imageSetups.isEmpty }
+
+    /// The macOS version of each image whose setup runs, for the linked item of its setup view.
+    var imageSetupVersions: [UUID: String] {
+        imageSetups.mapValues(\.version)
+    }
+
+    /// A setup has ended: every main window that shows its setup view goes back to its section,
+    /// after the alert of a virtual machine that failed. With no such window, the alert shows on
+    /// the most recently key main window that shows This Mac (docs/virtual-machines.md › Setup
+    /// view).
+    private func imageSetupEnded(_ session: VMSetupSession) {
+        if imageSetups[session.imageID] === session {
+            imageSetups[session.imageID] = nil
+        }
+        let failure = session.failure.map {
+            WindowAlert(title: VMImagePresentation.failureTitle(of: session), message: $0)
+        }
+        var shown = false
+        for state in windows.values where state.imageSetupEnded(session.imageID, failure: failure) {
+            shown = true
+        }
+        if let failure, !shown, let window = mainWindowsByKeyOrder.first(where: { $0.deviceID == localDeviceID }) {
+            window.alert = failure
         }
     }
 
@@ -513,7 +554,6 @@ public final class AppModel {
             case .main(let requestID): openWindow(id: "main", value: requestID)
             case .chat(let value): openWindow(id: "chat", value: value)
             case .image(let value): openWindow(id: "image", value: value)
-            case .imageSetup(let imageID): openWindow(id: "imageSetup", value: imageID)
             case .about: openWindow(id: "about")
             }
         }
@@ -797,7 +837,5 @@ enum SceneWindow: Hashable {
     case main(requestID: UUID)
     case chat(ChatWindowValue)
     case image(ImageViewerValue)
-    /// The setup window of a virtual machine image.
-    case imageSetup(UUID)
     case about
 }

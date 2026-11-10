@@ -20,8 +20,8 @@ struct VirtualMachinesBubbleTests {
                        startedAt: state == .running ? started.addingTimeInterval(seconds) : nil)
     }
 
-    static func setup(after seconds: TimeInterval = 0, closing: Bool = false) -> VMPopoverSetup {
-        VMPopoverSetup(imageID: imageID, version: "26.6.2", startedAt: started.addingTimeInterval(seconds), closing: closing)
+    static func setup(after seconds: TimeInterval = 0, imageID: UUID = imageID) -> VMPopoverSetup {
+        VMPopoverSetup(imageID: imageID, version: "26.6.2", startedAt: started.addingTimeInterval(seconds))
     }
 
     @Test("The bubble shows the number beside the symbol, hidden at 0, with the tooltip Virtual Machines")
@@ -43,7 +43,7 @@ struct VirtualMachinesBubbleTests {
         #expect(VMPopoverPresentation.rows(list, chats: [:], setups: []).count == 2)
         #expect(VMPopoverPresentation.rows(list, chats: [:], setups: [Self.setup()]).count == 3)
         #expect(VMPopoverPresentation.count(list, setups: []) == 2)
-        #expect(VMPopoverPresentation.count(list, setups: [Self.setup(), Self.setup(closing: true)]) == 4)
+        #expect(VMPopoverPresentation.count(list, setups: [Self.setup(), Self.setup(imageID: UUID())]) == 4)
         #expect(VMPopoverPresentation.count(nil, setups: []) == 0)
         // An install takes a place among the 2 running virtual machines but has no screen.
         let installing = VMList(machines: [Self.machine("Menu checks")], runningCount: 2)
@@ -61,7 +61,7 @@ struct VirtualMachinesBubbleTests {
         let rows = VMPopoverPresentation.rows(list, chats: [Self.chatID.uuidString: chat], setups: [Self.setup(after: 180)])
         #expect(rows.map(\.name) == ["Settings check", "Menu checks", "Set Up macOS 26.6.2"])
         #expect(rows.map(\.startedBy) == ["DEMO · Check the menus", "Started by you", "Started by you"])
-        #expect(rows.map(\.source) == [.machine(claude.id), .machine(user.id), .setup(imageID: Self.imageID, closing: false)])
+        #expect(rows.map(\.source) == [.machine(claude.id), .machine(user.id), .setup(imageID: Self.imageID)])
 
         // The chat's current title; the project id alone once the chat no longer exists.
         var renamed = chat
@@ -69,10 +69,10 @@ struct VirtualMachinesBubbleTests {
         #expect(VMPopoverPresentation.rows(list, chats: [Self.chatID.uuidString: renamed], setups: []).first?.startedBy == "DEMO · Menus")
         #expect(VMPopoverPresentation.rows(list, chats: [:], setups: []).first?.startedBy == "DEMO")
 
-        // A setup virtual machine whose window has closed keeps its row until it has stopped.
-        let closing = try #require(VMPopoverPresentation.rows(nil, chats: [:], setups: [Self.setup(closing: true)]).first)
-        #expect(closing.source == .setup(imageID: Self.imageID, closing: true))
-        #expect(closing.name == "Set Up macOS 26.6.2" && closing.startedBy == "Started by you")
+        // A setup virtual machine has its row whether a window shows its setup view or not.
+        let setup = try #require(VMPopoverPresentation.rows(nil, chats: [:], setups: [Self.setup()]).first)
+        #expect(setup.source == .setup(imageID: Self.imageID))
+        #expect(setup.name == "Set Up macOS 26.6.2" && setup.startedBy == "Started by you")
     }
 
     @Test("The rows are listed by their start, the virtual machine that started first at the top")

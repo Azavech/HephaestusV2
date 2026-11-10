@@ -133,7 +133,7 @@ public final class GuestAgentConnection: @unchecked Sendable {
     }
 
     /// Asks the agent to shut the guest down: `/sbin/shutdown -h now` as root
-    /// (docs/virtual-machines.md › Setup window).
+    /// (docs/virtual-machines.md › Setup view).
     public func shutDownGuest() async throws {
         let response = try await request("exec", params: ["command": "/sbin/shutdown -h now", "asRoot": true, "timeout": 20],
                                          timeout: .seconds(30))

@@ -268,7 +268,7 @@ extension AppModel {
                 kind = .settings
             case .about:
                 kind = .about
-            case .image, .imageSetup, nil:
+            case .image, nil:
                 kind = .other
             }
         }
