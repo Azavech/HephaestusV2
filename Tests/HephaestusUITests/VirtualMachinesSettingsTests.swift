@@ -228,4 +228,18 @@ struct VirtualMachinesSettingsTests {
             == (try Self.render(Button(action: {}) { Image(systemName: "circle").foregroundStyle(Color.secondary).padding(.top, 1) }
                 .buttonStyle(.plain), .standard)))
     }
+
+    @Test("The Claude section: its texts, and the idle minutes read from the field")
+    func claudeSection() throws {
+        #expect(ClaudeVMPresentation.idleLabel == "Stop Claude's idle VMs after")
+        #expect(ClaudeVMPresentation.idleUnit == "minutes")
+        #expect(ClaudeVMPresentation.tokenLabel == "Claude token")
+        #expect(ClaudeVMPresentation.tokenCaption == "Create it with claude setup-token. Each VM gets it when it starts.")
+        #expect(try ClaudeVMPresentation.idleMinutes(" 12 ").get() == 12)
+        guard case .failure(let error) = ClaudeVMPresentation.idleMinutes("ten") else {
+            Issue.record("a text that is not a number was read")
+            return
+        }
+        #expect(error.message == "claudeVMIdleMinutes: use a number from 1 to 1440.")
+    }
 }

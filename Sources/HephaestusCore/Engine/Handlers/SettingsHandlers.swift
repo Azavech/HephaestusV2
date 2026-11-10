@@ -68,5 +68,8 @@ extension Engine {
         if new.showHephaestusProject != old.showHephaestusProject {
             hephaestusVisibilityDidChange(shown: new.showHephaestusProject, origin: actor)
         }
+        if new.claudeVMIdleMinutes != old.claudeVMIdleMinutes {
+            claudeVMIdleMinutesDidChange()
+        }
     }
 }

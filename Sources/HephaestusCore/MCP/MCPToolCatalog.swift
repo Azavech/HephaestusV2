@@ -91,6 +91,10 @@ public enum MCPToolHandling: String, Sendable, Hashable, CaseIterable {
     /// `api_call`: chat tokens only, `chatID` from the token, the optional arguments in `options`,
     /// the method's JSON as the result (docs/mcp.md › api_call).
     case serviceAPICall
+    /// The VM tools: chat tokens only, `chatID` from the token, the `source` of `vm_copy_in` and
+    /// the `destination` of `vm_copy_out` expanded, the method's JSON as the result
+    /// (docs/mcp.md › Rules of the VM tools).
+    case vmTool
     /// A debug tool: `MCPDebugUI`, not an engine method.
     case debugUI
 }

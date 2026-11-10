@@ -38,6 +38,13 @@ public final class VMSession {
     @ObservationIgnored private var endWaiters: [CheckedContinuation<Void, Never>] = []
     /// How long `shutDown()` waits for a guest that the agent shuts down.
     @ObservationIgnored var shutdownWait: Duration = .seconds(60)
+    /// True while the agent is connected and has been given the Claude token, when one is set:
+    /// the actions of the VM tools wait for it (docs/virtual-machines.md › Claude token).
+    public private(set) var agentReady = false
+    /// Counts the connections of the agent, so that the end of the token's request of an older
+    /// connection changes nothing.
+    @ObservationIgnored private var connectionNumber = 0
+    @ObservationIgnored private var readyWaiters: [UUID: CheckedContinuation<Bool, Never>] = [:]
 
     /// The framework's virtual machine, for the view of its screen; nil for a stand-in.
     public var virtualMachine: VZVirtualMachine? { machine.virtualMachine }
@@ -76,6 +83,71 @@ public final class VMSession {
                 await end(failure: nil)
             }
         }
+    }
+
+    /// Waits until the agent is connected and has been given the Claude token, at most
+    /// `timeout`; false when it is not ready by then or the session ends first.
+    func waitForAgent(timeout: Duration) async -> Bool {
+        if agentReady { return true }
+        guard phase != .ended, !isEnding else { return false }
+        let id = UUID()
+        let timer = Task { [weak self] in
+            try? await Task.sleep(for: timeout)
+            guard !Task.isCancelled else { return }
+            self?.resumeReadyWaiter(id, ready: false)
+        }
+        let ready = await withCheckedContinuation { readyWaiters[id] = $0 }
+        timer.cancel()
+        return ready
+    }
+
+    private func resumeReadyWaiter(_ id: UUID, ready: Bool) {
+        readyWaiters.removeValue(forKey: id)?.resume(returning: ready)
+    }
+
+    private func resumeReadyWaiters(ready: Bool) {
+        let waiters = readyWaiters
+        readyWaiters = [:]
+        for waiter in waiters.values {
+            waiter.resume(returning: ready)
+        }
+    }
+
+    /// One request to the connected agent (docs/virtual-machines.md › Methods).
+    func agentRequest(_ method: String, params: [String: JSONValue] = [:], data: Data = Data(),
+                      timeout: Duration) async throws -> GuestAgentResponse {
+        try await machine.agentRequest(method, params: params, data: data, timeout: timeout)
+    }
+
+    /// A new connection of the agent: the Claude token is given first, then the agent is ready
+    /// (docs/virtual-machines.md › Claude token). Without a token it is ready at once; a failure
+    /// is logged and the agent is ready all the same.
+    private func agentDidConnect() {
+        connectionNumber += 1
+        let number = connectionNumber
+        agentReady = false
+        guard let engine, let token = engine.secrets.current.claudeVMToken else {
+            becomeReady(number)
+            return
+        }
+        let log = engine.log
+        let vmID = vmID
+        Task {
+            do {
+                _ = try await machine.agentRequest(VMToolService.setEnvMethod,
+                                                   params: ["name": .string(VMToolService.tokenVariable), "value": .string(token)],
+                                                   data: Data(), timeout: .seconds(30))
+            } catch {
+                log.warn(.engine, "virtual machine \(vmID.uuidString): the agent did not take the Claude token: \(VMImageFailure.message(of: error))")
+            }
+            becomeReady(number)
+        }
+    }
+
+    private func becomeReady(_ number: Int) {
+        guard number == connectionNumber, agent != nil, phase == .starting || phase == .running else { return }
+        agentReady = true
+        resumeReadyWaiters(ready: true)
     }
 
     /// Returns once the session has ended and the engine has freed its place.
@@ -148,10 +220,15 @@ public final class VMSession {
         switch event {
         case .agentConnected(let status):
             if phase == .starting || phase == .running {
+                let isNew = agent == nil
                 agent = status
+                if isNew {
+                    agentDidConnect()
+                }
             }
         case .agentDisconnected:
             agent = nil
+            agentReady = false
         case .stopped(let error):
             guestStopped = true
             resumeStopWaiters()
@@ -185,12 +262,16 @@ public final class VMSession {
         guard !isEnding else { return }
         isEnding = true
         agent = nil
+        agentReady = false
+        resumeReadyWaiters(ready: false)
         await engine?.virtualMachineEnded(vmID, session: self, failure: failure)
         finishEnding()
     }
 
     private func finishEnding() {
         phase = .ended
+        agentReady = false
+        resumeReadyWaiters(ready: false)
         let waiters = endWaiters
         endWaiters = []
         for waiter in waiters {

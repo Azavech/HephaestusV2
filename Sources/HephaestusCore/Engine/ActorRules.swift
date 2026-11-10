@@ -83,6 +83,10 @@ enum ActorRules {
     /// (docs/engine-api.md › API).
     static let ownChatAPIOnly = EngineError(.forbidden, "Only the chat's own Claude can use the API tools.")
 
+    /// The message of the methods of the VM tools, and of their tools with the external token
+    /// (docs/engine-api.md › VM tools).
+    static let ownChatVMOnly = EngineError(.forbidden, "Only the chat's own Claude can use the VM tools.")
+
     /// chats.close: a chat other than the actor's own must belong to the project of the actor's
     /// chat (docs/engine-api.md › chats.close).
     static func otherProjectChat(_ chatID: ChatID) -> EngineError {

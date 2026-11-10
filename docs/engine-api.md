@@ -113,8 +113,8 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | MCP request with an answer token       | claude, chatID `answer` ([Comment answers](chats.md#comment-answers)) |
 | Engine-internal work and tests         | system                                                                |
 
-- **user** may call every method except `chats.postQuestions`, `chats.postSymbol`, `chats.postColor`, `chats.postSound`, `chats.postShortcut`, `chats.postFont`, `chats.postAnimation`, `chats.postImages`, `chats.watchCI`, the methods of [Kubernetes and Argo CD](#kubernetes-and-argo-cd) with a `chatID` param and the methods of [API](#api). Local and remote users have the same rights.
-- **claude** may call only the 61 methods that MCP tools map to (the Actors column says "claude"), with the rules below. Any other method fails with `forbidden` before its params are decoded.
+- **user** may call every method except `chats.postQuestions`, `chats.postSymbol`, `chats.postColor`, `chats.postSound`, `chats.postShortcut`, `chats.postFont`, `chats.postAnimation`, `chats.postImages`, `chats.watchCI`, the methods of [Kubernetes and Argo CD](#kubernetes-and-argo-cd) with a `chatID` param, the methods of [API](#api) and the methods of [VM tools](#vm-tools). Local and remote users have the same rights.
+- **claude** may call only the 75 methods that MCP tools map to (the Actors column says "claude"), with the rules below. Any other method fails with `forbidden` before its params are decoded.
 - **system** may call every method, without restrictions.
 
 ### Rules for Claude
@@ -137,6 +137,8 @@ Every call carries an [Actor](#actor). The transport assigns it; params never ca
 | chats.postAnimation                                                                                                              | The chat's project must have the type `swiftApplication` (`ask_animation is available only in Swift application projects.`) ([Projects](projects.md#project-types)).                                                                                                                                                                               | forbidden |
 | The methods of [Kubernetes and Argo CD](#kubernetes-and-argo-cd)                                                                 | Only the chat's own Claude may call them: the actor's chatID must equal the `chatID` param; the external token is refused (`Only the chat's own Claude can use the Kubernetes and Argo CD tools.`). The chat's project must have the type `goService` (`<tool> is only available in Go service projects.`).                                        | forbidden |
 | The methods of [API](#api)                                                                                                       | Only the chat's own Claude may call them: the actor's chatID must equal the `chatID` param; the external token is refused (`Only the chat's own Claude can use the API tools.`). The chat's project must have the type `goService` (`<tool> is only available in Go service projects.`).                                                           | forbidden |
+| The methods of [VM tools](#vm-tools)                                                                                             | Only the chat's own Claude may call them: the actor's chatID must equal the `chatID` param; the external token is refused (`Only the chat's own Claude can use the VM tools.`).                                                                                                                                                                    | forbidden |
+| vmTools.stop                                                                                                                     | A virtual machine that the user started is refused (`“<name>” was started by the user: only the user stops it.`).                                                                                                                                                                                                                                  | forbidden |
 | chats.close                                                                                                                      | The external token is refused (`Only the chat's own Claude can close its chat.`).                                                                                                                                                                                                                                                                  | forbidden |
 | chats.close                                                                                                                      | A chat other than the actor's own must belong to its project (`Chat <chatID> belongs to another project.`).                                                                                                                                                                                                                                        | forbidden |
 | chats.close                                                                                                                      | A chat other than the actor's own must have no turn in progress (`Chat <chatID> has a turn in progress.`).                                                                                                                                                                                                                                         | conflict  |
@@ -328,6 +330,20 @@ The first column lists every engine method; it is the list the docs conformance 
 | `vms.start`                      | VMsStart                      | vmID                                                       | VirtualMachine     | user         |
 | `vms.stop`                       | VMsStop                       | vmID                                                       | Empty              | user         |
 | `vms.delete`                     | VMsDelete                     | vmID                                                       | Empty              | user         |
+| `vmTools.images`                 | VMToolsImages                 | chatID                                                     | [VMToolImage]      | claude       |
+| `vmTools.list`                   | VMToolsList                   | chatID                                                     | [VMToolMachine]    | claude       |
+| `vmTools.start`                  | VMToolsStart                  | chatID, image?, name, cores?, memory?                      | VMToolMachine      | claude       |
+| `vmTools.stop`                   | VMToolsStop                   | chatID, vmID                                               | Empty              | claude       |
+| `vmTools.screenshot`             | VMToolsScreenshot             | chatID, vmID                                               | VMScreenshot       | claude       |
+| `vmTools.click`                  | VMToolsClick                  | chatID, vmID, x, y, button?, count?                        | Empty              | claude       |
+| `vmTools.drag`                   | VMToolsDrag                   | chatID, vmID, fromX, fromY, toX, toY                       | Empty              | claude       |
+| `vmTools.scroll`                 | VMToolsScroll                 | chatID, vmID, x, y, deltaX?, deltaY?                       | Empty              | claude       |
+| `vmTools.type`                   | VMToolsType                   | chatID, vmID, text                                         | Empty              | claude       |
+| `vmTools.key`                    | VMToolsKey                    | chatID, vmID, key                                          | Empty              | claude       |
+| `vmTools.uiTree`                 | VMToolsUITree                 | chatID, vmID, app?, maxDepth?                              | VMUITree           | claude       |
+| `vmTools.shell`                  | VMToolsShell                  | chatID, vmID, command, asRoot?, timeout?                   | VMShellResult      | claude       |
+| `vmTools.copyIn`                 | VMToolsCopyIn                 | chatID, vmID, source, destination                          | Empty              | claude       |
+| `vmTools.copyOut`                | VMToolsCopyOut                | chatID, vmID, source, destination                          | Empty              | claude       |
 | `settings.get`                   | SettingsGet                   | none                                                       | HostSettings       | user         |
 | `settings.update`                | SettingsUpdate                | any HostSettings key (partial)                             | HostSettings       | user         |
 | `ui.open`                        | UIOpen                        | target, deviceID?                                          | Empty              | user, claude |
@@ -3158,6 +3174,306 @@ Stops the virtual machine at once when it runs and deletes its folder with every
 
 Events: vms.changed.
 
+## VM tools
+
+The methods of the VM tools of the MCP server, one per tool ([Rules of the VM tools](mcp.md#rules-of-the-vm-tools)): Claude lists the images and the virtual machines, starts, joins and stops its own virtual machines, and drives a virtual machine through its agent, one action at a time ([Claude's virtual machines](virtual-machines.md#claudes-virtual-machines)). Only the claude actor calls them, with the `chatID` of its own chat: another chat id, and the external token, fail with `forbidden` and `Only the chat's own Claude can use the VM tools.` ([Rules for Claude](#rules-for-claude)). The ten methods from `vmTools.screenshot` to `vmTools.copyOut` are actions: they run in the queue of their virtual machine.
+
+### VMToolImage
+
+An element of the result of `vmTools.images`.
+
+| Field     | Type         | Required | Description                                                                                                        |
+| --------- | ------------ | -------- | ------------------------------------------------------------------------------------------------------------------ |
+| id        | UUID         | yes      | The image's id.                                                                                                    |
+| version   | String       | yes      | Its macOS version, for example `27.2.1`.                                                                           |
+| build     | String       | yes      | Its macOS build, for example `26B131`.                                                                             |
+| state     | VMImageState | yes      | `downloading`, `installing`, `needsSetup`, `ready` or `failed` ([Image states](virtual-machines.md#image-states)). |
+| isDefault | Bool         | yes      | True for the [default image](virtual-machines.md#default-image).                                                   |
+| cores     | Int          | yes      | The cores of its virtual machines.                                                                                 |
+| memoryGB  | Int          | yes      | Their memory in GB.                                                                                                |
+| diskGB    | Int          | yes      | The size of its disk in GB.                                                                                        |
+| failure   | String       | no       | The failure of a `failed` image.                                                                                   |
+
+### VMToolMachine
+
+An element of the result of `vmTools.list`, and the result of `vmTools.start`.
+
+| Field          | Type                | Required | Description                                                                                                                                                                                                              |
+| -------------- | ------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| id             | UUID                | yes      | The virtual machine's id.                                                                                                                                                                                                |
+| name           | String              | yes      | Its name.                                                                                                                                                                                                                |
+| imageID        | UUID                | yes      | The image it was created from.                                                                                                                                                                                           |
+| version        | String              | yes      | The macOS version of that image.                                                                                                                                                                                         |
+| cores          | Int                 | yes      | Its cores.                                                                                                                                                                                                               |
+| memoryGB       | Int                 | yes      | Its memory in GB.                                                                                                                                                                                                        |
+| startedBy      | String              | yes      | The text of the `Started by` column: `You`, or `<project id> · <chat name>` for a virtual machine that Claude started, `<project id>` alone when the chat no longer exists ([Lifecycle](virtual-machines.md#lifecycle)). |
+| byClaude       | Bool                | yes      | True for a virtual machine that Claude started.                                                                                                                                                                          |
+| state          | VirtualMachineState | yes      | `running` or `stopped`.                                                                                                                                                                                                  |
+| runningTime    | String              | no       | The running time of the `State` column, for example `12 min` or `1 h 05 min`; absent for a stopped virtual machine.                                                                                                      |
+| agentConnected | Bool                | yes      | True while the agent is connected and has been given the [Claude token](virtual-machines.md#claude-token): the actions run without waiting for it.                                                                       |
+
+```json
+{
+  "agentConnected": true,
+  "byClaude": true,
+  "cores": 2,
+  "id": "7D2C1A90-5E4B-4F3A-8B6C-1D0E9F8A7B6C",
+  "imageID": "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F",
+  "memoryGB": 4,
+  "name": "Menu checks",
+  "runningTime": "3 min",
+  "startedBy": "HEPH · Fix the View menu",
+  "state": "running",
+  "version": "27.2.1"
+}
+```
+
+### VMScreenshot
+
+The result of `vmTools.screenshot`: `path`, String, the absolute path of the PNG on this Mac; `width` and `height`, Int, its size in pixels ([vm_screenshot](mcp.md#vm_screenshot)).
+
+### VMShellResult
+
+The result of `vmTools.shell`, the result of the agent's `exec` ([Methods](virtual-machines.md#methods)): `exitStatus`, Int; `timedOut`, Bool; `stdout` and `stderr`, String, each cut at 1,048,576 bytes; `truncated`, Bool, true when one of them was cut.
+
+### VMUITree
+
+The result of `vmTools.uiTree`, the result of the agent's `uiTree` as a [JSONValue](#jsonvalue) object: `app`, `bundleID`, `pid` and `tree` ([Methods](virtual-machines.md#methods)).
+
+### vmTools.images
+
+Swift type `VMToolsImages` · actors: claude · result: [VMToolImage](#vmtoolimage) array
+
+Returns the images, oldest first ([vm_list_images](mcp.md#vm_list_images)).
+
+| Param  | Type | Required | Description                               |
+| ------ | ---- | -------- | ----------------------------------------- |
+| chatID | UUID | yes      | The calling chat; the MCP server sets it. |
+
+Errors: those of [Rules of the VM tools](mcp.md#rules-of-the-vm-tools), rule 1.
+
+Events: none.
+
+### vmTools.list
+
+Swift type `VMToolsList` · actors: claude · result: [VMToolMachine](#vmtoolmachine) array
+
+Returns the virtual machines, oldest first ([vm_list](mcp.md#vm_list)).
+
+| Param  | Type | Required | Description                               |
+| ------ | ---- | -------- | ----------------------------------------- |
+| chatID | UUID | yes      | The calling chat; the MCP server sets it. |
+
+Errors: those of [Rules of the VM tools](mcp.md#rules-of-the-vm-tools), rule 1.
+
+Events: none.
+
+### vmTools.start
+
+Swift type `VMToolsStart` · actors: claude · result: [VMToolMachine](#vmtoolmachine)
+
+Joins the virtual machine that Claude runs from the image, or starts a new one for the calling chat, waiting up to 10 minutes for a free place, then for its agent ([Starting and joining](virtual-machines.md#starting-and-joining)).
+
+| Param  | Type   | Required | Description                                                                                |
+| ------ | ------ | -------- | ------------------------------------------------------------------------------------------ |
+| chatID | UUID   | yes      | The calling chat; the MCP server sets it.                                                  |
+| image  | String | no       | A macOS version or the id of an image; the default image when absent.                      |
+| name   | String | yes      | The name of a new virtual machine: one line of 1 to 100 characters, trimmed.               |
+| cores  | Int    | no       | Its processor cores: 2 to the number of cores of the Mac; the image's when absent.         |
+| memory | Int    | no       | Its memory in GB: 4 to the memory of the Mac in GB, rounded down; the image's when absent. |
+
+Errors: those of [vm_start](mcp.md#vm_start).
+
+Events: vms.changed, as for vms.create, when a virtual machine starts.
+
+### vmTools.stop
+
+Swift type `VMToolsStop` · actors: claude · result: [Empty](#empty)
+
+Shuts down a virtual machine that Claude started and returns once it has stopped; it is then deleted ([vm_stop](mcp.md#vm_stop)).
+
+| Param  | Type | Required | Description                               |
+| ------ | ---- | -------- | ----------------------------------------- |
+| chatID | UUID | yes      | The calling chat; the MCP server sets it. |
+| vmID   | UUID | yes      | Id of the virtual machine.                |
+
+Errors: those of [vm_stop](mcp.md#vm_stop), the virtual machine of the user included (`forbidden`).
+
+Events: vms.changed.
+
+### vmTools.screenshot
+
+Swift type `VMToolsScreenshot` · actors: claude · result: [VMScreenshot](#vmscreenshot)
+
+Writes a screenshot of the guest's main display to a PNG on this Mac ([vm_screenshot](mcp.md#vm_screenshot)).
+
+| Param  | Type | Required | Description                               |
+| ------ | ---- | -------- | ----------------------------------------- |
+| chatID | UUID | yes      | The calling chat; the MCP server sets it. |
+| vmID   | UUID | yes      | Id of the virtual machine.                |
+
+Errors: those of [Rules of the VM tools](mcp.md#rules-of-the-vm-tools), rules 1, 3 and 4; the PNG cannot be written (`internal`).
+
+Events: none.
+
+### vmTools.click
+
+Swift type `VMToolsClick` · actors: claude · result: [Empty](#empty)
+
+Clicks at a point of the guest's screen ([vm_click](mcp.md#vm_click)).
+
+| Param  | Type   | Required | Description                                          |
+| ------ | ------ | -------- | ---------------------------------------------------- |
+| chatID | UUID   | yes      | The calling chat; the MCP server sets it.            |
+| vmID   | UUID   | yes      | Id of the virtual machine.                           |
+| x      | Int    | yes      | Pixels from the left edge of the screenshot, from 0. |
+| y      | Int    | yes      | Pixels from its top edge, from 0.                    |
+| button | String | no       | `left` or `right`; `left` when absent.               |
+| count  | Int    | no       | 1 to 3; 1 when absent.                               |
+
+Errors: those of [Rules of the VM tools](mcp.md#rules-of-the-vm-tools), rules 1, 3 and 4.
+
+Events: none.
+
+### vmTools.drag
+
+Swift type `VMToolsDrag` · actors: claude · result: [Empty](#empty)
+
+Drags with the left button from one point of the guest's screen to another ([vm_drag](mcp.md#vm_drag)).
+
+| Param  | Type | Required | Description                                       |
+| ------ | ---- | -------- | ------------------------------------------------- |
+| chatID | UUID | yes      | The calling chat; the MCP server sets it.         |
+| vmID   | UUID | yes      | Id of the virtual machine.                        |
+| fromX  | Int  | yes      | Where the drag starts, pixels from the left edge. |
+| fromY  | Int  | yes      | Where it starts, pixels from the top edge.        |
+| toX    | Int  | yes      | Where it ends, pixels from the left edge.         |
+| toY    | Int  | yes      | Where it ends, pixels from the top edge.          |
+
+Errors: those of [Rules of the VM tools](mcp.md#rules-of-the-vm-tools), rules 1, 3 and 4.
+
+Events: none.
+
+### vmTools.scroll
+
+Swift type `VMToolsScroll` · actors: claude · result: [Empty](#empty)
+
+Scrolls at a point of the guest's screen ([vm_scroll](mcp.md#vm_scroll)).
+
+| Param  | Type | Required | Description                                                |
+| ------ | ---- | -------- | ---------------------------------------------------------- |
+| chatID | UUID | yes      | The calling chat; the MCP server sets it.                  |
+| vmID   | UUID | yes      | Id of the virtual machine.                                 |
+| x      | Int  | yes      | Pixels from the left edge of the screenshot.               |
+| y      | Int  | yes      | Pixels from its top edge.                                  |
+| deltaX | Int  | no       | Pixels to scroll right, left when negative; 0 when absent. |
+| deltaY | Int  | no       | Pixels to scroll down, up when negative; 0 when absent.    |
+
+Errors: those of [Rules of the VM tools](mcp.md#rules-of-the-vm-tools), rules 1, 3 and 4.
+
+Events: none.
+
+### vmTools.type
+
+Swift type `VMToolsType` · actors: claude · result: [Empty](#empty)
+
+Types text in the guest ([vm_type](mcp.md#vm_type)).
+
+| Param  | Type   | Required | Description                               |
+| ------ | ------ | -------- | ----------------------------------------- |
+| chatID | UUID   | yes      | The calling chat; the MCP server sets it. |
+| vmID   | UUID   | yes      | Id of the virtual machine.                |
+| text   | String | yes      | The text to type.                         |
+
+Errors: those of [Rules of the VM tools](mcp.md#rules-of-the-vm-tools), rules 1, 3 and 4.
+
+Events: none.
+
+### vmTools.key
+
+Swift type `VMToolsKey` · actors: claude · result: [Empty](#empty)
+
+Presses a key with modifiers, written in the macOS menu notation ([vm_key](mcp.md#vm_key)).
+
+| Param  | Type   | Required | Description                                   |
+| ------ | ------ | -------- | --------------------------------------------- |
+| chatID | UUID   | yes      | The calling chat; the MCP server sets it.     |
+| vmID   | UUID   | yes      | Id of the virtual machine.                    |
+| key    | String | yes      | The key and its modifiers, for example `⇧⌘K`. |
+
+Errors: those of [Rules of the VM tools](mcp.md#rules-of-the-vm-tools), rules 1, 3 and 4; a key that is not in the notation (`invalid`, `key: use the macOS menu notation, for example ⇧⌘K.`).
+
+Events: none.
+
+### vmTools.uiTree
+
+Swift type `VMToolsUITree` · actors: claude · result: [VMUITree](#vmuitree)
+
+Reads the Accessibility tree of an app of the guest ([vm_ui_tree](mcp.md#vm_ui_tree)).
+
+| Param    | Type   | Required | Description                                                        |
+| -------- | ------ | -------- | ------------------------------------------------------------------ |
+| chatID   | UUID   | yes      | The calling chat; the MCP server sets it.                          |
+| vmID     | UUID   | yes      | Id of the virtual machine.                                         |
+| app      | String | no       | A bundle identifier or an app name; the frontmost app when absent. |
+| maxDepth | Int    | no       | 1 to 100; 40 when absent.                                          |
+
+Errors: those of [Rules of the VM tools](mcp.md#rules-of-the-vm-tools), rules 1, 3 and 4.
+
+Events: none.
+
+### vmTools.shell
+
+Swift type `VMToolsShell` · actors: claude · result: [VMShellResult](#vmshellresult)
+
+Runs a shell command in the guest, as the account or as root ([vm_shell](mcp.md#vm_shell)).
+
+| Param   | Type   | Required | Description                               |
+| ------- | ------ | -------- | ----------------------------------------- |
+| chatID  | UUID   | yes      | The calling chat; the MCP server sets it. |
+| vmID    | UUID   | yes      | Id of the virtual machine.                |
+| command | String | yes      | The command, run with `/bin/zsh -lc`.     |
+| asRoot  | Bool   | no       | Run it as root; false when absent.        |
+| timeout | Int    | no       | Seconds, 1 to 1800; 60 when absent.       |
+
+Errors: those of [Rules of the VM tools](mcp.md#rules-of-the-vm-tools), rules 1, 3 and 4; `timeout` outside its range (`invalid`, `timeout: use a number from 1 to 1800.`).
+
+Events: none.
+
+### vmTools.copyIn
+
+Swift type `VMToolsCopyIn` · actors: claude · result: [Empty](#empty)
+
+Copies a file or a folder of this Mac into the guest ([vm_copy_in](mcp.md#vm_copy_in)).
+
+| Param       | Type   | Required | Description                                                    |
+| ----------- | ------ | -------- | -------------------------------------------------------------- |
+| chatID      | UUID   | yes      | The calling chat; the MCP server sets it.                      |
+| vmID        | UUID   | yes      | Id of the virtual machine.                                     |
+| source      | String | yes      | Absolute path of a file or a folder on this Mac.               |
+| destination | String | yes      | Path of the copy in the guest, absolute or starting with `~/`. |
+
+Errors: those of [vm_copy_in](mcp.md#vm_copy_in).
+
+Events: none.
+
+### vmTools.copyOut
+
+Swift type `VMToolsCopyOut` · actors: claude · result: [Empty](#empty)
+
+Copies a file or a folder of the guest to this Mac ([vm_copy_out](mcp.md#vm_copy_out)).
+
+| Param       | Type   | Required | Description                                                              |
+| ----------- | ------ | -------- | ------------------------------------------------------------------------ |
+| chatID      | UUID   | yes      | The calling chat; the MCP server sets it.                                |
+| vmID        | UUID   | yes      | Id of the virtual machine.                                               |
+| source      | String | yes      | Path of a file or a folder in the guest, absolute or starting with `~/`. |
+| destination | String | yes      | Absolute path of the copy on this Mac.                                   |
+
+Errors: those of [vm_copy_out](mcp.md#vm_copy_out).
+
+Events: none.
+
 ## Settings
 
 ### settings.get
@@ -3191,6 +3507,7 @@ Every param is optional; an absent param keeps its value. Value rules are those 
 | notifyAISummary            | Bool         | no            | This Mac posts the notifications with Haiku's summary.                                                                                              |
 | showHephaestusProject      | Bool         | no            | Show the HephaestusV2 project ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)).                                     |
 | defaultVMImage             | UUID         | no, clearable | The default image of virtual machines, a Ready image; null leaves none ([Default image](virtual-machines.md#default-image)).                        |
+| claudeVMIdleMinutes        | Int          | no            | Minutes after which an idle virtual machine of Claude stops, 1–1440 ([Idle stop](virtual-machines.md#idle-stop)).                                   |
 
 | Changed key                                     | Effect                                                                                                                                                                                                                                                                                                 |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -3203,6 +3520,7 @@ Every param is optional; an absent param keeps its value. Value rules are those 
 | formatGoOnSave, formatSwiftOnSave               | Used by `files.write`.                                                                                                                                                                                                                                                                                 |
 | notifyNeedsYou, notifyFinished, notifyAISummary | Used by the notifications This Mac posts ([UI › Status bar](ui.md#status-bar)).                                                                                                                                                                                                                        |
 | showHephaestusProject                           | false: the chat processes and comment answers of the HephaestusV2 project and its sub projects stop, and project.removed is emitted for each of them, then projects.changed; true: projects.changed lists them again ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)). |
+| claudeVMIdleMinutes                             | The idle virtual machines of Claude stop after the new number of minutes, those idle for longer at once ([Idle stop](virtual-machines.md#idle-stop)).                                                                                                                                                  |
 | defaultVMImage                                  | The image that a virtual machine starts from when none is named ([Default image](virtual-machines.md#default-image)).                                                                                                                                                                                  |
 
 | Error    | When                                                                                                                                                                                                                                                                                               |
@@ -3518,6 +3836,7 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
   "settings": {
     "autoUpdate": true,
     "claudePath": null,
+    "claudeVMIdleMinutes": 10,
     "defaultChatSettings": {"contextWindow": "auto", "effort": "high", "model": "default", "permissionMode": "manual", "ultracode": false},
     "defaultVMImage": null,
     "formatGoOnSave": true,
@@ -5132,3 +5451,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R200: The user places and sizes each widget of a project's Dashboard on an invisible grid of 24 columns of square cells, like Grafana.
 - R201: Settings has a Virtual Machines tab whose Images section adds macOS images for virtual machines from the versions ipsw.me lists, downloads and installs them, prepares each one once in a setup window so that an agent in the guest gives full control of it, marks the default image and deletes images.
 - R202: The user starts virtual machines from the Ready images in Settings, keeps them between runs, starts, stops and deletes them, and shows the screen of one in a main window, where the mouse and the keyboard drive it; at most 2 run at once, and the app does not restart by itself for an update while one runs.
+- R204: Every chat of every project gives Claude full control of virtual machines with the VM tools: Claude starts one freely or joins Claude's one of the same image, waits up to 10 minutes for a free place, drives it one action at a time across chats, acts on the user's only when named and never stops them; Claude's idle VMs stop after the minutes set in Settings, and each VM gets the Claude token of Settings at its start.

@@ -105,6 +105,9 @@ public actor Engine {
     /// The virtual machines started from the images and the sessions of those that run
     /// (VirtualMachines/VirtualMachineService.swift).
     let virtualMachines = VirtualMachineService()
+    /// The queues, the idle timers and the waits of the VM tools
+    /// (VirtualMachines/VMToolService.swift).
+    let vmTools = VMToolService()
 
     // MARK: Servers and local-only services (docs/architecture.md › Local-only services)
 
@@ -397,6 +400,7 @@ public actor Engine {
         registerBuildHandlers()
         registerVMImageHandlers()
         registerVMHandlers()
+        registerVMToolHandlers()
         registerSettingsHandlers()
         registerUIHandlers()
     }

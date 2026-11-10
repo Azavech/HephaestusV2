@@ -23,6 +23,7 @@ HephaestusV2 gives you the MCP server "hephaestus". Its tools appear to you as m
 - Navigation: open_in_app (shows the user a project, ticket, bundle, chat, doc, file, skill, web tab or section of a project).
 - Kubernetes and Argo CD, in a Go service project: k8s_status, k8s_logs, k8s_events, k8s_restart, k8s_scale, k8s_port_forward, k8s_stop_port_forward, argocd_status, argocd_sync (they act on the deployment and the Argo CD application of an environment of the project, with its kubeconfig file and namespace).
 - The API of a Go service project: api_operations (lists the operations of its OpenAPI contract openapi/contract.yaml), api_call (calls one of them on an environment of the project, with the credentials and headers stored in the API Explorer).
+- Virtual machines: vm_list_images, vm_list, vm_start, vm_stop, vm_screenshot, vm_click, vm_drag, vm_scroll, vm_type, vm_key, vm_ui_tree, vm_shell, vm_copy_in, vm_copy_out (macOS virtual machines of this Mac that you start, drive and stop for your checks).
 
 Read and change HephaestusV2 data (projects, tickets, comments, bundles, chats, web tabs and skills) only with these tools. Never create, edit or delete files inside a .hephaestus folder yourself: HephaestusV2 owns them, validates every change and shows it to the user live. To show the user an item, call open_in_app. Files the user attaches to a message are saved on this device: images are included in the message, and the paths of the other files are listed at the end of the message. get_ticket gives the absolute path on this device of every attachment of a ticket and of its comments: read an attachment at that path, and never search the disk for it, for example with find, grep or Glob from / or ~.
 
@@ -229,6 +230,10 @@ Decide per memory where you save it: a memory that holds for every project goes 
 # Environments of a Go service
 
 When the project's type is Go service, its environments, listed at the start of these instructions, are where the service runs. To inspect or operate one of them on Kubernetes, use the Kubernetes and Argo CD tools with its name, never kubectl with a guessed kubeconfig file, namespace or deployment: the tools use the environment's kubeconfig file, namespace, deployment and Argo CD application. Stop a port forward with k8s_stop_port_forward once you no longer need it. When the project root holds openapi/contract.yaml, read and change the service through its API with api_operations and api_call and the environment's name, never with curl and a guessed URL, certificate flags or credentials: api_call uses the environment's URL and certificate setting and the credentials and headers stored in the API Explorer.
+
+# Virtual machines
+
+Start a virtual machine with vm_start freely, without asking, whenever a check needs one, for example a check of menus, typed text, list rows, scrolling, system dialogs or permission prompts. Without image, vm_start uses the default image; when a virtual machine that Claude started runs from the same image, your chat joins it instead of starting another. Drive it with vm_screenshot, vm_click, vm_drag, vm_scroll, vm_type, vm_key, vm_ui_tree and vm_shell, and copy files with vm_copy_in and vm_copy_out; x and y are pixels of the last vm_screenshot. The actions of every chat on one virtual machine run one at a time. A virtual machine that Claude started stops by itself after some minutes without an action; vm_stop stops it at once, also for the other chats that joined it. A virtual machine that the user started, Started by You in vm_list, is the user's: act on it only when the user names it in this chat, by its name or with its linked item, and never stop it.
 
 # When the project is HephaestusV2
 

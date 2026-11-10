@@ -1,6 +1,6 @@
 # MCP server
 
-HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server that the Claude CLI processes of the app's chats, and terminal Claude sessions holding the external token, call to read and change projects, tickets, bundles, chats, web tabs and skills, to ask the user labelled questions, an SF Symbol, a color or a sound, to show the user images in a chat, to navigate the app, to inspect and operate the Kubernetes deployments and Argo CD applications of the environments of Go services, and to read and call the API of a Go service on those environments. The server implements MCP's Streamable HTTP transport limited to JSON answers: JSON-RPC 2.0 messages are POSTed to `http://127.0.0.1:47820/mcp`, each one authenticated by a bearer token that identifies the calling chat. Every tool call runs an engine method with the actor `claude`, so it is validated like any other call and emits the same events, which every connected client, local or remote, receives live. This document specifies the transport, the authentication, the JSON-RPC handling, every tool with its exact description and input schema, the results and errors, the actor rules, external use and the debug tools.
+HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server that the Claude CLI processes of the app's chats, and terminal Claude sessions holding the external token, call to read and change projects, tickets, bundles, chats, web tabs and skills, to ask the user labelled questions, an SF Symbol, a color or a sound, to show the user images in a chat, to navigate the app, to inspect and operate the Kubernetes deployments and Argo CD applications of the environments of Go services, to read and call the API of a Go service on those environments, and to start and drive macOS virtual machines. The server implements MCP's Streamable HTTP transport limited to JSON answers: JSON-RPC 2.0 messages are POSTed to `http://127.0.0.1:47820/mcp`, each one authenticated by a bearer token that identifies the calling chat. Every tool call runs an engine method with the actor `claude`, so it is validated like any other call and emits the same events, which every connected client, local or remote, receives live. This document specifies the transport, the authentication, the JSON-RPC handling, every tool with its exact description and input schema, the results and errors, the actor rules, external use and the debug tools.
 
 ## Overview
 
@@ -14,7 +14,7 @@ HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server th
 | JSON-RPC methods  | `initialize`, `ping`, `tools/list`, `tools/call`; every notification is accepted and ignored                                                             |
 | Server name       | `hephaestus`, in `serverInfo` and as the server's key in Claude's MCP configuration, so Claude names the tools `mcp__hephaestus__<tool>`                 |
 | Authentication    | `Authorization: Bearer <token>` with a chat token, an answer token or the external token on `/mcp`, with a hook token on the hook paths                  |
-| Tools             | 50 [catalogue](#tool-catalogue), 9 [Kubernetes](#kubernetes-and-argo-cd-tools), 2 [API](#api-tools); 4 [debug](#debug-tools): `HEPHAESTUS_DEBUG_TOOLS=1` |
+| Tools             | 64 [catalogue](#tool-catalogue), 9 [Kubernetes](#kubernetes-and-argo-cd-tools), 2 [API](#api-tools); 4 [debug](#debug-tools): `HEPHAESTUS_DEBUG_TOOLS=1` |
 
 Every tool call runs an engine method ([Engine API](engine-api.md)) with the actor `claude`. The engine validates it exactly as it validates a call from the UI or from a remote device and emits the same events, so every client, local or remote, shows the change live.
 
@@ -133,7 +133,7 @@ The chat tokens, the answer tokens and the hook tokens are created, kept and rev
 
 - A relaunch of a chat's process issues a new token. Sub-agents of the chat run in the same process and use the same token.
 - The external token is read and regenerated only through the external MCP token service of the windows of this Mac; no engine method or MCP tool exposes it ([Architecture](architecture.md#local-only-services)). Regenerate (Settings > MCP, [UI](ui.md)) replaces it at once: requests with the old token get 401, and terminal sessions must add the server again ([External use](#external-use)). When `secrets.json` cannot be written, the old token stays valid and Settings shows the alert `Regenerate failed` with the storage error's message. Default chosen at design time.
-- A chat token identifies the calling chat: `ask_questions` posts its questions to that chat, `ask_symbol` its symbol request, `ask_color` its color request, `ask_sound` its sound request, `ask_shortcut` its shortcut request, `ask_font` its font request, `ask_animation` its animation request, `close_chat` closes that chat or chats of its project, `watch_ci` makes that chat the orchestrator of the CI chat it starts, the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) act on the environments of that chat's project and keep their port forwards with that chat, the [API tools](#api-tools) read the contract of that chat's project and call it on its environments, and `open_in_app` reaches that chat's driving device.
+- A chat token identifies the calling chat: `ask_questions` posts its questions to that chat, `ask_symbol` its symbol request, `ask_color` its color request, `ask_sound` its sound request, `ask_shortcut` its shortcut request, `ask_font` its font request, `ask_animation` its animation request, `close_chat` closes that chat or chats of its project, `watch_ci` makes that chat the orchestrator of the CI chat it starts, the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) act on the environments of that chat's project and keep their port forwards with that chat, the [API tools](#api-tools) read the contract of that chat's project and call it on its environments, `vm_start` gives that chat's project and chat to the virtual machine it starts ([Rules of the VM tools](#rules-of-the-vm-tools)), and `open_in_app` reaches that chat's driving device.
 - Tokens are never logged.
 
 ## User prompt hook
@@ -292,7 +292,7 @@ The element for `get_bundle`:
 The call goes through these steps:
 
 1. The JSON-RPC checks of `name` and `arguments` ([Protocol errors](#protocol-errors)).
-2. Availability for the token: `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font`, `ask_animation`, `close_chat`, the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) and the [API tools](#api-tools) with the external token or an answer token fail; with an answer token, every tool other than the [tools of a comment answer](#actor-rules) fails.
+2. Availability for the token: `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font`, `ask_animation`, `close_chat`, the [VM tools](#rules-of-the-vm-tools), the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) and the [API tools](#api-tools) with the external token or an answer token fail; with an answer token, every tool other than the [tools of a comment answer](#actor-rules) fails.
 3. [Argument validation](#argument-validation) against the tool's input schema.
 4. The rules of the tool, given in its section.
 5. [Path expansion](#path-expansion).
@@ -380,7 +380,7 @@ These failures have the code `invalid`. The server uses exactly these texts. Def
 
 ### Path expansion
 
-The `path` of `create_project`, the elements of `attachments` (`create_ticket`, `add_comment`) and the elements of `paths` (`show_image`) are expanded before the engine call: a path that is `~` or starts with `~/` gets the home folder of the user running the app in place of `~`. Default chosen at design time.
+The `path` of `create_project`, the elements of `attachments` (`create_ticket`, `add_comment`), the elements of `paths` (`show_image`), the `source` of `vm_copy_in` and the `destination` of `vm_copy_out` are expanded before the engine call: a path that is `~` or starts with `~/` gets the home folder of the user running the app in place of `~`. Default chosen at design time.
 
 ### Attachments from paths
 
@@ -418,6 +418,8 @@ A chat token runs every engine call as the actor `claude` with the chat's id, th
 | Animation requests are posted only in Swift application projects                                                                                                                                                                                                                                              | `ask_animation`, chats.postAnimation ([Workflow](workflow.md#animation-requests))                                                                                                                                                      | `forbidden`            |
 | Only the chat's own Claude uses the Kubernetes and Argo CD tools (`Only the chat's own Claude can use the Kubernetes and Argo CD tools.`), only in a project of type Go service (`<tool> is only available in Go service projects.`)                                                                          | MCP server, step 2 of [tools/call](#toolscall); the methods of [Kubernetes and Argo CD](engine-api.md#kubernetes-and-argo-cd)                                                                                                          | `forbidden`            |
 | Only the chat's own Claude uses the API tools (`Only the chat's own Claude can use the API tools.`), only in a project of type Go service (`<tool> is only available in Go service projects.`)                                                                                                                | MCP server, step 2 of [tools/call](#toolscall); the methods of [API](engine-api.md#api)                                                                                                                                                | `forbidden`            |
+| Only the chat's own Claude uses the VM tools (`Only the chat's own Claude can use the VM tools.`)                                                                                                                                                                                                             | MCP server, step 2 of [tools/call](#toolscall); the methods of [VM tools](engine-api.md#vm-tools)                                                                                                                                      | `forbidden`            |
+| Claude never stops a virtual machine that the user started (`“<name>” was started by the user: only the user stops it.`)                                                                                                                                                                                      | vmTools.stop ([vm_stop](#vm_stop))                                                                                                                                                                                                     | `forbidden`            |
 | A chat stops only its own port forwards, which end when its Claude process exits                                                                                                                                                                                                                              | kubernetes.stopForward ([k8s_stop_port_forward](#k8s_stop_port_forward)), the engine ([k8s_port_forward](#k8s_port_forward))                                                                                                           | `notFound`             |
 | Claude closes only chats of the calling chat's project; the external token closes no chat                                                                                                                                                                                                                     | `close_chat`, chats.close; `close_chat` with `chatIDs` reports the refused chats in its result ([close_chat](#close_chat))                                                                                                             | `forbidden`            |
 | Claude never closes another chat while a turn is in progress in it                                                                                                                                                                                                                                            | chats.close; `close_chat` with `chatIDs` reports the refused chats in its result ([close_chat](#close_chat))                                                                                                                           | `conflict`             |
@@ -486,6 +488,20 @@ The table lists the tools in the order of `tools/list`; the [Kubernetes and Argo
 | `delete_skill`      | `name`                                             | —                                           | skills.delete            | `{}`             |
 | `set_skill_enabled` | `projectID`, `name`, `enabled`                     | —                                           | skills.setEnabled        | ProjectDetail    |
 | `open_in_app`       | `target`                                           | —                                           | ui.open                  | `{}`             |
+| `vm_list_images`    | —                                                  | —                                           | vmTools.images           | [VMToolImage]    |
+| `vm_list`           | —                                                  | —                                           | vmTools.list             | [VMToolMachine]  |
+| `vm_start`          | `name`                                             | `image`, `cores`, `memory`                  | vmTools.start            | VMToolMachine    |
+| `vm_stop`           | `vmID`                                             | —                                           | vmTools.stop             | `{}`             |
+| `vm_screenshot`     | `vmID`                                             | —                                           | vmTools.screenshot       | VMScreenshot     |
+| `vm_click`          | `vmID`, `x`, `y`                                   | `button`, `count`                           | vmTools.click            | `{}`             |
+| `vm_drag`           | `vmID`, `fromX`, `fromY`, `toX`, `toY`             | —                                           | vmTools.drag             | `{}`             |
+| `vm_scroll`         | `vmID`, `x`, `y`                                   | `deltaX`, `deltaY`                          | vmTools.scroll           | `{}`             |
+| `vm_type`           | `vmID`, `text`                                     | —                                           | vmTools.type             | `{}`             |
+| `vm_key`            | `vmID`, `key`                                      | —                                           | vmTools.key              | `{}`             |
+| `vm_ui_tree`        | `vmID`                                             | `app`, `maxDepth`                           | vmTools.uiTree           | VMUITree         |
+| `vm_shell`          | `vmID`, `command`                                  | `asRoot`, `timeout`                         | vmTools.shell            | VMShellResult    |
+| `vm_copy_in`        | `vmID`, `source`, `destination`                    | —                                           | vmTools.copyIn           | `{}`             |
+| `vm_copy_out`       | `vmID`, `source`, `destination`                    | —                                           | vmTools.copyOut          | `{}`             |
 
 ## Tools
 
@@ -2647,6 +2663,534 @@ Input schema:
 
 A missing required property fails with `target.<property>: required for kind <kind>.`, checked in the table's order. A property that is neither required nor optional for the kind then fails with `target.<property>: not used by kind <kind>.`, checked in the schema's property order. Default chosen at design time.
 
+### Rules of the VM tools
+
+The fourteen tools from `vm_list_images` to `vm_copy_out` let Claude start and drive the macOS virtual machines of this Mac ([Claude's virtual machines](virtual-machines.md#claudes-virtual-machines)). They follow these rules, in this order; the section of each tool adds its checks and its result.
+
+1. **Availability:** chat tokens only. With the external token the call fails before argument validation with `Only the chat's own Claude can use the VM tools.` (`forbidden`); a comment answer cannot call them ([Actor rules](#actor-rules)). The tools are listed for every token and work in every project, whatever its type.
+2. **Engine call:** the tool's engine method with `chatID` = the calling chat and the arguments as given ([VM tools](engine-api.md#vm-tools)).
+3. **Virtual machine:** `vmID` names a virtual machine that `vm_list` lists (`notFound`, `Virtual machine <id> not found.`); a `vmID` that is not a UUID fails with `invalid`.
+4. **Queue:** the actions, the ten tools from `vm_screenshot` to `vm_copy_out`, wait for their turn in the queue of their virtual machine, then for its agent, and fail as [Actions and their queue](virtual-machines.md#actions-and-their-queue) says: a virtual machine that does not run (`conflict`, `The virtual machine “<name>” is not running.`), an agent that is not connected after 60 seconds (`unavailable`, `The agent of “<name>” is not connected.`), a request that the agent fails (`unavailable`, the agent's message), a connection that ends (`unavailable`, `The agent of “<name>” disconnected.`), no answer in time (`unavailable`, `The agent of “<name>” did not answer in time.`).
+5. **User's virtual machines:** the descriptions say that Claude acts on a virtual machine that the user started only when the user names it in the chat, by its name or with its linked item chip, and never stops it; the engine does not check the first rule, and `vm_stop` refuses such a virtual machine ([The user's virtual machines](virtual-machines.md#the-users-virtual-machines)).
+6. **Asking:** the tools ask the user nothing, so they run in an implement chat whose metadata holds `questionsBlocked` and while a question set or another request waits for an answer ([Workflow](workflow.md#implement-chats)).
+7. **Permission:** every VM tool except `vm_copy_out` is pre-approved and runs without a permission prompt in every permission mode ([Chats](chats.md#command-line)). `vm_copy_out`, which writes on this Mac, follows the chat's permission mode: in Ask Every Time the user approves each call.
+
+The tool names, what they do and return, their availability in every chat and every project, the rule of the user's virtual machines and the permissions come from the user ([R204](requirements.md#requirements)); the inputs beyond those the user named, the error texts, the JSON layout of the results and the input schemas are Default chosen at design time.
+
+### vm_list_images
+
+- **Engine call:** vmTools.images with `chatID` ([Engine API](engine-api.md#vmtoolsimages)).
+- **Result:** the [VMToolImage](engine-api.md#vmtoolimage) array, oldest first: the `id`, `version`, `build` and `state` of each image, `isDefault`, true for the [default image](virtual-machines.md#default-image), the `cores`, `memoryGB` and `diskGB` of its virtual machines and, for a failed image, its `failure`.
+- **Errors:** rule 1 of the [rules](#rules-of-the-vm-tools).
+
+Description:
+
+```text
+List the macOS images of the virtual machines of this Mac, oldest first: id, macOS version and build, state (downloading, installing, needsSetup, ready or failed), isDefault for the default image, which vm_start uses when no image is named, and the cores, memoryGB and diskGB of their virtual machines. Only ready images start virtual machines. Only in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}
+```
+
+### vm_list
+
+- **Engine call:** vmTools.list with `chatID` ([Engine API](engine-api.md#vmtoolslist)).
+- **Result:** the [VMToolMachine](engine-api.md#vmtoolmachine) array, oldest first: the `id`, `name`, `imageID`, `version`, `cores` and `memoryGB` of each virtual machine, `startedBy`, the text of the `Started by` column of Settings, `byClaude`, `state`, `runningTime`, the running time of the `State` column, absent for a stopped one, and `agentConnected` ([Lifecycle](virtual-machines.md#lifecycle)).
+- **Errors:** rule 1 of the [rules](#rules-of-the-vm-tools).
+
+Description:
+
+```text
+List the virtual machines of this Mac, oldest first: id, name, image id and macOS version, cores, memoryGB, startedBy (You for a virtual machine the user started, <project id> · <chat name> for one Claude started), byClaude, state (running or stopped), runningTime, and agentConnected, which tells whether its agent is connected so that the actions work. At most 2 virtual machines run at once. A virtual machine the user started is the user's: act on it only when the user names it in this chat, by its name or with its linked item, and never stop it. Only in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}
+```
+
+### vm_start
+
+- **Engine call:** vmTools.start with `chatID`, `image`, `name`, `cores` and `memory` ([Engine API](engine-api.md#vmtoolsstart)).
+- **Steps:** those of [Starting and joining](virtual-machines.md#starting-and-joining): the image, the values, the join of a virtual machine that Claude runs from the image, else the start of a new one while fewer than 2 run, else a wait of up to 10 minutes, then the wait for the agent, at most 3 minutes.
+- **Result:** the [VMToolMachine](engine-api.md#vmtoolmachine) of the virtual machine started or joined.
+- **Errors:** rule 1 of the [rules](#rules-of-the-vm-tools); no Apple silicon (`unavailable`); no default image (`conflict`, `No image is the default; name one with image.`); no image with this id (`notFound`, `Image <id> not found.`); no Ready image of this version (`notFound`, `No Ready image of macOS <version>.`); an image that is not Ready (`conflict`, `The image is not Ready.`); the name, cores or memory, checked as for `vms.create` (`invalid`, `name: use 1 to 100 characters on one line.`, `cores: use a number from <min> to <max>.`, `memory: use a number from <min> to <max>.`); still 2 virtual machines after the wait (`unavailable`, `2 virtual machines are still running after a wait of 10 minutes.`); the failures of the start of [vms.create](engine-api.md#vmscreate) (`unavailable`, `internal`).
+
+Description:
+
+```text
+Start a macOS virtual machine for your checks, or join one: when a virtual machine that Claude started runs from the same image, this chat joins it and gets its id, and name, cores and memory are not used. Otherwise a new virtual machine starts from a clone of the image's disk when fewer than 2 run; while 2 run, the call waits up to 10 minutes for one to stop, then fails. image is a macOS version, for example 27.2.1, or an image id of vm_list_images; the default image when omitted. cores and memory (GB) are the image's when omitted. The call returns once the guest's agent is connected, at most 3 minutes later: check agentConnected. Start a virtual machine freely whenever a check needs one. A virtual machine Claude started stops and is deleted with vm_stop, or after some minutes without an action. The actions of every chat on one virtual machine run one at a time, in the order they arrive. Only in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "image": {
+      "type": "string",
+      "description": "macOS version, for example 27.2.1, or image id of vm_list_images; the default image when omitted."
+    },
+    "name": {
+      "type": "string",
+      "description": "Name of the virtual machine, one line of 1 to 100 characters, for example Menu checks."
+    },
+    "cores": {
+      "type": "integer",
+      "description": "Processor cores, from 2; the image's when omitted."
+    },
+    "memory": {
+      "type": "integer",
+      "description": "Memory in GB, from 4; the image's when omitted."
+    }
+  },
+  "required": ["name"],
+  "additionalProperties": false
+}
+```
+
+### vm_stop
+
+- **Engine call:** vmTools.stop with `chatID` and `vmID` ([Engine API](engine-api.md#vmtoolsstop)).
+- **Action:** shuts the virtual machine down as `vms.stop` does, through its agent, waiting up to 60 seconds, then at once, and returns once it has stopped; the virtual machine is then deleted with its disk ([Stopping](virtual-machines.md#stopping)). It does not wait for the queue of the virtual machine. A virtual machine that is already stopping is waited for.
+- **Result:** `{}`.
+- **Errors:** rules 1 and 3 of the [rules](#rules-of-the-vm-tools); a virtual machine that the user started (`forbidden`, `“<name>” was started by the user: only the user stops it.`).
+
+Description:
+
+```text
+Stop a virtual machine that Claude started and delete it with its disk: the guest shuts down and the call returns once it has stopped. vmID is an id of vm_start or vm_list. Never stop a virtual machine that the user started: the call is refused, only the user stops it. Only in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "vmID": {
+      "type": "string",
+      "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+    }
+  },
+  "required": ["vmID"],
+  "additionalProperties": false
+}
+```
+
+### vm_screenshot
+
+- **Engine call:** vmTools.screenshot with `chatID` and `vmID` ([Engine API](engine-api.md#vmtoolsscreenshot)).
+- **Agent:** `screenshot`, in the queue of the virtual machine. The engine writes the PNG to `<data dir>/Runtime/screenshots/vm-<VM id>-<time>.png`, `<time>` being the UTC time of the capture as `yyyyMMdd'T'HHmmss.SSS'Z'`, as for [debug_screenshot](#debug_screenshot). The folder is created when missing and the app never deletes these files. Default chosen at design time.
+- **Result:** the [VMScreenshot](engine-api.md#vmscreenshot) `{path, width, height}`: the absolute path of the PNG, and its width and height in pixels.
+- **Errors:** those of the [rules](#rules-of-the-vm-tools); the PNG cannot be written (`internal`).
+
+Description:
+
+```text
+Take a screenshot of the main display of a virtual machine and return the path of the PNG file on this Mac and its width and height in pixels: read the file to see the screen. The x and y of vm_click, vm_drag and vm_scroll are pixels of this screenshot, from its top-left corner. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "vmID": {
+      "type": "string",
+      "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+    }
+  },
+  "required": ["vmID"],
+  "additionalProperties": false
+}
+```
+
+### vm_click
+
+- **Engine call:** vmTools.click with `chatID`, `vmID`, `x`, `y`, `button` and `count` ([Engine API](engine-api.md#vmtoolsclick)).
+- **Agent:** `click`, in the queue of the virtual machine.
+- **Result:** `{}`.
+- **Errors:** those of the [rules](#rules-of-the-vm-tools); `x` or `y` below 0, `count` outside 1 to 3 ([argument validation](#argument-validation)).
+
+Description:
+
+```text
+Click at a point of the screen of a virtual machine: x and y are pixels of vm_screenshot, from its top-left corner. button is left (default) or right; count is 1 (default), 2 for a double click or 3 for a triple click. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "vmID": {
+      "type": "string",
+      "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+    },
+    "x": {
+      "type": "integer",
+      "description": "Pixels from the left edge of vm_screenshot.",
+      "minimum": 0
+    },
+    "y": {
+      "type": "integer",
+      "description": "Pixels from the top edge of vm_screenshot.",
+      "minimum": 0
+    },
+    "button": {
+      "type": "string",
+      "description": "Mouse button; left when omitted.",
+      "enum": ["left", "right"]
+    },
+    "count": {
+      "type": "integer",
+      "description": "Number of clicks: 1 when omitted, 2 for a double click, 3 for a triple click.",
+      "minimum": 1,
+      "maximum": 3
+    }
+  },
+  "required": ["vmID", "x", "y"],
+  "additionalProperties": false
+}
+```
+
+### vm_drag
+
+- **Engine call:** vmTools.drag with `chatID`, `vmID`, `fromX`, `fromY`, `toX` and `toY` ([Engine API](engine-api.md#vmtoolsdrag)).
+- **Agent:** `drag`, in the queue of the virtual machine.
+- **Result:** `{}`.
+- **Errors:** those of the [rules](#rules-of-the-vm-tools); a coordinate below 0 ([argument validation](#argument-validation)).
+
+Description:
+
+```text
+Drag with the left button on the screen of a virtual machine, from fromX, fromY to toX, toY, in pixels of vm_screenshot from its top-left corner. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "vmID": {
+      "type": "string",
+      "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+    },
+    "fromX": {
+      "type": "integer",
+      "description": "Pixels from the left edge of vm_screenshot where the drag starts.",
+      "minimum": 0
+    },
+    "fromY": {
+      "type": "integer",
+      "description": "Pixels from the top edge of vm_screenshot where the drag starts.",
+      "minimum": 0
+    },
+    "toX": {
+      "type": "integer",
+      "description": "Pixels from the left edge of vm_screenshot where the drag ends.",
+      "minimum": 0
+    },
+    "toY": {
+      "type": "integer",
+      "description": "Pixels from the top edge of vm_screenshot where the drag ends.",
+      "minimum": 0
+    }
+  },
+  "required": ["vmID", "fromX", "fromY", "toX", "toY"],
+  "additionalProperties": false
+}
+```
+
+### vm_scroll
+
+- **Engine call:** vmTools.scroll with `chatID`, `vmID`, `x`, `y`, `deltaX` and `deltaY` ([Engine API](engine-api.md#vmtoolsscroll)).
+- **Agent:** `scroll`, in the queue of the virtual machine.
+- **Result:** `{}`.
+- **Errors:** those of the [rules](#rules-of-the-vm-tools); `x` or `y` below 0 ([argument validation](#argument-validation)).
+
+Description:
+
+```text
+Scroll at a point of the screen of a virtual machine: x and y are pixels of vm_screenshot from its top-left corner; deltaY scrolls down when positive and up when negative, deltaX right and left, in pixels, 0 when omitted. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "vmID": {
+      "type": "string",
+      "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+    },
+    "x": {
+      "type": "integer",
+      "description": "Pixels from the left edge of vm_screenshot.",
+      "minimum": 0
+    },
+    "y": {
+      "type": "integer",
+      "description": "Pixels from the top edge of vm_screenshot.",
+      "minimum": 0
+    },
+    "deltaX": {
+      "type": "integer",
+      "description": "Pixels to scroll right, or left when negative; 0 when omitted."
+    },
+    "deltaY": {
+      "type": "integer",
+      "description": "Pixels to scroll down, or up when negative; 0 when omitted."
+    }
+  },
+  "required": ["vmID", "x", "y"],
+  "additionalProperties": false
+}
+```
+
+### vm_type
+
+- **Engine call:** vmTools.type with `chatID`, `vmID` and `text` ([Engine API](engine-api.md#vmtoolstype)).
+- **Agent:** `type`, in the queue of the virtual machine.
+- **Result:** `{}`.
+- **Errors:** those of the [rules](#rules-of-the-vm-tools).
+
+Description:
+
+```text
+Type text in the guest of a virtual machine, where its keyboard focus is, as Unicode characters whatever the keyboard layout: a line break types Return and a tab Tab. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "vmID": {
+      "type": "string",
+      "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+    },
+    "text": {
+      "type": "string",
+      "description": "Text to type."
+    }
+  },
+  "required": ["vmID", "text"],
+  "additionalProperties": false
+}
+```
+
+### vm_key
+
+- **Engine call:** vmTools.key with `chatID`, `vmID` and `key` ([Engine API](engine-api.md#vmtoolskey)).
+- **Key:** `key` is written in the [shortcut notation](chats.md#shortcut-notation), the macOS menu notation: the modifiers ⌃ ⌥ ⇧ ⌘, each at most once and in this order, then one key; a lowercase letter is read as its uppercase. The agent's `key` request gets the key and the modifiers: a letter in lowercase, a digit or a punctuation character as written, `↩` `return`, `⌤` `enter`, `⎋` `escape`, `⇥` `tab`, `Space` `space`, `⌫` `delete`, `⌦` `forwardDelete`, `←` `left`, `→` `right`, `↑` `up`, `↓` `down`, `↖` `home`, `↘` `end`, `⇞` `pageUp`, `⇟` `pageDown`, `F1` to `F20` `f1` to `f20`; `⌃` `control`, `⌥` `option`, `⇧` `shift`, `⌘` `command`. Default chosen at design time.
+- **Agent:** `key`, in the queue of the virtual machine.
+- **Result:** `{}`.
+- **Errors:** those of the [rules](#rules-of-the-vm-tools); a `key` that is not in the notation (`invalid`, `key: use the macOS menu notation, for example ⇧⌘K.`), checked before the queue; a key that the guest's keyboard layout does not type (`unavailable`, `Unknown key <key>.`).
+
+Description:
+
+```text
+Press a key of the guest of a virtual machine with modifiers, written in macOS menu notation: the modifiers ⌃ ⌥ ⇧ ⌘ in this order, then one key: a letter, a digit, a punctuation character, ↩ ⌤ ⎋ ⇥ Space ⌫ ⌦ ← → ↑ ↓ ↖ ↘ ⇞ ⇟ or F1 to F20, for example ⌘S, ⇧⌘K or ↩. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "vmID": {
+      "type": "string",
+      "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+    },
+    "key": {
+      "type": "string",
+      "description": "Key with its modifiers in macOS menu notation, for example ⇧⌘K."
+    }
+  },
+  "required": ["vmID", "key"],
+  "additionalProperties": false
+}
+```
+
+### vm_ui_tree
+
+- **Engine call:** vmTools.uiTree with `chatID`, `vmID`, `app` and `maxDepth` ([Engine API](engine-api.md#vmtoolsuitree)).
+- **Agent:** `uiTree`, in the queue of the virtual machine, which has 120 seconds to answer.
+- **Result:** the [VMUITree](engine-api.md#vmuitree) `{app, bundleID, pid, tree}`, the result of the agent's `uiTree` ([Methods](virtual-machines.md#methods)).
+- **Errors:** those of the [rules](#rules-of-the-vm-tools); no running app of this name (`unavailable`, `No running app named <app>.`); `maxDepth` outside 1 to 100 ([argument validation](#argument-validation)).
+
+Description:
+
+```text
+Get the Accessibility tree of the frontmost app of the guest of a virtual machine, or of app, a bundle identifier or an app name: app, bundleID, pid and tree, whose elements have their role, subrole, title, value, description, identifier, enabled, focused, frame in pixels of vm_screenshot, and children, at most maxDepth levels deep (default 40). Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "vmID": {
+      "type": "string",
+      "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+    },
+    "app": {
+      "type": "string",
+      "description": "Bundle identifier or name of a running app of the guest; the frontmost app when omitted."
+    },
+    "maxDepth": {
+      "type": "integer",
+      "description": "Levels of the tree; 40 when omitted.",
+      "minimum": 1,
+      "maximum": 100
+    }
+  },
+  "required": ["vmID"],
+  "additionalProperties": false
+}
+```
+
+### vm_shell
+
+- **Engine call:** vmTools.shell with `chatID`, `vmID`, `command`, `asRoot` and `timeout` ([Engine API](engine-api.md#vmtoolsshell)).
+- **Agent:** `exec`, in the queue of the virtual machine, with `command`, `asRoot` and `timeout`, 60 seconds when omitted; the request has `timeout` plus 15 seconds to be answered.
+- **Result:** the [VMShellResult](engine-api.md#vmshellresult) `{exitStatus, timedOut, stdout, stderr, truncated}`, the result of the agent's `exec` ([Methods](virtual-machines.md#methods)). A command that fails is a result with its `exitStatus`, not an error.
+- **Errors:** those of the [rules](#rules-of-the-vm-tools); an empty `command` (`unavailable`, `command: use a command that is not empty.`); `timeout` outside 1 to 1800 ([argument validation](#argument-validation)).
+
+Description:
+
+```text
+Run a shell command in the guest of a virtual machine with /bin/zsh -lc, in the home folder of its account, as the account or, with asRoot, as root, and return its exitStatus, stdout and stderr, each cut at 1 MB with truncated true; timedOut is true when the command ran longer than timeout seconds (default 60, at most 1800) and was killed. The guest's Claude CLI has the Claude token of Settings when the user set one, so claude -p runs there. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "vmID": {
+      "type": "string",
+      "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+    },
+    "command": {
+      "type": "string",
+      "description": "Shell command, run with /bin/zsh -lc."
+    },
+    "asRoot": {
+      "type": "boolean",
+      "description": "Run the command as root; as the account when omitted."
+    },
+    "timeout": {
+      "type": "integer",
+      "description": "Seconds after which the command is killed; 60 when omitted.",
+      "minimum": 1,
+      "maximum": 1800
+    }
+  },
+  "required": ["vmID", "command"],
+  "additionalProperties": false
+}
+```
+
+### vm_copy_in
+
+- **Engine call:** vmTools.copyIn with `chatID`, `vmID`, `source` after [path expansion](#path-expansion), and `destination` ([Engine API](engine-api.md#vmtoolscopyin)).
+- **Copy:** `source` is an absolute path on this Mac (`invalid`, `source: use an absolute path or a path starting with ~/.`) of a file or a folder that exists (`notFound`, `File <source> not found.`), symbolic links followed. `destination` is a path in the guest, absolute or starting with `~/`, the account's home folder (`invalid`, `destination: use an absolute path or a path starting with ~/.`). A file is written at `destination` with its permission bits, replacing a file there, its missing parent folders created. The content of a folder goes into the folder `destination`, created with its missing parents: files of the same name are replaced, the others kept, and the symbolic links and permission bits of the content are kept. The guest writes as the account. Default chosen at design time.
+- **Agent:** the requests of [Actions and their queue](virtual-machines.md#actions-and-their-queue), in the queue of the virtual machine, as one action.
+- **Result:** `{}`.
+- **Errors:** those of the [rules](#rules-of-the-vm-tools) and of the copy above; `tar` fails (`unavailable`, `tar exited with code <n>: <standard error>`, ending with a period); the source cannot be read (`internal`).
+
+Description:
+
+```text
+Copy a file or a folder of this Mac into the guest of a virtual machine, for example a build to run there. source is a path on this Mac; destination is the path of the copy in the guest, absolute or starting with ~/, the account's home folder. A file replaces the file at destination; the content of a folder goes into the folder destination, created when missing, with its symbolic links and permissions. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "vmID": {
+      "type": "string",
+      "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+    },
+    "source": {
+      "type": "string",
+      "description": "Absolute path of a file or a folder on this Mac, or a path starting with ~/."
+    },
+    "destination": {
+      "type": "string",
+      "description": "Path of the copy in the guest: absolute, or starting with ~/ for the account's home folder."
+    }
+  },
+  "required": ["vmID", "source", "destination"],
+  "additionalProperties": false
+}
+```
+
+### vm_copy_out
+
+- **Engine call:** vmTools.copyOut with `chatID`, `vmID`, `source`, and `destination` after [path expansion](#path-expansion) ([Engine API](engine-api.md#vmtoolscopyout)).
+- **Copy:** `source` is a path in the guest, absolute or starting with `~/`, the account's home folder (`invalid`, `source: use an absolute path or a path starting with ~/.`), of a file or a folder that exists (`notFound`, `<source> does not exist in the guest.`), read as the account. `destination` is an absolute path on this Mac (`invalid`, `destination: use an absolute path or a path starting with ~/.`). A file is written at `destination` with its permission bits, replacing a file there, its missing parent folders created. The content of a folder goes into the folder `destination`, created with its missing parents: files of the same name are replaced, the others kept, and the symbolic links and permission bits of the content are kept. Default chosen at design time.
+- **Agent:** the requests of [Actions and their queue](virtual-machines.md#actions-and-their-queue), in the queue of the virtual machine, as one action.
+- **Permission:** not pre-approved: the call follows the chat's permission mode, as it writes on this Mac ([Rules of the VM tools](#rules-of-the-vm-tools), rule 7).
+- **Result:** `{}`.
+- **Errors:** those of the [rules](#rules-of-the-vm-tools) and of the copy above; `tar` fails (`unavailable`, `tar exited with code <n>: <standard error>`, ending with a period); the destination cannot be written (`internal`, `<path> cannot be written: <reason>.`).
+
+Description:
+
+```text
+Copy a file or a folder of the guest of a virtual machine to this Mac, for example a log the guest wrote. source is a path in the guest, absolute or starting with ~/, the account's home folder; destination is the path of the copy on this Mac. A file replaces the file at destination; the content of a folder goes into the folder destination, created when missing, with its symbolic links and permissions. This tool writes on this Mac, so it asks for permission as the chat's permission mode says. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "vmID": {
+      "type": "string",
+      "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+    },
+    "source": {
+      "type": "string",
+      "description": "Path of a file or a folder in the guest: absolute, or starting with ~/ for the account's home folder."
+    },
+    "destination": {
+      "type": "string",
+      "description": "Absolute path of the copy on this Mac, or a path starting with ~/."
+    }
+  },
+  "required": ["vmID", "source", "destination"],
+  "additionalProperties": false
+}
+```
 ## Kubernetes and Argo CD tools
 
 These nine tools let Claude inspect and operate where a Go service runs: the Kubernetes Deployment of each environment of the project and the Argo CD Application that deploys it ([Environments](projects.md#environments)), with the kubeconfig file and the namespace the environment names, in the current context of that file, so that Claude never guesses them. `tools/list` lists them after the tools of the [tool catalogue](#tool-catalogue), in the order of the table below, which has the format of the tool catalogue; the [conformance test](#conformance) reads it with the other tool tables. `text` in the Result column is the plain text of [Kubectl output](#kubectl-output).
@@ -3124,7 +3668,7 @@ claude mcp add --transport http hephaestus http://127.0.0.1:47820/mcp --header "
 ```
 
 - Calls run as `claude` with chatID `external`: the [actor rules](#actor-rules) apply, tickets created this way have `createdBy: claude` and comments `author: claude`.
-- `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font` and `ask_animation` fail, so Claude asks its questions in plain text ([Workflow](workflow.md#plain-text-questions)); `close_chat` fails, as there is no chat to close; `watch_ci` fails, as there is no chat to report to; the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) and the [API tools](#api-tools) fail, as they act on the environments of the calling chat's project; `open_in_app` makes every client navigate.
+- `ask_questions`, `ask_symbol`, `ask_color`, `ask_sound`, `ask_shortcut`, `ask_font` and `ask_animation` fail, so Claude asks its questions in plain text ([Workflow](workflow.md#plain-text-questions)); `close_chat` fails, as there is no chat to close; `watch_ci` fails, as there is no chat to report to; the [VM tools](#rules-of-the-vm-tools) fail, as a virtual machine of Claude belongs to a chat; the [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) and the [API tools](#api-tools) fail, as they act on the environments of the calling chat's project; `open_in_app` makes every client navigate.
 - These sessions do not receive the app's system prompts ([Chats](chats.md)); the tool descriptions state what Claude needs: the ticket template, the statuses Claude may set and how questions are asked.
 - The token survives app restarts and updates. After Regenerate or a port change, the server must be removed with `claude mcp remove hephaestus` and the new command run, as `claude mcp add` refuses a name that already exists.
 
@@ -3376,6 +3920,7 @@ The server writes these messages to `Logs/engine.log` with the component `mcp`, 
 - Attachment paths may name any file the app can read; the Claude CLI asks the user before the call according to the chat's permission mode ([Chats](chats.md)).
 - The [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) run kubectl with the user's kubeconfig files, so they can do in a cluster what the user's credentials allow. Only the four tools that read are pre-approved; the tools that change a cluster, or open a port of the Mac, follow the chat's permission mode. Their values reach kubectl as single arguments, never through a shell.
 - The [API tools](#api-tools) send requests with the credentials stored in the API Explorer, so they can do on a Go service what these credentials allow. Only the calls whose method is `GET` or `HEAD` run without a permission prompt; the others follow the chat's permission mode. The results and errors never show a credential or a stored header value.
+- The [VM tools](#rules-of-the-vm-tools) drive guests that are Macs of their own: `vm_shell` runs commands there as root. `vm_copy_in` copies into a guest any file of this Mac that the app can read, and `vm_copy_out` writes on this Mac where the app can write; it is the one VM tool that is not pre-approved. The [Claude token](virtual-machines.md#claude-token) reaches the guests' environment, never a result, an error or a log.
 - The security model of the whole app is in [Architecture](architecture.md#security-overview).
 
 ## Swift shape
@@ -3622,3 +4167,4 @@ Unauthorized: missing or invalid bearer token.
 - R182: Each environment of a Go service has an `Allow invalid certificates` setting, off by default and changeable by a sub project that inherits the environment, with which the Contract view's requests to it accept any invalid server certificate.
 - R190: Every chat of a Go service project whose API Explorer shows a contract lists the contract's operations and calls them on an environment through HephaestusV2's API tools, with the credentials and headers stored in the API Explorer; GET and HEAD calls run without a permission prompt.
 - R202: The user starts virtual machines from the Ready images in Settings, keeps them between runs, starts, stops and deletes them, and shows the screen of one in a main window, where the mouse and the keyboard drive it; at most 2 run at once, and the app does not restart by itself for an update while one runs.
+- R204: Every chat of every project gives Claude full control of virtual machines with the VM tools: Claude starts one freely or joins Claude's one of the same image, waits up to 10 minutes for a free place, drives it one action at a time across chats, acts on the user's only when named and never stops them; Claude's idle VMs stop after the minutes set in Settings, and each VM gets the Claude token of Settings at its start.

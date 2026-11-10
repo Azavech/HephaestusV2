@@ -34,6 +34,7 @@ final class AgentSession {
         "makeDirectory": { params, _ in try AgentFiles.makeDirectory(params) },
         "readFile": { params, _ in try AgentFiles.readFile(params) },
         "writeFile": { params, data in try AgentFiles.writeFile(params, data) },
+        "setEnv": { params, _ in try AgentEnvironment.set(params) },
     ]
 
     /// Serves the connection; returns when the stream ends or a frame breaks the protocol. The

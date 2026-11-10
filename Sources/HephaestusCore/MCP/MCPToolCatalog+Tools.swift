@@ -6,7 +6,7 @@ import Foundation
 // conformance tests compare it with the docs.
 
 extension MCPToolCatalog {
-    /// The 50 tools of docs/mcp.md › Tool catalogue, then the 9 tools of docs/mcp.md › Kubernetes
+    /// The 64 tools of docs/mcp.md › Tool catalogue, then the 9 tools of docs/mcp.md › Kubernetes
     /// and Argo CD tools and the 2 tools of docs/mcp.md › API tools, in `tools/list` order.
     public static let tools: [MCPToolDefinition] = [
         MCPToolDefinition(
@@ -1557,6 +1557,421 @@ extension MCPToolCatalog {
             isDebug: false,
             engineMethod: "ui.open",
             handling: .openInApp
+        ),
+        MCPToolDefinition(
+            name: "vm_list_images",
+            description: #"""
+            List the macOS images of the virtual machines of this Mac, oldest first: id, macOS version and build, state (downloading, installing, needsSetup, ready or failed), isDefault for the default image, which vm_start uses when no image is named, and the cores, memoryGB and diskGB of their virtual machines. Only ready images start virtual machines. Only in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "vmTools.images",
+            handling: .vmTool
+        ),
+        MCPToolDefinition(
+            name: "vm_list",
+            description: #"""
+            List the virtual machines of this Mac, oldest first: id, name, image id and macOS version, cores, memoryGB, startedBy (You for a virtual machine the user started, <project id> · <chat name> for one Claude started), byClaude, state (running or stopped), runningTime, and agentConnected, which tells whether its agent is connected so that the actions work. At most 2 virtual machines run at once. A virtual machine the user started is the user's: act on it only when the user names it in this chat, by its name or with its linked item, and never stop it. Only in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "vmTools.list",
+            handling: .vmTool
+        ),
+        MCPToolDefinition(
+            name: "vm_start",
+            description: #"""
+            Start a macOS virtual machine for your checks, or join one: when a virtual machine that Claude started runs from the same image, this chat joins it and gets its id, and name, cores and memory are not used. Otherwise a new virtual machine starts from a clone of the image's disk when fewer than 2 run; while 2 run, the call waits up to 10 minutes for one to stop, then fails. image is a macOS version, for example 27.2.1, or an image id of vm_list_images; the default image when omitted. cores and memory (GB) are the image's when omitted. The call returns once the guest's agent is connected, at most 3 minutes later: check agentConnected. Start a virtual machine freely whenever a check needs one. A virtual machine Claude started stops and is deleted with vm_stop, or after some minutes without an action. The actions of every chat on one virtual machine run one at a time, in the order they arrive. Only in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "image": {
+                  "type": "string",
+                  "description": "macOS version, for example 27.2.1, or image id of vm_list_images; the default image when omitted."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Name of the virtual machine, one line of 1 to 100 characters, for example Menu checks."
+                },
+                "cores": {
+                  "type": "integer",
+                  "description": "Processor cores, from 2; the image's when omitted."
+                },
+                "memory": {
+                  "type": "integer",
+                  "description": "Memory in GB, from 4; the image's when omitted."
+                }
+              },
+              "required": ["name"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "vmTools.start",
+            handling: .vmTool
+        ),
+        MCPToolDefinition(
+            name: "vm_stop",
+            description: #"""
+            Stop a virtual machine that Claude started and delete it with its disk: the guest shuts down and the call returns once it has stopped. vmID is an id of vm_start or vm_list. Never stop a virtual machine that the user started: the call is refused, only the user stops it. Only in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "vmID": {
+                  "type": "string",
+                  "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+                }
+              },
+              "required": ["vmID"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "vmTools.stop",
+            handling: .vmTool
+        ),
+        MCPToolDefinition(
+            name: "vm_screenshot",
+            description: #"""
+            Take a screenshot of the main display of a virtual machine and return the path of the PNG file on this Mac and its width and height in pixels: read the file to see the screen. The x and y of vm_click, vm_drag and vm_scroll are pixels of this screenshot, from its top-left corner. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "vmID": {
+                  "type": "string",
+                  "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+                }
+              },
+              "required": ["vmID"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "vmTools.screenshot",
+            handling: .vmTool
+        ),
+        MCPToolDefinition(
+            name: "vm_click",
+            description: #"""
+            Click at a point of the screen of a virtual machine: x and y are pixels of vm_screenshot, from its top-left corner. button is left (default) or right; count is 1 (default), 2 for a double click or 3 for a triple click. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "vmID": {
+                  "type": "string",
+                  "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+                },
+                "x": {
+                  "type": "integer",
+                  "description": "Pixels from the left edge of vm_screenshot.",
+                  "minimum": 0
+                },
+                "y": {
+                  "type": "integer",
+                  "description": "Pixels from the top edge of vm_screenshot.",
+                  "minimum": 0
+                },
+                "button": {
+                  "type": "string",
+                  "description": "Mouse button; left when omitted.",
+                  "enum": ["left", "right"]
+                },
+                "count": {
+                  "type": "integer",
+                  "description": "Number of clicks: 1 when omitted, 2 for a double click, 3 for a triple click.",
+                  "minimum": 1,
+                  "maximum": 3
+                }
+              },
+              "required": ["vmID", "x", "y"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "vmTools.click",
+            handling: .vmTool
+        ),
+        MCPToolDefinition(
+            name: "vm_drag",
+            description: #"""
+            Drag with the left button on the screen of a virtual machine, from fromX, fromY to toX, toY, in pixels of vm_screenshot from its top-left corner. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "vmID": {
+                  "type": "string",
+                  "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+                },
+                "fromX": {
+                  "type": "integer",
+                  "description": "Pixels from the left edge of vm_screenshot where the drag starts.",
+                  "minimum": 0
+                },
+                "fromY": {
+                  "type": "integer",
+                  "description": "Pixels from the top edge of vm_screenshot where the drag starts.",
+                  "minimum": 0
+                },
+                "toX": {
+                  "type": "integer",
+                  "description": "Pixels from the left edge of vm_screenshot where the drag ends.",
+                  "minimum": 0
+                },
+                "toY": {
+                  "type": "integer",
+                  "description": "Pixels from the top edge of vm_screenshot where the drag ends.",
+                  "minimum": 0
+                }
+              },
+              "required": ["vmID", "fromX", "fromY", "toX", "toY"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "vmTools.drag",
+            handling: .vmTool
+        ),
+        MCPToolDefinition(
+            name: "vm_scroll",
+            description: #"""
+            Scroll at a point of the screen of a virtual machine: x and y are pixels of vm_screenshot from its top-left corner; deltaY scrolls down when positive and up when negative, deltaX right and left, in pixels, 0 when omitted. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "vmID": {
+                  "type": "string",
+                  "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+                },
+                "x": {
+                  "type": "integer",
+                  "description": "Pixels from the left edge of vm_screenshot.",
+                  "minimum": 0
+                },
+                "y": {
+                  "type": "integer",
+                  "description": "Pixels from the top edge of vm_screenshot.",
+                  "minimum": 0
+                },
+                "deltaX": {
+                  "type": "integer",
+                  "description": "Pixels to scroll right, or left when negative; 0 when omitted."
+                },
+                "deltaY": {
+                  "type": "integer",
+                  "description": "Pixels to scroll down, or up when negative; 0 when omitted."
+                }
+              },
+              "required": ["vmID", "x", "y"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "vmTools.scroll",
+            handling: .vmTool
+        ),
+        MCPToolDefinition(
+            name: "vm_type",
+            description: #"""
+            Type text in the guest of a virtual machine, where its keyboard focus is, as Unicode characters whatever the keyboard layout: a line break types Return and a tab Tab. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "vmID": {
+                  "type": "string",
+                  "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+                },
+                "text": {
+                  "type": "string",
+                  "description": "Text to type."
+                }
+              },
+              "required": ["vmID", "text"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "vmTools.type",
+            handling: .vmTool
+        ),
+        MCPToolDefinition(
+            name: "vm_key",
+            description: #"""
+            Press a key of the guest of a virtual machine with modifiers, written in macOS menu notation: the modifiers ⌃ ⌥ ⇧ ⌘ in this order, then one key: a letter, a digit, a punctuation character, ↩ ⌤ ⎋ ⇥ Space ⌫ ⌦ ← → ↑ ↓ ↖ ↘ ⇞ ⇟ or F1 to F20, for example ⌘S, ⇧⌘K or ↩. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "vmID": {
+                  "type": "string",
+                  "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+                },
+                "key": {
+                  "type": "string",
+                  "description": "Key with its modifiers in macOS menu notation, for example ⇧⌘K."
+                }
+              },
+              "required": ["vmID", "key"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "vmTools.key",
+            handling: .vmTool
+        ),
+        MCPToolDefinition(
+            name: "vm_ui_tree",
+            description: #"""
+            Get the Accessibility tree of the frontmost app of the guest of a virtual machine, or of app, a bundle identifier or an app name: app, bundleID, pid and tree, whose elements have their role, subrole, title, value, description, identifier, enabled, focused, frame in pixels of vm_screenshot, and children, at most maxDepth levels deep (default 40). Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "vmID": {
+                  "type": "string",
+                  "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+                },
+                "app": {
+                  "type": "string",
+                  "description": "Bundle identifier or name of a running app of the guest; the frontmost app when omitted."
+                },
+                "maxDepth": {
+                  "type": "integer",
+                  "description": "Levels of the tree; 40 when omitted.",
+                  "minimum": 1,
+                  "maximum": 100
+                }
+              },
+              "required": ["vmID"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "vmTools.uiTree",
+            handling: .vmTool
+        ),
+        MCPToolDefinition(
+            name: "vm_shell",
+            description: #"""
+            Run a shell command in the guest of a virtual machine with /bin/zsh -lc, in the home folder of its account, as the account or, with asRoot, as root, and return its exitStatus, stdout and stderr, each cut at 1 MB with truncated true; timedOut is true when the command ran longer than timeout seconds (default 60, at most 1800) and was killed. The guest's Claude CLI has the Claude token of Settings when the user set one, so claude -p runs there. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "vmID": {
+                  "type": "string",
+                  "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+                },
+                "command": {
+                  "type": "string",
+                  "description": "Shell command, run with /bin/zsh -lc."
+                },
+                "asRoot": {
+                  "type": "boolean",
+                  "description": "Run the command as root; as the account when omitted."
+                },
+                "timeout": {
+                  "type": "integer",
+                  "description": "Seconds after which the command is killed; 60 when omitted.",
+                  "minimum": 1,
+                  "maximum": 1800
+                }
+              },
+              "required": ["vmID", "command"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "vmTools.shell",
+            handling: .vmTool
+        ),
+        MCPToolDefinition(
+            name: "vm_copy_in",
+            description: #"""
+            Copy a file or a folder of this Mac into the guest of a virtual machine, for example a build to run there. source is a path on this Mac; destination is the path of the copy in the guest, absolute or starting with ~/, the account's home folder. A file replaces the file at destination; the content of a folder goes into the folder destination, created when missing, with its symbolic links and permissions. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "vmID": {
+                  "type": "string",
+                  "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+                },
+                "source": {
+                  "type": "string",
+                  "description": "Absolute path of a file or a folder on this Mac, or a path starting with ~/."
+                },
+                "destination": {
+                  "type": "string",
+                  "description": "Path of the copy in the guest: absolute, or starting with ~/ for the account's home folder."
+                }
+              },
+              "required": ["vmID", "source", "destination"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "vmTools.copyIn",
+            handling: .vmTool
+        ),
+        MCPToolDefinition(
+            name: "vm_copy_out",
+            description: #"""
+            Copy a file or a folder of the guest of a virtual machine to this Mac, for example a log the guest wrote. source is a path in the guest, absolute or starting with ~/, the account's home folder; destination is the path of the copy on this Mac. A file replaces the file at destination; the content of a folder goes into the folder destination, created when missing, with its symbolic links and permissions. This tool writes on this Mac, so it asks for permission as the chat's permission mode says. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "vmID": {
+                  "type": "string",
+                  "description": "Virtual machine id (a UUID) of vm_start or vm_list."
+                },
+                "source": {
+                  "type": "string",
+                  "description": "Path of a file or a folder in the guest: absolute, or starting with ~/ for the account's home folder."
+                },
+                "destination": {
+                  "type": "string",
+                  "description": "Absolute path of the copy on this Mac, or a path starting with ~/."
+                }
+              },
+              "required": ["vmID", "source", "destination"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "vmTools.copyOut",
+            handling: .vmTool
         ),
         MCPToolDefinition(
             name: "k8s_status",

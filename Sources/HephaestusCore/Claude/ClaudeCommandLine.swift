@@ -4,14 +4,16 @@ import Foundation
 /// › Command) and the files written for a launch.
 enum ClaudeCommandLine {
     /// Row 14: the tools that run in every permission mode (docs/chats.md › Command line); the
-    /// four Kubernetes and Argo CD tools that only read the cluster, then `api_operations`, come
-    /// last.
+    /// four Kubernetes and Argo CD tools that only read the cluster, `api_operations`, then the
+    /// VM tools but `vm_copy_out`, come last.
     static let preApprovedTools = [
         "ask_questions", "ask_symbol", "ask_color", "ask_sound", "ask_shortcut", "ask_font", "ask_animation", "show_image",
         "list_projects", "get_project", "list_tickets", "get_ticket", "create_ticket", "update_ticket", "set_ticket_status",
         "add_comment", "update_comment", "list_bundles", "get_bundle", "create_bundle", "update_bundle", "search", "list_docs",
         "list_web_tabs", "list_skills", "get_skill", "list_chats", "get_chat",
         "k8s_status", "k8s_logs", "k8s_events", "argocd_status", "api_operations",
+        "vm_list_images", "vm_list", "vm_start", "vm_stop", "vm_screenshot", "vm_click", "vm_drag", "vm_scroll", "vm_type", "vm_key",
+        "vm_ui_tree", "vm_shell", "vm_copy_in",
     ].map { "mcp__hephaestus__\($0)" }.joined(separator: ",")
 
     /// The argv of a chat process, the CLI path first; no shell is involved. `readFolders` are the

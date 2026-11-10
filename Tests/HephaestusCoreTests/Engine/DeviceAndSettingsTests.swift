@@ -69,7 +69,7 @@ struct DeviceAndSettingsTests {
             #expect(settings == HostSettings(mcpPort: 47830, formatSwiftOnSave: true))
             let json = try jsonValue(String(decoding: try EngineJSON.encode(settings), as: UTF8.self))
             #expect(json == (try jsonValue("""
-                {"autoUpdate": true, "claudePath": null,
+                {"autoUpdate": true, "claudePath": null, "claudeVMIdleMinutes": 10,
                  "defaultChatSettings": {"contextWindow": "auto", "effort": "high", "model": "default", "permissionMode": "manual",
                                          "ultracode": false},
                  "defaultVMImage": null,

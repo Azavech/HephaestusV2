@@ -98,7 +98,7 @@ struct GuestAgentProtocolTests {
     func helloAndStatus() async throws {
         try await Self.withAgent { connection in
             let hello = connection.status
-            #expect(hello.version == "1.0")
+            #expect(hello.version == "1.1")
             #expect(hello.user == NSUserName())
             #expect(!hello.osVersion.isEmpty && !hello.osBuild.isEmpty)
             #expect(GuestAgentStatus.SIP.allCases.contains(hello.sip))
@@ -387,6 +387,24 @@ struct GuestAgentProtocolTests {
             try await GuestAgentConnection.open(descriptor: other.host, closer: { close(other.host) })
         }
         #expect(error == .protocolError("the agent did not start with the hello of protocol 1"))
+    }
+
+    @Test("setEnv sets a variable that the commands of exec inherit; a name that is not one is refused")
+    func setEnv() async throws {
+        var handlers = Self.handlers()
+        // No test changes the launchd environment of the user running it.
+        handlers["setEnv"] = { params, _ in try AgentEnvironment.set(params, launchctl: nil) }
+        let name = "HEPHAESTUS_AGENT_TEST_\(UUID().uuidString.replacingOccurrences(of: "-", with: "_"))"
+        defer { unsetenv(name) }
+        try await Self.withAgent(handlers: handlers) { connection in
+            _ = try await connection.request("setEnv", params: ["name": .string(name), "value": "token value"])
+            let response = try await connection.request("exec", params: ["command": .string("printf %s \"$\(name)\"")])
+            #expect(response.result["stdout"] == "token value")
+            #expect(await agentFailure { try await connection.request("setEnv", params: ["name": "1X", "value": "v"]) }
+                == "name: use letters, digits and _, not starting with a digit.")
+        }
+        #expect(AgentInfo.version == "1.1")
+        #expect(AgentEnvironment.isName("CLAUDE_CODE_OAUTH_TOKEN") && !AgentEnvironment.isName("A-B") && !AgentEnvironment.isName(""))
     }
 
     @Test("A request that the agent does not answer in time fails")

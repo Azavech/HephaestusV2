@@ -25,6 +25,7 @@ extension HostSettings {
             }
         }
         _ = try ModelRules.updateCheckInterval(updateCheckIntervalMinutes)
+        _ = try ModelRules.claudeVMIdleMinutes(claudeVMIdleMinutes)
     }
 
     /// `claudePath` with a leading `~/` expanded to the home folder; nil when not set.

@@ -1,6 +1,6 @@
 # Virtual machines
 
-HephaestusV2 runs macOS virtual machines with Apple's Virtualization framework, so that Claude can check what the offscreen check instance cannot reach: menus, typing, list rows, system dialogs and permission prompts. A virtual machine starts from an image: one macOS version, installed once from its IPSW and prepared once in a setup window, where the user completes Setup Assistant, turns off System Integrity Protection (SIP) and installs the guest agent, which gives the host full control of the guest. The user starts virtual machines from the Ready images in Settings, keeps them between runs, and shows the screen of one in a main window, where the mouse and the keyboard drive it. A bubble in the toolbar of the main window counts the virtual machines that run, and its popover shows a preview of the screen of each one. This document defines the images and their states, the list of macOS versions read from ipsw.me, the download and the install, the setup window with its texts, the install script, the guest agent and its protocol, the virtual machines with their lifecycle, the clone of the image's disk, the limit of 2 running virtual machines, the detail of a virtual machine and its link in the inspector's composer, the Virtual Machines bubble with its popover, and the storage under `<data dir>/VirtualMachines/`. The Settings tab is in [User interface](ui.md#virtual-machines), the bubble's toolbar item in [Toolbar](ui.md#toolbar), the file formats in [Data model](data-model.md#image-metadata-file), the methods and the events in [Engine API](engine-api.md#virtual-machine-images).
+HephaestusV2 runs macOS virtual machines with Apple's Virtualization framework, so that Claude can check what the offscreen check instance cannot reach: menus, typing, list rows, system dialogs and permission prompts. A virtual machine starts from an image: one macOS version, installed once from its IPSW and prepared once in a setup window, where the user completes Setup Assistant, turns off System Integrity Protection (SIP) and installs the guest agent, which gives the host full control of the guest. The user starts virtual machines from the Ready images in Settings, keeps them between runs, and shows the screen of one in a main window, where the mouse and the keyboard drive it. A bubble in the toolbar of the main window counts the virtual machines that run, and its popover shows a preview of the screen of each one. Claude starts its own virtual machines with the VM tools of the MCP server, in every chat, joins one that Claude already runs from the same image, and drives them, one action at a time on each virtual machine; Claude's virtual machines stop when they stay idle, and each virtual machine gets the Claude token of Settings when it starts. This document defines the images and their states, the list of macOS versions read from ipsw.me, the download and the install, the setup window with its texts, the install script, the guest agent and its protocol, the virtual machines with their lifecycle, the clone of the image's disk, the limit of 2 running virtual machines, Claude's virtual machines with the join, the wait for a free place, the queue, the idle stop, the rule of the user's virtual machines and the Claude token, the detail of a virtual machine and its link in the inspector's composer, the Virtual Machines bubble with its popover, and the storage under `<data dir>/VirtualMachines/`. The Settings tab is in [User interface](ui.md#virtual-machines), the bubble's toolbar item in [Toolbar](ui.md#toolbar), the file formats in [Data model](data-model.md#image-metadata-file), the methods and the events in [Engine API](engine-api.md#virtual-machine-images), the VM tools in [MCP server](mcp.md#rules-of-the-vm-tools).
 
 ## Overview
 
@@ -20,9 +20,14 @@ Settings ▸ Virtual Machines                      engine of This Mac           
   Virtual Machines table ◄── vms.changed ─────── the virtual machines, the number that run
   Delete… ───── vms.delete ────────────────────► the virtual machine's folder is deleted
   Show ──────── navigation ────────────────────► the detail in a main window ── screen service
+Claude section ── settings.update ─────────────► settings.yml, claudeVMIdleMinutes
+               ── Claude VM token service ─────► secrets.json, claudeVMToken
 Main window toolbar
   Bubble ◄──── vms.changed, setup windows ────── the virtual machines that run, the setup ones included
   Popover ───── VM screens, image setup ───────► a screenshot by the guest agent, every 2 seconds
+chat of Claude
+  vm_start, vm_stop ── vmTools.start, .stop ───► Claude's virtual machines: join, wait, idle stop
+  vm_click, vm_shell… ── vmTools.* ────────────► the queue of the virtual machine ── agent requests
 ```
 
 | Piece                                  | Defined in                                         |
@@ -37,6 +42,10 @@ Main window toolbar
 | The Virtual Machines bubble            | [User interface](ui.md#toolbar)                    |
 | The entitlement, the bundle files      | [CI and release](ci.md#entitlements)               |
 | The agent's target, the processes      | [Architecture](architecture.md#modules)            |
+| The VM tools                           | [MCP server](mcp.md#rules-of-the-vm-tools)         |
+| `vmTools.*`                            | [Engine API](engine-api.md#vm-tools)               |
+| `claudeVMIdleMinutes`                  | [Data model](data-model.md#settings-file)          |
+| `claudeVMToken`, its service           | [Data model](data-model.md#secrets-file)           |
 
 ## Host
 
@@ -240,7 +249,7 @@ The step, the macOS version it starts at and the values are Default chosen at de
 
 ## Guest agent
 
-The agent, `hephaestus-agent`, runs in the account's graphical session in every guest, as a LaunchAgent of the account. It talks to the host over virtio-vsock and does what the host asks: it reports its version and the SIP state, takes screenshots of the screen, posts mouse and keyboard events, reads the Accessibility tree, runs commands as the account or as root, and copies files in and out. It runs on every macOS version of the ipsw.me list: it is built for macOS 12.0 and later on Apple silicon ([Build steps](ci.md#build-steps)).
+The agent, `hephaestus-agent`, runs in the account's graphical session in every guest, as a LaunchAgent of the account. It talks to the host over virtio-vsock and does what the host asks: it reports its version and the SIP state, takes screenshots of the screen, posts mouse and keyboard events, reads the Accessibility tree, runs commands as the account or as root, copies files in and out, and sets variables of the environment. It runs on every macOS version of the ipsw.me list: it is built for macOS 12.0 and later on Apple silicon ([Build steps](ci.md#build-steps)).
 
 While it runs, the agent keeps the guest's display awake, with a power assertion of the type `PreventUserIdleDisplaySleep`. A macOS 13.0 guest left without input turned its display off and then locked its screen: its screenshots were black, and the events that the agent posted did not wake it. Default chosen at design time.
 
@@ -280,7 +289,7 @@ A frame that breaks a limit, or whose JSON part is not an object, ends the conne
 
 | Member of status  | JSON type | Value                                                                                     |
 | ----------------- | --------- | ----------------------------------------------------------------------------------------- |
-| `version`         | string    | The agent's version, `1.0` in this version of the app.                                    |
+| `version`         | string    | The agent's version, `1.1` in this version of the app.                                    |
 | `sip`             | string    | `disabled`, `enabled` or `unknown`, read from the output of `/usr/bin/csrutil status`.    |
 | `user`            | string    | The short name of the account the agent runs as.                                          |
 | `osVersion`       | string    | The guest's macOS version, for example `27.2.1`.                                          |
@@ -308,6 +317,7 @@ Coordinates are pixels of the screenshot of the main display, from its top-left 
 | `makeDirectory` | `path`                                                                                               | `{}`; the missing parent folders are created                   | —                    |
 | `readFile`      | `path`, `offset`? (default 0), `length`? (default and at most 8,388,608)                             | `{size, eof}`                                                  | Response: the bytes. |
 | `writeFile`     | `path`, `offset`? (default 0), `truncate`? (default false), `mode`?                                  | `{}`                                                           | Request: the bytes.  |
+| `setEnv`        | `name`, `value`                                                                                      | `{}`                                                           | —                    |
 
 - **screenshot.** The main display, as a PNG. On macOS 14 and later the agent captures it with ScreenCaptureKit, with the pointer; before, with Core Graphics, without the pointer.
 - **click, drag, scroll.** Posted as Core Graphics events at the point; a click with `count` 2 is a double click. A drag presses the left button at the first point, moves to the second in steps and releases.
@@ -318,6 +328,7 @@ Coordinates are pixels of the screenshot of the main display, from its top-left 
   - The answer comes when the command has ended and its outputs have ended. A process that the command left running, as `server &` does, may still hold an output: the agent then answers 1 second after the command ended, with what it read. That process goes on running, and the agent drops what it writes later; a command that needs that output redirects it to a file.
   - At the timeout the agent kills the command's process group, as the account and then through `sudo -n /bin/kill`, because the processes of the group that run as root, as those of a `sudo` in the command, take no signal from the account. It answers with `timedOut` true and the `exitStatus` 137, at the latest 6 seconds after the timeout.
 - **stat, list, makeDirectory, readFile, writeFile.** Run as the account. `readFile` returns at most `length` bytes from `offset`, with `eof` true at the end of the file; a larger file is read with several requests. `writeFile` writes the data part at `offset`, creating the file and its missing parent folders; `truncate` empties the file first; `mode` sets its permission bits, for example 493 for 755.
+- **setEnv.** Sets the environment variable `name` to `value` in the agent's own environment, which the commands that `exec` starts afterwards inherit, then runs `/bin/launchctl setenv <name> <value>` as the account, so that the apps that launchd starts afterwards in the account's session inherit it too. `name` is letters, digits and `_`, not starting with a digit (`name: use letters, digits and _, not starting with a digit.`); a `launchctl` that fails fails the request with its standard error. The engine sends it with the [Claude token](#claude-token). Agents of version 1.0 do not have it.
 - The events and the Accessibility tree need the Accessibility permission and the screenshot the Screen Recording permission, both granted by the [install script](#install-script). Without the permission the request fails with `The agent has no Accessibility permission.` or `The agent has no Screen Recording permission.`
 
 The methods, their params, results, limits and messages are Default chosen at design time.
@@ -331,7 +342,7 @@ A virtual machine is a Mac started from a Ready image: it has a name, its own di
 | The user   | `user`                                              | `You`                                                                                   | It keeps its disk: `Start` boots it again from that disk, until `Delete…`. |
 | Claude     | `claude`, with `projectID` and `chatID` of its chat | `<project id> · <chat name>`, the chat's current title; `<project id>` without the chat | It is deleted with its disk: it is listed only while it runs.              |
 
-- The engine function that starts a virtual machine takes who starts it. `vms.create` starts one for the user. No engine method and no MCP tool starts one for Claude yet.
+- The engine function that starts a virtual machine takes who starts it. `vms.create` starts one for the user, and the tool `vm_start` one for Claude ([Claude's virtual machines](#claudes-virtual-machines)).
 - `<chat name>` follows the chat's title, renames included. The text `<project id>` alone for a chat that no longer exists is Default chosen at design time.
 - Several virtual machines may have the same name, and several may start from the same image. Default chosen at design time.
 
@@ -420,10 +431,82 @@ The Virtualization framework runs at most 2 macOS virtual machines at once on a 
 
 - Every virtual machine of the table counts, whoever started it: the user's, Claude's, the setup virtual machine of an image and its install.
 - An install waits while 2 virtual machines run; the installs that wait start in the order they began to wait. Default chosen at design time.
-- `Set Up…` does not wait for a free place: it fails with `conflict` ([Setup](#setup)). Neither do `vms.create` and `vms.start`: they fail with `conflict` and `2 virtual machines are already running.` ([Starting](#starting)).
+- `Set Up…` does not wait for a free place: it fails with `conflict` ([Setup](#setup)). Neither do `vms.create` and `vms.start`: they fail with `conflict` and `2 virtual machines are already running.` ([Starting](#starting)). The tool `vm_start` waits up to 10 minutes ([Starting and joining](#starting-and-joining)).
 - `runningCount` of `vms.list` and of `vms.changed` is the number of virtual machines that count ([VMList](engine-api.md#vmlist)). While it is 2, `New VM…` and `Start` are disabled, in Settings and in the header of a [detail](#detail).
 - Quitting the app stops every virtual machine ([Shutdown](architecture.md#shutdown)): a setup virtual machine is stopped at once and its image stays in `needsSetup`; a virtual machine is stopped at once too, as a power cut does, the user's keeps its disk and Claude's is deleted. Stopping them at once is Default chosen at design time.
 - The app does not restart by itself for an update while an image downloads or installs, while a setup window is open, while the virtual machine of a closed one still shuts down or while a virtual machine runs: the app is not idle then ([Restart rules](updater.md#restart-rules)).
+
+## Claude's virtual machines
+
+Claude starts and drives virtual machines with the VM tools of the MCP server, in every chat that HephaestusV2 starts, in every project ([Rules of the VM tools](mcp.md#rules-of-the-vm-tools)): `vm_list_images` and `vm_list` list the images and the virtual machines, `vm_start` and `vm_stop` start and stop Claude's virtual machines, and the actions `vm_screenshot`, `vm_click`, `vm_drag`, `vm_scroll`, `vm_type`, `vm_key`, `vm_ui_tree`, `vm_shell`, `vm_copy_in` and `vm_copy_out` drive one. The system prompt tells Claude to start one freely whenever a check needs one ([Default: common](skills.md#default-common)).
+
+### Starting and joining
+
+`vm_start` gives the calling chat a virtual machine of an image, in these steps:
+
+1. **Mac.** On a Mac without Apple silicon the call fails as `vms.create` does ([Host](#host)).
+2. **Image.** Without `image`, the [default image](#default-image); while no image is the default, the call fails with `conflict` and `No image is the default; name one with image.` An `image` that is a UUID names the image with that id (`notFound`, `Image <id> not found.`). Any other value is a macOS version, compared exactly with the `version` of the Ready images: the default image when it has that version, else the oldest of them (`notFound`, `No Ready image of macOS <version>.`). The image must be Ready (`conflict`, `The image is not Ready.`).
+3. **Values.** `name`, `cores` and `memory` are checked as `vms.create` checks the name, `cores` and `memoryGB` ([Creating](#creating)); `cores` and `memory` are the image's `cores` and `memoryGB` when absent.
+4. **Joining.** When a virtual machine that Claude started from that image runs, or starts, and is neither shutting down nor being deleted, the chat joins it: the call returns that virtual machine and starts nothing. With several, the oldest. Any chat joins it, whichever chat started it, and its name, cores and memory stay as they are.
+5. **Starting.** Otherwise, while fewer than 2 virtual machines run ([Running virtual machines](#running-virtual-machines)), the engine creates and starts a new virtual machine as `vms.create` does ([Creating](#creating), [Starting](#starting)), with `startedBy` `claude` and the `projectID` and `chatID` of the calling chat, so that its `Started by` column reads `<project id> · <chat name>` ([Lifecycle](#lifecycle)). A start that fails fails the call, with the errors of `vms.create`.
+6. **Waiting.** While 2 run, the call waits. Each time a place frees up, or a virtual machine of Claude starts, it takes steps 4 and 5 again. After 10 minutes of wait it fails with `unavailable` and `2 virtual machines are still running after a wait of 10 minutes.` A call that waits takes no place: an install that waits gets a freed place first ([Install](#install)). The quit of the app ends the wait with the same failure.
+7. **Agent.** The call then waits for the virtual machine's agent: it returns once the agent is connected and has been given the [Claude token](#claude-token), at most 3 minutes after the virtual machine started or was joined; after that it returns the virtual machine all the same, with `agentConnected` false.
+8. **Idle time.** The [idle time](#idle-stop) of the virtual machine starts again from the end of the call.
+
+The 10 minutes of the wait, the join and the `Started by` text come from the user ([R204](requirements.md#requirements)). The order of the steps, the choice of an image and of a virtual machine among several, the messages, the wait for the agent and the idle time that starts again are Default chosen at design time.
+
+### Actions and their queue
+
+The ten tools from `vm_screenshot` to `vm_copy_out` are the actions on a virtual machine. Each virtual machine has one queue:
+
+- The actions of every chat on one virtual machine run one at a time, in the order the engine receives them: an action starts once the actions received before it have ended, whatever their chat.
+- When its turn comes, an action needs a virtual machine that runs: one that is stopped fails it with `conflict` and `The virtual machine “<name>” is not running.`; one that left the list, with `notFound` and `Virtual machine <id> not found.`
+- An action whose virtual machine's agent is not connected, or has not been given the token yet, waits for it up to 60 seconds, keeping its turn, then fails with `unavailable` and `The agent of “<name>” is not connected.`
+- Each action sends one request or more to the [agent](#methods), in the table below. A request has 60 seconds to be answered, `uiTree` 120 seconds and `exec` its `timeout` plus 15 seconds. A request that the agent fails fails the action with `unavailable` and the agent's message; a connection that ends, with `The agent of “<name>” disconnected.`; a request that gets no answer in time, with `The agent of “<name>” did not answer in time.`
+- `vm_stop` is not an action: it does not wait for the queue, and the actions that wait fail as above once the virtual machine has stopped.
+
+| Tool            | Requests of the agent                                                                                                                                                                                                                                    |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vm_screenshot` | `screenshot`; the engine writes the PNG on this Mac.                                                                                                                                                                                                     |
+| `vm_click`      | `click`.                                                                                                                                                                                                                                                 |
+| `vm_drag`       | `drag`.                                                                                                                                                                                                                                                  |
+| `vm_scroll`     | `scroll`.                                                                                                                                                                                                                                                |
+| `vm_type`       | `type`.                                                                                                                                                                                                                                                  |
+| `vm_key`        | `key`, with the key and the modifiers of the menu notation.                                                                                                                                                                                              |
+| `vm_ui_tree`    | `uiTree`.                                                                                                                                                                                                                                                |
+| `vm_shell`      | `exec`.                                                                                                                                                                                                                                                  |
+| `vm_copy_in`    | A file: `writeFile`, 8 MiB at a time. A folder: a tar archive of its content made on this Mac with `/usr/bin/tar`, written to `/tmp/` of the guest with `writeFile`, then `exec` of `/usr/bin/tar -x` into the destination and of the archive's removal. |
+| `vm_copy_out`   | `stat`, then for a file `readFile`, 8 MiB at a time; for a folder `exec` of `/usr/bin/tar -c` of its content into `/tmp/` of the guest, `readFile` of the archive, `exec` of its removal, and `/usr/bin/tar -x` of the archive on this Mac.              |
+
+The one-at-a-time order across chats comes from the user ([R204](requirements.md#requirements)); the waits, the messages, the chunks and the archives are Default chosen at design time.
+
+### Idle stop
+
+- A virtual machine that Claude started stops, and is then deleted as every virtual machine of Claude that stops ([Stopping](#stopping)), after `claudeVMIdleMinutes` minutes without an action queued or running. The setting is `Stop Claude's idle VMs after` of Settings › Virtual Machines › Claude, from 1 to 1440, 10 by default ([Settings file](data-model.md#settings-file), [User interface](ui.md#virtual-machines)).
+- Its idle time starts when it has started, again each time `vm_start` returns it, started or joined, and each time its queue becomes empty; an action received ends it.
+- It stops as `vms.stop` stops a virtual machine: through the agent, waiting up to 60 seconds, then at once. `engine.log` gets `virtual machine <id> stopped after <n> minutes without an action`.
+- A change of the setting applies at once to the virtual machines that are idle: one idle for longer than the new value stops at once.
+- The user's virtual machines never stop for this, and the user's mouse and keyboard in a [detail](#detail) are no action.
+
+The idle stop, its setting and its default come from the user ([R204](requirements.md#requirements)); the moments the idle time starts again, the change applied at once and the log line are Default chosen at design time.
+
+### The user's virtual machines
+
+- Claude acts on a virtual machine that the user started only when the user names it in the chat, by its name or with its [linked item](#linked-item) chip. The descriptions of the VM tools and the system prompt say so; the engine does not check it, so the actions accept any virtual machine that runs.
+- `vm_stop` refuses a virtual machine that the user started, with `forbidden` and `“<name>” was started by the user: only the user stops it.` The descriptions and the system prompt say that Claude never stops one.
+- `vm_start` never joins one.
+
+### Claude token
+
+The Claude CLI in a guest runs with the user's Claude account through a token that the user creates on this Mac with `claude setup-token` and enters in `Claude token` of Settings › Virtual Machines › Claude ([User interface](ui.md#virtual-machines)).
+
+- The token is stored as `claudeVMToken` in `secrets.json` ([Secrets file](data-model.md#secrets-file)) through the Claude VM token service, a [local-only service](architecture.md#local-only-services): no engine method, MCP tool or remote device reads it, and it is never logged.
+- Each time the agent of a virtual machine connects, at each start and again when it connects anew, the engine sends it `setEnv` with the name `CLAUDE_CODE_OAUTH_TOKEN` and the token, before any action. The agent sets the variable in its own environment, which the commands of `exec`, and so of `vm_shell`, inherit, and in the account's environment with `launchctl setenv`, which the apps started afterwards in the guest inherit, Terminal included. The guest's Claude CLI reads it, so `claude -p` runs there without a login.
+- The token is never in an image: the setup virtual machine, which boots the image's own disk, never gets it, and neither the engine nor the agent writes it to a disk of a guest.
+- Without a token, nothing is sent. A changed token reaches the virtual machines that start afterwards; the running ones keep the one they were given.
+- When the agent fails `setEnv`, as an agent of version 1.0 does, `engine.log` gets `virtual machine <id>: the agent did not take the Claude token: <message>`, and the actions run without it.
+
+The field, its storage in `secrets.json` through a local-only service, the variable and the start as the moment it is given come from the user ([R204](requirements.md#requirements)). The method `setEnv`, `launchctl setenv`, the new connections and the log line are Default chosen at design time.
 
 ## Detail
 
@@ -572,6 +655,9 @@ The folder and file names are Default chosen at design time.
 | `Sources/HephaestusCore/Engine/API/VMsAPI.swift`               | The `vms.*` methods and `VMList`.                                                                                                                                                                                                      |
 | `Sources/HephaestusCore/Engine/Handlers/VMImageHandlers.swift` | `registerVMImageHandlers()` and the handlers.                                                                                                                                                                                          |
 | `Sources/HephaestusCore/Engine/Handlers/VMHandlers.swift`      | `registerVMHandlers()` and the handlers.                                                                                                                                                                                               |
+| `Sources/HephaestusCore/VirtualMachines/VMTool*.swift`         | `VMToolService`, the queues, the idle timers and the calls of `vm_start` that wait; the methods of the VM tools, the copies and the menu notation of `vm_key`.                                                                         |
+| `Sources/HephaestusCore/Engine/API/VMToolsAPI.swift`           | The `vmTools.*` methods and their result types.                                                                                                                                                                                        |
+| `Sources/HephaestusCore/Engine/Handlers/VMToolHandlers.swift`  | `registerVMToolHandlers()` and the handlers.                                                                                                                                                                                           |
 | `Sources/HephaestusAgent/`                                     | The guest agent: `main.swift`, the connection loop, the frames, the session, one file per group of methods, the display assertion.                                                                                                     |
 | `Resources/install-agent.sh`                                   | The install script, `install.sh` in the shared folder.                                                                                                                                                                                 |
 | `Sources/HephaestusUI/Settings/`                               | `VirtualMachinesSettingsPane`, `AddImageSheet`, `NewVMSheet`, the setup window with the view of a virtual machine's screen (`VZVirtualMachineView`), and `VirtualMachineDetailView`, the detail of a virtual machine in a main window. |
@@ -584,3 +670,4 @@ Outside the app, the engine reaches ipsw.me, Apple's download server and the Vir
 - R201: Settings has a Virtual Machines tab whose Images section adds macOS images for virtual machines from the versions ipsw.me lists, downloads and installs them, prepares each one once in a setup window so that an agent in the guest gives full control of it, marks the default image and deletes images.
 - R202: The user starts virtual machines from the Ready images in Settings, keeps them between runs, starts, stops and deletes them, and shows the screen of one in a main window, where the mouse and the keyboard drive it; at most 2 run at once, and the app does not restart by itself for an update while one runs.
 - R203: The toolbar of a main window that shows This Mac has a bubble with the number of virtual machines that run; its popover shows a preview of the screen of each one, refreshed every 2 seconds, its name, who started it and its running time, opens it and stops it.
+- R204: Every chat of every project gives Claude full control of virtual machines with the VM tools: Claude starts one freely or joins Claude's one of the same image, waits up to 10 minutes for a free place, drives it one action at a time across chats, acts on the user's only when named and never stops them; Claude's idle VMs stop after the minutes set in Settings, and each VM gets the Claude token of Settings at its start.

@@ -343,6 +343,16 @@ public enum ModelRules {
         return value
     }
 
+    /// `claudeVMIdleMinutes`: 1–1440 (docs/virtual-machines.md › Idle stop).
+    public static let claudeVMIdleMinutesRange = 1...1440
+
+    public static func claudeVMIdleMinutes(_ value: Int) throws -> Int {
+        guard claudeVMIdleMinutesRange.contains(value) else {
+            throw ValidationError.invalid("claudeVMIdleMinutes", "use a number from 1 to 1440")
+        }
+        return value
+    }
+
     /// `updateCheckIntervalMinutes`: 5–1440.
     public static func updateCheckInterval(_ value: Int) throws -> Int {
         guard (5...1440).contains(value) else {

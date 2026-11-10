@@ -48,6 +48,9 @@ extension Engine {
     /// Emits `vms.changed` when the list or the number of running virtual machines changed since
     /// the last event.
     func emitVirtualMachines(origin: Actor) {
+        // The calls of `vm_start` that wait take their steps again (docs/virtual-machines.md ›
+        // Starting and joining).
+        notifyVirtualMachineWaiters()
         let list = virtualMachineList()
         guard list != virtualMachines.lastEmitted else { return }
         virtualMachines.lastEmitted = list
@@ -183,6 +186,8 @@ extension Engine {
         running.startedAt = Date().truncatedToSeconds
         virtualMachines.machines[id] = running
         log.info(.engine, "virtual machine \(id.uuidString) started")
+        // The idle time of a virtual machine of Claude starts (docs/virtual-machines.md › Idle stop).
+        restartIdleTime(of: id)
         emitVirtualMachines(origin: origin)
         return running
     }
@@ -211,6 +216,7 @@ extension Engine {
     func virtualMachineEnded(_ id: UUID, session: VMSession, failure: String?) {
         guard virtualMachines.sessions[id] === session else { return }
         virtualMachines.sessions[id] = nil
+        virtualMachineToolsEnded(id)
         let origin = virtualMachines.stopOrigins.removeValue(forKey: id) ?? .system
         if let failure {
             log.warn(.engine, "virtual machine \(id.uuidString) stopped with a failure: \(failure)")
@@ -296,6 +302,7 @@ extension Engine {
 
     /// Stops every virtual machine at once: the user's keep their disk, Claude's are deleted.
     func stopRunningVirtualMachines() async {
+        stopVMTools()
         for start in Array(virtualMachines.starts.values) {
             _ = try? await start.value
         }

@@ -22,13 +22,24 @@ struct SystemPromptSkillsTests {
         .ticket: "44085b9358cd845f1c343ef6b5430c5233976cce3b8ef744fd1471012cb18871",
     ]
 
-    /// The text the common default gained since that release: the API tools (HEPH-128).
+    /// The text the common default gained since that release: the API tools (HEPH-128), then the
+    /// VM tools (HEPH-145).
     static let commonAdditions = [
         "- The API of a Go service project: api_operations (lists the operations of its OpenAPI contract openapi/contract.yaml), "
             + "api_call (calls one of them on an environment of the project, with the credentials and headers stored in the API Explorer).\n",
         " When the project root holds openapi/contract.yaml, read and change the service through its API with api_operations and api_call "
             + "and the environment's name, never with curl and a guessed URL, certificate flags or credentials: api_call uses the environment's "
             + "URL and certificate setting and the credentials and headers stored in the API Explorer.",
+        "- Virtual machines: vm_list_images, vm_list, vm_start, vm_stop, vm_screenshot, vm_click, vm_drag, vm_scroll, vm_type, vm_key, "
+            + "vm_ui_tree, vm_shell, vm_copy_in, vm_copy_out (macOS virtual machines of this Mac that you start, drive and stop for your checks).\n",
+        "# Virtual machines\n\nStart a virtual machine with vm_start freely, without asking, whenever a check needs one, for example a check of "
+            + "menus, typed text, list rows, scrolling, system dialogs or permission prompts. Without image, vm_start uses the default image; "
+            + "when a virtual machine that Claude started runs from the same image, your chat joins it instead of starting another. Drive it "
+            + "with vm_screenshot, vm_click, vm_drag, vm_scroll, vm_type, vm_key, vm_ui_tree and vm_shell, and copy files with vm_copy_in and "
+            + "vm_copy_out; x and y are pixels of the last vm_screenshot. The actions of every chat on one virtual machine run one at a time. "
+            + "A virtual machine that Claude started stops by itself after some minutes without an action; vm_stop stops it at once, also "
+            + "for the other chats that joined it. A virtual machine that the user started, Started by You in vm_list, is the user's: act on "
+            + "it only when the user names it in this chat, by its name or with its linked item, and never stop it.\n\n",
     ]
 
     @Test("The text of each unedited default is the prompt of the previous release, byte for byte, but for the text the common default gained since")

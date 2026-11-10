@@ -145,6 +145,112 @@ enum VirtualMachinePresentation {
     }
 }
 
+/// The texts and the values of the Claude section (docs/ui.md › Virtual Machines).
+enum ClaudeVMPresentation {
+    static let idleLabel = "Stop Claude's idle VMs after"
+    static let idleUnit = "minutes"
+    static let tokenLabel = "Claude token"
+    static let tokenCaption = "Create it with claude setup-token. Each VM gets it when it starts."
+
+    /// The minutes of the idle field; a text that is not a whole number gets the engine's message
+    /// for a value outside the range.
+    static func idleMinutes(_ text: String) -> Result<Int, ValidationError> {
+        guard let minutes = Int(text.trimmingCharacters(in: .whitespaces)) else {
+            return .failure(.invalid("claudeVMIdleMinutes", "use a number from 1 to 1440"))
+        }
+        return .success(minutes)
+    }
+}
+
+/// The Claude section: the idle minutes of Claude's virtual machines, a `settings.yml` key, and
+/// the Claude token, through the Claude VM token service of This Mac (docs/ui.md › Virtual
+/// Machines, docs/virtual-machines.md › Idle stop, › Claude token).
+struct ClaudeVMSection: View {
+    @Environment(AppModel.self) private var app
+    @State private var idleMessage: String?
+    @State private var token = ""
+    @State private var showsToken = false
+    @State private var tokenMessage: String?
+    @FocusState private var tokenFocused: Bool
+
+    private var storedMinutes: Int { app.localWorkspace.settings?.claudeVMIdleMinutes ?? HostSettings.defaultClaudeVMIdleMinutes }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(ClaudeVMPresentation.idleLabel)
+            CommitTextField(title: ClaudeVMPresentation.idleUnit, value: String(storedMinutes)) { text in
+                commitMinutes(text)
+            }
+            .frame(width: 60)
+            Text(ClaudeVMPresentation.idleUnit)
+        }
+        FieldMessage(text: idleMessage)
+        HStack(spacing: 8) {
+            Text(ClaudeVMPresentation.tokenLabel)
+            Group {
+                if showsToken {
+                    TextField(ClaudeVMPresentation.tokenLabel, text: $token)
+                } else {
+                    SecureField(ClaudeVMPresentation.tokenLabel, text: $token)
+                }
+            }
+            .labelsHidden()
+            .focused($tokenFocused)
+            .onSubmit(commitToken)
+            Button {
+                showsToken.toggle()
+            } label: {
+                Image(systemName: showsToken ? "eye.slash" : "eye")
+            }
+            .buttonStyle(.borderless)
+        }
+        .onAppear {
+            token = app.engine.claudeVMToken ?? ""
+        }
+        .onChange(of: tokenFocused) { _, focused in
+            if !focused {
+                commitToken()
+            }
+        }
+        FieldMessage(text: tokenMessage)
+        Text(ClaudeVMPresentation.tokenCaption)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// Return or the loss of the focus applies the minutes with `settings.update`.
+    private func commitMinutes(_ text: String) {
+        switch ClaudeVMPresentation.idleMinutes(text) {
+        case .failure(let error):
+            idleMessage = error.message
+        case .success(let minutes):
+            guard minutes != storedMinutes else {
+                idleMessage = nil
+                return
+            }
+            Task {
+                idleMessage = await updateLocalSettings(app, SettingsUpdate.Params(claudeVMIdleMinutes: minutes))
+            }
+        }
+    }
+
+    /// Return or the loss of the focus stores the token, trimmed; an empty field removes it.
+    private func commitToken() {
+        guard token != (app.engine.claudeVMToken ?? "") else {
+            tokenMessage = nil
+            return
+        }
+        do {
+            try app.engine.setClaudeVMToken(token)
+            token = app.engine.claudeVMToken ?? ""
+            tokenMessage = nil
+        } catch {
+            tokenMessage = errorMessage(error)
+        }
+    }
+}
+
 /// The State cell of a virtual machine: its text changes when the minute of its running time does.
 struct VirtualMachineStateText: View {
     let machine: VirtualMachine
@@ -271,6 +377,9 @@ struct VirtualMachinesSettingsPane: View {
                     Button("Delete…", action: deleteMachine)
                         .disabled(selectedMachine == nil)
                 }
+            }
+            SettingsRow(label: "Claude") {
+                ClaudeVMSection()
             }
         }
         .readsHostWindow(hostWindow)

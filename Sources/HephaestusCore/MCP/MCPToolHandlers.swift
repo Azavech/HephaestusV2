@@ -100,6 +100,10 @@ struct MCPToolHandlers: Sendable {
         if [.serviceAPI, .serviceAPICall].contains(tool.handling), actor.chat == nil {
             throw MCPToolError(ActorRules.ownChatAPIOnly)
         }
+        // docs/mcp.md › Rules of the VM tools, rule 1: chat tokens only.
+        if tool.handling == .vmTool, actor.chat == nil {
+            throw MCPToolError(ActorRules.ownChatVMOnly)
+        }
         // Step 3: argument validation, `null` properties removed.
         let cleaned = MCPSchemaValidator.removingNulls(arguments)
         if let error = MCPSchemaValidator().validate(cleaned, against: tool.inputSchema) {
@@ -299,6 +303,16 @@ struct MCPToolHandlers: Sendable {
             params["chatID"] = .string(actor.chat?.uuidString.uppercased() ?? "")
             return try await engineText(tool, params: .object(params), actor: actor)
 
+        case .vmTool:
+            // Step 2 made sure the token is a chat token. The paths of this Mac are expanded
+            // (docs/mcp.md › Path expansion).
+            var params = args
+            if let key = Self.vmToolMacPaths[tool.name], let path = args[key]?.stringValue {
+                params[key] = .string(Self.expandingTilde(path, home: homeDirectory))
+            }
+            params["chatID"] = .string(actor.chat?.uuidString.uppercased() ?? "")
+            return try await engineText(tool, params: .object(params), actor: actor)
+
         case .debugUI:
             return try await debugTool(tool, args: args)
         }
@@ -328,6 +342,9 @@ struct MCPToolHandlers: Sendable {
         let method = tool.engineMethod ?? ""
         return String(decoding: try await engineCall(method, try Self.encoded(params), actor), as: UTF8.self)
     }
+
+    /// The argument of a VM tool that is a path on this Mac (docs/mcp.md › Path expansion).
+    static let vmToolMacPaths: [String: String] = ["vm_copy_in": "source", "vm_copy_out": "destination"]
 
     /// The arguments of `k8s_logs` that it sends in `options` (docs/mcp.md › k8s_logs).
     static let logOptionArguments: Set<String> = ["pod", "container", "tailLines", "sinceSeconds", "previous"]

@@ -5,7 +5,7 @@ import Foundation
 /// (docs/virtual-machines.md › Connection, › Messages).
 enum AgentInfo {
     /// The agent's version, reported in its status.
-    static let version = "1.0"
+    static let version = "1.1"
     /// The version of the protocol.
     static let protocolVersion = 1
     /// The port of the host on which the agent connects.

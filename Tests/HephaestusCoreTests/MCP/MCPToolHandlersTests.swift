@@ -886,6 +886,45 @@ struct MCPToolHandlersTests {
         }
     }
 
+    static let vmID = "7D2C1A90-5E4B-4F3A-8B6C-1D0E9F8A7B6C"
+
+    @Test("VM tools: the method of the catalogue with the arguments and chatID, the calling chat; the paths of this Mac are expanded")
+    func vmToolParams() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        let chatID = Self.chatID.uuidString
+        let cases: [(tool: String, arguments: String, method: String, params: String)] = [
+            ("vm_list_images", "{}", "vmTools.images", #"{"chatID":"\#(chatID)"}"#),
+            ("vm_start", #"{"name":"Menu checks","memory":8}"#, "vmTools.start", #"{"chatID":"\#(chatID)","name":"Menu checks","memory":8}"#),
+            ("vm_key", #"{"vmID":"\#(Self.vmID)","key":"⌘S"}"#, "vmTools.key", #"{"chatID":"\#(chatID)","vmID":"\#(Self.vmID)","key":"⌘S"}"#),
+            ("vm_copy_in", #"{"vmID":"\#(Self.vmID)","source":"~/Build/Demo.app","destination":"~/Demo.app"}"#, "vmTools.copyIn",
+             #"{"chatID":"\#(chatID)","vmID":"\#(Self.vmID)","source":"/Users/example/Build/Demo.app","destination":"~/Demo.app"}"#),
+            ("vm_copy_out", #"{"vmID":"\#(Self.vmID)","source":"~/log.txt","destination":"~/Logs/log.txt"}"#, "vmTools.copyOut",
+             #"{"chatID":"\#(chatID)","vmID":"\#(Self.vmID)","source":"~/log.txt","destination":"/Users/example/Logs/log.txt"}"#),
+        ]
+        for (tool, arguments, method, params) in cases {
+            _ = try await Self.call(handlers, tool, arguments)
+            let call = try #require(engine.calls.last)
+            #expect(call.method == method, "\(tool)")
+            #expect(call.params == (try jsonValue(params)), "\(tool)")
+            #expect(call.actor == Self.chat)
+        }
+        #expect(try await Self.call(handlers, "vm_click", #"{"vmID":"\#(Self.vmID)","x":1,"y":2,"count":4}"#)
+            == .failure(MCPToolError(code: .invalid, message: "count: must be at most 3.")))
+    }
+
+    @Test("VM tools: the external token fails before argument validation, without an engine call")
+    func vmToolExternalToken() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        let refused = MCPToolError(code: .forbidden, message: "Only the chat's own Claude can use the VM tools.")
+        for tool in MCPToolCatalog.tools where tool.handling == .vmTool {
+            #expect(try await Self.call(handlers, tool.name, #"{"unknown":1}"#, actor: Self.external) == .failure(refused), "\(tool.name)")
+        }
+        #expect(MCPToolCatalog.tools.filter { $0.handling == .vmTool }.count == 14)
+        #expect(engine.calls.isEmpty)
+    }
+
     @Test("Kubernetes and Argo CD tools: the external token fails before argument validation, without an engine call")
     func kubernetesExternalToken() async throws {
         let engine = RecordedEngine()

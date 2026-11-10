@@ -65,6 +65,7 @@ final class FakeVMImageProvisioner: VMImageProvisioning, @unchecked Sendable {
         var installFailure: Error?
         var machineFailure: Error?
         var machinesStopWhileStarting = false
+        var machinesConnectAgent = false
         var downloadHold: TestHold?
         var installHold: TestHold?
         var listCalls = 0
@@ -116,6 +117,11 @@ final class FakeVMImageProvisioner: VMImageProvisioning, @unchecked Sendable {
     var machinesStopWhileStarting: Bool {
         get { update { $0.machinesStopWhileStarting } }
         set { update { $0.machinesStopWhileStarting = newValue } }
+    }
+    /// True: the virtual machines made from now on connect their agent as soon as they start.
+    var machinesConnectAgent: Bool {
+        get { update { $0.machinesConnectAgent } }
+        set { update { $0.machinesConnectAgent = newValue } }
     }
     /// While set, a download waits after its fractions until the hold is released.
     var downloadHold: TestHold? {
@@ -179,6 +185,7 @@ final class FakeVMImageProvisioner: VMImageProvisioning, @unchecked Sendable {
         if let failure = machineFailure { throw failure }
         let machine = FakeGuestMachine()
         machine.stopsWhileStarting = machinesStopWhileStarting
+        machine.connectsAgentOnStart = machinesConnectAgent
         update { state in
             state.machines.append(machine)
             state.machineRequests.append(request)
@@ -198,9 +205,26 @@ final class FakeGuestMachine: GuestMachine {
         case requestStop
     }
 
+    /// One request to the agent.
+    struct AgentCall: Equatable {
+        var method: String
+        var params: [String: JSONValue]
+        var data: Data
+    }
+
     var events: ((GuestMachineEvent) -> Void)?
     var virtualMachine: VZVirtualMachine? { nil }
     private(set) var calls: [Call] = []
+    /// The requests to the agent, in the order they were sent.
+    private(set) var agentCalls: [AgentCall] = []
+    /// True while the agent is connected.
+    private(set) var agentIsConnected = false
+    /// True: the agent connects as soon as the virtual machine starts.
+    var connectsAgentOnStart = false
+    /// Answers a request of the agent; nil answers `{}`.
+    var agentHandler: (@Sendable (AgentCall) async throws -> GuestAgentResponse)?
+    /// While set, the requests of these methods wait until their hold is released.
+    var agentHolds: [String: TestHold] = [:]
     private(set) var isRunning = false
     var startFailure: Error?
     /// True: the guest stops before `start` returns.
@@ -218,14 +242,29 @@ final class FakeGuestMachine: GuestMachine {
         calls.append(.start(recovery: recovery))
         if let startFailure { throw startFailure }
         isRunning = true
+        if connectsAgentOnStart {
+            agentConnects(sip: .disabled)
+        }
         if stopsWhileStarting {
             guestShutsDown()
         }
     }
 
+    func agentRequest(_ method: String, params: [String: JSONValue], data: Data, timeout: Duration) async throws -> GuestAgentResponse {
+        guard agentIsConnected else { throw GuestAgentError.disconnected }
+        let call = AgentCall(method: method, params: params, data: data)
+        agentCalls.append(call)
+        if let hold = agentHolds[method] {
+            try await hold.wait()
+        }
+        guard agentIsConnected else { throw GuestAgentError.disconnected }
+        return try await agentHandler?(call) ?? GuestAgentResponse()
+    }
+
     func stop() async {
         calls.append(.stop)
         isRunning = false
+        agentIsConnected = false
     }
 
     func shutDownGuest() async throws {
@@ -246,17 +285,20 @@ final class FakeGuestMachine: GuestMachine {
 
     /// The agent connects and reports this status.
     func agentConnects(sip: GuestAgentStatus.SIP) {
+        agentIsConnected = true
         events?(.agentConnected(GuestAgentStatus(version: "1.0", sip: sip, user: "example", osVersion: "27.2.1", osBuild: "26B131",
                                                  accessibility: true, screenRecording: true)))
     }
 
     func agentDisconnects() {
+        agentIsConnected = false
         events?(.agentDisconnected)
     }
 
     /// The guest shuts down by itself, or the virtual machine fails with `error`.
     func guestShutsDown(error: String? = nil) {
         isRunning = false
+        agentIsConnected = false
         events?(.stopped(error: error))
     }
 }
@@ -344,8 +386,8 @@ func createVM(_ connection: LocalEngineConnection, image: VMImage, name: String 
     try await connection.call(VMsCreate.self, VMsCreate.Params(name: name, imageID: image.id, cores: image.cores, memoryGB: image.memoryGB))
 }
 
-/// Starts a virtual machine for Claude, as a chat of the project DEMO: no engine method does it
-/// yet (docs/virtual-machines.md › Lifecycle).
+/// Starts a virtual machine for Claude, as a chat of the project DEMO, without the checks of the
+/// chat that `vm_start` makes (docs/virtual-machines.md › Lifecycle).
 func createClaudeVM(_ engine: Engine, image: VMImage, chatID: ChatID = UUID(), name: String = "Settings check") async throws -> VirtualMachine {
     try await engine.createVirtualMachine(VMsCreate.Params(name: name, imageID: image.id, cores: image.cores, memoryGB: image.memoryGB),
                                           startedBy: .claude(projectID: "DEMO", chatID: chatID), .system)

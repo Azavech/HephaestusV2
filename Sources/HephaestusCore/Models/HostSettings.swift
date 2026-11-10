@@ -28,17 +28,22 @@ public struct HostSettings: Codable, Sendable, Hashable {
     /// The id of the default image of virtual machines, a Ready image; nil while no image is the
     /// default (docs/virtual-machines.md › Default image).
     public var defaultVMImage: UUID?
+    /// Minutes without an action after which a virtual machine that Claude started stops
+    /// (docs/virtual-machines.md › Idle stop).
+    public var claudeVMIdleMinutes: Int
     public var unknownKeys: [String: JSONValue]
 
     public static let defaultMCPPort = 47820
     public static let defaultSyncPort = 47821
+    public static let defaultClaudeVMIdleMinutes = 10
 
     public init(schema: Int = 1, claudePath: String? = nil, defaultChatSettings: ChatSettings = ChatSettings(),
                 mcpPort: Int = HostSettings.defaultMCPPort, syncEnabled: Bool = true,
                 syncPort: Int = HostSettings.defaultSyncPort, skillsLibraryPath: String? = nil, autoUpdate: Bool = true,
                 updateCheckIntervalMinutes: Int = 30, formatGoOnSave: Bool = true, formatSwiftOnSave: Bool = false,
                 notifyNeedsYou: Bool = true, notifyFinished: Bool = true, notifyAISummary: Bool = true,
-                showHephaestusProject: Bool = true, defaultVMImage: UUID? = nil, unknownKeys: [String: JSONValue] = [:]) {
+                showHephaestusProject: Bool = true, defaultVMImage: UUID? = nil,
+                claudeVMIdleMinutes: Int = HostSettings.defaultClaudeVMIdleMinutes, unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
         self.claudePath = claudePath
         self.defaultChatSettings = defaultChatSettings
@@ -55,13 +60,14 @@ public struct HostSettings: Codable, Sendable, Hashable {
         self.notifyAISummary = notifyAISummary
         self.showHephaestusProject = showHephaestusProject
         self.defaultVMImage = defaultVMImage
+        self.claudeVMIdleMinutes = claudeVMIdleMinutes
         self.unknownKeys = unknownKeys
     }
 
     static let knownKeys: Set<String> = [
         "schema", "claudePath", "defaultChatSettings", "mcpPort", "syncEnabled", "syncPort",
         "skillsLibraryPath", "autoUpdate", "updateCheckIntervalMinutes", "formatGoOnSave", "formatSwiftOnSave",
-        "notifyNeedsYou", "notifyFinished", "notifyAISummary", "showHephaestusProject", "defaultVMImage",
+        "notifyNeedsYou", "notifyFinished", "notifyAISummary", "showHephaestusProject", "defaultVMImage", "claudeVMIdleMinutes",
     ]
 
     public init(from decoder: Decoder) throws {
@@ -82,6 +88,7 @@ public struct HostSettings: Codable, Sendable, Hashable {
         notifyAISummary = try c.value("notifyAISummary", default: true)
         showHephaestusProject = try c.value("showHephaestusProject", default: true)
         defaultVMImage = try c.optional("defaultVMImage")
+        claudeVMIdleMinutes = try c.value("claudeVMIdleMinutes", default: HostSettings.defaultClaudeVMIdleMinutes)
         unknownKeys = try c.unknownKeys(known: Self.knownKeys)
     }
 
@@ -103,6 +110,7 @@ public struct HostSettings: Codable, Sendable, Hashable {
         try c.encode(notifyAISummary, "notifyAISummary")
         try c.encode(showHephaestusProject, "showHephaestusProject")
         try c.encodeOptional(defaultVMImage, "defaultVMImage")
+        try c.encode(claudeVMIdleMinutes, "claudeVMIdleMinutes")
         try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
     }
 }

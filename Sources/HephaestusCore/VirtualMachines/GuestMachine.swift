@@ -48,6 +48,11 @@ public protocol GuestMachine: AnyObject {
     /// Asks the connected guest agent to shut the guest down; the `stopped` event follows when
     /// the guest has shut down. Throws when no agent is connected or the agent refuses.
     func shutDownGuest() async throws
+    /// Sends one request to the connected guest agent and returns its response
+    /// (docs/virtual-machines.md › Methods). Throws `GuestAgentError`: `disconnected` when no
+    /// agent is connected or its connection ends first, `failed` with the agent's message,
+    /// `timedOut` after `timeout`.
+    func agentRequest(_ method: String, params: [String: JSONValue], data: Data, timeout: Duration) async throws -> GuestAgentResponse
     /// Asks the guest to shut down as its power button does: macOS asks the person in front of
     /// the guest to confirm. The `stopped` event follows when the guest has shut down. Throws
     /// when the virtual machine takes no such request.
@@ -111,6 +116,11 @@ final class MacGuestMachine: NSObject, GuestMachine, VZVirtualMachineDelegate, V
     func shutDownGuest() async throws {
         guard let agent else { throw GuestAgentError.disconnected }
         try await agent.shutDownGuest()
+    }
+
+    func agentRequest(_ method: String, params: [String: JSONValue], data: Data, timeout: Duration) async throws -> GuestAgentResponse {
+        guard let agent else { throw GuestAgentError.disconnected }
+        return try await agent.request(method, params: params, data: data, timeout: timeout)
     }
 
     func requestStop() throws {

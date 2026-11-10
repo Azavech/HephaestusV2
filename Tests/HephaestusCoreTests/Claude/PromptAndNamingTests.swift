@@ -239,7 +239,7 @@ struct PromptAndNamingTests {
         #expect(section.contains("read and change the service through its API with api_operations and api_call and the environment's name, "
             + "never with curl and a guessed URL, certificate flags or credentials"))
         let tools = ClaudeCommandLine.preApprovedTools.split(separator: ",").map(String.init)
-        #expect(tools.last == "mcp__hephaestus__api_operations")
+        #expect(tools.contains("mcp__hephaestus__api_operations"))
         #expect(!tools.contains("mcp__hephaestus__api_call"))
     }
 
@@ -256,8 +256,8 @@ struct PromptAndNamingTests {
             + "deployment: the tools use the environment's kubeconfig file, namespace, deployment and Argo CD application."))
         #expect(!common.contains("kubectl context"))
         #expect(section.contains("Stop a port forward with k8s_stop_port_forward once you no longer need it."))
-        #expect(ClaudeCommandLine.preApprovedTools.hasSuffix(",mcp__hephaestus__get_chat,mcp__hephaestus__k8s_status,mcp__hephaestus__k8s_logs,"
-            + "mcp__hephaestus__k8s_events,mcp__hephaestus__argocd_status,mcp__hephaestus__api_operations"))
+        #expect(ClaudeCommandLine.preApprovedTools.contains(",mcp__hephaestus__get_chat,mcp__hephaestus__k8s_status,mcp__hephaestus__k8s_logs,"
+            + "mcp__hephaestus__k8s_events,mcp__hephaestus__argocd_status,mcp__hephaestus__api_operations,"))
     }
 
     @Test("{{globalMemories}}: the folder and the trimmed text of MEMORY.md, at most 200 lines and 25,000 characters")
