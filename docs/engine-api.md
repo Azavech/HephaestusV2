@@ -1,6 +1,6 @@
 # Engine API
 
-The engine API is the single interface to everything a device's engine owns: projects, sub projects, tickets, bundles, chats, files, docs, web tabs, skills, the memories the Claude CLI saves for the projects and the device's global memories, host settings, the macOS images of virtual machines and the Claude plan usage; it also reads the workflow runs and releases of the projects' GitHub repositories with the GitHub CLI ([Builds](builds.md)). Local windows, remote devices and Claude (through the MCP server) call the same named methods with JSON params and JSON results, and all of them receive the same stream of named events, so every client sees every change live wherever it was made, and a remote window works as if it were the main device itself. This document is the contract for every method (params, result, errors, allowed actors, events emitted), every event, every API-only type, the JSON conventions and the Swift shape of the API. Persisted types (Project, WebTab, ChatSettings, Ticket, Comment, TicketLink, Attachment, TicketBundle, ChatMeta, ChatItem, Question, HostSettings, PlanUsage, VMImage) are defined in [Data model](data-model.md); the transports are described in [Remote devices](remote.md) and [MCP server](mcp.md).
+The engine API is the single interface to everything a device's engine owns: projects, sub projects, tickets, bundles, chats, files, docs, web tabs, skills, the memories the Claude CLI saves for the projects and the device's global memories, host settings, the macOS images of virtual machines, the virtual machines and the Claude plan usage; it also reads the workflow runs and releases of the projects' GitHub repositories with the GitHub CLI ([Builds](builds.md)). Local windows, remote devices and Claude (through the MCP server) call the same named methods with JSON params and JSON results, and all of them receive the same stream of named events, so every client sees every change live wherever it was made, and a remote window works as if it were the main device itself. This document is the contract for every method (params, result, errors, allowed actors, events emitted), every event, every API-only type, the JSON conventions and the Swift shape of the API. Persisted types (Project, WebTab, ChatSettings, Ticket, Comment, TicketLink, Attachment, TicketBundle, ChatMeta, ChatItem, Question, HostSettings, PlanUsage, VMImage) are defined in [Data model](data-model.md); the transports are described in [Remote devices](remote.md) and [MCP server](mcp.md).
 
 ## Overview
 
@@ -23,7 +23,7 @@ every connection ◄────────────────────
 - A method has a wire name `<area>.<verb>`, a JSON object of params and a JSON result. `LocalEngineConnection` encodes the params to JSON, dispatches by name and decodes the JSON result: the same bytes and the same code path as a remote call.
 - Every change produces events sent to every connection, the caller's included, whatever caused it: a call from any client, a tool call from Claude, background work of the engine (Haiku naming, Claude output) or an edit made outside the app ([Changes made outside the engine](#changes-made-outside-the-engine)).
 - Methods always act on the engine's own device. Claude processes, project files and data live on the main device only; remote devices render the UI and send calls ([Architecture](architecture.md)).
-- Pairing, paired devices, the device name, the external MCP token, the server status and the setup of a virtual machine image are local-only services of each device, not engine methods ([Architecture](architecture.md#local-only-services)).
+- Pairing, paired devices, the device name, the external MCP token, the server status, the setup of a virtual machine image and the screens of virtual machines are local-only services of each device, not engine methods ([Architecture](architecture.md#local-only-services)).
 
 ## Conventions
 
@@ -323,6 +323,11 @@ The first column lists every engine method; it is the list the docs conformance 
 | `vmImages.versions`              | VMImagesVersions              | none                                                       | [MacOSVersion]     | user         |
 | `vmImages.add`                   | VMImagesAdd                   | build, cores, memoryGB, diskGB                             | VMImage            | user         |
 | `vmImages.delete`                | VMImagesDelete                | imageID                                                    | Empty              | user         |
+| `vms.list`                       | VMsList                       | none                                                       | VMList             | user         |
+| `vms.create`                     | VMsCreate                     | name, imageID, cores, memoryGB                             | VirtualMachine     | user         |
+| `vms.start`                      | VMsStart                      | vmID                                                       | VirtualMachine     | user         |
+| `vms.stop`                       | VMsStop                       | vmID                                                       | Empty              | user         |
+| `vms.delete`                     | VMsDelete                     | vmID                                                       | Empty              | user         |
 | `settings.get`                   | SettingsGet                   | none                                                       | HostSettings       | user         |
 | `settings.update`                | SettingsUpdate                | any HostSettings key (partial)                             | HostSettings       | user         |
 | `ui.open`                        | UIOpen                        | target, deviceID?                                          | Empty              | user, claude |
@@ -3015,7 +3020,7 @@ The Apple silicon check comes first, then the ranges, then the build. Events: vm
 
 Swift type `VMImagesDelete` · actors: user · result: [Empty](#empty)
 
-Ends the image's download or install, stops its setup virtual machine and deletes its folder with everything in it ([Deleting an image](virtual-machines.md#deleting-an-image)). The folder is deleted, not moved to the Trash.
+Ends the image's download or install, stops its setup virtual machine, deletes its virtual machines and deletes its folder with everything in it ([Deleting an image](virtual-machines.md#deleting-an-image)). The folders are deleted, not moved to the Trash.
 
 | Param   | Type | Required | Description      |
 | ------- | ---- | -------- | ---------------- |
@@ -3026,7 +3031,132 @@ Ends the image's download or install, stops its setup virtual machine and delete
 | notFound | No image has this id (`Image <id> not found.`).                                                                                                       |
 | internal | settings.yml cannot be written, or the folder cannot be deleted (`<path> cannot be deleted: <reason>.`); the image then stays, in the state `failed`. |
 
-Events: settings.updated when the image was the default image, then vmImages.changed.
+Events: vms.changed when the image had virtual machines, settings.updated when the image was the default image, then vmImages.changed.
+
+## Virtual machines
+
+The virtual machines, their states, the clone of the image's disk, the start, the stop and the limit of 2 running virtual machines are in [Virtual machines](virtual-machines.md#lifecycle). The methods act on the virtual machines of the engine's own Mac, stored under `<data dir>/VirtualMachines/Machines/`. Only the user actor calls them, and `vms.create` starts a virtual machine of the user: no method starts one for Claude yet. The screen of a virtual machine shows only on the Mac that runs it, through a [local-only service](architecture.md#local-only-services).
+
+### VirtualMachine in the API
+
+The methods and `vms.changed` send [VirtualMachine](data-model.md#vm-metadata-file) with two keys that are never stored:
+
+| Key       | Type                | Value                                                                                          |
+| --------- | ------------------- | ---------------------------------------------------------------------------------------------- |
+| state     | VirtualMachineState | `running` or `stopped` ([Virtual machine states](virtual-machines.md#virtual-machine-states)). |
+| startedAt | Date, optional      | When the virtual machine started, for the running time; absent for a stopped one.              |
+
+A virtual machine of the user that runs:
+
+```json
+{
+  "build": "26B131",
+  "chatID": null,
+  "cores": 4,
+  "created": "2026-11-10T09:12:00Z",
+  "id": "7D2C1A90-5E4B-4F3A-8B6C-1D0E9F8A7B6C",
+  "imageID": "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F",
+  "memoryGB": 8,
+  "name": "Menu checks",
+  "projectID": null,
+  "schema": 1,
+  "startedAt": "2026-11-10T09:12:03Z",
+  "startedBy": "user",
+  "state": "running",
+  "version": "27.2.1"
+}
+```
+
+### VMList
+
+The result of `vms.list` and the data of `vms.changed`.
+
+| Field        | Type             | Required | Description                                                                                                                                                                                                                     |
+| ------------ | ---------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| machines     | [VirtualMachine] | yes      | The virtual machines, oldest first: by `created`, then by `id`.                                                                                                                                                                 |
+| runningCount | Int              | yes      | The number of virtual machines the engine runs, 0 to 2: the running ones of `machines`, the setup virtual machines of the images and their installs ([Running virtual machines](virtual-machines.md#running-virtual-machines)). |
+
+### vms.list
+
+Swift type `VMsList` · actors: user · result: [VMList](#vmlist)
+
+Returns the virtual machines and the number of virtual machines that run.
+
+Params: none. Errors: dispatcher errors only. Events: none.
+
+### vms.create
+
+Swift type `VMsCreate` · actors: user · result: [VirtualMachine](#virtualmachine-in-the-api)
+
+Creates a virtual machine of the user from a Ready image, with a clone of the image's disk, and starts it ([Creating](virtual-machines.md#creating)). The result is the new virtual machine, running.
+
+| Param    | Type   | Required | Description                                                           |
+| -------- | ------ | -------- | --------------------------------------------------------------------- |
+| name     | String | yes      | The virtual machine's name: one line of 1 to 100 characters, trimmed. |
+| imageID  | UUID   | yes      | Id of a Ready image.                                                  |
+| cores    | Int    | yes      | Its processor cores: 2 to the number of cores of the Mac.             |
+| memoryGB | Int    | yes      | Its memory in GB: 4 to the memory of the Mac in GB, rounded down.     |
+
+| Error       | When                                                                                                                                                                                   |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| unavailable | The Mac has no Apple silicon (`Virtual machines need a Mac with Apple silicon.`); the virtual machine cannot be made or started, with the framework's message: it then stays, stopped. |
+| invalid     | The name breaks its rule (`name: use 1 to 100 characters on one line.`); cores or memoryGB is outside its range (`<param>: use a number from <min> to <max>.`).                        |
+| notFound    | No image has this id (`Image <id> not found.`).                                                                                                                                        |
+| conflict    | The image is not Ready (`The image is not Ready.`); 2 virtual machines run (`2 virtual machines are already running.`).                                                                |
+| internal    | The virtual machine's folder, the clone or `vm.yml` cannot be written (`The virtual machine could not be created: <reason>.`); nothing of the virtual machine stays.                   |
+
+The checks come in this order: Apple silicon, the name, the image, the ranges, the 2 running virtual machines. Events: vms.changed, each time the list or the number of running virtual machines changes.
+
+### vms.start
+
+Swift type `VMsStart` · actors: user · result: [VirtualMachine](#virtualmachine-in-the-api)
+
+Boots a stopped virtual machine from its disk ([Starting](virtual-machines.md#starting)). The result is the virtual machine, running.
+
+| Param | Type | Required | Description                |
+| ----- | ---- | -------- | -------------------------- |
+| vmID  | UUID | yes      | Id of the virtual machine. |
+
+| Error       | When                                                                                                                                              |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| notFound    | No virtual machine has this id (`Virtual machine <id> not found.`).                                                                               |
+| unavailable | The Mac has no Apple silicon; the virtual machine cannot be made or started, with the framework's message.                                        |
+| conflict    | The virtual machine already runs (`The virtual machine is already running.`); 2 virtual machines run (`2 virtual machines are already running.`). |
+
+Events: vms.changed, each time the list or the number of running virtual machines changes.
+
+### vms.stop
+
+Swift type `VMsStop` · actors: user · result: [Empty](#empty)
+
+Shuts a virtual machine down and returns once it has stopped ([Stopping](virtual-machines.md#stopping)). A virtual machine that Claude started is then deleted. For a stopped virtual machine nothing happens.
+
+| Param | Type | Required | Description                |
+| ----- | ---- | -------- | -------------------------- |
+| vmID  | UUID | yes      | Id of the virtual machine. |
+
+| Error    | When                                                                |
+| -------- | ------------------------------------------------------------------- |
+| notFound | No virtual machine has this id (`Virtual machine <id> not found.`). |
+
+Events: vms.changed.
+
+### vms.delete
+
+Swift type `VMsDelete` · actors: user · result: [Empty](#empty)
+
+Stops the virtual machine at once when it runs and deletes its folder with everything in it ([Deleting a virtual machine](virtual-machines.md#deleting-a-virtual-machine)). The folder is deleted, not moved to the Trash.
+
+| Param | Type | Required | Description                |
+| ----- | ---- | -------- | -------------------------- |
+| vmID  | UUID | yes      | Id of the virtual machine. |
+
+| Error    | When                                                                                                           |
+| -------- | -------------------------------------------------------------------------------------------------------------- |
+| notFound | No virtual machine has this id (`Virtual machine <id> not found.`).                                            |
+| internal | The folder cannot be deleted (`<path> cannot be deleted: <reason>.`); the virtual machine then stays, stopped. |
+
+Events: vms.changed.
 
 ## Settings
 
@@ -3095,7 +3225,7 @@ Asks clients to show something. The MCP tool `open_in_app` calls it.
 | target   | [NavigationTarget](#navigationtarget) | yes      | What to show.                                                                               |
 | deviceID | String                                | no       | Device whose windows show the target; absent means every client. Ignored for claude actors. |
 
-- The target is checked: every project, ticket, bundle, chat, skill, web tab or doc it names exists; the path of a `file` target names an existing file, or an existing folder when the target has no `line`; `line` is at least 1. Default chosen at design time.
+- The target is checked: every project, ticket, bundle, chat, skill, web tab, doc or virtual machine it names exists; the path of a `file` target names an existing file, or an existing folder when the target has no `line`; `line` is at least 1. Default chosen at design time.
 - The event's `deviceID` is the `deviceID` param for user and system actors; for a claude actor with a chat id, the chat's driving device ([Chat metadata in the API](#chat-metadata-in-the-api)), absent when unknown; for the external token, absent.
 - A client acts on a ui.open event when its `deviceID` is absent or equals the client's own device id; which window shows the target is in [User interface](ui.md#choosing-the-window).
 
@@ -3138,6 +3268,7 @@ Every event travels as an [EngineEventEnvelope](#engineeventenvelope) `{name, or
 | skills.changed    | SkillsChangedEvent    | [SkillSummary]: the complete `skills.list` result                | The skills library changed, including files inside a skill.                                                                                                                                                                                    |
 | memories.changed  | MemoriesChangedEvent  | MemoryFolder: the complete `memories.list` result for one folder | A project's own memory folder, one it inherits or the global memories folder changed: a memory or `MEMORY.md` was created, changed, renamed or deleted by an app, or its inherited folders changed ([Live updates](memories.md#live-updates)). |
 | vmImages.changed  | VMImagesChangedEvent  | [VMImage]: the complete `vmImages.list` result                   | An image was added or deleted, its state or its percentage changed, or its setup ended ([VMImage in the API](#vmimage-in-the-api)).                                                                                                            |
+| vms.changed       | VMsChangedEvent       | VMList: the complete `vms.list` result                           | A virtual machine was created, started, stopped or deleted, or the number of running virtual machines changed ([VMList](#vmlist)).                                                                                                             |
 | settings.updated  | SettingsUpdatedEvent  | HostSettings                                                     | Host settings changed.                                                                                                                                                                                                                         |
 | claude.updated    | ClaudeUpdatedEvent    | {status ClaudeStatus, models [ClaudeModel]}                      | The Claude CLI status or the model list changed.                                                                                                                                                                                               |
 | planUsage.updated | PlanUsageUpdatedEvent | PlanUsage                                                        | The engine's plan usage was replaced ([Plan usage](#plan-usage)).                                                                                                                                                                              |
@@ -3193,7 +3324,7 @@ chat.delta events are flushed at most every 50 ms per chat, so a chat emits at m
 ### Changes made outside the engine
 
 - The engine watches every loaded project root, the skills library folder and the memory folders of the projects whose memories a client listed or changed, with the folders they inherit, and the global memories folder once a client listed or changed it, with FSEvents, debounced 300 ms, at most 2 s after the first change of a batch for project roots ([Data model](data-model.md#processing-a-change)). Changes it did not make itself (an editor, `git pull`, Claude editing files) produce the events an API call would emit, with origin `system`. The reload rules and reactions for project, ticket and bundle files are in [Data model](data-model.md#external-changes); the library watcher is in [Skills](skills.md#library), the memory folder watcher in [Memories](memories.md#live-updates).
-- Not reloaded: `.hephaestus/chats/`, whose only writer is the engine, and the device files and image metadata files of the data directory, which are read at launch only ([Data model](data-model.md#watching)).
+- Not reloaded: `.hephaestus/chats/`, whose only writer is the engine, and the device files, the image metadata files and the VM metadata files of the data directory, which are read at launch only ([Data model](data-model.md#watching)).
 - A change of a `.git/config` file inside a watched project root reads the origins that may have changed again ([ProjectDetail](#projectdetail)). Default chosen at design time.
 - files.changed is emitted for every change under a loaded project root except inside `.git/` and `.hephaestus/chats/`, changes made by the engine included. Both are skipped at any depth: a `.git` component anywhere in the path (the repository of a sub project or of a nested work tree) and the chats folder of a sub project add no paths. Default chosen at design time.
 
@@ -4023,17 +4154,18 @@ Status labels are To Do, In Progress, In Review and Done. `<chat kind>` is the s
 
 A place in the app, with the discriminator `kind`. Clients switch the window's project or sub project and section as needed and select the item ([User interface](ui.md#resolving-a-target)).
 
-| kind    | Fields                     | The client shows                                                                                                                                                                                                    |
-| ------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| project | projectID                  | The project, in the window's current section.                                                                                                                                                                       |
-| ticket  | ticketID                   | Tickets section of the ticket's project, ticket selected.                                                                                                                                                           |
-| bundle  | bundleID                   | Bundles section, bundle selected.                                                                                                                                                                                   |
-| chat    | chatID                     | The chat where it is listed: the Chats tab of its ticket or bundle for a ticket, bundle or CI chat whose ticket or bundle exists, else the Chats section ([User interface](ui.md#resolving-a-target)).              |
-| doc     | projectID, path, fragment? | Docs section, doc opened; `path` is a project path; with `fragment`, the preview scrolled to the heading whose anchor it is.                                                                                        |
-| file    | projectID, path, line?     | Code section, file opened, scrolled to `line` (1-based) when present; a folder (without `line`) is revealed and selected in the file tree, the editor tabs unchanged ([Code editor](code-editor.md#opening-files)). |
-| skill   | name                       | Skills section of the window's current project, skill selected.                                                                                                                                                     |
-| webTab  | projectID, tabID           | Web section, tab selected.                                                                                                                                                                                          |
-| section | projectID, section         | The section, a [ProjectSection](#projectsection).                                                                                                                                                                   |
+| kind           | Fields                     | The client shows                                                                                                                                                                                                    |
+| -------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| project        | projectID                  | The project, in the window's current section.                                                                                                                                                                       |
+| ticket         | ticketID                   | Tickets section of the ticket's project, ticket selected.                                                                                                                                                           |
+| bundle         | bundleID                   | Bundles section, bundle selected.                                                                                                                                                                                   |
+| chat           | chatID                     | The chat where it is listed: the Chats tab of its ticket or bundle for a ticket, bundle or CI chat whose ticket or bundle exists, else the Chats section ([User interface](ui.md#resolving-a-target)).              |
+| doc            | projectID, path, fragment? | Docs section, doc opened; `path` is a project path; with `fragment`, the preview scrolled to the heading whose anchor it is.                                                                                        |
+| file           | projectID, path, line?     | Code section, file opened, scrolled to `line` (1-based) when present; a folder (without `line`) is revealed and selected in the file tree, the editor tabs unchanged ([Code editor](code-editor.md#opening-files)). |
+| skill          | name                       | Skills section of the window's current project, skill selected.                                                                                                                                                     |
+| webTab         | projectID, tabID           | Web section, tab selected.                                                                                                                                                                                          |
+| section        | projectID, section         | The section, a [ProjectSection](#projectsection).                                                                                                                                                                   |
+| virtualMachine | vmID                       | The detail of the virtual machine, with its screen, in a main window that shows the Mac that runs it; a window of a remote device ignores the target ([Detail](virtual-machines.md#detail)).                        |
 
 ```json
 [
@@ -4046,7 +4178,8 @@ A place in the app, with the discriminator `kind`. Clients switch the window's p
   {"kind": "file", "line": 42, "path": "Sources/HephaestusCore/Engine/Engine.swift", "projectID": "HEPH"},
   {"kind": "skill", "name": "swift-style"},
   {"kind": "webTab", "projectID": "HEPH", "tabID": "7C9E6679-7425-40DE-944B-E07FC1F90AE7"},
-  {"kind": "section", "projectID": "HEPH", "section": "tickets"}
+  {"kind": "section", "projectID": "HEPH", "section": "tickets"},
+  {"kind": "virtualMachine", "vmID": "7D2C1A90-5E4B-4F3A-8B6C-1D0E9F8A7B6C"}
 ]
 ```
 
@@ -4061,6 +4194,7 @@ public enum NavigationTarget: Codable, Sendable, Hashable {
     case skill(name: String)
     case webTab(projectID: ProjectID, tabID: UUID)
     case section(projectID: ProjectID, section: ProjectSection)
+    case virtualMachine(vmID: UUID)
 }
 ```
 
@@ -4882,7 +5016,7 @@ public actor Engine {
 4. Run the handler with the decoded params and the actor. An `EngineError` is rethrown as is; any other error becomes `internal` and is logged.
 5. Encode the result with `EngineJSON.encoder()`.
 
-The handlers are registered at engine start by `registerDeviceHandlers()`, `registerProjectHandlers()`, `registerTicketHandlers()`, `registerAttachmentHandlers()`, `registerBundleHandlers()`, `registerChatHandlers()`, `registerClaudeHandlers()`, `registerFileHandlers()`, `registerDocHandlers()`, `registerFSHandlers()`, `registerWebTabHandlers()`, `registerSearchHandlers()`, `registerSkillHandlers()`, `registerMemoryHandlers()`, `registerBuildHandlers()`, `registerVMImageHandlers()`, `registerSettingsHandlers()`, `registerUIHandlers()`, `registerKubernetesHandlers()` and `registerServiceAPIHandlers()`. The `actors` set of each registration is the Actors column of the [Method index](#method-index). Parameter-level rules for Claude ([Rules for Claude](#rules-for-claude)) are checked by the handlers.
+The handlers are registered at engine start by `registerDeviceHandlers()`, `registerProjectHandlers()`, `registerTicketHandlers()`, `registerAttachmentHandlers()`, `registerBundleHandlers()`, `registerChatHandlers()`, `registerClaudeHandlers()`, `registerFileHandlers()`, `registerDocHandlers()`, `registerFSHandlers()`, `registerWebTabHandlers()`, `registerSearchHandlers()`, `registerSkillHandlers()`, `registerMemoryHandlers()`, `registerBuildHandlers()`, `registerVMImageHandlers()`, `registerVMHandlers()`, `registerSettingsHandlers()`, `registerUIHandlers()`, `registerKubernetesHandlers()` and `registerServiceAPIHandlers()`. The `actors` set of each registration is the Actors column of the [Method index](#method-index). Parameter-level rules for Claude ([Rules for Claude](#rules-for-claude)) are checked by the handlers.
 
 `emit` encodes the envelope once with `EngineJSON.encoder()` and yields the same bytes to every subscriber: each `LocalEngineConnection` and each remote device session.
 
@@ -4997,3 +5131,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R188: The user selects the context window of each chat, Auto, 200K or 1M; a running chat takes a new window once its turn and background work end.
 - R200: The user places and sizes each widget of a project's Dashboard on an invisible grid of 24 columns of square cells, like Grafana.
 - R201: Settings has a Virtual Machines tab whose Images section adds macOS images for virtual machines from the versions ipsw.me lists, downloads and installs them, prepares each one once in a setup window so that an agent in the guest gives full control of it, marks the default image and deletes images.
+- R202: The user starts virtual machines from the Ready images in Settings, keeps them between runs, starts, stops and deletes them, and shows the screen of one in a main window, where the mouse and the keyboard drive it; at most 2 run at once, and the app does not restart by itself for an update while one runs.

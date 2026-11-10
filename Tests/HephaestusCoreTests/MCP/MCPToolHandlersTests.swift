@@ -497,6 +497,10 @@ struct MCPToolHandlersTests {
         (#"{"kind":"file","projectID":"HEPH","path":"Sources/App.swift","fragment":"top"}"#, "target.fragment: not used by kind file."),
         (#"{"kind":"skill","name":"s","tabID":"t","chatID":"c"}"#, "target.chatID: not used by kind skill."),
         (#"{"kind":"project"}"#, "target.projectID: required for kind project."),
+        (#"{"kind":"virtualMachine"}"#, "target.vmID: required for kind virtualMachine."),
+        (#"{"kind":"virtualMachine","vmID":"7D2C1A90-5E4B-4F3A-8B6C-1D0E9F8A7B6C","projectID":"HEPH"}"#,
+         "target.projectID: not used by kind virtualMachine."),
+        (#"{"kind":"ticket","ticketID":"HEPH-1","vmID":"7D2C1A90-5E4B-4F3A-8B6C-1D0E9F8A7B6C"}"#, "target.vmID: not used by kind ticket."),
     ])
     func targetRules(target: String, message: String) async throws {
         let engine = RecordedEngine()

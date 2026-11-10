@@ -108,6 +108,13 @@ extension WindowState {
             return
         }
 
+        // A virtual machine resolves no project either: the window shows its detail, keeping its
+        // project and section (docs/virtual-machines.md › Detail).
+        if case .virtualMachine(let vmID) = target {
+            await showVirtualMachine(vmID, in: workspace)
+            return
+        }
+
         // Step 3: the project.
         let resolvedProjectID: String?
         switch target {
@@ -125,6 +132,8 @@ extension WindowState {
         case .skill:
             resolvedProjectID = projectID ?? defaultProjectID(in: workspace)
             guard resolvedProjectID != nil else { return }
+        case .virtualMachine:
+            return
         }
         guard let resolvedProjectID, workspace.project(resolvedProjectID) != nil else {
             let name = resolvedProjectID ?? ""
@@ -160,6 +169,7 @@ extension WindowState {
         case .skill: section = .skills
         case .webTab: section = .web
         case .section(_, let targetSection): section = targetSection
+        case .virtualMachine: break
         }
         if section == .builds {
             // docs/builds.md › Visibility: Builds gives way to Dashboard for a project without
@@ -170,7 +180,7 @@ extension WindowState {
 
         // Step 5: the selection, after the unsaved changes prompt of a doc buffer or a skill form.
         switch target {
-        case .project, .section:
+        case .project, .section, .virtualMachine:
             break
         case .ticket(let ticketID):
             selectTicket(ticketID, projectID: resolvedProjectID, workspace: workspace)
@@ -217,6 +227,28 @@ extension WindowState {
         case .webTab(_, let tabID):
             WebTabsController.willSelectByNavigation(in: self, projectID: resolvedProjectID)
             updateViewState { $0.selectedWebTabID = tabID.uuidString }
+        }
+    }
+
+    /// A `virtualMachine` target: the centre column shows the detail of the virtual machine. The
+    /// screen of a virtual machine shows only on the Mac that runs it, so the target is ignored in
+    /// a window that shows a remote device; it is ignored too when the device has no virtual
+    /// machine with this id, once the workspace has read them (docs/ui.md › Resolving a target).
+    func showVirtualMachine(_ vmID: UUID, in workspace: DeviceWorkspace) async {
+        guard workspace.isLocal else { return }
+        if workspace.virtualMachine(vmID) == nil {
+            await workspace.loadVirtualMachines()
+        }
+        guard workspace.deviceID == deviceID, workspace.virtualMachine(vmID) != nil else { return }
+        shownVirtualMachineID = vmID
+    }
+
+    /// Leaves the detail of a virtual machine that left the workspace's list: deleted, or Claude's
+    /// that stopped. The window shows its section again (docs/virtual-machines.md › Detail).
+    func leaveVirtualMachineDetail(ifGoneFrom workspace: DeviceWorkspace) {
+        guard let shown = shownVirtualMachineID, workspace.deviceID == deviceID, let list = workspace.virtualMachines else { return }
+        if !list.machines.contains(where: { $0.id == shown }) {
+            shownVirtualMachineID = nil
         }
     }
 

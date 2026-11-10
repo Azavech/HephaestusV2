@@ -15,11 +15,13 @@ import HephaestusCore
 final class WindowState: Identifiable {
     /// The window's identity inside `AppModel`.
     let id: UUID
-    /// The device the window shows. A switch of device leaves a sub project's Dashboard.
+    /// The device the window shows. A switch of device leaves a sub project's Dashboard and the
+    /// detail of a virtual machine, which belongs to This Mac.
     var deviceID: String {
         didSet {
             if deviceID != oldValue {
                 subProjectDashboardID = nil
+                shownVirtualMachineID = nil
             }
         }
     }
@@ -34,37 +36,62 @@ final class WindowState: Identifiable {
     }
     /// The selected sidebar section. Selecting a section, the selected one included, leaves the
     /// Global Memories view (docs/memories.md › Global Memories view), the Internal Skills view
-    /// (docs/skills.md › Internal Skills view) and a sub project's Dashboard (docs/ui.md › Sidebar).
+    /// (docs/skills.md › Internal Skills view), a sub project's Dashboard (docs/ui.md › Sidebar) and
+    /// the detail of a virtual machine (docs/virtual-machines.md › Detail).
     var section: ProjectSection = .dashboard {
         didSet {
             showsGlobalMemories = false
             showsInternalSkills = false
             subProjectDashboardID = nil
+            shownVirtualMachineID = nil
         }
     }
     /// The centre column shows the Global Memories view; no sidebar row is selected. Showing it
-    /// leaves the Internal Skills view and a sub project's Dashboard.
+    /// leaves the Internal Skills view, a sub project's Dashboard and the detail of a virtual
+    /// machine.
     var showsGlobalMemories = false {
         didSet {
             if showsGlobalMemories {
                 showsInternalSkills = false
                 subProjectDashboardID = nil
+                shownVirtualMachineID = nil
             }
         }
     }
     /// The centre column shows the Internal Skills view; no sidebar row is selected. Showing it
-    /// leaves the Global Memories view and a sub project's Dashboard.
+    /// leaves the Global Memories view, a sub project's Dashboard and the detail of a virtual
+    /// machine.
     var showsInternalSkills = false {
         didSet {
             if showsInternalSkills {
                 showsGlobalMemories = false
                 subProjectDashboardID = nil
+                shownVirtualMachineID = nil
             }
         }
     }
     /// The sub project whose Dashboard the centre column shows from the sidebar, without
     /// activating it; nil otherwise. Only its sidebar row is selected (docs/ui.md › Sidebar).
-    var subProjectDashboardID: String?
+    /// Showing it leaves the detail of a virtual machine.
+    var subProjectDashboardID: String? {
+        didSet {
+            if subProjectDashboardID != nil {
+                shownVirtualMachineID = nil
+            }
+        }
+    }
+    /// The virtual machine whose detail the centre column shows; no sidebar row is selected.
+    /// Showing it leaves the Global Memories view, the Internal Skills view and a sub project's
+    /// Dashboard; never persisted (docs/virtual-machines.md › Detail).
+    var shownVirtualMachineID: UUID? {
+        didSet {
+            if shownVirtualMachineID != nil {
+                showsGlobalMemories = false
+                showsInternalSkills = false
+                subProjectDashboardID = nil
+            }
+        }
+    }
     var sidebarVisible = true
     var inspectorVisible = true
     /// Inspector width in points.
@@ -125,9 +152,9 @@ final class WindowState: Identifiable {
     }
 
     /// The section the centre column shows: nil while it shows the Global Memories view, the
-    /// Internal Skills view or a sub project's Dashboard.
+    /// Internal Skills view, a sub project's Dashboard or the detail of a virtual machine.
     var shownSection: ProjectSection? {
-        showsGlobalMemories || showsInternalSkills || subProjectDashboardID != nil ? nil : section
+        showsGlobalMemories || showsInternalSkills || subProjectDashboardID != nil || shownVirtualMachineID != nil ? nil : section
     }
 
     /// The key of the active project.
@@ -200,7 +227,7 @@ extension WindowState: @MainActor Codable {
     enum CodingKeys: String, CodingKey {
         case id, deviceID, projectID, section, showsGlobalMemories, showsInternalSkills, subProjectDashboardID, sidebarVisible,
              inspectorVisible, inspectorWidth, projectStates, globalMemoryStates, internalSkillStates, lastProjectByDevice,
-             searchVisible, search, sheet, pendingTarget
+             shownVirtualMachineID, searchVisible, search, sheet, pendingTarget
     }
 
     /// One entry of `projectStates`.
@@ -237,6 +264,7 @@ extension WindowState: @MainActor Codable {
             }
         }
         if decoder.userInfo[WindowState.persistedOnlyKey] as? Bool != true {
+            shownVirtualMachineID = try c.decodeIfPresent(UUID.self, forKey: .shownVirtualMachineID)
             searchVisible = try c.decodeIfPresent(Bool.self, forKey: .searchVisible) ?? false
             search = try c.decodeIfPresent(SearchPanelState.self, forKey: .search) ?? SearchPanelState()
             sheet = try c.decodeIfPresent(WindowSheet.self, forKey: .sheet)
@@ -278,6 +306,7 @@ extension WindowState: @MainActor Codable {
         try c.encode(persistedOnly ? internalSkillStates.filter { $0.key == deviceID } : internalSkillStates, forKey: .internalSkillStates)
         try c.encode(lastProjectByDevice, forKey: .lastProjectByDevice)
         guard !persistedOnly else { return }
+        try c.encodeIfPresent(shownVirtualMachineID, forKey: .shownVirtualMachineID)
         try c.encode(searchVisible, forKey: .searchVisible)
         try c.encode(search, forKey: .search)
         try c.encodeIfPresent(sheet, forKey: .sheet)

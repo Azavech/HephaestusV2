@@ -169,6 +169,9 @@ final class FakeVMImageProvisioner: VMImageProvisioning, @unchecked Sendable {
         }
         try await hold?.wait()
         if let failure = installFailure { throw failure }
+        try Data("model".utf8).write(to: request.files.hardwareModel)
+        try Data("identifier".utf8).write(to: request.files.machineIdentifier)
+        try Data("auxiliary".utf8).write(to: request.files.auxiliaryStorage)
         try Data("disk".utf8).write(to: request.files.disk)
     }
 
@@ -324,6 +327,28 @@ func addReadyImage(_ engine: Engine, _ connection: LocalEngineConnection, _ prov
     await session.finish()
     let list = try await connection.call(VMImagesList.self)
     return try #require(list.first { $0.id == image.id })
+}
+
+/// The data of the first `vms.changed` event of `stream` that satisfies `predicate`, or nil after
+/// the wait limit.
+func firstVMList(on stream: AsyncStream<EngineEventEnvelope>, where predicate: @escaping @Sendable (VMList) -> Bool) async -> VMList? {
+    let envelope = await firstElement(of: stream) { envelope in
+        guard envelope.name == VMsChangedEvent.name, let list = try? envelope.payload(VMsChangedEvent.self) else { return false }
+        return predicate(list)
+    }
+    return envelope.flatMap { try? $0.payload(VMsChangedEvent.self) }
+}
+
+/// `vms.create` with the image's own cores and memory.
+func createVM(_ connection: LocalEngineConnection, image: VMImage, name: String = "Menu checks") async throws -> VirtualMachine {
+    try await connection.call(VMsCreate.self, VMsCreate.Params(name: name, imageID: image.id, cores: image.cores, memoryGB: image.memoryGB))
+}
+
+/// Starts a virtual machine for Claude, as a chat of the project DEMO: no engine method does it
+/// yet (docs/virtual-machines.md › Lifecycle).
+func createClaudeVM(_ engine: Engine, image: VMImage, chatID: ChatID = UUID(), name: String = "Settings check") async throws -> VirtualMachine {
+    try await engine.createVirtualMachine(VMsCreate.Params(name: name, imageID: image.id, cores: image.cores, memoryGB: image.memoryGB),
+                                          startedBy: .claude(projectID: "DEMO", chatID: chatID), .system)
 }
 
 /// Waits until `condition` holds, at most the wait limit: the bound only ends a test that fails.

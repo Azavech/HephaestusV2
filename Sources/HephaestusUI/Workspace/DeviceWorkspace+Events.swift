@@ -63,6 +63,11 @@ extension DeviceWorkspace {
             // The event holds every image: it is kept without a seed too, so that the app knows
             // of an image that downloads or installs (docs/updater.md › Restart rules).
             vmImages = list
+        case .vmsChanged(let list):
+            // Kept without a seed too, so that the app knows of a virtual machine that runs
+            // (docs/updater.md › Restart rules); `AppModel` then makes the windows leave the
+            // detail of a virtual machine that left the list.
+            virtualMachines = list
         case .settingsUpdated(let newSettings):
             settings = newSettings
         case .claudeUpdated(let payload):

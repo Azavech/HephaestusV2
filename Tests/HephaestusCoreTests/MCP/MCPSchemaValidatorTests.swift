@@ -113,7 +113,7 @@ struct MCPSchemaValidatorTests {
         let properties = try #require(Self.schema("open_in_app").objectValue?["properties"]?.objectValue?["target"]?
             .objectValue?["properties"]?.objectValue)
         #expect(MCPSchemaValidator.propertyOrder(of: properties)
-            == ["kind", "projectID", "ticketID", "bundleID", "chatID", "path", "fragment", "line", "name", "tabID", "section"])
+            == ["kind", "projectID", "ticketID", "bundleID", "chatID", "path", "fragment", "line", "name", "tabID", "section", "vmID"])
         let orders = MCPSchemaValidator.propertyOrders(inSchemaText: #"{"properties": {"b": {"type": "string", "description": "a \"quoted\", text"}, "a": {}}}"#)
         #expect(orders.count == 1)
         #expect(orders.first?.1 == ["b", "a"])

@@ -1696,19 +1696,20 @@ Compacted 2 times
 
 A chat composer links items of HephaestusV2 to the messages it sends and shows them as chips: the items open in the app, in the inspector only, and the resources the user adds, in every chat composer ([Added resources](#added-resources)).
 
-The composer of the inspector's chat, or of its draft, shows the items open in the centre column of its window ([Inspector](ui.md#inspector)) as linked item chips. Chat windows, the Chats section, and the Chats tabs and Mentioned In tabs of tickets and bundles link no open item, and neither does the inspector while its window shows the Global Memories view or the Internal Skills view.
+The composer of the inspector's chat, or of its draft, shows the items open in the centre column of its window ([Inspector](ui.md#inspector)) as linked item chips. Chat windows, the Chats section, and the Chats tabs and Mentioned In tabs of tickets and bundles link no open item, and neither does the inspector while its window shows the Global Memories view or the Internal Skills view. While its window shows the detail of a virtual machine, the inspector links that virtual machine ([Detail](virtual-machines.md#detail)).
 
-| Item      | `kind`     | Chip symbol                               | Short name              | `<item>`                                                              |
-| --------- | ---------- | ----------------------------------------- | ----------------------- | --------------------------------------------------------------------- |
-| Ticket    | `ticket`   | `checklist`                               | the ticket id           | `ticket <id> “<title>”`                                               |
-| Bundle    | `bundle`   | `shippingbox`                             | the bundle id           | `bundle <id> “<title>”`                                               |
-| Chat      | `chat`     | `bubble.left.and.bubble.right`            | the chat's title        | `chat “<title>” (<chat id>)`                                          |
-| Code file | `codeFile` | `chevron.left.forwardslash.chevron.right` | the file name           | `code file <project path>`                                            |
-| Docs file | `docsFile` | `doc.text`                                | the file name           | `docs file <project path>`                                            |
-| Web tab   | `webTab`   | `globe`                                   | the title, else the URL | `web tab “<title>” <url>`, or `web tab <url>` when the title is empty |
-| Skill     | `skill`    | `wand.and.stars`                          | the skill's name        | `skill <name>`                                                        |
+| Item            | `kind`           | Chip symbol                               | Short name                 | `<item>`                                                              |
+| --------------- | ---------------- | ----------------------------------------- | -------------------------- | --------------------------------------------------------------------- |
+| Ticket          | `ticket`         | `checklist`                               | the ticket id              | `ticket <id> “<title>”`                                               |
+| Bundle          | `bundle`         | `shippingbox`                             | the bundle id              | `bundle <id> “<title>”`                                               |
+| Chat            | `chat`           | `bubble.left.and.bubble.right`            | the chat's title           | `chat “<title>” (<chat id>)`                                          |
+| Code file       | `codeFile`       | `chevron.left.forwardslash.chevron.right` | the file name              | `code file <project path>`                                            |
+| Docs file       | `docsFile`       | `doc.text`                                | the file name              | `docs file <project path>`                                            |
+| Web tab         | `webTab`         | `globe`                                   | the title, else the URL    | `web tab “<title>” <url>`, or `web tab <url>` when the title is empty |
+| Skill           | `skill`          | `wand.and.stars`                          | the skill's name           | `skill <name>`                                                        |
+| Virtual machine | `virtualMachine` | `display`                                 | the virtual machine's name | `virtual machine “<name>” (<VM id>)`                                  |
 
-- The chip symbol is the SF Symbol of the item's [sidebar section](ui.md#sidebar); the chip's tooltip is `<item>`.
+- The chip symbol is the SF Symbol of the item's [sidebar section](ui.md#sidebar), and `display`, the symbol of the Virtual Machines tab of [Settings](ui.md#settings-window), for a virtual machine; the chip's tooltip is `<item>`.
 - × unlinks the item: its chip disappears and Send no longer passes it, for as long as it stays open ([Inspector](ui.md#inspector)).
 - Send passes the linked items with the message, in chip order, in `ChatMessageInput.linkedItems`: for each, its `kind`, its short name as `name` and `<item>` as `text` ([Engine API](engine-api.md#chatmessageinput)). The message text is the typed text only.
 - The `user` item stores the linked items ([Data model](data-model.md#user-item)), and its bubble shows them as chips on every client ([Item rendering](#item-rendering)).
@@ -2792,3 +2793,4 @@ Memories of the project Suite (identifier SUITE), in the folder /Users/example/.
 - R190: Every chat of a Go service project whose API Explorer shows a contract lists the contract's operations and calls them on an environment through HephaestusV2's API tools, with the credentials and headers stored in the API Explorer; GET and HEAD calls run without a permission prompt.
 - R194: Every section of the main window shows a title, and so do the Global Memories and Internal Skills views: Dashboard, Tickets, Bundles, Chats, Web, Builds, Skills, Memories and API Explorer show their sidebar title in a title row above their left column.
 - R195: In a chat, the paperclip button of the composer links any internal resource of HephaestusV2 that the user finds with the search panel: a project, a ticket, a bundle, a doc, a code line, a chat, a skill or a web tab.
+- R202: The user starts virtual machines from the Ready images in Settings, keeps them between runs, starts, stops and deletes them, and shows the screen of one in a main window, where the mouse and the keyboard drive it; at most 2 run at once, and the app does not restart by itself for an update while one runs.

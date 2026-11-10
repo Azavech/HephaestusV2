@@ -36,7 +36,7 @@ struct DataModelExamplesTests {
     func everyTypeHasAnExample() throws {
         let paths = try Self.examples().map(\.path)
         let suffixes = [".hephaestus/project.yml", "/device.yml", "/registry.yml", "/settings.yml", "/remotes.yml",
-                        "/plan-usage.yml", "/current-environments.yml", "/image.yml", "/secrets.json", "/SKILL.md"]
+                        "/plan-usage.yml", "/current-environments.yml", "/image.yml", "/vm.yml", "/secrets.json", "/SKILL.md"]
         for suffix in suffixes {
             #expect(paths.contains { $0.hasSuffix(suffix) }, "no example for \(suffix)")
         }
@@ -82,6 +82,9 @@ struct DataModelExamplesTests {
         } else if path.contains("/VirtualMachines/Images/"), path.hasSuffix("/image.yml") {
             let image = try checkYAML(VMImage.self, example)
             #expect(image.id.uuidString == folder)
+        } else if path.contains("/VirtualMachines/Machines/"), path.hasSuffix("/vm.yml") {
+            let machine = try checkYAML(VirtualMachine.self, example)
+            #expect(machine.id.uuidString == folder)
         } else if path.hasSuffix("/secrets.json") {
             try checkSecrets(example)
         } else if path.hasSuffix("/SKILL.md") {

@@ -126,9 +126,12 @@ private struct MainWindowColumns: View {
             } else if !workspace.hasSnapshot {
                 LoadingStateView(text: "Loading \(workspace.deviceName)…")
             } else if workspace.projects.isEmpty {
-                // The Global Memories view and the Internal Skills view take the welcome view's place
-                // (docs/ui.md › Welcome view).
-                if state.showsGlobalMemories {
+                // The Global Memories view, the Internal Skills view and the detail of a virtual
+                // machine take the welcome view's place (docs/ui.md › Welcome view).
+                if let vmID = state.shownVirtualMachineID {
+                    VirtualMachineDetailView(window: state, workspace: workspace, vmID: vmID)
+                        .id("\(workspace.deviceID)/vm/\(vmID.uuidString)")
+                } else if state.showsGlobalMemories {
                     GlobalMemoriesView(window: state, workspace: workspace)
                         .id("\(workspace.deviceID)/global")
                 } else if state.showsInternalSkills {
@@ -206,8 +209,10 @@ private struct ProjectColumns: View {
         }
         // An item unlinked from the inspector chat is linked again once it is no longer open,
         // whether the inspector is shown or not (docs/ui.md › Inspector).
-        .onChange(of: state.viewState.openItems(in: state.shownSection)) {
-            state.updateViewState(of: project.id) { $0.forgetClosedUnlinkedItems(in: state.shownSection) }
+        .onChange(of: state.viewState.openItems(in: state.shownSection, virtualMachineID: state.shownVirtualMachineID)) {
+            state.updateViewState(of: project.id) {
+                $0.forgetClosedUnlinkedItems(in: state.shownSection, virtualMachineID: state.shownVirtualMachineID)
+            }
         }
         // The descendants' tickets, for the Tickets section: loaded at once, then for each
         // descendant added or opened, and again once the device is connected (docs/ui.md ›
@@ -265,17 +270,21 @@ private struct GraphRowState: Hashable {
 }
 
 /// The centre column: the section the sidebar selects, once the project's data is loaded, the
-/// Global Memories view or the Internal Skills view, which need no project data
-/// (docs/memories.md › Global Memories view, docs/skills.md › Internal Skills view), or the
-/// Dashboard of a sub project shown from the sidebar, once its data is loaded (docs/dashboard.md ›
-/// Section). The tests of the pane titles host it.
+/// Global Memories view, the Internal Skills view or the detail of a virtual machine, which need
+/// no project data (docs/memories.md › Global Memories view, docs/skills.md › Internal Skills
+/// view, docs/virtual-machines.md › Detail), or the Dashboard of a sub project shown from the
+/// sidebar, once its data is loaded (docs/dashboard.md › Section). The tests of the pane titles
+/// host it.
 struct SectionContent: View {
     let state: WindowState
     let workspace: DeviceWorkspace
     let project: ProjectSummary
 
     var body: some View {
-        if state.showsGlobalMemories {
+        if let vmID = state.shownVirtualMachineID {
+            VirtualMachineDetailView(window: state, workspace: workspace, vmID: vmID)
+                .id("\(workspace.deviceID)/vm/\(vmID.uuidString)")
+        } else if state.showsGlobalMemories {
             GlobalMemoriesView(window: state, workspace: workspace)
                 .id("\(workspace.deviceID)/global")
         } else if state.showsInternalSkills {

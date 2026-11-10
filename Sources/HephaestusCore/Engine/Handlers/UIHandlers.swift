@@ -26,7 +26,7 @@ extension Engine {
     }
 
     /// The target with its ids in their stored uppercase form, after checking that every
-    /// project, ticket, bundle, chat, skill, web tab or doc it names exists, that a `file` target
+    /// project, ticket, bundle, chat, skill, web tab, doc or virtual machine it names exists, that a `file` target
     /// names an existing file, or an existing folder when it has no `line`, and that `line` is at
     /// least 1.
     func checkedTarget(_ target: NavigationTarget) throws -> NavigationTarget {
@@ -66,6 +66,11 @@ extension Engine {
             return .webTab(projectID: id, tabID: tabID)
         case .section(let projectID, let section):
             return .section(projectID: try loadedProjectID(projectID), section: section)
+        case .virtualMachine(let vmID):
+            guard virtualMachines.machines[vmID] != nil else {
+                throw EngineError.notFound("Virtual machine", vmID.uuidString)
+            }
+            return target
         }
     }
 

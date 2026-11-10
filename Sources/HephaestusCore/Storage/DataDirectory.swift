@@ -77,6 +77,15 @@ public struct DataDirectory: Sendable, Hashable {
     public func vmImageFolder(_ id: UUID) -> URL {
         vmImagesFolder.appendingPathComponent(id.uuidString, isDirectory: true)
     }
+    /// `VirtualMachines/Machines/`: one folder per virtual machine (docs/virtual-machines.md ›
+    /// Storage).
+    public var virtualMachinesFolder: URL {
+        url.appendingPathComponent("VirtualMachines", isDirectory: true).appendingPathComponent("Machines", isDirectory: true)
+    }
+    /// `VirtualMachines/Machines/<VM-ID>/`: the folder of a virtual machine, named by its id.
+    public func virtualMachineFolder(_ id: UUID) -> URL {
+        virtualMachinesFolder.appendingPathComponent(id.uuidString, isDirectory: true)
+    }
     /// `Runtime/guest/`: the folder shared into the guests of the virtual machines.
     public var guestShareFolder: URL { runtimeFolder.appendingPathComponent("guest", isDirectory: true) }
     /// `Logs/`

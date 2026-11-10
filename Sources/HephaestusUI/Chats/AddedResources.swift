@@ -32,7 +32,7 @@ enum AddedResources {
                 return resource(.webTab, url, "web tab \(url)")
             }
             return resource(.webTab, result.title, "web tab “\(result.title)” \(url)")
-        case .section:
+        case .section, .virtualMachine:
             return nil
         }
     }

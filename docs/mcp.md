@@ -2549,15 +2549,15 @@ Input schema:
 
 - **Engine call:** ui.open with `target`, the NavigationTarget ([Engine API](engine-api.md#navigationtarget)). `deviceID` is never sent: for a chat token the engine sends the `ui.open` event to the chat's driving device ([Engine API](engine-api.md#chat-metadata-in-the-api)), and to every client when that device is unknown or the token is the external one ([Engine API](engine-api.md#uiopen)).
 - **Target rules:** after argument validation, the target's properties are checked against its kind ([Target kinds](#target-kinds)).
-- **Result:** `{}`. A client that receives the event navigates one of its windows as described in [UI](ui.md#navigation). A `chat` target shows the chat where it is listed: in the Chats tab of its ticket or bundle for a ticket, bundle or CI chat whose ticket or bundle exists, otherwise in the Chats section ([Resolving a target](ui.md#resolving-a-target)). A locked web tab that the navigation shows again goes back to its original URL ([Original URL](web-tabs.md#original-url)).
+- **Result:** `{}`. A client that receives the event navigates one of its windows as described in [UI](ui.md#navigation). A `chat` target shows the chat where it is listed: in the Chats tab of its ticket or bundle for a ticket, bundle or CI chat whose ticket or bundle exists, otherwise in the Chats section ([Resolving a target](ui.md#resolving-a-target)). A locked web tab that the navigation shows again goes back to its original URL ([Original URL](web-tabs.md#original-url)). A `virtualMachine` target shows the detail of the virtual machine, with its screen, in a main window of the Mac that runs it; a remote device ignores it ([Detail](virtual-machines.md#detail)).
 - **Errors:**
   - A target rule fails (`invalid`, messages below).
-  - Those of ui.open ([Engine API](engine-api.md#uiopen)): malformed id or path (`invalid`), an item or file that does not exist, or a folder named by a `file` target with `line` (`notFound`). A `file` target without `line` may name a folder.
+  - Those of ui.open ([Engine API](engine-api.md#uiopen)): malformed id or path (`invalid`), an item, a virtual machine or a file that does not exist, or a folder named by a `file` target with `line` (`notFound`). A `file` target without `line` may name a folder.
 
 Description:
 
 ```text
-Show something to the user in HephaestusV2: a project, ticket, bundle, chat, doc (optionally at a heading), file (optionally at a line) or folder of the code tree, skill, web tab or project section. The app shows it on the device the user is chatting from.
+Show something to the user in HephaestusV2: a project, ticket, bundle, chat, doc (optionally at a heading), file (optionally at a line) or folder of the code tree, skill, web tab, project section or virtual machine. The app shows it on the device the user is chatting from.
 ```
 
 Input schema:
@@ -2568,12 +2568,12 @@ Input schema:
   "properties": {
     "target": {
       "type": "object",
-      "description": "What to show. kind decides the other properties: project: projectID; ticket: ticketID; bundle: bundleID; chat: chatID; doc: projectID, path and optionally fragment; file: projectID, path and optionally line; skill: name; webTab: projectID and tabID; section: projectID and section.",
+      "description": "What to show. kind decides the other properties: project: projectID; ticket: ticketID; bundle: bundleID; chat: chatID; doc: projectID, path and optionally fragment; file: projectID, path and optionally line; skill: name; webTab: projectID and tabID; section: projectID and section; virtualMachine: vmID.",
       "properties": {
         "kind": {
           "type": "string",
           "description": "Kind of item to show.",
-          "enum": ["project", "ticket", "bundle", "chat", "doc", "file", "skill", "webTab", "section"]
+          "enum": ["project", "ticket", "bundle", "chat", "doc", "file", "skill", "webTab", "section", "virtualMachine"]
         },
         "projectID": {
           "type": "string",
@@ -2615,6 +2615,10 @@ Input schema:
           "type": "string",
           "description": "Project section to show.",
           "enum": ["dashboard", "tickets", "bundles", "chats", "code", "docs", "web", "builds", "skills", "memories", "costs", "apiExplorer", "graph", "settings"]
+        },
+        "vmID": {
+          "type": "string",
+          "description": "Virtual machine id (a UUID)."
         }
       },
       "required": ["kind"],
@@ -2628,17 +2632,18 @@ Input schema:
 
 #### Target kinds
 
-| Kind    | Required properties | Optional properties |
-| ------- | ------------------- | ------------------- |
-| project | projectID           | —                   |
-| ticket  | ticketID            | —                   |
-| bundle  | bundleID            | —                   |
-| chat    | chatID              | —                   |
-| doc     | projectID, path     | fragment            |
-| file    | projectID, path     | line                |
-| skill   | name                | —                   |
-| webTab  | projectID, tabID    | —                   |
-| section | projectID, section  | —                   |
+| Kind           | Required properties | Optional properties |
+| -------------- | ------------------- | ------------------- |
+| project        | projectID           | —                   |
+| ticket         | ticketID            | —                   |
+| bundle         | bundleID            | —                   |
+| chat           | chatID              | —                   |
+| doc            | projectID, path     | fragment            |
+| file           | projectID, path     | line                |
+| skill          | name                | —                   |
+| webTab         | projectID, tabID    | —                   |
+| section        | projectID, section  | —                   |
+| virtualMachine | vmID                | —                   |
 
 A missing required property fails with `target.<property>: required for kind <kind>.`, checked in the table's order. A property that is neither required nor optional for the kind then fails with `target.<property>: not used by kind <kind>.`, checked in the schema's property order. Default chosen at design time.
 
@@ -3202,7 +3207,7 @@ Input schema:
 
 - **Action:** the target is checked like `open_in_app`'s ([Target kinds](#target-kinds), same messages). `MCPDebugUI.navigate(to:)` navigates the window that [UI](ui.md#choosing-the-window) chooses for `debug_navigate` (the frontmost main window, switched to This Mac when needed, or a new one), with the same resolution as a `ui.open` target. While the app is launching, or while a main window is opening, the tool waits for that window, at most 10 seconds, instead of opening another one. The tool returns once the window's state has been updated. When the navigation shows an unsaved changes prompt ([Resolving a target](ui.md#resolving-a-target), step 5), the tool does not wait for its answer and fails as listed under Errors; the project and section changes of step 4 stay, the prompt stays on the window as a `sheet` window of `debug_ui_state` and `debug_screenshot` shows it, and the selection is applied if the prompt is answered with Save or Don't Save. Default chosen at design time.
 - **Result:** the [WindowInfo](#window-information) of that window.
-- **Errors:** a target rule fails (`invalid`). The navigation shows an unsaved changes prompt: `The window asks whether to save unsaved changes; the target is selected once the prompt is answered.` (`conflict`). debug_navigate calls no engine method, so a target whose ids do not decode, a `chatID` or `tabID` that is not a UUID for example, fails with `invalid` and `target.<property>: <reason>.`, the reasons of the [dispatcher's decoding errors](engine-api.md#dispatcher-errors). Default chosen at design time. A target naming an item that does not exist is not an error: the window shows its not-found state ([UI](ui.md#resolving-a-target)).
+- **Errors:** a target rule fails (`invalid`). The navigation shows an unsaved changes prompt: `The window asks whether to save unsaved changes; the target is selected once the prompt is answered.` (`conflict`). debug_navigate calls no engine method, so a target whose ids do not decode, a `chatID`, `tabID` or `vmID` that is not a UUID for example, fails with `invalid` and `target.<property>: <reason>.`, the reasons of the [dispatcher's decoding errors](engine-api.md#dispatcher-errors). Default chosen at design time. A target naming an item that does not exist is not an error: the window shows its not-found state, and a `virtualMachine` target without its virtual machine changes nothing ([UI](ui.md#resolving-a-target)).
 
 Description:
 
@@ -3218,12 +3223,12 @@ Input schema:
   "properties": {
     "target": {
       "type": "object",
-      "description": "What to show. kind decides the other properties: project: projectID; ticket: ticketID; bundle: bundleID; chat: chatID; doc: projectID, path and optionally fragment; file: projectID, path and optionally line; skill: name; webTab: projectID and tabID; section: projectID and section.",
+      "description": "What to show. kind decides the other properties: project: projectID; ticket: ticketID; bundle: bundleID; chat: chatID; doc: projectID, path and optionally fragment; file: projectID, path and optionally line; skill: name; webTab: projectID and tabID; section: projectID and section; virtualMachine: vmID.",
       "properties": {
         "kind": {
           "type": "string",
           "description": "Kind of item to show.",
-          "enum": ["project", "ticket", "bundle", "chat", "doc", "file", "skill", "webTab", "section"]
+          "enum": ["project", "ticket", "bundle", "chat", "doc", "file", "skill", "webTab", "section", "virtualMachine"]
         },
         "projectID": {
           "type": "string",
@@ -3265,6 +3270,10 @@ Input schema:
           "type": "string",
           "description": "Project section to show.",
           "enum": ["dashboard", "tickets", "bundles", "chats", "code", "docs", "web", "builds", "skills", "memories", "costs", "apiExplorer", "graph", "settings"]
+        },
+        "vmID": {
+          "type": "string",
+          "description": "Virtual machine id (a UUID)."
         }
       },
       "required": ["kind"],
@@ -3612,3 +3621,4 @@ Unauthorized: missing or invalid bearer token.
 - R174: A sub project that uses its parent's settings inherits its parent's environments and changes their URL, port, deployment and Argo CD application.
 - R182: Each environment of a Go service has an `Allow invalid certificates` setting, off by default and changeable by a sub project that inherits the environment, with which the Contract view's requests to it accept any invalid server certificate.
 - R190: Every chat of a Go service project whose API Explorer shows a contract lists the contract's operations and calls them on an environment through HephaestusV2's API tools, with the credentials and headers stored in the API Explorer; GET and HEAD calls run without a permission prompt.
+- R202: The user starts virtual machines from the Ready images in Settings, keeps them between runs, starts, stops and deletes them, and shows the screen of one in a main window, where the mouse and the keyboard drive it; at most 2 run at once, and the app does not restart by itself for an update while one runs.

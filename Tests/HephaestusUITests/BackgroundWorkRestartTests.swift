@@ -79,6 +79,35 @@ struct BackgroundWorkRestartTests {
         }
     }
 
+    @Test("isAppIdle is false while a virtual machine runs, the user's or Claude's, and true once it has stopped")
+    func idleWaitsForVirtualMachines() async throws {
+        try await withAppModel { app in
+            @MainActor func set(_ state: VirtualMachineState, startedBy: VMStarter = .user) {
+                let machine = VirtualMachine(id: UUID(uuidString: "7D2C1A90-5E4B-4F3A-8B6C-1D0E9F8A7B6C")!, name: "Menu checks",
+                                             imageID: UUID(uuidString: "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F")!, version: "27.2.1",
+                                             build: "26B131", cores: 2, memoryGB: 4, startedBy: startedBy, created: Self.created,
+                                             state: state, startedAt: state == .running ? Self.created : nil)
+                app.localWorkspace.virtualMachines = VMList(machines: [machine], runningCount: state == .running ? 1 : 0)
+            }
+            #expect(app.updateController.isAppIdle)
+            set(.stopped)
+            #expect(app.updateController.isAppIdle)
+            #expect(Self.automaticRestart(app) == .startsNow)
+            set(.running)
+            #expect(!app.updateController.isAppIdle)
+            #expect(Self.automaticRestart(app) == .waitsForIdle)
+            set(.running, startedBy: .claude(projectID: "DEMO", chatID: UUID()))
+            #expect(!app.updateController.isAppIdle)
+            #expect(Self.automaticRestart(app) == .waitsForIdle)
+            set(.stopped)
+            #expect(app.updateController.isAppIdle)
+            #expect(Self.automaticRestart(app) == .startsNow)
+            // The virtual machine that Claude started was deleted when it stopped.
+            app.localWorkspace.virtualMachines = VMList()
+            #expect(app.updateController.isAppIdle)
+        }
+    }
+
     @Test("An update ready with autoUpdate true waits while background work runs and restarts once it and its turn have ended")
     func automaticRestartWaitsForBackgroundWork() async throws {
         try await withAppModel { app in

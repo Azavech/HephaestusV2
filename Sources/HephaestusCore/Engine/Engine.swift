@@ -102,6 +102,9 @@ public actor Engine {
     /// The images of virtual machines, their downloads and installs, the running virtual machines
     /// and the open setups (VirtualMachines/VMImageService.swift).
     let vmImages = VMImageService()
+    /// The virtual machines started from the images and the sessions of those that run
+    /// (VirtualMachines/VirtualMachineService.swift).
+    let virtualMachines = VirtualMachineService()
 
     // MARK: Servers and local-only services (docs/architecture.md › Local-only services)
 
@@ -178,6 +181,7 @@ public actor Engine {
         guard lifecycle == .created else { return }
         lifecycle = .running
         loadVMImages()
+        loadVirtualMachines()
         await loadProjects()
         await startFileWatching()
         await startSkillsLibraryWatching()
@@ -392,6 +396,7 @@ public actor Engine {
         registerMemoryHandlers()
         registerBuildHandlers()
         registerVMImageHandlers()
+        registerVMHandlers()
         registerSettingsHandlers()
         registerUIHandlers()
     }

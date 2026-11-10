@@ -163,10 +163,13 @@ public struct VMImageLimits: Sendable, Hashable {
     }
 
     /// Throws the `invalid` of the first value outside its range, in the order cores, memoryGB,
-    /// diskGB.
-    public func check(cores: Int, memoryGB: Int, diskGB: Int) throws {
-        for (param, value, range) in [("cores", cores, self.cores), ("memoryGB", memoryGB, self.memoryGB), ("diskGB", diskGB, self.diskGB)]
-        where !range.contains(value) {
+    /// diskGB; a virtual machine, whose disk is its image's, gives no `diskGB`.
+    public func check(cores: Int, memoryGB: Int, diskGB: Int? = nil) throws {
+        var values = [("cores", cores, self.cores), ("memoryGB", memoryGB, self.memoryGB)]
+        if let diskGB {
+            values.append(("diskGB", diskGB, self.diskGB))
+        }
+        for (param, value, range) in values where !range.contains(value) {
             throw ValidationError.invalid(param, "use a number from \(range.lowerBound) to \(range.upperBound)")
         }
     }

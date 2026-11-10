@@ -6,11 +6,12 @@ import HephaestusCore
 /// An item open in the centre column of a main window.
 struct LinkedItemRef: Hashable {
     enum Kind: String {
-        case ticket, bundle, chat, code, doc, webTab, skill
+        case ticket, bundle, chat, code, doc, webTab, skill, virtualMachine
     }
 
     var kind: Kind
-    /// The ticket id, bundle id, chat id, project path, web tab id or skill name.
+    /// The ticket id, bundle id, chat id, project path, web tab id, skill name or virtual machine
+    /// id.
     var id: String
 
     /// The `<kind>:<id>` key of `ProjectViewState.unlinkedItems`.
@@ -28,13 +29,15 @@ struct LinkedItemRef: Hashable {
         case .doc: return .docsFile
         case .webTab: return .webTab
         case .skill: return .skill
+        case .virtualMachine: return .virtualMachine
         }
     }
 }
 
 extension ChatLinkedItemKind {
     /// The SF Symbol of the chips of a linked item of this kind: that of the item's sidebar
-    /// section, and `folder` for a project, as in the results of the search panel.
+    /// section, `folder` for a project, as in the results of the search panel, and that of the
+    /// Virtual Machines tab of Settings for a virtual machine.
     var symbol: String {
         switch self {
         case .ticket: return ProjectSection.tickets.symbol
@@ -44,6 +47,7 @@ extension ChatLinkedItemKind {
         case .docsFile: return ProjectSection.docs.symbol
         case .webTab: return ProjectSection.web.symbol
         case .skill: return ProjectSection.skills.symbol
+        case .virtualMachine: return SettingsTab.virtualMachines.symbol
         case .project: return "folder"
         }
     }
@@ -74,8 +78,13 @@ extension ProjectViewState {
     /// The items open in the centre column while `section` is shown (docs/ui.md › Inspector):
     /// every selected ticket in ticket number order, every selected chat (put in list order by
     /// `LinkedItems.linked`), or the section's selected item; none without section, while the
-    /// Global Memories view or the Internal Skills view shows.
-    func openItems(in section: ProjectSection?) -> [LinkedItemRef] {
+    /// Global Memories view or the Internal Skills view shows. While the window shows the detail
+    /// of a virtual machine, `virtualMachineID`, that virtual machine only
+    /// (docs/virtual-machines.md › Linked item).
+    func openItems(in section: ProjectSection?, virtualMachineID: UUID? = nil) -> [LinkedItemRef] {
+        if let virtualMachineID {
+            return [LinkedItemRef(kind: .virtualMachine, id: virtualMachineID.uuidString)]
+        }
         guard let section else { return [] }
         switch section {
         case .tickets:
@@ -101,8 +110,8 @@ extension ProjectViewState {
 
     /// Drops from `unlinkedItems` the items that are no longer open, so that they are linked again
     /// the next time they are opened.
-    mutating func forgetClosedUnlinkedItems(in section: ProjectSection?) {
-        let open = Set(openItems(in: section).map(\.key))
+    mutating func forgetClosedUnlinkedItems(in section: ProjectSection?, virtualMachineID: UUID? = nil) {
+        let open = Set(openItems(in: section, virtualMachineID: virtualMachineID).map(\.key))
         if !unlinkedItems.isSubset(of: open) {
             unlinkedItems.formIntersection(open)
         }
@@ -111,13 +120,16 @@ extension ProjectViewState {
 
 enum LinkedItems {
     /// The linked items of a project's view state: its open items that the user did not unlink,
-    /// resolved from the workspace's data; a ticket, bundle, chat or web tab it does not hold is
-    /// left out. Chats come in the order of the Chats section's list.
+    /// resolved from the workspace's data; a ticket, bundle, chat, web tab or virtual machine it
+    /// does not hold is left out. Chats come in the order of the Chats section's list.
     static func linked(state: ProjectViewState, section: ProjectSection?, tickets: [String: Ticket],
-                       bundles: [String: TicketBundle], chats: [String: ChatMeta], webTabs: [WebTab]) -> [LinkedItem] {
-        let items = state.openItems(in: section)
+                       bundles: [String: TicketBundle], chats: [String: ChatMeta], webTabs: [WebTab],
+                       virtualMachineID: UUID? = nil, virtualMachines: [VirtualMachine] = []) -> [LinkedItem] {
+        let items = state.openItems(in: section, virtualMachineID: virtualMachineID)
             .filter { !state.unlinkedItems.contains($0.key) }
-            .compactMap { resolve($0, tickets: tickets, bundles: bundles, chats: chats, webTabs: webTabs) }
+            .compactMap {
+                resolve($0, tickets: tickets, bundles: bundles, chats: chats, webTabs: webTabs, virtualMachines: virtualMachines)
+            }
         guard section == .chats else { return items }
         let order = ChatsSectionView.inListOrder(items.compactMap { chats[$0.ref.id] }).map(\.id.uuidString)
         return items.sorted { (order.firstIndex(of: $0.ref.id) ?? 0) < (order.firstIndex(of: $1.ref.id) ?? 0) }
@@ -125,7 +137,7 @@ enum LinkedItems {
 
     /// The chip and line of one open item (docs/chats.md › Linked items).
     static func resolve(_ ref: LinkedItemRef, tickets: [String: Ticket], bundles: [String: TicketBundle],
-                        chats: [String: ChatMeta], webTabs: [WebTab]) -> LinkedItem? {
+                        chats: [String: ChatMeta], webTabs: [WebTab], virtualMachines: [VirtualMachine] = []) -> LinkedItem? {
         switch ref.kind {
         case .ticket:
             guard let ticket = tickets[ref.id] else { return nil }
@@ -148,6 +160,9 @@ enum LinkedItems {
             return LinkedItem(ref: ref, name: tab.title, text: "web tab “\(tab.title)” \(tab.url)")
         case .skill:
             return LinkedItem(ref: ref, name: ref.id, text: "skill \(ref.id)")
+        case .virtualMachine:
+            guard let machine = virtualMachines.first(where: { $0.id.uuidString == ref.id }) else { return nil }
+            return LinkedItem(ref: ref, name: machine.name, text: "virtual machine “\(machine.name)” (\(ref.id))")
         }
     }
 

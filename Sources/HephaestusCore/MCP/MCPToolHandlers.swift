@@ -443,6 +443,7 @@ struct MCPToolHandlers: Sendable {
         "skill": (["name"], []),
         "webTab": (["projectID", "tabID"], []),
         "section": (["projectID", "section"], []),
+        "virtualMachine": (["vmID"], []),
     ]
 
     /// docs/mcp.md › Target kinds: a missing required property fails with

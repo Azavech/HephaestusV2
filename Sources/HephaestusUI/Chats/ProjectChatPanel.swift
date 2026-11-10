@@ -41,7 +41,9 @@ struct ProjectChatPanel: View {
         LinkedItems.linked(state: viewState, section: window.shownSection,
                            tickets: TicketListProjects(projectID: projectID, workspace: workspace).tickets(in: workspace),
                            bundles: workspace.bundles[projectID] ?? [:], chats: workspace.chats,
-                           webTabs: workspace.webTabs[projectID] ?? [])
+                           webTabs: workspace.webTabs[projectID] ?? [],
+                           virtualMachineID: window.shownVirtualMachineID,
+                           virtualMachines: workspace.virtualMachines?.machines ?? [])
     }
 
     private func unlink(_ ref: LinkedItemRef) {

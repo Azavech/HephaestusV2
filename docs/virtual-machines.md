@@ -1,6 +1,6 @@
 # Virtual machines
 
-HephaestusV2 runs macOS virtual machines with Apple's Virtualization framework, so that Claude can check what the offscreen check instance cannot reach: menus, typing, list rows, system dialogs and permission prompts. A virtual machine starts from an image: one macOS version, installed once from its IPSW and prepared once in a setup window, where the user completes Setup Assistant, turns off System Integrity Protection (SIP) and installs the guest agent, which gives the host full control of the guest. This document defines the images and their states, the list of macOS versions read from ipsw.me, the download and the install, the setup window with its texts, the install script, the guest agent and its protocol, the limit of 2 running virtual machines and the storage under `<data dir>/VirtualMachines/`. The Settings tab is in [User interface](ui.md#virtual-machines), the file format in [Data model](data-model.md#image-metadata-file), the methods and the event in [Engine API](engine-api.md#virtual-machine-images).
+HephaestusV2 runs macOS virtual machines with Apple's Virtualization framework, so that Claude can check what the offscreen check instance cannot reach: menus, typing, list rows, system dialogs and permission prompts. A virtual machine starts from an image: one macOS version, installed once from its IPSW and prepared once in a setup window, where the user completes Setup Assistant, turns off System Integrity Protection (SIP) and installs the guest agent, which gives the host full control of the guest. The user starts virtual machines from the Ready images in Settings, keeps them between runs, and shows the screen of one in a main window, where the mouse and the keyboard drive it. This document defines the images and their states, the list of macOS versions read from ipsw.me, the download and the install, the setup window with its texts, the install script, the guest agent and its protocol, the virtual machines with their lifecycle, the clone of the image's disk, the limit of 2 running virtual machines, the detail of a virtual machine and its link in the inspector's composer, and the storage under `<data dir>/VirtualMachines/`. The Settings tab is in [User interface](ui.md#virtual-machines), the file formats in [Data model](data-model.md#image-metadata-file), the methods and the events in [Engine API](engine-api.md#virtual-machine-images).
 
 ## Overview
 
@@ -15,20 +15,29 @@ Settings ▸ Virtual Machines                      engine of This Mac           
                                                  guest agent (LaunchAgent of the account)
   Default radio ── settings.update ────────────► settings.yml, defaultVMImage
   Delete… ───── vmImages.delete ───────────────► the image's folder is deleted
+  New VM… ───── vms.create ────────────────────► vm.yml, clone of the image's disk, boot
+  Start, Stop ─ vms.start, vms.stop ───────────► the virtual machine boots, shuts down
+  Virtual Machines table ◄── vms.changed ─────── the virtual machines, the number that run
+  Delete… ───── vms.delete ────────────────────► the virtual machine's folder is deleted
+  Show ──────── navigation ────────────────────► the detail in a main window ── screen service
 ```
 
 | Piece                                  | Defined in                                         |
 | -------------------------------------- | -------------------------------------------------- |
 | The Settings tab, sheet, alert, window | [User interface](ui.md#virtual-machines)           |
 | `image.yml`, `defaultVMImage`          | [Data model](data-model.md#image-metadata-file)    |
+| `vm.yml`                               | [Data model](data-model.md#vm-metadata-file)       |
 | `vmImages.*`, `vmImages.changed`       | [Engine API](engine-api.md#virtual-machine-images) |
+| `vms.*`, `vms.changed`                 | [Engine API](engine-api.md#virtual-machines)       |
+| The `virtualMachine` target            | [User interface](ui.md#resolving-a-target)         |
+| The linked item of the detail          | [Chats](chats.md#linked-items)                     |
 | The entitlement, the bundle files      | [CI and release](ci.md#entitlements)               |
 | The agent's target, the processes      | [Architecture](architecture.md#modules)            |
 
 ## Host
 
-- Virtual machines run only on a Mac with Apple silicon: the Virtualization framework runs macOS guests on no other Mac. On an Intel Mac, `vmImages.add` and `Set Up…` fail with `unavailable` and the message `Virtual machines need a Mac with Apple silicon.` Default chosen at design time.
-- The app process needs the entitlement `com.apple.security.virtualization`, which `scripts/build-app.sh` gives every bundle it signs ([Entitlements](ci.md#entitlements)). A process without it, such as a test run, cannot create a virtual machine: the framework's error becomes the failure of the install or of `Set Up…`.
+- Virtual machines run only on a Mac with Apple silicon: the Virtualization framework runs macOS guests on no other Mac. On an Intel Mac, `vmImages.add`, `Set Up…`, `vms.create` and `vms.start` fail with `unavailable` and the message `Virtual machines need a Mac with Apple silicon.` Default chosen at design time.
+- The app process needs the entitlement `com.apple.security.virtualization`, which `scripts/build-app.sh` gives every bundle it signs ([Entitlements](ci.md#entitlements)). A process without it, such as a test run, cannot create a virtual machine: the framework's error becomes the failure of the install, of `Set Up…` or of the start of a virtual machine.
 - Every virtual machine runs inside the app process's own Virtualization service ([Processes](architecture.md#processes)); the engine starts no other process for it.
 
 ## Images
@@ -309,28 +318,164 @@ Coordinates are pixels of the screenshot of the main display, from its top-left 
 
 The methods, their params, results, limits and messages are Default chosen at design time.
 
+## Lifecycle
+
+A virtual machine is a Mac started from a Ready image: it has a name, its own disk, which starts as a clone of the image's disk, and the cores and the memory chosen for it. It has an id, a UUID, which names its folder; its metadata is the [VM metadata file](data-model.md#vm-metadata-file). The user starts virtual machines with `New VM…` of [Settings](ui.md#virtual-machines); Claude starts its own for its checks. Who started a virtual machine decides what becomes of it when it stops:
+
+| Started by | `startedBy`                                         | `Started by` column                                                                     | When it stops                                                              |
+| ---------- | --------------------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| The user   | `user`                                              | `You`                                                                                   | It keeps its disk: `Start` boots it again from that disk, until `Delete…`. |
+| Claude     | `claude`, with `projectID` and `chatID` of its chat | `<project id> · <chat name>`, the chat's current title; `<project id>` without the chat | It is deleted with its disk: it is listed only while it runs.              |
+
+- The engine function that starts a virtual machine takes who starts it. `vms.create` starts one for the user. No engine method and no MCP tool starts one for Claude yet.
+- `<chat name>` follows the chat's title, renames included. The text `<project id>` alone for a chat that no longer exists is Default chosen at design time.
+- Several virtual machines may have the same name, and several may start from the same image. Default chosen at design time.
+
+### Virtual machine states
+
+| State   | `state`   | Text of the State column | Meaning                                                                                              |
+| ------- | --------- | ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| Running | `running` | `Running · <time>`       | The virtual machine has started and has not stopped yet: it counts among the 2 that run.             |
+| Stopped | `stopped` | `Stopped`                | The virtual machine does not run. `Start` boots it from its disk. Only a user's one is ever stopped. |
+
+- `<time>` is the running time, the time since the virtual machine's `startedAt` in whole minutes, rounded down: `<m> min` under an hour, and `<h> h <mm> min` from an hour on, the minutes written with two digits. `0 min`, `12 min`, `59 min`, `1 h 00 min`, `1 h 05 min`, `26 h 40 min`.
+- The text changes when the minute does, without an event: each view computes it from `startedAt`.
+- A virtual machine that shuts down stays Running until it has stopped.
+- `state` and `startedAt` are never stored: after a launch every virtual machine is Stopped.
+
+The hours that go on past 24, the virtual machine that stays Running while it shuts down and the two digits of `1 h 00 min` are Default chosen at design time.
+
+### Creating
+
+`Start` of the New VM sheet calls `vms.create` with the name, the image, the cores and the memory ([vms.create](engine-api.md#vmscreate)).
+
+1. The engine checks, in this order:
+   1. that the Mac has Apple silicon ([Host](#host));
+   2. the name: one line of 1 to 100 characters once trimmed, otherwise `invalid` and `name: use 1 to 100 characters on one line.`;
+   3. that the image exists (`notFound`, `Image <id> not found.`) and is Ready (`conflict`, `The image is not Ready.`);
+   4. `cores` and `memoryGB`, with the ranges of [Adding an image](#adding-an-image) and its message;
+   5. that fewer than 2 virtual machines run (`conflict`, `2 virtual machines are already running.`).
+2. It creates the virtual machine: a new id and the folder `<data dir>/VirtualMachines/Machines/<VM id>/`, into which it copies the image's `HardwareModel`, `MachineIdentifier` and `AuxiliaryStorage`, clones the image's `Disk.img` ([Clone](#clone)) and writes `vm.yml`. When a file cannot be written, on a full disk for example, the folder is deleted and the call fails with `internal` and `The virtual machine could not be created: <reason>.`, `<reason>` being the system's message.
+3. It starts the virtual machine ([Starting](#starting)). When the start fails, the call fails with the message of the start; a user's virtual machine stays, Stopped, with its disk, and Claude's is deleted.
+
+The name's rule, the order of the checks and the messages are Default chosen at design time.
+
+### Clone
+
+The disk of a new virtual machine is an APFS clone of the image's `Disk.img`, made with `clonefile`: the two files share their blocks until one of them changes, so the clone is made at once, whatever the size of the disk, and takes no space of its own until the guest writes. On a volume that cannot clone a file, the disk is copied instead. The copy on such a volume is Default chosen at design time.
+
+The virtual machine keeps the hardware model and the machine identifier of its image and starts from a copy of the image's auxiliary storage, so every virtual machine of an image has the identity that the image was set up with. Default chosen at design time. Not checked in a guest: that two virtual machines of one image run at once with the same machine identifier, and that the guest keeps SIP off with it.
+
+### Starting
+
+`vms.create`, and `vms.start` for a Stopped virtual machine ([vms.start](engine-api.md#vmsstart)), start a virtual machine:
+
+1. It takes one of the 2 running virtual machines ([Running virtual machines](#running-virtual-machines)). While 2 already run, the start fails with `conflict` and `2 virtual machines are already running.`
+2. The engine makes the virtual machine with its `cores`, its `memoryGB`, the files of its folder and the devices of the [setup virtual machine](#setup-virtual-machine), without its shared folder, and boots it from its disk.
+3. A virtual machine that cannot be made or started, or that stops with a failure while it starts, fails the start with `unavailable` and the framework's message, and frees its place.
+4. The virtual machine is Running, with the time of the start as `startedAt`, and `vms.changed` is emitted.
+
+Each start listens for the [guest agent](#guest-agent) on the virtual machine's virtio socket device, as the setup virtual machine does. The devices and the missing shared folder are Default chosen at design time.
+
+### Stopping
+
+`Stop` calls `vms.stop` ([vms.stop](engine-api.md#vmsstop)), which shuts the virtual machine down and returns once it has stopped:
+
+1. With the agent connected, the engine asks it to run `/sbin/shutdown -h now` as root, so that macOS writes to the disk what it still holds, and waits up to 60 seconds from the call for the virtual machine to stop. After that, or at once when the agent answers that the command failed, it stops the virtual machine itself.
+2. Without the agent, as while the guest starts up, the virtual machine is stopped at once, as a power cut does: what the guest wrote in its last seconds may be missing from the disk.
+3. A second `vms.stop` for a virtual machine that shuts down waits for that same shutdown.
+
+A virtual machine also stops when the guest shuts down by itself, from its Apple menu for example, and when it fails while it runs; the framework's message of such a failure goes to `engine.log`. However it stopped:
+
+- its place among the 2 running virtual machines is freed;
+- a user's virtual machine becomes Stopped and keeps its folder;
+- Claude's virtual machine is deleted: its folder is deleted with everything in it, and it leaves the list;
+- `vms.changed` is emitted.
+
+The shutdown through the agent, the wait, the power cut without the agent and the log are Default chosen at design time.
+
+### Deleting a virtual machine
+
+`Delete…` asks for confirmation with the alert of [User interface](ui.md#virtual-machines), then calls `vms.delete` ([vms.delete](engine-api.md#vmsdelete)):
+
+1. A virtual machine that runs is stopped at once, as a power cut does: its disk is deleted anyway.
+2. Its folder `<data dir>/VirtualMachines/Machines/<VM id>/` is deleted with everything in it. It is not moved to the Trash, as for an [image](#deleting-an-image).
+3. `vms.changed` is emitted, and every window that shows the virtual machine's [detail](#detail) leaves it.
+
+When the folder cannot be deleted, the call fails with `internal` and the virtual machine stays, Stopped. Any virtual machine can be deleted, Claude's too. Default chosen at design time.
+
 ## Running virtual machines
 
 The Virtualization framework runs at most 2 macOS virtual machines at once on a Mac. The engine counts every virtual machine it runs:
 
-| Virtual machine           | Counts from              | Until                                                                                     |
-| ------------------------- | ------------------------ | ----------------------------------------------------------------------------------------- |
-| The install of an image   | The start of the install | The install ends.                                                                         |
-| The setup virtual machine | `Set Up…` starts it      | It has stopped: `Finish Setup`, a closed window, a guest that shut down, a deleted image. |
+| Virtual machine           | Counts from                           | Until                                                                                                       |
+| ------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| The install of an image   | The start of the install              | The install ends.                                                                                           |
+| The setup virtual machine | `Set Up…` starts it                   | It has stopped: `Finish Setup`, a closed window, a guest that shut down, a deleted image.                   |
+| A virtual machine         | `vms.create` or `vms.start` starts it | It has stopped: `Stop`, a guest that shut down, a failure, `Delete…`, a deleted image, the quit of the app. |
 
+- Every virtual machine of the table counts, whoever started it: the user's, Claude's, the setup virtual machine of an image and its install.
 - An install waits while 2 virtual machines run; the installs that wait start in the order they began to wait. Default chosen at design time.
-- `Set Up…` does not wait for a free place: it fails with `conflict` ([Setup](#setup)).
-- Quitting the app stops every virtual machine ([Shutdown](architecture.md#shutdown)): a setup virtual machine is stopped at once and its image stays in `needsSetup`.
-- The app does not restart by itself for an update while an image downloads or installs, while a setup window is open or while the virtual machine of a closed one still shuts down: the app is not idle then ([Restart rules](updater.md#restart-rules)).
+- `Set Up…` does not wait for a free place: it fails with `conflict` ([Setup](#setup)). Neither do `vms.create` and `vms.start`: they fail with `conflict` and `2 virtual machines are already running.` ([Starting](#starting)).
+- `runningCount` of `vms.list` and of `vms.changed` is the number of virtual machines that count ([VMList](engine-api.md#vmlist)). While it is 2, `New VM…` and `Start` are disabled, in Settings and in the header of a [detail](#detail).
+- Quitting the app stops every virtual machine ([Shutdown](architecture.md#shutdown)): a setup virtual machine is stopped at once and its image stays in `needsSetup`; a virtual machine is stopped at once too, as a power cut does, the user's keeps its disk and Claude's is deleted. Stopping them at once is Default chosen at design time.
+- The app does not restart by itself for an update while an image downloads or installs, while a setup window is open, while the virtual machine of a closed one still shuts down or while a virtual machine runs: the app is not idle then ([Restart rules](updater.md#restart-rules)).
+
+## Detail
+
+`Show` of [Settings](ui.md#virtual-machines), a `virtualMachine` target of the app's navigation and `open_in_app` with such a target show the detail of a virtual machine in a main window ([Resolving a target](ui.md#resolving-a-target)): its screen, to look at and to use.
+
+| Property  | Value                                                                                                                                                                                                       |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Window    | `Show`: the frontmost main window that shows This Mac, brought to front; a new main window on This Mac without one ([Choosing the window](ui.md#choosing-the-window))                                       |
+| Place     | the centre column, in place of the selected section, as the Global Memories view ([Main window layout](ui.md#main-window-layout)); in a window whose device has no project, the welcome view's place        |
+| Sidebar   | keeps its rows, none of them selected ([Sidebar](ui.md#sidebar))                                                                                                                                            |
+| Inspector | stays; its composer links the virtual machine ([Linked item](#linked-item))                                                                                                                                 |
+| Left by   | anything that selects a section, View ▸ Global Memories, View ▸ Internal Skills, a click on a sub project's row, a switch of device, and the end of the virtual machine: `Delete…`, or the stop of Claude's |
+| State     | `WindowState.shownVirtualMachineID`, never persisted ([WindowState](ui.md#windowstate))                                                                                                                     |
+
+The header is a pane header, 36 points high ([Pane headers](ui.md#pane-headers)). From its leading edge it shows the virtual machine's name in the headline font, then, in the secondary colour, `macOS <version>` and the text of the State column, `Running · <time>` or `Stopped` ([Virtual machine states](#virtual-machine-states)); at its trailing edge, one button:
+
+| Virtual machine | Button  | Action                                                                      |
+| --------------- | ------- | --------------------------------------------------------------------------- |
+| Running         | `Stop`  | `vms.stop` ([Stopping](#stopping)).                                         |
+| Stopped         | `Start` | `vms.start` ([Starting](#starting)); disabled while 2 virtual machines run. |
+
+Under the header:
+
+- For a Running virtual machine, its screen (`VZVirtualMachineView`), scaled to fit the column with the proportions of its display, on black. A click in the screen gives it the keyboard focus: the user's mouse and keyboard then drive the guest, and while the screen has the focus the system shortcuts, ⌘Tab for example, go to the guest too (`capturesSystemKeys`).
+- For a Stopped virtual machine, `Stopped`, centred, in the secondary colour, in place of the screen.
+
+Rules:
+
+- The screen of a virtual machine shows only on the Mac that runs it: the detail shows only in a window that shows This Mac, and a `virtualMachine` target that a remote device's workspace delivers is ignored. The view takes the screen from the VM screens service of [Local-only services](architecture.md#local-only-services), `Engine.virtualMachineSession(_:)`.
+- The header and the screen follow `vms.changed`: a virtual machine that stops shows `Stopped` and `Start`, and one that starts again shows its screen.
+- When the virtual machine leaves the list, deleted by the user, with its image, or because Claude's stopped, every window that shows its detail goes back to the section it showed before, which the window kept.
+- A switch of project keeps the detail, as it keeps the Global Memories view.
+- A window restored by macOS, or reopened after a restart for an update, shows its section: the detail is not restored.
+- A failed `Stop` or `Start` of the header shows the failure alert of [Principles](ui.md#principles) on the window, titled `Stop failed` or `Start failed`.
+
+### Linked item
+
+While a main window shows the detail, the composer of its inspector's chat, or of its draft, links the virtual machine as a linked item chip ([Linked items](chats.md#linked-items)):
+
+| Chip symbol | Short name                 | `<item>`                             |
+| ----------- | -------------------------- | ------------------------------------ |
+| `display`   | the virtual machine's name | `virtual machine “<name>” (<VM id>)` |
+
+Claude receives the line `Open in the app: virtual machine “<name>” (<VM id>)` with each message sent while the chip shows, and the `user` item stores the item with the kind `virtualMachine`. × unlinks it until the window leaves the detail, as for the other linked items.
+
+The header's layout, the black around the screen, the capture of the system shortcuts, the text style of `Stopped`, ignoring the target on a remote device, keeping the detail across a switch of project, not restoring it and the alerts are Default chosen at design time. The place, the header's content, the chip and its line come from the user ([R202](requirements.md#requirements)).
 
 ## Deleting an image
 
 `Delete…` asks for confirmation with the alert of [User interface](ui.md#virtual-machines), then calls `vmImages.delete`. Delete stops and deletes the image's virtual machines, then deletes the image's folder:
 
 1. The engine ends the image's download or install, and stops its setup virtual machine at once, which closes its setup window.
-2. When the image is the default image, `defaultVMImage` becomes null, with `settings.updated`.
-3. The folder `<data dir>/VirtualMachines/Images/<image id>/` is deleted with everything in it. It is not moved to the Trash: a disk in the Trash would keep its space. Default chosen at design time.
-4. `vmImages.changed` is emitted.
+2. It deletes every virtual machine whose `imageID` is the image, as `vms.delete` does: one that runs is stopped at once first ([Deleting a virtual machine](#deleting-a-virtual-machine)). `vms.changed` is emitted when it deleted one. A virtual machine whose folder cannot be deleted stays, and the image is deleted all the same: the virtual machine has its own disk.
+3. When the image is the default image, `defaultVMImage` becomes null, with `settings.updated`.
+4. The folder `<data dir>/VirtualMachines/Images/<image id>/` is deleted with everything in it. It is not moved to the Trash: a disk in the Trash would keep its space. Default chosen at design time.
+5. `vmImages.changed` is emitted.
 
 ## Storage
 
@@ -345,6 +490,13 @@ The Virtualization framework runs at most 2 macOS virtual machines at once on a 
         MachineIdentifier       the machine identifier of the image's own virtual machine
         AuxiliaryStorage        the auxiliary storage of the virtual machine
         Disk.img                the disk, a sparse file of diskGB GB
+    Machines/
+      <VM-ID>/                  one folder per virtual machine, named by its id, an uppercase UUID
+        vm.yml                  the VM metadata file
+        HardwareModel           a copy of the image's hardware model
+        MachineIdentifier       a copy of the image's machine identifier
+        AuxiliaryStorage        a copy of the image's auxiliary storage, then the virtual machine's own
+        Disk.img                the disk: a clone of the image's disk, then the virtual machine's own
   Runtime/
     guest/                      the folder shared into the guests
       install.sh                the install script
@@ -353,24 +505,31 @@ The Virtualization framework runs at most 2 macOS virtual machines at once on a 
 
 - The engine creates `VirtualMachines/Images/` with the first image. Folders of `Images/` whose name is not a UUID, or whose `image.yml` is missing or invalid, are skipped and logged at launch ([Loading](data-model.md#loading)).
 - The `Disk` column of the Images table is the image's `diskBytes`: the space the files of its folder take on disk, which for the sparse `Disk.img` is the space written so far, not `diskGB`.
-- `Runtime/guest/` is generated: the engine fills it each time a virtual machine starts.
+- The engine creates `VirtualMachines/Machines/` with the first virtual machine. At launch, the folders of `Machines/` whose name is not a UUID, or whose `vm.yml` is missing or invalid, are skipped and logged, and the folder of a virtual machine that Claude started is deleted: such a folder is left only when the app ended without stopping the virtual machine ([Loading](data-model.md#loading)).
+- A clone shares the blocks of the image's disk until one of the two files changes them, so a new virtual machine takes almost no space, and its disk grows with what the guest writes. The image's disk no longer changes once the image is Ready.
+- `Runtime/guest/` is generated: the engine fills it each time a setup virtual machine starts.
 
 The folder and file names are Default chosen at design time.
 
 ## Swift shape
 
-| Path                                                           | Content                                                                                                                                                 |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Sources/HephaestusCore/Models/VMImage.swift`                  | `VMImage`, `VMImageState`: the image metadata file.                                                                                                     |
-| `Sources/HephaestusCore/VirtualMachines/`                      | The images, the provisioner, the setup and the host side of the agent's protocol: see [HephaestusCore folders](architecture.md#hephaestuscore-folders). |
-| `Sources/HephaestusCore/Engine/API/VMImagesAPI.swift`          | The `vmImages.*` methods and `MacOSVersion`.                                                                                                            |
-| `Sources/HephaestusCore/Engine/Handlers/VMImageHandlers.swift` | `registerVMImageHandlers()` and the handlers.                                                                                                           |
-| `Sources/HephaestusAgent/`                                     | The guest agent: `main.swift`, the connection loop, the frames, the session, one file per group of methods, the display assertion.                      |
-| `Resources/install-agent.sh`                                   | The install script, `install.sh` in the shared folder.                                                                                                  |
-| `Sources/HephaestusUI/Settings/`                               | `VirtualMachinesSettingsPane`, `AddImageSheet`, and the setup window with the view of a virtual machine's screen (`VZVirtualMachineView`).              |
+| Path                                                           | Content                                                                                                                                                                                                                                |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Sources/HephaestusCore/Models/VMImage.swift`                  | `VMImage`, `VMImageState`: the image metadata file.                                                                                                                                                                                    |
+| `Sources/HephaestusCore/Models/VirtualMachine.swift`           | `VirtualMachine`, `VirtualMachineState`, `VMStarter`: the VM metadata file; `VMRunningTime`, the text of a running time.                                                                                                               |
+| `Sources/HephaestusCore/VirtualMachines/`                      | The images, the provisioner, the setup and the host side of the agent's protocol: see [HephaestusCore folders](architecture.md#hephaestuscore-folders).                                                                                |
+| `Sources/HephaestusCore/VirtualMachines/VirtualMachine*.swift` | `VirtualMachineStore`, the folders and the clone; `VirtualMachineService`, the lifecycle; `VMSession`, one running virtual machine.                                                                                                    |
+| `Sources/HephaestusCore/Engine/API/VMImagesAPI.swift`          | The `vmImages.*` methods and `MacOSVersion`.                                                                                                                                                                                           |
+| `Sources/HephaestusCore/Engine/API/VMsAPI.swift`               | The `vms.*` methods and `VMList`.                                                                                                                                                                                                      |
+| `Sources/HephaestusCore/Engine/Handlers/VMImageHandlers.swift` | `registerVMImageHandlers()` and the handlers.                                                                                                                                                                                          |
+| `Sources/HephaestusCore/Engine/Handlers/VMHandlers.swift`      | `registerVMHandlers()` and the handlers.                                                                                                                                                                                               |
+| `Sources/HephaestusAgent/`                                     | The guest agent: `main.swift`, the connection loop, the frames, the session, one file per group of methods, the display assertion.                                                                                                     |
+| `Resources/install-agent.sh`                                   | The install script, `install.sh` in the shared folder.                                                                                                                                                                                 |
+| `Sources/HephaestusUI/Settings/`                               | `VirtualMachinesSettingsPane`, `AddImageSheet`, `NewVMSheet`, the setup window with the view of a virtual machine's screen (`VZVirtualMachineView`), and `VirtualMachineDetailView`, the detail of a virtual machine in a main window. |
 
-Outside the app, the engine reaches ipsw.me, Apple's download server and the Virtualization framework only through `VMImageProvisioning`, the `imageProvisioner` of its configuration ([Engine configuration](architecture.md#engine-configuration)): the app uses `SystemVMImageProvisioner`, and tests a stand-in, so that no test downloads an IPSW or starts a virtual machine ([Test rules](development.md#test-rules)).
+Outside the app, the engine reaches ipsw.me, Apple's download server and the Virtualization framework only through `VMImageProvisioning`, the `imageProvisioner` of its configuration ([Engine configuration](architecture.md#engine-configuration)): the app uses `SystemVMImageProvisioner`, and tests a stand-in, so that no test downloads an IPSW or starts a virtual machine ([Test rules](development.md#test-rules)). The clone of an image's disk and the other files of a virtual machine's folder are plain files, which the engine writes itself.
 
 ## Requirements covered
 
 - R201: Settings has a Virtual Machines tab whose Images section adds macOS images for virtual machines from the versions ipsw.me lists, downloads and installs them, prepares each one once in a setup window so that an agent in the guest gives full control of it, marks the default image and deletes images.
+- R202: The user starts virtual machines from the Ready images in Settings, keeps them between runs, starts, stops and deletes them, and shows the screen of one in a main window, where the mouse and the keyboard drive it; at most 2 run at once, and the app does not restart by itself for an update while one runs.

@@ -196,9 +196,9 @@ public struct ChatLinkedItem: Codable, Sendable, Hashable {
 }
 
 /// The kind of a linked item, which gives its chip's SF Symbol (docs/chats.md › Linked items);
-/// only an added resource is a `project`.
+/// only an added resource is a `project`, and only an item open in the app a `virtualMachine`.
 public enum ChatLinkedItemKind: String, Codable, Sendable, Hashable, CaseIterable {
-    case ticket, bundle, chat, codeFile, docsFile, webTab, skill, project
+    case ticket, bundle, chat, codeFile, docsFile, webTab, skill, virtualMachine, project
 }
 
 /// A text block written by Claude.

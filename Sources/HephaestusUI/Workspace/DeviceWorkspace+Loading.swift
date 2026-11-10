@@ -84,6 +84,15 @@ extension DeviceWorkspace {
                             replay: { event in var event = event; apply(&event) })
     }
 
+    /// `vms.list` under the replay rule, each time Settings ▸ Virtual Machines appears, and for a
+    /// navigation to a virtual machine while the workspace holds none (docs/ui.md › Virtual
+    /// Machines, › Resolving a target). A failed call leaves them as the events made them.
+    func loadVirtualMachines() async {
+        _ = try? await seed({ try await call(VMsList.self) },
+                            replace: { virtualMachines = $0 },
+                            replay: { event in var event = event; apply(&event) })
+    }
+
     // MARK: Projects
 
     /// Loading step 3: a window shows a project that is not loaded. Runs its seeding calls unless

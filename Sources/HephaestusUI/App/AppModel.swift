@@ -466,6 +466,14 @@ public final class AppModel {
     /// down: the app is not idle then (docs/updater.md › Restart rules).
     var hasImageSetups: Bool { !imageSetups.isEmpty || closingImageSetups > 0 }
 
+    /// `Show` of Settings ▸ Virtual Machines: the detail of a virtual machine of This Mac in the
+    /// most recently key main window that shows This Mac, the frontmost one, which is ordered
+    /// front and made key; a new main window on This Mac without one (docs/ui.md › Choosing the
+    /// window).
+    func showVirtualMachine(_ vmID: UUID) {
+        route(.virtualMachine(vmID: vmID), deviceID: localDeviceID, makesKey: true)
+    }
+
     /// Opens the Settings window, or brings it to front, on a tab.
     func openSettings(tab: SettingsTab? = nil) {
         if let tab {
@@ -586,6 +594,12 @@ public final class AppModel {
                 state.updateViewState(of: payload.projectID) {
                     if $0.selectedBundleID == payload.bundleID { $0.selectedBundleID = nil }
                 }
+            }
+        case .vmsChanged:
+            // A window leaves the detail of a virtual machine that left the list
+            // (docs/virtual-machines.md › Detail).
+            for state in windows.values where state.deviceID == deviceID {
+                state.leaveVirtualMachineDetail(ifGoneFrom: workspace)
             }
         default:
             break

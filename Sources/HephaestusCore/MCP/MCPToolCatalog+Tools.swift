@@ -1485,7 +1485,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "open_in_app",
             description: #"""
-            Show something to the user in HephaestusV2: a project, ticket, bundle, chat, doc (optionally at a heading), file (optionally at a line) or folder of the code tree, skill, web tab or project section. The app shows it on the device the user is chatting from.
+            Show something to the user in HephaestusV2: a project, ticket, bundle, chat, doc (optionally at a heading), file (optionally at a line) or folder of the code tree, skill, web tab, project section or virtual machine. The app shows it on the device the user is chatting from.
             """#,
             inputSchema: schema(#"""
             {
@@ -1493,12 +1493,12 @@ extension MCPToolCatalog {
               "properties": {
                 "target": {
                   "type": "object",
-                  "description": "What to show. kind decides the other properties: project: projectID; ticket: ticketID; bundle: bundleID; chat: chatID; doc: projectID, path and optionally fragment; file: projectID, path and optionally line; skill: name; webTab: projectID and tabID; section: projectID and section.",
+                  "description": "What to show. kind decides the other properties: project: projectID; ticket: ticketID; bundle: bundleID; chat: chatID; doc: projectID, path and optionally fragment; file: projectID, path and optionally line; skill: name; webTab: projectID and tabID; section: projectID and section; virtualMachine: vmID.",
                   "properties": {
                     "kind": {
                       "type": "string",
                       "description": "Kind of item to show.",
-                      "enum": ["project", "ticket", "bundle", "chat", "doc", "file", "skill", "webTab", "section"]
+                      "enum": ["project", "ticket", "bundle", "chat", "doc", "file", "skill", "webTab", "section", "virtualMachine"]
                     },
                     "projectID": {
                       "type": "string",
@@ -1540,6 +1540,10 @@ extension MCPToolCatalog {
                       "type": "string",
                       "description": "Project section to show.",
                       "enum": ["dashboard", "tickets", "bundles", "chats", "code", "docs", "web", "builds", "skills", "memories", "costs", "apiExplorer", "graph", "settings"]
+                    },
+                    "vmID": {
+                      "type": "string",
+                      "description": "Virtual machine id (a UUID)."
                     }
                   },
                   "required": ["kind"],
@@ -1895,12 +1899,12 @@ extension MCPToolCatalog {
               "properties": {
                 "target": {
                   "type": "object",
-                  "description": "What to show. kind decides the other properties: project: projectID; ticket: ticketID; bundle: bundleID; chat: chatID; doc: projectID, path and optionally fragment; file: projectID, path and optionally line; skill: name; webTab: projectID and tabID; section: projectID and section.",
+                  "description": "What to show. kind decides the other properties: project: projectID; ticket: ticketID; bundle: bundleID; chat: chatID; doc: projectID, path and optionally fragment; file: projectID, path and optionally line; skill: name; webTab: projectID and tabID; section: projectID and section; virtualMachine: vmID.",
                   "properties": {
                     "kind": {
                       "type": "string",
                       "description": "Kind of item to show.",
-                      "enum": ["project", "ticket", "bundle", "chat", "doc", "file", "skill", "webTab", "section"]
+                      "enum": ["project", "ticket", "bundle", "chat", "doc", "file", "skill", "webTab", "section", "virtualMachine"]
                     },
                     "projectID": {
                       "type": "string",
@@ -1942,6 +1946,10 @@ extension MCPToolCatalog {
                       "type": "string",
                       "description": "Project section to show.",
                       "enum": ["dashboard", "tickets", "bundles", "chats", "code", "docs", "web", "builds", "skills", "memories", "costs", "apiExplorer", "graph", "settings"]
+                    },
+                    "vmID": {
+                      "type": "string",
+                      "description": "Virtual machine id (a UUID)."
                     }
                   },
                   "required": ["kind"],

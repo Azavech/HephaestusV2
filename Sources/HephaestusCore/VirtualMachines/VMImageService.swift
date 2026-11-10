@@ -7,6 +7,8 @@ enum VMSlot: Hashable, Sendable {
     case install(UUID)
     /// The setup virtual machine of an image.
     case setup(UUID)
+    /// A virtual machine started from an image, by its own id.
+    case machine(UUID)
 }
 
 /// The engine's state for the `vmImages.*` methods and the image setup service
@@ -16,7 +18,7 @@ enum VMSlot: Hashable, Sendable {
 /// used only on the engine actor.
 final class VMImageService {
     /// The Virtualization framework runs at most this many macOS virtual machines at once.
-    static let maximumRunning = 2
+    static let maximumRunning = VMList.maximumRunning
     /// The failure of an image whose download or install the quit of the app ended.
     static let interruptedMessage = "The app quit before the image was ready."
 
@@ -273,6 +275,7 @@ extension Engine {
     func tryAcquireVMSlot(_ slot: VMSlot) -> Bool {
         guard vmImages.running.count < VMImageService.maximumRunning else { return false }
         vmImages.running.insert(slot)
+        emitVirtualMachines(origin: .system)
         return true
     }
 
@@ -312,12 +315,13 @@ extension Engine {
             vmImages.running.insert(waiter.slot)
             waiter.continuation.resume(returning: true)
         }
+        emitVirtualMachines(origin: .system)
     }
 
     // MARK: vmImages.delete (docs/virtual-machines.md › Deleting an image)
 
-    /// Ends the image's download or install, stops its setup virtual machine, clears the default
-    /// image when it is this one and deletes the image's folder.
+    /// Ends the image's download or install, stops its setup virtual machine, deletes its virtual
+    /// machines, clears the default image when it is this one and deletes the image's folder.
     func deleteVMImage(_ params: VMImagesDelete.Params, _ actor: Actor) async throws -> Empty {
         let id = params.imageID
         guard vmImages.images[id] != nil, !vmImages.deleting.contains(id) else {
@@ -340,6 +344,7 @@ extension Engine {
                 releaseVMSlot(.setup(id))
             }
         }
+        await deleteVirtualMachines(ofImage: id, actor)
 
         if settings.defaultVMImage == id {
             do {
@@ -422,7 +427,7 @@ extension Engine {
             throw EngineError(.conflict, "The image is not waiting for setup.")
         }
         guard tryAcquireVMSlot(.setup(imageID)) else {
-            throw EngineError(.conflict, "\(VMImageService.maximumRunning) virtual machines are already running.")
+            throw EngineError(.conflict, Self.twoVirtualMachinesRunning)
         }
         let start = Task { try await self.startImageSetup(image) }
         vmImages.setupStarts[imageID] = start
@@ -500,8 +505,8 @@ extension Engine {
 
     // MARK: Shutdown (docs/architecture.md › Shutdown, step 1)
 
-    /// Stops every setup virtual machine at once and ends the downloads and installs; an install
-    /// that has not ended 3 seconds later ends with the process.
+    /// Stops every setup virtual machine and every virtual machine at once and ends the downloads
+    /// and installs; an install that has not ended 3 seconds later ends with the process.
     func stopVirtualMachines() async {
         for task in vmImages.tasks.values {
             task.cancel()
@@ -514,6 +519,7 @@ extension Engine {
         for session in Array(vmImages.setups.values) {
             await session.stopNow()
         }
+        await stopRunningVirtualMachines()
         for _ in 0..<30 where !vmImages.tasks.isEmpty {
             try? await Task.sleep(for: .milliseconds(100))
         }

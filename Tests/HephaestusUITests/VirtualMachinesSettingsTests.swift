@@ -83,6 +83,120 @@ struct VirtualMachinesSettingsTests {
         }
     }
 
+    // MARK: Virtual machines (docs/ui.md › Virtual Machines, docs/virtual-machines.md › Lifecycle)
+
+    static let chatID = UUID(uuidString: "3F2504E0-4F89-11D3-9A0C-0305E82C3301")!
+    static let started = Date(timeIntervalSince1970: 1_800_000_000)
+
+    static func machine(_ state: VirtualMachineState = .stopped, startedBy: VMStarter = .user, id: UUID = UUID()) -> VirtualMachine {
+        VirtualMachine(id: id, name: "Menu checks", imageID: UUID(uuidString: "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F")!, version: "27.2.1",
+                       build: "26B131", cores: 4, memoryGB: 8, startedBy: startedBy, created: started, state: state,
+                       startedAt: state == .running ? started : nil)
+    }
+
+    @Test("Started by reads You, or the project and the chat's current title for a virtual machine that Claude started")
+    func startedBy() {
+        let chat = ChatMeta(id: Self.chatID, title: "Check the menus", kind: .project, created: Self.started, projectID: "DEMO")
+        let claudes = Self.machine(.running, startedBy: .claude(projectID: "DEMO", chatID: Self.chatID))
+        #expect(VirtualMachinePresentation.startedByText(Self.machine(), chats: [Self.chatID.uuidString: chat]) == "You")
+        #expect(VirtualMachinePresentation.startedByText(claudes, chats: [Self.chatID.uuidString: chat]) == "DEMO · Check the menus")
+        var renamed = chat
+        renamed.title = "Menus"
+        #expect(VirtualMachinePresentation.startedByText(claudes, chats: [Self.chatID.uuidString: renamed]) == "DEMO · Menus")
+        // The chat no longer exists.
+        #expect(VirtualMachinePresentation.startedByText(claudes, chats: [:]) == "DEMO")
+    }
+
+    @Test("State reads Running with the running time, <m> min under an hour and <h> h <mm> min after, or Stopped")
+    func machineStateTexts() {
+        let running = Self.machine(.running)
+        func text(after seconds: TimeInterval) -> String {
+            VirtualMachinePresentation.stateText(running, now: Self.started.addingTimeInterval(seconds))
+        }
+        #expect(text(after: 0) == "Running · 0 min")
+        #expect(text(after: 59) == "Running · 0 min")
+        #expect(text(after: 12 * 60) == "Running · 12 min")
+        #expect(text(after: 59 * 60 + 59) == "Running · 59 min")
+        #expect(text(after: 3600) == "Running · 1 h 00 min")
+        #expect(text(after: 3600 + 5 * 60) == "Running · 1 h 05 min")
+        #expect(text(after: 26 * 3600 + 40 * 60) == "Running · 26 h 40 min")
+        #expect(VirtualMachinePresentation.stateText(Self.machine(), now: Self.started) == "Stopped")
+        #expect(VirtualMachinePresentation.stoppedText == "Stopped")
+        #expect(VirtualMachinePresentation.systemText(running) == "macOS 27.2.1")
+        #expect(VirtualMachinePresentation.deleteTitle(name: "Menu checks") == "Delete “Menu checks”?")
+        #expect(VirtualMachinePresentation.deleteMessage == "Its disk is deleted.")
+    }
+
+    @Test("New VM… and Start are disabled while 2 virtual machines run, whichever they are; Stop needs a running virtual machine")
+    func twoRunningDisablesStarts() {
+        let stopped = Self.machine()
+        let running = Self.machine(.running)
+        // Before the list is known, none runs that the app knows of.
+        #expect(VirtualMachinePresentation.canCreate(nil))
+        #expect(VirtualMachinePresentation.canStart(stopped, in: nil))
+        for count in 0...1 {
+            let list = VMList(machines: [stopped, running], runningCount: count)
+            #expect(VirtualMachinePresentation.canCreate(list))
+            #expect(VirtualMachinePresentation.canStart(stopped, in: list))
+        }
+        // 2 run: the user's, Claude's, a setup virtual machine or an install, all in `runningCount`.
+        for machines in [[stopped, running, Self.machine(.running, startedBy: .claude(projectID: "DEMO", chatID: Self.chatID))],
+                         [stopped, running], [stopped]] {
+            let list = VMList(machines: machines, runningCount: 2)
+            #expect(!VirtualMachinePresentation.canCreate(list))
+            #expect(!VirtualMachinePresentation.canStart(stopped, in: list))
+        }
+        let free = VMList(machines: [stopped, running], runningCount: 1)
+        #expect(!VirtualMachinePresentation.canStart(running, in: free))
+        #expect(!VirtualMachinePresentation.canStart(nil, in: free))
+        #expect(VirtualMachinePresentation.canStop(running))
+        #expect(!VirtualMachinePresentation.canStop(stopped))
+        #expect(!VirtualMachinePresentation.canStop(nil))
+    }
+
+    @Test("The New VM sheet selects the default image, enables Start with a name and an image, and keeps only refused values")
+    func newVMSheet() {
+        let first = Self.image(.ready)
+        var second = Self.image(.ready)
+        second.id = UUID(uuidString: "0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D")!
+        second.cores = 6
+        #expect(VirtualMachinePresentation.initialImage([first, second], defaultImageID: second.id) == second)
+        // Without a default image, the first Ready image.
+        #expect(VirtualMachinePresentation.initialImage([first, second], defaultImageID: nil) == first)
+        #expect(VirtualMachinePresentation.initialImage([first, second], defaultImageID: UUID()) == first)
+        #expect(VirtualMachinePresentation.initialImage([], defaultImageID: second.id) == nil)
+
+        #expect(VirtualMachinePresentation.canSubmit(name: "Menu checks", imageID: first.id))
+        #expect(!VirtualMachinePresentation.canSubmit(name: "  ", imageID: first.id))
+        #expect(!VirtualMachinePresentation.canSubmit(name: "Menu checks", imageID: nil))
+
+        // A refused value shows in the sheet; any other failure is a failed start, shown under the table.
+        #expect(VirtualMachinePresentation.staysInSheet(EngineError(.invalid, "name: use 1 to 100 characters on one line.")))
+        #expect(!VirtualMachinePresentation.staysInSheet(EngineError(.conflict, "2 virtual machines are already running.")))
+        #expect(!VirtualMachinePresentation.staysInSheet(EngineError(.internal, "The virtual machine could not be created: No space left on device.")))
+        #expect(!VirtualMachinePresentation.staysInSheet(EngineError(.unavailable, "The virtual machine failed to start.")))
+        #expect(!VirtualMachinePresentation.staysInSheet(CocoaError(.fileWriteOutOfSpace)))
+    }
+
+    @Test("vms.changed gives the workspace the virtual machines, also before the tab loaded them")
+    func workspaceMachines() {
+        let workspace = DeviceWorkspace(deviceID: "D1", connection: OfflineConnection(), isLocal: true)
+        #expect(workspace.virtualMachines == nil)
+        #expect(!workspace.hasRunningVirtualMachines)
+        let running = Self.machine(.running)
+        var event = WorkspaceEvent(origin: .system, event: .vmsChanged(VMList(machines: [running], runningCount: 1)))
+        #expect(event.kind == .state)
+        workspace.apply(&event)
+        #expect(workspace.virtualMachines == VMList(machines: [running], runningCount: 1))
+        #expect(workspace.virtualMachine(running.id) == running)
+        #expect(workspace.virtualMachine(UUID()) == nil)
+        #expect(workspace.hasRunningVirtualMachines)
+        // A setup virtual machine alone: no virtual machine of the list runs.
+        var setup = WorkspaceEvent(origin: .system, event: .vmsChanged(VMList(machines: [Self.machine()], runningCount: 1)))
+        workspace.apply(&setup)
+        #expect(!workspace.hasRunningVirtualMachines)
+    }
+
     /// The pixels of a view drawn on a background of the given prominence.
     static func render(_ view: some View, _ prominence: BackgroundProminence) throws -> Data {
         let renderer = ImageRenderer(content: view.environment(\.backgroundProminence, prominence).environment(\.colorScheme, .light))

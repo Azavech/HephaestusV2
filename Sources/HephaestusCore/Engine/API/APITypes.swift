@@ -383,10 +383,12 @@ public enum NavigationTarget: Codable, Sendable, Hashable {
     case skill(name: String)
     case webTab(projectID: ProjectID, tabID: UUID)
     case section(projectID: ProjectID, section: ProjectSection)
+    /// The detail of a virtual machine (docs/virtual-machines.md › Detail).
+    case virtualMachine(vmID: UUID)
 
     /// The values of `kind`.
     public enum Kind: String, Codable, Sendable, Hashable, CaseIterable {
-        case project, ticket, bundle, chat, doc, file, skill, webTab, section
+        case project, ticket, bundle, chat, doc, file, skill, webTab, section, virtualMachine
 
         public init(from decoder: Decoder) throws {
             self = try APIEnumCoding.decode(decoder)
@@ -404,11 +406,12 @@ public enum NavigationTarget: Codable, Sendable, Hashable {
         case .skill: return .skill
         case .webTab: return .webTab
         case .section: return .section
+        case .virtualMachine: return .virtualMachine
         }
     }
 
     private enum CodingKeys: String, CodingKey {
-        case kind, projectID, ticketID, bundleID, chatID, path, fragment, line, name, tabID, section
+        case kind, projectID, ticketID, bundleID, chatID, path, fragment, line, name, tabID, section, vmID
     }
 
     public init(from decoder: Decoder) throws {
@@ -435,6 +438,8 @@ public enum NavigationTarget: Codable, Sendable, Hashable {
         case .section:
             self = .section(projectID: try c.decode(ProjectID.self, forKey: .projectID),
                             section: try c.decode(ProjectSection.self, forKey: .section))
+        case .virtualMachine:
+            self = .virtualMachine(vmID: try c.decode(UUID.self, forKey: .vmID))
         }
     }
 
@@ -466,6 +471,8 @@ public enum NavigationTarget: Codable, Sendable, Hashable {
         case .section(let projectID, let section):
             try c.encode(projectID, forKey: .projectID)
             try c.encode(section, forKey: .section)
+        case .virtualMachine(let vmID):
+            try c.encode(vmID, forKey: .vmID)
         }
     }
 }

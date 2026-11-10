@@ -94,6 +94,20 @@ final class DeviceWorkspace {
     var hasImageWork: Bool {
         vmImages?.contains { $0.state == .downloading || $0.state == .installing } ?? false
     }
+    /// The virtual machines of the device and the number that run, from `vms.list` and
+    /// `vms.changed`; nil before the first of them (docs/ui.md › Virtual Machines).
+    var virtualMachines: VMList?
+
+    /// True while a virtual machine of the device runs: the app is not idle then
+    /// (docs/updater.md › Restart rules).
+    var hasRunningVirtualMachines: Bool {
+        virtualMachines?.machines.contains { $0.state == .running } ?? false
+    }
+
+    /// The virtual machine with this id, when the workspace holds it.
+    func virtualMachine(_ id: UUID) -> VirtualMachine? {
+        virtualMachines?.machines.first { $0.id == id }
+    }
     /// One transcript state per chat shown in a view, by chat id.
     var transcripts: [String: TranscriptState] = [:]
     /// The workflows and agents of every chat of every project, by chat id (docs/chats.md › UI

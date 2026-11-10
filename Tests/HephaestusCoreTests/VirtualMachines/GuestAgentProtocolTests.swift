@@ -171,11 +171,16 @@ struct GuestAgentProtocolTests {
     func execDescriptors() async throws {
         var descriptors: [Int32] = [0, 0]
         try #require(pipe(&descriptors) == 0)
+        // Held at a high number: inside the braces of the command, `/bin/sh` keeps the standard
+        // error it saved for the redirection at 10 or 11, so a pipe that got one of these numbers
+        // would read as open in the child.
+        let held = fcntl(descriptors[1], F_DUPFD, 100)
         defer {
             close(descriptors[0])
             close(descriptors[1])
+            close(held)
         }
-        let held = descriptors[1]
+        try #require(held >= 100)
         try await Self.withAgent { connection in
             let command = "if { : >&\(held); } 2> /dev/null; then echo open; else echo closed; fi"
             let answer = try await connection.request("exec", params: ["command": .string(command)])

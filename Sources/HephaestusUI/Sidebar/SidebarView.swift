@@ -149,8 +149,8 @@ struct SidebarSubProject: Equatable, Identifiable {
 
 extension WindowState {
     /// A click on a row of the sidebar's Sub Projects category: shows the project's Dashboard
-    /// without activating it, leaving the Global Memories view and the Internal Skills view; the
-    /// window keeps its section (docs/ui.md › Sidebar).
+    /// without activating it, leaving the Global Memories view, the Internal Skills view and the
+    /// detail of a virtual machine; the window keeps its section (docs/ui.md › Sidebar).
     func showSubProject(_ projectID: String) {
         showsGlobalMemories = false
         showsInternalSkills = false

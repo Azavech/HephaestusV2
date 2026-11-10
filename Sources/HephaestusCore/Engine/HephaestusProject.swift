@@ -149,7 +149,7 @@ extension Engine {
                 return Identifiers.projectID(of: bundleID)
             case .chat(let chatID):
                 return ofChat(chatID)
-            case .skill:
+            case .skill, .virtualMachine:
                 return nil
             }
         default:
