@@ -132,6 +132,97 @@ struct BackgroundWorkTests {
         #expect(Self.logged(all) == ["ignored system/status", "ignored system/status", "ignored system/status"])
     }
 
+    @Test("stream-background-agent-resume.jsonl gives the items and task lines of docs/chats.md › Fixture replays")
+    func agentResumeCapture() throws {
+        var mapper = try StreamMapperTests.mapper(settings: Self.captureSettings)
+        let replay = try StreamMapperTests.replay("stream-background-agent-resume.jsonl", mapper: &mapper)
+        #expect(replay.count == 136)
+        let call = "toolu_013euCwMnHxrLEYpFobd52Xg"
+        let sendMessage = "toolu_01S1MZyZU9U94VR3mYeKyazn"
+        let taskID = "a4f36739c9911397a"
+        let items = StreamMapperTests.items(replay.flatMap(\.outputs))
+        #expect(items.map(\.id) == ["ID", "ID", "msg_011CgurshKoCxsfWiE3GtZN9#0", "\(call)#result", "50a0af26-5cce-4260-b599-3c0023f0974e#0",
+                                    "msg_011CgursnijgEDJGFUg2LP9M#0", "ID", "msg_011CgursqD4QG9PjSPMxXP9L#0", "ID",
+                                    "msg_011CgurtfaPj1Bnjj357j99J#1", "toolu_01GsoM9M5rZaUzzSyXm7CtWg#result", "msg_011Cgurtk2HV1DBntTB2R5SZ#0",
+                                    "\(sendMessage)#result", "msg_011CgurtozAuXQFHGYU8qRRf#0", "ID", "msg_011Cgurtp1Q6WPPxoQaoxcPv#0",
+                                    "msg_011CgurttW2HcpYuM46ueYAT#0", "ID"])
+        #expect(Array(items.prefix(2)) == Self.sessionItems())
+        #expect(items[2] == .toolUse(ToolUseItem(
+            id: "msg_011CgurshKoCxsfWiE3GtZN9#0", created: Self.date, toolUseID: call, name: "Agent", server: nil,
+            input: ["description": "Probe agent", "subagent_type": "general-purpose", "model": "sonnet", "run_in_background": true,
+                    "prompt": "Reply with the single word ok."],
+            parentToolUseID: nil)))
+        #expect(items[4] == .assistant(AssistantItem(id: "50a0af26-5cce-4260-b599-3c0023f0974e#0", created: Self.date,
+                                                     text: "API Error: 400 Probe failure: the sub-agent request was refused.",
+                                                     messageID: "50a0af26-5cce-4260-b599-3c0023f0974e", parentToolUseID: call,
+                                                     model: "<synthetic>", effort: .low)))
+        guard case .toolUse(let resume) = items[11], case .toolResult(let resumed) = items[12] else {
+            Issue.record("items 12 and 13 are not the SendMessage call and its result")
+            return
+        }
+        #expect(resume.toolUseID == sendMessage)
+        #expect(resume.name == "SendMessage")
+        #expect(resume.input.objectValue?["to"] == .string(taskID))
+        #expect(resumed.text.hasPrefix(#"{"success":true,"message":"Resuming agent a4f3673","resumedAgentId":"a4f36739c9911397a""#))
+        #expect(items[15] == .assistant(AssistantItem(id: "msg_011Cgurtp1Q6WPPxoQaoxcPv#0", created: Self.date, text: "ok",
+                                                      messageID: "msg_011Cgurtp1Q6WPPxoQaoxcPv", parentToolUseID: call,
+                                                      model: "claude-sonnet-5-5", effort: .low)))
+        #expect(replay[37].outputs == [.planUsage(PlanUsage(utilization: 0.15, resetsAt: ISODate.date(from: "2026-11-15T20:00:00Z")!,
+                                                            status: "allowed", overageStatus: "rejected",
+                                                            overageDisabledReason: "org_level_disabled_until", isUsingOverage: false,
+                                                            received: Self.date))])
+        #expect(replay[33].outputs == [.taskStarted(TaskStart(taskID: taskID, taskType: "local_agent", toolUseID: call,
+                                                              description: "Probe agent"))])
+        #expect(replay[41].outputs == [.taskNotification(taskID: taskID, toolUseID: call, status: "failed")])
+        #expect(replay[111].outputs == [.taskStarted(TaskStart(taskID: taskID, taskType: "local_agent", toolUseID: sendMessage,
+                                                               description: "Probe agent"))])
+        #expect(replay[124].outputs == [.taskNotification(taskID: taskID, toolUseID: sendMessage, status: "completed")])
+        #expect(replay[126].outputs == [.cliTurnOpened])
+    }
+
+    /// Replays `stream-background-agent-resume.jsonl` through the engine: lines 1–61 for the chat's
+    /// first message, then the second message with `chats.send` and lines 62–136. `checkpoint` runs
+    /// after the given line counts.
+    static func replayResumeThroughEngine(_ bed: ChatTestBed, _ launcher: FakeClaudeLauncher,
+                                          checkpoint: (Int) async throws -> Void = { _ in }) async throws -> ChatMeta {
+        let lines = JSONLines.lines(of: try FakeClaudeLauncher.fixture("stream-background-agent-resume.jsonl"))
+            .map { String(decoding: $0, as: UTF8.self) }
+        let first = "Start the agent."
+        let second = "Resume the agent."
+        let chat = try await bed.createChat(settings: captureSettings, message: first)
+        let process = try #require(await launcher.chatProcess())
+        _ = try #require(await ChatTurnTests.userLine(process, first))
+        var emitted = 0
+        func emit(to end: Int) async throws {
+            for line in lines[emitted..<end] { process.emit(line) }
+            emitted = end
+            try await checkpoint(end)
+        }
+        for end in [34, 42, 61] { try await emit(to: end) }
+        #expect(try await ChatTurnTests.waitForResults(bed, chat.id, 2))
+        #expect(await bed.waitForState(chat.id, .idle))
+        try await bed.send(chat.id, second)
+        _ = try #require(await ChatTurnTests.userLine(process, second))
+        for end in [111, 112, 122, 125, 136] { try await emit(to: end) }
+        #expect(try await ChatTurnTests.waitForResults(bed, chat.id, 4))
+        #expect(await bed.waitForState(chat.id, .idle))
+        return chat
+    }
+
+    @Test("stream-background-agent-resume.jsonl through the engine: the resumed agent is background work until its notification turn")
+    func agentResumeThroughEngine() async throws {
+        let launcher = FakeClaudeLauncher()
+        launcher.chatScript = FakeClaudeLauncher.silentChat()
+        try await withChatEngine(launcher: launcher) { bed in
+            let chat = try await Self.replayResumeThroughEngine(bed, launcher)
+            // Lines 1, 33, 43, 51, 52, 61, the second message, 111, 122, 127 and 136.
+            let expected = [Pair(.running, false), Pair(.running, true), Pair(.running, false), Pair(.idle, false), Pair(.running, false),
+                            Pair(.idle, false), Pair(.running, false), Pair(.running, true), Pair(.idle, true), Pair(.running, false),
+                            Pair(.idle, false)]
+            #expect(await eventually { await Self.reported(bed, chat.id) == expected })
+        }
+    }
+
     @Test("Background lines without their field are ignored; task entries without a task_id string are skipped")
     func malformedLines() throws {
         var mapper = try StreamMapperTests.mapper(settings: Self.captureSettings)

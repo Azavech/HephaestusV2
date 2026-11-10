@@ -60,7 +60,7 @@ struct ChatAgentTracker: Sendable {
     private var workflowCalls: Set<String> = []
     /// The results of `Workflow` calls read before the `task_started` line of their task.
     private var pendingResults: [String: WorkflowResult] = [:]
-    /// The sub-agent calls whose input has `run_in_background` true.
+    /// The sub-agent calls whose input has `run_in_background` true, and the resumed sub-agents.
     private var backgroundCalls: Set<String> = []
     /// For each tool call that sub-agent transcripts hold, those sub-agents, innermost first.
     private var callOwners: [String: [String]] = [:]
@@ -100,9 +100,14 @@ struct ChatAgentTracker: Sendable {
     // MARK: Task lines
 
     /// `system/task_started`: a `local_workflow` task with a new id creates a workflow; the result
-    /// of its call read before is applied.
+    /// of its call read before is applied. A `local_agent` task gives a sub-agent its task id, or
+    /// resumes the ended sub-agent with that task id.
     mutating func taskStarted(_ start: TaskStart, now: Date) -> ItemEffects {
         var effects = ItemEffects()
+        if start.taskType == "local_agent" {
+            effects.changes = agentTaskStarted(start)
+            return effects
+        }
         guard start.taskType == "local_workflow", workflow(start.taskID) == nil else { return effects }
         var workflow = ChatWorkflow(id: start.taskID, toolUseID: start.toolUseID, name: Self.text(start.workflowName),
                                     summary: Self.text(start.description) ?? Self.defaultWorkflowTitle, started: now)
@@ -113,6 +118,24 @@ struct ChatAgentTracker: Sendable {
         workflows.append(workflow)
         effects.changes.record(workflow)
         return effects
+    }
+
+    /// docs/chats.md › Agent states: a resumed sub-agent runs again, in the background, its `ended`
+    /// cleared.
+    private mutating func agentTaskStarted(_ start: TaskStart) -> Changes {
+        var changes = Changes()
+        if let index = agents.firstIndex(where: { $0.kind == .subagent && $0.taskID == start.taskID }) {
+            guard agents[index].state != .running else { return changes }
+            agents[index].state = .running
+            agents[index].ended = nil
+            backgroundCalls.insert(agents[index].id)
+            changes.record(agents[index])
+        } else if let toolUseID = start.toolUseID,
+                  let index = agents.firstIndex(where: { $0.id == toolUseID && $0.kind == .subagent }), agents[index].taskID == nil {
+            agents[index].taskID = start.taskID
+            changes.record(agents[index])
+        }
+        return changes
     }
 
     /// `system/task_progress` of a workflow: its summary, and its agents with an `agentId`.
@@ -148,7 +171,7 @@ struct ChatAgentTracker: Sendable {
     }
 
     /// `system/task_notification`: the end of a workflow, or of the sub-agent of the call
-    /// `toolUseID`; returns the workflow when it ended.
+    /// `toolUseID` or of the task `taskID`; returns the workflow when it ended.
     mutating func taskNotification(_ taskID: String, toolUseID: String?, status: String?, now: Date)
         -> (Changes, endedWorkflow: String?) {
         let state: ChatAgentState? = switch status {
@@ -159,7 +182,10 @@ struct ChatAgentTracker: Sendable {
         }
         if workflow(taskID) != nil { return endWorkflow(taskID, state: state, now: now) }
         var changes = Changes()
-        if let toolUseID, let state, let agent = agent(toolUseID), agent.kind == .subagent {
+        guard let state else { return (changes, nil) }
+        if let toolUseID, let agent = agent(toolUseID), agent.kind == .subagent {
+            changes.formUnion(end(agentID: agent.id, state: state, now: now))
+        } else if let agent = agents.first(where: { $0.kind == .subagent && $0.taskID == taskID }) {
             changes.formUnion(end(agentID: agent.id, state: state, now: now))
         }
         return (changes, nil)

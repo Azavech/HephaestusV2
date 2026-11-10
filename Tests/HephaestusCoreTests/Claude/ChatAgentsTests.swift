@@ -3,8 +3,8 @@ import Testing
 @testable import HephaestusCore
 
 /// docs/chats.md › Agents and › Fixture replays: the workflows and agents of a chat, from the
-/// captures `stream-workflow.jsonl`, `stream-workflow-stop.jsonl` and `stream-background-agent.jsonl`
-/// and the workflow folder `stream-workflow-folder/`.
+/// captures `stream-workflow.jsonl`, `stream-workflow-stop.jsonl`, `stream-background-agent.jsonl`
+/// and `stream-background-agent-resume.jsonl`, and the workflow folder `stream-workflow-folder/`.
 @Suite("Chat agents")
 struct ChatAgentsTests {
     static let captureSettings = ChatSettings(model: "haiku", effort: .low, permissionMode: .bypassPermissions, ultracode: true)
@@ -215,6 +215,72 @@ struct ChatAgentsTests {
         #expect(Set(exit.agents.map(\.id)) == ["fourth"])
         #expect(exit.workflows.map(\.state) == [.stopped])
         #expect(tracker.agent("a1")?.state == .running)
+    }
+
+    static func agentStart(_ taskID: String, call: String?) -> TaskStart {
+        TaskStart(taskID: taskID, taskType: "local_agent", toolUseID: call, description: "Find the code")
+    }
+
+    @Test("Resumed sub-agents: the task id, running again from every ended state, several times; workflow agents stay ended")
+    func resumedSubAgents() {
+        var tracker = ChatAgentTracker()
+        _ = tracker.itemAdded(Self.agentCall("call", background: true))
+        let named = tracker.taskStarted(Self.agentStart("t1", call: "call"), now: Self.date).changes
+        #expect(named.agents.map(\.taskID) == ["t1"])
+        #expect(named.agents.map(\.state) == [.running])
+        // A task_started of a sub-agent that runs changes nothing.
+        #expect(tracker.taskStarted(Self.agentStart("t1", call: "send0"), now: Self.date).changes.isEmpty)
+        #expect(tracker.taskNotification("t1", toolUseID: "call", status: "failed", now: Self.date).0.agents.map(\.state) == [.failed])
+        // Each resume, from failed, completed or stopped, makes it running; its end comes with the
+        // SendMessage call as tool_use_id.
+        let later = Self.date.addingTimeInterval(60)
+        for (index, status) in ["completed", "stopped", "failed"].enumerated() {
+            let send = "send\(index + 1)"
+            let resumed = tracker.taskStarted(Self.agentStart("t1", call: send), now: later).changes
+            #expect(resumed.agents.map(\.state) == [.running])
+            #expect(resumed.agents.first?.ended == nil)
+            #expect(resumed.agents.first?.started == Self.date)
+            #expect(tracker.agent("call")?.taskID == "t1")
+            let ended = tracker.taskNotification("t1", toolUseID: send, status: status, now: later).0
+            #expect(ended.agents.map(\.state) == [ChatAgentState(rawValue: status)])
+            #expect(ended.agents.first?.ended == later)
+        }
+        // A resumed sub-agent runs in the background: the end of a turn does not stop it.
+        _ = tracker.itemAdded(Self.agentCall("fore"))
+        _ = tracker.taskStarted(Self.agentStart("t2", call: "fore"), now: Self.date)
+        _ = tracker.itemAdded(.toolResult(ToolResultItem(id: "fore#result", created: Self.date, toolUseID: "fore", text: "done")))
+        #expect(tracker.agent("fore")?.state == .completed)
+        _ = tracker.taskStarted(Self.agentStart("t2", call: "send4"), now: Self.date)
+        #expect(tracker.turnEnded(now: Self.date).isEmpty)
+        #expect(tracker.agent("fore")?.state == .running)
+        // A sub-agent without task id and an unknown task change nothing.
+        _ = tracker.itemAdded(Self.agentCall("legacy"))
+        _ = tracker.turnEnded(now: Self.date)
+        #expect(tracker.agent("legacy")?.state == .stopped)
+        #expect(tracker.taskStarted(Self.agentStart("t9", call: "send5"), now: Self.date).changes.isEmpty)
+        #expect(tracker.taskNotification("t9", toolUseID: "send5", status: "completed", now: Self.date).0.isEmpty)
+        // An ended workflow agent stays ended, also when a local_agent task names its id.
+        _ = tracker.taskStarted(Self.workflowStart(), now: Self.date)
+        _ = tracker.taskProgress(TaskProgress(taskID: "w1", agents: [WorkflowAgentProgress(agentID: "a1", state: "error")]), now: Self.date)
+        #expect(tracker.taskStarted(Self.agentStart("a1", call: "a1"), now: Self.date).changes.isEmpty)
+        #expect(tracker.taskProgress(TaskProgress(taskID: "w1", agents: [WorkflowAgentProgress(agentID: "a1", state: "start")]),
+                                     now: Self.date).isEmpty)
+        #expect(tracker.agent("a1")?.state == .failed)
+        #expect(tracker.agent("a1")?.taskID == nil)
+    }
+
+    @Test("A sub-agent read from the agents file, stopped there, runs again when it is resumed")
+    func resumeAfterRelaunch() throws {
+        let agent = ChatAgent(id: "call", kind: .subagent, title: "Find the code", taskID: "t1", started: Self.date)
+        let line = try StorageJSON.lineEncoder().encode(ChatAgentsLine(agent: agent))
+        var tracker = ChatAgentTracker(loaded: ChatAgentsReplay.replay(line + Data([0x0A])))
+        #expect(tracker.agent("call")?.state == .stopped)
+        #expect(tracker.taskStarted(Self.agentStart("t1", call: "send"), now: Self.date).changes.agents.map(\.state) == [.running])
+        // Its new work is in its transcript; the result of the turn does not stop it.
+        let work = tracker.itemAdded(.assistant(AssistantItem(id: "m#0", created: Self.date, text: "ok", messageID: "m", parentToolUseID: "call")))
+        #expect(work.agentItems.map(\.agentID) == ["call"])
+        #expect(tracker.turnEnded(now: Self.date).isEmpty)
+        #expect(tracker.taskNotification("t1", toolUseID: "send", status: "completed", now: Self.date).0.agents.map(\.state) == [.completed])
     }
 
     @Test("A sub-agent's transcript: its prompt, then the items it holds, nested calls included")
@@ -452,6 +518,54 @@ struct ChatAgentsTests {
             await #expect(throws: EngineError(.notFound, "Agent nope not found.")) {
                 try await bed.connection.call(ChatsAgentTranscript.self, .init(chatID: chat.id, agentID: "nope"))
             }
+        }
+    }
+
+    @Test("stream-background-agent-resume.jsonl through the engine: running, failed, running again on the resume, completed")
+    func resumeThroughEngine() async throws {
+        let launcher = FakeClaudeLauncher()
+        launcher.chatScript = FakeClaudeLauncher.silentChat()
+        try await withChatEngine(launcher: launcher) { bed in
+            let call = "toolu_013euCwMnHxrLEYpFobd52Xg"
+            let taskID = "a4f36739c9911397a"
+            let agent: @Sendable () async -> ChatAgent? = { (try? await Self.listAgents(bed))?.first?.agents.first }
+            let chat = try await BackgroundWorkTests.replayResumeThroughEngine(bed, launcher) { line in
+                switch line {
+                case 34, 111:
+                    let state: ChatAgentState = line == 34 ? .running : .failed
+                    #expect(await eventually {
+                        let current = await agent()
+                        return current?.taskID == taskID && current?.state == state
+                    })
+                case 42, 61:
+                    #expect(await eventually { await agent()?.state == .failed })
+                    #expect(await agent()?.ended != nil)
+                case 112, 122:
+                    #expect(await eventually { await agent()?.state == .running })
+                    #expect(await agent()?.ended == nil)
+                default:
+                    #expect(await eventually { await agent()?.state == .completed })
+                    #expect(await agent()?.ended != nil)
+                }
+            }
+            let entry = try #require(try await Self.listAgents(bed).first)
+            #expect(entry.agents.map(\.id) == [call])
+            #expect(entry.agents.first?.taskID == taskID)
+            #expect(entry.agents.first?.title == "Probe agent")
+            // Every change is in the agents file and was emitted as chat.agents.
+            let data = try Data(contentsOf: bed.folder.chatAgentsFile(chat.id))
+            let records = try JSONLines.lines(of: data).map { try StorageJSON.decoder().decode(ChatAgentsLine.self, from: $0).agent }
+            #expect(records.map { $0?.state } == [.running, .running, .failed, .running, .completed])
+            #expect(records.map { $0?.taskID } == [nil, taskID, taskID, taskID, taskID])
+            #expect(records.map { $0?.ended == nil } == [true, true, false, true, false])
+            let events = await bed.events.named("chat.agents").compactMap { try? $0.payload(ChatAgentsEvent.self) }
+            #expect(events.compactMap { $0.agents.first?.state } == [.running, .running, .failed, .running, .completed])
+            #expect(events.last == entry)
+            // The resumed work is in the sub-agent's transcript.
+            let transcript = try await bed.connection.call(ChatsAgentTranscript.self, .init(chatID: chat.id, agentID: call))
+            #expect(transcript.map(\.id) == ["\(call)#prompt", "50a0af26-5cce-4260-b599-3c0023f0974e#0", "msg_011Cgurtp1Q6WPPxoQaoxcPv#0"])
+            let items = await bed.events.named("chat.agentItem").compactMap { try? $0.payload(ChatAgentItemEvent.self) }
+            #expect(items.map(\.item.id) == transcript.map(\.id))
         }
     }
 

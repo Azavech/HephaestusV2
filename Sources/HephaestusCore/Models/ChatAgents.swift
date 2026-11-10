@@ -76,17 +76,20 @@ public struct ChatAgent: Codable, Sendable, Hashable, Identifiable {
     public var title: String
     /// The phase of a workflow agent.
     public var phase: String?
+    /// The CLI's task id of a sub-agent's agent, which names it when it is resumed.
+    public var taskID: String?
     public var state: ChatAgentState
     public var started: Date
     public var ended: Date?
 
     public init(id: String, kind: ChatAgentKind, workflowID: String? = nil, title: String, phase: String? = nil,
-                state: ChatAgentState = .running, started: Date, ended: Date? = nil) {
+                taskID: String? = nil, state: ChatAgentState = .running, started: Date, ended: Date? = nil) {
         self.id = id
         self.kind = kind
         self.workflowID = workflowID
         self.title = title
         self.phase = phase
+        self.taskID = taskID
         self.state = state
         self.started = started
         self.ended = ended
@@ -107,6 +110,7 @@ public struct ChatAgent: Codable, Sendable, Hashable, Identifiable {
         workflowID = try c.optional("workflowID")
         title = try c.required("title")
         phase = try c.optional("phase")
+        taskID = try c.optional("taskID")
         state = try c.required("state")
         started = try c.requiredDate("started")
         ended = try c.optionalDate("ended")
@@ -126,6 +130,7 @@ public struct ChatAgent: Codable, Sendable, Hashable, Identifiable {
         try c.encodeOptional(workflowID, "workflowID")
         try c.encode(title, "title")
         try c.encodeOptional(phase, "phase")
+        try c.encodeOptional(taskID, "taskID")
         try c.encode(state, "state")
         try c.encodeDate(started, "started")
         try c.encodeOptionalDate(ended, "ended")

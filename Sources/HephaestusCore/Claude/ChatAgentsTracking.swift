@@ -96,9 +96,9 @@ extension Engine {
         }
     }
 
-    /// `system/task_started`: a workflow starts.
+    /// `system/task_started`: a workflow starts, a sub-agent gets its task id or is resumed.
     func agentTaskStarted(_ start: TaskStart, chatID: ChatID) {
-        guard start.taskType == "local_workflow" else { return }
+        guard start.taskType == "local_workflow" || start.taskType == "local_agent" else { return }
         let effects = updateAgents(chatID, { $0.taskStarted(start, now: ISODate.now()) }, changes: \.changes)
         if let follow = effects.follow {
             followWorkflowFolder(chatID, workflowID: follow.workflowID, path: follow.folder)

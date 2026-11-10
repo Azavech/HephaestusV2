@@ -1481,9 +1481,10 @@ A workflow agent or an Agent tool sub-agent of the chat ([Workflows and agents](
 | workflowID | `workflowID` | `String?`        | no       | `null`  | The `id` of its workflow: required for kind `workflow`, `null` for kind `subagent`.                                                                                                                                                |
 | title      | `title`      | `String`         | yes      | —       | The title of its row. Single line.                                                                                                                                                                                                 |
 | phase      | `phase`      | `String?`        | no       | `null`  | The phase of a workflow agent in its workflow; `null` for a sub-agent.                                                                                                                                                             |
-| state      | `state`      | `ChatAgentState` | yes      | —       | As for [ChatWorkflow](#chatworkflow).                                                                                                                                                                                              |
+| taskID     | `taskID`     | `String?`        | no       | `null`  | For kind `subagent`, the CLI's task id of its agent, from the `system/task_started` line whose `tool_use_id` is its call; `null` before that line and for kind `workflow` ([Agent states](chats.md#agent-states)).                 |
+| state      | `state`      | `ChatAgentState` | yes      | —       | As for [ChatWorkflow](#chatworkflow). A sub-agent that has ended becomes `running` again when its chat's Claude resumes it ([Agent states](chats.md#agent-states)).                                                                |
 | started    | `started`    | `Date`           | yes      | —       | When the engine created the record.                                                                                                                                                                                                |
-| ended      | `ended`      | `Date?`          | no       | `null`  | When the state left `running`; `null` while it runs.                                                                                                                                                                               |
+| ended      | `ended`      | `Date?`          | no       | `null`  | When the state last left `running`; `null` while it runs, again while a resumed sub-agent runs.                                                                                                                                    |
 
 `ChatAgentState` has the cases `running`, `completed`, `failed` and `stopped`; `ChatAgentKind` the cases `workflow` and `subagent`.
 
@@ -1494,13 +1495,13 @@ The workflow of the capture `stream-workflow.jsonl` ([Fixture replays](chats.md#
 ```jsonl .hephaestus/chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301/agents.jsonl
 {"workflow":{"id":"wflx39ys6","toolUseID":"toolu_018UGwAHQxAU5JGeaDmkUda7","runID":null,"name":"probe","summary":"Two probe agents","state":"running","started":"2026-11-03T23:17:35Z","ended":null}}
 {"workflow":{"id":"wflx39ys6","toolUseID":"toolu_018UGwAHQxAU5JGeaDmkUda7","runID":"wf_0afd7514-9e5","name":"probe","summary":"Two probe agents","state":"running","started":"2026-11-03T23:17:35Z","ended":null}}
-{"agent":{"id":"abd107d9822b6600d","kind":"workflow","workflowID":"wflx39ys6","title":"probe-a","phase":"Probe","state":"running","started":"2026-11-03T23:17:35Z","ended":null}}
-{"agent":{"id":"afa76c5ae2246d66b","kind":"workflow","workflowID":"wflx39ys6","title":"probe-b","phase":"Probe","state":"running","started":"2026-11-03T23:17:37Z","ended":null}}
-{"agent":{"id":"abd107d9822b6600d","kind":"workflow","workflowID":"wflx39ys6","title":"probe-a","phase":"Probe","state":"completed","started":"2026-11-03T23:17:35Z","ended":"2026-11-03T23:17:50Z"}}
-{"agent":{"id":"afa76c5ae2246d66b","kind":"workflow","workflowID":"wflx39ys6","title":"probe-b","phase":"Probe","state":"completed","started":"2026-11-03T23:17:37Z","ended":"2026-11-03T23:17:51Z"}}
+{"agent":{"id":"abd107d9822b6600d","kind":"workflow","workflowID":"wflx39ys6","title":"probe-a","phase":"Probe","taskID":null,"state":"running","started":"2026-11-03T23:17:35Z","ended":null}}
+{"agent":{"id":"afa76c5ae2246d66b","kind":"workflow","workflowID":"wflx39ys6","title":"probe-b","phase":"Probe","taskID":null,"state":"running","started":"2026-11-03T23:17:37Z","ended":null}}
+{"agent":{"id":"abd107d9822b6600d","kind":"workflow","workflowID":"wflx39ys6","title":"probe-a","phase":"Probe","taskID":null,"state":"completed","started":"2026-11-03T23:17:35Z","ended":"2026-11-03T23:17:50Z"}}
+{"agent":{"id":"afa76c5ae2246d66b","kind":"workflow","workflowID":"wflx39ys6","title":"probe-b","phase":"Probe","taskID":null,"state":"completed","started":"2026-11-03T23:17:37Z","ended":"2026-11-03T23:17:51Z"}}
 {"workflow":{"id":"wflx39ys6","toolUseID":"toolu_018UGwAHQxAU5JGeaDmkUda7","runID":"wf_0afd7514-9e5","name":"probe","summary":"Two probe agents","state":"completed","started":"2026-11-03T23:17:35Z","ended":"2026-11-03T23:17:51Z"}}
-{"agent":{"id":"toolu_01Tk3Ls5Mt7Nu9Ov1Pw3Qx5R","kind":"subagent","workflowID":null,"title":"Find the status bar code","phase":null,"state":"running","started":"2026-11-03T23:20:15Z","ended":null}}
-{"agent":{"id":"toolu_01Tk3Ls5Mt7Nu9Ov1Pw3Qx5R","kind":"subagent","workflowID":null,"title":"Find the status bar code","phase":null,"state":"completed","started":"2026-11-03T23:20:15Z","ended":"2026-11-03T23:20:25Z"}}
+{"agent":{"id":"toolu_01Tk3Ls5Mt7Nu9Ov1Pw3Qx5R","kind":"subagent","workflowID":null,"title":"Find the status bar code","phase":null,"taskID":null,"state":"running","started":"2026-11-03T23:20:15Z","ended":null}}
+{"agent":{"id":"toolu_01Tk3Ls5Mt7Nu9Ov1Pw3Qx5R","kind":"subagent","workflowID":null,"title":"Find the status bar code","phase":null,"taskID":null,"state":"completed","started":"2026-11-03T23:20:15Z","ended":"2026-11-03T23:20:25Z"}}
 ```
 
 ## Agent transcript file
