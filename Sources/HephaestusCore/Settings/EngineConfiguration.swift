@@ -35,13 +35,19 @@ public struct EngineConfiguration: Sendable {
     /// The Downloads folder where `builds.downloadAsset` saves release assets
     /// (docs/builds.md › Downloads).
     public var downloadsFolder: URL
+    /// Reaches ipsw.me, Apple's download server and the Virtualization framework for the images
+    /// of virtual machines (docs/virtual-machines.md › Swift shape).
+    public var imageProvisioner: any VMImageProvisioning
+    /// The guest agent and the install script of the app bundle; nil when the bundle has none.
+    public var guestTools: GuestTools?
 
     public init(dataDirectory: URL, mcpPort: Int?, syncPort: Int?, syncInterface: SyncInterface, advertisesBonjour: Bool,
                 debugTools: Bool, claudePath: String?, claudeLauncher: any ClaudeProcessLauncher, appVersion: String, build: Int,
                 hephaestusProject: HephaestusProjectConfiguration? = nil,
                 memoryFolders: any MemoryFolderResolving = ClaudeMemoryFolderResolver(homeDirectory: NSHomeDirectory()),
                 githubCLI: any GitHubCLIRunning = MissingGitHubCLI(),
-                downloadsFolder: URL = EngineConfiguration.userDownloadsFolder(homeDirectory: NSHomeDirectory())) {
+                downloadsFolder: URL = EngineConfiguration.userDownloadsFolder(homeDirectory: NSHomeDirectory()),
+                imageProvisioner: any VMImageProvisioning = UnavailableVMImageProvisioner(), guestTools: GuestTools? = nil) {
         self.dataDirectory = dataDirectory
         self.mcpPort = mcpPort
         self.syncPort = syncPort
@@ -56,6 +62,8 @@ public struct EngineConfiguration: Sendable {
         self.memoryFolders = memoryFolders
         self.githubCLI = githubCLI
         self.downloadsFolder = downloadsFolder
+        self.imageProvisioner = imageProvisioner
+        self.guestTools = guestTools
     }
 
     /// The Downloads folder of the user, `<home>/Downloads` when the system names none.
@@ -66,10 +74,12 @@ public struct EngineConfiguration: Sendable {
 
     /// The app's configuration: the values of the launch environment, all interfaces, Bonjour
     /// advertising, the real Claude CLI, the bundle's version and the HephaestusV2 project cloned
-    /// from its repository.
+    /// from its repository, the system provisioner of virtual machine images and the guest agent
+    /// and install script of the bundle at `bundleURL`.
     public static func app(environment: LaunchEnvironment, appVersion: String, build: Int,
                            claudeLauncher: any ClaudeProcessLauncher = SystemClaudeProcessLauncher(),
-                           homeDirectory: String = NSHomeDirectory()) -> EngineConfiguration {
+                           homeDirectory: String = NSHomeDirectory(),
+                           bundleURL: URL = Bundle.main.bundleURL) -> EngineConfiguration {
         EngineConfiguration(
             dataDirectory: environment.dataDirectory ?? DataDirectory.defaultURL(homeDirectory: homeDirectory),
             mcpPort: environment.mcpPort,
@@ -84,7 +94,9 @@ public struct EngineConfiguration: Sendable {
             hephaestusProject: HephaestusProjectConfiguration(cloneURL: HephaestusRepository.url),
             memoryFolders: ClaudeMemoryFolderResolver(homeDirectory: homeDirectory),
             githubCLI: SystemGitHubCLI(),
-            downloadsFolder: userDownloadsFolder(homeDirectory: homeDirectory)
+            downloadsFolder: userDownloadsFolder(homeDirectory: homeDirectory),
+            imageProvisioner: SystemVMImageProvisioner(),
+            guestTools: GuestTools.bundled(in: bundleURL)
         )
     }
 
@@ -95,10 +107,15 @@ public struct EngineConfiguration: Sendable {
     /// unless the test gives a resolver: no test reads or writes `~/.claude`. Without a GitHub CLI
     /// of the test, gh is never found, and assets are saved in the folder `Downloads` next to the
     /// data directory: no test runs the user's gh or writes into the user's Downloads folder.
+    /// Without a provisioner of the test, every operation on the images of virtual machines fails,
+    /// and without guest tools of the test no setup starts: no test reaches ipsw.me or Apple, or
+    /// starts a virtual machine.
     public static func test(dataDirectory: URL, debugTools: Bool = false, claudeLauncher: any ClaudeProcessLauncher,
                             hephaestusProject: HephaestusProjectConfiguration? = nil,
                             memoryFolders: (any MemoryFolderResolving)? = nil,
-                            githubCLI: (any GitHubCLIRunning)? = nil) -> EngineConfiguration {
+                            githubCLI: (any GitHubCLIRunning)? = nil,
+                            imageProvisioner: (any VMImageProvisioning)? = nil,
+                            guestTools: GuestTools? = nil) -> EngineConfiguration {
         let testFolder = dataDirectory.deletingLastPathComponent()
         return EngineConfiguration(
             dataDirectory: dataDirectory,
@@ -117,7 +134,9 @@ public struct EngineConfiguration: Sendable {
                 configDirectory: testFolder.appendingPathComponent("Claude", isDirectory: true).path,
                 managedSettingsPath: nil),
             githubCLI: githubCLI ?? MissingGitHubCLI(),
-            downloadsFolder: testFolder.appendingPathComponent("Downloads", isDirectory: true)
+            downloadsFolder: testFolder.appendingPathComponent("Downloads", isDirectory: true),
+            imageProvisioner: imageProvisioner ?? UnavailableVMImageProvisioner(),
+            guestTools: guestTools
         )
     }
 

@@ -211,6 +211,12 @@ public enum MemoriesChangedEvent: EngineEvent {
     public typealias Payload = MemoryFolder
 }
 
+/// `vmImages.changed`: the complete `vmImages.list` result (docs/virtual-machines.md › Image states).
+public enum VMImagesChangedEvent: EngineEvent {
+    public static let name = "vmImages.changed"
+    public typealias Payload = [VMImage]
+}
+
 /// `settings.updated`: host settings changed.
 public enum SettingsUpdatedEvent: EngineEvent {
     public static let name = "settings.updated"
@@ -307,7 +313,7 @@ public enum EngineEvents {
         TicketUpdatedEvent.self, TicketDeletedEvent.self, BundleUpdatedEvent.self, BundleDeletedEvent.self,
         ChatUpdatedEvent.self, ChatDeletedEvent.self, ChatItemEvent.self, ChatDeltaEvent.self,
         ChatAgentsEvent.self, ChatAgentItemEvent.self, FilesChangedEvent.self, WebTabsUpdatedEvent.self, SkillsChangedEvent.self,
-        MemoriesChangedEvent.self,
+        MemoriesChangedEvent.self, VMImagesChangedEvent.self,
         SettingsUpdatedEvent.self, ClaudeUpdatedEvent.self, PlanUsageUpdatedEvent.self, UIOpenEvent.self,
         ChatNotificationEvent.self,
     ]
@@ -334,6 +340,7 @@ public enum DecodedEngineEvent: Sendable, Hashable {
     case webTabsUpdated(WebTabsUpdatedEvent.Payload)
     case skillsChanged([SkillSummary])
     case memoriesChanged(MemoryFolder)
+    case vmImagesChanged([VMImage])
     case settingsUpdated(HostSettings)
     case claudeUpdated(ClaudeUpdatedEvent.Payload)
     case planUsageUpdated(PlanUsage)
@@ -364,6 +371,7 @@ extension EngineEventEnvelope {
         case WebTabsUpdatedEvent.name: return .webTabsUpdated(try payload(WebTabsUpdatedEvent.self))
         case SkillsChangedEvent.name: return .skillsChanged(try payload(SkillsChangedEvent.self))
         case MemoriesChangedEvent.name: return .memoriesChanged(try payload(MemoriesChangedEvent.self))
+        case VMImagesChangedEvent.name: return .vmImagesChanged(try payload(VMImagesChangedEvent.self))
         case SettingsUpdatedEvent.name: return .settingsUpdated(try payload(SettingsUpdatedEvent.self))
         case ClaudeUpdatedEvent.name: return .claudeUpdated(try payload(ClaudeUpdatedEvent.self))
         case PlanUsageUpdatedEvent.name: return .planUsageUpdated(try payload(PlanUsageUpdatedEvent.self))

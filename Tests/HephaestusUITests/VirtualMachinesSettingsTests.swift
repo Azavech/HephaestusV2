@@ -1,0 +1,117 @@
+import Foundation
+import HephaestusCore
+import SwiftUI
+import Testing
+@testable import HephaestusUI
+
+/// docs/ui.md › Virtual Machines and docs/virtual-machines.md › Image states, › Setup window: the
+/// tab, the texts of the Images table and of the setup window, and the workspace's images.
+@Suite("Virtual Machines settings")
+@MainActor
+struct VirtualMachinesSettingsTests {
+    static func image(_ state: VMImageState, progress: Double? = nil, failure: String? = nil) -> VMImage {
+        VMImage(id: UUID(uuidString: "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F")!, version: "27.2.1", build: "26B131", cores: 2, memoryGB: 4,
+                diskGB: 64, state: state, failure: failure, created: Date(timeIntervalSince1970: 1_800_000_000), progress: progress)
+    }
+
+    @Test("The Virtual Machines tab is the last one, after Editor, with display")
+    func settingsTab() {
+        let tabs = SettingsTab.allCases
+        #expect(tabs.last == .virtualMachines)
+        #expect(tabs.dropLast().last == .editor)
+        #expect(SettingsTab.virtualMachines.title == "Virtual Machines")
+        #expect(SettingsTab.virtualMachines.symbol == "display")
+    }
+
+    @Test("The State column shows the texts of the image states")
+    func stateTexts() {
+        #expect(VMImagePresentation.stateText(Self.image(.downloading, progress: 0.42)) == "Downloading… 42%")
+        #expect(VMImagePresentation.stateText(Self.image(.downloading, progress: 0.429)) == "Downloading… 42%")
+        #expect(VMImagePresentation.stateText(Self.image(.downloading)) == "Downloading… 0%")
+        #expect(VMImagePresentation.stateText(Self.image(.installing, progress: 0.63)) == "Installing… 63%")
+        #expect(VMImagePresentation.stateText(Self.image(.installing, progress: 1)) == "Installing… 100%")
+        #expect(VMImagePresentation.stateText(Self.image(.needsSetup)) == "Needs setup")
+        #expect(VMImagePresentation.stateText(Self.image(.ready)) == "Ready")
+        #expect(VMImagePresentation.stateText(Self.image(.failed, failure: "The download failed: HTTP 404."))
+            == "Failed: The download failed: HTTP 404.")
+        #expect(VMImagePresentation.stateText(Self.image(.failed)) == "Failed")
+    }
+
+    @Test("The macOS column shows the version and the build, and the Disk column a file size")
+    func versionAndDisk() {
+        #expect(VMImagePresentation.versionText(Self.image(.ready)) == "27.2.1 (26B131)")
+        #expect(VMImagePresentation.diskText(23_410_000_000) == ByteCountFormatter.string(fromByteCount: 23_410_000_000, countStyle: .file))
+        #expect(VMImagePresentation.diskText(23_410_000_000).hasSuffix("GB"))
+        #expect(VMImagePresentation.diskText(-1) == VMImagePresentation.diskText(0))
+    }
+
+    @Test("The setup window's title, status line and the Delete alert")
+    func setupTexts() {
+        #expect(VMImagePresentation.setupTitle(version: "27.2.1") == "Set Up macOS 27.2.1")
+        #expect(VMImagePresentation.agentStatusText(nil) == "Waiting for the agent…")
+        #expect(VMImagePresentation.agentStatusText(GuestAgentStatus(version: "1.0", sip: .disabled)) == "Agent connected · SIP off")
+        #expect(VMImagePresentation.agentStatusText(GuestAgentStatus(version: "1.0", sip: .enabled)) == "Agent connected · SIP on")
+        #expect(VMImagePresentation.agentStatusText(GuestAgentStatus(version: "1.0", sip: .unknown)) == "Agent connected · SIP on")
+        #expect(VMImagePresentation.deleteTitle(version: "27.2.1") == "Delete the image “macOS 27.2.1”?")
+        #expect(VMImagePresentation.deleteMessage == "Its virtual machines are deleted too.")
+        #expect(GuestTools.installCommand == #"sh "/Volumes/My Shared Files/install.sh""#)
+        #expect(VMImagePresentation.setUpFailedTitle == "Set Up failed")
+        #expect(VMImagePresentation.restartFailedTitle == "Restart in Recovery failed")
+    }
+
+    @Test("vmImages.changed gives the workspace its images, also before the tab loaded them")
+    func workspaceImages() {
+        let workspace = DeviceWorkspace(deviceID: "D1", connection: OfflineConnection(), isLocal: true)
+        #expect(workspace.vmImages == nil)
+        #expect(!workspace.hasImageWork)
+        var event = WorkspaceEvent(origin: .system, event: .vmImagesChanged([Self.image(.ready)]))
+        #expect(event.kind == .state)
+        workspace.apply(&event)
+        #expect(workspace.vmImages == [Self.image(.ready)])
+        #expect(!workspace.hasImageWork)
+        var emptied = WorkspaceEvent(origin: .system, event: .vmImagesChanged([]))
+        workspace.apply(&emptied)
+        #expect(workspace.vmImages == [])
+    }
+
+    @Test("An image that downloads or installs is image work, which keeps the app from being idle")
+    func imageWork() {
+        let workspace = DeviceWorkspace(deviceID: "D1", connection: OfflineConnection(), isLocal: true)
+        for (state, works) in [(VMImageState.downloading, true), (.installing, true), (.needsSetup, false), (.ready, false), (.failed, false)] {
+            workspace.vmImages = [Self.image(.ready), Self.image(state)]
+            #expect(workspace.hasImageWork == works)
+        }
+    }
+
+    /// The pixels of a view drawn on a background of the given prominence.
+    static func render(_ view: some View, _ prominence: BackgroundProminence) throws -> Data {
+        let renderer = ImageRenderer(content: view.environment(\.backgroundProminence, prominence).environment(\.colorScheme, .light))
+        renderer.scale = 2
+        let image = try #require(renderer.cgImage)
+        return try #require(image.dataProvider?.data) as Data
+    }
+
+    /// The symbol of a radio button that is on, in a style, laid out as `RadioButton` lays it out.
+    static func mark(_ style: some ShapeStyle) -> some View {
+        Button(action: {}) {
+            Image(systemName: "largecircle.fill.circle")
+                .foregroundStyle(style)
+                .padding(.top, 1)
+        }
+        .buttonStyle(.plain)
+    }
+
+    @Test("The radio that is on is drawn in the primary colour on the fill of a selected row, in the accent colour elsewhere")
+    func radioOnSelectedRow() throws {
+        let onRow = try Self.render(RadioButton(selected: true) {}, .increased)
+        let elsewhere = try Self.render(RadioButton(selected: true) {}, .standard)
+        #expect(onRow == (try Self.render(Self.mark(.primary), .increased)))
+        #expect(elsewhere == (try Self.render(Self.mark(Color.accentColor), .standard)))
+        // On the accent-coloured fill the accent colour would not show.
+        #expect(onRow != (try Self.render(Self.mark(Color.accentColor), .increased)))
+        // A radio that is off keeps the secondary colour.
+        #expect(try Self.render(RadioButton(selected: false) {}, .standard)
+            == (try Self.render(Button(action: {}) { Image(systemName: "circle").foregroundStyle(Color.secondary).padding(.top, 1) }
+                .buttonStyle(.plain), .standard)))
+    }
+}

@@ -12,7 +12,7 @@ extension Engine {
     }
 
     /// `settings.update` (docs/engine-api.md › settings.update): applies the present params,
-    /// checks the HostSettings rules and the skills folder, writes
+    /// checks the HostSettings rules, the default image and the skills folder, writes
     /// settings.yml, emits `settings.updated`, then applies the effects of the changed keys.
     /// A call that changes nothing writes nothing and emits nothing.
     func updateSettings(_ params: SettingsUpdate.Params, _ actor: Actor) async throws -> HostSettings {
@@ -23,6 +23,7 @@ extension Engine {
         } catch let error as ValidationError {
             throw EngineError(error)
         }
+        try checkDefaultVMImage(new, old: old)
         let newSkillsFolder = new.skillsLibraryURL(dataDirectory: dataDirectory)
         let skillsFolderChanged = newSkillsFolder != old.skillsLibraryURL(dataDirectory: dataDirectory)
         if skillsFolderChanged {

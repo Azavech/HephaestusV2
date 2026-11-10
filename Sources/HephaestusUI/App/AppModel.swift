@@ -51,6 +51,11 @@ public final class AppModel {
     private(set) var minimizedQuestionSets: [String: String]
     /// The last status received from the Updater.
     var updaterStatus = UpdaterStatus.initial
+    /// The setup virtual machines whose setup window is open, by image id
+    /// (docs/virtual-machines.md › Setup window).
+    private(set) var imageSetups: [UUID: VMSetupSession] = [:]
+    /// The number of setups whose window closed and whose virtual machine still shuts down.
+    private(set) var closingImageSetups = 0
 
     // MARK: Local-only services (docs/architecture.md › Local-only services)
 
@@ -425,6 +430,42 @@ public final class AppModel {
         windowOpener?(.about)
     }
 
+    /// `Set Up…`: boots the image through the image setup service and opens its setup window, or
+    /// brings that window to front (docs/virtual-machines.md › Setup). Throws EngineError.
+    func openImageSetup(_ imageID: UUID) async throws {
+        if imageSetups[imageID] != nil {
+            windowOpener?(.imageSetup(imageID))
+            return
+        }
+        let session = try await engine.beginImageSetup(imageID)
+        guard session.phase != .ended else {
+            // The virtual machine stopped while it started.
+            if let failure = session.failure {
+                throw EngineError(.unavailable, failure)
+            }
+            return
+        }
+        imageSetups[imageID] = session
+        windowOpener?(.imageSetup(imageID))
+    }
+
+    /// The setup window of an image closed: before `Finish Setup`, its virtual machine shuts down
+    /// and the image stays in Needs setup.
+    func imageSetupWindowClosed(_ imageID: UUID) {
+        guard let session = imageSetups.removeValue(forKey: imageID) else { return }
+        closingImageSetups += 1
+        Task {
+            await session.close()
+            // A window closed during `Finish Setup` leaves a virtual machine that still shuts down.
+            await session.waitUntilEnded()
+            closingImageSetups -= 1
+        }
+    }
+
+    /// True while a setup window is open or the virtual machine of a closed one still shuts
+    /// down: the app is not idle then (docs/updater.md › Restart rules).
+    var hasImageSetups: Bool { !imageSetups.isEmpty || closingImageSetups > 0 }
+
     /// Opens the Settings window, or brings it to front, on a tab.
     func openSettings(tab: SettingsTab? = nil) {
         if let tab {
@@ -454,6 +495,7 @@ public final class AppModel {
             case .main(let requestID): openWindow(id: "main", value: requestID)
             case .chat(let value): openWindow(id: "chat", value: value)
             case .image(let value): openWindow(id: "image", value: value)
+            case .imageSetup(let imageID): openWindow(id: "imageSetup", value: imageID)
             case .about: openWindow(id: "about")
             }
         }
@@ -731,5 +773,7 @@ enum SceneWindow: Hashable {
     case main(requestID: UUID)
     case chat(ChatWindowValue)
     case image(ImageViewerValue)
+    /// The setup window of a virtual machine image.
+    case imageSetup(UUID)
     case about
 }

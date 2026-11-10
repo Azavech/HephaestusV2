@@ -55,6 +55,30 @@ struct BackgroundWorkRestartTests {
         }
     }
 
+    @Test("isAppIdle is false while an image of virtual machines downloads or installs")
+    func idleWaitsForImages() async throws {
+        try await withAppModel { app in
+            @MainActor func set(_ state: VMImageState) {
+                app.localWorkspace.vmImages = [VMImage(id: UUID(uuidString: "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F")!, version: "27.2.1",
+                                                       build: "26B131", cores: 2, memoryGB: 4, diskGB: 64, state: state,
+                                                       created: Self.created)]
+            }
+            #expect(app.updateController.isAppIdle)
+            set(.downloading)
+            #expect(!app.updateController.isAppIdle)
+            #expect(Self.automaticRestart(app) == .waitsForIdle)
+            set(.installing)
+            #expect(!app.updateController.isAppIdle)
+            set(.needsSetup)
+            #expect(app.updateController.isAppIdle)
+            #expect(Self.automaticRestart(app) == .startsNow)
+            set(.failed)
+            #expect(app.updateController.isAppIdle)
+            // No setup window is open and no setup virtual machine shuts down.
+            #expect(!app.hasImageSetups)
+        }
+    }
+
     @Test("An update ready with autoUpdate true waits while background work runs and restarts once it and its turn have ended")
     func automaticRestartWaitsForBackgroundWork() async throws {
         try await withAppModel { app in

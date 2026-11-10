@@ -1,0 +1,96 @@
+{
+  "name": "Apple Virtual Machine 1",
+  "identifier": "VirtualMac2,1",
+  "boards": [
+    {
+      "boardconfig": "VMA2MACOSAP",
+      "platform": "vmapple2",
+      "cpid": 65024,
+      "bdid": 32
+    }
+  ],
+  "boardconfig": "VMA2MACOSAP",
+  "platform": "vmapple2",
+  "cpid": 65024,
+  "bdid": 32,
+  "firmwares": [
+    {
+      "identifier": "VirtualMac2,1",
+      "version": "27.2.1",
+      "buildid": "26B131",
+      "sha1sum": "834e8fd6d68520b2cabf0dc66cea28c2fc1462df",
+      "md5sum": "694c21aa50e05315cdb43271cdbf5e37",
+      "sha256sum": "233e85a09887579d47d0b195e7db72be7f204261059c6946f719acf6b300814f",
+      "filesize": 25595954706,
+      "url": "https://updates.cdn-apple.com/2026FallFCS/c202a724-db7e-4d56-917b-110aa0226507/UniversalMac_27.2.1_26B131_Restore.ipsw",
+      "releasedate": "2026-11-09T18:23:25Z",
+      "uploaddate": "2026-11-06T22:18:16Z",
+      "signed": false
+    },
+    {
+      "identifier": "VirtualMac2,1",
+      "version": "27.2",
+      "buildid": "26B123",
+      "sha1sum": "617360e5619dbb424ed3774b98732bb3cfeacc0b",
+      "md5sum": "819227d6e82c48faf880125c52ea4f95",
+      "sha256sum": "6613b34e8589db2202a01ec37a2648afb141ece13428175183f8f3e38438534f",
+      "filesize": 25595669503,
+      "url": "https://updates.cdn-apple.com/2026FallFCS/c9671975-52db-4fb5-9af2-00217169ba8d/UniversalMac_27.2_26B123_Restore.ipsw",
+      "releasedate": "2026-10-26T18:14:17Z",
+      "uploaddate": "2026-10-23T13:19:03Z",
+      "signed": false
+    },
+    {
+      "identifier": "VirtualMac2,1",
+      "version": "26.6.2",
+      "buildid": "25G83",
+      "sha1sum": "4833c12d9d8d330d47216edbcaaf8cb4b926c99a",
+      "md5sum": "7df89dc33e7c7414c69b7292b32fe64e",
+      "sha256sum": "885503b7f4b06609e9a512f2befd40f59730640a3f1233e3892d60affdd51c95",
+      "filesize": 19772231540,
+      "url": "https://updates.cdn-apple.com/2026SummerFCS/fullrestores/140-75212/A2A24B94-1FC1-45A3-93F7-C51B02AF1F4D/UniversalMac_26.6.2_25G83_Restore.ipsw",
+      "releasedate": "2026-08-17T17:43:14Z",
+      "uploaddate": "2026-08-13T22:11:09Z",
+      "signed": false
+    },
+    {
+      "identifier": "VirtualMac2,1",
+      "version": "15.6.1",
+      "buildid": "24G90",
+      "sha1sum": "a19ba56bb931769580060647a466c5b2d09da761",
+      "md5sum": "2c22273091d69ea84723a1f2d36332f3",
+      "sha256sum": "3d87686b691ac765eb6a6b3082b2334e2af9710096a00432dd519af89ff2ea78",
+      "filesize": 16814137790,
+      "url": "https://updates.cdn-apple.com/2025SummerFCS/fullrestores/093-10809/CFD6DD38-DAF0-40DA-854F-31AAD1294C6F/UniversalMac_15.6.1_24G90_Restore.ipsw",
+      "releasedate": "2025-08-20T17:44:26Z",
+      "uploaddate": "2025-08-18T07:54:22Z",
+      "signed": false
+    },
+    {
+      "identifier": "VirtualMac2,1",
+      "version": "13.0",
+      "buildid": "22A380",
+      "sha1sum": "348f49da377d8c394672d1b2800d23452a1d6215",
+      "md5sum": "2e42adfe4ded0e33f400f41e29195377",
+      "sha256sum": "537008900fe34eeb703d928ce613708bfbd6bf445289948058fc617be4f2d090",
+      "filesize": 12197669257,
+      "url": "https://updates.cdn-apple.com/2022FallFCS/fullrestores/012-92188/2C38BCD1-2BFF-4A10-B358-94E8E28BE805/UniversalMac_13.0_22A380_Restore.ipsw",
+      "releasedate": "2022-10-24T17:20:22Z",
+      "uploaddate": "2022-10-18T23:19:01Z",
+      "signed": false
+    },
+    {
+      "identifier": "VirtualMac2,1",
+      "version": "12.4",
+      "buildid": "21F79",
+      "sha1sum": "b5553b62da22e5fdbab2b56b6eb1fb74b58555ac",
+      "md5sum": "e22aabbeea0c500502176f974b23cb9c",
+      "sha256sum": "1f9e921f77bbcb5cf78026389d6f7331cdd675bc081ffac77fc00405a7e822b3",
+      "filesize": 13837340777,
+      "url": "https://updates.cdn-apple.com/2022SpringFCS/fullrestores/012-06874/9CECE956-D945-45E2-93E9-4FFDC81BB49A/UniversalMac_12.4_21F79_Restore.ipsw",
+      "releasedate": "2022-05-16T18:23:48Z",
+      "uploaddate": "2022-05-10T06:48:43Z",
+      "signed": false
+    }
+  ]
+}

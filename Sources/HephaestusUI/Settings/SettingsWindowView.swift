@@ -3,7 +3,7 @@ import SwiftUI
 
 /// A tab of the Settings window.
 enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
-    case general, devices, notifications, mcp, skills, updates, editor
+    case general, devices, notifications, mcp, skills, updates, editor, virtualMachines
 
     var id: Self { self }
 
@@ -17,6 +17,7 @@ enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
         case .skills: return "Skills"
         case .updates: return "Updates"
         case .editor: return "Editor"
+        case .virtualMachines: return "Virtual Machines"
         }
     }
 
@@ -29,6 +30,7 @@ enum SettingsTab: String, CaseIterable, Hashable, Identifiable {
         case .skills: return "wand.and.stars"
         case .updates: return "arrow.down.circle"
         case .editor: return "chevron.left.forwardslash.chevron.right"
+        case .virtualMachines: return "display"
         }
     }
 }
@@ -63,6 +65,7 @@ struct SettingsWindowView: View {
         case .skills: SkillsLibrarySettingsPane()
         case .updates: UpdatesSettingsPane()
         case .editor: EditorSettingsPane()
+        case .virtualMachines: VirtualMachinesSettingsPane()
         }
     }
 }

@@ -99,6 +99,9 @@ public actor Engine {
     /// download (docs/builds.md › Downloads); tests turn it off, so that they add nothing to the
     /// quarantine events of the user running them.
     var quarantinesReleaseDownloads = true
+    /// The images of virtual machines, their downloads and installs, the running virtual machines
+    /// and the open setups (VirtualMachines/VMImageService.swift).
+    let vmImages = VMImageService()
 
     // MARK: Servers and local-only services (docs/architecture.md › Local-only services)
 
@@ -167,12 +170,14 @@ public actor Engine {
         registerAllHandlers()
     }
 
-    /// Startup steps 4 to 7 of docs/architecture.md › Startup, in this order: the projects and
-    /// the file watching, Bonjour browsing, the MCP server, the sync server when `syncEnabled`
-    /// is true, then the background tasks of the Claude CLI. Calling it again does nothing.
+    /// Startup steps 4 to 7 of docs/architecture.md › Startup, in this order: the images of
+    /// virtual machines, the projects and the file watching, Bonjour browsing, the MCP server, the
+    /// sync server when `syncEnabled` is true, then the background tasks of the Claude CLI.
+    /// Calling it again does nothing.
     public func start() async {
         guard lifecycle == .created else { return }
         lifecycle = .running
+        loadVMImages()
         await loadProjects()
         await startFileWatching()
         await startSkillsLibraryWatching()
@@ -184,7 +189,8 @@ public actor Engine {
 
     /// docs/architecture.md › Shutdown, steps 1 to 3 and 5: background work drops its results from
     /// now on (`hasStopped`, `domain.isStopped`); the child processes end (SIGTERM, then SIGKILL
-    /// 3 s later, the quit items of the chats written first) and the engine waits for them; then
+    /// 3 s later, the quit items of the chats written first) and the engine waits for them, while
+    /// the virtual machines stop and the downloads and installs of images end; then
     /// the MCP server, the sync server, Bonjour and the file watchers close; then
     /// `beforeClosingLog` runs (step 4, telling the Updater, belongs to `AppModel`); every
     /// subscription finishes; engine.log closes and the data directory lock is released. Calling
@@ -200,7 +206,9 @@ public actor Engine {
         async let kubectlProcesses: Void = stopKubectlRuns()
         async let githubRuns: Void = stopGitHubCLIRuns()
         async let jaegerForwards: Void = stopJaegerForwards()
-        _ = await (chatProcesses, claudeHelpers, hephaestusClone, portForwardProcesses, kubectlProcesses, githubRuns, jaegerForwards)
+        async let virtualMachines: Void = stopVirtualMachines()
+        _ = await (chatProcesses, claudeHelpers, hephaestusClone, portForwardProcesses, kubectlProcesses, githubRuns, jaegerForwards,
+                   virtualMachines)
 
         await stopMCPServer()
         await stopSyncServer()
@@ -383,6 +391,7 @@ public actor Engine {
         registerSkillHandlers()
         registerMemoryHandlers()
         registerBuildHandlers()
+        registerVMImageHandlers()
         registerSettingsHandlers()
         registerUIHandlers()
     }

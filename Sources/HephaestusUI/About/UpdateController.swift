@@ -512,7 +512,8 @@ final class UpdateController {
     }
 
     /// Re-evaluates the automatic restart whenever a value read by `isAppIdle` changes: chat
-    /// states and background work, editors, drafts, composers, sheets.
+    /// states and background work, the states of the images and the setup windows, editors,
+    /// drafts, composers, sheets.
     private func observeIdleness() {
         withObservationTracking {
             _ = isAppIdle
@@ -527,13 +528,17 @@ final class UpdateController {
 
     /// docs/updater.md › Restart rules: no working chat of This Mac's engine (in `starting`,
     /// `running` or `waitingPermission`, or with background work running) and no comment answer
-    /// call running (`commentAnswersRunning` of its projects), and nothing unsaved in
+    /// call running (`commentAnswersRunning` of its projects), no image of This Mac that downloads
+    /// or installs and no setup virtual machine, and nothing unsaved in
     /// any window of this app: editors, ticket description savers, comment drafts and changed
     /// description editors of ticket views, the composer text and attachments of existing and
     /// draft chats, and every sheet.
     var isAppIdle: Bool {
         guard let app else { return false }
         if app.localWorkspace.chats.values.contains(where: \.isWorking) {
+            return false
+        }
+        if app.localWorkspace.hasImageWork || app.hasImageSetups {
             return false
         }
         if app.localWorkspace.projects.contains(where: { $0.commentAnswersRunning > 0 }) {

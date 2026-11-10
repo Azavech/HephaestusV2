@@ -257,6 +257,7 @@ Input schemas, errors and examples: [Debug tools](mcp.md#debug-tools).
 8. At most 32 test engines run at the same time, and the tests that wait for FSEvents run one at a time, across suites (the `.fsEvents` trait). Swift Testing starts every test of a run at once, and a process gets at most 512 FSEvents streams: past that `FSEventStreamStart` fails and an engine watches nothing. Default chosen at design time.
 9. A test that binds a port it chose earlier, or checks that a stopped server's port refuses connections, uses a free port below the ephemeral range (49152 to 65535). A released ephemeral port can go to another test's listener that asks for port 0 at any time, and a later bind of 127.0.0.1 on it succeeds and takes that listener's loopback connections. Default chosen at design time.
 10. The speed of the machine changes how long a test takes, never its result. A test that checks that something happens (a state, an event, an output, a process) waits for it, not for a fixed time; the bound of such a wait, `waitLimit` (60 s), only ends a test that fails. The timeouts of the code under test that a test does not check are long bounds that a busy machine never reaches, and the timers a test checks keep a wide margin to the delays of a loaded run. No test blocks a thread of the Swift concurrency pool while a child process runs, and a test that loads the machine on purpose bounds its work and yields between its steps. Default chosen at design time.
+11. Tests start no virtual machine and reach neither ipsw.me nor Apple's servers: the `imageProvisioner` of a test engine is a stand-in whose every operation fails unless the test gives its own, and its `guestTools` is nil unless the test gives files of its temporary directory ([Engine configuration](architecture.md#engine-configuration)). The protocol of the guest agent is tested in one process, the host's connection against the agent's own session over a socket pair, with the methods that need neither the Accessibility nor the Screen Recording permission. No test runs `sudo`: the commands of `exec` run as the user who runs the tests, and a stand-in takes the place of the kill as root of a timeout. Default chosen at design time.
 
 ### Docs conformance tests
 
@@ -271,6 +272,10 @@ HephaestusCoreTests compares the docs with the code ([CI and release](ci.md)): t
 ### gh captures
 
 `Tests/HephaestusCoreTests/Fixtures/gh/` holds sanitized outputs of the gh commands of [gh calls](builds.md#gh-calls), recorded with the same `--json` fields as the engine: `run-list.json` (`gh run list`), `run-view.json` (`gh run view` of a completed run), `run-view-running.json` (`gh run view` of a run not completed, with a running job whose end gh writes as `0001-01-01T00:00:00Z`), `release-list.json` (`gh release list`) and `release-view.json` (`gh release view`). The tests read them into the [API types](engine-api.md#workflowrun) and serve them from a fake gh. A capture is recorded by running the command against a public repository, then sanitized ([Sanitizing a capture](#sanitizing-a-capture)): the repository in the URLs is written `example/HephaestusV2`. `run-view-running.json` comes from another public repository, so both its owner and its name are rewritten; in the other captures only the owner changes.
+
+### ipsw.me capture
+
+`Tests/HephaestusCoreTests/Fixtures/ipsw/virtualmac.json` holds the answer of ipsw.me to the request of [macOS versions](virtual-machines.md#macos-versions), reduced to six of its firmwares. It names Apple's files only and needed no sanitizing. The tests read the list of versions from it and serve it from the stand-in provisioner.
 
 ### Recording a capture
 

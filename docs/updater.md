@@ -202,12 +202,13 @@ When step 5 fails, the Updater writes the error's `localizedDescription` to `~/L
 
 ## Restart rules
 
-The app is **idle** when both hold:
+The app is **idle** when all of these hold:
 
 - no chat of This Mac's engine is working: no chat in state `starting`, `running` or `waitingPermission`, and no chat whose Claude process has background work running (`backgroundWork` true), such as a background shell command or a background agent that Claude started during a turn that has ended ([Chat states](chats.md#chat-states), [Background work](chats.md#background-work)), and no [comment answer](chats.md#comment-answers) call running, `commentAnswersRunning` being 0 for every project of This Mac's engine ([ProjectSummary](engine-api.md#projectsummary));
-- nothing unsaved in any window of this app: no code, doc or skill editor with unsaved changes, no ticket description being edited with changes and no non-empty comment draft ([Tickets](tickets.md#live-updates)), no chat composer holding unsent text, no open sheet.
+- nothing unsaved in any window of this app: no code, doc or skill editor with unsaved changes, no ticket description being edited with changes and no non-empty comment draft ([Tickets](tickets.md#live-updates)), no chat composer holding unsent text, no open sheet;
+- no work on the images of virtual machines of This Mac: no image in the state `downloading` or `installing`, no open setup window, and no setup virtual machine that still shuts down after its window closed ([Running virtual machines](virtual-machines.md#running-virtual-machines)). A restart would end the download or the install, which then has to start again, and cut the setup off. The automatic restart is re-evaluated when the state of an image changes and when a setup window opens or its virtual machine has stopped.
 
-The composer and sheet conditions are Default chosen at design time.
+The composer, sheet and image conditions are Default chosen at design time.
 
 | Situation                                                                                                             | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

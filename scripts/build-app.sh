@@ -1,7 +1,8 @@
 #!/bin/bash
-# Builds the executables with SwiftPM, assembles HephaestusV2.app with the Updater in
-# Contents/Helpers, writes its Info.plist values and signs it; with the notarization secrets it also
-# notarizes and staples it (docs/ci.md › App bundle).
+# Builds the executables with SwiftPM and the guest agent of the virtual machines with swiftc,
+# assembles HephaestusV2.app with the Updater and the agent in Contents/Helpers, writes its
+# Info.plist values and signs it; with the notarization secrets it also notarizes and staples it
+# (docs/ci.md › App bundle).
 #
 #   scripts/build-app.sh --version <X.Y.Z> --build <N> --repository <owner/name>
 #                        [--configuration release|debug] [--arch universal|native] [--output <folder>]
@@ -114,22 +115,27 @@ cp Resources/Updater-Info.plist "$work/Updater-Info.plist"
 plutil -replace CFBundleShortVersionString -string "$version" "$work/Updater-Info.plist"
 plutil -replace CFBundleVersion -string "$build" "$work/Updater-Info.plist"
 
-# MARK: 3 to 5. The executables
+# MARK: 3 to 6. The executables
 
 swift build -c "$configuration" ${archs[@]+"${archs[@]}"} --product HephaestusV2 >&2
 swift build -c "$configuration" ${archs[@]+"${archs[@]}"} --product Updater \
   -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker "$work/Updater-Info.plist" >&2
+# The guest agent runs in the guests of the virtual machines, on Apple silicon and on macOS 12 and
+# later; SwiftPM builds every target for macOS 26, so its sources are compiled on their own.
+xcrun swiftc -O -target arm64-apple-macos12.0 -module-name HephaestusAgent -o "$work/HephaestusAgent" \
+  Sources/HephaestusAgent/*.swift >&2
 bin=$(swift build -c "$configuration" ${archs[@]+"${archs[@]}"} --show-bin-path)
 
 if [ -d "$bin/PackageFrameworks" ] && [ -n "$(ls -A "$bin/PackageFrameworks")" ]; then
   fail "dynamic frameworks are not supported"
 fi
 
-# MARK: 6. The bundle
+# MARK: 7. The bundle
 
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Helpers" "$app/Contents/Resources"
 cp "$bin/HephaestusV2" "$app/Contents/MacOS/HephaestusV2"
 cp "$bin/Updater" "$app/Contents/Helpers/Updater"
+cp "$work/HephaestusAgent" "$app/Contents/Helpers/HephaestusAgent"
 for bundle in "$bin"/*.bundle; do
   [ -d "$bundle" ] || continue
   name=$(basename "$bundle")
@@ -139,13 +145,14 @@ for bundle in "$bin"/*.bundle; do
   ditto "$bundle" "$app/Contents/Resources/$name"
 done
 cp Resources/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
+cp Resources/install-agent.sh "$app/Contents/Resources/install-agent.sh"
 cp Resources/Info.plist "$app/Contents/Info.plist"
 plutil -replace CFBundleShortVersionString -string "$version" "$app/Contents/Info.plist"
 plutil -replace CFBundleVersion -string "$build" "$app/Contents/Info.plist"
 plutil -replace HephaestusReleaseRepository -string "$repository" "$app/Contents/Info.plist"
 printf 'APPL????' > "$app/Contents/PkgInfo"
 
-# MARK: 7. Checks
+# MARK: 8. Checks
 
 plutil -lint "$app/Contents/Info.plist" >&2
 if [ "$arch" = "universal" ]; then
@@ -161,8 +168,12 @@ if [ "$arch" = "universal" ]; then
     esac
   done
 fi
+case " $(lipo -archs "$app/Contents/Helpers/HephaestusAgent") " in
+  *" arm64 "*) ;;
+  *) fail "HephaestusAgent is not built for arm64" ;;
+esac
 
-# MARK: 8. Signing
+# MARK: 9. Signing
 
 # docs/ci.md › Developer ID identity: a temporary keychain holding the certificate, first in the
 # user search list while the script runs. Sets `identity` without printing it.
@@ -196,11 +207,16 @@ developer_id_identity() {
   [ -n "$identity" ] || fail "the certificate holds no Developer ID Application identity"
 }
 
+# The Updater and the guest agent are signed first, then the app, whose signature seals both. The
+# entitlements go to the app in both modes, so that ad-hoc builds can run virtual machines too.
 updater_identifier="ca.azavech.hephaestusv2.updater"
+agent_identifier="ca.azavech.hephaestusv2.agent"
 if is_set MACOS_CERTIFICATE_P12_BASE64 && is_set MACOS_CERTIFICATE_PASSWORD; then
   developer_id_identity
   codesign --force --timestamp --options runtime --keychain "$keychain" --sign "$identity" \
     --identifier "$updater_identifier" "$app/Contents/Helpers/Updater"
+  codesign --force --timestamp --options runtime --keychain "$keychain" --sign "$identity" \
+    --identifier "$agent_identifier" "$app/Contents/Helpers/HephaestusAgent"
   codesign --force --timestamp --options runtime --keychain "$keychain" --sign "$identity" \
     --entitlements Resources/HephaestusV2.entitlements "$app"
   signing="Developer ID"
@@ -209,12 +225,13 @@ else
     echo "build-app.sh: MACOS_CERTIFICATE_P12_BASE64 and MACOS_CERTIFICATE_PASSWORD must both be set; signing ad-hoc" >&2
   fi
   codesign --force --sign - --identifier "$updater_identifier" "$app/Contents/Helpers/Updater"
-  codesign --force --sign - "$app"
+  codesign --force --sign - --identifier "$agent_identifier" "$app/Contents/Helpers/HephaestusAgent"
+  codesign --force --sign - --entitlements Resources/HephaestusV2.entitlements "$app"
   signing="ad-hoc"
 fi
 codesign --verify --deep --strict "$app"
 
-# MARK: 9. Notarization
+# MARK: 10. Notarization
 
 notarize() {
   (umask 077 && printf '%s' "$NOTARY_KEY_P8_BASE64" | base64 --decode > "$temporary/AuthKey.p8")
@@ -253,6 +270,6 @@ elif [ "$notary_count" -gt 0 ]; then
   echo "build-app.sh: notarization skipped: NOTARY_KEY_ID, NOTARY_ISSUER_ID and NOTARY_KEY_P8_BASE64 must all be set" >&2
 fi
 
-# MARK: 10. Result
+# MARK: 11. Result
 
 echo "$app v$version($build), $signing"

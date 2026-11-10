@@ -76,6 +76,14 @@ extension DeviceWorkspace {
                             replay: { event in var event = event; apply(&event) })
     }
 
+    /// `vmImages.list` under the replay rule, each time Settings ▸ Virtual Machines appears
+    /// (docs/ui.md › Virtual Machines). A failed call leaves the images as the events made them.
+    func loadVMImages() async {
+        _ = try? await seed({ try await call(VMImagesList.self) },
+                            replace: { vmImages = $0 },
+                            replay: { event in var event = event; apply(&event) })
+    }
+
     // MARK: Projects
 
     /// Loading step 3: a window shows a project that is not loaded. Runs its seeding calls unless

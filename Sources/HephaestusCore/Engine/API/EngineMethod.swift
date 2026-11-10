@@ -123,6 +123,7 @@ public enum EngineMethods {
         MemoriesReadIndex.self, MemoriesWriteIndex.self,
         BuildsListRuns.self, BuildsGetRun.self, BuildsRerunRun.self, BuildsCancelRun.self, BuildsListReleases.self,
         BuildsGetRelease.self, BuildsDownloadAsset.self,
+        VMImagesList.self, VMImagesVersions.self, VMImagesAdd.self, VMImagesDelete.self,
         SettingsGet.self, SettingsUpdate.self,
         UIOpen.self,
     ]

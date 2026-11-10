@@ -1,6 +1,6 @@
 # Data model
 
-HephaestusV2 stores everything in plain files: each project's `.hephaestus/` folder holds its project file, tickets, bundles, attachments and chats; the device data directory holds the device identity, the registered projects, host settings, secrets, paired devices and the last known plan usage; the skills library holds one folder per skill. This page is the contract for all of them: the exact YAML and JSON formats with complete examples, the Swift model types with every field, validation rules, id allocation, atomic writes, preservation of unknown keys, and the engine's reaction when another program changes a file. Within HephaestusV2 only the engine reads and writes these files, each device's engine its own data directory and the projects registered on it; windows and remote devices receive the same types as JSON through the [Engine API](engine-api.md).
+HephaestusV2 stores everything in plain files: each project's `.hephaestus/` folder holds its project file, tickets, bundles, attachments and chats; the device data directory holds the device identity, the registered projects, host settings, secrets, paired devices, the last known plan usage and the macOS images of virtual machines; the skills library holds one folder per skill. This page is the contract for all of them: the exact YAML and JSON formats with complete examples, the Swift model types with every field, validation rules, id allocation, atomic writes, preservation of unknown keys, and the engine's reaction when another program changes a file. Within HephaestusV2 only the engine reads and writes these files, each device's engine its own data directory and the projects registered on it; windows and remote devices receive the same types as JSON through the [Engine API](engine-api.md).
 
 ## Files at a glance
 
@@ -22,6 +22,7 @@ HephaestusV2 stores everything in plain files: each project's `.hephaestus/` fol
 | Remotes file              | `<data dir>/remotes.yml`                                                    | `RemotesFile`                 | YAML                           | [Remotes file](#remotes-file)                           |
 | Plan usage file           | `<data dir>/plan-usage.yml`                                                 | `PlanUsage`                   | YAML                           | [Plan usage file](#plan-usage-file)                     |
 | Current environments file | `<data dir>/current-environments.yml`                                       | `CurrentEnvironments`         | YAML                           | [Current environments file](#current-environments-file) |
+| Image metadata file       | `<data dir>/VirtualMachines/Images/<IMAGE-ID>/image.yml`                    | `VMImage`                     | YAML                           | [Image metadata file](#image-metadata-file)             |
 | Skill file                | `<skills library>/<name>/SKILL.md`                                          | `SkillFrontmatter` and body   | Markdown with YAML frontmatter | [Skill file](#skill-file)                               |
 
 `<data dir>` is `~/Library/Application Support/HephaestusV2/`, or the folder named by the environment variable `HEPHAESTUS_DATA_DIR` ([Architecture](architecture.md)). `<skills library>` is the folder named by the setting `skillsLibraryPath`, else `<data dir>/Skills`.
@@ -105,7 +106,7 @@ public enum JSONValue: Codable, Sendable, Hashable {
 
 ### JSON form in the engine API
 
-The engine API sends these types as JSON objects with the same keys and value rules, except that dates follow [JSON encoding](engine-api.md#json-encoding): the format of [Dates](#dates) for a date with whole seconds, which every date stored in these files has, and milliseconds for a date with a fraction. UUIDs are uppercase strings, absent optional values are `null`, `schema` is included, and unknown keys appear next to the known keys. `Ticket` adds one key that is never stored, `inverseLinks` ([Ticket file](#ticket-file)), and `ChatMeta` adds five keys that are never stored, `projectID`, `state`, `backgroundWork`, `costUSD` and `mentionedIDs` ([Chat metadata file](#chat-metadata-file)). Types that exist only in the API are defined in [Engine API](engine-api.md).
+The engine API sends these types as JSON objects with the same keys and value rules, except that dates follow [JSON encoding](engine-api.md#json-encoding): the format of [Dates](#dates) for a date with whole seconds, which every date stored in these files has, and milliseconds for a date with a fraction. UUIDs are uppercase strings, absent optional values are `null`, `schema` is included, and unknown keys appear next to the known keys. `Ticket` adds one key that is never stored, `inverseLinks` ([Ticket file](#ticket-file)), and `ChatMeta` adds five keys that are never stored, `projectID`, `state`, `backgroundWork`, `costUSD` and `mentionedIDs` ([Chat metadata file](#chat-metadata-file)), and `VMImage` adds two, `progress` and `diskBytes` ([Image metadata file](#image-metadata-file)). Types that exist only in the API are defined in [Engine API](engine-api.md).
 
 ## Project folder layout
 
@@ -1580,6 +1581,7 @@ allowed-tools: Bash(git log:*), Read
 | `Skills/`                  | Default skills library.                                                                                                                                                                                                                                                                                                                                                                                                                                         | [Skill file](#skill-file)                               |
 | `Runtime/`                 | Generated files, safe to delete: `Runtime/plugins/<projectID>/` ([Skills](skills.md)), `Runtime/mcp/<chatID>.json` ([Chats](chats.md)), `Runtime/mcp/answer-<answer id>.json` ([Comment answers](chats.md#answer-command)), `Runtime/screenshots/` ([MCP](mcp.md)), `Runtime/claude-cwd/`, the empty working directory of the naming calls and the models probe ([Chats](chats.md#models)). The engine regenerates them as needed and never reads them as data. | —                                                       |
 | `Worktrees/`               | The git worktrees of the orchestrated ticket chats, `Worktrees/<projectID>/<ticketID>/`, each with the branch `<bundleID>/<ticketID>` checked out. `chats.implementTicket` creates one for each orchestrated ticket chat, and the bundle chat removes those of the merged tickets after its push ([Orchestrated ticket chats](chats.md#branch-and-worktree)).                                                                                                   | —                                                       |
+| `VirtualMachines/`         | The macOS images of virtual machines, one folder `VirtualMachines/Images/<IMAGE-ID>/` per image, with its `image.yml`, its disk and the other files of its virtual machine ([Virtual machines](virtual-machines.md#storage)).                                                                                                                                                                                                                                   | [Image metadata file](#image-metadata-file)             |
 | `Logs/`                    | `engine.log`, `claude-<chatID>.log` with the stderr of each chat's Claude process, and `claude-<chatID>.stdout.jsonl` with `HEPHAESTUS_DEBUG_TOOLS=1` ([Architecture](architecture.md), [Chats](chats.md#exit-handling-and-logs)).                                                                                                                                                                                                                              | —                                                       |
 | `<file>.invalid`           | A device file that was invalid at launch, set aside.                                                                                                                                                                                                                                                                                                                                                                                                            | [Loading](#loading)                                     |
 
@@ -1644,6 +1646,7 @@ projects:
 | notifyFinished             | `notifyFinished`             | `Bool`                | no       | `true`                                                                                           | This Mac posts a notification when Claude finishes replying.                                                                                                                                                                        |
 | notifyAISummary            | `notifyAISummary`            | `Bool`                | no       | `true`                                                                                           | This Mac posts the notifications with Haiku's summary; `false` posts them at once with the fallback detail ([Chats › Notifications](chats.md#notifications)).                                                                       |
 | showHephaestusProject      | `showHephaestusProject`      | `Bool`                | no       | `true`                                                                                           | Whether the clients and Claude see the HephaestusV2 project and its sub projects; `false` hides them and the feedback entry points of this device ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)). |
+| defaultVMImage             | `defaultVMImage`             | `UUID?`               | no       | `null`                                                                                           | The id of the default image of virtual machines, a Ready image; `null` while no image is the default ([Default image](virtual-machines.md#default-image)).                                                                          |
 | unknownKeys                | —                            | `[String: JSONValue]` | —        | `[:]`                                                                                            | [Unknown keys](#unknown-keys).                                                                                                                                                                                                      |
 
 - The engine writes the whole file when a setting changes; `settings.update` takes partial changes ([Engine API](engine-api.md)).
@@ -1674,6 +1677,7 @@ notifyNeedsYou: true
 notifyFinished: true
 notifyAISummary: false
 showHephaestusProject: true
+defaultVMImage: 5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F
 ```
 
 A settings file that reads as all defaults:
@@ -1799,6 +1803,60 @@ projects:
 
 The file, its format and its rules are design-time choices. Default chosen at design time.
 
+## Image metadata file
+
+`<data dir>/VirtualMachines/Images/<IMAGE-ID>/image.yml` describes one macOS image of virtual machines ([Images](virtual-machines.md#images)); the other files of its folder are listed in [Storage](virtual-machines.md#storage). Swift type `VMImage`.
+
+| Swift name  | Key        | Type                  | Required | Default | Rules                                                                                                              |
+| ----------- | ---------- | --------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------ |
+| schema      | `schema`   | `Int`                 | no       | `1`     | See [Keys and values](#keys-and-values).                                                                           |
+| id          | `id`       | `UUID`                | yes      | —       | The image's id; it equals the name of the image's folder.                                                          |
+| version     | `version`  | `String`              | yes      | —       | The macOS version, for example `27.2.1`: one line, not empty.                                                      |
+| build       | `build`    | `String`              | yes      | —       | The macOS build, for example `26B131`: one line, not empty.                                                        |
+| cores       | `cores`    | `Int`                 | yes      | —       | Processor cores of the image's virtual machines; `vmImages.add` accepts 2 to the number of cores of the Mac.       |
+| memoryGB    | `memoryGB` | `Int`                 | yes      | —       | Their memory in GB, 1024³ bytes each; `vmImages.add` accepts 4 to the memory of the Mac.                           |
+| diskGB      | `diskGB`   | `Int`                 | yes      | —       | The size of the image's disk in GB; `vmImages.add` accepts 32 to 2048.                                             |
+| state       | `state`    | `VMImageState`        | yes      | —       | `downloading`, `installing`, `needsSetup`, `ready` or `failed` ([Image states](virtual-machines.md#image-states)). |
+| failure     | `failure`  | `String?`             | no       | `null`  | The message of a failed image, one line ([Failures](virtual-machines.md#failures)); `null` in the other states.    |
+| created     | `created`  | `Date`                | yes      | —       | When `vmImages.add` created the image.                                                                             |
+| unknownKeys | —          | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                     |
+
+- The engine writes the file when it creates the image and at each change of `state`. The percentage of a download or of an install is never written.
+- The engine API adds two keys that are never stored, `progress` and `diskBytes` ([VMImage in the API](engine-api.md#vmimage-in-the-api)).
+- The files are read at launch only ([Loading](#loading)): a change made to one of them while the app runs is overwritten by the engine's next write of that file.
+
+```yaml
+# <data dir>/VirtualMachines/Images/5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F/image.yml
+schema: 1
+id: 5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F
+version: 27.2.1
+build: 26B131
+cores: 2
+memoryGB: 4
+diskGB: 64
+state: ready
+failure: null
+created: 2026-11-09T14:03:00Z
+```
+
+An image whose install failed:
+
+```yaml
+# <data dir>/VirtualMachines/Images/0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D/image.yml
+schema: 1
+id: 0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D
+version: '26.6'
+build: 25G72
+cores: 4
+memoryGB: 8
+diskGB: 100
+state: failed
+failure: The app quit before the image was ready.
+created: 2026-11-08T09:30:00Z
+```
+
+The file, its format and its rules are design-time choices. Default chosen at design time.
+
 ## Id allocation
 
 ### Ticket and bundle numbers
@@ -1848,7 +1906,7 @@ Every other rule of the field tables (lengths, ranges, single-line values, uniqu
 
 The engine keeps the keys it does not know, so a file written by a newer version or extended by hand keeps them when this version rewrites it.
 
-- These types keep unknown keys in `unknownKeys`: `Project`, `ProjectEnvironment`, `EnvironmentOverride`, `DashboardWidget`, `WebTab`, `ChatSettings`, `Ticket`, `Comment`, `TicketLink`, `Attachment`, `TicketBundle`, `ChatMeta`, `DeviceRecord`, `Registry`, `HostSettings`, `Secrets`, `RemotesFile`, `RemoteDevice`, `PlanUsage`. `SkillFrontmatter` keeps them in `extraFrontmatter`. Chat items do not keep unknown keys: transcripts are never rewritten.
+- These types keep unknown keys in `unknownKeys`: `Project`, `ProjectEnvironment`, `EnvironmentOverride`, `DashboardWidget`, `WebTab`, `ChatSettings`, `Ticket`, `Comment`, `TicketLink`, `Attachment`, `TicketBundle`, `ChatMeta`, `DeviceRecord`, `Registry`, `HostSettings`, `Secrets`, `RemotesFile`, `RemoteDevice`, `PlanUsage`, `VMImage`. `SkillFrontmatter` keeps them in `extraFrontmatter`. Chat items do not keep unknown keys: transcripts are never rewritten.
 - Decoding stores every key of the mapping that is not in the type's table, with its value converted to `JSONValue`.
 - Encoding writes them after the known keys, sorted by key in Unicode code point order, nested values as decoded.
 - A mutation changes known fields only; `unknownKeys` stays as read.
@@ -1933,6 +1991,8 @@ The engine writes a file that is referenced before the files that reference it, 
 | Delete a memory                       | 1. `MEMORY.md` 2. memory file, moved to the Trash ([Memories](memories.md#rename-create-and-delete))                                                              |
 | Pair a device                         | 1. secrets file (`remoteSecrets`) 2. remotes file; when step 2 fails, the code of step 1 goes back to its previous value ([Remote devices](remote.md))            |
 | Remove a paired device                | 1. remotes file 2. secrets file (`remoteSecrets`)                                                                                                                 |
+| Finish the setup of an image          | 1. image metadata file (`state`) 2. settings file (`defaultVMImage`), when no image is the default ([Virtual machines](virtual-machines.md#default-image))        |
+| Delete an image                       | 1. settings file (`defaultVMImage`), when the image is the default 2. the image's folder, deleted ([Virtual machines](virtual-machines.md#deleting-an-image))     |
 
 When a step fails, the engine stops and the call fails. Files written by the earlier steps stay, except where the page that defines the change says otherwise, for example the attachment files of a ticket creation ([Tickets](tickets.md)).
 
@@ -1941,7 +2001,7 @@ When a step fails, the engine stops and the call fails. Files written by the ear
 At launch the engine:
 
 1. Creates the data directory and its missing subfolders.
-2. Reads `device.yml`, `secrets.json`, `settings.yml`, `registry.yml` and `remotes.yml`. A missing file is created with its defaults: a new device id, a new pairing code and external token, empty lists. An invalid file is renamed to `<file>.invalid`, replacing an older one, logged as an error, and recreated with its defaults. Then it reads `plan-usage.yml`, which is never created at launch: a missing file gives no plan usage, and an invalid one is renamed to `plan-usage.yml.invalid`, replacing an older one, logged as an error, and gives no plan usage. Then it reads `current-environments.yml` the same way: a missing file gives no choice, and an invalid one is renamed to `current-environments.yml.invalid`, replacing an older one, logged as an error, and gives no choice. Default chosen at design time.
+2. Reads `device.yml`, `secrets.json`, `settings.yml`, `registry.yml` and `remotes.yml`. A missing file is created with its defaults: a new device id, a new pairing code and external token, empty lists. An invalid file is renamed to `<file>.invalid`, replacing an older one, logged as an error, and recreated with its defaults. Then it reads `plan-usage.yml`, which is never created at launch: a missing file gives no plan usage, and an invalid one is renamed to `plan-usage.yml.invalid`, replacing an older one, logged as an error, and gives no plan usage. Then it reads `current-environments.yml` the same way: a missing file gives no choice, and an invalid one is renamed to `current-environments.yml.invalid`, replacing an older one, logged as an error, and gives no choice. Then it reads the image metadata file of each folder of `VirtualMachines/Images/`: a folder whose name is not a UUID, or without `image.yml`, or with an invalid one, or whose `id` is not its name, is skipped and logged, and stays on disk. An image read with the state `downloading` or `installing` becomes `failed` ([Failures](virtual-machines.md#failures)), and a `defaultVMImage` that names no Ready image is set to `null` ([Default image](virtual-machines.md#default-image)); the engine writes the files it changes. Default chosen at design time.
 3. Loads the projects of the registry in order, each followed by its sub projects, depth first in `subprojects` order. A project is skipped and logged when its project file is missing or invalid, when its identifier is already used by a loaded project, or when its identifier is `HEPH` and its origin does not name `Azavech/HephaestusV2` ([HephaestusV2 project](projects.md#recognition)). A project skipped because its identifier is used is tried again, in registry order, each time a project is unloaded or unregistered. Default chosen at design time.
 4. Loads every ticket, bundle and chat metadata file of each loaded project. An invalid ticket or bundle file is skipped and logged, and loads once it becomes valid ([External changes](#external-changes)); an invalid chat metadata file is skipped and logged until the next launch. For each loaded chat the engine replays its transcript once, in a child task, to find whether it holds a question set that is not completed, a symbol request without answer, a color request without answer, a sound request without answer, a shortcut request without answer, a font request without answer or an animation request without answer, which sets the chat's state to `waitingAnswers` ([Chats](chats.md#chat-states)) with `chat.updated`, to cancel its pending permission requests ([Chats](chats.md#cancellation)), and to compute the chat's cost and its `mentionedIDs` ([Mentioned ids](#mentioned-ids)), with `chat.updated` when they change; the items are not kept. Until the scan of a chat ends its state is `idle`. Clients read the items with `chats.get`. Default chosen at design time. Then the engine sets to `done` each bundle of the project that lists at least one ticket and whose tickets are all `done`, the Complete rule of [Bundle status rules](tickets.md#bundle-status-rules): it writes the bundle file and emits `bundle.updated` with the actor `system`. A bundle file that cannot be written keeps its status and is logged. The engine applies this rule each time it loads a project: at launch and when a project loads later, with `projects.open`, a changed `registry.yml`, a new sub project entry or a project file that appears.
 5. Deletes leftover temporary files in the folders it reads.
@@ -1959,7 +2019,7 @@ Files change without the engine: git checkouts and merges, text editors, another
 - One FSEvents stream per registered top-level project root, with file-level events. Sub projects lie inside their parent's root and share its stream, which also produces `files.changed` ([Code editor](code-editor.md)).
 - Files in `.hephaestus/chats/` are not reloaded: the engine is their only writer ([Engine API](engine-api.md)).
 - A change of a `.git/config` file inside a watched root reads the origins of the projects of that repository again ([ProjectDetail](engine-api.md#projectdetail)). Default chosen at design time.
-- One FSEvents stream on the data directory for `settings.yml` and `registry.yml`. `device.yml`, `secrets.json`, `remotes.yml` and `plan-usage.yml` are read at launch only; a change made to one of them while the app runs is overwritten by the engine's next write of that file. Default chosen at design time.
+- One FSEvents stream on the data directory for `settings.yml` and `registry.yml`. `device.yml`, `secrets.json`, `remotes.yml` and `plan-usage.yml` are read at launch only; a change made to one of them while the app runs is overwritten by the engine's next write of that file. The image metadata files are read at launch only, too. Default chosen at design time.
 - The skills library is watched as defined in [Skills](skills.md).
 - The memory folders of the projects and the global memories folder are watched as defined in [Memories](memories.md#live-updates).
 - Attachment files and temporary files are not reloaded as data.
@@ -2014,6 +2074,7 @@ The type is chosen by the end of the path:
 | `/remotes.yml`                                 | `RemotesFile`                                          | —                                         |
 | `/plan-usage.yml`                              | `PlanUsage`                                            | —                                         |
 | `/current-environments.yml`                    | `CurrentEnvironments`                                  | —                                         |
+| `/VirtualMachines/Images/<name>/image.yml`     | `VMImage`                                              | `id` equals `<name>`                      |
 | `/secrets.json`                                | `Secrets`                                              | —                                         |
 | `/SKILL.md`                                    | `SkillFrontmatter` (the block is the frontmatter only) | `name` equals the folder name in the path |
 
@@ -2067,3 +2128,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R187: A chat shows when Claude Code compacts its conversation: the status line and the context indicator while the compaction runs, a transcript line with its trigger and the size of the conversation before it when it ends, and the number of compactions in the indicator's tooltip.
 - R188: The user selects the context window of each chat, Auto, 200K or 1M; a running chat takes a new window once its turn and background work end.
 - R200: The user places and sizes each widget of a project's Dashboard on an invisible grid of 24 columns of square cells, like Grafana.
+- R201: Settings has a Virtual Machines tab whose Images section adds macOS images for virtual machines from the versions ipsw.me lists, downloads and installs them, prepares each one once in a setup window so that an agent in the guest gives full control of it, marks the default image and deletes images.

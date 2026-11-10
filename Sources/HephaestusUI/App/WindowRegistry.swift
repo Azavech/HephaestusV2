@@ -12,6 +12,8 @@ enum WindowRole: Hashable {
     case settings
     case about
     case image(ImageViewerValue)
+    /// The setup window of a virtual machine image, by image id.
+    case imageSetup(UUID)
 
     /// The `kind` of `WindowInfo` (docs/mcp.md › Window information).
     var debugKind: String {
@@ -20,7 +22,7 @@ enum WindowRole: Hashable {
         case .chat: return "chat"
         case .settings: return "settings"
         case .about: return "about"
-        case .image: return "other"
+        case .image, .imageSetup: return "other"
         }
     }
 }

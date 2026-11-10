@@ -33,13 +33,16 @@ public enum SettingsUpdate: EngineMethod {
         public var notifyAISummary: Bool?
         /// Show the HephaestusV2 project (docs/projects.md › Hiding the HephaestusV2 project).
         public var showHephaestusProject: Bool?
+        /// Clearable: the default image of virtual machines, a Ready image; null leaves none
+        /// (docs/virtual-machines.md › Default image).
+        public var defaultVMImage: Patch<UUID> = .keep
 
         public init(claudePath: Patch<String> = .keep, defaultChatSettings: ChatSettings? = nil,
                     mcpPort: Int? = nil, syncEnabled: Bool? = nil,
                     syncPort: Int? = nil, skillsLibraryPath: Patch<String> = .keep, autoUpdate: Bool? = nil,
                     updateCheckIntervalMinutes: Int? = nil, formatGoOnSave: Bool? = nil, formatSwiftOnSave: Bool? = nil,
                     notifyNeedsYou: Bool? = nil, notifyFinished: Bool? = nil, notifyAISummary: Bool? = nil,
-                    showHephaestusProject: Bool? = nil) {
+                    showHephaestusProject: Bool? = nil, defaultVMImage: Patch<UUID> = .keep) {
             self.claudePath = claudePath
             self.defaultChatSettings = defaultChatSettings
             self.mcpPort = mcpPort
@@ -54,6 +57,7 @@ public enum SettingsUpdate: EngineMethod {
             self.notifyFinished = notifyFinished
             self.notifyAISummary = notifyAISummary
             self.showHephaestusProject = showHephaestusProject
+            self.defaultVMImage = defaultVMImage
         }
 
         /// `settings` with every present param applied.
@@ -73,6 +77,7 @@ public enum SettingsUpdate: EngineMethod {
             if let notifyFinished { result.notifyFinished = notifyFinished }
             if let notifyAISummary { result.notifyAISummary = notifyAISummary }
             if let showHephaestusProject { result.showHephaestusProject = showHephaestusProject }
+            result.defaultVMImage = defaultVMImage.applied(to: settings.defaultVMImage)
             return result
         }
     }

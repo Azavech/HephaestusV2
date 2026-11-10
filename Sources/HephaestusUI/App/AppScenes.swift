@@ -68,6 +68,30 @@ public struct ImageViewerScene: Scene {
     }
 }
 
+/// Image setup: `WindowGroup` with id `imageSetup` presenting the id of a virtual machine image,
+/// not restored (docs/ui.md › Windows; docs/virtual-machines.md › Setup window).
+public struct ImageSetupScene: Scene {
+    let app: AppModel
+
+    public init(app: AppModel) {
+        self.app = app
+    }
+
+    public var body: some Scene {
+        WindowGroup(id: "imageSetup", for: UUID.self) { $imageID in
+            if let imageID {
+                ImageSetupWindow(imageID: imageID)
+                    .registersWindow(.imageSetup(imageID), in: app)
+                    .environment(app)
+            }
+        }
+        .defaultSize(width: 1340, height: 700)
+        .windowResizability(.contentMinSize)
+        .restorationBehavior(.disabled)
+        .commandsRemoved()
+    }
+}
+
 /// About: `Window` with id `about`, title `About HephaestusV2`, fixed width 360, not restored
 /// (docs/ui.md › Windows; docs/updater.md › About window).
 public struct AboutScene: Scene {

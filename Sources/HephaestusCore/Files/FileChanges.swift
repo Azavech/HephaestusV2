@@ -360,7 +360,8 @@ extension Engine {
             notifyNeedsYou: stored.notifyNeedsYou,
             notifyFinished: stored.notifyFinished,
             notifyAISummary: stored.notifyAISummary,
-            showHephaestusProject: stored.showHephaestusProject
+            showHephaestusProject: stored.showHephaestusProject,
+            defaultVMImage: stored.defaultVMImage.map { .set($0) } ?? .clear
         )
         do {
             _ = try await updateSettings(params, .system)

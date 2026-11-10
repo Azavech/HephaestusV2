@@ -68,6 +68,17 @@ public struct DataDirectory: Sendable, Hashable {
     public func worktree(projectID: ProjectID, ticketID: TicketID) -> URL {
         worktreesFolder.appendingPathComponent(projectID, isDirectory: true).appendingPathComponent(ticketID, isDirectory: true)
     }
+    /// `VirtualMachines/Images/`: one folder per macOS image of virtual machines
+    /// (docs/virtual-machines.md › Storage).
+    public var vmImagesFolder: URL {
+        url.appendingPathComponent("VirtualMachines", isDirectory: true).appendingPathComponent("Images", isDirectory: true)
+    }
+    /// `VirtualMachines/Images/<IMAGE-ID>/`: the folder of an image, named by its id.
+    public func vmImageFolder(_ id: UUID) -> URL {
+        vmImagesFolder.appendingPathComponent(id.uuidString, isDirectory: true)
+    }
+    /// `Runtime/guest/`: the folder shared into the guests of the virtual machines.
+    public var guestShareFolder: URL { runtimeFolder.appendingPathComponent("guest", isDirectory: true) }
     /// `Logs/`
     public var logsFolder: URL { url.appendingPathComponent("Logs", isDirectory: true) }
     /// `Logs/engine.log`

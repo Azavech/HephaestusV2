@@ -43,9 +43,15 @@ let package = Package(
             dependencies: ["UpdaterCore"],
             swiftSettings: swiftSettings
         ),
+        // The guest agent of the virtual machines. It depends on nothing: scripts/build-app.sh
+        // compiles its sources on their own for the guests (docs/ci.md › Build steps).
+        .executableTarget(
+            name: "HephaestusAgent",
+            swiftSettings: swiftSettings
+        ),
         .testTarget(
             name: "HephaestusCoreTests",
-            dependencies: ["HephaestusCore"],
+            dependencies: ["HephaestusCore", "HephaestusAgent"],
             resources: [.copy("Fixtures")],
             swiftSettings: swiftSettings
         ),

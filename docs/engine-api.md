@@ -1,6 +1,6 @@
 # Engine API
 
-The engine API is the single interface to everything a device's engine owns: projects, sub projects, tickets, bundles, chats, files, docs, web tabs, skills, the memories the Claude CLI saves for the projects and the device's global memories, host settings and the Claude plan usage; it also reads the workflow runs and releases of the projects' GitHub repositories with the GitHub CLI ([Builds](builds.md)). Local windows, remote devices and Claude (through the MCP server) call the same named methods with JSON params and JSON results, and all of them receive the same stream of named events, so every client sees every change live wherever it was made, and a remote window works as if it were the main device itself. This document is the contract for every method (params, result, errors, allowed actors, events emitted), every event, every API-only type, the JSON conventions and the Swift shape of the API. Persisted types (Project, WebTab, ChatSettings, Ticket, Comment, TicketLink, Attachment, TicketBundle, ChatMeta, ChatItem, Question, HostSettings, PlanUsage) are defined in [Data model](data-model.md); the transports are described in [Remote devices](remote.md) and [MCP server](mcp.md).
+The engine API is the single interface to everything a device's engine owns: projects, sub projects, tickets, bundles, chats, files, docs, web tabs, skills, the memories the Claude CLI saves for the projects and the device's global memories, host settings, the macOS images of virtual machines and the Claude plan usage; it also reads the workflow runs and releases of the projects' GitHub repositories with the GitHub CLI ([Builds](builds.md)). Local windows, remote devices and Claude (through the MCP server) call the same named methods with JSON params and JSON results, and all of them receive the same stream of named events, so every client sees every change live wherever it was made, and a remote window works as if it were the main device itself. This document is the contract for every method (params, result, errors, allowed actors, events emitted), every event, every API-only type, the JSON conventions and the Swift shape of the API. Persisted types (Project, WebTab, ChatSettings, Ticket, Comment, TicketLink, Attachment, TicketBundle, ChatMeta, ChatItem, Question, HostSettings, PlanUsage, VMImage) are defined in [Data model](data-model.md); the transports are described in [Remote devices](remote.md) and [MCP server](mcp.md).
 
 ## Overview
 
@@ -23,7 +23,7 @@ every connection ◄────────────────────
 - A method has a wire name `<area>.<verb>`, a JSON object of params and a JSON result. `LocalEngineConnection` encodes the params to JSON, dispatches by name and decodes the JSON result: the same bytes and the same code path as a remote call.
 - Every change produces events sent to every connection, the caller's included, whatever caused it: a call from any client, a tool call from Claude, background work of the engine (Haiku naming, Claude output) or an edit made outside the app ([Changes made outside the engine](#changes-made-outside-the-engine)).
 - Methods always act on the engine's own device. Claude processes, project files and data live on the main device only; remote devices render the UI and send calls ([Architecture](architecture.md)).
-- Pairing, paired devices, the device name, the external MCP token and the server status are local-only services of each device, not engine methods ([Architecture](architecture.md#local-only-services)).
+- Pairing, paired devices, the device name, the external MCP token, the server status and the setup of a virtual machine image are local-only services of each device, not engine methods ([Architecture](architecture.md#local-only-services)).
 
 ## Conventions
 
@@ -97,7 +97,7 @@ The 20 MiB limits keep a base64-encoded file under the 32 MiB message size, so a
 - A call that leaves the stored data unchanged writes nothing, emits no event and returns the current object. Default chosen at design time.
 - Concurrent edits follow "last write wins". The only optimistic check is `files.write` with `expectedModified`. Default chosen at design time.
 - Every write of a ticket, bundle or chat metadata file sets its `updated` ([Data model](data-model.md)).
-- What the API removes goes to the Trash of the main device and is never deleted: tickets, bundles, ticket and comment attachments ([Tickets and bundles](tickets.md#deleting)), chats ([Chats](chats.md#persistence)), files of a project (`files.trash`), skills and skill files ([Skills](skills.md)), memories ([Memories](memories.md)). When the Trash cannot be used, the call fails with `unavailable` and `<path> cannot be moved to the Trash: <reason>.`, `<path>` being the absolute path of the item on the main device; the writes that come before the move in [Data model](data-model.md#changes-that-touch-several-files) stay, with their events (a failed `tickets.delete` leaves the ticket out of its bundles). `projects.remove` only unregisters.
+- What the API removes goes to the Trash of the main device and is never deleted: tickets, bundles, ticket and comment attachments ([Tickets and bundles](tickets.md#deleting)), chats ([Chats](chats.md#persistence)), files of a project (`files.trash`), skills and skill files ([Skills](skills.md)), memories ([Memories](memories.md)). The folder of a virtual machine image is the exception: `vmImages.delete` deletes it ([Deleting an image](virtual-machines.md#deleting-an-image)). When the Trash cannot be used, the call fails with `unavailable` and `<path> cannot be moved to the Trash: <reason>.`, `<path>` being the absolute path of the item on the main device; the writes that come before the move in [Data model](data-model.md#changes-that-touch-several-files) stay, with their events (a failed `tickets.delete` leaves the ticket out of its bundles). `projects.remove` only unregisters.
 - Events are emitted after the write they describe succeeded. Counters (`nextTicketNumber`, `nextBundleNumber`) are written before the object they number, so a failure can skip a number but never reuse one.
 
 ## Actors
@@ -156,11 +156,11 @@ A failed call returns an [EngineError](#engineerror) `{code, message}`.
 
 | Code        | Meaning                                                                                                                                                                                                                                                                                                                                                                                          |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| notFound    | The method, or an object named by the params, does not exist: project, ticket, bundle, chat, comment, attachment, file, directory, skill, memory, web tab, question set, symbol request, color request, sound request, shortcut request, font request, animation request, sound, permission request, workflow, agent or port forward.                                                            |
+| notFound    | The method, or an object named by the params, does not exist: project, ticket, bundle, chat, comment, attachment, file, directory, skill, memory, web tab, question set, symbol request, color request, sound request, shortcut request, font request, animation request, sound, permission request, workflow, agent, port forward or image.                                                     |
 | invalid     | The params do not decode or break a validation rule.                                                                                                                                                                                                                                                                                                                                             |
 | conflict    | The call clashes with the current state: an id or a file already exists, a file changed since `expectedModified`, a question set, a symbol request, a color request, a sound request, a shortcut request, a font request or an animation request is waiting or already answered, a ticket to implement is done, a bundle to implement is in progress or done, a workflow to stop is not running. |
 | forbidden   | The actor may not do this: a method or param not open to the actor, a ticket or bundle status rule, a locked web tab, a protected path.                                                                                                                                                                                                                                                          |
-| unavailable | A required service is missing or fails: the Claude CLI, the Trash, the skills library folder, a memory folder, the GitHub CLI, its login or GitHub ([Builds](builds.md#failures)), the server of an [api.call](#apicall) request, or the connection to the device.                                                                                                                               |
+| unavailable | A required service is missing or fails: the Claude CLI, the Trash, the skills library folder, a memory folder, the GitHub CLI, its login or GitHub ([Builds](builds.md#failures)), the server of an [api.call](#apicall) request, ipsw.me or Apple silicon ([Virtual machines](virtual-machines.md)), or the connection to the device.                                                           |
 | internal    | Unexpected failure: file system error, process start failure, encoding failure.                                                                                                                                                                                                                                                                                                                  |
 
 ### Dispatcher errors
@@ -319,6 +319,10 @@ The first column lists every engine method; it is the list the docs conformance 
 | `builds.listReleases`            | BuildsListReleases            | projectID                                                  | [GitHubRelease]    | user         |
 | `builds.getRelease`              | BuildsGetRelease              | projectID, tag                                             | ReleaseDetail      | user         |
 | `builds.downloadAsset`           | BuildsDownloadAsset           | projectID, tag, asset                                      | DownloadedAsset    | user         |
+| `vmImages.list`                  | VMImagesList                  | none                                                       | [VMImage]          | user         |
+| `vmImages.versions`              | VMImagesVersions              | none                                                       | [MacOSVersion]     | user         |
+| `vmImages.add`                   | VMImagesAdd                   | build, cores, memoryGB, diskGB                             | VMImage            | user         |
+| `vmImages.delete`                | VMImagesDelete                | imageID                                                    | Empty              | user         |
 | `settings.get`                   | SettingsGet                   | none                                                       | HostSettings       | user         |
 | `settings.update`                | SettingsUpdate                | any HostSettings key (partial)                             | HostSettings       | user         |
 | `ui.open`                        | UIOpen                        | target, deviceID?                                          | Empty              | user, claude |
@@ -2931,6 +2935,99 @@ Downloads an asset of a release with gh into a new folder of `<data dir>/Runtime
 
 Events: none.
 
+## Virtual machine images
+
+The macOS images of virtual machines, their states, the download, the install and the setup are in [Virtual machines](virtual-machines.md). The methods act on the images of the engine's own Mac, stored under `<data dir>/VirtualMachines/Images/`. Only the user actor calls them. The setup of an image shows the screen of a virtual machine, so it is a [local-only service](architecture.md#local-only-services) and has no method. The default image is the host setting `defaultVMImage`, changed with [settings.update](#settingsupdate).
+
+### VMImage in the API
+
+The methods and `vmImages.changed` send [VMImage](data-model.md#image-metadata-file) with two keys that are never stored:
+
+| Key       | Type             | Value                                                                                                                                           |
+| --------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| progress  | Double, optional | The fraction done, 0 to 1: of the download while `state` is `downloading`, of the install while it is `installing`; absent in the other states. |
+| diskBytes | Int              | The space the files of the image's folder take on disk, in bytes ([Storage](virtual-machines.md#storage)).                                      |
+
+An image whose IPSW downloads:
+
+```json
+{
+  "build": "26B131",
+  "cores": 2,
+  "created": "2026-11-09T14:03:00Z",
+  "diskBytes": 10876243968,
+  "diskGB": 64,
+  "failure": null,
+  "id": "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F",
+  "memoryGB": 4,
+  "progress": 0.426,
+  "schema": 1,
+  "state": "downloading",
+  "version": "27.2.1"
+}
+```
+
+### vmImages.list
+
+Swift type `VMImagesList` · actors: user · result: [VMImage](#vmimage-in-the-api) array
+
+Returns the images, oldest first: by `created`, then by `id`.
+
+Params: none. Errors: dispatcher errors only. Events: none.
+
+### vmImages.versions
+
+Swift type `VMImagesVersions` · actors: user · result: [MacOSVersion](#macosversion) array
+
+Reads the list of macOS versions for virtual machines from ipsw.me and returns it, newest first ([macOS versions](virtual-machines.md#macos-versions)). The engine keeps the list for `vmImages.add`.
+
+Params: none.
+
+| Error       | When                                                                                                               |
+| ----------- | ------------------------------------------------------------------------------------------------------------------ |
+| unavailable | ipsw.me cannot be reached or answers something else (`The macOS versions cannot be read from ipsw.me: <reason>.`). |
+
+Events: none.
+
+### vmImages.add
+
+Swift type `VMImagesAdd` · actors: user · result: [VMImage](#vmimage-in-the-api)
+
+Creates an image of a macOS version, then downloads the version's IPSW and installs macOS in the background ([Adding an image](virtual-machines.md#adding-an-image)). The result is the new image, in the state `downloading`.
+
+| Param    | Type   | Required | Description                                                                           |
+| -------- | ------ | -------- | ------------------------------------------------------------------------------------- |
+| build    | String | yes      | The `build` of a version of the list of `vmImages.versions`.                          |
+| cores    | Int    | yes      | Processor cores of the image's virtual machines: 2 to the number of cores of the Mac. |
+| memoryGB | Int    | yes      | Their memory in GB: 4 to the memory of the Mac in GB, rounded down.                   |
+| diskGB   | Int    | yes      | The size of the image's disk in GB: 32 to 2048.                                       |
+
+| Error       | When                                                                                                                                                               |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| unavailable | The Mac has no Apple silicon (`Virtual machines need a Mac with Apple silicon.`); the list of versions must be read and ipsw.me fails, as for `vmImages.versions`. |
+| invalid     | cores, memoryGB or diskGB is outside its range (`<param>: use a number from <min> to <max>.`).                                                                     |
+| notFound    | No version of the list has this build (`macOS build <build> not found.`).                                                                                          |
+| internal    | The image's folder or its `image.yml` cannot be written.                                                                                                           |
+
+The Apple silicon check comes first, then the ranges, then the build. Events: vmImages.changed, at once, then at every change of the image's state or percentage.
+
+### vmImages.delete
+
+Swift type `VMImagesDelete` · actors: user · result: [Empty](#empty)
+
+Ends the image's download or install, stops its setup virtual machine and deletes its folder with everything in it ([Deleting an image](virtual-machines.md#deleting-an-image)). The folder is deleted, not moved to the Trash.
+
+| Param   | Type | Required | Description      |
+| ------- | ---- | -------- | ---------------- |
+| imageID | UUID | yes      | Id of the image. |
+
+| Error    | When                                                                                                                                                  |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| notFound | No image has this id (`Image <id> not found.`).                                                                                                       |
+| internal | settings.yml cannot be written, or the folder cannot be deleted (`<path> cannot be deleted: <reason>.`); the image then stays, in the state `failed`. |
+
+Events: settings.updated when the image was the default image, then vmImages.changed.
+
 ## Settings
 
 ### settings.get
@@ -2963,6 +3060,7 @@ Every param is optional; an absent param keeps its value. Value rules are those 
 | notifyFinished             | Bool         | no            | This Mac posts "finished" notifications.                                                                                                            |
 | notifyAISummary            | Bool         | no            | This Mac posts the notifications with Haiku's summary.                                                                                              |
 | showHephaestusProject      | Bool         | no            | Show the HephaestusV2 project ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)).                                     |
+| defaultVMImage             | UUID         | no, clearable | The default image of virtual machines, a Ready image; null leaves none ([Default image](virtual-machines.md#default-image)).                        |
 
 | Changed key                                     | Effect                                                                                                                                                                                                                                                                                                 |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -2975,11 +3073,12 @@ Every param is optional; an absent param keeps its value. Value rules are those 
 | formatGoOnSave, formatSwiftOnSave               | Used by `files.write`.                                                                                                                                                                                                                                                                                 |
 | notifyNeedsYou, notifyFinished, notifyAISummary | Used by the notifications This Mac posts ([UI › Status bar](ui.md#status-bar)).                                                                                                                                                                                                                        |
 | showHephaestusProject                           | false: the chat processes and comment answers of the HephaestusV2 project and its sub projects stop, and project.removed is emitted for each of them, then projects.changed; true: projects.changed lists them again ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)). |
+| defaultVMImage                                  | The image that a virtual machine starts from when none is named ([Default image](virtual-machines.md#default-image)).                                                                                                                                                                                  |
 
-| Error    | When                                                                                                                                                                                                |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| invalid  | A value breaks the HostSettings rules; mcpPort equals syncPort after the update; the new skills folder cannot be created (`skillsLibraryPath: <path> cannot be created.`) or is inside `~/.claude`. |
-| internal | settings.yml cannot be written.                                                                                                                                                                     |
+| Error    | When                                                                                                                                                                                                                                                                                               |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid  | A value breaks the HostSettings rules; mcpPort equals syncPort after the update; the new skills folder cannot be created (`skillsLibraryPath: <path> cannot be created.`) or is inside `~/.claude`; defaultVMImage names no Ready image (`defaultVMImage: use the id of an image that is Ready.`). |
+| internal | settings.yml cannot be written.                                                                                                                                                                                                                                                                    |
 
 Events: settings.updated; claude.updated when claudePath changed; skills.changed when skillsLibraryPath changed; project.removed for each project hidden, depth first, then projects.changed, when showHephaestusProject changed to false; projects.changed when it changed to true.
 
@@ -3038,6 +3137,7 @@ Every event travels as an [EngineEventEnvelope](#engineeventenvelope) `{name, or
 | webTabs.updated   | WebTabsUpdatedEvent   | {projectID, tabs [WebTab]}                                       | A project's web tabs changed.                                                                                                                                                                                                                  |
 | skills.changed    | SkillsChangedEvent    | [SkillSummary]: the complete `skills.list` result                | The skills library changed, including files inside a skill.                                                                                                                                                                                    |
 | memories.changed  | MemoriesChangedEvent  | MemoryFolder: the complete `memories.list` result for one folder | A project's own memory folder, one it inherits or the global memories folder changed: a memory or `MEMORY.md` was created, changed, renamed or deleted by an app, or its inherited folders changed ([Live updates](memories.md#live-updates)). |
+| vmImages.changed  | VMImagesChangedEvent  | [VMImage]: the complete `vmImages.list` result                   | An image was added or deleted, its state or its percentage changed, or its setup ended ([VMImage in the API](#vmimage-in-the-api)).                                                                                                            |
 | settings.updated  | SettingsUpdatedEvent  | HostSettings                                                     | Host settings changed.                                                                                                                                                                                                                         |
 | claude.updated    | ClaudeUpdatedEvent    | {status ClaudeStatus, models [ClaudeModel]}                      | The Claude CLI status or the model list changed.                                                                                                                                                                                               |
 | planUsage.updated | PlanUsageUpdatedEvent | PlanUsage                                                        | The engine's plan usage was replaced ([Plan usage](#plan-usage)).                                                                                                                                                                              |
@@ -3093,7 +3193,7 @@ chat.delta events are flushed at most every 50 ms per chat, so a chat emits at m
 ### Changes made outside the engine
 
 - The engine watches every loaded project root, the skills library folder and the memory folders of the projects whose memories a client listed or changed, with the folders they inherit, and the global memories folder once a client listed or changed it, with FSEvents, debounced 300 ms, at most 2 s after the first change of a batch for project roots ([Data model](data-model.md#processing-a-change)). Changes it did not make itself (an editor, `git pull`, Claude editing files) produce the events an API call would emit, with origin `system`. The reload rules and reactions for project, ticket and bundle files are in [Data model](data-model.md#external-changes); the library watcher is in [Skills](skills.md#library), the memory folder watcher in [Memories](memories.md#live-updates).
-- Not reloaded: `.hephaestus/chats/`, whose only writer is the engine, and the device files of the data directory, which are read at launch only ([Data model](data-model.md#watching)).
+- Not reloaded: `.hephaestus/chats/`, whose only writer is the engine, and the device files and image metadata files of the data directory, which are read at launch only ([Data model](data-model.md#watching)).
 - A change of a `.git/config` file inside a watched project root reads the origins that may have changed again ([ProjectDetail](#projectdetail)). Default chosen at design time.
 - files.changed is emitted for every change under a loaded project root except inside `.git/` and `.hephaestus/chats/`, changes made by the engine included. Both are skipped at any depth: a `.git` component anywhere in the path (the repository of a sub project or of a nested work tree) and the chats folder of a sub project add no paths. Default chosen at design time.
 
@@ -3288,6 +3388,7 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
     "autoUpdate": true,
     "claudePath": null,
     "defaultChatSettings": {"contextWindow": "auto", "effort": "high", "model": "default", "permissionMode": "manual", "ultracode": false},
+    "defaultVMImage": null,
     "formatGoOnSave": true,
     "formatSwiftOnSave": false,
     "mcpPort": 47820,
@@ -4591,6 +4692,28 @@ The `builds.getRelease` result.
 | path  | String | yes      | Absolute path of the saved file in the Downloads folder of the main device. |
 
 
+### MacOSVersion
+
+One macOS version of the list of ipsw.me ([macOS versions](virtual-machines.md#macos-versions)).
+
+| Field     | Type   | Required | Description                                                                               |
+| --------- | ------ | -------- | ----------------------------------------------------------------------------------------- |
+| version   | String | yes      | The macOS version, for example `27.2.1`.                                                  |
+| build     | String | yes      | The macOS build, for example `26B131`; it names the version in `vmImages.add`.            |
+| url       | String | yes      | The Apple URL of the version's IPSW.                                                      |
+| sizeBytes | Int    | yes      | The size of the IPSW in bytes; 0 when ipsw.me gives none.                                 |
+| sha256    | String | no       | The SHA-256 of the IPSW, 64 lowercase hexadecimal digits; absent when ipsw.me gives none. |
+
+```json
+{
+  "build": "26B131",
+  "sha256": "233e85a09887579d47d0b195e7db72be7f204261059c6946f719acf6b300814f",
+  "sizeBytes": 25595954706,
+  "url": "https://updates.cdn-apple.com/2026FallFCS/c202a724-db7e-4d56-917b-110aa0226507/UniversalMac_27.2.1_26B131_Restore.ipsw",
+  "version": "27.2.1"
+}
+```
+
 ### EngineEventEnvelope
 
 | Field  | Type      | Required | Description                                                      |
@@ -4759,7 +4882,7 @@ public actor Engine {
 4. Run the handler with the decoded params and the actor. An `EngineError` is rethrown as is; any other error becomes `internal` and is logged.
 5. Encode the result with `EngineJSON.encoder()`.
 
-The handlers are registered at engine start by `registerDeviceHandlers()`, `registerProjectHandlers()`, `registerTicketHandlers()`, `registerAttachmentHandlers()`, `registerBundleHandlers()`, `registerChatHandlers()`, `registerClaudeHandlers()`, `registerFileHandlers()`, `registerDocHandlers()`, `registerFSHandlers()`, `registerWebTabHandlers()`, `registerSearchHandlers()`, `registerSkillHandlers()`, `registerMemoryHandlers()`, `registerBuildHandlers()`, `registerSettingsHandlers()`, `registerUIHandlers()`, `registerKubernetesHandlers()` and `registerServiceAPIHandlers()`. The `actors` set of each registration is the Actors column of the [Method index](#method-index). Parameter-level rules for Claude ([Rules for Claude](#rules-for-claude)) are checked by the handlers.
+The handlers are registered at engine start by `registerDeviceHandlers()`, `registerProjectHandlers()`, `registerTicketHandlers()`, `registerAttachmentHandlers()`, `registerBundleHandlers()`, `registerChatHandlers()`, `registerClaudeHandlers()`, `registerFileHandlers()`, `registerDocHandlers()`, `registerFSHandlers()`, `registerWebTabHandlers()`, `registerSearchHandlers()`, `registerSkillHandlers()`, `registerMemoryHandlers()`, `registerBuildHandlers()`, `registerVMImageHandlers()`, `registerSettingsHandlers()`, `registerUIHandlers()`, `registerKubernetesHandlers()` and `registerServiceAPIHandlers()`. The `actors` set of each registration is the Actors column of the [Method index](#method-index). Parameter-level rules for Claude ([Rules for Claude](#rules-for-claude)) are checked by the handlers.
 
 `emit` encodes the envelope once with `EngineJSON.encoder()` and yields the same bytes to every subscriber: each `LocalEngineConnection` and each remote device session.
 
@@ -4873,3 +4996,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R187: A chat shows when Claude Code compacts its conversation: the status line and the context indicator while the compaction runs, a transcript line with its trigger and the size of the conversation before it when it ends, and the number of compactions in the indicator's tooltip.
 - R188: The user selects the context window of each chat, Auto, 200K or 1M; a running chat takes a new window once its turn and background work end.
 - R200: The user places and sizes each widget of a project's Dashboard on an invisible grid of 24 columns of square cells, like Grafana.
+- R201: Settings has a Virtual Machines tab whose Images section adds macOS images for virtual machines from the versions ipsw.me lists, downloads and installs them, prepares each one once in a setup window so that an agent in the guest gives full control of it, marks the default image and deletes images.

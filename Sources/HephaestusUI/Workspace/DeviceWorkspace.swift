@@ -86,6 +86,14 @@ final class DeviceWorkspace {
     /// The device's global memories folder, once a window showed the Global Memories view, from
     /// `memories.list` and `memories.changed` without `projectID` (docs/memories.md › Live updates).
     var globalMemories: MemoryFolder?
+    /// The images of virtual machines of the device, from `vmImages.list` and `vmImages.changed`;
+    /// nil before the first of them (docs/ui.md › Virtual Machines).
+    var vmImages: [VMImage]?
+
+    /// True while an image of the device downloads or installs.
+    var hasImageWork: Bool {
+        vmImages?.contains { $0.state == .downloading || $0.state == .installing } ?? false
+    }
     /// One transcript state per chat shown in a view, by chat id.
     var transcripts: [String: TranscriptState] = [:]
     /// The workflows and agents of every chat of every project, by chat id (docs/chats.md › UI

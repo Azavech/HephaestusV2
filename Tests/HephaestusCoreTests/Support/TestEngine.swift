@@ -145,9 +145,12 @@ extension Trait where Self == FSEventsTrait {
 /// directory, ports 0, the sync server on the loopback interface, no Bonjour advertising) and a
 /// `LocalEngineConnection` to it, then closes both. `prepare` receives the data directory before
 /// the engine opens it. `body` also receives the temporary directory that holds the data
-/// directory, for other files of the test. `githubCLI` replaces the fake gh that is never found.
+/// directory, for other files of the test. `githubCLI` replaces the fake gh that is never found,
+/// `imageProvisioner` the provisioner of virtual machine images whose every operation fails, and
+/// `guestTools` gives the engine a guest agent and an install script.
 func withTestEngine<T>(debugTools: Bool = false, githubCLI: (any GitHubCLIRunning)? = nil,
                        claudeLauncher: any ClaudeProcessLauncher = NoClaudeLauncher(),
+                       imageProvisioner: (any VMImageProvisioning)? = nil, guestTools: GuestTools? = nil,
                        prepare: (DataDirectory) throws -> Void = { _ in },
                        _ body: (Engine, LocalEngineConnection, URL) async throws -> T) async throws -> T {
     try await TestEngineSlots.withSlot { try await withTemporaryDirectory { folder in
@@ -155,7 +158,8 @@ func withTestEngine<T>(debugTools: Bool = false, githubCLI: (any GitHubCLIRunnin
         try FileManager.default.createDirectory(at: directory.url, withIntermediateDirectories: true)
         try prepare(directory)
         let configuration = EngineConfiguration.test(dataDirectory: directory.url, debugTools: debugTools,
-                                                     claudeLauncher: claudeLauncher, githubCLI: githubCLI)
+                                                     claudeLauncher: claudeLauncher, githubCLI: githubCLI,
+                                                     imageProvisioner: imageProvisioner, guestTools: guestTools)
         let engine = try await Engine(configuration: configuration)
         await engine.useFileTrash(.folder(folder.appendingPathComponent("Trash", isDirectory: true)))
         await engine.useCLITimings(.inert)

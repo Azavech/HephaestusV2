@@ -104,6 +104,7 @@ struct EngineJSONTests {
         "### WorkflowRun": roundTrip(WorkflowRun.self),
         "### GitHubRelease": roundTrip(GitHubRelease.self),
         "### ReleaseDetail": roundTrip(ReleaseDetail.self),
+        "### MacOSVersion": roundTrip(MacOSVersion.self),
         "### EngineEventEnvelope": roundTrip(EngineEventEnvelope.self),
     ]
 

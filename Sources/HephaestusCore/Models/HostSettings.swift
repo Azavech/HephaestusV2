@@ -25,6 +25,9 @@ public struct HostSettings: Codable, Sendable, Hashable {
     /// The clients and Claude see the HephaestusV2 project and its sub projects; false hides them
     /// and this device's feedback entry points (docs/projects.md › Hiding the HephaestusV2 project).
     public var showHephaestusProject: Bool
+    /// The id of the default image of virtual machines, a Ready image; nil while no image is the
+    /// default (docs/virtual-machines.md › Default image).
+    public var defaultVMImage: UUID?
     public var unknownKeys: [String: JSONValue]
 
     public static let defaultMCPPort = 47820
@@ -35,7 +38,7 @@ public struct HostSettings: Codable, Sendable, Hashable {
                 syncPort: Int = HostSettings.defaultSyncPort, skillsLibraryPath: String? = nil, autoUpdate: Bool = true,
                 updateCheckIntervalMinutes: Int = 30, formatGoOnSave: Bool = true, formatSwiftOnSave: Bool = false,
                 notifyNeedsYou: Bool = true, notifyFinished: Bool = true, notifyAISummary: Bool = true,
-                showHephaestusProject: Bool = true, unknownKeys: [String: JSONValue] = [:]) {
+                showHephaestusProject: Bool = true, defaultVMImage: UUID? = nil, unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
         self.claudePath = claudePath
         self.defaultChatSettings = defaultChatSettings
@@ -51,13 +54,14 @@ public struct HostSettings: Codable, Sendable, Hashable {
         self.notifyFinished = notifyFinished
         self.notifyAISummary = notifyAISummary
         self.showHephaestusProject = showHephaestusProject
+        self.defaultVMImage = defaultVMImage
         self.unknownKeys = unknownKeys
     }
 
     static let knownKeys: Set<String> = [
         "schema", "claudePath", "defaultChatSettings", "mcpPort", "syncEnabled", "syncPort",
         "skillsLibraryPath", "autoUpdate", "updateCheckIntervalMinutes", "formatGoOnSave", "formatSwiftOnSave",
-        "notifyNeedsYou", "notifyFinished", "notifyAISummary", "showHephaestusProject",
+        "notifyNeedsYou", "notifyFinished", "notifyAISummary", "showHephaestusProject", "defaultVMImage",
     ]
 
     public init(from decoder: Decoder) throws {
@@ -77,6 +81,7 @@ public struct HostSettings: Codable, Sendable, Hashable {
         notifyFinished = try c.value("notifyFinished", default: true)
         notifyAISummary = try c.value("notifyAISummary", default: true)
         showHephaestusProject = try c.value("showHephaestusProject", default: true)
+        defaultVMImage = try c.optional("defaultVMImage")
         unknownKeys = try c.unknownKeys(known: Self.knownKeys)
     }
 
@@ -97,6 +102,7 @@ public struct HostSettings: Codable, Sendable, Hashable {
         try c.encode(notifyFinished, "notifyFinished")
         try c.encode(notifyAISummary, "notifyAISummary")
         try c.encode(showHephaestusProject, "showHephaestusProject")
+        try c.encodeOptional(defaultVMImage, "defaultVMImage")
         try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
     }
 }

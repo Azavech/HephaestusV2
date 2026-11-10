@@ -27,11 +27,12 @@ pull request ──► ci.yml: checks ─► swift build ─► swift test
 | `Resources/Info.plist`                | [Info.plist keys](#infoplist-keys)        |
 | `Resources/Updater-Info.plist`        | [Updater Info.plist](#updater-infoplist)  |
 | `Resources/HephaestusV2.entitlements` | [Entitlements](#entitlements)             |
+| `Resources/install-agent.sh`          | [Bundle layout](#bundle-layout)           |
 
 ## Runner and toolchain
 
 - Both workflows run on `runs-on: xcode-27`: macOS 27 with Xcode 27.1 as the default Xcode and its Swift 6.4 toolchain. The workflows do not select another Xcode; the step "Show toolchain" prints the versions in use. Using the same runner for `ci.yml` is Default chosen at design time.
-- The steps use these tools of the runner: `git`, `gh`, `jq` (`/usr/bin/jq`, jq 1.7), `python3` (the one installed with Xcode), `ditto`, `codesign`, `security`, `xcrun notarytool`, `xcrun stapler`, `plutil`, `lipo`, `shasum`, `stat`.
+- The steps use these tools of the runner: `git`, `gh`, `jq` (`/usr/bin/jq`, jq 1.7), `python3` (the one installed with Xcode), `ditto`, `codesign`, `security`, `xcrun notarytool`, `xcrun stapler`, `xcrun swiftc`, `plutil`, `lipo`, `shasum`, `stat`.
 - Every `run` step uses `bash` through `defaults.run.shell: bash`, which GitHub runs as `bash --noprofile --norc -eo pipefail {0}`: a failing command, including one inside a pipeline, fails the step.
 
 ### Script conventions
@@ -303,7 +304,7 @@ previous_tag=v0.4.0
 
 ## App bundle
 
-`scripts/build-app.sh` builds the executables with SwiftPM, assembles `HephaestusV2.app`, writes its Info.plist values and signs it; with the notarization secrets it also notarizes and staples it.
+`scripts/build-app.sh` builds the executables with SwiftPM and the guest agent of the virtual machines with `swiftc`, assembles `HephaestusV2.app`, writes its Info.plist values and signs it; with the notarization secrets it also notarizes and staples it.
 
 ```
 scripts/build-app.sh --version <X.Y.Z> --build <N> --repository <owner/name>
@@ -337,18 +338,21 @@ An empty variable counts as unset. Invalid or missing options print the usage to
 2. Copy `Resources/Updater-Info.plist` to `<out>/work/Updater-Info.plist` and set its `CFBundleShortVersionString` to the version and its `CFBundleVersion` to the build (`plutil -replace <key> -string <value>`).
 3. `swift build -c <conf> <archs> --product HephaestusV2`.
 4. `swift build -c <conf> <archs> --product Updater -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker <out>/work/Updater-Info.plist`. This embeds the Updater's Info.plist in its executable, which gives the executable its bundle id. Default chosen at design time.
-5. `<bin>` = the output of `swift build -c <conf> <archs> --show-bin-path`.
-6. Assemble the bundle ([Bundle layout](#bundle-layout)):
+5. `xcrun swiftc -O -target arm64-apple-macos12.0 -module-name HephaestusAgent -o <out>/work/HephaestusAgent Sources/HephaestusAgent/*.swift`: the guest agent of the virtual machines ([Guest agent](virtual-machines.md#guest-agent)). SwiftPM builds every target of the package for macOS 26 and for the architectures of `<archs>`; the agent runs in the guests, on Apple silicon and on every macOS of the ipsw.me list, the oldest being macOS 12, so the script compiles its sources on their own, whatever `--configuration` and `--arch` say. Default chosen at design time.
+6. `<bin>` = the output of `swift build -c <conf> <archs> --show-bin-path`.
+7. Assemble the bundle ([Bundle layout](#bundle-layout)):
    - `<bin>/HephaestusV2` → `Contents/MacOS/HephaestusV2`;
    - `<bin>/Updater` → `Contents/Helpers/Updater`;
+   - `<out>/work/HephaestusAgent` → `Contents/Helpers/HephaestusAgent`;
    - every `<bin>/*.bundle` folder whose name does not end in `Tests.bundle` → `Contents/Resources/` (copied with `ditto`);
    - `Resources/AppIcon.icns` → `Contents/Resources/AppIcon.icns`;
+   - `Resources/install-agent.sh` → `Contents/Resources/install-agent.sh`;
    - `Resources/Info.plist` → `Contents/Info.plist`, then `plutil -replace` sets `CFBundleShortVersionString` to the version, `CFBundleVersion` to the build and `HephaestusReleaseRepository` to the repository, all as strings;
    - the 8 bytes `APPL????` → `Contents/PkgInfo`.
-7. Check: `plutil -lint Contents/Info.plist` passes; with `--arch universal`, `lipo -archs` lists `arm64` and `x86_64` for both executables.
-8. Sign the Updater, then the app ([Signing](#signing)), then run `codesign --verify --deep --strict <out>/HephaestusV2.app`.
-9. Notarize and staple when the notarization secrets are set ([Notarization](#notarization)).
-10. Print `<out>/HephaestusV2.app v<version>(<build>), <signing>` to standard output, `<signing>` being `Developer ID`, `Developer ID, notarized` or `ad-hoc`.
+8. Check: `plutil -lint Contents/Info.plist` passes; with `--arch universal`, `lipo -archs` lists `arm64` and `x86_64` for the app and the Updater; `lipo -archs` lists `arm64` for the guest agent.
+9. Sign the Updater and the guest agent, then the app ([Signing](#signing)), then run `codesign --verify --deep --strict <out>/HephaestusV2.app`.
+10. Notarize and staple when the notarization secrets are set ([Notarization](#notarization)).
+11. Print `<out>/HephaestusV2.app v<version>(<build>), <signing>` to standard output, `<signing>` being `Developer ID`, `Developer ID, notarized` or `ad-hoc`.
 
 With Xcode 27.1, `swift build` given both `--arch` options links universal executables directly; the bin folder is the same for every architecture set (`.build/out/Products/Release` or `.build/out/Products/Debug`), so the script always asks SwiftPM for it with `--show-bin-path`.
 
@@ -363,8 +367,10 @@ HephaestusV2.app/
       HephaestusV2                          the app executable (universal in releases)
     Helpers/
       Updater                               the Updater executable, Updater-Info.plist embedded in __TEXT,__info_plist
+      HephaestusAgent                       the guest agent of the virtual machines, built for arm64 and macOS 12.0
     Resources/
       AppIcon.icns
+      install-agent.sh                      the install script of the guest agent
       HephaestusV2_HephaestusCore.bundle/   SwiftPM resources of HephaestusCore (prompts)
       HephaestusV2_HephaestusUI.bundle/     SwiftPM resources of HephaestusUI (chat.html, doc.html, CSS, JavaScript)
     _CodeSignature/
@@ -373,6 +379,7 @@ HephaestusV2.app/
 
 - SwiftPM names each resource bundle `<package name>_<target name>.bundle`; the script copies every one it finds except those of test targets, so a target that gains resources needs no script change. The bundles are complete bundles (`Contents/Info.plist`, `Contents/Resources/`) and contain no code.
 - The `Bundle.module` accessor that SwiftPM generates looks in `Bundle.main.resourceURL` first, which is `Contents/Resources/` in the app, so the code reads its resources with `Bundle.module` ([Modules](architecture.md#modules)).
+- `HephaestusAgent` and `install-agent.sh` never run on the Mac that runs the app: the engine copies them, as `hephaestus-agent` and `install.sh`, into the folder it shares with the guests of the virtual machines ([Setup](virtual-machines.md#setup), [Install script](virtual-machines.md#install-script)).
 - The bundle has no `Frameworks` folder. When `<bin>/PackageFrameworks` exists and is not empty, the script fails with `build-app.sh: dynamic frameworks are not supported`. Default chosen at design time.
 - No other file is placed at the top of the bundle or directly in `Contents/`: `codesign` fails to sign a bundle that has one.
 
@@ -490,7 +497,7 @@ Contents of `Resources/Updater-Info.plist`:
 
 ## Entitlements
 
-`Resources/HephaestusV2.entitlements` is applied to the app when it is signed with a Developer ID. It holds an empty dictionary: the app is not sandboxed ([Process model](architecture.md#process-model)) and requests no hardened-runtime exception. The Updater is signed without entitlements. Default chosen at design time.
+`Resources/HephaestusV2.entitlements` is applied to the app in both signing modes ([Signing](#signing)). It holds one entitlement, `com.apple.security.virtualization`, which the Virtualization framework requires of a process that creates virtual machines ([Virtual machines](virtual-machines.md#host)); with it in the ad-hoc mode too, the bundles of `make app` can run virtual machines. The app is not sandboxed ([Process model](architecture.md#process-model)) and requests no hardened-runtime exception. The Updater and the guest agent are signed without entitlements. Default chosen at design time.
 
 Contents of `Resources/HephaestusV2.entitlements`:
 
@@ -498,20 +505,25 @@ Contents of `Resources/HephaestusV2.entitlements`:
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict/>
+<dict>
+	<key>com.apple.security.virtualization</key>
+	<true/>
+</dict>
 </plist>
 ```
 
 ## Signing
 
-`scripts/build-app.sh` signs the Updater first, then the app, whose signature seals the signed Updater. It never signs with `--deep`.
+`scripts/build-app.sh` signs the Updater and the guest agent first, then the app, whose signature seals both. It never signs with `--deep`.
 
 | Mode         | Used when                                                                    | Updater                                                                                                                                                              | App                                                                                                                                               |
 | ------------ | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Developer ID | `MACOS_CERTIFICATE_P12_BASE64` and `MACOS_CERTIFICATE_PASSWORD` are both set | `codesign --force --timestamp --options runtime --keychain <keychain> --sign <identity> --identifier ca.azavech.hephaestusv2.updater <app>/Contents/Helpers/Updater` | `codesign --force --timestamp --options runtime --keychain <keychain> --sign <identity> --entitlements Resources/HephaestusV2.entitlements <app>` |
-| ad-hoc       | otherwise                                                                    | `codesign --force --sign - --identifier ca.azavech.hephaestusv2.updater <app>/Contents/Helpers/Updater`                                                              | `codesign --force --sign - <app>`                                                                                                                 |
+| ad-hoc       | otherwise                                                                    | `codesign --force --sign - --identifier ca.azavech.hephaestusv2.updater <app>/Contents/Helpers/Updater`                                                              | `codesign --force --sign - --entitlements Resources/HephaestusV2.entitlements <app>`                                                              |
 
 When exactly one of the two certificate variables is set, the script writes `build-app.sh: MACOS_CERTIFICATE_P12_BASE64 and MACOS_CERTIFICATE_PASSWORD must both be set; signing ad-hoc` to standard error and signs ad-hoc. Default chosen at design time.
+
+The guest agent, `<app>/Contents/Helpers/HephaestusAgent`, is signed with the Updater's command of the mode in use, with the identifier `ca.azavech.hephaestusv2.agent` in place of the Updater's. Default chosen at design time.
 
 ### Developer ID identity
 
@@ -692,3 +704,4 @@ The version `0.0.0` and the debug native build of `make app`, the foreground run
 - R73: CI builds a new version of the app when changes are pushed to `main`.
 - R74: The app has a second executable, the Updater.
 - R84: GitHub CI then rebuilds the app.
+- R201: Settings has a Virtual Machines tab whose Images section adds macOS images for virtual machines from the versions ipsw.me lists, downloads and installs them, prepares each one once in a setup window so that an agent in the guest gives full control of it, marks the default image and deletes images.

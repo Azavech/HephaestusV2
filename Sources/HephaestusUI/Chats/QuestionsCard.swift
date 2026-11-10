@@ -341,7 +341,8 @@ struct Checkbox: View {
     }
 }
 
-/// A radio button of the questions card, the symbol card and the color card.
+/// A radio button of the questions card, the symbol card and the color card, and of the Images
+/// table of Settings.
 struct RadioButton: View {
     let selected: Bool
     let choose: () -> Void
@@ -349,11 +350,20 @@ struct RadioButton: View {
     var body: some View {
         Button(action: choose) {
             Image(systemName: selected ? "largecircle.fill.circle" : "circle")
-                .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+                .foregroundStyle(selected ? AnyShapeStyle(RadioMarkStyle()) : AnyShapeStyle(Color.secondary))
                 .padding(.top, 1)
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// The colour of a radio button that is on: the accent colour, and the primary colour on the
+/// accent-coloured fill of the selected row of a focused list or table, where the accent colour
+/// would not show.
+struct RadioMarkStyle: ShapeStyle {
+    func resolve(in environment: EnvironmentValues) -> some ShapeStyle {
+        environment.backgroundProminence == .increased ? AnyShapeStyle(.primary) : AnyShapeStyle(Color.accentColor)
     }
 }
 
