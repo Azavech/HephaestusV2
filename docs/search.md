@@ -1,6 +1,6 @@
 # Search
 
-Search finds projects, tickets, bundles, docs, code, chats, skills and web tabs from one panel opened with ⇧⌘F. The engine of the window's device executes every search through the method `search.query`, so a remote window searches the main device's data exactly like a local window does, and Claude searches through the MCP tool `search`. This file defines the scopes, how a query matches, how results are ranked, what each scope reads, the limits, the snippets, and the panel with its keyboard handling. The parameters of `search.query` and the `SearchResult` type are in [Engine API](engine-api.md#searchquery).
+Search finds projects, tickets, bundles, docs, code, chats, skills and web tabs from one panel opened with ⇧⌘F. The engine of the window's device executes every search through the method `search.query`, so a remote window searches the main device's data exactly like a local window does, and Claude searches through the MCP tool `search`. This file defines the scopes, how a query matches, how results are ranked, what each scope reads, the limits, the snippets, the panel with its keyboard handling, and how a chat composer adds a result of the panel as a resource. The parameters of `search.query` and the `SearchResult` type are in [Engine API](engine-api.md#searchquery).
 
 ## Scopes
 
@@ -193,7 +193,7 @@ Example 2. In the same project, where a single line of a single file contains th
 
 ### Opening and closing
 
-- ⇧⌘F, the toolbar Search button ([UI](ui.md#toolbar)) and Navigate ▸ Search… open the panel over the columns of the current main window. The command is disabled in other windows. Default chosen at design time.
+- ⇧⌘F, the toolbar Search button ([UI](ui.md#toolbar)) and Navigate ▸ Search… open the panel over the columns of the current main window. The command is disabled in other windows, except in a chat window that shows its panel, which it closes ([Adding a resource](#adding-a-resource)). Default chosen at design time.
 - The panel is a card centered horizontally, 8 pt below the toolbar, 720 pt wide (the window width minus 32 pt when the window is narrower), its height following the results up to 70 % of the window height. Default chosen at design time.
 - Escape, ⇧⌘F, the toolbar Search button, a click in the window's content outside the panel, or opening a result closes the panel. A click in the toolbar is left to the toolbar, so the Search button closes the open panel instead of closing and reopening it. Default chosen at design time.
 - On opening, the query field has focus with its text selected; the previous query, chips and toggle of this window are restored and the query runs again. This state belongs to the window and is not persisted ([UI](ui.md)). Default chosen at design time.
@@ -242,7 +242,7 @@ Chips are multi-select. All is selected exactly when no scope chip is selected; 
 | Return            | open the selected result                    |
 | Click on a result | open that result                            |
 
-The query field keeps the focus while ↑ and ↓ move the selection.
+The query field keeps the focus while ↑ and ↓ move the selection. While the panel adds a resource, Return and a click add the result to the composer instead of opening it ([Adding a resource](#adding-a-resource)).
 
 ### Empty and error states
 
@@ -256,6 +256,18 @@ The query field keeps the focus while ↑ and ↓ move the selection.
 
 Opening a result closes the panel, then calls `WindowState.navigate(to:)` with the result's `target`. The project and sub project activation, the section, the selection, pending targets and the not-found texts are defined in [UI](ui.md#navigation); the `file` target of a code result opens the file at its line.
 
+## Adding a resource
+
+`Add Resource…` in the paperclip menu of a chat composer ([Composer](chats.md#composer)) opens the search panel so that the user picks an item to link to the chat: the result becomes a resource chip of that composer ([Added resources](chats.md#added-resources)).
+
+- The panel opens in the window that holds the composer, with the controls, the chips, the project toggle and the restored state of [Search panel](#search-panel). In a main window it shows over the columns, as when ⇧⌘F opens it.
+- In a chat window ([Windows](ui.md#windows)) it shows over the window's content: centered horizontally, its top 8 pt below the top of the content, with the width and height rules of a main window's panel. There, `This project` sends the `projectID` of the chat's project, and a result shows the identifier of its project at its trailing edge when it differs from the chat's project. The window keeps the query, the chips and the toggle while it is open, starting on `This project`; they are not persisted. Default chosen at design time.
+- While the panel is open this way, a click on a result, or Return on the selected result, closes the panel and adds the result to that composer; the window does not navigate. Every result kind can be added, the results of other projects too, which `All projects` finds.
+- Once a result has closed the panel, that composer has the keyboard focus, also when the result was already linked and adds nothing ([Added resources](chats.md#added-resources)). Default chosen at design time.
+- Escape, ⇧⌘F, the toolbar Search button and a click in the window's content outside the panel close the panel without adding anything. A chat window has no Search button; ⇧⌘F and Navigate ▸ Search…, which never open the panel there, are enabled while it shows and close it. Default chosen at design time for the chat window.
+- The panel adds resources only until it closes: the next ⇧⌘F opens the panel of a main window with results that navigate ([Navigation](#navigation)).
+- The panel closes without adding anything when the composer that opened it leaves the window, for example when another chat takes its place or its chat is deleted. Default chosen at design time.
+
 ## Remote windows and Claude
 
 - The panel of a remote window calls `search.query` on the main device; files, transcripts and the skills library are read there. Results, ranking and navigation are the same as in a local window ([Remote devices](remote.md)).
@@ -266,3 +278,4 @@ Opening a result closes the panel, then calls `WindowState.navigate(to:)` with t
 
 - R4: The app coordinates the work on all the user's projects.
 - R45: A search feature searches pretty much anything.
+- R195: In a chat, the paperclip button of the composer links any internal resource of HephaestusV2 that the user finds with the search panel: a project, a ticket, a bundle, a doc, a code line, a chat, a skill or a web tab.

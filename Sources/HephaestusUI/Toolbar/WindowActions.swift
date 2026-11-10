@@ -1,6 +1,7 @@
 // OWNER: ui-shell — the window actions behind the toolbar and the menus: New Chat, the inspector
 // and the search panel (docs/ui.md › Toolbar).
 import Foundation
+import HephaestusCore
 
 extension WindowState {
     /// True when the window's device is connected.
@@ -26,5 +27,19 @@ extension WindowState {
     /// Search (⇧⌘F): opens the search panel, or closes it when it is open.
     func toggleSearch() {
         searchVisible.toggle()
+    }
+}
+
+/// The search panel of a main window (docs/search.md › Search panel): `This project` is the
+/// active project, and a result navigates the window.
+extension WindowState: SearchPanelWindow {
+    var searchProjectID: String? {
+        projectID
+    }
+
+    func searchNavigate(to target: NavigationTarget) {
+        Task {
+            await navigate(to: target)
+        }
     }
 }

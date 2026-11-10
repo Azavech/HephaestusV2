@@ -1145,17 +1145,18 @@ How the engine creates items from the Claude CLI output, and how the chat view r
 | text        | `text`        | `String`           | yes      | —       | Text of the message as shown in its bubble: the user's text, or the text the engine composed (Implement buttons, answers to questions, feedback). The `Attached files:` lines the engine adds for Claude are not stored ([Chats](chats.md)).                   |
 | attachments | `attachments` | `[Attachment]`     | no       | `[]`    | Files sent with the message, stored in `chats/<CHAT-ID>/`.                                                                                                                                                                                                     |
 | sender      | `sender`      | `String`           | yes      | —       | Name of the device whose user sent the message, or `Claude` for the first message of a chat that Claude started with `implement_ticket`, `implement_bundle` or `watch_ci` ([Chats](chats.md)).                                                                 |
-| linkedItems | `linkedItems` | `[ChatLinkedItem]` | no       | `[]`    | The items linked in the inspector's composer when the message was sent, in chip order ([Chats](chats.md#linked-items)). They are not part of `text`: the bubble shows them as chips and Claude receives them as context ([Chats](chats.md#linked-items-hook)). |
+| linkedItems | `linkedItems` | `[ChatLinkedItem]` | no       | `[]`    | The items linked when the message was sent, open items then added resources, in chip order ([Chats](chats.md#linked-items)). They are not in `text`: the bubble shows them as chips and Claude receives them as context ([Chats](chats.md#linked-items-hook)). |
 
 ### Linked item
 
 Swift type `ChatLinkedItem`: an item linked to a message, as it was when the message was sent ([Chats](chats.md#linked-items)).
 
-| Swift name | Key    | Type                 | Required | Default | Rules                                                                                                |
-| ---------- | ------ | -------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------- |
-| kind       | `kind` | `ChatLinkedItemKind` | yes      | —       | `ticket`, `bundle`, `chat`, `codeFile`, `docsFile`, `webTab` or `skill`; gives the chip's SF Symbol. |
-| name       | `name` | `String`             | yes      | —       | The chip's short name.                                                                               |
-| text       | `text` | `String`             | yes      | —       | `<item>` of the line `Open in the app: <item>` Claude receives, and the chip's tooltip.              |
+| Swift name | Key     | Type                 | Required | Default | Rules                                                                                                                                                                                                              |
+| ---------- | ------- | -------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| kind       | `kind`  | `ChatLinkedItemKind` | yes      | —       | `ticket`, `bundle`, `chat`, `codeFile`, `docsFile`, `webTab`, `skill` or `project`; gives the chip's SF Symbol. Only an added resource has the kind `project`.                                                     |
+| name       | `name`  | `String`             | yes      | —       | The chip's short name.                                                                                                                                                                                             |
+| text       | `text`  | `String`             | yes      | —       | `<item>` of the line Claude receives, `Open in the app: <item>`, or `Linked by the user: <item>` when `added` is true, and the chip's tooltip.                                                                     |
+| added      | `added` | `Bool`               | no       | `false` | `true` for a resource the user added from a composer's paperclip menu, `false` for an item open in the app ([Chats](chats.md#added-resources)). An item written before the key existed has none and reads `false`. |
 
 ### Assistant item
 
@@ -1382,10 +1383,10 @@ The chat's cost is derived from the `costUSD` values of its result items ([Chat 
 
 ### Transcript example
 
-The transcript of the project chat above: a message with an image and a linked ticket sent from the device MacBook, an MCP call, a permission request answered on the device Studio, a sub-agent with a nested call, a question set answered one question at a time, and the answers message.
+The transcript of the project chat above: a message with an image, a linked ticket and an added docs file sent from the device MacBook, an MCP call, a permission request answered on the device Studio, a sub-agent with a nested call, a question set answered one question at a time, and the answers message.
 
 ```jsonl .hephaestus/chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301.jsonl
-{"op":"add","item":{"type":"user","id":"E1D2C3B4-A596-4877-8695-A4B3C2D1E0F9","created":"2026-10-31T13:00:00Z","text":"Plan this sprint's status bar work. The screenshot shows the current status bar.","attachments":[{"id":"2B4D6F80-1A3C-4E5F-9071-8293A4B5C6D7","name":"status-bar.png","path":"chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301/2B4D6F80-1A3C-4E5F-9071-8293A4B5C6D7-status-bar.png","contentType":"image/png","size":48213}],"sender":"MacBook","linkedItems":[{"kind":"ticket","name":"HEPH-13","text":"ticket HEPH-13 “Show the build number in the status bar”"}]}}
+{"op":"add","item":{"type":"user","id":"E1D2C3B4-A596-4877-8695-A4B3C2D1E0F9","created":"2026-10-31T13:00:00Z","text":"Plan this sprint's status bar work. The screenshot shows the current status bar.","attachments":[{"id":"2B4D6F80-1A3C-4E5F-9071-8293A4B5C6D7","name":"status-bar.png","path":"chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301/2B4D6F80-1A3C-4E5F-9071-8293A4B5C6D7-status-bar.png","contentType":"image/png","size":48213}],"sender":"MacBook","linkedItems":[{"kind":"ticket","name":"HEPH-13","text":"ticket HEPH-13 “Show the build number in the status bar”","added":false},{"kind":"docsFile","name":"ui.md","text":"docs file docs/ui.md","added":true}]}}
 {"op":"add","item":{"type":"system","id":"8C1D2E3F-4A5B-4C6D-8E7F-9A0B1C2D3E4F","created":"2026-10-31T13:00:02Z","text":"Session started · Opus 5.5 · effort high · Ask every time","level":"info"}}
 {"op":"add","item":{"type":"thinking","id":"msg_01Hq7ZkP3vX9mB2nC4dR5tW8#0","created":"2026-10-31T13:00:05Z","text":"Start with the open tickets of the project.","parentToolUseID":null}}
 {"op":"add","item":{"type":"toolUse","id":"msg_01Hq7ZkP3vX9mB2nC4dR5tW8#1","created":"2026-10-31T13:00:06Z","toolUseID":"toolu_01Ab3Cd5Ef7Gh9Ij1Kl3Mn5P","name":"list_tickets","server":"hephaestus","input":{"projectID":"HEPH","status":"todo"},"parentToolUseID":null}}

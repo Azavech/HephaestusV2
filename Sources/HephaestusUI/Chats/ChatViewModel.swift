@@ -101,8 +101,8 @@ final class ChatViewModel {
 
     // MARK: Draft chat
 
-    /// The unsent text and attachments of a draft chat (an existing chat's are in
-    /// `DeviceWorkspace.drafts`).
+    /// The unsent text and attachments of a draft chat, and its added resources (an existing
+    /// chat's are in `DeviceWorkspace.drafts`).
     var draftComposer = ComposerDraft()
     /// The settings the draft is created with: the project's `chatDefaults`, else the host's
     /// `defaultChatSettings`, until a menu changes them.
@@ -117,6 +117,8 @@ final class ChatViewModel {
     var linkedItems: [LinkedItem] = []
     /// Unlinks an item: set by the inspector.
     @ObservationIgnored var onUnlink: ((LinkedItemRef) -> Void)?
+    /// The window whose search panel adds a resource to this composer, while that panel is open.
+    @ObservationIgnored private weak var resourcePickWindow: (any SearchPanelWindow)?
 
     // MARK: Cards
 
@@ -269,11 +271,17 @@ final class ChatViewModel {
         }
         set {
             if let chatID {
-                workspace.drafts[chatID] = newValue.text.isEmpty && newValue.attachments.isEmpty ? nil : newValue
+                workspace.drafts[chatID] = newValue.isEmpty ? nil : newValue
             } else {
                 draftComposer = newValue
             }
         }
+    }
+
+    /// The linked item chips the composer shows: the linked items, without those whose `<item>`
+    /// an added resource has (docs/chats.md › Added resources).
+    var shownLinkedItems: [LinkedItem] {
+        AddedResources.shownLinkedItems(linkedItems, resources: composer.resources)
     }
 
     /// The skills the composer's skill list offers: those of the chat's project and the internal
@@ -337,6 +345,7 @@ final class ChatViewModel {
     }
 
     func disappear() {
+        endResourcePick()
         ChatDrafts.unregister(self)
         app?.chatNotifier.chatViewClosed(self)
         if let chatID, opened {
@@ -356,15 +365,15 @@ final class ChatViewModel {
     // MARK: Composer actions
 
     /// Send: `chats.send`, or `chats.create` for a draft; sending clears the text and the
-    /// attachment chips. The linked items go with the message, outside its text, and stay linked
-    /// (docs/chats.md › Linked items).
+    /// attachment chips. The linked items and the added resources go with the message, outside its
+    /// text, and stay linked (docs/chats.md › Linked items, › Added resources).
     func send() {
         guard canSend else { return }
         let sent = composer
-        let linked = linkedItems.map(\.chatLinkedItem)
+        let linked = AddedResources.sent(linked: linkedItems, resources: sent.resources)
         let message = ChatMessageInput(text: sent.text, attachments: sent.attachments.isEmpty ? nil : sent.attachments,
                                        linkedItems: linked.isEmpty ? nil : linked)
-        composer = ComposerDraft()
+        composer = ComposerDraft(resources: sent.resources)
         Task {
             do {
                 if let chatID, let uuid = UUID(uuidString: chatID) {
@@ -375,17 +384,31 @@ final class ChatViewModel {
                     let meta = try await workspace.call(ChatsCreate.self, ChatsCreate.Params(
                         projectID: draft.projectID, kind: draft.kind, ticketID: draft.ticketID, bundleID: draft.bundleID,
                         settings: settings, message: message))
+                    keepResources(inChat: meta.id.uuidString)
                     onCreated?(meta)
                 }
             } catch {
-                // The message comes back when the composer is still empty (docs/chats.md › Composer).
-                let current = composer
+                // The message comes back when the text field and the attachment chips are still
+                // empty (docs/chats.md › Composer).
+                var current = composer
                 if current.text.isEmpty, current.attachments.isEmpty {
-                    composer = sent
+                    current.text = sent.text
+                    current.attachments = sent.attachments
+                    composer = current
                 }
                 alert(.failure("Send", error))
             }
         }
+    }
+
+    /// The added resources of a draft chat stay with the chat its first Send created: its views
+    /// read them from `DeviceWorkspace.drafts`.
+    private func keepResources(inChat chatID: String) {
+        var created = workspace.drafts[chatID] ?? ComposerDraft()
+        for resource in draftComposer.resources where !created.resources.contains(where: { $0.text == resource.text }) {
+            created.resources.append(resource)
+        }
+        workspace.drafts[chatID] = created.isEmpty ? nil : created
     }
 
     /// Stop and Escape while running: `chats.interrupt`.
@@ -403,6 +426,44 @@ final class ChatViewModel {
     /// × on a linked item chip.
     func unlink(_ item: LinkedItem) {
         onUnlink?(item.ref)
+    }
+
+    /// `Add Resource…` of the paperclip menu: the search panel of the window that holds the
+    /// composer opens, and the result the user picks there is added to this composer
+    /// (docs/search.md › Adding a resource).
+    func chooseResource(in searchWindow: (any SearchPanelWindow)?) {
+        guard let searchWindow, workspace.isConnected else { return }
+        resourcePickWindow = searchWindow
+        searchWindow.searchPick = SearchPick(composer: self)
+        searchWindow.searchVisible = true
+    }
+
+    /// A result picked in the search panel becomes a resource chip, unless a chip of the composer
+    /// already shows its `<item>`; the composer then has the keyboard focus (docs/chats.md › Added
+    /// resources).
+    func addResource(_ result: SearchResult) {
+        if let resource = AddedResources.resource(for: result, chatProjectID: chatProjectID) {
+            var draft = composer
+            draft.resources = AddedResources.adding(resource, to: draft.resources, linked: linkedItems)
+            composer = draft
+        }
+        composerFocusRequest += 1
+    }
+
+    /// × on a resource chip: the resource is no longer linked.
+    func removeResource(_ resource: ChatLinkedItem) {
+        var draft = composer
+        draft.resources.removeAll { $0.text == resource.text }
+        composer = draft
+    }
+
+    /// The composer's view goes away: the search panel that adds a resource to it closes without
+    /// adding anything.
+    private func endResourcePick() {
+        if let window = resourcePickWindow, window.searchPick?.composer === self {
+            window.searchVisible = false
+        }
+        resourcePickWindow = nil
     }
 
     /// A menu change: `chats.updateSettings` at once for an existing chat; in a draft it changes
@@ -450,7 +511,7 @@ final class ChatViewModel {
         composer.attachments.remove(at: index)
     }
 
-    /// The paperclip: an open panel for files, several at once, no folders.
+    /// `Add Files…` of the paperclip menu: an open panel for files, several at once, no folders.
     func chooseFiles() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true

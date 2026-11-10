@@ -24,13 +24,16 @@ struct ChatMentionsTests {
             Self.user("Look at this", linkedItems: [ChatLinkedItem(kind: .bundle, name: "DEMO-B4", text: "bundle DEMO-B4 “Polish”"),
                                                     ChatLinkedItem(kind: .ticket, name: "DEMO-5", text: "ticket DEMO-5 “Fix”"),
                                                     ChatLinkedItem(kind: .chat, name: "DEMO-92", text: "chat “DEMO-92”")]),
+            // A ticket added as a resource counts as a linked ticket; an added project does not.
+            Self.user("And these", linkedItems: [ChatLinkedItem(kind: .ticket, name: "API-7", text: "ticket API-7 “Other”", added: true),
+                                                 ChatLinkedItem(kind: .project, name: "API", text: "project API “Backend”", added: true)]),
             Self.assistant("Sub-agent work on DEMO-93", parent: "toolu_1"),
             .thinking(ThinkingItem(id: UUID().uuidString, created: Self.date, text: "DEMO-94")),
             .toolUse(ToolUseItem(id: UUID().uuidString, created: Self.date, toolUseID: "toolu_2", name: "Bash",
                                  input: .object(["command": .string("echo DEMO-95")]))),
             .system(SystemItem(id: UUID().uuidString, created: Self.date, text: "DEMO-96", level: .info)),
         ]
-        #expect(ChatMentions(items: items).ids == ["DEMO-1", "DEMO-2", "DEMO-3", "DEMO-5", "DEMO-B4"])
+        #expect(ChatMentions(items: items).ids == ["API-7", "DEMO-1", "DEMO-2", "DEMO-3", "DEMO-5", "DEMO-B4"])
     }
 
     @Test("An item that replaces an item with the same id replaces its ids; the ids are sorted and listed once")

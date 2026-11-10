@@ -1,5 +1,6 @@
-// OWNER: ui-chats — the composer (docs/chats.md › Composer, › Context indicator, › Skill
-// completion).
+// OWNER: ui-chats — the composer (docs/chats.md › Composer, › Context indicator, › Linked items,
+// › Skill completion).
+import AppKit
 import HephaestusCore
 import SwiftUI
 
@@ -7,13 +8,15 @@ import SwiftUI
 /// `DeviceWorkspace.drafts`, that of a draft in its view.
 ///
 /// ```
-/// [☑ DEMO-12 ×] [image.png ×] [build.log ×]  linked and attachment chips
+/// [☑ DEMO-12 ×] [</> app.go:7 ×] [image.png ×] [build.log ×]  linked, resource, attachment chips
 /// Message Claude…                                 text, 1–10 lines
 /// (paperclip)  Opus 5.5 ▾   Effort: High ▾   Context: Auto ▾   Ask Every Time ▾   ◔ 98% left   ■  ↑
 /// ```
 struct ComposerView: View {
     @Bindable var model: ChatViewModel
     @State private var skillList = SkillCompletionList()
+    /// The search panel of the window that holds the composer, which `Add Resource…` opens.
+    @Environment(\.searchPanelWindow) private var searchWindow
 
     var body: some View {
         let workspace = model.workspace
@@ -21,13 +24,20 @@ struct ComposerView: View {
             ClaudeStatusBanner(workspace: workspace)
             VStack(alignment: .leading, spacing: 6) {
                 let attachments = model.composer.attachments
-                let linkedItems = model.linkedItems
-                if !attachments.isEmpty || !linkedItems.isEmpty {
+                let linkedItems = model.shownLinkedItems
+                let resources = model.composer.resources
+                if !attachments.isEmpty || !linkedItems.isEmpty || !resources.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
                             ForEach(linkedItems) { item in
-                                ComposerLinkedItemChip(item: item) {
+                                ComposerLinkedItemChip(item: item.chatLinkedItem) {
                                     model.unlink(item)
+                                }
+                            }
+                            // The added resources, after the linked items and before the attachments.
+                            ForEach(resources, id: \.text) { resource in
+                                ComposerLinkedItemChip(item: resource) {
+                                    model.removeResource(resource)
                                 }
                             }
                             ForEach(Array(attachments.enumerated()), id: \.offset) { index, upload in
@@ -100,13 +110,10 @@ struct ComposerView: View {
 
     private func controlsRow<Menus: View>(indicatorShowsText: Bool, @ViewBuilder menus: () -> Menus) -> some View {
         HStack(spacing: 8) {
-            Button {
-                model.chooseFiles()
-            } label: {
-                Image(systemName: "paperclip")
+            ComposerAttachButton {
+                ComposerAttachMenu.menu(addFiles: { model.chooseFiles() },
+                                        addResource: { model.chooseResource(in: searchWindow) })
             }
-            .buttonStyle(.borderless)
-            .accessibilityLabel("Attach")
             menus()
             Spacer(minLength: 8)
             if let usage = model.meta?.contextUsage {
@@ -319,15 +326,48 @@ struct ComposerSkillList: View {
     }
 }
 
-/// A linked item chip (docs/chats.md › Linked items): the symbol of the item's sidebar section,
-/// its short name and an unlink button; the tooltip is the item's text.
+/// The Attach button (docs/chats.md › Composer): the paperclip, which opens its menu under itself.
+private struct ComposerAttachButton: View {
+    let menu: () -> NSMenu
+    @State private var anchor = ChatMenuAnchor()
+
+    var body: some View {
+        Button {
+            anchor.popUp(menu())
+        } label: {
+            Image(systemName: "paperclip")
+        }
+        .buttonStyle(.borderless)
+        .background(ChatMenuAnchorView(anchor: anchor))
+        .accessibilityLabel("Attach")
+    }
+}
+
+/// The menu of the Attach button (docs/chats.md › Composer): `Add Files…`, an open panel for files,
+/// then `Add Resource…`, the search panel that adds a resource.
+enum ComposerAttachMenu {
+    static let addFilesTitle = "Add Files…"
+    static let addResourceTitle = "Add Resource…"
+
+    static func menu(addFiles: @escaping () -> Void, addResource: @escaping () -> Void) -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        menu.addItem(ChatMenuItem(title: addFilesTitle, handler: addFiles))
+        menu.addItem(ChatMenuItem(title: addResourceTitle, handler: addResource))
+        return menu
+    }
+}
+
+/// A linked item chip or a resource chip (docs/chats.md › Linked items, › Added resources): the
+/// chip symbol of the item's kind, its short name and an unlink button; the tooltip is the item's
+/// text.
 struct ComposerLinkedItemChip: View {
-    let item: LinkedItem
+    let item: ChatLinkedItem
     let unlink: () -> Void
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: item.ref.section.symbol)
+            Image(systemName: item.kind.symbol)
                 .frame(width: 22, height: 22)
                 .foregroundStyle(.secondary)
             Text(item.name)

@@ -54,14 +54,24 @@ public enum DocMode: String, Codable, Hashable, Sendable, CaseIterable {
     }
 }
 
-/// Unsent composer text and attachments of an existing chat (docs/ui.md › DeviceWorkspace).
+/// Unsent composer text and attachments of an existing chat, and the resources added to its
+/// composer (docs/ui.md › DeviceWorkspace).
 public struct ComposerDraft: Hashable, Sendable {
     public var text: String
     public var attachments: [AttachmentUpload]
+    /// The added resources, in the order added; Send leaves them (docs/chats.md › Added
+    /// resources).
+    public var resources: [ChatLinkedItem]
 
-    public init(text: String = "", attachments: [AttachmentUpload] = []) {
+    public init(text: String = "", attachments: [AttachmentUpload] = [], resources: [ChatLinkedItem] = []) {
         self.text = text
         self.attachments = attachments
+        self.resources = resources
+    }
+
+    /// Nothing to keep: no text, no attachment and no added resource.
+    var isEmpty: Bool {
+        text.isEmpty && attachments.isEmpty && resources.isEmpty
     }
 }
 

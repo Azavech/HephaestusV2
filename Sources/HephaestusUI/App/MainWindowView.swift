@@ -78,6 +78,8 @@ struct MainWindowView: View {
         .navigationTitle(title(workspace))
         .registersWindow(.main(state.id), in: app)
         .focusedSceneValue(\.windowState, state)
+        // The composers of the window open its search panel to add a resource.
+        .environment(\.searchPanelWindow, state)
         .sheet(item: $state.sheet) { sheet in
             if let workspace {
                 WindowSheetView(sheet: sheet, window: state, workspace: workspace)

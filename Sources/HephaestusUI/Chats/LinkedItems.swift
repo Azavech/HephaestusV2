@@ -1,5 +1,5 @@
 // OWNER: ui-chats — the items of a main window linked to its inspector chat (docs/chats.md › Linked
-// items; docs/ui.md › Inspector).
+// items; docs/ui.md › Inspector); the resources a composer adds are in AddedResources.swift.
 import Foundation
 import HephaestusCore
 
@@ -18,11 +18,6 @@ struct LinkedItemRef: Hashable {
         "\(kind.rawValue):\(id)"
     }
 
-    /// The sidebar section of the item, whose SF Symbol the chip shows.
-    var section: ProjectSection {
-        linkedKind.section
-    }
-
     /// The `kind` Send passes for the item (docs/chats.md › Linked items).
     var linkedKind: ChatLinkedItemKind {
         switch kind {
@@ -38,16 +33,18 @@ struct LinkedItemRef: Hashable {
 }
 
 extension ChatLinkedItemKind {
-    /// The sidebar section of a linked item of this kind, whose SF Symbol its chips show.
-    var section: ProjectSection {
+    /// The SF Symbol of the chips of a linked item of this kind: that of the item's sidebar
+    /// section, and `folder` for a project, as in the results of the search panel.
+    var symbol: String {
         switch self {
-        case .ticket: return .tickets
-        case .bundle: return .bundles
-        case .chat: return .chats
-        case .codeFile: return .code
-        case .docsFile: return .docs
-        case .webTab: return .web
-        case .skill: return .skills
+        case .ticket: return ProjectSection.tickets.symbol
+        case .bundle: return ProjectSection.bundles.symbol
+        case .chat: return ProjectSection.chats.symbol
+        case .codeFile: return ProjectSection.code.symbol
+        case .docsFile: return ProjectSection.docs.symbol
+        case .webTab: return ProjectSection.web.symbol
+        case .skill: return ProjectSection.skills.symbol
+        case .project: return "folder"
         }
     }
 }

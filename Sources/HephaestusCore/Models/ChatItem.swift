@@ -123,7 +123,7 @@ public struct UserItem: ChatItemPayload {
     public var attachments: [Attachment]
     /// Name of the device whose user sent the message, or `Claude`.
     public var sender: String
-    /// The items linked in the inspector's composer when the message was sent, in chip order;
+    /// The items linked when the message was sent, open items then added resources, in chip order;
     /// not part of `text` (docs/chats.md › Linked items).
     public var linkedItems: [ChatLinkedItem]
 
@@ -162,24 +162,43 @@ public struct ChatLinkedItem: Codable, Sendable, Hashable {
     public var kind: ChatLinkedItemKind
     /// The chip's short name.
     public var name: String
-    /// `<item>` of the line `Open in the app: <item>` Claude receives, and the chip's tooltip.
+    /// `<item>` of the line Claude receives, and the chip's tooltip.
     public var text: String
+    /// True for a resource the user added from a composer's paperclip menu, false for an item open
+    /// in the app (docs/chats.md › Added resources).
+    public var added: Bool
 
-    public init(kind: ChatLinkedItemKind, name: String, text: String) {
+    public init(kind: ChatLinkedItemKind, name: String, text: String, added: Bool = false) {
         self.kind = kind
         self.name = name
         self.text = text
+        self.added = added
     }
 
-    /// The line Claude receives for the item (docs/chats.md › Linked items hook).
+    private enum CodingKeys: String, CodingKey {
+        case kind, name, text, added
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decode(ChatLinkedItemKind.self, forKey: .kind)
+        name = try c.decode(String.self, forKey: .name)
+        text = try c.decode(String.self, forKey: .text)
+        // An item written before the key existed has none.
+        added = try c.decodeIfPresent(Bool.self, forKey: .added) ?? false
+    }
+
+    /// The line Claude receives for the item (docs/chats.md › Linked items hook): `Open in the
+    /// app: <item>`, or `Linked by the user: <item>` for an added resource.
     public var line: String {
-        "Open in the app: \(text)"
+        added ? "Linked by the user: \(text)" : "Open in the app: \(text)"
     }
 }
 
-/// The kind of a linked item, which gives its chip's SF Symbol (docs/chats.md › Linked items).
+/// The kind of a linked item, which gives its chip's SF Symbol (docs/chats.md › Linked items);
+/// only an added resource is a `project`.
 public enum ChatLinkedItemKind: String, Codable, Sendable, Hashable, CaseIterable {
-    case ticket, bundle, chat, codeFile, docsFile, webTab, skill
+    case ticket, bundle, chat, codeFile, docsFile, webTab, skill, project
 }
 
 /// A text block written by Claude.

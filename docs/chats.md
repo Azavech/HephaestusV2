@@ -223,8 +223,8 @@ Claude receives the [linked items](#linked-items) of a message as context next t
 
 - The hook token authenticates the request. The engine issues a new one at each launch of the chat's process, with the chat token, and passes it in the process's environment variable `HEPHAESTUS_HOOK_TOKEN` ([Environment](#environment)); it is revoked when the process exits. A hook token is accepted only on the hook paths, `/hooks/user-prompt-submit` and `/hooks/pre-tool-use` ([Close chat hook](#close-chat-hook)), and only gives the linked items of its own chat's messages and the permission decisions of its own chat's `close_chat` and `api_call` calls ([MCP](mcp.md#authentication)).
 - The CLI runs the hook when it starts a message, not when it receives it: at once for a message written while no CLI turn is in progress, after the CLI turn in progress for a message that waits in its queue. It runs it once per message, in the order the messages were written, and not for a slash command such as `/cost`. The `prompt` it sends is the text trimmed of white space and line breaks at both ends, and empty for a message without a `text` block.
-- For every user message it writes to the process, the engine records, in write order, the message's prompt (the text of its `text` block, empty without one) and the `Open in the app: <item>` line of each of its linked items, in chip order. A hook request takes the first record whose prompt equals its `prompt`, both trimmed of white space and line breaks at both ends; that record and the records before it are dropped, since the CLI ran those messages without the hook. Messages written again after a missing session ([Session and resume](#session-and-resume)) are recorded again for the new process, and the records of a process are dropped when it exits.
-- The answer holds the lines of the matched record, joined with LF, as `additionalContext`. When the record has no linked item, or when no record matches, the answer adds no context.
+- For every user message it writes to the process, the engine records, in write order, the message's prompt (the text of its `text` block, empty without one) and the line of each of its linked items, in chip order: `Open in the app: <item>` for an item open in the app, and `Linked by the user: <item>` for an added resource, whose `added` is true ([Linked item](data-model.md#linked-item)). The composer puts the added resources after the open items ([Added resources](#added-resources)), so the `Linked by the user:` lines follow the `Open in the app:` lines. A hook request takes the first record whose prompt equals its `prompt`, both trimmed of white space and line breaks at both ends; that record and the records before it are dropped, since the CLI ran those messages without the hook. Messages written again after a missing session ([Session and resume](#session-and-resume)) are recorded again for the new process, and the records of a process are dropped when it exits.
+- The answer holds the lines of the matched record, joined with LF, as `additionalContext`. When the record has no line, or when no record matches, the answer adds no context.
 - When the hook fails, because the MCP server is not listening, does not answer within the 10 s timeout or refuses the request, the CLI runs the message without the context. The hook writes nothing to the stream-json output, so the transcript does not show the context.
 
 The matching of records and requests: Default chosen at design time.
@@ -1637,7 +1637,7 @@ A new permission mode chosen during a turn applies within that turn: the CLI dec
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ [☑ DEMO-12 ×] [image.png ×] [build.log ×]                          linked and attachment chips  │
+│ [☑ DEMO-12 ×] [</> app.go:7 ×] [image.png ×] [build.log ×]  linked, resource, attachment chips  │
 │ Message Claude…                                                         text, 1–10 lines        │
 │ (paperclip)  Opus 5.5 ▾  Effort: High ▾  Context: Auto ▾  Ask Every Time ▾  ◔ 98% left  ■  ↑    │
 └─────────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -1647,8 +1647,9 @@ A new permission mode chosen during a turn applies within that turn: the CLI dec
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Text field        | Multi-line, grows from 1 to 10 visible lines, then scrolls. Placeholder `Message Claude…`. Return sends; Shift-Return inserts a line break. A `/` at its start shows the [skill list](#skill-completion).                            |
 | Linked item chips | Only in the inspector: one chip per item linked from the window ([Linked items](#linked-items)), before the attachment chips in the same row: the SF Symbol of the item's sidebar section, its short name, and an unlink button (×). |
+| Resource chips    | In every composer: one chip per resource added with `Add Resource…` ([Added resources](#added-resources)), after the linked item chips and before the attachment chips: its SF Symbol, its short name, and an unlink button (×).     |
 | Attachment chips  | One chip per attachment: a thumbnail for images or a file icon, the name and the size, and a remove button (×).                                                                                                                      |
-| Attach button     | SF Symbol `paperclip`. Opens an open panel for files (multiple selection, no folders).                                                                                                                                               |
+| Attach button     | SF Symbol `paperclip`. Shows a menu of two items: `Add Files…` opens an open panel for files (multiple selection, no folders), and `Add Resource…` opens the search panel to link a resource ([Added resources](#added-resources)).  |
 | Model menu        | [Model](#model).                                                                                                                                                                                                                     |
 | Effort menu       | [Effort](#effort).                                                                                                                                                                                                                   |
 | Context menu      | [Context window](#context-window).                                                                                                                                                                                                   |
@@ -1661,7 +1662,7 @@ A new permission mode chosen during a turn applies within that turn: the CLI dec
 
 - While the [skill list](#skill-completion) is closed, Return in the text field does what an enabled Send does. While a turn is in progress, a sent message is delivered at once and Claude reads it after the current turn ([Chat states](#chat-states)).
 - While the skill list is closed, Escape in the text field calls `chats.interrupt` while the chat is running; ⌘. does not.
-- Sending clears the text field and the chips. When the call fails, the alert `Send failed` shows the error, and the message and its attachments come back when the composer is still empty. Default chosen at design time.
+- Sending clears the text field and the attachment chips; the linked item chips and the resource chips stay ([Linked items](#linked-items)). When the call fails, the alert `Send failed` shows the error, and the message and its attachments come back when the text field and the attachment chips are still empty. Default chosen at design time.
 - Files dropped anywhere on the chat view, and files pasted with ⌘V, become attachments; dropped folders are refused with the alert `Folders cannot be attached.` Pasted image data without a file becomes a PNG attachment named `Pasted Image <yyyy-MM-dd> at <HH.mm.ss>.png`, in local time, as in [Adding attachments](tickets.md#adding-attachments). Pasted text is inserted as text.
 - On a remote device, attachments are read on that device and sent as `AttachmentUpload` {name, contentType, dataBase64}.
 - An attachment larger than 20 MB ([Engine API](engine-api.md#limits)) is refused with the alert `<name> is larger than 20 MB.` Default chosen at design time.
@@ -1669,7 +1670,7 @@ A new permission mode chosen during a turn applies within that turn: the CLI dec
 - When the CLI of the window's device is unavailable and `checking` is false, a banner above the composer shows the error. In a window showing This Mac it is `ClaudeStatus.error` with an `Open Settings` button that opens Settings on General. In a window showing a remote device it is `Claude CLI is not available on <device name>: <ClaudeStatus.error>`, without a button, because the Settings window edits only This Mac ([Settings window](ui.md#settings-window)).
 - When the window's device is disconnected, the composer is disabled and its placeholder is `Not connected to <device name>`.
 - In a closed chat ([Closing a chat](#closing-a-chat)), the composer is hidden and the text `This conversation is over` is shown in its place, in every chat view of the chat on every client, local windows and remote devices. The CLI banner and the line `Checking the Claude CLI…` are hidden with it. Reopen in the More menu shows the composer again ([Chat view](#chat-view)).
-- The unsent text and attachments of an existing chat are kept in memory in `DeviceWorkspace.drafts` by chat id ([UI](ui.md#deviceworkspace)); those of a draft chat stay in its view. They are not persisted.
+- The unsent text and attachments of an existing chat, and its added resources ([Added resources](#added-resources)), are kept in memory in `DeviceWorkspace.drafts` by chat id ([UI](ui.md#deviceworkspace)); those of a draft chat stay in its view. They are not persisted.
 
 ### Context indicator
 
@@ -1693,7 +1694,9 @@ Compacted 2 times
 
 ### Linked items
 
-The composer of the inspector's chat, or of its draft, shows the items open in the centre column of its window ([Inspector](ui.md#inspector)) as linked item chips. Chat windows, the Chats section, and the Chats tabs and Mentioned In tabs of tickets and bundles link nothing, and so does the inspector while its window shows the Global Memories view or the Internal Skills view.
+A chat composer links items of HephaestusV2 to the messages it sends and shows them as chips: the items open in the app, in the inspector only, and the resources the user adds, in every chat composer ([Added resources](#added-resources)).
+
+The composer of the inspector's chat, or of its draft, shows the items open in the centre column of its window ([Inspector](ui.md#inspector)) as linked item chips. Chat windows, the Chats section, and the Chats tabs and Mentioned In tabs of tickets and bundles link no open item, and neither does the inspector while its window shows the Global Memories view or the Internal Skills view.
 
 | Item      | `kind`     | Chip symbol                               | Short name              | `<item>`                                                              |
 | --------- | ---------- | ----------------------------------------- | ----------------------- | --------------------------------------------------------------------- |
@@ -1709,7 +1712,7 @@ The composer of the inspector's chat, or of its draft, shows the items open in t
 - × unlinks the item: its chip disappears and Send no longer passes it, for as long as it stays open ([Inspector](ui.md#inspector)).
 - Send passes the linked items with the message, in chip order, in `ChatMessageInput.linkedItems`: for each, its `kind`, its short name as `name` and `<item>` as `text` ([Engine API](engine-api.md#chatmessageinput)). The message text is the typed text only.
 - The `user` item stores the linked items ([Data model](data-model.md#user-item)), and its bubble shows them as chips on every client ([Item rendering](#item-rendering)).
-- Claude receives one line `Open in the app: <item>` per linked item, in chip order, as context outside the message text ([Linked items hook](#linked-items-hook)). A message sent with no linked item adds no context.
+- Claude receives one line `Open in the app: <item>` per linked item, in chip order, as context outside the message text ([Linked items hook](#linked-items-hook)). A message sent with no linked item and no added resource adds no context.
 - The items stay linked after Send, so every message sent while they are open passes them.
 - Linked items alone do not enable Send: Send keeps the rule of the [Composer](#composer) table.
 
@@ -1718,6 +1721,39 @@ The context Claude receives with a message sent while two tickets are linked:
 ```text
 Open in the app: ticket DEMO-12 “Fix the login form”
 Open in the app: ticket DEMO-14 “Remember the last account”
+```
+
+#### Added resources
+
+In every chat composer, in the inspector, in chat windows, in the Chats section, in the Chats tabs and Mentioned In tabs of tickets and bundles, and in draft chats, the user links any item the search finds, in any project of the device: `Add Resource…` of the paperclip menu ([Composer](#composer)) opens the search panel, and the result the user picks there is added to that composer as a resource chip ([Adding a resource](search.md#adding-a-resource)).
+
+| Result  | `kind`     | Chip symbol                               | Short name              | `<item>`                     |
+| ------- | ---------- | ----------------------------------------- | ----------------------- | ---------------------------- |
+| Project | `project`  | `folder`                                  | the identifier          | `project <ID> “<name>”`      |
+| Ticket  | `ticket`   | `checklist`                               | the ticket id           | `ticket <id> “<title>”`      |
+| Bundle  | `bundle`   | `shippingbox`                             | the bundle id           | `bundle <id> “<title>”`      |
+| Doc     | `docsFile` | `doc.text`                                | the file name           | `docs file <path>`           |
+| Code    | `codeFile` | `chevron.left.forwardslash.chevron.right` | `<file name>:<line>`    | `code file <path>:<line>`    |
+| Chat    | `chat`     | `bubble.left.and.bubble.right`            | the chat's title        | `chat “<title>” (<chat id>)` |
+| Skill   | `skill`    | `wand.and.stars`                          | the skill's name        | `skill <name>`               |
+| Web tab | `webTab`   | `globe`                                   | the title, else the URL | as for an open web tab       |
+
+- `<path>` is the project path of the file and `<line>` the line of the code result. A docs or code file of another project than the chat's gets ` in project <ID>` at the end of its `<item>`, `<ID>` being the identifier of the file's project, for example `code file Sources/App/main.swift:12 in project DEMO`.
+- A resource chip looks like a linked item chip: the chip symbol, the short name and an unlink button (×), with `<item>` as tooltip. The symbol is the SF Symbol of the item's [sidebar section](ui.md#sidebar), and `folder` for a project, as in the results of the search panel. The resource chips come after the linked item chips and before the attachment chips, in the order added.
+- A resource chip keeps the short name and the `<item>` that the result had when it was added: it follows neither a later change of the item, a new title for example, nor its deletion. Default chosen at design time.
+- The composer never shows two chips with the same `<item>`: adding a resource whose `<item>` a chip of the composer already shows, a linked item chip or a resource chip, adds nothing; and an item open in the centre column whose `<item>` is that of an added resource shows no linked item chip, only the resource chip. Default chosen at design time.
+- An added resource stays linked until the user removes it with ×: every later message of the chat passes it, as an open item is passed while it stays open. Send clears neither the linked item chips nor the resource chips ([Composer](#composer)).
+- The added resources of an existing chat are kept with its composer draft in `DeviceWorkspace.drafts` ([UI](ui.md#deviceworkspace)): every view of the chat in this app shows them, while the app runs, and they are not kept after a restart. Those of a draft chat stay in its view, and stay with the chat that its first Send creates.
+- Added resources do not count as unsent text: a composer that holds nothing else does not hold back the restart for an update ([Restart rules](updater.md#restart-rules)), and the restart drops them. Default chosen at design time.
+- Send passes the added resources in `ChatMessageInput.linkedItems`, after the linked items, in chip order: for each, its `kind`, its short name as `name`, `<item>` as `text`, and `added` true ([Linked item](data-model.md#linked-item)). The `user` item stores them and its bubble shows them as chips, like the linked items ([Item rendering](#item-rendering)).
+- Claude receives one line `Linked by the user: <item>` per added resource, in chip order, after the `Open in the app: <item>` lines of the linked items ([Linked items hook](#linked-items-hook)).
+- Added resources alone do not enable Send: Send keeps the rule of the [Composer](#composer) table.
+
+The context Claude receives with a message sent from the inspector while the ticket DEMO-12 is open and a code line of the project API is added:
+
+```text
+Open in the app: ticket DEMO-12 “Fix the login form”
+Linked by the user: code file Sources/App/main.swift:12 in project API
 ```
 
 ### Skill completion
@@ -2743,3 +2779,4 @@ Memories of the project Suite (identifier SUITE), in the folder /Users/example/.
 - R189: Every Markdown view of the app draws the SF Symbol, color, font, shortcut, sound and animation markers the same way, and a click on ▶ plays the sound.
 - R190: Every chat of a Go service project whose API Explorer shows a contract lists the contract's operations and calls them on an environment through HephaestusV2's API tools, with the credentials and headers stored in the API Explorer; GET and HEAD calls run without a permission prompt.
 - R194: Every section of the main window shows a title, and so do the Global Memories and Internal Skills views: Dashboard, Tickets, Bundles, Chats, Web, Builds, Skills, Memories and API Explorer show their sidebar title in a title row above their left column.
+- R195: In a chat, the paperclip button of the composer links any internal resource of HephaestusV2 that the user finds with the search panel: a project, a ticket, a bundle, a doc, a code line, a chat, a skill or a web tab.

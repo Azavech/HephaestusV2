@@ -1,8 +1,9 @@
 import Foundation
 
 /// The messages written to one Claude process whose `UserPromptSubmit` hook has not run yet, in
-/// write order, each with its prompt and the `Open in the app:` lines of its linked items
-/// (docs/chats.md › Linked items hook).
+/// write order, each with its prompt and the lines of its linked items: `Open in the app:` for the
+/// open items, then `Linked by the user:` for the added resources (docs/chats.md › Linked items
+/// hook).
 struct LinkedItemsHookRecords: Sendable {
     private(set) var records: [(prompt: String, lines: [String])] = []
 

@@ -1,11 +1,14 @@
-// OWNER: ui-web-search — the search panel drawn over the columns (docs/search.md › Search panel).
+// OWNER: ui-web-search — the search panel drawn over the columns of a main window, or over the
+// content of a chat window (docs/search.md › Search panel, › Adding a resource).
 import AppKit
 import HephaestusCore
 import SwiftUI
 
-/// The search panel of a main window (`WindowState.searchVisible`, `WindowState.search`); opening a result calls `WindowState.navigate(to:)`.
+/// The search panel of a window (`searchVisible` and `search` of its `SearchPanelWindow`): opening
+/// a result navigates the window, or adds the result to the composer that opened the panel with
+/// `Add Resource…`.
 struct SearchPanel: View {
-    @Bindable var window: WindowState
+    let window: any SearchPanelWindow
     let workspace: DeviceWorkspace
     @State private var controller: SearchController
     @State private var host = SearchPanelHost()
@@ -16,7 +19,7 @@ struct SearchPanel: View {
     static let width: CGFloat = 720
     static let heightFraction: CGFloat = 0.7
 
-    init(window: WindowState, workspace: DeviceWorkspace) {
+    init(window: any SearchPanelWindow, workspace: DeviceWorkspace) {
         self.window = window
         self.workspace = workspace
         _controller = State(initialValue: SearchController(window: window, workspace: workspace))
@@ -24,8 +27,9 @@ struct SearchPanel: View {
 
     var body: some View {
         GeometryReader { proxy in
-            // A card centered horizontally, 8 pt below the toolbar, 720 pt wide (the window width
-            // minus 32 pt when the window is narrower), at most 70 % of the window height.
+            // A card centered horizontally, 8 pt below the toolbar, or below the top of a chat
+            // window's content, 720 pt wide (the window width minus 32 pt when the window is
+            // narrower), at most 70 % of the window height.
             let width = max(0, min(Self.width, proxy.size.width - 32))
             let maxHeight = (windowHeight ?? proxy.size.height) * Self.heightFraction
             SearchPanelCard(window: window, controller: controller, maxHeight: maxHeight)
@@ -139,7 +143,7 @@ final class WindowHeightView: NSView {
 
 /// The query field, the scope chips with the project toggle, and the results.
 private struct SearchPanelCard: View {
-    @Bindable var window: WindowState
+    let window: any SearchPanelWindow
     let controller: SearchController
     let maxHeight: CGFloat
     @State private var headerHeight: CGFloat = 0
@@ -169,8 +173,8 @@ private struct SearchPanelCard: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            CommandTextField(text: $window.search.query, kind: .search, placeholder: "Search", accessibilityLabel: "Search",
-                             focusOnAppear: true, onCommand: handle)
+            CommandTextField(text: Binding(get: { window.search.query }, set: { window.search.query = $0 }), kind: .search,
+                             placeholder: "Search", accessibilityLabel: "Search", focusOnAppear: true, onCommand: handle)
                 .overlay(alignment: .trailing) {
                     if controller.isQuerying {
                         ProgressView()
@@ -222,18 +226,18 @@ private struct SearchPanelCard: View {
         .labelsHidden()
         .controlSize(.small)
         .fixedSize()
-        .disabled(window.projectID == nil)
+        .disabled(window.searchProjectID == nil)
     }
 
     /// `This project` / `All projects`; a window with no active project shows `All projects`,
     /// disabled.
     private var projectToggle: Binding<Bool> {
-        Binding(get: { window.projectID != nil && window.search.thisProject },
+        Binding(get: { window.searchProjectID != nil && window.search.thisProject },
                 set: { window.search.thisProject = $0 })
     }
 
     /// ↓ and ↑ move the selection while the query field keeps the focus; Return opens the
-    /// selected result; Escape closes the panel.
+    /// selected result, or adds it to the composer that opened the panel; Escape closes the panel.
     private func handle(_ command: CommandTextField.Command) -> Bool {
         switch command {
         case .moveDown:
@@ -292,7 +296,7 @@ private struct SearchPanelCard: View {
                             .padding(.bottom, 2)
                         ForEach(group.results) { result in
                             SearchResultRow(result: result, terms: terms, isSelected: result.id == controller.selectedResultID,
-                                            showsProject: result.projectID != nil && result.projectID != window.projectID)
+                                            showsProject: result.projectID != nil && result.projectID != window.searchProjectID)
                                 .id(result.id)
                                 .onTapGesture {
                                     controller.open(result)
@@ -340,7 +344,8 @@ private struct SearchChip: View {
 }
 
 /// One result: the section icon, the title, the subtitle, the snippet on at most two lines, and
-/// the result's project when it differs from the window's.
+/// the result's project when it differs from the window's: the active project of a main window, the
+/// chat's project in a chat window.
 private struct SearchResultRow: View {
     let result: SearchResult
     let terms: [String]

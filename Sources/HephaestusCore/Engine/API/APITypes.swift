@@ -532,7 +532,7 @@ public struct ChatMessageInput: Codable, Sendable, Hashable {
     public var text: String
     /// Files and images; absent means none.
     public var attachments: [AttachmentUpload]?
-    /// The items linked in the inspector's composer at Send, in chip order; absent means none.
+    /// The open items, then the added resources, linked at Send, in chip order; absent means none.
     /// They never enter the text: Claude receives them through the linked items hook
     /// (docs/chats.md › Linked items hook).
     public var linkedItems: [ChatLinkedItem]?

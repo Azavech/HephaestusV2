@@ -57,7 +57,7 @@ struct LinkedItemsTests {
             "Open in the app: ticket DEMO-2 “Fix the login form”",
             "Open in the app: ticket DEMO-10 “Remember the last account”",
         ])
-        #expect(items.map { $0.ref.section.symbol } == ["checklist", "checklist"])
+        #expect(items.map { $0.chatLinkedItem.kind.symbol } == ["checklist", "checklist"])
     }
 
     @Test func onlyTheShownSectionIsLinked() {
@@ -123,7 +123,9 @@ struct LinkedItemsTests {
             let items = linked(everySelection, section)
             #expect(items.map(\.chatLinkedItem.kind) == [kind])
             // The chip of the bubble shows the symbol of the composer's chip.
-            #expect(items.map { $0.chatLinkedItem.kind.section.symbol } == [section.symbol])
+            #expect(items.map { $0.chatLinkedItem.kind.symbol } == [section.symbol])
+            // An open item is not an added resource.
+            #expect(items.map(\.chatLinkedItem.added) == [false])
         }
     }
 

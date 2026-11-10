@@ -95,7 +95,7 @@ final class DeviceWorkspace {
     var agentTranscripts: [String: TranscriptState] = [:]
     /// Projects whose detail, tickets, bundles and web tabs are loaded.
     var loadedProjectIDs: Set<String> = []
-    /// Unsent composer text and attachments of existing chats, by chat id.
+    /// Unsent composer text, attachments and added resources of existing chats, by chat id.
     var drafts: [String: ComposerDraft] = [:]
     /// Whether `openapi/contract.yaml` of a Go service project holds an OpenAPI 3.x contract, by
     /// project id; absent until the first read ends (docs/openapi.md › Availability).

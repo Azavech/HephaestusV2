@@ -1,5 +1,5 @@
 // OWNER: ui-web-search — querying and results of the search panel (docs/search.md › Querying,
-// › Results list, › Keyboard and mouse).
+// › Results list, › Keyboard and mouse, › Navigation, › Adding a resource).
 import Foundation
 import HephaestusCore
 import Observation
@@ -18,7 +18,7 @@ final class SearchController {
     /// The trimmed query of the shown answer; nil while no answer is shown.
     private(set) var answeredQuery: String?
 
-    let window: WindowState
+    let window: any SearchPanelWindow
     let workspace: DeviceWorkspace
 
     /// The delay between the last change and the call.
@@ -27,18 +27,19 @@ final class SearchController {
     @ObservationIgnored private var callNumber = 0
     @ObservationIgnored private var pending: Task<Void, Never>?
 
-    init(window: WindowState, workspace: DeviceWorkspace) {
+    init(window: any SearchPanelWindow, workspace: DeviceWorkspace) {
         self.window = window
         self.workspace = workspace
     }
 
     // MARK: Querying
 
-    /// `This project` sends the window's active project (the sub project when one is selected);
-    /// `All projects`, or a window with no active project, sends none.
+    /// `This project` sends the window's project: the active project of a main window (the sub
+    /// project when one is selected), the chat's project in a chat window; `All projects`, or a
+    /// window without project, sends none.
     var projectID: String? {
         guard window.search.thisProject else { return nil }
-        return window.projectID
+        return window.searchProjectID
     }
 
     /// A change of the query, the chips or the toggle: the call runs 250 ms after the last one;
@@ -153,20 +154,24 @@ final class SearchController {
         selectedResultID = ordered[index].id
     }
 
-    /// Return: opens the selected result.
+    /// Return: opens the selected result, or adds it to the composer that opened the panel.
     func openSelected() {
         guard let result = results.first(where: { $0.id == selectedResultID }) else { return }
         open(result)
     }
 
-    /// docs/search.md › Navigation: the panel closes, then the window navigates to the target.
+    /// The panel closes; then the window navigates to the target (docs/search.md › Navigation),
+    /// or, while the panel adds a resource, the result goes to the composer that opened the panel
+    /// and the window does not navigate (docs/search.md › Adding a resource).
     func open(_ result: SearchResult) {
         pending?.cancel()
+        // Closing the panel ends the pick.
+        let pick = window.searchPick
         window.searchVisible = false
-        let window = window
-        let target = result.target
-        Task {
-            await window.navigate(to: target)
+        if let pick {
+            pick.composer?.addResource(result)
+        } else {
+            window.searchNavigate(to: result.target)
         }
     }
 }

@@ -154,15 +154,16 @@ enum TranscriptRenderer {
         return html + "</div>"
     }
 
-    /// The linked items of a user message as chips, between the caption and the bubble: the SF
-    /// Symbol of the item's sidebar section and its short name, with `<item>` as tooltip, as the
-    /// composer's linked item chips without the unlink button (docs/chats.md › Item rendering).
+    /// The linked items of a user message, open items and added resources, as chips between the
+    /// caption and the bubble: the chip symbol of the item's kind and its short name, with `<item>`
+    /// as tooltip, as the composer's chips without the unlink button (docs/chats.md › Item
+    /// rendering).
     static func linkedItemsHTML(_ items: [ChatLinkedItem]) -> String {
         guard !items.isEmpty else { return "" }
         var html = "<div class=\"linked-items\">"
         for item in items {
             html += "<span class=\"linked-chip\" title=\"\(escape(item.text))\">"
-                + "<span class=\"md-symbol-icon\" data-symbol=\"\(escape(item.kind.section.symbol))\"></span>"
+                + "<span class=\"md-symbol-icon\" data-symbol=\"\(escape(item.kind.symbol))\"></span>"
                 + "<span class=\"linked-name\">\(escape(item.name))</span></span>"
         }
         return html + "</div>"

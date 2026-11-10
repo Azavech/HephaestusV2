@@ -144,10 +144,10 @@ The Claude process of a chat sends `POST /hooks/user-prompt-submit` before Claud
 {"session_id":"3f2504e0-4f89-11d3-9a0c-0305e82c3301","transcript_path":"/Users/example/.claude/projects/-Users-example-Developer-HephaestusV2/3f2504e0-4f89-11d3-9a0c-0305e82c3301.jsonl","cwd":"/Users/example/Developer/HephaestusV2","prompt_id":"6c15058d-0e32-4e4a-b8e2-6961d759eb72","permission_mode":"default","hook_event_name":"UserPromptSubmit","prompt":"Which item do I have open?"}
 ```
 
-- The engine matches `prompt` with the messages written to the token's chat process ([Chats](chats.md#linked-items-hook)). When the matched message has linked items, the answer is 200 with `application/json` and `additionalContext` holding one line `Open in the app: <item>` per item, in chip order, joined with LF:
+- The engine matches `prompt` with the messages written to the token's chat process ([Chats](chats.md#linked-items-hook)). When the matched message has linked items, the answer is 200 with `application/json` and `additionalContext` holding one line per item, in chip order, joined with LF: `Open in the app: <item>` for an item open in the app, `Linked by the user: <item>` for a resource the user added:
 
 ```json
-{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"Open in the app: ticket HEPH-3 “Pinned questions card: minimize, navigate, skip answers”"}}
+{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"Open in the app: ticket HEPH-3 “Pinned questions card: minimize, navigate, skip answers”\nLinked by the user: docs file docs/chats.md"}}
 ```
 
 - Otherwise the answer is 200 with the body `{}`, which adds no context: the message has no linked item, no message matches, or the body is not a JSON object with a string `prompt`. Default chosen at design time.

@@ -1,5 +1,6 @@
 // OWNER: ui-shell — the chat window's root: its workspace, title, subtitle, reconnect view and status
-// bar around the chat view (docs/ui.md › Windows, › Status bar, › Empty states).
+// bar around the chat view, and its search panel (docs/ui.md › Windows, › Status bar, › Empty
+// states; docs/search.md › Adding a resource).
 import HephaestusCore
 import SwiftUI
 
@@ -20,9 +21,12 @@ struct ChatWindowRoot: View {
 }
 
 /// A chat window: the chat view of `value` above a status bar with the device state and the
-/// ladybug; the reconnect view while its remote device is not connected.
+/// ladybug; the reconnect view while its remote device is not connected. Its search panel, which
+/// `Add Resource…` of its composer opens, shows over the chat view.
 private struct ChatWindowContent: View {
     let value: ChatWindowValue
+    /// The window's search panel, kept while the window is open.
+    @State private var search = ChatWindowSearch()
     @Environment(AppModel.self) private var app
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
@@ -41,6 +45,11 @@ private struct ChatWindowContent: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .top) {
+                if search.searchVisible, let workspace {
+                    SearchPanel(window: search, workspace: workspace)
+                }
+            }
             StatusBarView(context: .chat(value), workspace: workspace)
         }
         .frame(minWidth: 480, minHeight: 480)
@@ -48,6 +57,12 @@ private struct ChatWindowContent: View {
         .navigationSubtitle(subtitle(workspace))
         .registersWindow(.chat(value), in: app)
         .focusedSceneValue(\.chatWindowValue, value)
+        .focusedSceneValue(\.chatWindowSearch, search)
+        .environment(\.searchPanelWindow, search)
+        // `This project` of the panel is the chat's project.
+        .onChange(of: workspace?.chats[value.chatID]?.projectID, initial: true) { _, projectID in
+            search.searchProjectID = projectID
+        }
         .onAppear {
             app.captureWindowActions(openWindow: openWindow, openSettings: openSettings)
             app.registerChatWindow(value)

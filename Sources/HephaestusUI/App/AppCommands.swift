@@ -276,15 +276,23 @@ private struct ViewCommands: View {
 
 private struct NavigateCommands: View {
     @FocusedValue(\.windowState) private var focused
+    @FocusedValue(\.chatWindowSearch) private var chatSearch
 
     var body: some View {
         let window = actionable(focused)
         let handler = window?.sectionCommands
+        // In a chat window, whose search panel only `Add Resource…` opens, the command closes the
+        // panel while it shows (docs/search.md › Adding a resource).
+        let closesChatSearch = window == nil && chatSearch?.searchVisible == true
         Button("Search…") {
-            window?.toggleSearch()
+            if closesChatSearch {
+                chatSearch?.searchVisible = false
+            } else {
+                window?.toggleSearch()
+            }
         }
         .keyboardShortcut("f", modifiers: [.command, .shift])
-        .disabled(!(window?.isConnected ?? false))
+        .disabled(!(window?.isConnected ?? false) && !closesChatSearch)
         Button("Go to Line…") {
             handler?.goToLine()
         }

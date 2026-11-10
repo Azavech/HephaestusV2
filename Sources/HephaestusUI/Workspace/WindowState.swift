@@ -79,8 +79,15 @@ final class WindowState: Identifiable {
     var internalSkillStates: [String: SkillViewState] = [:]
     /// Last active project per device in this window.
     var lastProjectByDevice: [String: String] = [:]
-    /// Search panel shown.
-    var searchVisible = false
+    /// Search panel shown. Closing the panel ends the adding of a resource (docs/search.md › Adding
+    /// a resource).
+    var searchVisible = false {
+        didSet {
+            if !searchVisible, searchPick != nil {
+                searchPick = nil
+            }
+        }
+    }
     /// The search panel's query, scope chips and project toggle.
     var search = SearchPanelState()
     /// The sheet shown on the window.
@@ -92,6 +99,9 @@ final class WindowState: Identifiable {
 
     /// The alert shown on the window.
     var alert: WindowAlert?
+    /// The composer the search panel adds a result to, from `Add Resource…` until the panel closes;
+    /// nil while a result navigates (docs/search.md › Adding a resource).
+    var searchPick: SearchPick?
     /// A request of a menu item to the shown section.
     var pendingSectionCommand: SectionCommand?
     /// True while the window waits for its device's projects to choose the default project

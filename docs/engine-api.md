@@ -4016,10 +4016,10 @@ Rules:
 | ----------- | ------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | text        | String             | yes      | Message text; may be empty only when there is an attachment.                                                                                                                                               |
 | attachments | [AttachmentUpload] | no       | Files and images; default empty.                                                                                                                                                                           |
-| linkedItems | [ChatLinkedItem]   | no       | The items linked in the inspector's composer at Send, in chip order ([Chats](chats.md#linked-items)); default empty. Each one is a [ChatLinkedItem](data-model.md#linked-item), stored in the `user` item. |
+| linkedItems | [ChatLinkedItem]   | no       | The open items, then the added resources, linked at Send, in chip order ([Chats](chats.md#linked-items)); default empty. Each is a [ChatLinkedItem](data-model.md#linked-item), stored in the `user` item. |
 
 ```json
-{"attachments": [{"contentType": "image/png", "dataBase64": "iVBORw0KGgo=", "name": "screenshot.png"}], "linkedItems": [{"kind": "ticket", "name": "DEMO-12", "text": "ticket DEMO-12 “Fix the login form”"}], "text": "The tab strip overlaps the toolbar."}
+{"attachments": [{"contentType": "image/png", "dataBase64": "iVBORw0KGgo=", "name": "screenshot.png"}], "linkedItems": [{"added": false, "kind": "ticket", "name": "DEMO-12", "text": "ticket DEMO-12 “Fix the login form”"}, {"added": true, "kind": "docsFile", "name": "ui.md", "text": "docs file docs/ui.md"}], "text": "The tab strip overlaps the toolbar."}
 ```
 
 ### ChatTranscript

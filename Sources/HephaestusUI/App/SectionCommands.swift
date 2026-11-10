@@ -65,6 +65,11 @@ struct ChatWindowFocusedKey: FocusedValueKey {
     typealias Value = ChatWindowValue
 }
 
+/// The focused chat window's search panel, which Navigate ▸ Search… closes.
+struct ChatWindowSearchFocusedKey: FocusedValueKey {
+    typealias Value = ChatWindowSearch
+}
+
 extension FocusedValues {
     var windowState: WindowState? {
         get { self[WindowStateFocusedKey.self] }
@@ -74,5 +79,10 @@ extension FocusedValues {
     var chatWindowValue: ChatWindowValue? {
         get { self[ChatWindowFocusedKey.self] }
         set { self[ChatWindowFocusedKey.self] = newValue }
+    }
+
+    var chatWindowSearch: ChatWindowSearch? {
+        get { self[ChatWindowSearchFocusedKey.self] }
+        set { self[ChatWindowSearchFocusedKey.self] = newValue }
     }
 }
