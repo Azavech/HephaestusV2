@@ -87,6 +87,33 @@ enum ChatAttachmentFiles {
         return .success(AttachmentUpload(name: name, contentType: "image/png", dataBase64: png.base64EncodedString()))
     }
 
+    /// What ⌘V adds as attachments (docs/chats.md › Composer).
+    enum Pasted {
+        /// The files of the pasteboard.
+        case files([URL])
+        /// Image data without a file, as a PNG.
+        case image(Data)
+    }
+
+    /// The files of a pasteboard, else its image data when it holds no text; nil when it holds
+    /// neither and is pasted as text.
+    static func pasted(from pasteboard: NSPasteboard) -> Pasted? {
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+           !urls.isEmpty {
+            return .files(urls)
+        }
+        if pasteboard.availableType(from: [.string]) == nil, NSImage.canInit(with: pasteboard),
+           let image = NSImage(pasteboard: pasteboard), let png = pngData(image) {
+            return .image(png)
+        }
+        return nil
+    }
+
+    static func pngData(_ image: NSImage) -> Data? {
+        guard let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff) else { return nil }
+        return bitmap.representation(using: .png, properties: [:])
+    }
+
     /// The decoded size of an upload.
     static func size(of upload: AttachmentUpload) -> Int {
         guard let base64 = upload.dataBase64 else { return 0 }

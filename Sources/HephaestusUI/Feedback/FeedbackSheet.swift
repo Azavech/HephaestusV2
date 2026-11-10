@@ -26,10 +26,11 @@ struct FeedbackScreenshotIcon: Equatable {
 }
 
 /// Send Feedback: the screenshot (`AppModel.feedbackPreviews[previewID]`) with the icon that
-/// leaves it out, the comment, the chat settings menus and the context; Send calls
-/// `chats.createFeedback` on the receiving device with its HephaestusV2 project, and a main window
-/// shows the returned chat in its Chats section (docs/feedback.md › Feedback sheet, › Screenshot
-/// preview, › Chat settings menus, › Feedback project, › Creating the feedback chat).
+/// leaves it out, the comment, the files the user adds, the chat settings menus and the context;
+/// Send calls `chats.createFeedback` on the receiving device with its HephaestusV2 project, and a
+/// main window shows the returned chat in its Chats section (docs/feedback.md › Feedback sheet,
+/// › Screenshot preview, › Chat settings menus, › Added files, › Feedback project, › Creating the
+/// feedback chat).
 struct FeedbackSheet: View {
     let previewID: UUID
     let source: FeedbackSource
@@ -44,13 +45,19 @@ struct FeedbackSheet: View {
     @State private var isSending = false
     /// The error of the last Send.
     @State private var sendError: String?
+    /// The files the user added, with their chips under the comment field; Send sends them with
+    /// the feedback and Cancel discards them (docs/feedback.md › Added files).
+    @State private var files = FeedbackAttachments()
+    /// The sheet's window, which the open panel of the Attach button attaches to.
+    @State private var windowReference = ChatWindowReference()
     /// The settings chosen in the menus; nil until a menu changes them, while the menus show the
     /// HephaestusV2 project's defaults.
     @State private var chosenSettings: ChatSettings?
     /// The `chatDefaults` of the HephaestusV2 project read with `projects.get` when the workspace
     /// has not loaded its detail; `.some(nil)` for a project without them, nil while not read.
     @State private var readChatDefaults: ChatSettings??
-    @FocusState private var commentFocused: Bool
+    /// Incremented to put the keyboard focus in the comment field.
+    @State private var commentFocusRequest = 0
     /// The screenshot, decoded once.
     @State private var image: NSImage?
     /// Whether Send sends the screenshot: true each time the sheet opens, and never saved.
@@ -82,11 +89,14 @@ struct FeedbackSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        FeedbackSheetColumn(minimumWidth: 480, spacing: 12) {
             Text("Send Feedback")
                 .font(.headline)
             screenshot
             commentField
+            if !files.uploads.isEmpty {
+                attachmentChips
+            }
             if let message = blockingMessage {
                 Text(message)
                     .font(.callout)
@@ -96,6 +106,7 @@ struct FeedbackSheet: View {
                 ValidationMessage(text: sendError)
             }
             settingsRow
+                .layoutValue(key: FeedbackSheetColumn.SetsWidth.self, value: true)
             if let capture {
                 let line = FeedbackController.contextLine(capture.context, projectName: contextProjectName(capture))
                 Text(line)
@@ -109,8 +120,24 @@ struct FeedbackSheet: View {
             buttons
         }
         .padding(20)
-        .frame(width: 520)
         .disabled(isSending)
+        .background(ChatWindowReader(reference: windowReference))
+        // Files dropped anywhere on the sheet are added (docs/feedback.md › Added files).
+        .contentShape(Rectangle())
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            guard !isSending else { return false }
+            Task {
+                addFiles(await TicketDroppedFiles.urls(from: providers))
+            }
+            return true
+        }
+        .alert(files.alert?.title ?? "", isPresented: attachmentAlertShown, presenting: files.alert) { _ in
+            Button("OK") {}
+        } message: { alert in
+            if !alert.message.isEmpty {
+                Text(alert.message)
+            }
+        }
         .task(id: workspace?.isConnected ?? false) {
             await ensureHephaestusProject()
         }
@@ -119,7 +146,7 @@ struct FeedbackSheet: View {
         }
         .onAppear {
             image = png.flatMap { NSImage(data: $0) }
-            commentFocused = true
+            commentFocusRequest += 1
         }
         .onDisappear {
             app.feedbackController.finish(previewID)
@@ -199,8 +226,17 @@ struct FeedbackSheet: View {
 
     /// A multi-line field with the focus; Send needs a comment that is not blank.
     private var commentField: some View {
-        MultilineField(text: $comment, focus: $commentFocused)
-            .frame(height: 96)
+        // ⌘V adds the files or the image data of the pasteboard, and files dropped on the field
+        // are added (docs/feedback.md › Added files); ⌘Return and Escape press Send and Cancel.
+        TicketTextEditor(text: $comment, minLines: 5, maxLines: 5, focusRequest: commentFocusRequest, isEditable: !isSending,
+                         textInset: NSSize(width: 4, height: 4),
+                         onCommandReturn: { send() },
+                         onEscape: { if !isSending { closeSheet() } },
+                         onPaste: { pasteboard in !isSending && files.paste(pasteboard) },
+                         onDropFiles: { urls in addFiles(urls) })
+            .frame(height: 96, alignment: .top)
+            .background(RoundedRectangle(cornerRadius: 5).fill(Color(nsColor: .textBackgroundColor)))
+            .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(Color(nsColor: .separatorColor)))
             .overlay(alignment: .topLeading) {
                 if comment.isEmpty {
                     Text("What happened, and what did you expect?")
@@ -213,10 +249,31 @@ struct FeedbackSheet: View {
             .accessibilityLabel("Comment")
     }
 
-    /// The composer's Model, Effort, Context and Permissions menus, in one row.
+    /// One chip per added file, in the order the files were added, as in the composer.
+    private var attachmentChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(Array(files.uploads.enumerated()), id: \.offset) { index, upload in
+                    ComposerAttachmentChip(upload: upload) {
+                        files.remove(at: index)
+                    }
+                }
+            }
+        }
+    }
+
+    /// The Attach button, then the composer's Model, Effort, Context and Permissions menus, in one
+    /// row, which gives the sheet its width when it is wider than the screenshot area.
     private var settingsRow: some View {
         let menus = ChatSettingsMenus(settings: chatSettings, models: workspace?.models ?? []) { chosenSettings = $0 }
         return HStack(spacing: 8) {
+            Button {
+                chooseFiles()
+            } label: {
+                Image(systemName: "paperclip")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Attach")
             ChatModelMenuButton(menus: menus)
                 .fixedSize()
             ChatEffortMenuButton(menus: menus)
@@ -229,7 +286,6 @@ struct FeedbackSheet: View {
                 ProgressView()
                     .controlSize(.small)
             }
-            Spacer(minLength: 0)
         }
     }
 
@@ -297,6 +353,7 @@ struct FeedbackSheet: View {
 
     private var canSend: Bool {
         !isSending && blockingMessage == nil && chatDefaultsKnown && hephaestusProject != nil && !Self.isBlank(comment)
+            && !files.isReading
     }
 
     /// A comment of white space and line breaks alone is blank; the condition has no message.
@@ -355,6 +412,25 @@ struct FeedbackSheet: View {
         _ = try? await workspace.call(ProjectsEnsureHephaestus.self)
     }
 
+    // MARK: Added files (docs/feedback.md › Added files)
+
+    /// Files from the open panel, a drop or ⌘V; none is added while Send runs.
+    private func addFiles(_ urls: [URL]) {
+        guard !isSending else { return }
+        files.add(urls)
+    }
+
+    /// The Attach button: an open panel for files, several at once, no folders.
+    private func chooseFiles() {
+        Task {
+            addFiles(await TicketPendingFiles.chooseFiles(in: windowReference.window))
+        }
+    }
+
+    private var attachmentAlertShown: Binding<Bool> {
+        Binding(get: { files.alert != nil }, set: { if !$0 { files.alert = nil } })
+    }
+
     // MARK: Send (docs/feedback.md › Creating the feedback chat)
 
     /// The `screenshot` param of Send: nil, so left out, while the screenshot is excluded and when
@@ -374,7 +450,8 @@ struct FeedbackSheet: View {
             comment: comment,
             screenshot: Self.screenshotUpload(png: png, included: screenshotIncluded),
             context: capture.context,
-            settings: chatSettings
+            settings: chatSettings,
+            attachments: files.uploads.isEmpty ? nil : files.uploads
         )
         Task {
             do {
@@ -382,8 +459,8 @@ struct FeedbackSheet: View {
                 closeSheet()
                 await app.feedbackController.showChat(meta, in: workspace, source: source)
             } catch {
-                // The sheet stays open; the comment, the state of the screenshot and the chat
-                // settings are kept.
+                // The sheet stays open; the comment, the state of the screenshot, the added files
+                // and the chat settings are kept.
                 sendError = errorMessage(error)
                 isSending = false
             }
@@ -396,5 +473,41 @@ struct FeedbackSheet: View {
         } else {
             dismiss()
         }
+    }
+}
+
+/// The column of the Feedback sheet: its subviews one under the other, each as wide as the column.
+/// The column is `minimumWidth` wide, or as wide as a subview marked with `SetsWidth` when that
+/// subview needs more: the chat settings row, which is neither folded nor clipped
+/// (docs/feedback.md › Chat settings menus).
+struct FeedbackSheetColumn: Layout {
+    /// True for a subview whose ideal width the column takes when it is wider than `minimumWidth`.
+    struct SetsWidth: LayoutValueKey {
+        static let defaultValue = false
+    }
+
+    var minimumWidth: CGFloat
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = width(of: subviews)
+        let heights = heights(of: subviews, width: width)
+        return CGSize(width: width, height: heights.reduce(0, +) + spacing * CGFloat(max(0, heights.count - 1)))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for (subview, height) in zip(subviews, heights(of: subviews, width: bounds.width)) {
+            subview.place(at: CGPoint(x: bounds.minX, y: y), proposal: ProposedViewSize(width: bounds.width, height: height))
+            y += height + spacing
+        }
+    }
+
+    private func width(of subviews: Subviews) -> CGFloat {
+        subviews.filter { $0[SetsWidth.self] }.map { $0.sizeThatFits(.unspecified).width }.reduce(minimumWidth, max)
+    }
+
+    private func heights(of subviews: Subviews, width: CGFloat) -> [CGFloat] {
+        subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height }
     }
 }

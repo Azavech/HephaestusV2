@@ -1,12 +1,12 @@
 # Feedback
 
-The ladybug at the right end of the status bar, the menu command Help ▸ Send Feedback… and ⇧⌘B start feedback from any window. Feedback is about HephaestusV2 itself, so it always goes to the HephaestusV2 project of the receiving device ([HephaestusV2 project](projects.md#hephaestusv2-project)). The app captures the window into a PNG inside its own process, then shows a sheet with the screenshot, which the user can leave out of the feedback, a comment field, which must be filled in, and the model, effort and permission mode of the feedback chat. Send asks the engine to create a feedback chat in the HephaestusV2 project, with the comment, the screenshot unless it is left out, and the context already sent, and a main window comes to the front showing it in the Chats section of that project. Claude asks with labelled questions every decision of the ticket's implementation that is still open, then creates a ticket that holds the answers, follows the description template, starts as `todo`, gets its title from Haiku and carries the screenshot when the feedback has one. The chat is linked to that ticket.
+The ladybug at the right end of the status bar, the menu command Help ▸ Send Feedback… and ⇧⌘B start feedback from any window. Feedback is about HephaestusV2 itself, so it always goes to the HephaestusV2 project of the receiving device ([HephaestusV2 project](projects.md#hephaestusv2-project)). The app captures the window into a PNG inside its own process, then shows a sheet with the screenshot, which the user can leave out of the feedback, a comment field, which must be filled in, the files the user adds and the model, effort and permission mode of the feedback chat. Send asks the engine to create a feedback chat in the HephaestusV2 project, with the comment, the screenshot unless it is left out, the added files and the context already sent, and a main window comes to the front showing it in the Chats section of that project. Claude asks with labelled questions every decision of the ticket's implementation that is still open, then creates a ticket that holds the answers, follows the description template, starts as `todo`, gets its title from Haiku and carries the screenshot, when the feedback has one, and the added files. The chat is linked to that ticket.
 
 ## Flow
 
 1. Start: the ladybug, Help ▸ Send Feedback… or ⇧⌘B, shown while the receiving device shows its HephaestusV2 project ([Starting feedback](#starting-feedback)).
 2. Capture: the window is rendered into a PNG in-process ([Screenshot capture](#screenshot-capture)).
-3. Sheet: screenshot preview with the icon that leaves the screenshot out, required comment, chat settings, Send; the sheet asks the receiving device to clone its HephaestusV2 project when it has none ([Feedback sheet](#feedback-sheet), [Screenshot preview](#screenshot-preview)).
+3. Sheet: screenshot preview with the icon that leaves the screenshot out, required comment, added files, chat settings, Send; the sheet asks the receiving device to clone its HephaestusV2 project when it has none ([Feedback sheet](#feedback-sheet), [Screenshot preview](#screenshot-preview), [Added files](#added-files)).
 4. Send: the client calls `chats.createFeedback` on the receiving device with the HephaestusV2 project ([Creating the feedback chat](#creating-the-feedback-chat)).
 5. Pop up: a main window comes to the front and shows the returned chat, selected in the Chats section of the HephaestusV2 project ([Feedback sheet](#feedback-sheet)).
 6. Claude asks every open decision with labelled questions, creates the ticket with `create_ticket` once every decision is answered, and summarizes ([Feedback chat](#feedback-chat)).
@@ -65,6 +65,8 @@ The sheet is attached to the captured window. It has no project choice: the feed
 | Title         | `Send Feedback`                                                                                                                                                                                                                                                                                     |
 | Screenshot    | the PNG scaled to fit 480 × 300 pt, with the icon that leaves it out of the feedback ([Screenshot preview](#screenshot-preview)); a click outside the icon opens it in the image viewer ([Tickets](tickets.md#image-viewer))                                                                        |
 | Comment       | multi-line text field with the focus and the placeholder `What happened, and what did you expect?`; required: Send needs a comment that is not blank                                                                                                                                                |
+| Attachments   | one chip per added file, the composer's attachment chips ([Composer](chats.md#composer)), in a row under the comment field, in the order the files were added: a thumbnail for an image or a file icon, the name, the size and a remove button (×) ([Added files](#added-files))                    |
+| Attach button | SF Symbol `paperclip` at the start of the chat settings row, before the Model menu, as in the composer; it shows no menu and opens an open panel for files (multiple selection, no folders)                                                                                                         |
 | Chat settings | the composer's Model menu with its `Ultracode` toggle, Effort menu, Context menu and Permissions menu, `Allow All` with its red badge, in one row in the composer's order: the settings of the feedback chat ([Chat settings](chats.md#chat-settings), [Chat settings menus](#chat-settings-menus)) |
 | Context       | one read-only line: the App, Device, Project, Section and Item lines of the [feedback message](chats.md#feedback-message), without their leading `- `, joined with ` · `; the Screenshot line is left out. The Project line names the captured window's project.                                    |
 | Buttons       | `Cancel` (Escape) and `Send` (⌘Return, default button)                                                                                                                                                                                                                                              |
@@ -80,14 +82,15 @@ Send, with its shortcut ⌘Return, is enabled when every condition holds; otherw
 | Claude is available on the receiving device (`ClaudeStatus.available`)                 | `Checking the Claude CLI on <device name>…` while `ClaudeStatus.checking` is true or the status is not known yet (no snapshot of the device), otherwise `Claude CLI is not available on <device name>: <ClaudeStatus.error>` |
 | the chat defaults of the HephaestusV2 project are known, or a menu was changed         | no message; a progress indicator shows after the chat settings menus                                                                                                                                                         |
 | the comment is not blank: it holds a character other than white space and line breaks  | no message                                                                                                                                                                                                                   |
+| every added file is read ([Added files](#added-files))                                 | no message                                                                                                                                                                                                                   |
 
-The sheet re-evaluates the conditions when the comment changes, when the connection state or the snapshot of the receiving device changes, and when `projects.changed` arrives. A screenshot is not a condition: Send works while the screenshot is excluded and when the window could not be captured ([Screenshot preview](#screenshot-preview)). The order of the conditions and the progress indicator are design-time choices. Default chosen at design time.
+The sheet re-evaluates the conditions when the comment changes, when an added file is read, when the connection state or the snapshot of the receiving device changes, and when `projects.changed` arrives. A screenshot is not a condition: Send works while the screenshot is excluded and when the window could not be captured ([Screenshot preview](#screenshot-preview)). The order of the conditions and the progress indicator are design-time choices. Default chosen at design time.
 
 - Sending: `Send` shows a progress indicator and every control of the sheet, `Cancel` included, is disabled until the answer arrives. Default chosen at design time.
 - Success: the sheet closes, no chat window opens, and a main window navigates to the returned chat as for a `chat{chatID}` target: it activates the chat's project, the HephaestusV2 project, selects the Chats section and selects the chat ([Resolving a target](ui.md#resolving-a-target)). That main window, ordered front and made key, is the pop up of the feedback flow ([Choosing the window](ui.md#choosing-the-window)):
   - feedback captured from a main window: that main window;
   - feedback captured from a chat window, Settings, About or any other window: the most recently key main window showing the receiving device, otherwise a new main window opened on that device; the window the feedback came from stays open.
-- Error: the sheet stays open with the error message under the comment field; the comment, the state of the screenshot and the chat settings are kept.
+- Error: the sheet stays open with the error message under the comment field; the comment, the state of the screenshot, the added files and the chat settings are kept.
 
 ### Screenshot preview
 
@@ -101,7 +104,7 @@ The preview shows the PNG scaled to fit 480 × 300 pt. An icon in its top-right 
 - The screenshot is included each time the sheet opens. The choice is not saved.
 - The icon sits on a small circle of dark material. It shows while the pointer is over the preview; while the screenshot is excluded, `eye.slash` stays shown when the pointer is elsewhere.
 - A click on the preview outside the icon opens the PNG in the image viewer, in both states.
-- While the screenshot is excluded, Send sends the feedback without it: the engine stores no screenshot, the first message of the feedback chat has no image and no `Screenshot:` line, and Claude creates the ticket without a screenshot attachment ([Creating the feedback chat](#creating-the-feedback-chat)).
+- While the screenshot is excluded, Send sends the feedback without it: the engine stores no screenshot, the first message of the feedback chat has no image of the window and no `Screenshot:` line, and Claude creates the ticket without a screenshot attachment ([Creating the feedback chat](#creating-the-feedback-chat)).
 - When the window could not be captured ([Screenshot capture](#screenshot-capture)), `The window could not be captured.` stays in place of the preview, `eye.slash` shows disabled in its top-right corner, and Send sends the feedback without a screenshot.
 - The icon is white, on a circle 24 pt wide, 8 pt from the top and right edges of the preview's frame. The frame is 480 pt wide and the PNG is centred in it, so the icon stands beside a PNG that is narrower than the frame, such as the screenshot of a chat window. The circle is the system's ultra-thin material in its dark appearance under black at 40 % opacity, which keeps it dark on a dark screenshot and in the in-process capture, where materials are not blurred ([Screenshot capture](#screenshot-capture)). The circle is a button that takes a click also while the icon is hidden: `debug_click`, which does not move the pointer, reaches it ([Automated UI checks](development.md#automated-ui-checks)). The excluded preview is drawn at 40 % opacity. Default chosen at design time.
 
@@ -112,6 +115,21 @@ The preview shows the PNG scaled to fit 480 × 300 pt. An icon in its top-right 
 - The choice sets only the feedback chat that Send creates; nothing is saved.
 - When the client has not loaded the HephaestusV2 project, it reads the project's `chatDefaults` with `projects.get`; until the answer arrives, a progress indicator shows after the menus and Send stays disabled, unless a menu was changed. When the call fails, the menus show the receiving device's `defaultChatSettings`. Default chosen at design time.
 - The layout of the row: Default chosen at design time.
+- The row stays on one line and is neither folded nor clipped. The sheet is as wide as its screenshot area, 480 pt, plus its margins; when the row, with the Attach button, is wider than 480 pt, the sheet is as wide as the row plus its margins. Default chosen at design time.
+
+### Added files
+
+The user can add files to the feedback, for example a log or a screenshot of another window. Files are added as in the composer ([Composer](chats.md#composer)):
+
+- The Attach button opens an open panel for files (multiple selection, no folders), as `Add Files…` of the composer's Attach button does; it shows no menu.
+- Files dropped anywhere on the sheet, and files pasted with ⌘V in the comment field, are added too. Dropping a folder shows the alert `Folders cannot be attached.` and adds nothing from that drop. Pasted image data without a file becomes a PNG named `Pasted Image <yyyy-MM-dd> at <HH.mm.ss>.png`, in local time. Pasted text is inserted as text.
+- A file larger than 20 MB ([Engine API](engine-api.md#limits)) is refused with the alert `<name> is larger than 20 MB.`
+- Each added file gets a chip at the end of the Attachments row, and the remove button (×) of a chip takes its file out of the feedback. The row shows only while a file is added; the line under the comment field, the message of a failing condition or the error of Send, then shows under the row. Default chosen at design time for the place of that line.
+- Send sends the added files with the feedback, in chip order ([Creating the feedback chat](#creating-the-feedback-chat)), and Claude attaches each of them to the ticket it creates, with the screenshot when the feedback has one ([Feedback chat](#feedback-chat)).
+- A file is read when it is added, and its chip shows once it is read. Until then Send is disabled, without a message, so that Send sends every added file ([Feedback sheet](#feedback-sheet)). Default chosen at design time.
+- When the added files, with the screenshot unless it is left out, exceed 20 MB together, Send fails with the engine's message `The attachments of one request exceed 20 MB.`, shown under the comment field like any error of Send; the comment, the state of the screenshot, the added files and the chat settings are kept.
+- While Send runs, the Attach button and the remove buttons of the chips are disabled like every control of the sheet, and a file dropped meanwhile is not added. Default chosen at design time for the dropped file.
+- Cancel discards the added files.
 
 ## Feedback project
 
@@ -174,13 +192,14 @@ Example, captured in a remote window of the MacBook showing the device Studio, w
 
 Send calls [chats.createFeedback](engine-api.md#chatscreatefeedback) on the receiving device with:
 
-| Param        | Value                                                                       |
-| ------------ | --------------------------------------------------------------------------- |
-| `projectID`  | `HEPH`, the HephaestusV2 project                                            |
-| `comment`    | the comment as typed, never blank ([Feedback sheet](#feedback-sheet))       |
-| `screenshot` | `{name: "screenshot.png", contentType: "image/png", dataBase64: <the PNG>}` |
-| `context`    | the [Feedback context](#feedback-context)                                   |
-| `settings`   | the settings of the sheet's [chat settings menus](#chat-settings-menus)     |
+| Param         | Value                                                                                                                  |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `projectID`   | `HEPH`, the HephaestusV2 project                                                                                       |
+| `comment`     | the comment as typed, never blank ([Feedback sheet](#feedback-sheet))                                                  |
+| `screenshot`  | `{name: "screenshot.png", contentType: "image/png", dataBase64: <the PNG>}`                                            |
+| `attachments` | the [added files](#added-files) in chip order, each `{name, contentType, dataBase64}`; left out when no file was added |
+| `context`     | the [Feedback context](#feedback-context)                                                                              |
+| `settings`    | the settings of the sheet's [chat settings menus](#chat-settings-menus)                                                |
 
 `screenshot` is left out while the screenshot is excluded and when the window could not be captured ([Screenshot preview](#screenshot-preview)).
 
@@ -188,16 +207,23 @@ The engine then:
 
 1. checks the call and fails without creating anything when the Claude CLI is not available (`unavailable`); the errors are listed in [Engine API](engine-api.md#chatscreatefeedback);
 2. creates a chat of kind `feedback` with `ticket` null in the HephaestusV2 project and emits `chat.updated`;
-3. stores the screenshot as an attachment of the chat, in `.hephaestus/chats/<chat-id>/<attachment-uuid>-screenshot.png` of the HephaestusV2 project ([Data model](data-model.md)), and stores nothing when the params have no `screenshot`;
-4. sends the first message, which calls the internal skill `feedback`: the line `/hephaestus-skills:feedback`, then the feedback message, the comment and the rendered context, with the screenshot as an image when there is one, in the format of [Chats](chats.md#feedback-message), and launches the Claude process with the common skill alone as its system prompt ([Internal skills](skills.md#internal-skills));
+3. stores the screenshot as an attachment of the chat, in `.hephaestus/chats/<chat-id>/<attachment-uuid>-screenshot.png` of the HephaestusV2 project, and no screenshot when the params have no `screenshot`; then stores each added file, in order, in `.hephaestus/chats/<chat-id>/<attachment-uuid>-<name>` ([Data model](data-model.md));
+4. sends the first message, which calls the internal skill `feedback`: the line `/hephaestus-skills:feedback`, then the feedback message, the comment and the rendered context, with the screenshot as an image when there is one and the added files after it, in the format of [Chats](chats.md#feedback-message), and launches the Claude process with the common skill alone as its system prompt ([Internal skills](skills.md#internal-skills));
 5. returns the `ChatMeta`, and a main window of the client shows the chat in the Chats section of the HephaestusV2 project ([Feedback sheet](#feedback-sheet)).
 
 Haiku names the chat from this first message, as for every chat, and the chat's row and header follow the chat title ([Chats](chats.md)).
 
-Example params, with a 1 × 1 pixel PNG standing in for a real screenshot:
+Example params, with a 1 × 1 pixel PNG standing in for a real screenshot and one added text file:
 
 ```json
 {
+  "attachments": [
+    {
+      "contentType": "text/plain",
+      "dataBase64": "V2ViIHRhYiAzIG1vdmVkIGZyb20gaW5kZXggMiB0byBpbmRleCAwCg==",
+      "name": "web-tabs.txt"
+    }
+  ],
   "comment": "The lock icon disappears when I drag a locked tab to another position.",
   "context": {
     "appVersion": "0.4.0",
@@ -229,6 +255,7 @@ The params of feedback sent without a screenshot have no `screenshot` key.
   2. list every decision the ticket's implementation needs, look for each one in the feedback, the docs, the code and the git history, and ask every decision still open with labelled questions (A, B, C…) with the MCP tool `ask_questions`, each with options and one recommended option, then end the turn; the user answers them one by one in the chat view ([Chats](chats.md)); Claude goes on to step 3 only once every decision is answered, without a further validation question ([Workflow › Writing tickets](workflow.md#writing-tickets));
   3. call `create_ticket` in the HephaestusV2 project with a description that follows the template and holds the answers, and, when the context has a `Screenshot:` line, the screenshot path in `attachments`;
   4. reply with the ticket id and a short summary of the ticket.
+- When the user added files ([Added files](#added-files)), the context has one `Attachment:` line per file, which holds the absolute path of the stored file on the receiving device. The skill tells Claude to read every added file in step 1 too, and to pass the path of every `Attachment:` line in `attachments` in step 3 too, so that the ticket carries the screenshot, when the feedback has one, and every added file.
 - Permission prompts for these tool calls follow the chat's permission mode ([Chats](chats.md)).
 - Claude implements the ticket in the feedback chat only when the user asks ([Workflow](workflow.md)).
 - The chat is listed in the Chats section of the HephaestusV2 project, in its one list with the project chats, its row the same as theirs, where Send shows it ([Where chats appear](chats.md#where-chats-appear)). Selecting another chat, or closing the main window or a chat window opened with Open in New Window, does not stop the chat.
@@ -262,6 +289,7 @@ sessionStarted: true
 | the description contains the six template headings in order                                                                           | [Workflow](workflow.md), [Tickets](tickets.md) |
 | Claude gives no title: the ticket gets a provisional title, then the title chosen by Haiku (`ticket.updated`)                         | [Tickets](tickets.md), [Chats](chats.md)       |
 | the screenshot path, if any, becomes an attachment upload with `sourcePath`, copied into `.hephaestus/attachments/<TICKET-ID>/`       | [Engine API](engine-api.md#attachmentupload)   |
+| each `Attachment:` path becomes an attachment upload with `sourcePath` too, after the screenshot's, in the order of the lines         | [Engine API](engine-api.md#attachmentupload)   |
 | when the chat's `ticket` is null, the ticket's `chats` is `[<chat id>]` and the chat's `ticket` is set to the new id (`chat.updated`) | [Engine API](engine-api.md#ticketscreate)      |
 | later tickets created in the same chat are not linked to it                                                                           | [Data model](data-model.md)                    |
 
@@ -312,6 +340,7 @@ chats: [3F2504E0-4F89-11D3-9A0C-0305E82C3301]
 - The capture, the sheet and the main window that shows the chat run in the app of the device the user works on; the projects, the settings, the chat, its Claude process and the ticket live on the receiving device ([Remote devices](remote.md)).
 - After Send from a remote window, the main window chosen as [Feedback sheet](#feedback-sheet) specifies shows the receiving device's chat, as after Send from a window of This Mac.
 - The screenshot travels base64-encoded inside the request, within the message size limit of [Remote devices](remote.md).
+- The [added files](#added-files) are read on the device the user works on and travel base64-encoded inside the same request, as `AttachmentUpload` {name, contentType, dataBase64}, as in the composer ([Composer](chats.md#composer)). A request that they bring over the message size limit is not sent: Send then fails with `The request is larger than 32 MB.` ([Oversized messages](remote.md#oversized-messages)).
 - In the context, `deviceName` names the device the user works on and `mainDeviceName` the receiving device.
 
 ## Self-update loop
@@ -334,3 +363,4 @@ Every feedback ticket belongs to the HephaestusV2 project, a clone of the app's 
 - R181: Feedback, Implement and Implement All start their chat by calling the internal skills feedback, implement-ticket and implement-bundle, which, with finish-implementation, hold the instructions of these tasks, are always active in every project, and are shown and edited only with View ▸ Internal Skills.
 - R188: The user selects the context window of each chat, Auto, 200K or 1M; a running chat takes a new window once its turn and background work end.
 - R196: The feedback sheet lets the user leave the screenshot out of the feedback and requires a comment.
+- R199: The feedback sheet lets the user add images and files, which Claude attaches to the ticket it creates.

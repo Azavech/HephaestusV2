@@ -363,9 +363,10 @@ extension Engine {
     /// Feedback message).
     func chatsCreateFeedback(_ params: ChatsCreateFeedback.Params, _ actor: Actor) async throws -> ChatMeta {
         try ActorRules.requireNoSourcePath(params.screenshot.map { [$0] }, actor)
+        try ActorRules.requireNoSourcePath(params.attachments, actor)
         let projectID = try Engine.projectIdentifier(params.projectID)
         // docs/engine-api.md › chats.createFeedback, errors; feedback sent without a screenshot
-        // stores no file.
+        // stores no screenshot.
         var screenshots: [ChatAttachments.Prepared] = []
         if let upload = params.screenshot {
             guard upload.contentType == "image/png" else { throw EngineError.invalid("screenshot", "use a PNG image (image/png)") }
@@ -385,18 +386,35 @@ extension Engine {
             return project
         }
         _ = try checkProject()
+        let files = try feedbackFiles(params.attachments ?? [], projectID: projectID, screenshotSize: screenshots.first?.data.count ?? 0)
         _ = try await requireClaudeCLI()
         let sender = senderName(actor)
         let project = try checkProject()
         let meta = try createChat(kind: .feedback, project: project, ticketID: nil, bundleID: nil, settings: params.settings, origin: actor)
         recordDrivingDevice(meta.id, actor)
         let stored = try storeChatAttachments(screenshots, chatID: meta.id)
+        // The added files follow the screenshot (docs/chats.md › Feedback message).
+        let storedFiles = try storeChatAttachments(files, chatID: meta.id)
         let folder = try chatFolder(meta)
         let contextProjectName = params.context.projectID.flatMap { Identifiers.normalizedProjectID($0) }.flatMap { domain.project($0)?.name }
         let text = Engine.feedbackMessage(comment: params.comment, context: params.context, projectName: contextProjectName,
-                                          screenshotPath: stored.first.map { folder.attachmentFile(path: $0.0.path).path })
-        try sendChatMessage(meta.id, text: text, attachments: stored, sender: sender, origin: actor)
+                                          screenshotPath: stored.first.map { folder.attachmentFile(path: $0.0.path).path },
+                                          attachmentPaths: storedFiles.map { folder.attachmentFile(path: $0.0.path).path })
+        // The text holds the path of every attachment, so the message lists no file.
+        try sendChatMessage(meta.id, text: text, attachments: stored + storedFiles, sender: sender, listsFiles: false, origin: actor)
         return try requireChat(meta.id)
+    }
+
+    /// The files the user added to a feedback, checked and read as chat attachments. With the
+    /// screenshot, when the feedback has one, they are the attachments of one request: at most
+    /// 20 MiB together (docs/engine-api.md › chats.createFeedback, › Limits).
+    private func feedbackFiles(_ uploads: [AttachmentUpload], projectID: ProjectID, screenshotSize: Int) throws -> [ChatAttachments.Prepared] {
+        guard let root = domain.projectRoot(projectID) else { throw EngineError.notFound("Project", projectID) }
+        let files = try ChatAttachments.prepare(uploads, projectRoot: root)
+        guard files.reduce(screenshotSize, { $0 + $1.data.count }) <= AttachmentUploads.maximumSize else {
+            throw EngineError(.invalid, "The attachments of one request exceed 20 MB.")
+        }
+        return files
     }
 
     // MARK: Messages and settings

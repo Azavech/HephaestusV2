@@ -56,9 +56,12 @@ extension Engine {
     /// the linked items hook, writes the metadata (`chat.updated`) with `closed` false, and
     /// `questionsBlocked` false when `unblocksQuestions`, and starts the naming when this is the
     /// chat's first user message with text (docs/chats.md › User messages, › Linked items hook,
-    /// › Closing a chat, › Implement and feedback chats).
+    /// › Closing a chat, › Implement and feedback chats). With `listsFiles` false the text sent gets
+    /// no `Attached files:` list: the feedback message already holds the path of every attachment
+    /// (docs/chats.md › Feedback message).
     func sendChatMessage(_ chatID: ChatID, text: String, attachments stored: [(Attachment, Data)],
-                         linkedItems: [ChatLinkedItem] = [], sender: String, unblocksQuestions: Bool = false, origin: Actor) throws {
+                         linkedItems: [ChatLinkedItem] = [], sender: String, unblocksQuestions: Bool = false,
+                         listsFiles: Bool = true, origin: Actor) throws {
         let meta = try requireChat(chatID)
         let folder = try chatFolder(meta)
         let text = ModelRules.normalizedLineBreaks(text)
@@ -73,7 +76,7 @@ extension Engine {
         }
         let attachments = stored.map(\.0)
         var sent = text
-        if !files.isEmpty {
+        if listsFiles, !files.isEmpty {
             if !sent.isEmpty { sent += "\n\n" }
             sent += "Attached files:\n" + files.map { "- \($0)" }.joined(separator: "\n")
         }
@@ -135,8 +138,10 @@ extension Engine {
     }
 
     /// docs/chats.md › Feedback message: the line `/hephaestus-skills:feedback`, then the comment
-    /// and the context, whose Screenshot line is left out for feedback without a screenshot.
-    static func feedbackMessage(comment: String, context: FeedbackContext, projectName: String?, screenshotPath: String?) -> String {
+    /// and the context, whose Screenshot line is left out for feedback without a screenshot and
+    /// which ends with one `Attachment:` line per added file.
+    static func feedbackMessage(comment: String, context: FeedbackContext, projectName: String?, screenshotPath: String?,
+                                attachmentPaths: [String] = []) -> String {
         let trimmed = comment.trimmingCharacters(in: .whitespacesAndNewlines)
         var lines = [skillCall("feedback"), trimmed.isEmpty ? "(no comment)" : ModelRules.normalizedLineBreaks(trimmed), "", "Feedback context:"]
         lines.append("- App: HephaestusV2 v\(context.appVersion)(\(context.build))")
@@ -150,6 +155,7 @@ extension Engine {
         if let section = context.section { lines.append("- Section: \(section.rawValue)") }
         if let item = context.item { lines.append("- Item: \(item)") }
         if let screenshotPath { lines.append("- Screenshot: \(screenshotPath)") }
+        lines += attachmentPaths.map { "- Attachment: \($0)" }
         return lines.joined(separator: "\n")
     }
 

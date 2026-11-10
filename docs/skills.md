@@ -243,6 +243,8 @@ The user sends feedback with or without a screenshot of that window. When the co
 3. Call create_ticket with the identifier of this chat's project as projectID, a description that follows the template and holds the answers, and, when the context has a Screenshot line, the screenshot path in attachments. When the feedback reports several problems, create one ticket per problem.
 4. Reply with a short summary of the ticket that names its id.
 
+The user can add files to the feedback. The context then has one Attachment line per added file, which gives the path where that file is saved. In step 1, read every added file as well. In step 3, pass the path of every Attachment line in attachments as well, after the screenshot path when there is one, so that the ticket carries every added file.
+
 Implement the ticket in this chat only when the user asks for that, and then use the skill hephaestus-skills:implement-ticket.
 ```
 

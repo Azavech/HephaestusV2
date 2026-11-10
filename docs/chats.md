@@ -210,7 +210,7 @@ Each message written to stdin is one line of compact UTF-8 JSON ending with `\n`
 
 - The engine first stores every attachment in the chat's attachment folder `chats/<chat id>/` ([Data model](data-model.md#attachments)). The stored `name` and `contentType` follow [AttachmentUpload](engine-api.md#attachmentupload).
 - An attachment whose content type is `image/png`, `image/jpeg`, `image/gif` or `image/webp` and whose size is at most 5,000,000 bytes becomes an `image` block with `media_type` = its content type and `data` = its base64 content. Default chosen at design time.
-- Every other attachment is listed in the text. The text sent is the message text; when files are listed, a blank line (only when the message text is not empty), the line `Attached files:` and one line `- <absolute path of the stored file>` per file follow it.
+- Every other attachment is listed in the text. The text sent is the message text; when files are listed, a blank line (only when the message text is not empty), the line `Attached files:` and one line `- <absolute path of the stored file>` per file follow it. The first message of a feedback chat lists none: its text already holds the path of each of its attachments ([Feedback message](#feedback-message)).
 - The `text` block is left out when the text sent is empty. The content is the `image` blocks in attachment order followed by the `text` block: Claude Code 2.1.309 runs a message as a skill call, such as the first message of a feedback chat, only when its last block is a text ([Calls](skills.md#calls)). Default chosen at design time.
 - `uuid` is the `id` of the message's `user` item; the CLI reports what it does with the message under this id ([Turn tracking](#turn-tracking)). Default chosen at design time.
 - The `user` item stores the message text without the `Attached files:` lines ([Data model](data-model.md#user-item)).
@@ -2120,7 +2120,7 @@ Header (in the Chats section, the Chats tabs and Mentioned In tabs of tickets an
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `chats.implementTicket` | kind ticket, `ticket` = the ticket id, `questionsBlocked` true; the chat id is appended to the ticket's `chats`; `orchestrator` = the calling chat for an [orchestrated ticket chat](#orchestrated-ticket-chats) | `/hephaestus-skills:implement-ticket <ticket id>`, or `/hephaestus-skills:implement-ticket <ticket id> <bundle id>` for an orchestrated ticket chat, with the bundle of its orchestrator (the name of the user's device; `Claude` when called by `implement_ticket`) |
 | `chats.implementBundle` | kind bundle, `bundle` = the bundle id; the chat id is appended to the bundle's `chats`                                                                                                                           | `/hephaestus-skills:implement-bundle <bundle id>` (the name of the user's device; `Claude` when called by `implement_bundle`)                                                                                                                                        |
-| `chats.createFeedback`  | kind feedback, `ticket` null                                                                                                                                                                                     | `/hephaestus-skills:feedback`, a line break, then the [feedback message](#feedback-message), with the screenshot as its only attachment, or with none when the feedback has no screenshot (the name of the device that sent the feedback)                            |
+| `chats.createFeedback`  | kind feedback, `ticket` null                                                                                                                                                                                     | `/hephaestus-skills:feedback`, a line break, then the [feedback message](#feedback-message), with the screenshot, when the feedback has one, and the added files as its attachments (the name of the device that sent the feedback)                                  |
 | `chats.watchCI`         | kind ci, `orchestrator` = the calling chat, `ticket` or `bundle` = the calling chat's; the chat id is appended to that ticket's or bundle's `chats` ([CI chats](#ci-chats))                                      | the CI message `Watch the CI of commit <commit>.` (`Claude`)                                                                                                                                                                                                         |
 
 - A done ticket, and a bundle without a ticket left to implement, are refused with `conflict` ([Tickets](tickets.md#errors)).
@@ -2129,7 +2129,8 @@ Header (in the Chats section, the Chats tabs and Mentioned In tabs of tickets an
 - Each first message calls an [internal skill](skills.md#internal-skills), which holds the steps of the chat's task: the CLI runs the skill with the ids, or the feedback message, as its arguments ([Calls](skills.md#calls)). The ids are written as stored, for example `/hephaestus-skills:implement-ticket HEPH-12 HEPH-B2`. From then on Claude asks as in the other chats. A ticket chat created by `chats.create`, with New Chat, never has the key ([Engine API](engine-api.md#chatssend)).
 - The new chat's settings are the `settings` param: the settings chosen in the [Implement sheet](tickets.md#implement-sheet) for Implement and Implement All, those of the feedback sheet's [chat settings menus](feedback.md#chat-settings-menus) for feedback. `implement_ticket` and `implement_bundle` send none, so the chat takes the project's `chatDefaults`, else the host's `defaultChatSettings`, except an orchestrated ticket chat, which takes its orchestrator's settings ([Fields and defaults](#fields-and-defaults)). `watch_ci` sends none either: a CI chat takes its orchestrator's settings ([CI chats](#ci-chats)).
 - The client that called the method selects the new chat: in the ticket Chats tab, in the bundle Chats tab, or, for feedback, in the Chats section of a main window chosen as [Feedback sheet](feedback.md#feedback-sheet) specifies, without opening a chat window. Chats started by `implement_ticket`, `implement_bundle` and `watch_ci` appear in the Chats tabs of their ticket or bundle and are not opened. A ticket, bundle or CI chat is listed on its ticket or bundle, and in the Chats section only once that ticket or bundle is deleted; a feedback chat is listed in the Chats section ([Where chats appear](#where-chats-appear)).
-- The screenshot of a feedback chat is the attachment of its first user message, sent to Claude as an `image` block before the text ([User messages](#user-messages)); the first message of feedback sent without a screenshot has no attachment ([Feedback message](#feedback-message)). The link between the feedback chat and the ticket Claude creates is in [Feedback](feedback.md#resulting-ticket).
+- The screenshot of a feedback chat is the first attachment of its first user message, sent to Claude as an `image` block before the text ([User messages](#user-messages)); the first message of feedback sent without a screenshot has no such attachment ([Feedback message](#feedback-message)). The link between the feedback chat and the ticket Claude creates is in [Feedback](feedback.md#resulting-ticket).
+- The files that the user added in the feedback sheet ([Added files](feedback.md#added-files)) are the attachments of that message that follow the screenshot, and its only attachments when the feedback has no screenshot ([Feedback message](#feedback-message)).
 
 ### Orchestrated ticket chats
 
@@ -2221,6 +2222,7 @@ Feedback context:
 - Section: <section>
 - Item: <item>
 - Screenshot: <screenshot path>
+- Attachment: <attachment path>
 ```
 
 | Placeholder         | Value                                                                                                                                                 |
@@ -2231,9 +2233,11 @@ Feedback context:
 | `<section>`         | `section`; the line is left out when it is absent                                                                                                     |
 | `<item>`            | `item`; the line is left out when it is absent                                                                                                        |
 | `<screenshot path>` | absolute path, on the main device, of the stored screenshot; the line is left out when the feedback has no screenshot                                 |
+| `<attachment path>` | absolute path, on the main device, of a stored added file: one line per file, in the order they were added, and none when no file was added           |
 
 - Lines are separated by `\n`; the text does not end with a line break. The `user` item stores this text.
-- The screenshot is the message's only attachment and is sent as an `image` block, before the text block ([User messages](#user-messages)); its path is in the text, so Claude can attach it to the ticket. Feedback sent without a screenshot, which the user left out or which could not be captured ([Feedback](feedback.md#screenshot-preview)), gives a message with no attachment, no `image` block and no `Screenshot:` line.
+- The screenshot is the message's first attachment and is sent as an `image` block, before the text block ([User messages](#user-messages)); its path is in the text, so Claude can attach it to the ticket. Feedback sent without a screenshot, which the user left out or which could not be captured ([Feedback](feedback.md#screenshot-preview)), gives a message without that attachment, without its `image` block and without the `Screenshot:` line.
+- The files that the user added in the feedback sheet ([Added files](feedback.md#added-files)) are the message's next attachments, in the order they were added, and each one has its `Attachment:` line, in the same order, after the `Screenshot:` line, or after the last context line when the feedback has no screenshot: the `Attachment:` lines are the last lines of the text. An added file that meets the image rule of [User messages](#user-messages) is also sent as an `image` block, after the screenshot's. The message gets no `Attached files:` list, since the path of every attachment is already in the text, so Claude can attach each added file to the ticket too. Feedback with neither a screenshot nor an added file gives a message with no attachment and no `image` block.
 - The CLI runs the skill with the lines after the first one as its arguments ([Calls](skills.md#calls)).
 
 Example, for feedback sent from a remote window of the MacBook showing the device Studio:
@@ -2249,6 +2253,14 @@ Feedback context:
 - Section: web
 - Item: https://github.com/
 - Screenshot: /Users/example/Developer/HephaestusV2/.hephaestus/chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301/1B4E28BA-2FA1-11D2-883F-0016D3CCA427-screenshot.png
+```
+
+The last lines of that message when the user added a log file and an image in the sheet:
+
+```
+- Screenshot: /Users/example/Developer/HephaestusV2/.hephaestus/chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301/1B4E28BA-2FA1-11D2-883F-0016D3CCA427-screenshot.png
+- Attachment: /Users/example/Developer/HephaestusV2/.hephaestus/chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301/9B2D6C1E-0F4A-4E8B-A1C2-3D4E5F607182-web-tabs.log
+- Attachment: /Users/example/Developer/HephaestusV2/.hephaestus/chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301/5F0C2A7D-8E3B-4D61-9A47-C2B1E0F3D485-tab-strip.png
 ```
 
 ## Haiku naming

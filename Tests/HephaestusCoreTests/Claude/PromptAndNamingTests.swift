@@ -878,6 +878,28 @@ struct PromptAndNamingTests {
         #expect(withoutScreenshot == "/hephaestus-skills:feedback\nHello\n\nFeedback context:\n- App: HephaestusV2 v1.0.0(0)\n- Device: Studio")
     }
 
+    @Test("The Attachment lines of the example of docs/chats.md › Feedback message end the feedback message, one per added file in order")
+    func feedbackMessageAttachments() throws {
+        let blocks = MarkdownSource.fencedBlocks(in: try Repository.doc("chats.md"))
+        let documented = try #require(blocks.first { $0.text.hasPrefix("- Screenshot: /Users/example/") })
+        let paths = documented.lines.map { String($0.drop { $0 != "/" }) }
+        #expect(documented.lines.map { String($0.prefix { $0 != "/" }) } == ["- Screenshot: ", "- Attachment: ", "- Attachment: "])
+        let context = FeedbackContext(appVersion: "0.4.0", build: 57, deviceName: "MacBook", mainDeviceName: "Studio", projectID: "HEPH",
+                                      section: .web, item: "https://github.com/")
+        let text = Engine.feedbackMessage(comment: "The lock icon disappears.", context: context, projectName: "Hephaestus V2",
+                                          screenshotPath: paths[0], attachmentPaths: Array(paths.dropFirst()))
+        #expect(text.hasSuffix("\n- Item: https://github.com/\n" + documented.text))
+        // Without an added file the message ends with the Screenshot line.
+        let bare = Engine.feedbackMessage(comment: "The lock icon disappears.", context: context, projectName: "Hephaestus V2",
+                                          screenshotPath: paths[0], attachmentPaths: [])
+        #expect(bare.hasSuffix("\n- Item: https://github.com/\n" + documented.lines[0]))
+        // Without a screenshot the Attachment lines follow the last context line.
+        let filesOnly = Engine.feedbackMessage(comment: "The lock icon disappears.", context: context, projectName: "Hephaestus V2",
+                                               screenshotPath: nil, attachmentPaths: Array(paths.dropFirst()))
+        #expect(filesOnly.hasSuffix("\n- Item: https://github.com/\n" + documented.lines.dropFirst().joined(separator: "\n")))
+        #expect(!filesOnly.contains("Screenshot:"))
+    }
+
     @Test("The first messages of Implement, of an orchestrated ticket chat and of Implement All call the internal skills")
     func implementMessages() {
         #expect(Engine.implementTicketMessage(ticketID: "HEPH-12", bundleID: nil) == "/hephaestus-skills:implement-ticket HEPH-12")

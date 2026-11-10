@@ -17,6 +17,10 @@ struct TicketTextEditor: NSViewRepresentable {
     var maxLines = 8
     /// Incremented by the owner to put the keyboard focus in the editor.
     var focusRequest = 0
+    /// False disables the editor: its text is neither edited nor selected, and shows as disabled.
+    var isEditable = true
+    /// The space between the editor's edges and its text container.
+    var textInset = NSSize(width: 4, height: 6)
     var onFocusChange: ((Bool) -> Void)?
     var onCommandReturn: (() -> Void)?
     /// Return without modifiers: nil inserts a line break; set, it is called and Shift-Return
@@ -68,7 +72,7 @@ struct TicketTextEditor: NSViewRepresentable {
         textView.drawsBackground = false
         textView.textColor = .textColor
         textView.insertionPointColor = .textColor
-        textView.textContainerInset = NSSize(width: 4, height: 6)
+        textView.textContainerInset = textInset
         textView.delegate = context.coordinator
         textView.owner = context.coordinator
         scrollView.documentView = textView
@@ -127,7 +131,13 @@ struct TicketTextEditor: NSViewRepresentable {
             if textView.string != parent.text, !textView.hasMarkedText() {
                 textView.string = parent.text
                 textView.font = parent.font
-                textView.textColor = .textColor
+                textView.textColor = textColor
+            }
+            if textView.isEditable != parent.isEditable {
+                textView.isEditable = parent.isEditable
+                textView.isSelectable = parent.isEditable
+                textView.textColor = textColor
+                textView.typingAttributes = [.font: parent.font, .foregroundColor: textColor]
             }
             textView.placeholder = parent.placeholder
             if parent.mentionChoice != lastMentionChoice {
@@ -141,6 +151,11 @@ struct TicketTextEditor: NSViewRepresentable {
                     window.makeFirstResponder(textView)
                 }
             }
+        }
+
+        /// The colour of the text: that of disabled text while the editor is not editable.
+        private var textColor: NSColor {
+            parent.isEditable ? .textColor : .disabledControlTextColor
         }
 
         func textDidChange(_ notification: Notification) {
@@ -289,11 +304,24 @@ final class TicketNSTextView: NSTextView {
 
     // MARK: Paste and drop
 
+    /// The pasteboard that ⌘V reads.
+    var pasteSource = NSPasteboard.general
+
     override func paste(_ sender: Any?) {
-        if let onPaste = owner?.parent.onPaste, onPaste(NSPasteboard.general) {
+        if let onPaste = owner?.parent.onPaste, onPaste(pasteSource) {
             return
         }
         pasteAsPlainText(sender)
+    }
+
+    /// Paste stays enabled for image data when the owner takes pasted content: the text view
+    /// itself reads no image from the pasteboard, so AppKit disables the command when the
+    /// pasteboard holds nothing else.
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(paste(_:)), isEditable, owner?.parent.onPaste != nil, NSImage.canInit(with: pasteSource) {
+            return true
+        }
+        return super.validateUserInterfaceItem(item)
     }
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {

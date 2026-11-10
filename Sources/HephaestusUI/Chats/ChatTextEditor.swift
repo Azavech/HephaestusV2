@@ -362,6 +362,8 @@ final class ChatNSTextView: NSTextView {
     var onPasteFiles: (([URL]) -> Void)?
     var onPasteImage: ((Data) -> Void)?
     var onFocusChange: ((Bool) -> Void)?
+    /// The pasteboard that ⌘V reads.
+    var pasteSource = NSPasteboard.general
 
     override var acceptableDragTypes: [NSPasteboard.PasteboardType] {
         super.acceptableDragTypes.filter { type in
@@ -384,24 +386,28 @@ final class ChatNSTextView: NSTextView {
     /// ⌘V: files and images become attachments; pasted text is inserted as text
     /// (docs/chats.md › Composer).
     override func paste(_ sender: Any?) {
-        let pasteboard = NSPasteboard.general
-        if let onPasteFiles,
-           let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
-           !urls.isEmpty {
-            onPasteFiles(urls)
-            return
-        }
-        if let onPasteImage, pasteboard.availableType(from: [.string]) == nil, NSImage.canInit(with: pasteboard),
-           let image = NSImage(pasteboard: pasteboard), let png = Self.pngData(image) {
-            onPasteImage(png)
-            return
+        if let onPasteFiles, let onPasteImage {
+            switch ChatAttachmentFiles.pasted(from: pasteSource) {
+            case .files(let urls)?:
+                onPasteFiles(urls)
+                return
+            case .image(let png)?:
+                onPasteImage(png)
+                return
+            case nil:
+                break
+            }
         }
         super.paste(sender)
     }
 
-    static func pngData(_ image: NSImage) -> Data? {
-        guard let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff) else { return nil }
-        return bitmap.representation(using: .png, properties: [:])
+    /// Paste stays enabled for image data in the composer: the text view itself reads no image
+    /// from the pasteboard, so AppKit disables the command when the pasteboard holds nothing else.
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(paste(_:)), isEditable, onPasteImage != nil, NSImage.canInit(with: pasteSource) {
+            return true
+        }
+        return super.validateUserInterfaceItem(item)
     }
 
     override func draw(_ dirtyRect: NSRect) {

@@ -575,14 +575,17 @@ public enum ChatsCreateFeedback: EngineMethod {
         public var screenshot: AttachmentUpload?
         public var context: FeedbackContext
         public var settings: ChatSettings?
+        /// The files the user added in the feedback sheet, in chip order; absent means none.
+        public var attachments: [AttachmentUpload]?
 
         public init(projectID: ProjectID, comment: String, screenshot: AttachmentUpload? = nil, context: FeedbackContext,
-                    settings: ChatSettings? = nil) {
+                    settings: ChatSettings? = nil, attachments: [AttachmentUpload]? = nil) {
             self.projectID = projectID
             self.comment = comment
             self.screenshot = screenshot
             self.context = context
             self.settings = settings
+            self.attachments = attachments
         }
     }
     public typealias Result = ChatMeta

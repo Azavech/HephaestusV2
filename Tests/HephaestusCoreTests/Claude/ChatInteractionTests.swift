@@ -803,6 +803,154 @@ struct ChatInteractionTests {
         }
     }
 
+    @Test("Feedback with added files: stored after the screenshot, images as image blocks, one Attachment line per file in order")
+    func feedbackAttachments() async throws {
+        try await withChatEngine { bed in
+            let png = Data([0x89, 0x50, 0x4E, 0x47])
+            let jpeg = Data([0xFF, 0xD8, 0xFF, 0xE0])
+            let log = Data("Web tab 3 moved from index 2 to index 0\n".utf8)
+            let context = FeedbackContext(appVersion: "0.4.0", build: 57, deviceName: "MacBook", mainDeviceName: "MacBook", projectID: "DEMO",
+                                          section: .web)
+            let chat = try await bed.connection.call(ChatsCreateFeedback.self, .init(
+                projectID: "DEMO", comment: "The lock icon disappears.",
+                screenshot: AttachmentUpload(name: "screenshot.png", contentType: "image/png", dataBase64: png.base64EncodedString()),
+                context: context,
+                attachments: [
+                    AttachmentUpload(name: "web-tabs.log", contentType: "text/plain", dataBase64: log.base64EncodedString()),
+                    AttachmentUpload(name: "tab-strip.jpg", contentType: "image/jpeg", dataBase64: jpeg.base64EncodedString()),
+                ]))
+            let process = try #require(await bed.launcher.chatProcess())
+            let line = try #require(await process.line { $0.hasPrefix(#"{"type":"user""#) })
+            #expect(await bed.waitForState(chat.id, .idle))
+            guard case .user(let user)? = try await bed.transcript(chat.id).first else {
+                Issue.record("no user item")
+                return
+            }
+            // The attachments of the first message: the screenshot, then the files in the given order,
+            // each stored as `chats/<chat id>/<uuid>-<name>`.
+            #expect(user.attachments.map(\.name) == ["screenshot.png", "web-tabs.log", "tab-strip.jpg"])
+            #expect(user.attachments.map(\.contentType) == ["image/png", "text/plain", "image/jpeg"])
+            #expect(user.attachments.map(\.path) == user.attachments.map { "chats/\(chat.id.uuidString)/\($0.id.uuidString)-\($0.name)" })
+            let paths = user.attachments.map { bed.folder.attachmentFile(path: $0.path).path }
+            #expect(paths.map { FileManager.default.contents(atPath: $0) } == [png, log, jpeg])
+            #expect(user.text == """
+            /hephaestus-skills:feedback
+            The lock icon disappears.
+
+            Feedback context:
+            - App: HephaestusV2 v0.4.0(57)
+            - Device: MacBook
+            - Project: Demo (DEMO)
+            - Section: web
+            - Screenshot: \(paths[0])
+            - Attachment: \(paths[1])
+            - Attachment: \(paths[2])
+            """)
+            // The image blocks of the screenshot and of the added image come before the text, in
+            // attachment order; the text sent is the stored text, without an `Attached files:` list.
+            let expected = ControlLines.userMessage(text: user.text, images: [
+                ControlLines.Image(mediaType: "image/png", base64: png.base64EncodedString()),
+                ControlLines.Image(mediaType: "image/jpeg", base64: jpeg.base64EncodedString()),
+            ], uuid: user.id)
+            #expect(line + "\n" == String(decoding: expected, as: UTF8.self))
+            #expect(!line.contains("Attached files:"))
+        }
+    }
+
+    @Test("Feedback with added files and no screenshot: the files are the attachments, and their lines follow the last context line")
+    func feedbackAttachmentsWithoutScreenshot() async throws {
+        try await withChatEngine { bed in
+            let png = Data([0x89, 0x50, 0x4E, 0x47])
+            let log = Data("Web tab 3 moved from index 2 to index 0\n".utf8)
+            let context = FeedbackContext(appVersion: "0.4.0", build: 57, deviceName: "MacBook", mainDeviceName: "MacBook", projectID: "DEMO",
+                                          section: .web)
+            let chat = try await bed.connection.call(ChatsCreateFeedback.self, .init(
+                projectID: "DEMO", comment: "The lock icon disappears.", context: context,
+                attachments: [
+                    AttachmentUpload(name: "web-tabs.log", contentType: "text/plain", dataBase64: log.base64EncodedString()),
+                    AttachmentUpload(name: "tab-strip.png", contentType: "image/png", dataBase64: png.base64EncodedString()),
+                ]))
+            let process = try #require(await bed.launcher.chatProcess())
+            let line = try #require(await process.line { $0.hasPrefix(#"{"type":"user""#) })
+            #expect(await bed.waitForState(chat.id, .idle))
+            guard case .user(let user)? = try await bed.transcript(chat.id).first else {
+                Issue.record("no user item")
+                return
+            }
+            #expect(user.attachments.map(\.name) == ["web-tabs.log", "tab-strip.png"])
+            let paths = user.attachments.map { bed.folder.attachmentFile(path: $0.path).path }
+            #expect(user.text == """
+            /hephaestus-skills:feedback
+            The lock icon disappears.
+
+            Feedback context:
+            - App: HephaestusV2 v0.4.0(57)
+            - Device: MacBook
+            - Project: Demo (DEMO)
+            - Section: web
+            - Attachment: \(paths[0])
+            - Attachment: \(paths[1])
+            """)
+            // The added image is the only image block; the text lists no file.
+            let expected = ControlLines.userMessage(text: user.text, images: [
+                ControlLines.Image(mediaType: "image/png", base64: png.base64EncodedString()),
+            ], uuid: user.id)
+            #expect(line + "\n" == String(decoding: expected, as: UTF8.self))
+            // The chat's attachment folder holds the two files and no screenshot.
+            let stored = try FileManager.default.contentsOfDirectory(atPath: bed.folder.chatAttachmentsFolder(chat.id).path)
+            #expect(stored.count == 2 && !stored.contains { $0.hasSuffix("-screenshot.png") })
+            // Without a screenshot the files alone are at most 20 MiB together.
+            func file(_ name: String, bytes: Int) -> AttachmentUpload {
+                AttachmentUpload(name: name, contentType: "", dataBase64: Data(count: bytes).base64EncodedString())
+            }
+            #expect(await engineError {
+                try await bed.connection.call(ChatsCreateFeedback.self, .init(projectID: "DEMO", comment: "x", context: context, attachments: [
+                    file("half.bin", bytes: AttachmentUploads.maximumSize / 2), file("other.bin", bytes: AttachmentUploads.maximumSize / 2 + 1),
+                ]))
+            } == EngineError(.invalid, "The attachments of one request exceed 20 MB."))
+        }
+    }
+
+    @Test("Feedback with added files: sourcePath is forbidden, an invalid file is refused, and the screenshot and the files are at most 20 MiB together")
+    func feedbackAttachmentLimits() async throws {
+        try await withChatEngine { bed in
+            let png = Data([0x89, 0x50, 0x4E, 0x47])
+            let context = FeedbackContext(appVersion: "0.4.0", build: 57, deviceName: "MacBook", mainDeviceName: "MacBook")
+            @Sendable func feedback(_ attachments: [AttachmentUpload]) async throws -> ChatMeta {
+                try await bed.connection.call(ChatsCreateFeedback.self, .init(
+                    projectID: "DEMO", comment: "x",
+                    screenshot: AttachmentUpload(name: "screenshot.png", contentType: "image/png", dataBase64: png.base64EncodedString()),
+                    context: context, attachments: attachments))
+            }
+            func file(_ name: String, bytes: Int) -> AttachmentUpload {
+                AttachmentUpload(name: name, contentType: "", dataBase64: Data(count: bytes).base64EncodedString())
+            }
+            #expect(await engineError { try await feedback([AttachmentUpload(name: "hosts", contentType: "", sourcePath: "/etc/hosts")]) }
+                == EngineError(.forbidden, "sourcePath is accepted from Claude only."))
+            #expect(await engineError { try await feedback([file("a.txt", bytes: 1), AttachmentUpload(name: "b.txt", contentType: "", dataBase64: "@@@")]) }?
+                .code == .invalid)
+            #expect(await engineError { try await feedback([AttachmentUpload(name: "c.txt", contentType: "")]) }?.code == .invalid)
+            #expect(await engineError { try await feedback([file("big.bin", bytes: AttachmentUploads.maximumSize + 1)]) }
+                == EngineError(.invalid, "big.bin is larger than 20 MB."))
+            // The screenshot counts: with it, a file one byte under the limit exceeds 20 MiB.
+            #expect(await engineError { try await feedback([file("rest.bin", bytes: AttachmentUploads.maximumSize - png.count + 1)]) }
+                == EngineError(.invalid, "The attachments of one request exceed 20 MB."))
+            #expect(await engineError { try await feedback([file("half.bin", bytes: AttachmentUploads.maximumSize / 2),
+                                                             file("other.bin", bytes: AttachmentUploads.maximumSize / 2)]) }
+                == EngineError(.invalid, "The attachments of one request exceed 20 MB."))
+            // A refused request creates no chat and stores no file.
+            #expect(try await bed.connection.call(ChatsList.self, .init(projectID: "DEMO")).isEmpty)
+            #expect(((try? FileManager.default.contentsOfDirectory(atPath: bed.folder.chatsFolder.path)) ?? []).isEmpty)
+            // Exactly 20 MiB together is accepted.
+            let chat = try await feedback([file("rest.bin", bytes: AttachmentUploads.maximumSize - png.count)])
+            guard case .user(let user)? = try await bed.transcript(chat.id).first else {
+                Issue.record("no user item")
+                return
+            }
+            #expect(user.attachments.map(\.size) == [png.count, AttachmentUploads.maximumSize - png.count])
+        }
+    }
+
     @Test("Feedback: the message of docs/chats.md › Feedback message with the screenshot as its image")
     func feedback() async throws {
         try await withChatEngine { bed in
