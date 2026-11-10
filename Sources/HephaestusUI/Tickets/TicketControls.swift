@@ -1,6 +1,6 @@
 // OWNER: ui-tickets — small controls of the ticket and bundle details: the inline title field, the
-// flow layout of attachments, dropped files, pending attachment chips and the Markdown context of
-// a project (docs/tickets.md › Ticket detail, › Bundles section, › Adding attachments).
+// tabs, the flow layout of attachments, dropped files, pending attachment chips and the Markdown
+// context of a project (docs/tickets.md › Ticket detail, › Bundles section, › Adding attachments).
 import AppKit
 import HephaestusCore
 import HephaestusText
@@ -9,57 +9,208 @@ import UniformTypeIdentifiers
 
 /// The inline title field of a ticket or bundle: Return, or moving the focus away, saves; Escape
 /// restores the stored title; an empty title is not saved and the stored title comes back. While
-/// the field has the focus, incoming changes do not replace the text.
-struct InlineTitleField: View {
+/// the field has the focus, incoming changes do not replace the text. The title is one line: while
+/// the field is not being edited, a title wider than the field ends with an ellipsis.
+///
+/// A SwiftUI `TextField` clips a long title without an ellipsis, and with a truncation mode it no
+/// longer scrolls while it is edited, so the field is an `NSTextField` whose cell truncates only
+/// while it is not being edited.
+struct InlineTitleField: NSViewRepresentable {
     let stored: String
-    var font: Font = .title2.weight(.semibold)
     /// Saves a trimmed, changed, non-empty title; returns false on failure.
     let save: (String) async -> Bool
 
-    @State private var text = ""
-    /// The title being saved, so that Return followed by a focus change saves once.
-    @State private var saving: String?
-    @FocusState private var focused: Bool
+    /// `.title2` in semibold.
+    static let font: NSFont = {
+        let title2 = NSFont.preferredFont(forTextStyle: .title2)
+        let traits: [NSFontDescriptor.TraitKey: Any] = [.weight: NSFont.Weight.semibold]
+        return NSFont(descriptor: title2.fontDescriptor.addingAttributes([.traits: traits]), size: 0)
+            ?? .systemFont(ofSize: title2.pointSize, weight: .semibold)
+    }()
 
-    var body: some View {
-        TextField("Title", text: $text)
-            .textFieldStyle(.plain)
-            .font(font)
-            .focused($focused)
-            .onSubmit { commit() }
-            .onExitCommand { text = stored }
-            .onChange(of: focused) { wasFocused, isFocused in
-                if wasFocused && !isFocused {
-                    commit()
-                }
-            }
-            .onChange(of: stored) { _, newValue in
-                saving = nil
-                if !focused {
-                    text = newValue
-                }
-            }
-            .onAppear { text = stored }
+    @MainActor private static let lineHeight = NSLayoutManager().defaultLineHeight(for: font).rounded(.up)
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
     }
 
-    private func commit() {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            text = stored
-            return
+    func makeNSView(context: Context) -> TitleNSTextField {
+        let field = TitleNSTextField(string: stored)
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.placeholderString = "Title"
+        field.font = Self.font
+        field.lineBreakMode = .byTruncatingTail
+        field.delegate = context.coordinator
+        field.owner = context.coordinator
+        field.setAccessibilityLabel("Title")
+        return field
+    }
+
+    func updateNSView(_ field: TitleNSTextField, context: Context) {
+        context.coordinator.update(self, field: field)
+    }
+
+    /// The width the field is given and one line of its font.
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView field: TitleNSTextField, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? field.fittingSize.width, height: Self.lineHeight)
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: InlineTitleField
+        /// The title being saved, so that Return followed by a focus change saves once.
+        private var saving: String?
+
+        init(_ parent: InlineTitleField) {
+            self.parent = parent
         }
-        guard trimmed != stored else {
-            text = stored
-            return
-        }
-        text = trimmed
-        guard trimmed != saving else { return }
-        saving = trimmed
-        Task {
-            if await !save(trimmed) {
-                saving = nil
-                text = stored
+
+        func update(_ parent: InlineTitleField, field: TitleNSTextField) {
+            let storedChanged = parent.stored != self.parent.stored
+            self.parent = parent
+            guard storedChanged else { return }
+            saving = nil
+            if field.currentEditor() == nil {
+                field.stringValue = parent.stored
             }
+        }
+
+        /// Return, or the end of the editing: saves a trimmed, changed, non-empty title; an empty
+        /// or unchanged one shows the stored title again.
+        func commit(_ field: TitleNSTextField) {
+            let trimmed = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, trimmed != parent.stored else {
+                field.setText(parent.stored)
+                return
+            }
+            field.setText(trimmed)
+            guard trimmed != saving else { return }
+            saving = trimmed
+            let save = parent.save
+            Task { [weak self, weak field] in
+                if await !save(trimmed), let self {
+                    self.saving = nil
+                    field?.setText(self.parent.stored)
+                }
+            }
+        }
+
+        /// Escape: the stored title comes back.
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            guard selector == #selector(NSResponder.cancelOperation(_:)), let field = control as? TitleNSTextField else {
+                return false
+            }
+            field.setText(parent.stored)
+            return true
+        }
+    }
+}
+
+/// The text field of `InlineTitleField`.
+final class TitleNSTextField: NSTextField {
+    weak var owner: InlineTitleField.Coordinator?
+
+    /// Replaces the text; while the field is being edited, the insertion point goes to its end.
+    func setText(_ text: String) {
+        guard stringValue != text else { return }
+        stringValue = text
+        currentEditor()?.selectedRange = NSRange(location: (text as NSString).length, length: 0)
+    }
+
+    /// A truncating cell does not scroll while it is edited, so the cell scrolls, and clips, from
+    /// the moment the field takes the focus until its editing ends.
+    override func becomeFirstResponder() -> Bool {
+        cell?.isScrollable = true
+        let became = super.becomeFirstResponder()
+        if !became {
+            lineBreakMode = .byTruncatingTail
+        }
+        return became
+    }
+
+    /// Selecting a title wider than the field scrolls it to the left edge of the field editor's
+    /// clip view, which lies left of where the cell draws the title: the title is scrolled back,
+    /// so that it does not move when its editing begins.
+    override func selectText(_ sender: Any?) {
+        super.selectText(sender)
+        guard let clip = currentEditor()?.superview as? NSClipView, clip.bounds.minX > clip.frame.minX, clip.bounds.minX <= 0 else {
+            return
+        }
+        clip.scroll(to: NSPoint(x: clip.frame.minX, y: clip.bounds.minY))
+    }
+
+    /// The editing ends on Return, which leaves the field in editing with its text selected, and
+    /// when the focus moves away.
+    override func textDidEndEditing(_ notification: Notification) {
+        super.textDidEndEditing(notification)
+        if currentEditor() == nil {
+            lineBreakMode = .byTruncatingTail
+        }
+        owner?.commit(self)
+    }
+}
+
+/// The tabs of a ticket or bundle detail: a segmented control whose segments are each as wide as
+/// their label and which narrows to the width it is given, the labels that do not fit then ending
+/// with an ellipsis. SwiftUI's segmented picker gives every segment the width of the widest label
+/// and never gets narrower than its labels.
+struct DetailTabPicker<Tab: Hashable>: NSViewRepresentable {
+    /// The tabs with their labels, in the order of the segments.
+    let tabs: [(tab: Tab, label: String)]
+    @Binding var selection: Tab
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeNSView(context: Context) -> NSSegmentedControl {
+        let control = NSSegmentedControl(labels: tabs.map(\.label), trackingMode: .selectOne, target: context.coordinator,
+                                         action: #selector(Coordinator.select(_:)))
+        control.segmentDistribution = .fit
+        control.setAccessibilityLabel("Tab")
+        return control
+    }
+
+    func updateNSView(_ control: NSSegmentedControl, context: Context) {
+        context.coordinator.parent = self
+        var labelsChanged = false
+        for (index, tab) in tabs.enumerated() where control.label(forSegment: index) != tab.label {
+            control.setLabel(tab.label, forSegment: index)
+            labelsChanged = true
+        }
+        if labelsChanged {
+            // A new label changes the width of its segment, and SwiftUI measures the control again
+            // only when its size is invalidated after the update.
+            DispatchQueue.main.async { [weak control] in
+                control?.invalidateIntrinsicContentSize()
+            }
+        }
+        let selected = tabs.firstIndex { $0.tab == selection } ?? -1
+        if control.selectedSegment != selected {
+            control.selectedSegment = selected
+        }
+    }
+
+    /// The width of the segments, or the proposed width when it is smaller: the control then
+    /// narrows its segments and truncates their labels.
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView control: NSSegmentedControl, context: Context) -> CGSize? {
+        let fitted = control.intrinsicContentSize
+        return CGSize(width: min(fitted.width, max(proposal.width ?? fitted.width, 0)), height: fitted.height)
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var parent: DetailTabPicker
+
+        init(_ parent: DetailTabPicker) {
+            self.parent = parent
+        }
+
+        @objc func select(_ control: NSSegmentedControl) {
+            guard parent.tabs.indices.contains(control.selectedSegment) else { return }
+            parent.selection = parent.tabs[control.selectedSegment].tab
         }
     }
 }
