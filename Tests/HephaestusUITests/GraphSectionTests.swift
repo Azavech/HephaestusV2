@@ -1,5 +1,7 @@
+import AppKit
 import Foundation
 import HephaestusCore
+import SwiftUI
 import Testing
 @testable import HephaestusUI
 
@@ -197,5 +199,99 @@ struct DashboardGraphWidgetsTests {
         state.pendingRequestID = "abc"
         #expect(window.graphState(of: "API") === state)
         #expect(window.ensureGraphState(of: "API").pendingRequestID == "abc")
+    }
+}
+
+@MainActor
+@Suite("Graph arrows")
+struct GraphArrowTests {
+    private static func distance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+        ((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y)).squareRoot()
+    }
+
+    /// The points a path moves and draws lines to, in order.
+    private static func corners(of path: Path) -> [CGPoint] {
+        var points: [CGPoint] = []
+        path.forEach { element in
+            switch element {
+            case .move(let point), .line(let point): points.append(point)
+            default: break
+            }
+        }
+        return points
+    }
+
+    @Test("An arrow starts and ends on the circles; the line stops at the middle of the head's base, along its axis",
+          arguments: [0.5, 1.0, 3.0] as [CGFloat])
+    func geometry(scale: CGFloat) throws {
+        // A call between two services, and one to a box of a ring, 95 points from its service.
+        for target in [CGPoint(x: 120, y: 50), CGPoint(x: 0, y: -95)] {
+            let from = CGPoint(x: 40 * scale + 300, y: 60 * scale + 200)
+            let to = CGPoint(x: (40 + target.x) * scale + 300, y: (60 + target.y) * scale + 200)
+            let arrow = try #require(GraphGeometry.arrow(from: from, to: to, scale: scale))
+            let radius = GraphGeometry.nodeDiameter / 2 * scale
+            #expect(abs(Self.distance(arrow.start, from) - radius) < 0.001)
+            #expect(abs(Self.distance(arrow.tip, to) - radius) < 0.001)
+
+            // The line stops at the base, the middle of the head's base, one head length before the tip.
+            #expect(Self.distance(try #require(arrow.line.currentPoint), arrow.base) < 0.001)
+            let head = Self.corners(of: arrow.head)
+            try #require(head.count == 3)
+            #expect(Self.distance(head[0], arrow.tip) < 0.001)
+            let middle = CGPoint(x: (head[1].x + head[2].x) / 2, y: (head[1].y + head[2].y) / 2)
+            #expect(Self.distance(middle, arrow.base) < 0.001)
+            let length = 10 * max(scale, 0.5) * cos(.pi / 7)
+            #expect(abs(Self.distance(arrow.base, arrow.tip) - length) < 0.001)
+
+            // The axis goes from the base to the tip; the line meets it at the bend of the curve over
+            // one head length, about 5.6 degrees for a box of a ring.
+            #expect(abs(arrow.axis.dx * arrow.axis.dx + arrow.axis.dy * arrow.axis.dy - 1) < 0.0001)
+            #expect(Self.distance(CGPoint(x: arrow.base.x + arrow.axis.dx * length, y: arrow.base.y + arrow.axis.dy * length),
+                                  arrow.tip) < 0.001)
+            let tangent = CGVector(dx: arrow.base.x - arrow.lineControl.x, dy: arrow.base.y - arrow.lineControl.y)
+            let cosine = (tangent.dx * arrow.axis.dx + tangent.dy * arrow.axis.dy) / (tangent.dx * tangent.dx + tangent.dy * tangent.dy).squareRoot()
+            #expect(cosine > cos(6 * .pi / 180))
+        }
+    }
+
+    @Test("A call each way meets each circle at two points apart, out of the other's head", arguments: [0.5, 1.0, 3.0] as [CGFloat])
+    func callEachWay(scale: CGFloat) throws {
+        let one = CGPoint(x: 300, y: 200)
+        let other = CGPoint(x: 300 + 150 * scale, y: 200 + 40 * scale)
+        let forth = try #require(GraphGeometry.arrow(from: one, to: other, scale: scale))
+        let back = try #require(GraphGeometry.arrow(from: other, to: one, scale: scale))
+        #expect(Self.distance(forth.start, back.tip) > back.halfWidth + forth.lineWidth)
+        #expect(Self.distance(back.start, forth.tip) > forth.halfWidth + back.lineWidth)
+    }
+
+    @Test("A curve shorter than a head is all head; circles that touch have no arrow")
+    func shortArrows() throws {
+        let scale: CGFloat = 0.1
+        let to = CGPoint(x: 60 * scale, y: 0)
+        let arrow = try #require(GraphGeometry.arrow(from: .zero, to: to, scale: scale))
+        #expect(arrow.base == arrow.start)
+        #expect(abs(Self.distance(arrow.tip, to) - GraphGeometry.nodeDiameter / 2 * scale) < 0.001)
+        #expect(GraphGeometry.arrow(from: .zero, to: CGPoint(x: GraphGeometry.nodeDiameter, y: 0), scale: 1) == nil)
+    }
+
+    @Test("The grey of an arrow without calls is opaque: the system grey at 55% over the Graph's background")
+    func grey() throws {
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            let appearance = try #require(NSAppearance(named: name))
+            var resolved: [CGFloat] = []
+            var expected: [CGFloat] = []
+            appearance.performAsCurrentDrawingAppearance {
+                guard let grey = GraphGeometry.greyColor.usingColorSpace(.sRGB),
+                      let top = NSColor.systemGray.usingColorSpace(.sRGB),
+                      let below = NSColor.textBackgroundColor.usingColorSpace(.sRGB) else { return }
+                resolved = [grey.redComponent, grey.greenComponent, grey.blueComponent, grey.alphaComponent]
+                expected = [top.redComponent * 0.55 + below.redComponent * 0.45, top.greenComponent * 0.55 + below.greenComponent * 0.45,
+                            top.blueComponent * 0.55 + below.blueComponent * 0.45, 1]
+            }
+            try #require(resolved.count == 4)
+            for (value, wanted) in zip(resolved, expected) {
+                #expect(abs(value - wanted) < 0.002)
+            }
+        }
     }
 }

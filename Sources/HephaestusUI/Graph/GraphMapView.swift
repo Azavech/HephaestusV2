@@ -63,10 +63,128 @@ enum GraphGeometry {
     /// The colour of an arrow: a hue at saturation 90% and brightness 85%, or grey.
     static func swiftUIColor(_ color: GraphArrowColor) -> Color {
         switch color {
-        case .grey: return Color.gray.opacity(0.55)
+        case .grey: return grey
         case .hue(let degrees):
             return Color(hue: degrees / 360, saturation: GraphColorScale.saturation, brightness: GraphColorScale.brightness)
         }
+    }
+
+    /// The grey of an arrow without calls: opaque, so that nothing shows through it, in the colour
+    /// the system grey at 55% shows over the Graph's background, in each appearance.
+    static let greyColor = NSColor(name: nil) { appearance in
+        var grey = NSColor.systemGray
+        appearance.performAsCurrentDrawingAppearance {
+            guard let top = NSColor.systemGray.usingColorSpace(.sRGB),
+                  let below = NSColor.textBackgroundColor.usingColorSpace(.sRGB) else { return }
+            let mix = { (top: CGFloat, below: CGFloat) in top * 0.55 + below * 0.45 }
+            grey = NSColor(srgbRed: mix(top.redComponent, below.redComponent), green: mix(top.greenComponent, below.greenComponent),
+                           blue: mix(top.blueComponent, below.blueComponent), alpha: 1)
+        }
+        return grey
+    }
+    private static let grey = Color(nsColor: greyColor)
+
+    /// An arrow on the screen: the curve between the centres of two nodes, bent to its left, from
+    /// where it leaves the circle of one to where it meets the circle of the other, with its head,
+    /// whose tip touches that circle.
+    struct Arrow {
+        /// On the circle of the node the arrow leaves.
+        var start: CGPoint
+        /// On the circle of the node the arrow goes into.
+        var tip: CGPoint
+        /// The middle of the head's base: the point of the curve one head length before the tip,
+        /// where the line stops.
+        var base: CGPoint
+        /// The control point of the part of the curve from `start` to `base`.
+        var lineControl: CGPoint
+        /// The unit vector of the head's axis, from `base` to `tip`.
+        var axis: CGVector
+        /// Half the width of the head's base.
+        var halfWidth: CGFloat
+        var lineWidth: CGFloat
+        /// The middle of the curve, where the number of calls is written.
+        var middle: CGPoint
+
+        /// The line, stopping at the middle of the head's base.
+        var line: Path {
+            var path = Path()
+            path.move(to: start)
+            path.addQuadCurve(to: base, control: lineControl)
+            return path
+        }
+
+        var head: Path {
+            var path = Path()
+            path.move(to: tip)
+            path.addLine(to: CGPoint(x: base.x - axis.dy * halfWidth, y: base.y + axis.dx * halfWidth))
+            path.addLine(to: CGPoint(x: base.x + axis.dy * halfWidth, y: base.y - axis.dx * halfWidth))
+            path.closeSubpath()
+            return path
+        }
+    }
+
+    /// The arrow between two nodes centred at `from` and `to` at `scale`; nil when their circles
+    /// leave no room between them. A call each way gives two curves that meet each circle at two
+    /// different points, so neither line runs into the other's head.
+    static func arrow(from: CGPoint, to: CGPoint, scale: CGFloat) -> Arrow? {
+        let dx = to.x - from.x
+        let dy = to.y - from.y
+        let length = (dx * dx + dy * dy).squareRoot()
+        let radius = nodeDiameter / 2 * scale
+        guard length > 2 * radius + 0.5 else { return nil }
+        let bend = length * 0.12
+        let control = CGPoint(x: (from.x + to.x) / 2 + dy / length * bend, y: (from.y + to.y) / 2 - dx / length * bend)
+
+        func point(_ t: CGFloat) -> CGPoint {
+            let a = (1 - t) * (1 - t)
+            let b = 2 * t * (1 - t)
+            let c = t * t
+            return CGPoint(x: a * from.x + b * control.x + c * to.x, y: a * from.y + b * control.y + c * to.y)
+        }
+        func distance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+            ((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y)).squareRoot()
+        }
+        /// The parameter between `low`, where `far` is true, and `high`, where it is false, at which it turns false.
+        func search(_ low: CGFloat, _ high: CGFloat, far: (CGFloat) -> Bool) -> CGFloat {
+            var low = low
+            var high = high
+            for _ in 0..<40 {
+                let middle = (low + high) / 2
+                if far(middle) {
+                    low = middle
+                } else {
+                    high = middle
+                }
+            }
+            return (low + high) / 2
+        }
+
+        // The gently bent curve moves away from each centre all along it.
+        let first = search(0.5, 0, far: { distance(point($0), from) > radius })
+        let last = search(0.5, 1, far: { distance(point($0), to) > radius })
+        let start = point(first)
+        let tip = point(last)
+        let side = 10 * max(scale, 0.5)
+        let headLength = side * cos(.pi / 7)
+        var halfWidth = side * sin(.pi / 7)
+        // The point of the curve one head length before the tip. A curve shorter than a head is all head.
+        var stop = first
+        let whole = distance(start, tip)
+        if whole <= headLength {
+            halfWidth *= whole / headLength
+        } else {
+            stop = search(first, last, far: { distance(point($0), tip) > headLength })
+        }
+        let base = point(stop)
+        let reach = distance(base, tip)
+        // The control point of the part of the curve from `first` to `stop`.
+        let a = (1 - first) * (1 - stop)
+        let b = (1 - first) * stop + first * (1 - stop)
+        let c = first * stop
+        let lineControl = CGPoint(x: a * from.x + b * control.x + c * to.x, y: a * from.y + b * control.y + c * to.y)
+        return Arrow(start: start, tip: tip, base: base, lineControl: lineControl,
+                     axis: CGVector(dx: (tip.x - base.x) / reach, dy: (tip.y - base.y) / reach),
+                     halfWidth: halfWidth, lineWidth: 1.6 * max(scale, 0.5), middle: point(0.5))
     }
 }
 
@@ -80,8 +198,16 @@ struct GraphMapView: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             Canvas { context, _ in
-                for arrow in model.graph.arrows {
-                    drawArrow(arrow, in: &context)
+                // Every head over every line, and the numbers of calls over both.
+                let arrows = model.graph.arrows.compactMap { arrow in shape(of: arrow).map { (arrow, $0) } }
+                for (arrow, shape) in arrows {
+                    drawLine(shape, color: GraphGeometry.swiftUIColor(model.color(of: arrow)), in: &context)
+                }
+                for (arrow, shape) in arrows {
+                    context.fill(shape.head, with: .color(GraphGeometry.swiftUIColor(model.color(of: arrow))))
+                }
+                for (arrow, shape) in arrows {
+                    drawLabel(arrow, at: shape.middle, in: &context)
                 }
             }
             .allowsHitTesting(false)
@@ -136,43 +262,29 @@ struct GraphMapView: View {
     }
 
     /// A curve from the edge of a node to the edge of the other, bent to its left, so a call each
-    /// way gives two curves apart; an arrowhead, and the number of calls at its middle.
-    private func drawArrow(_ arrow: GraphArrow, in context: inout GraphicsContext) {
-        let from = screen(model.layout.positions[arrow.from.id])
-        let to = screen(model.layout.positions[arrow.to.id])
-        let dx = to.x - from.x
-        let dy = to.y - from.y
-        let length = (dx * dx + dy * dy).squareRoot()
-        guard length > 1 else { return }
-        let ux = dx / length
-        let uy = dy / length
-        let radius = GraphGeometry.nodeDiameter / 2 * scale + 3
-        let start = CGPoint(x: from.x + ux * radius, y: from.y + uy * radius)
-        let end = CGPoint(x: to.x - ux * radius, y: to.y - uy * radius)
-        let bend = length * 0.12
-        let control = CGPoint(x: (start.x + end.x) / 2 + uy * bend, y: (start.y + end.y) / 2 - ux * bend)
-        let color = GraphGeometry.swiftUIColor(model.color(of: arrow))
-        let width = 1.6 * max(scale, 0.5)
+    /// way gives two curves apart, and its head, whose tip touches the circle it goes into.
+    private func shape(of arrow: GraphArrow) -> GraphGeometry.Arrow? {
+        GraphGeometry.arrow(from: screen(model.layout.positions[arrow.from.id]), to: screen(model.layout.positions[arrow.to.id]),
+                            scale: scale)
+    }
 
-        var curve = Path()
-        curve.move(to: start)
-        curve.addQuadCurve(to: end, control: control)
-        context.stroke(curve, with: .color(color), style: StrokeStyle(lineWidth: width, lineCap: .round))
+    /// The line of an arrow, stopping at the middle of its head's base.
+    private func drawLine(_ shape: GraphGeometry.Arrow, color: Color, in context: inout GraphicsContext) {
+        guard shape.base != shape.start else { return }
+        context.stroke(shape.line, with: .color(color), style: StrokeStyle(lineWidth: shape.lineWidth, lineCap: .butt))
+        // The round start goes under the node the arrow leaves, so the line meets its circle all
+        // across its width.
+        let dot = shape.lineWidth
+        context.fill(Path(ellipseIn: CGRect(x: shape.start.x - dot / 2, y: shape.start.y - dot / 2, width: dot, height: dot)),
+                     with: .color(color))
+    }
 
-        // The head follows the tangent at the end of the curve.
-        let angle = atan2(end.y - control.y, end.x - control.x)
-        let head = 10 * max(scale, 0.5)
-        var arrowhead = Path()
-        arrowhead.move(to: end)
-        arrowhead.addLine(to: CGPoint(x: end.x - head * cos(angle - .pi / 7), y: end.y - head * sin(angle - .pi / 7)))
-        arrowhead.addLine(to: CGPoint(x: end.x - head * cos(angle + .pi / 7), y: end.y - head * sin(angle + .pi / 7)))
-        arrowhead.closeSubpath()
-        context.fill(arrowhead, with: .color(color))
-
+    /// The number of calls of an arrow at its middle.
+    private func drawLabel(_ arrow: GraphArrow, at middle: CGPoint, in context: inout GraphicsContext) {
         // The calls of a box of a ring are written under its kind, and the route under the Client:
         // their arrows are too short.
         guard writesLabels, model.layout.rings[arrow.to.id] != arrow.from.id, arrow != model.clientArrow else { return }
-        let middle = CGPoint(x: 0.25 * start.x + 0.5 * control.x + 0.25 * end.x, y: 0.25 * start.y + 0.5 * control.y + 0.25 * end.y)
+        let color = GraphGeometry.swiftUIColor(model.color(of: arrow))
         let label = context.resolve(Text(model.label(of: arrow)).font(.caption2.monospacedDigit().bold()))
         let size = label.measure(in: CGSize(width: 200, height: 40))
         let capsule = CGRect(x: middle.x - size.width / 2 - 5, y: middle.y - size.height / 2 - 1, width: size.width + 10,
