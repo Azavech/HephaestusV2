@@ -2,29 +2,15 @@
 import HephaestusCore
 import SwiftUI
 
-/// View ▸ Internal Skills: the header `Internal Skills`, then the list and the editor of the Skills
-/// section restricted to the internal skills of the window's device, outside any project
-/// (docs/skills.md › Internal Skills view).
+/// View ▸ Internal Skills: the list and the editor of the Skills section restricted to the internal
+/// skills of the window's device, outside any project; the list's title row reads `Internal
+/// Skills` (docs/skills.md › Internal Skills view).
 struct InternalSkillsView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
 
     var body: some View {
-        VStack(spacing: 0) {
-            // The view's pane header, 36 pt like every header of the centre column (docs/ui.md ›
-            // Pane headers).
-            HStack {
-                Text("Internal Skills")
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .paneHeaderBar()
-            Divider()
-            SkillsSectionView(window: window, workspace: workspace, scope: .internalSkills)
-        }
-        .background(Color(nsColor: .windowBackgroundColor))
+        SkillsSectionView(window: window, workspace: workspace, scope: .internalSkills)
     }
 }
 

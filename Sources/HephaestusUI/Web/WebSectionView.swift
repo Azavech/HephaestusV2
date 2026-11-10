@@ -16,9 +16,9 @@ struct WebSectionView: View {
     }
 }
 
-/// docs/web-tabs.md › Web section layout: the tab strip (the pane header, 36 pt), the address bar
-/// (36 pt), the progress bar (2 pt), the page and the downloads bar; the empty state without any
-/// tab.
+/// docs/web-tabs.md › Web section layout: the title row (the pane header, 36 pt), the tab strip
+/// (36 pt), the address bar (36 pt), the progress bar (2 pt), the page and the downloads bar; the
+/// empty state without any tab, which shows no title row.
 private struct WebSectionContent: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -35,6 +35,8 @@ private struct WebSectionContent: View {
                     controller.newTab()
                 }
             } else {
+                // The section's pane header (docs/ui.md › Pane headers); the tab strip is under it.
+                PaneTitleRow(section: .web)
                 VStack(spacing: 0) {
                     WebTabStrip(controller: controller, items: items, selection: selection)
                     Divider()

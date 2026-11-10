@@ -114,6 +114,8 @@ struct ChatsSectionView: View {
 
     private var list: some View {
         VStack(spacing: 0) {
+            // The list's pane header (docs/ui.md › Pane headers); the list header is under it.
+            PaneTitleRow(section: .chats)
             HStack {
                 Spacer()
                 ClosedChatsFilterButton(window: window, projectID: projectID)

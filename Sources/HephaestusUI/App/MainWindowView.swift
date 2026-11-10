@@ -266,8 +266,8 @@ private struct GraphRowState: Hashable {
 /// Global Memories view or the Internal Skills view, which need no project data
 /// (docs/memories.md › Global Memories view, docs/skills.md › Internal Skills view), or the
 /// Dashboard of a sub project shown from the sidebar, once its data is loaded (docs/dashboard.md ›
-/// Section).
-private struct SectionContent: View {
+/// Section). The tests of the pane titles host it.
+struct SectionContent: View {
     let state: WindowState
     let workspace: DeviceWorkspace
     let project: ProjectSummary

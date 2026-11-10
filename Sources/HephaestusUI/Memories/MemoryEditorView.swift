@@ -22,14 +22,26 @@ struct MemoryEditorView: View {
         VStack(spacing: 0) {
             header
                 .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .paneHeaderBar()
+            Divider()
+            // The row just under the header's separator: the name's validation message, which
+            // does not fit on the header's row; the banner follows it.
+            let message = nameMessage
+            if let message {
+                ValidationMessage(text: message)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+            }
             if editor.conflict != nil {
                 SkillBanner(text: "This memory was changed elsewhere.") {
                     Button("Reload") { editor.reloadConflict() }
                     Button("Keep Mine") { editor.keepMine() }
                 }
             }
-            Divider()
+            if message != nil || editor.conflict != nil {
+                Divider()
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     descriptionPart
@@ -51,29 +63,34 @@ struct MemoryEditorView: View {
 
     // MARK: Header
 
+    /// The editor's pane header (docs/ui.md › Pane headers): the Name field, disabled for an
+    /// inherited memory, Revert and Save.
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                TextField("Name", text: $form.name)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(.title3, design: .monospaced))
-                    .accessibilityLabel("Name")
-                    .disabled(editor.isReadOnly)
-                if !editor.isReadOnly {
-                    Button("Revert") {
-                        editor.revert()
-                    }
-                    .disabled(!form.hasUnsavedChanges || editor.isSaving)
-                    Button("Save") {
-                        Task { await editor.save() }
-                    }
-                    .disabled(!editor.canSave)
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            TextField("Name", text: $form.name)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.title3, design: .monospaced))
+                .accessibilityLabel("Name")
+                .disabled(editor.isReadOnly)
+            // The buttons keep their whole labels; the Name field takes the width left.
+            if !editor.isReadOnly {
+                Button("Revert") {
+                    editor.revert()
                 }
-            }
-            if !editor.isReadOnly, let message = form.nameMessage(folder: workspace.memoryFolder(scope), file: file) {
-                ValidationMessage(text: message)
+                .fixedSize()
+                .disabled(!form.hasUnsavedChanges || editor.isSaving)
+                Button("Save") {
+                    Task { await editor.save() }
+                }
+                .fixedSize()
+                .disabled(!editor.canSave)
             }
         }
+    }
+
+    /// The name's validation message; none for an inherited memory, which cannot be renamed.
+    private var nameMessage: String? {
+        editor.isReadOnly ? nil : form.nameMessage(folder: workspace.memoryFolder(scope), file: file)
     }
 
     // MARK: Description, type and other frontmatter
@@ -143,6 +160,7 @@ struct MemoryIndexEditorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // The editor's pane header (docs/ui.md › Pane headers).
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(MemoryActions.indexFileName)
                     .font(.system(.title3, design: .monospaced))
@@ -150,21 +168,24 @@ struct MemoryIndexEditorView: View {
                 Button("Revert") {
                     editor.revert()
                 }
+                .fixedSize()
                 .disabled(!editor.hasUnsavedChanges || editor.isSaving)
                 Button("Save") {
                     Task { await editor.save() }
                 }
+                .fixedSize()
                 .disabled(!editor.canSave)
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .paneHeaderBar()
+            Divider()
             if editor.conflict != nil {
                 SkillBanner(text: "MEMORY.md was changed elsewhere.") {
                     Button("Reload") { editor.reloadConflict() }
                     Button("Keep Mine") { editor.keepMine() }
                 }
+                Divider()
             }
-            Divider()
             MemoryMarkdownEditor(editor: editor, buffer: editor.index, workspace: workspace, title: nil)
                 .padding(16)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

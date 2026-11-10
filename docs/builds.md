@@ -205,25 +205,26 @@ Clicking a release selects it (`ProjectViewState.selectedReleaseTag`) and shows 
 
 ```
 ┌──────────────────────────────────────┬──────────────────────────────────────────────┐
-│ [Workflow Runs | Releases]       (↻) │ Release build of the app                     │ 36 pt header
+│ Builds                               │ Release build of the app                     │ 36 pt title row
 ├──────────────────────────────────────┤ [Re-run All Jobs]                            │
-│ ✓ Release build of the app           │                                              │
-│   Release · main                     │ Workflow  Release                            │
-│   7 Nov 2026 at 21:27 · 14m 17s      │ Branch    main                               │
-│ ◌ Add the Builds section             │ Commit    ec49a8f                            │
-│   CI · HEPH-106                      │ …                                            │
-│   7 Nov 2026 at 22:05 · 3m 2s        │ Jobs                                         │
-│                                      │ ✓ release                          14m 13s   │
-│                                      │     ✓ Set up job                        1s   │
+│ [Workflow Runs | Releases]       (↻) │                                              │ 36 pt header
+├──────────────────────────────────────┤ Workflow  Release                            │
+│ ✓ Release build of the app           │ Branch    main                               │
+│   Release · main                     │ Commit    ec49a8f                            │
+│   7 Nov 2026 at 21:27 · 14m 17s      │ …                                            │
+│ ◌ Add the Builds section             │ Jobs                                         │
+│   CI · HEPH-106                      │ ✓ release                          14m 13s   │
+│   7 Nov 2026 at 22:05 · 3m 2s        │     ✓ Set up job                        1s   │
 └──────────────────────────────────────┴──────────────────────────────────────────────┘
 ```
 
 - The section has two panes, side by side, separated by a divider that the user drags, as the list and the detail of the Tickets section ([Tickets section](tickets.md#tickets-section)): the list pane, at least 240 points wide and 320 points wide when the section appears, and the detail pane, at least 300 points wide, which takes the rest.
-- The list pane has a header 36 points high, separated from the list by a hairline: the segmented control `Workflow Runs` | `Releases` on its left (`ProjectViewState.buildsTab`, `runs` or `releases`, `runs` at first), and on its right the `Refresh` button, which shows the SF Symbol `arrow.clockwise` with the tooltip and accessibility label `Refresh`.
+- The list pane starts with its title row: the title `Builds` in the pane's header, 36 points high, its bottom separator on one line with those of the inspector and of the other sections ([Pane headers](ui.md#pane-headers)). It stays above the header and the list in every state of the list ([Empty and error states](#empty-and-error-states)); the detail pane has no header.
+- Under the title row's separator, the list pane has a header 36 points high, separated from the list by a hairline: the segmented control `Workflow Runs` | `Releases` on its left (`ProjectViewState.buildsTab`, `runs` or `releases`, `runs` at first), and on its right the `Refresh` button, which shows the SF Symbol `arrow.clockwise` with the tooltip and accessibility label `Refresh`.
 - A click on a row of the list selects it; the selected row is drawn on a background in the accent colour.
 - The detail pane shows the details of the run or release selected in the shown tab, in a scroll view.
 - The tab and the selections are kept per window and per project, so that switching section or project and coming back shows the same run or release ([WindowState](ui.md#windowstate)).
-- The widths of the panes, the icon of `Refresh`, the look of the selected row and the scroll view are Default chosen at design time.
+- The widths of the panes, the icon of `Refresh`, the look of the selected row and the scroll view are Default chosen at design time. The title row comes from the user ([R194](requirements.md#requirements)).
 
 ## Empty and error states
 
@@ -252,3 +253,4 @@ Clicking a release selects it (`ProjectViewState.selectedReleaseTag`) and shows 
 
 - R173: A project with a GitHub page has a Builds section that tracks its workflow runs and releases, re-runs and cancels runs and downloads release assets.
 - R189: Every Markdown view of the app draws the SF Symbol, color, font, shortcut, sound and animation markers the same way, and a click on ▶ plays the sound.
+- R194: Every section of the main window shows a title, and so do the Global Memories and Internal Skills views: Dashboard, Tickets, Bundles, Chats, Web, Builds, Skills, Memories and API Explorer show their sidebar title in a title row above their left column.

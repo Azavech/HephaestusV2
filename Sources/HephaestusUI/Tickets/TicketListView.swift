@@ -36,6 +36,8 @@ struct TicketListView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // The list's pane header (docs/ui.md › Pane headers); the header bar is under it.
+            PaneTitleRow(section: .tickets)
             header
                 .padding(.horizontal, 8)
                 .paneHeaderBar()
@@ -49,8 +51,8 @@ struct TicketListView: View {
 
     // MARK: Header
 
-    /// The list's pane header (docs/ui.md › Pane headers), one row at every width: the text filter
-    /// takes the width the buttons leave.
+    /// The header bar under the title row (docs/tickets.md › Ticket list), one row at every width:
+    /// the text filter takes the width the buttons leave.
     private var header: some View {
         HStack(spacing: 8) {
             statusFilterButton

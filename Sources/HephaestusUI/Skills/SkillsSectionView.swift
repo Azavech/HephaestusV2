@@ -268,10 +268,10 @@ private struct SkillLoadFailedView: View {
 
 // MARK: - Library list
 
-/// The library list: a filter field, the skills sorted by name with the enabled mark, the
-/// `Missing from Library` group and the bottom bar; in the Internal Skills view, the internal
-/// skills only, without group and bottom bar (docs/skills.md › Library list, › Internal Skills
-/// view).
+/// The library list: its title row, a filter field, the skills sorted by name with the enabled
+/// mark, the `Missing from Library` group and the bottom bar; in the Internal Skills view, the
+/// internal skills only, without group and bottom bar (docs/skills.md › Library list, › Internal
+/// Skills view).
 private struct SkillLibraryList: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -307,7 +307,9 @@ private struct SkillLibraryList: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // docs/skills.md › Library list: the filter field in the list's pane header.
+            titleRow
+            // docs/skills.md › Library list: the filter field in the list's header bar, under the
+            // title row.
             TextField("Filter", text: $filter)
                 .textFieldStyle(.roundedBorder)
                 .padding(.horizontal, 8)
@@ -322,6 +324,18 @@ private struct SkillLibraryList: View {
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    /// The list's pane header (docs/ui.md › Pane headers): `Skills` in the section, `Internal
+    /// Skills` in the view.
+    @ViewBuilder
+    private var titleRow: some View {
+        switch scope {
+        case .project:
+            PaneTitleRow(section: .skills)
+        case .internalSkills:
+            PaneTitleRow(title: PaneTitle.internalSkills)
+        }
     }
 
     @ViewBuilder

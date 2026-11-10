@@ -62,13 +62,16 @@ struct BuildsSectionView: View {
 
 // MARK: - List pane
 
-/// The header with the segmented control and `Refresh`, then the list of the shown tab
-/// (docs/builds.md › Layout).
+/// The title row, the header with the segmented control and `Refresh`, then the list of the shown
+/// tab (docs/builds.md › Layout).
 private struct BuildsListPane: View {
     let model: BuildsModel
 
     var body: some View {
         VStack(spacing: 0) {
+            // The pane's header (docs/ui.md › Pane headers); the header with the controls is under
+            // it.
+            PaneTitleRow(section: .builds)
             header
             Divider()
             content

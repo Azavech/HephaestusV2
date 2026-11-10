@@ -289,13 +289,15 @@ final class DashboardChanges {
     }
 }
 
-/// The Dashboard of the shown project: the window's active project, or a sub project shown from
-/// the sidebar, under a pane header with its name (docs/dashboard.md › Section).
+/// The Dashboard of the shown project: the window's active project, under its title row, or a sub
+/// project shown from the sidebar, under a pane header with its name (docs/dashboard.md ›
+/// Section).
 struct DashboardView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
     let projectID: String
-    /// A sub project's Dashboard has a pane header with the project's name.
+    /// A sub project's Dashboard has a pane header with the project's name in place of the title
+    /// row.
     var showsHeader = false
 
     var body: some View {
@@ -312,6 +314,9 @@ struct DashboardView: View {
                 .padding(.horizontal, 12)
                 .paneHeaderBar()
                 Divider()
+            } else {
+                // The section's pane header, across the column (docs/ui.md › Pane headers).
+                PaneTitleRow(section: .dashboard)
             }
             DashboardSection(window: window, workspace: workspace, projectID: projectID)
         }

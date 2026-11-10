@@ -272,8 +272,9 @@ private struct MemoryLoadFailedView: View {
 
 // MARK: - List
 
-/// The list: a filter field, the `MEMORY.md` row, the memories under their group headings, the
-/// read-only groups of the inherited folders and the bottom bar (docs/memories.md › List).
+/// The list: its title row, a filter field, the `MEMORY.md` row, the memories under their group
+/// headings, the read-only groups of the inherited folders and the bottom bar (docs/memories.md ›
+/// List).
 private struct MemoryList: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -297,6 +298,7 @@ private struct MemoryList: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            titleRow
             TextField("Filter", text: $filter)
                 .textFieldStyle(.roundedBorder)
                 .padding(8)
@@ -307,6 +309,18 @@ private struct MemoryList: View {
             bottomBar
         }
         .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    /// The list's pane header (docs/ui.md › Pane headers): `Memories` in the section, `Global
+    /// Memories` in the view.
+    @ViewBuilder
+    private var titleRow: some View {
+        switch scope {
+        case .project:
+            PaneTitleRow(section: .memories)
+        case .global:
+            PaneTitleRow(title: PaneTitle.globalMemories)
+        }
     }
 
     @ViewBuilder

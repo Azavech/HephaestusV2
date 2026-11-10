@@ -93,25 +93,37 @@ The welcome view and the reconnect view replace the sidebar, the content and the
 
 Every header bar at the top of a pane of the centre column, and the inspector's header, is 36 points high, from the toolbar's bottom edge to its bottom separator, so that the separators of all the headers of a window lie on one horizontal line.
 
-| Section          | Header bars                                                                                                                                                                   |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Dashboard        | none; a sub project's Dashboard shown from the sidebar has a header with the sub project's name ([Section](dashboard.md#section))                                             |
-| Tickets          | the header bar of the [ticket list](tickets.md#ticket-list) and the header of the [ticket detail](tickets.md#ticket-detail)                                                   |
-| Bundles          | the list header and the bundle detail's header ([Bundles section](tickets.md#bundles-section))                                                                                |
-| Chats            | the list header ([Where chats appear](chats.md#where-chats-appear)) and the header of the [chat view](chats.md#chat-view), or of the agent view or workflow view in its place |
-| Code             | the file tree's header and the editor tabs ([Layout](code-editor.md#layout))                                                                                                  |
-| Docs             | the docs tree's header and the viewer's header ([Layout](documentation-viewer.md#layout))                                                                                     |
-| Web              | the tab strip ([Web section layout](web-tabs.md#web-section-layout))                                                                                                          |
-| Skills           | the filter bar of the [library list](skills.md#library-list) and the header of the [editor](skills.md#editor)                                                                 |
-| Costs            | the header ([Costs section](costs.md#costs-section))                                                                                                                          |
-| Project Settings | the header ([Project settings](projects.md#project-settings))                                                                                                                 |
-| Global Memories  | the header of the [Global Memories view](memories.md#global-memories-view), above its list and editor or its empty state                                                      |
-| Internal Skills  | the header of the [Internal Skills view](skills.md#internal-skills-view), above its list and editor                                                                           |
-| Inspector        | the header ([Inspector](#inspector))                                                                                                                                          |
+The sections Dashboard, Tickets, Bundles, Chats, Web, Builds, Skills, Memories and API Explorer show their title in a title row: a pane header that holds only the title, in the headline font, at its leading edge. The title is the section's sidebar title ([Sidebar](#sidebar)): `Dashboard`, `Tickets`, `Bundles`, `Chats`, `Web`, `Builds`, `Skills`, `Memories` or `API Explorer`. The Global Memories view and the Internal Skills view show `Global Memories` and `Internal Skills` the same way.
+
+- The title row is the pane header of the left column only: it sits above the list's filter field or header bar, and above the contract list of the API Explorer, which follow under its separator. The right column, an editor, a detail or a chat view, keeps its own header, on the same line.
+- Dashboard and Web have a single column: their title row spans it, above the Dashboard's bar with the `Edit` button and above the Web tab strip.
+- An empty state or a notice that takes the place of the whole section shows no title row: `No Memories`, `No Global Memories`, `No chats yet`, `No Web Tabs`, `No Skills`, and the notices of the API Explorer (the spinner while the file is read, `The file could not be opened.` and `The contract could not be read.`). The lists of the Tickets and Bundles sections keep their header bar when they are empty, so they keep their title row.
+- Docs, Costs, Code, Graph, Project Settings and a sub project's Dashboard keep their headers and have no title row. The Contract view of the Code section has none either: only the API Explorer section shows `API Explorer`.
+
+| Section          | Header bars                                                                                                                                                                                        |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dashboard        | the title row `Dashboard`, across the column; a sub project's Dashboard shown from the sidebar has a header with the sub project's name instead ([Section](dashboard.md#section))                  |
+| Tickets          | the title row `Tickets` above the [ticket list](tickets.md#ticket-list) and the header of the [ticket detail](tickets.md#ticket-detail)                                                            |
+| Bundles          | the title row `Bundles` above the list and the bundle detail's header ([Bundles section](tickets.md#bundles-section))                                                                              |
+| Chats            | the title row `Chats` above the list ([Where chats appear](chats.md#where-chats-appear)) and the header of the [chat view](chats.md#chat-view), or of the agent view or workflow view in its place |
+| Code             | the file tree's header and the editor tabs ([Layout](code-editor.md#layout))                                                                                                                       |
+| Docs             | the docs tree's header and the viewer's header ([Layout](documentation-viewer.md#layout))                                                                                                          |
+| Web              | the title row `Web`, across the column, above the tab strip ([Web section layout](web-tabs.md#web-section-layout))                                                                                 |
+| Builds           | the title row `Builds` above the list pane ([Layout](builds.md#layout))                                                                                                                            |
+| Skills           | the title row `Skills` above the [library list](skills.md#library-list) and the header of the [editor](skills.md#editor)                                                                           |
+| Memories         | the title row `Memories` above the [list](memories.md#list) and the header of the [memory editor](memories.md#memory-editor) or of the [MEMORY.md editor](memories.md#memorymd-editor)             |
+| Costs            | the header ([Costs section](costs.md#costs-section))                                                                                                                                               |
+| API Explorer     | the title row `API Explorer` above the contract list ([Explorer view](openapi.md#explorer-view))                                                                                                   |
+| Project Settings | the header ([Project settings](projects.md#project-settings))                                                                                                                                      |
+| Global Memories  | the title row `Global Memories` above the list of the [Global Memories view](memories.md#global-memories-view) and the header of its editor                                                        |
+| Internal Skills  | the title row `Internal Skills` above the list of the [Internal Skills view](skills.md#internal-skills-view) and the header of its editor                                                          |
+| Inspector        | the header ([Inspector](#inspector))                                                                                                                                                               |
 
 - The content of a header is on one row, centred vertically in its 36 points. Elements of a header that do not fit on that row, for example a caption under a field, are on a row just under its separator.
 - A header stays at the top of its pane: it does not scroll with the content under its separator.
-- A pane without a header keeps none: the active project's Dashboard, an empty state that takes the place of a whole section (for example `No chats yet`, `No Web Tabs` or the empty skills library) and a placeholder of a pane (for example `No Ticket Selected`, `No Open File` or `Select a doc`). The lists of the Tickets and Bundles sections keep their header when they are empty.
+- A pane without a header keeps none: an empty state or a notice that takes the place of a whole section (for example `No chats yet`, `No Web Tabs` or the empty skills library) and a placeholder of a pane (for example `No Ticket Selected`, `No Open File` or `Select a doc`).
+
+The title row, its titles, its font, its place above the left column only, the sections and views that show it, those that show none and the states without title come from the user ([R194](requirements.md#requirements)).
 
 ## Toolbar
 
@@ -932,3 +944,4 @@ A window chosen for a `ui.open` event is ordered front; it becomes key only when
 - R183: Typing `/` at the start of a chat message lists the skills of the chat's project whose name contains the typed text, to complete the skill's call.
 - R188: The user selects the context window of each chat, Auto, 200K or 1M; a running chat takes a new window once its turn and background work end.
 - R191: The user shows and edits the internal skills with View ▸ Internal Skills, outside any project.
+- R194: Every section of the main window shows a title, and so do the Global Memories and Internal Skills views: Dashboard, Tickets, Bundles, Chats, Web, Builds, Skills, Memories and API Explorer show their sidebar title in a title row above their left column.

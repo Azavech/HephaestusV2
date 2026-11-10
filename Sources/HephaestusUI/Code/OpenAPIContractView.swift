@@ -47,6 +47,9 @@ struct OpenAPIContractView: View {
     let model: OpenAPIContractModel
     /// The buffer's text, read here so that its changes parse the contract again.
     let text: String
+    /// The API Explorer shows its title row above the list; the Contract view of the Code section
+    /// has none (docs/openapi.md › Explorer view).
+    var showsTitleRow = false
 
     var body: some View {
         @Bindable var model = model
@@ -70,7 +73,15 @@ struct OpenAPIContractView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .loaded(let contract):
                 SplitPanes(leadingWidth: $model.listWidth, leadingRange: 180...400, minimumTrailingWidth: 300) {
-                    OpenAPIListView(model: model, contract: contract)
+                    VStack(spacing: 0) {
+                        if showsTitleRow {
+                            // The list's pane header (docs/ui.md › Pane headers); the spinner
+                            // and the parse error, which take the whole view, show none.
+                            PaneTitleRow(section: .apiExplorer)
+                        }
+                        OpenAPIListView(model: model, contract: contract)
+                    }
+                    .background(Color(nsColor: .controlBackgroundColor))
                 } trailing: {
                     OpenAPIDetailView(model: model, contract: contract)
                 }

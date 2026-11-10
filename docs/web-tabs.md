@@ -38,6 +38,7 @@ Claude can list and open tabs through MCP ([MCP server](mcp.md)); it updates, mo
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
+│ Web                                                                      │ title row, 36 pt
 │ [🔒 example/app] [🔒 Actions · example/app] [Dev server ×]           [+] │ tab strip, 36 pt
 │ ◀  ▶  ⟳   [ http://localhost:3000/dashboard                           ]  │ address bar, 36 pt
 │ ━━━━━━━━━━━━━━━━━━━━━━━━                                                 │ progress bar, 2 pt
@@ -50,19 +51,20 @@ Claude can list and open tabs through MCP ([MCP server](mcp.md)); it updates, mo
 
 | Part          | Content                                                                                                                  |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Title row     | The title `Web` ([Pane headers](ui.md#pane-headers)).                                                                    |
 | Tab strip     | One tab per stored tab, in order, then the placeholder tab when there is one ([New tab](#new-tab)), then the `+` button. |
 | Address bar   | Back, Forward, Reload (Stop while loading), the URL field.                                                               |
 | Progress bar  | The selected tab's `estimatedProgress`, shown only while it is loading.                                                  |
 | Page          | The selected tab's web view, the [error view](#load-errors), or nothing for the placeholder tab.                         |
 | Downloads bar | Shown only while the window has downloads to list ([Downloads](#downloads)).                                             |
 
-The tab strip is the section's pane header: 36 pt high, its tabs and its `+` button as high as the strip, their content centred vertically, and its bottom separator on one line with those of the inspector and of the other sections ([Pane headers](ui.md#pane-headers)). The address bar is under that separator.
+The title row is the section's pane header: it spans the section, 36 pt high, with the title `Web`, its bottom separator on one line with those of the inspector and of the other sections ([Pane headers](ui.md#pane-headers)). The tab strip is under that separator: 36 pt high, its tabs and its `+` button as high as the strip, their content centred vertically, with a separator under it. The address bar is under the tab strip's separator.
 
 The other sizes are design-time choices. Default chosen at design time.
 
 ### Empty state
 
-With no stored tab and no placeholder, the Web section shows the SF Symbol `globe`, the title `No Web Tabs`, the line `Open a page to keep it with this project.` and a `New Tab` button that does what ⌘T does. Default chosen at design time.
+With no stored tab and no placeholder, the Web section shows, in place of its title row, tab strip, address bar and page, the SF Symbol `globe`, the title `No Web Tabs`, the line `Open a page to keep it with this project.` and a `New Tab` button that does what ⌘T does. Default chosen at design time. The empty state without title row comes from the user ([R194](requirements.md#requirements)).
 
 ## Tab strip
 
@@ -375,3 +377,4 @@ A window that shows a remote device works like a local one ([Remote devices](rem
 - R159: A locked web tab goes back to its original page each time the user comes back to it.
 - R168: The header bars at the top of the panes of the main window's centre column, and the inspector's header, are all 36 points high, so that their bottom separators lie on one line.
 - R172: A project with a GitHub page always has two locked web tabs, its GitHub page and its CI page, first in the tab strip.
+- R194: Every section of the main window shows a title, and so do the Global Memories and Internal Skills views: Dashboard, Tickets, Bundles, Chats, Web, Builds, Skills, Memories and API Explorer show their sidebar title in a title row above their left column.

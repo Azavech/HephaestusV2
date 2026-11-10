@@ -131,6 +131,8 @@ struct BundlesSectionView: View {
     private var list: some View {
         VStack(spacing: 0) {
             let state = listState
+            // The list's pane header (docs/ui.md › Pane headers); the list header is under it.
+            PaneTitleRow(section: .bundles)
             HStack {
                 Spacer()
                 // Hides or shows the done bundles (docs/tickets.md › Bundles section).

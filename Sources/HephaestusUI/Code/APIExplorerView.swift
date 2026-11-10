@@ -5,9 +5,9 @@ import AppKit
 import HephaestusCore
 import SwiftUI
 
-/// The API Explorer of the active project: the Contract view of its contract as it is on disk; the
-/// notice of the buffer's state until the buffer has text; a spinner while the first read of the
-/// contract runs (docs/openapi.md › Explorer view).
+/// The API Explorer of the active project: the Contract view of its contract as it is on disk,
+/// with the section's title row above its list; the notice of the buffer's state until the buffer
+/// has text; a spinner while the first read of the contract runs (docs/openapi.md › Explorer view).
 struct APIExplorerView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -18,7 +18,7 @@ struct APIExplorerView: View {
         let buffer = isShown ? currentBuffer : nil
         Group {
             if let buffer, buffer.content == .text {
-                OpenAPIContractView(model: buffer.contractModel, text: buffer.text)
+                OpenAPIContractView(model: buffer.contractModel, text: buffer.text, showsTitleRow: true)
             } else if let buffer {
                 CodeEditorView(buffer: buffer, workspace: workspace)
             } else {
