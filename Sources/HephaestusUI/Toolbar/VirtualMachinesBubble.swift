@@ -214,7 +214,7 @@ private struct VirtualMachinesPopover: View {
 }
 
 /// A row: the preview, the name, the Started by line, the running time and `Stop`; for a Stopped
-/// virtual machine a black preview, `Stopped` and `Start`.
+/// virtual machine a black preview, `Stopped`, `Edit…` and `Start`.
 private struct VMPopoverRowView: View {
     let row: VMPopoverRow
     let window: WindowState
@@ -259,6 +259,8 @@ private struct VMPopoverRowView: View {
             }
             .frame(width: 200, alignment: .leading)
             if row.isStopped {
+                Button(VirtualMachinePresentation.editTitle, action: edit)
+                    .disabled(starting)
                 Button("Start", action: start)
                     .disabled(starting || !VMPopoverPresentation.canStart(workspace.virtualMachines))
             } else {
@@ -313,6 +315,13 @@ private struct VMPopoverRowView: View {
             close()
             app.showImageSetup(imageID, in: window)
         }
+    }
+
+    /// Closes the popover and opens the Edit VM sheet of a Stopped virtual machine on this window.
+    private func edit() {
+        guard case .machine(let vmID) = row.source else { return }
+        close()
+        window.sheet = .editVM(vmID: vmID)
     }
 
     /// Starts a Stopped virtual machine with `vms.start`; a failure shows `Start failed` on the

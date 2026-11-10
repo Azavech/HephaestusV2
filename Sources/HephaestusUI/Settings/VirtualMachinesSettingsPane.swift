@@ -132,6 +132,24 @@ enum VirtualMachinePresentation {
         machine?.state == .running
     }
 
+    /// `Edit…` is enabled while the virtual machine is Stopped (docs/virtual-machines.md › Editing).
+    static func canEdit(_ machine: VirtualMachine?) -> Bool {
+        machine?.state == .stopped
+    }
+
+    static let editTitle = "Edit…"
+
+    /// The disk size the Edit VM sheet starts with, the smallest it accepts: the virtual machine's
+    /// `diskGB`; without one, the disk size of its image.
+    static func currentDiskGB(_ machine: VirtualMachine, images: [VMImage]?) -> Int {
+        machine.diskGB ?? images?.first { $0.id == machine.imageID }?.diskGB ?? VMImageLimits.imageDiskGB
+    }
+
+    /// `Save` of the Edit VM sheet is enabled once the name is not empty.
+    static func canSave(name: String) -> Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     /// The image the New VM sheet selects when it opens: the default image, else the first Ready
     /// image.
     static func initialImage(_ readyImages: [VMImage], defaultImageID: UUID?) -> VMImage? {
@@ -392,6 +410,8 @@ struct VirtualMachinesSettingsPane: View {
     @State private var showsAddImage = false
     @State private var machineSelection: UUID?
     @State private var showsNewVM = false
+    /// The virtual machine whose Edit VM sheet shows.
+    @State private var editedMachineID: UUID?
     /// The message of the last failed start, the red line under the Virtual Machines table.
     @State private var startFailure: String?
     @State private var hostWindow = HostWindow()
@@ -493,6 +513,10 @@ struct VirtualMachinesSettingsPane: View {
                         .disabled(!VirtualMachinePresentation.canStart(selectedMachine, in: machineList))
                     Button("Stop", action: stopMachine)
                         .disabled(!VirtualMachinePresentation.canStop(selectedMachine))
+                    Button(VirtualMachinePresentation.editTitle) {
+                        editedMachineID = selectedMachine?.id
+                    }
+                    .disabled(!VirtualMachinePresentation.canEdit(selectedMachine))
                     Button("Show", action: showMachine)
                         .disabled(selectedMachine == nil)
                     Button("Delete…", action: deleteMachine)
@@ -530,6 +554,12 @@ struct VirtualMachinesSettingsPane: View {
                 startFailure = message
             }
             .environment(app)
+        }
+        .sheet(isPresented: Binding(get: { editedMachineID != nil && !app.sheetsEnded }, set: { if !$0 { editedMachineID = nil } })) {
+            if let editedMachineID {
+                EditVMSheet(vmID: editedMachineID)
+                    .environment(app)
+            }
         }
     }
 

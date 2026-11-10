@@ -423,6 +423,115 @@ struct VirtualMachineEngineTests {
 
     // MARK: vms.delete
 
+    // MARK: vms.update
+
+    @Test("vms.update writes the name, the cores, the memory and a larger disk of a stopped virtual machine, which starts with them")
+    func update() async throws {
+        try await withVMEngine { engine, connection, provisioner, _ in
+            let image = try await addReadyImage(engine, connection, provisioner)
+            let created = try await createVM(connection, image: image)
+            _ = try await connection.call(VMsStop.self, VMParams(vmID: created.id))
+            let files = VirtualMachineStore.files(of: created.id, in: engine.dataDirectory)
+            let metadata = VirtualMachineStore.metadataFile(of: created.id, in: engine.dataDirectory)
+
+            // The same disk size grows nothing.
+            let renamed = try await connection.call(VMsUpdate.self, VMsUpdate.Params(vmID: created.id, name: "  Renamed ", cores: 2,
+                                                                                     memoryGB: 4, diskGB: 1))
+            #expect(renamed.name == "Renamed" && renamed.diskGB == 1 && !renamed.growContainer && renamed.state == .stopped)
+            #expect(try String(contentsOf: files.disk, encoding: .utf8) == "disk")
+
+            let events = connection.events
+            let edited = try await connection.call(VMsUpdate.self, VMsUpdate.Params(vmID: created.id, name: "Edited", cores: 3,
+                                                                                    memoryGB: 5, diskGB: 3))
+            #expect(edited.name == "Edited" && edited.cores == 3 && edited.memoryGB == 5 && edited.diskGB == 3)
+            #expect(edited.growContainer && edited.state == .stopped && edited.startedAt == nil)
+            #expect(edited.id == created.id && edited.imageID == image.id && edited.created == created.created)
+            #expect(try ProjectFileStore.decodeYAML(VirtualMachine.self, at: metadata) == edited.stored)
+            #expect(try FileManager.default.attributesOfItem(atPath: files.disk.path)[.size] as? UInt64 == 3 * VMImageLimits.bytesPerGB)
+            let list = VMList(machines: [edited], runningCount: 0)
+            #expect(try await connection.call(VMsList.self) == list)
+            #expect(await firstVMList(on: events) { $0 == list } != nil)
+
+            // The next start makes the virtual machine with the new cores and memory.
+            _ = try await connection.call(VMsStart.self, VMParams(vmID: created.id))
+            #expect(provisioner.machineRequests.last == GuestMachineRequest(files: files, cores: 3, memoryGB: 5, sharedFolder: nil))
+        }
+    }
+
+    @Test("vms.update refuses a running virtual machine, checks the name and the ranges, and refuses a disk smaller than the current one")
+    func updateErrors() async throws {
+        try await withVMEngine { engine, connection, provisioner, _ in
+            let image = try await addReadyImage(engine, connection, provisioner)
+            let created = try await connection.call(VMsCreate.self, VMsCreate.Params(name: "Menu checks", imageID: image.id, cores: 2,
+                                                                                     memoryGB: 4, diskGB: 3))
+            let limits = VMImageLimits.host
+            func update(_ id: UUID = created.id, _ name: String = "VM", _ cores: Int = 2, _ memoryGB: Int = 4,
+                        _ diskGB: Int = 3) async -> EngineError? {
+                await engineError {
+                    try await connection.call(VMsUpdate.self, VMsUpdate.Params(vmID: id, name: name, cores: cores, memoryGB: memoryGB,
+                                                                               diskGB: diskGB))
+                }
+            }
+            #expect(await update() == EngineError(.conflict, "The virtual machine is running."))
+            #expect(await update(created.id, "") == EngineError(.conflict, "The virtual machine is running."))
+            _ = try await connection.call(VMsStop.self, VMParams(vmID: created.id))
+
+            let missing = UUID()
+            #expect(await update(missing) == EngineError(.notFound, "Virtual machine \(missing.uuidString) not found."))
+            let nameError = EngineError(.invalid, "name: use 1 to 100 characters on one line.")
+            #expect(await update(created.id, "  ", 1) == nameError)
+            #expect(await update(created.id, "two\nlines") == nameError)
+            #expect(await update(created.id, "VM", 1) == EngineError(.invalid, "cores: use a number from 2 to \(limits.cores.upperBound)."))
+            #expect(await update(created.id, "VM", 2, 3) == EngineError(.invalid, "memoryGB: use a number from 4 to \(limits.memoryGB.upperBound)."))
+            // The disk goes from its current size, 3 GB, to 2048.
+            #expect(await update(created.id, "VM", 2, 4, 2) == EngineError(.invalid, "diskGB: use a number from 3 to 2048."))
+            #expect(await update(created.id, "VM", 2, 4, 2049) == EngineError(.invalid, "diskGB: use a number from 3 to 2048."))
+
+            // Nothing was saved.
+            let stored = try ProjectFileStore.decodeYAML(VirtualMachine.self,
+                                                         at: VirtualMachineStore.metadataFile(of: created.id, in: engine.dataDirectory))
+            #expect(stored == created.stored)
+            #expect(try await connection.call(VMsList.self).machines == [Self.stopped(created)])
+        }
+    }
+
+    @Test("vms.update fails with internal and keeps vm.yml when the disk cannot be grown")
+    func updateFailure() async throws {
+        try await withVMEngine { engine, connection, provisioner, _ in
+            let image = try await addReadyImage(engine, connection, provisioner)
+            let created = try await createVM(connection, image: image)
+            _ = try await connection.call(VMsStop.self, VMParams(vmID: created.id))
+            try FileManager.default.removeItem(at: VirtualMachineStore.files(of: created.id, in: engine.dataDirectory).disk)
+            let error = try #require(await engineError {
+                try await connection.call(VMsUpdate.self, VMsUpdate.Params(vmID: created.id, name: "Edited", cores: 2, memoryGB: 4, diskGB: 3))
+            })
+            #expect(error.code == .internal)
+            #expect(error.message.hasPrefix("The virtual machine could not be changed: "))
+            #expect(error.message.hasSuffix(".") && !error.message.hasSuffix(".."))
+            let stored = try ProjectFileStore.decodeYAML(VirtualMachine.self,
+                                                         at: VirtualMachineStore.metadataFile(of: created.id, in: engine.dataDirectory))
+            #expect(stored == created.stored)
+            #expect(try await connection.call(VMsList.self).machines.first?.name == "Menu checks")
+        }
+    }
+
+    @Test("A virtual machine of an earlier version without diskGB takes the size of its Disk.img at launch")
+    func launchWithoutDiskGB() async throws {
+        let id = UUID(uuidString: "7D2C1A90-5E4B-4F3A-8B6C-1D0E9F8A7B6C")!
+        try await withVMEngine(prepare: { directory in
+            try VirtualMachineStore.write(VirtualMachineFileTests.machine(id), to: directory)
+            let disk = VirtualMachineStore.files(of: id, in: directory).disk
+            FileManager.default.createFile(atPath: disk.path, contents: nil)
+            let handle = try FileHandle(forWritingTo: disk)
+            try handle.truncate(atOffset: 2 * VMImageLimits.bytesPerGB + 1)
+            try handle.close()
+        }) { engine, connection, _, _ in
+            let list = try await connection.call(VMsList.self)
+            #expect(list.machines.first?.diskGB == 3)
+            #expect(Self.folderExists(engine, id))
+        }
+    }
+
     @Test("vms.delete stops a running virtual machine at once and deletes its folder")
     func delete() async throws {
         try await withVMEngine { engine, connection, provisioner, _ in

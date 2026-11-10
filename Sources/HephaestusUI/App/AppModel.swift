@@ -818,7 +818,7 @@ extension WindowSheet {
             // nil for the global memories folder, which belongs to no project.
             return projectID
         case .newProject, .newProjectInFolder, .openProjectFolder, .addDevice, .feedback, .newSkillFile, .webPageDialog,
-             .newVM, .addImage:
+             .newVM, .addImage, .editVM:
             return nil
         }
     }

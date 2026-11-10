@@ -154,6 +154,25 @@ struct VirtualMachinesSettingsTests {
         #expect(!VirtualMachinePresentation.canStop(nil))
     }
 
+    @Test("Edit… needs a Stopped virtual machine; the Edit VM sheet starts with its disk size and saves once the name is not empty")
+    func editVM() {
+        #expect(VirtualMachinePresentation.editTitle == "Edit…")
+        #expect(VirtualMachinePresentation.canEdit(Self.machine()))
+        #expect(!VirtualMachinePresentation.canEdit(Self.machine(.running)))
+        #expect(!VirtualMachinePresentation.canEdit(nil))
+        var machine = Self.machine()
+        machine.diskGB = 100
+        #expect(VirtualMachinePresentation.currentDiskGB(machine, images: nil) == 100)
+        // Without diskGB, the disk size of its image.
+        machine.diskGB = nil
+        var image = Self.image(.ready)
+        image.diskGB = 40
+        #expect(VirtualMachinePresentation.currentDiskGB(machine, images: [image]) == 40)
+        #expect(VirtualMachinePresentation.currentDiskGB(machine, images: nil) == VMImageLimits.imageDiskGB)
+        #expect(VirtualMachinePresentation.canSave(name: "Menu checks"))
+        #expect(!VirtualMachinePresentation.canSave(name: " \n "))
+    }
+
     @Test("The New VM sheet selects the default image, starts with the New VMs values, enables Start with a name and an image, and keeps only refused values")
     func newVMSheet() {
         let first = Self.image(.ready)

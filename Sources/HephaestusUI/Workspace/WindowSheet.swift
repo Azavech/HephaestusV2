@@ -59,6 +59,9 @@ public enum WindowSheet: Codable, Hashable, Sendable, Identifiable {
     /// Add Image sheet, opened by `Add Image…` of the Virtual Machines popover (docs/ui.md ›
     /// Virtual Machines, docs/virtual-machines.md › Buttons).
     case addImage
+    /// Edit VM sheet of a stopped virtual machine, opened by `Edit…` of the Virtual Machines
+    /// popover (docs/ui.md › Virtual Machines, docs/virtual-machines.md › Editing).
+    case editVM(vmID: UUID)
 
     public var id: Self { self }
 }
@@ -116,6 +119,8 @@ struct WindowSheetView: View {
             }
         case .addImage:
             AddImageSheet()
+        case .editVM(let vmID):
+            EditVMSheet(vmID: vmID)
         }
     }
 }

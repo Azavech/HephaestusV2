@@ -124,7 +124,7 @@ public enum EngineMethods {
         BuildsListRuns.self, BuildsGetRun.self, BuildsRerunRun.self, BuildsCancelRun.self, BuildsListReleases.self,
         BuildsGetRelease.self, BuildsDownloadAsset.self,
         VMImagesList.self, VMImagesVersions.self, VMImagesAdd.self, VMImagesDelete.self, VMImagesSetAccount.self,
-        VMsList.self, VMsCreate.self, VMsStart.self, VMsStop.self, VMsDelete.self,
+        VMsList.self, VMsCreate.self, VMsStart.self, VMsStop.self, VMsUpdate.self, VMsDelete.self,
         VMToolsImages.self, VMToolsSetAccount.self, VMToolsList.self, VMToolsStart.self, VMToolsStop.self, VMToolsScreenshot.self,
         VMToolsClick.self, VMToolsDrag.self, VMToolsScroll.self, VMToolsType.self, VMToolsKey.self, VMToolsUITree.self,
         VMToolsShell.self, VMToolsCopyIn.self, VMToolsCopyOut.self,

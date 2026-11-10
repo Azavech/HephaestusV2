@@ -82,6 +82,31 @@ public enum VMsStop: EngineMethod {
     public typealias Result = Empty
 }
 
+/// `vms.update`: changes the name, the cores, the memory and the disk size of a stopped virtual
+/// machine, grows its disk when the size is larger, and writes `vm.yml`. Actors: user.
+public enum VMsUpdate: EngineMethod {
+    public static let name = "vms.update"
+    public struct Params: Codable, Sendable, Hashable {
+        public var vmID: UUID
+        /// One line of 1 to 100 characters, trimmed.
+        public var name: String
+        public var cores: Int
+        /// Its memory in GB.
+        public var memoryGB: Int
+        /// The size of its disk in GB: its current disk size to 2048.
+        public var diskGB: Int
+
+        public init(vmID: UUID, name: String, cores: Int, memoryGB: Int, diskGB: Int) {
+            self.vmID = vmID
+            self.name = name
+            self.cores = cores
+            self.memoryGB = memoryGB
+            self.diskGB = diskGB
+        }
+    }
+    public typealias Result = VirtualMachine
+}
+
 /// `vms.delete`: stops the virtual machine at once when it runs and deletes its folder.
 /// Actors: user.
 public enum VMsDelete: EngineMethod {

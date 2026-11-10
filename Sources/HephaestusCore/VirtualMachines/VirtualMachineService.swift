@@ -25,13 +25,19 @@ extension Engine {
     // MARK: Launch (docs/data-model.md › Loading, step 2)
 
     /// Reads the virtual machines: all are stopped. The folder of a virtual machine that Claude
-    /// started, left when the app ended without stopping it, is deleted.
+    /// started, left when the app ended without stopping it, is deleted. A virtual machine of an
+    /// earlier version without `diskGB` takes the size of its `Disk.img` (docs/data-model.md › VM
+    /// metadata file).
     func loadVirtualMachines() {
-        for machine in VirtualMachineStore.loadAll(dataDirectory, log: log) {
+        for var machine in VirtualMachineStore.loadAll(dataDirectory, log: log) {
             if machine.isDeletedWhenStopped {
                 removeVirtualMachineFolder(machine.id)
                 log.info(.engine, "virtual machine \(machine.id.uuidString), started by Claude, deleted at launch")
             } else {
+                if machine.diskGB == nil {
+                    let size = VMImageStore.diskGB(of: VirtualMachineStore.files(of: machine.id, in: dataDirectory))
+                    machine.diskGB = size > 0 ? size : nil
+                }
                 virtualMachines.machines[machine.id] = machine
             }
         }
@@ -216,6 +222,51 @@ extension Engine {
             log.error(.storage, "\(error)")
         }
         log.info(.engine, "virtual machine \(id.uuidString): the guest's container has grown")
+    }
+
+    // MARK: vms.update (docs/virtual-machines.md › Editing)
+
+    /// Checks the virtual machine, its state, the name and the ranges, grows the disk when
+    /// `diskGB` is larger than the current one, then writes `vm.yml`. It runs without a suspension
+    /// point, so no start interleaves with it.
+    func updateVirtualMachine(_ params: VMsUpdate.Params, _ actor: Actor) throws -> VirtualMachine {
+        let id = params.vmID
+        guard var machine = virtualMachines.machines[id], !virtualMachines.deleting.contains(id) else {
+            throw EngineError.notFound("Virtual machine", id.uuidString)
+        }
+        guard machine.state == .stopped, virtualMachines.sessions[id] == nil, virtualMachines.starts[id] == nil else {
+            throw EngineError(.conflict, "The virtual machine is running.")
+        }
+        let files = VirtualMachineStore.files(of: id, in: dataDirectory)
+        let currentDiskGB = machine.diskGB ?? VMImageStore.diskGB(of: files)
+        do {
+            machine.name = try VirtualMachine.checkedName(params.name)
+            try VMImageLimits.host.check(cores: params.cores, memoryGB: params.memoryGB, diskGB: params.diskGB,
+                                         imageDiskGB: currentDiskGB)
+        } catch let error as ValidationError {
+            throw EngineError(error)
+        }
+        machine.cores = params.cores
+        machine.memoryGB = params.memoryGB
+        machine.diskGB = params.diskGB
+        do {
+            if params.diskGB > currentDiskGB {
+                // The disk grows as a clone does (docs/virtual-machines.md › Clone).
+                let growth = try GuestDisk.grow(files.disk, to: UInt64(params.diskGB) * VMImageLimits.bytesPerGB)
+                if growth == .extendedOnly {
+                    log.warn(.engine, "virtual machine \(id.uuidString): its disk has no recovery container to move, it was only extended")
+                }
+                machine.growContainer = true
+            }
+            try VirtualMachineStore.write(machine, to: dataDirectory)
+        } catch {
+            let reason = (error as? StorageError)?.reason ?? error.localizedDescription
+            throw EngineError(.internal, "The virtual machine could not be changed: \(Self.withoutFinalPeriod(reason)).")
+        }
+        virtualMachines.machines[id] = machine
+        log.info(.engine, "virtual machine \(id.uuidString) edited")
+        emitVirtualMachines(origin: actor)
+        return machine
     }
 
     // MARK: vms.stop (docs/virtual-machines.md › Stopping)

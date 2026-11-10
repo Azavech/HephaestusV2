@@ -330,6 +330,7 @@ The first column lists every engine method; it is the list the docs conformance 
 | `vms.create`                     | VMsCreate                     | name, imageID, cores, memoryGB                             | VirtualMachine     | user         |
 | `vms.start`                      | VMsStart                      | vmID                                                       | VirtualMachine     | user         |
 | `vms.stop`                       | VMsStop                       | vmID                                                       | Empty              | user         |
+| `vms.update`                     | VMsUpdate                     | vmID, name, cores, memoryGB, diskGB                        | VirtualMachine     | user         |
 | `vms.delete`                     | VMsDelete                     | vmID                                                       | Empty              | user         |
 | `vmTools.images`                 | VMToolsImages                 | chatID                                                     | [VMToolImage]      | claude       |
 | `vmTools.setAccount`             | VMToolsSetAccount             | chatID, imageID, userName?, password?                      | VMToolImage        | claude       |
@@ -3072,7 +3073,7 @@ The image comes first, then `userName`, then `password`. Events: vmImages.change
 
 ## Virtual machines
 
-The virtual machines, their states, the clone of the image's disk, the start, the stop and the limit of 2 running virtual machines are in [Virtual machines](virtual-machines.md#lifecycle). The methods act on the virtual machines of the engine's own Mac, stored under `<data dir>/VirtualMachines/Machines/`. Only the user actor calls them, and `vms.create` starts a virtual machine of the user: no method starts one for Claude yet. The screen of a virtual machine shows only on the Mac that runs it, through a [local-only service](architecture.md#local-only-services).
+The virtual machines, their states, the clone of the image's disk, the start, the stop, the edit of a stopped one and the limit of 2 running virtual machines are in [Virtual machines](virtual-machines.md#lifecycle). The methods act on the virtual machines of the engine's own Mac, stored under `<data dir>/VirtualMachines/Machines/`. Only the user actor calls them, and `vms.create` starts a virtual machine of the user: no method starts one for Claude yet. The screen of a virtual machine shows only on the Mac that runs it, through a [local-only service](architecture.md#local-only-services).
 
 ### VirtualMachine in the API
 
@@ -3180,6 +3181,29 @@ Shuts a virtual machine down and returns once it has stopped ([Stopping](virtual
 | notFound | No virtual machine has this id (`Virtual machine <id> not found.`). |
 
 Events: vms.changed.
+
+### vms.update
+
+Swift type `VMsUpdate` · actors: user · result: [VirtualMachine](#virtualmachine-in-the-api)
+
+Changes the name, the cores, the memory and the disk size of a stopped virtual machine, grows its disk when the size is larger, and writes `vm.yml` ([Editing](virtual-machines.md#editing)). The result is the virtual machine, stopped.
+
+| Param    | Type   | Required | Description                                                                        |
+| -------- | ------ | -------- | ---------------------------------------------------------------------------------- |
+| vmID     | UUID   | yes      | Id of the virtual machine.                                                         |
+| name     | String | yes      | Its name: one line of 1 to 100 characters, trimmed.                                |
+| cores    | Int    | yes      | Its processor cores: 2 to the number of cores of the Mac.                          |
+| memoryGB | Int    | yes      | Its memory in GB: 4 to the memory of the Mac in GB, rounded down.                  |
+| diskGB   | Int    | yes      | The size of its disk in GB: its current disk size to 2048; a larger size grows it. |
+
+| Error    | When                                                                                                                                                                    |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| notFound | No virtual machine has this id (`Virtual machine <id> not found.`).                                                                                                     |
+| conflict | The virtual machine runs or starts (`The virtual machine is running.`).                                                                                                 |
+| invalid  | The name breaks its rule (`name: use 1 to 100 characters on one line.`); cores, memoryGB or diskGB is outside its range (`<param>: use a number from <min> to <max>.`). |
+| internal | The disk cannot be grown (`The virtual machine could not be changed: <reason>.`); `vm.yml` keeps its values.                                                            |
+
+The checks come in this order: the virtual machine, its state, the name, the ranges. Events: vms.changed.
 
 ### vms.delete
 
@@ -3633,7 +3657,7 @@ Every event travels as an [EngineEventEnvelope](#engineeventenvelope) `{name, or
 | skills.changed    | SkillsChangedEvent    | [SkillSummary]: the complete `skills.list` result                | The skills library changed, including files inside a skill.                                                                                                                                                                                    |
 | memories.changed  | MemoriesChangedEvent  | MemoryFolder: the complete `memories.list` result for one folder | A project's own memory folder, one it inherits or the global memories folder changed: a memory or `MEMORY.md` was created, changed, renamed or deleted by an app, or its inherited folders changed ([Live updates](memories.md#live-updates)). |
 | vmImages.changed  | VMImagesChangedEvent  | [VMImage]: the complete `vmImages.list` result                   | An image was added or deleted, its state, its percentage or its guest account changed, or its setup ended ([VMImage in the API](#vmimage-in-the-api)).                                                                                         |
-| vms.changed       | VMsChangedEvent       | VMList: the complete `vms.list` result                           | A virtual machine was created, started, stopped or deleted, or the number of running virtual machines changed ([VMList](#vmlist)).                                                                                                             |
+| vms.changed       | VMsChangedEvent       | VMList: the complete `vms.list` result                           | A virtual machine was created, started, stopped, edited or deleted, or the number of running virtual machines changed ([VMList](#vmlist)).                                                                                                     |
 | settings.updated  | SettingsUpdatedEvent  | HostSettings                                                     | Host settings changed.                                                                                                                                                                                                                         |
 | claude.updated    | ClaudeUpdatedEvent    | {status ClaudeStatus, models [ClaudeModel]}                      | The Claude CLI status or the model list changed.                                                                                                                                                                                               |
 | planUsage.updated | PlanUsageUpdatedEvent | PlanUsage                                                        | The engine's plan usage was replaced ([Plan usage](#plan-usage)).                                                                                                                                                                              |
@@ -5504,3 +5528,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R204: Every chat of every project gives Claude full control of virtual machines with the VM tools: Claude starts one freely or joins Claude's one of the same image, waits up to 10 minutes for a free place, drives it one action at a time across chats, acts on the user's only when named and never stops them; Claude's idle VMs stop after the minutes set in Settings, and each VM gets the Claude token of Settings at its start.
 - R208: Settings gives the default cores, memory and disk size of new virtual machines; an image has no such values, the user chooses them in the New VM sheet, and a virtual machine's disk is grown to the size chosen.
 - R209: Each image stores the user name and the password of its guests' account in clear in its `image.yml`; Settings edits them, `Type Password` in the setup view and in the detail of a virtual machine types the password into the guest through its screen, and Claude reads and stores them with the VM tools and types the password whenever the guest asks for it.
+- R210: `Edit…`, in the Virtual Machines popover and in Settings, changes the name, the cores, the memory and the disk size of a stopped virtual machine of the user; the disk cannot be smaller, a larger one is grown, and a running virtual machine cannot be edited.
