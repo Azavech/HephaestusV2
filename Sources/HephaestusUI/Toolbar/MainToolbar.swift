@@ -1,8 +1,9 @@
 // OWNER: ui-shell — the main window's toolbar (docs/ui.md › Toolbar).
 import SwiftUI
 
-/// The Sidebar button leading, the breadcrumb selector as principal item, Search, New Chat and
-/// Project Chat trailing. The toolbar shows no window title and cannot be customised.
+/// The Sidebar button leading, the breadcrumb selector and the Virtual Machines bubble as
+/// principal items, Search, New Chat and Project Chat trailing. The toolbar shows no window title
+/// and cannot be customised.
 struct MainToolbar: ToolbarContent {
     let state: WindowState
     let workspace: DeviceWorkspace?
@@ -18,6 +19,14 @@ struct MainToolbar: ToolbarContent {
         }
         ToolbarItem(placement: .principal) {
             BreadcrumbSelector(window: state, workspace: workspace)
+        }
+        // A pill of its own right of the breadcrumb's, in windows that show This Mac only
+        // (docs/virtual-machines.md › Bubble).
+        if let workspace, workspace.isLocal {
+            ToolbarSpacer(.fixed, placement: .principal)
+            ToolbarItem(placement: .principal) {
+                VirtualMachinesBubble(window: state, workspace: workspace)
+            }
         }
         ToolbarItemGroup(placement: .primaryAction) {
             Button {

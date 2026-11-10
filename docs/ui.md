@@ -41,7 +41,7 @@ The scene ids, the window titles and subtitles, the window sizes and the restora
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────┐
-│ ● ● ● [◧]              [ This Mac ▸ Hephaestus ▸ Backend ] [Search] [+Chat] [Insp] │ toolbar
+│ ● ● ● [◧]        [ This Mac ▸ Hephaestus ▸ Backend ] [▭ 1] [Search] [+Chat] [Insp] │ toolbar
 ├───────────────┬─────────────────────────────────────────────┬──────────────────────┤
 │ Project       │                                             │ Project chat         │
 │  Dashboard    │                                             │                      │
@@ -67,7 +67,7 @@ The scene ids, the window titles and subtitles, the window sizes and the restora
 
 | Region     | Position                        | Size (points)                 | Content                                                                                                | Specified in              |
 | ---------- | ------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------- |
-| Toolbar    | top, unified with the title bar | system height                 | Sidebar button, breadcrumb selector, Search, New Chat, Project Chat toggle                             | [Toolbar](#toolbar)       |
+| Toolbar    | top, unified with the title bar | system height                 | Sidebar button, breadcrumb selector, Virtual Machines bubble, Search, New Chat, Project Chat toggle    | [Toolbar](#toolbar)       |
 | Sidebar    | left column                     | width 190 to 280, default 200 | the section rows and the project footer                                                                | [Sidebar](#sidebar)       |
 | Content    | centre column                   | minimum width 540             | the section, Global Memories, Internal Skills, a sub project's Dashboard or a virtual machine's detail | the section's document    |
 | Inspector  | right column                    | width 300 to 600, default 380 | the project chat panel                                                                                 | [Inspector](#inspector)   |
@@ -130,15 +130,16 @@ The title row, its titles, its font, its place above the left column only, the s
 
 ## Toolbar
 
-| Placement | Item                | SF Symbol         | Action                                                                     | Shortcut | Enabled when                                    | Tooltip                                                |
-| --------- | ------------------- | ----------------- | -------------------------------------------------------------------------- | -------- | ----------------------------------------------- | ------------------------------------------------------ |
-| Leading   | Sidebar             | `sidebar.left`    | Shows or hides the [sidebar](#sidebar).                                    | ⌃⌘S      | always                                          | `Show Sidebar (⌃⌘S)` or `Hide Sidebar (⌃⌘S)`           |
-| Principal | Breadcrumb selector | —                 | [Breadcrumb selector](#breadcrumb-selector)                                | —        | always                                          | —                                                      |
-| Trailing  | Search              | `magnifyingglass` | Opens or closes the search panel ([Search panel](search.md#search-panel)). | ⇧⌘F      | the device is connected                         | `Search (⇧⌘F)`                                         |
-| Trailing  | New Chat            | `plus.bubble`     | New Chat in the [inspector](#inspector).                                   | ⌥⌘N      | the device is connected and a project is active | `New Chat (⌥⌘N)`                                       |
-| Trailing  | Project Chat        | `sidebar.right`   | Shows or hides the [inspector](#inspector).                                | ⌥⌘0      | a project is active                             | `Show Project Chat (⌥⌘0)` or `Hide Project Chat (⌥⌘0)` |
+| Placement | Item                | SF Symbol         | Action                                                                                                        | Shortcut | Enabled when                                    | Tooltip                                                |
+| --------- | ------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------- | -------- | ----------------------------------------------- | ------------------------------------------------------ |
+| Leading   | Sidebar             | `sidebar.left`    | Shows or hides the [sidebar](#sidebar).                                                                       | ⌃⌘S      | always                                          | `Show Sidebar (⌃⌘S)` or `Hide Sidebar (⌃⌘S)`           |
+| Principal | Breadcrumb selector | —                 | [Breadcrumb selector](#breadcrumb-selector)                                                                   | —        | always                                          | —                                                      |
+| Principal | Virtual Machines    | `display`         | Shows the number of virtual machines that run, hidden at 0; opens the [popover](virtual-machines.md#popover). | —        | always; only in windows that show This Mac      | `Virtual Machines`                                     |
+| Trailing  | Search              | `magnifyingglass` | Opens or closes the search panel ([Search panel](search.md#search-panel)).                                    | ⇧⌘F      | the device is connected                         | `Search (⇧⌘F)`                                         |
+| Trailing  | New Chat            | `plus.bubble`     | New Chat in the [inspector](#inspector).                                                                      | ⌥⌘N      | the device is connected and a project is active | `New Chat (⌥⌘N)`                                       |
+| Trailing  | Project Chat        | `sidebar.right`   | Shows or hides the [inspector](#inspector).                                                                   | ⌥⌘0      | a project is active                             | `Show Project Chat (⌥⌘0)` or `Hide Project Chat (⌥⌘0)` |
 
-The leading item follows the window buttons. The toolbar shows no window title, and it cannot be customised. Its background is the plain band of [Main window layout](#main-window-layout). The symbols and the tooltips are design-time choices. Default chosen at design time.
+The leading item follows the window buttons. The Virtual Machines bubble is a pill of its own, right of the breadcrumb selector's pill, with the number beside its symbol ([Bubble](virtual-machines.md#bubble)). The toolbar shows no window title, and it cannot be customised. Its background is the plain band of [Main window layout](#main-window-layout). The bubble, its symbol, its number, its tooltip, its place and the windows that show it come from the user ([R203](requirements.md#requirements)). The other symbols and tooltips are design-time choices. Default chosen at design time.
 
 ## Breadcrumb selector
 
@@ -759,7 +760,7 @@ AppModel                       one per app
 | `minimizedQuestionSets` | `[String: String]`          | Minimized pinned question, symbol, color, sound, shortcut, font and animation cards: chat id → id of the minimized set or request, persisted ([Persistence](#persistence), [Chats](chats.md#questions)). |
 | `updaterStatus`         | `UpdaterStatus`             | The last status received from the Updater; `idle` without version, build or message before the first one ([Updater states](updater.md#updater-states)).                                                  |
 | `imageSetups`           | `[UUID: VMSetupSession]`    | The setup virtual machines whose setup window is open, by image id ([Setup window](virtual-machines.md#setup-window)).                                                                                   |
-| `closingImageSetups`    | `Int`                       | The number of setups whose window closed and whose virtual machine still shuts down ([Restart rules](updater.md#restart-rules)).                                                                         |
+| `closingImageSetups`    | `[VMSetupSession]`          | The setups whose window closed and whose virtual machine still shuts down ([Restart rules](updater.md#restart-rules), [Popover](virtual-machines.md#popover)).                                           |
 
 Responsibilities:
 
@@ -771,7 +772,7 @@ Responsibilities:
 6. Ask for the permission to post notifications at launch, post the chat notifications, replace and remove them, and handle their click ([Status bar](#status-bar)).
 7. Share the newest plan usage between the open workspaces ([Plan usage sharing](remote.md#plan-usage-sharing)).
 8. Run the [quit checks](#unsaved-changes-and-quitting), then the [shutdown](architecture.md#shutdown).
-9. Show the detail of a virtual machine for `Show` of Settings ▸ Virtual Machines ([Choosing the window](#choosing-the-window)), and make every main window leave the detail of a virtual machine that left This Mac's list ([Detail](virtual-machines.md#detail)).
+9. Show the detail of a virtual machine for `Show` of Settings ▸ Virtual Machines ([Choosing the window](#choosing-the-window)), and make every main window leave the detail of a virtual machine that left This Mac's list ([Detail](virtual-machines.md#detail)); stop a setup virtual machine for `Stop` of the Virtual Machines popover ([Stop](virtual-machines.md#stop)).
 
 ### DeviceWorkspace
 
@@ -937,7 +938,7 @@ Everything else comes from the engine. A process started with `HEPHAESTUS_DATA_D
 
 ## Navigation
 
-A `NavigationTarget` ([NavigationTarget](engine-api.md#navigationtarget)) names something to show. Search results, links between docs and tickets, the status bar's chats popover, links and ids clicked in chat views and chat windows (ticket and bundle ids of transcripts and pinned cards included, [Chats](chats.md#links-images-and-files)), ticket and bundle ids clicked in ticket descriptions and comments ([Tickets](tickets.md#ticket-detail)), `ui.open` events (sent when Claude calls `open_in_app`, [open_in_app](mcp.md#open_in_app)), Send in the Feedback sheet ([Feedback sheet](feedback.md#feedback-sheet)), a click on a chat notification ([Status bar](#status-bar)), `Show` of Settings ▸ Virtual Machines ([Virtual Machines](#virtual-machines)) and the debug tool `debug_navigate` all call `WindowState.navigate(to:)` on a main window. It behaves the same on This Mac and on remote devices.
+A `NavigationTarget` ([NavigationTarget](engine-api.md#navigationtarget)) names something to show. Search results, links between docs and tickets, the status bar's chats popover, links and ids clicked in chat views and chat windows (ticket and bundle ids of transcripts and pinned cards included, [Chats](chats.md#links-images-and-files)), ticket and bundle ids clicked in ticket descriptions and comments ([Tickets](tickets.md#ticket-detail)), `ui.open` events (sent when Claude calls `open_in_app`, [open_in_app](mcp.md#open_in_app)), Send in the Feedback sheet ([Feedback sheet](feedback.md#feedback-sheet)), a click on a chat notification ([Status bar](#status-bar)), `Show` of Settings ▸ Virtual Machines ([Virtual Machines](#virtual-machines)), a click on a preview of the Virtual Machines popover ([Previews](virtual-machines.md#previews)) and the debug tool `debug_navigate` all call `WindowState.navigate(to:)` on a main window. It behaves the same on This Mac and on remote devices.
 
 ### Resolving a target
 
@@ -982,6 +983,7 @@ Keeping the section for `project` targets, `pendingTarget`, the not-found texts,
 | Chat window: a link or id of its transcript, pinned cards or header | The most recently key main window showing the chat's device, ordered front and made key; otherwise a new main window opened on that device. The chat window stays open.                                                                                                                                                                                                                                                                          |
 | Feedback sheet: Send                                                | For the `chat{chatID}` target of the new feedback chat ([Feedback sheet](feedback.md#feedback-sheet)): the main window the feedback was captured from; for feedback captured from a chat window, Settings, About or any other window, the most recently key main window showing the receiving device, otherwise a new main window opened on that device. The window is ordered front and made key; the window the feedback came from stays open. |
 | Settings ▸ Virtual Machines: Show                                   | The most recently key main window showing This Mac, the frontmost one; otherwise a new main window opened on This Mac. The app stays active, and the window is ordered front and made key.                                                                                                                                                                                                                                                       |
+| Virtual Machines popover: a preview                                 | The window of the bubble; the popover closes.                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `debug_navigate`                                                    | The frontmost main window, switched to This Mac first when it shows another device; a new main window on This Mac when no main window is open ([debug_navigate](mcp.md#debug_navigate)).                                                                                                                                                                                                                                                         |
 
 A window chosen for a `ui.open` event is ordered front; it becomes key only when HephaestusV2 is already the active app, so a navigation requested by Claude never activates the app. Default chosen at design time.
@@ -1030,3 +1032,4 @@ A window chosen for a `ui.open` event is ordered front; it becomes key only when
 - R194: Every section of the main window shows a title, and so do the Global Memories and Internal Skills views: Dashboard, Tickets, Bundles, Chats, Web, Builds, Skills, Memories and API Explorer show their sidebar title in a title row above their left column.
 - R201: Settings has a Virtual Machines tab whose Images section adds macOS images for virtual machines from the versions ipsw.me lists, downloads and installs them, prepares each one once in a setup window so that an agent in the guest gives full control of it, marks the default image and deletes images.
 - R202: The user starts virtual machines from the Ready images in Settings, keeps them between runs, starts, stops and deletes them, and shows the screen of one in a main window, where the mouse and the keyboard drive it; at most 2 run at once, and the app does not restart by itself for an update while one runs.
+- R203: The toolbar of a main window that shows This Mac has a bubble with the number of virtual machines that run; its popover shows a preview of the screen of each one, refreshed every 2 seconds, its name, who started it and its running time, opens it and stops it.

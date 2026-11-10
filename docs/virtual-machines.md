@@ -1,6 +1,6 @@
 # Virtual machines
 
-HephaestusV2 runs macOS virtual machines with Apple's Virtualization framework, so that Claude can check what the offscreen check instance cannot reach: menus, typing, list rows, system dialogs and permission prompts. A virtual machine starts from an image: one macOS version, installed once from its IPSW and prepared once in a setup window, where the user completes Setup Assistant, turns off System Integrity Protection (SIP) and installs the guest agent, which gives the host full control of the guest. The user starts virtual machines from the Ready images in Settings, keeps them between runs, and shows the screen of one in a main window, where the mouse and the keyboard drive it. This document defines the images and their states, the list of macOS versions read from ipsw.me, the download and the install, the setup window with its texts, the install script, the guest agent and its protocol, the virtual machines with their lifecycle, the clone of the image's disk, the limit of 2 running virtual machines, the detail of a virtual machine and its link in the inspector's composer, and the storage under `<data dir>/VirtualMachines/`. The Settings tab is in [User interface](ui.md#virtual-machines), the file formats in [Data model](data-model.md#image-metadata-file), the methods and the events in [Engine API](engine-api.md#virtual-machine-images).
+HephaestusV2 runs macOS virtual machines with Apple's Virtualization framework, so that Claude can check what the offscreen check instance cannot reach: menus, typing, list rows, system dialogs and permission prompts. A virtual machine starts from an image: one macOS version, installed once from its IPSW and prepared once in a setup window, where the user completes Setup Assistant, turns off System Integrity Protection (SIP) and installs the guest agent, which gives the host full control of the guest. The user starts virtual machines from the Ready images in Settings, keeps them between runs, and shows the screen of one in a main window, where the mouse and the keyboard drive it. A bubble in the toolbar of the main window counts the virtual machines that run, and its popover shows a preview of the screen of each one. This document defines the images and their states, the list of macOS versions read from ipsw.me, the download and the install, the setup window with its texts, the install script, the guest agent and its protocol, the virtual machines with their lifecycle, the clone of the image's disk, the limit of 2 running virtual machines, the detail of a virtual machine and its link in the inspector's composer, the Virtual Machines bubble with its popover, and the storage under `<data dir>/VirtualMachines/`. The Settings tab is in [User interface](ui.md#virtual-machines), the bubble's toolbar item in [Toolbar](ui.md#toolbar), the file formats in [Data model](data-model.md#image-metadata-file), the methods and the events in [Engine API](engine-api.md#virtual-machine-images).
 
 ## Overview
 
@@ -20,6 +20,9 @@ Settings ▸ Virtual Machines                      engine of This Mac           
   Virtual Machines table ◄── vms.changed ─────── the virtual machines, the number that run
   Delete… ───── vms.delete ────────────────────► the virtual machine's folder is deleted
   Show ──────── navigation ────────────────────► the detail in a main window ── screen service
+Main window toolbar
+  Bubble ◄──── vms.changed, setup windows ────── the virtual machines that run, the setup ones included
+  Popover ───── VM screens, image setup ───────► a screenshot by the guest agent, every 2 seconds
 ```
 
 | Piece                                  | Defined in                                         |
@@ -31,6 +34,7 @@ Settings ▸ Virtual Machines                      engine of This Mac           
 | `vms.*`, `vms.changed`                 | [Engine API](engine-api.md#virtual-machines)       |
 | The `virtualMachine` target            | [User interface](ui.md#resolving-a-target)         |
 | The linked item of the detail          | [Chats](chats.md#linked-items)                     |
+| The Virtual Machines bubble            | [User interface](ui.md#toolbar)                    |
 | The entitlement, the bundle files      | [CI and release](ci.md#entitlements)               |
 | The agent's target, the processes      | [Architecture](architecture.md#modules)            |
 
@@ -423,11 +427,11 @@ The Virtualization framework runs at most 2 macOS virtual machines at once on a 
 
 ## Detail
 
-`Show` of [Settings](ui.md#virtual-machines), a `virtualMachine` target of the app's navigation and `open_in_app` with such a target show the detail of a virtual machine in a main window ([Resolving a target](ui.md#resolving-a-target)): its screen, to look at and to use.
+`Show` of [Settings](ui.md#virtual-machines), a click on its preview in the [Virtual Machines popover](#previews), a `virtualMachine` target of the app's navigation and `open_in_app` with such a target show the detail of a virtual machine in a main window ([Resolving a target](ui.md#resolving-a-target)): its screen, to look at and to use.
 
 | Property  | Value                                                                                                                                                                                                       |
 | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Window    | `Show`: the frontmost main window that shows This Mac, brought to front; a new main window on This Mac without one ([Choosing the window](ui.md#choosing-the-window))                                       |
+| Window    | `Show`: the frontmost main window that shows This Mac, brought to front; a new main window on This Mac without one ([Choosing the window](ui.md#choosing-the-window)); a preview: the popover's window      |
 | Place     | the centre column, in place of the selected section, as the Global Memories view ([Main window layout](ui.md#main-window-layout)); in a window whose device has no project, the welcome view's place        |
 | Sidebar   | keeps its rows, none of them selected ([Sidebar](ui.md#sidebar))                                                                                                                                            |
 | Inspector | stays; its composer links the virtual machine ([Linked item](#linked-item))                                                                                                                                 |
@@ -466,6 +470,50 @@ While a main window shows the detail, the composer of its inspector's chat, or o
 Claude receives the line `Open in the app: virtual machine “<name>” (<VM id>)` with each message sent while the chip shows, and the `user` item stores the item with the kind `virtualMachine`. × unlinks it until the window leaves the detail, as for the other linked items.
 
 The header's layout, the black around the screen, the capture of the system shortcuts, the text style of `Stopped`, ignoring the target on a remote device, keeping the detail across a switch of project, not restoring it and the alerts are Default chosen at design time. The place, the header's content, the chip and its line come from the user ([R202](requirements.md#requirements)).
+
+## Virtual Machines bubble
+
+Every main window that shows This Mac has the Virtual Machines bubble in its toolbar ([Toolbar](ui.md#toolbar)): it counts the virtual machines that run on This Mac, and its popover shows the screen of each one, stops it and opens it.
+
+### Bubble
+
+- The bubble is a pill of its own, right of the breadcrumb selector's pill and drawn as a pill like it. It holds the symbol `display` and, beside it, the number of the popover's rows: the virtual machines of the user and of Claude that are Running, and the setup virtual machines of the images. At 0 the number is hidden, and the bubble holds the symbol alone.
+- The install of an image runs a virtual machine without a screen: it has no row and is not counted, so the number can be lower than `runningCount` ([Running virtual machines](#running-virtual-machines)).
+- Its tooltip is `Virtual Machines`. A click opens the popover under the bubble; a click outside the popover closes it.
+- A window that shows a remote device has no bubble: the screen of a virtual machine shows only on the Mac that runs it.
+- The bubble and its popover follow This Mac's workspace and its setup windows. The workspace reads the virtual machines with `vms.list` when the bubble appears and it holds none yet, then follows `vms.changed` ([DeviceWorkspace](ui.md#deviceworkspace)); the setup virtual machines are those of `imageSetups` and `closingImageSetups` ([AppModel](ui.md#appmodel)). The number and the rows change at once when a virtual machine starts or stops.
+
+### Popover
+
+The popover lists one row per virtual machine that the bubble counts, the one that started first at the top. With none, it reads `No virtual machines running`, in the secondary colour.
+
+A row shows, from its leading edge:
+
+| Part         | Content                                                                                                                                                                                                                                                                                                 |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Preview      | A still image of the virtual machine's screen, 160 × 100 points ([Previews](#previews)).                                                                                                                                                                                                                |
+| Name         | Beside the preview, in the headline font: the virtual machine's name, or `Set Up macOS <version>` for the setup virtual machine of an image, the title of its setup window.                                                                                                                             |
+| Started by   | Under the name, in the secondary colour: `Started by you` for a virtual machine of the user and for a setup virtual machine; `<project id> · <chat name>` for one that Claude started, or `<project id>` alone once its chat no longer exists, as in the `Started by` column ([Lifecycle](#lifecycle)). |
+| Running time | Under it, in the secondary colour: `<m> min` under an hour and `<h> h <mm> min` after, changing with the minute, as in the State column ([Virtual machine states](#virtual-machine-states)). A setup virtual machine runs from `Set Up…` on: `Restart in Recovery` does not start its time again.       |
+| `Stop`       | At the trailing edge ([Stop](#stop)).                                                                                                                                                                                                                                                                   |
+
+#### Previews
+
+- The image is a screenshot that the guest agent takes with its `screenshot` method ([Methods](#methods)), scaled to fit the preview with the proportions of the display, on black.
+- The first screenshot is asked for when the popover opens, then one every 2 seconds while it stays open; none while it is closed.
+- The preview stays black while the guest agent is not connected, for example while the guest starts up, and until the first screenshot arrives. A screenshot that fails, without the Screen Recording permission for example, leaves the image that shows.
+- A click on the preview closes the popover and shows the virtual machine: the virtual machine of the user or of Claude shows its [detail](#detail) in the window's centre column, as a `virtualMachine` target does; the setup virtual machine of an image brings its setup window to front, as `Set Up…` does.
+
+The previews come from the local-only services of This Mac ([Local-only services](architecture.md#local-only-services)): `VMSession.capturePreview()` for a virtual machine, from the VM screens service, and `VMSetupSession.capturePreview()` for a setup virtual machine, from the image setup service. Each asks the connected agent for a screenshot, and gives nothing while no agent is connected.
+
+#### Stop
+
+- `Stop` stops the virtual machine without confirmation: `vms.stop` for the virtual machine of the user or of Claude ([Stopping](#stopping)), after which Claude's is deleted; for a setup virtual machine, what closing its setup window does: the virtual machine shuts down, its image stays in `needsSetup`, and the window closes once it has stopped ([Setup window](#setup-window)).
+- A virtual machine that shuts down keeps its row, with `Stop` disabled, until it has stopped, whoever asked for the stop: the popover, Settings, the detail or a closed setup window.
+- A setup virtual machine whose window has closed keeps its row until it has stopped too; a click on its preview does nothing then, since its window is gone.
+- A failed `Stop` shows the failure alert of [Principles](ui.md#principles) on the window, titled `Stop failed`.
+
+The bubble, its symbol, its place and its look, the virtual machines it counts, the number hidden at 0, its tooltip, the windows that show it, the popover's rows with their preview refreshed every 2 seconds and empty without the agent, their texts, `Stop` without confirmation, the click on a preview, `No virtual machines running` and following the events at once come from the user ([R203](requirements.md#requirements)), and so do the name of a setup virtual machine's row, the order of the rows, the layout of a row with its 160 × 100 preview, the black of an empty preview, the row kept with `Stop` disabled while the virtual machine shuts down after `Stop`, the row of a setup virtual machine whose window has closed and the popover that a click on a preview closes. The fonts and colours of the texts, the time of a setup virtual machine that restarts in Recovery, the image kept after a failed screenshot, `Stop` disabled too for a stop asked elsewhere, the stop of a setup virtual machine as by a closed window and the alert of a failed `Stop` are Default chosen at design time.
 
 ## Deleting an image
 
@@ -519,6 +567,7 @@ The folder and file names are Default chosen at design time.
 | `Sources/HephaestusCore/Models/VirtualMachine.swift`           | `VirtualMachine`, `VirtualMachineState`, `VMStarter`: the VM metadata file; `VMRunningTime`, the text of a running time.                                                                                                               |
 | `Sources/HephaestusCore/VirtualMachines/`                      | The images, the provisioner, the setup and the host side of the agent's protocol: see [HephaestusCore folders](architecture.md#hephaestuscore-folders).                                                                                |
 | `Sources/HephaestusCore/VirtualMachines/VirtualMachine*.swift` | `VirtualMachineStore`, the folders and the clone; `VirtualMachineService`, the lifecycle; `VMSession`, one running virtual machine.                                                                                                    |
+| `Sources/HephaestusCore/VirtualMachines/VMScreenPreview.swift` | `GuestPreviewCapturing` and `capturePreview()` of `VMSession` and `VMSetupSession`: the screenshots of the previews of the [Virtual Machines popover](#previews).                                                                      |
 | `Sources/HephaestusCore/Engine/API/VMImagesAPI.swift`          | The `vmImages.*` methods and `MacOSVersion`.                                                                                                                                                                                           |
 | `Sources/HephaestusCore/Engine/API/VMsAPI.swift`               | The `vms.*` methods and `VMList`.                                                                                                                                                                                                      |
 | `Sources/HephaestusCore/Engine/Handlers/VMImageHandlers.swift` | `registerVMImageHandlers()` and the handlers.                                                                                                                                                                                          |
@@ -526,6 +575,7 @@ The folder and file names are Default chosen at design time.
 | `Sources/HephaestusAgent/`                                     | The guest agent: `main.swift`, the connection loop, the frames, the session, one file per group of methods, the display assertion.                                                                                                     |
 | `Resources/install-agent.sh`                                   | The install script, `install.sh` in the shared folder.                                                                                                                                                                                 |
 | `Sources/HephaestusUI/Settings/`                               | `VirtualMachinesSettingsPane`, `AddImageSheet`, `NewVMSheet`, the setup window with the view of a virtual machine's screen (`VZVirtualMachineView`), and `VirtualMachineDetailView`, the detail of a virtual machine in a main window. |
+| `Sources/HephaestusUI/Toolbar/VirtualMachinesBubble.swift`     | The [Virtual Machines bubble](#virtual-machines-bubble) and its popover; `VMPopoverPresentation`, the number and the texts of the rows.                                                                                                |
 
 Outside the app, the engine reaches ipsw.me, Apple's download server and the Virtualization framework only through `VMImageProvisioning`, the `imageProvisioner` of its configuration ([Engine configuration](architecture.md#engine-configuration)): the app uses `SystemVMImageProvisioner`, and tests a stand-in, so that no test downloads an IPSW or starts a virtual machine ([Test rules](development.md#test-rules)). The clone of an image's disk and the other files of a virtual machine's folder are plain files, which the engine writes itself.
 
@@ -533,3 +583,4 @@ Outside the app, the engine reaches ipsw.me, Apple's download server and the Vir
 
 - R201: Settings has a Virtual Machines tab whose Images section adds macOS images for virtual machines from the versions ipsw.me lists, downloads and installs them, prepares each one once in a setup window so that an agent in the guest gives full control of it, marks the default image and deletes images.
 - R202: The user starts virtual machines from the Ready images in Settings, keeps them between runs, starts, stops and deletes them, and shows the screen of one in a main window, where the mouse and the keyboard drive it; at most 2 run at once, and the app does not restart by itself for an update while one runs.
+- R203: The toolbar of a main window that shows This Mac has a bubble with the number of virtual machines that run; its popover shows a preview of the screen of each one, refreshed every 2 seconds, its name, who started it and its running time, opens it and stops it.

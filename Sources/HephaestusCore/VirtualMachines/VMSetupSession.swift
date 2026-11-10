@@ -38,12 +38,15 @@ public final class VMSetupSession {
     public private(set) var agent: GuestAgentStatus?
     /// True once the session ended with the image set to Ready.
     public private(set) var finished = false
+    /// When the setup virtual machine started: its running time counts from it, a restart in
+    /// Recovery included (docs/virtual-machines.md › Popover).
+    public private(set) var startedAt = Date()
     /// The message of the failure that ended the session: a virtual machine that failed.
     public private(set) var failure: String?
     /// True when that failure is the start of `Restart in Recovery`.
     public private(set) var restartFailed = false
 
-    @ObservationIgnored private let machine: any GuestMachine
+    @ObservationIgnored let machine: any GuestMachine
     @ObservationIgnored private weak var engine: Engine?
     @ObservationIgnored private var guestStopped = false
     /// True while `shutDown` waits for the guest it asked to shut down.
@@ -86,6 +89,7 @@ public final class VMSetupSession {
     /// Boots the image's disk.
     func start() async throws {
         try await machine.start(recovery: false)
+        startedAt = Date()
     }
 
     // MARK: Actions of the setup window

@@ -26,7 +26,7 @@ public final class VMSession {
     /// The status of the guest agent while it is connected.
     public private(set) var agent: GuestAgentStatus?
 
-    @ObservationIgnored private let machine: any GuestMachine
+    @ObservationIgnored let machine: any GuestMachine
     @ObservationIgnored private weak var engine: Engine?
     @ObservationIgnored private var guestStopped = false
     /// The failure of a virtual machine that stopped while it started.

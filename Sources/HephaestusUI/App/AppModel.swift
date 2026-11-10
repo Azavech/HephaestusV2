@@ -54,8 +54,8 @@ public final class AppModel {
     /// The setup virtual machines whose setup window is open, by image id
     /// (docs/virtual-machines.md › Setup window).
     private(set) var imageSetups: [UUID: VMSetupSession] = [:]
-    /// The number of setups whose window closed and whose virtual machine still shuts down.
-    private(set) var closingImageSetups = 0
+    /// The setups whose window closed and whose virtual machine still shuts down.
+    private(set) var closingImageSetups: [VMSetupSession] = []
 
     // MARK: Local-only services (docs/architecture.md › Local-only services)
 
@@ -453,18 +453,28 @@ public final class AppModel {
     /// and the image stays in Needs setup.
     func imageSetupWindowClosed(_ imageID: UUID) {
         guard let session = imageSetups.removeValue(forKey: imageID) else { return }
-        closingImageSetups += 1
+        closingImageSetups.append(session)
         Task {
             await session.close()
             // A window closed during `Finish Setup` leaves a virtual machine that still shuts down.
             await session.waitUntilEnded()
-            closingImageSetups -= 1
+            closingImageSetups.removeAll { $0 === session }
         }
     }
 
     /// True while a setup window is open or the virtual machine of a closed one still shuts
     /// down: the app is not idle then (docs/updater.md › Restart rules).
-    var hasImageSetups: Bool { !imageSetups.isEmpty || closingImageSetups > 0 }
+    var hasImageSetups: Bool { !imageSetups.isEmpty || !closingImageSetups.isEmpty }
+
+    /// `Stop` of the Virtual Machines popover for a setup virtual machine: it shuts down as when
+    /// its window closes, and the window closes once it has stopped (docs/virtual-machines.md ›
+    /// Stop).
+    func stopImageSetup(_ imageID: UUID) {
+        guard let session = imageSetups[imageID] else { return }
+        Task {
+            await session.close()
+        }
+    }
 
     /// `Show` of Settings ▸ Virtual Machines: the detail of a virtual machine of This Mac in the
     /// most recently key main window that shows This Mac, the frontmost one, which is ordered
