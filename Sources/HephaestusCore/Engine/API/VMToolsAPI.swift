@@ -15,9 +15,13 @@ public struct VMToolImage: Codable, Sendable, Hashable {
     public var diskGB: Int
     /// The failure of a failed image.
     public var failure: String?
+    /// The user name of the guests' account; nil while none is stored.
+    public var userName: String?
+    /// The password of that account, in clear; nil while none is stored.
+    public var password: String?
 
     public init(id: UUID, version: String, build: String, state: VMImageState, isDefault: Bool, diskGB: Int,
-                failure: String? = nil) {
+                failure: String? = nil, userName: String? = nil, password: String? = nil) {
         self.id = id
         self.version = version
         self.build = build
@@ -25,6 +29,8 @@ public struct VMToolImage: Codable, Sendable, Hashable {
         self.isDefault = isDefault
         self.diskGB = diskGB
         self.failure = failure
+        self.userName = userName
+        self.password = password
     }
 }
 
@@ -118,6 +124,28 @@ public enum VMToolsImages: EngineMethod {
     public static let name = "vmTools.images"
     public typealias Params = VMToolChatParams
     public typealias Result = [VMToolImage]
+}
+
+/// `vmTools.setAccount`: stores the guest account of an image, as `vmImages.setAccount` does.
+/// Actors: claude.
+public enum VMToolsSetAccount: EngineMethod {
+    public static let name = "vmTools.setAccount"
+    public struct Params: Codable, Sendable, Hashable {
+        public var chatID: ChatID
+        public var imageID: UUID
+        /// The user name; empty removes it; nil keeps the stored one.
+        public var userName: String?
+        /// The password; empty removes it; nil keeps the stored one.
+        public var password: String?
+
+        public init(chatID: ChatID, imageID: UUID, userName: String? = nil, password: String? = nil) {
+            self.chatID = chatID
+            self.imageID = imageID
+            self.userName = userName
+            self.password = password
+        }
+    }
+    public typealias Result = VMToolImage
 }
 
 /// `vmTools.list`: the virtual machines, oldest first. Actors: claude.

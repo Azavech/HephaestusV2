@@ -489,6 +489,7 @@ The table lists the tools in the order of `tools/list`; the [Kubernetes and Argo
 | `set_skill_enabled` | `projectID`, `name`, `enabled`                     | —                                           | skills.setEnabled        | ProjectDetail    |
 | `open_in_app`       | `target`                                           | —                                           | ui.open                  | `{}`             |
 | `vm_list_images`    | —                                                  | —                                           | vmTools.images           | [VMToolImage]    |
+| `vm_set_account`    | `imageID`                                          | `userName`, `password`                      | vmTools.setAccount       | VMToolImage      |
 | `vm_list`           | —                                                  | —                                           | vmTools.list             | [VMToolMachine]  |
 | `vm_start`          | `name`                                             | `image`, `cores`, `memory`                  | vmTools.start            | VMToolMachine    |
 | `vm_stop`           | `vmID`                                             | —                                           | vmTools.stop             | `{}`             |
@@ -2665,7 +2666,7 @@ A missing required property fails with `target.<property>: required for kind <ki
 
 ### Rules of the VM tools
 
-The fourteen tools from `vm_list_images` to `vm_copy_out` let Claude start and drive the macOS virtual machines of this Mac ([Claude's virtual machines](virtual-machines.md#claudes-virtual-machines)). They follow these rules, in this order; the section of each tool adds its checks and its result.
+The fifteen tools from `vm_list_images` to `vm_copy_out` let Claude start and drive the macOS virtual machines of this Mac and store the guest account of their images ([Claude's virtual machines](virtual-machines.md#claudes-virtual-machines)). They follow these rules, in this order; the section of each tool adds its checks and its result.
 
 1. **Availability:** chat tokens only. With the external token the call fails before argument validation with `Only the chat's own Claude can use the VM tools.` (`forbidden`); a comment answer cannot call them ([Actor rules](#actor-rules)). The tools are listed for every token and work in every project, whatever its type.
 2. **Engine call:** the tool's engine method with `chatID` = the calling chat and the arguments as given ([VM tools](engine-api.md#vm-tools)).
@@ -2675,18 +2676,18 @@ The fourteen tools from `vm_list_images` to `vm_copy_out` let Claude start and d
 6. **Asking:** the tools ask the user nothing, so they run in an implement chat whose metadata holds `questionsBlocked` and while a question set or another request waits for an answer ([Workflow](workflow.md#implement-chats)).
 7. **Permission:** every VM tool except `vm_copy_out` is pre-approved and runs without a permission prompt in every permission mode ([Chats](chats.md#command-line)). `vm_copy_out`, which writes on this Mac, follows the chat's permission mode: in Ask Every Time the user approves each call.
 
-The tool names, what they do and return, their availability in every chat and every project, the rule of the user's virtual machines and the permissions come from the user ([R204](requirements.md#requirements)); the inputs beyond those the user named, the error texts, the JSON layout of the results and the input schemas are Default chosen at design time.
+The tool names, what they do and return, their availability in every chat and every project, the rule of the user's virtual machines and the permissions come from the user ([R204](requirements.md#requirements)); the inputs beyond those the user named, the error texts, the JSON layout of the results and the input schemas are Default chosen at design time. The guest account in the result of `vm_list_images` and a tool that stores it come from the user ([R209](requirements.md#requirements)); the name `vm_set_account` and its pre-approval are Default chosen at design time.
 
 ### vm_list_images
 
 - **Engine call:** vmTools.images with `chatID` ([Engine API](engine-api.md#vmtoolsimages)).
-- **Result:** the [VMToolImage](engine-api.md#vmtoolimage) array, oldest first: the `id`, `version`, `build` and `state` of each image, `isDefault`, true for the [default image](virtual-machines.md#default-image), `diskGB`, the size of its disk, the smallest disk of its virtual machines, and, for a failed image, its `failure`.
+- **Result:** the [VMToolImage](engine-api.md#vmtoolimage) array, oldest first: the `id`, `version`, `build` and `state` of each image, `isDefault`, true for the [default image](virtual-machines.md#default-image), `diskGB`, the size of its disk, the smallest disk of its virtual machines, for a failed image its `failure`, and the `userName` and `password` of its [guest account](virtual-machines.md#guest-account) when they are stored.
 - **Errors:** rule 1 of the [rules](#rules-of-the-vm-tools).
 
 Description:
 
 ```text
-List the macOS images of the virtual machines of this Mac, oldest first: id, macOS version and build, state (downloading, installing, needsSetup, ready or failed), isDefault for the default image, which vm_start uses when no image is named, and diskGB, the size of its disk. Only ready images start virtual machines. Only in chats started by HephaestusV2.
+List the macOS images of the virtual machines of this Mac, oldest first: id, macOS version and build, state (downloading, installing, needsSetup, ready or failed), isDefault for the default image, which vm_start uses when no image is named, diskGB, the size of its disk, and the userName and password of the guests' account when they are stored. Whenever a guest asks for the password of its account, for example for sudo or in a dialog of macOS, type the password of its image with vm_type. Only ready images start virtual machines. Only in chats started by HephaestusV2.
 ```
 
 Input schema:
@@ -2695,6 +2696,43 @@ Input schema:
 {
   "type": "object",
   "properties": {},
+  "additionalProperties": false
+}
+```
+
+### vm_set_account
+
+- **Engine call:** vmTools.setAccount with `chatID`, `imageID`, `userName` and `password` ([Engine API](engine-api.md#vmtoolssetaccount)).
+- **Action:** stores the [guest account](virtual-machines.md#guest-account) of the image in its `image.yml`, as `Guest Account` of Settings does: an absent value keeps the stored one, an empty one removes it, the user name is trimmed of white space at both ends and the password is stored as given. The account can be stored in every state of the image.
+- **Result:** the [VMToolImage](engine-api.md#vmtoolimage) of the image, with its account.
+- **Errors:** rule 1 of the [rules](#rules-of-the-vm-tools); an `imageID` that is not a UUID (`invalid`); no image with this id (`notFound`, `Image <id> not found.`); a value with a line break (`invalid`, `userName: use one line.`, `password: use one line.`); `image.yml` cannot be written (`internal`).
+
+Description:
+
+```text
+Store the guest account of a macOS image: the userName and password of the account its guests log in with, which vm_list_images then gives. Store it when the user gives it in this chat, or when you create the account in Setup Assistant of the image's setup. An omitted value keeps the stored one; an empty one removes it. The password is stored in clear: it is the easy password of a test computer. Only in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "imageID": {
+      "type": "string",
+      "description": "Image id (a UUID) of vm_list_images."
+    },
+    "userName": {
+      "type": "string",
+      "description": "User name of the guest's account; empty removes it."
+    },
+    "password": {
+      "type": "string",
+      "description": "Password of the guest's account; empty removes it."
+    }
+  },
+  "required": ["imageID"],
   "additionalProperties": false
 }
 ```
@@ -2976,7 +3014,7 @@ Input schema:
 Description:
 
 ```text
-Type text in the guest of a virtual machine, where its keyboard focus is, as Unicode characters whatever the keyboard layout: a line break types Return and a tab Tab. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+Type text in the guest of a virtual machine, where its keyboard focus is, as Unicode characters whatever the keyboard layout: a line break types Return and a tab Tab. When the guest asks for the password of its account, type the password that vm_list_images gives for its image. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
 ```
 
 Input schema:
@@ -3920,7 +3958,7 @@ The server writes these messages to `Logs/engine.log` with the component `mcp`, 
 - Attachment paths may name any file the app can read; the Claude CLI asks the user before the call according to the chat's permission mode ([Chats](chats.md)).
 - The [Kubernetes and Argo CD tools](#kubernetes-and-argo-cd-tools) run kubectl with the user's kubeconfig files, so they can do in a cluster what the user's credentials allow. Only the four tools that read are pre-approved; the tools that change a cluster, or open a port of the Mac, follow the chat's permission mode. Their values reach kubectl as single arguments, never through a shell.
 - The [API tools](#api-tools) send requests with the credentials stored in the API Explorer, so they can do on a Go service what these credentials allow. Only the calls whose method is `GET` or `HEAD` run without a permission prompt; the others follow the chat's permission mode. The results and errors never show a credential or a stored header value.
-- The [VM tools](#rules-of-the-vm-tools) drive guests that are Macs of their own: `vm_shell` runs commands there as root. `vm_copy_in` copies into a guest any file of this Mac that the app can read, and `vm_copy_out` writes on this Mac where the app can write; it is the one VM tool that is not pre-approved. The [Claude token](virtual-machines.md#claude-token) reaches the guests' environment, never a result, an error or a log.
+- The [VM tools](#rules-of-the-vm-tools) drive guests that are Macs of their own: `vm_shell` runs commands there as root. `vm_copy_in` copies into a guest any file of this Mac that the app can read, and `vm_copy_out` writes on this Mac where the app can write; it is the one VM tool that is not pre-approved. The [Claude token](virtual-machines.md#claude-token) reaches the guests' environment, never a result, an error or a log. The password of a [guest account](virtual-machines.md#guest-account) is no secret of the user: `vm_list_images` gives it in clear.
 - The security model of the whole app is in [Architecture](architecture.md#security-overview).
 
 ## Swift shape
@@ -4169,3 +4207,4 @@ Unauthorized: missing or invalid bearer token.
 - R202: The user starts virtual machines from the Ready images in Settings, keeps them between runs, starts, stops and deletes them, and shows the screen of one in a main window, where the mouse and the keyboard drive it; at most 2 run at once, and the app does not restart by itself for an update while one runs.
 - R204: Every chat of every project gives Claude full control of virtual machines with the VM tools: Claude starts one freely or joins Claude's one of the same image, waits up to 10 minutes for a free place, drives it one action at a time across chats, acts on the user's only when named and never stops them; Claude's idle VMs stop after the minutes set in Settings, and each VM gets the Claude token of Settings at its start.
 - R208: Settings gives the default cores, memory and disk size of new virtual machines; an image has no such values, the user chooses them in the New VM sheet, and a virtual machine's disk is grown to the size chosen.
+- R209: Each image stores the user name and the password of its guests' account in clear in its `image.yml`; Settings edits them, `Type Password` in the setup view and in the detail of a virtual machine types the password into the guest through its screen, and Claude reads and stores them with the VM tools and types the password whenever the guest asks for it.

@@ -325,12 +325,14 @@ The first column lists every engine method; it is the list the docs conformance 
 | `vmImages.versions`              | VMImagesVersions              | none                                                       | [MacOSVersion]     | user         |
 | `vmImages.add`                   | VMImagesAdd                   | build, cores, memoryGB, diskGB                             | VMImage            | user         |
 | `vmImages.delete`                | VMImagesDelete                | imageID                                                    | Empty              | user         |
+| `vmImages.setAccount`            | VMImagesSetAccount            | imageID, userName?, password?                              | VMImage            | user         |
 | `vms.list`                       | VMsList                       | none                                                       | VMList             | user         |
 | `vms.create`                     | VMsCreate                     | name, imageID, cores, memoryGB                             | VirtualMachine     | user         |
 | `vms.start`                      | VMsStart                      | vmID                                                       | VirtualMachine     | user         |
 | `vms.stop`                       | VMsStop                       | vmID                                                       | Empty              | user         |
 | `vms.delete`                     | VMsDelete                     | vmID                                                       | Empty              | user         |
 | `vmTools.images`                 | VMToolsImages                 | chatID                                                     | [VMToolImage]      | claude       |
+| `vmTools.setAccount`             | VMToolsSetAccount             | chatID, imageID, userName?, password?                      | VMToolImage        | claude       |
 | `vmTools.list`                   | VMToolsList                   | chatID                                                     | [VMToolMachine]    | claude       |
 | `vmTools.start`                  | VMToolsStart                  | chatID, image?, name, cores?, memory?                      | VMToolMachine      | claude       |
 | `vmTools.stop`                   | VMToolsStop                   | chatID, vmID                                               | Empty              | claude       |
@@ -2980,9 +2982,11 @@ An image whose IPSW downloads:
   "diskGB": 0,
   "failure": null,
   "id": "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F",
+  "password": null,
   "progress": 0.426,
   "schema": 1,
   "state": "downloading",
+  "userName": null,
   "version": "27.2.1"
 }
 ```
@@ -3045,6 +3049,26 @@ Ends the image's download or install, stops its setup virtual machine, deletes i
 | internal | settings.yml cannot be written, or the folder cannot be deleted (`<path> cannot be deleted: <reason>.`); the image then stays, in the state `failed`. |
 
 Events: vms.changed when the image had virtual machines, settings.updated when the image was the default image, then vmImages.changed.
+
+### vmImages.setAccount
+
+Swift type `VMImagesSetAccount` · actors: user · result: [VMImage](#vmimage-in-the-api)
+
+Stores the guest account of an image, its `userName` and its `password`, in its `image.yml` ([Guest account](virtual-machines.md#guest-account)). The result is the image with its account.
+
+| Param    | Type   | Required | Description                                                                                        |
+| -------- | ------ | -------- | -------------------------------------------------------------------------------------------------- |
+| imageID  | UUID   | yes      | Id of the image.                                                                                   |
+| userName | String | no       | The user name, trimmed of white space at both ends; empty removes it; absent keeps the stored one. |
+| password | String | no       | The password, stored as given; empty removes it; absent keeps the stored one.                      |
+
+| Error    | When                                                                                            |
+| -------- | ----------------------------------------------------------------------------------------------- |
+| notFound | No image has this id, or it is being deleted (`Image <id> not found.`).                         |
+| invalid  | userName or password holds a line break (`userName: use one line.`, `password: use one line.`). |
+| internal | The image's `image.yml` cannot be written; nothing changes.                                     |
+
+The image comes first, then `userName`, then `password`. Events: vmImages.changed when a value changed.
 
 ## Virtual machines
 
@@ -3191,6 +3215,8 @@ An element of the result of `vmTools.images`.
 | isDefault | Bool         | yes      | True for the [default image](virtual-machines.md#default-image).                                                   |
 | diskGB    | Int          | yes      | The size of its disk in GB: the smallest disk of its virtual machines; 0 while it has no disk.                     |
 | failure   | String       | no       | The failure of a `failed` image.                                                                                   |
+| userName  | String       | no       | The user name of its [guest account](virtual-machines.md#guest-account); absent while none is stored.              |
+| password  | String       | no       | The password of that account, in clear; absent while none is stored.                                               |
 
 ### VMToolMachine
 
@@ -3251,6 +3277,23 @@ Returns the images, oldest first ([vm_list_images](mcp.md#vm_list_images)).
 Errors: those of [Rules of the VM tools](mcp.md#rules-of-the-vm-tools), rule 1.
 
 Events: none.
+
+### vmTools.setAccount
+
+Swift type `VMToolsSetAccount` · actors: claude · result: [VMToolImage](#vmtoolimage)
+
+Stores the guest account of an image as [vmImages.setAccount](#vmimagessetaccount) does, for the calling chat ([vm_set_account](mcp.md#vm_set_account)). The result is the image with its account.
+
+| Param    | Type   | Required | Description                                                   |
+| -------- | ------ | -------- | ------------------------------------------------------------- |
+| chatID   | UUID   | yes      | The calling chat; the MCP server sets it.                     |
+| imageID  | UUID   | yes      | Id of the image.                                              |
+| userName | String | no       | The user name; empty removes it; absent keeps the stored one. |
+| password | String | no       | The password; empty removes it; absent keeps the stored one.  |
+
+Errors: those of [vm_set_account](mcp.md#vm_set_account).
+
+Events: vmImages.changed when a value changed.
 
 ### vmTools.list
 
@@ -3589,7 +3632,7 @@ Every event travels as an [EngineEventEnvelope](#engineeventenvelope) `{name, or
 | webTabs.updated   | WebTabsUpdatedEvent   | {projectID, tabs [WebTab]}                                       | A project's web tabs changed.                                                                                                                                                                                                                  |
 | skills.changed    | SkillsChangedEvent    | [SkillSummary]: the complete `skills.list` result                | The skills library changed, including files inside a skill.                                                                                                                                                                                    |
 | memories.changed  | MemoriesChangedEvent  | MemoryFolder: the complete `memories.list` result for one folder | A project's own memory folder, one it inherits or the global memories folder changed: a memory or `MEMORY.md` was created, changed, renamed or deleted by an app, or its inherited folders changed ([Live updates](memories.md#live-updates)). |
-| vmImages.changed  | VMImagesChangedEvent  | [VMImage]: the complete `vmImages.list` result                   | An image was added or deleted, its state or its percentage changed, or its setup ended ([VMImage in the API](#vmimage-in-the-api)).                                                                                                            |
+| vmImages.changed  | VMImagesChangedEvent  | [VMImage]: the complete `vmImages.list` result                   | An image was added or deleted, its state, its percentage or its guest account changed, or its setup ended ([VMImage in the API](#vmimage-in-the-api)).                                                                                         |
 | vms.changed       | VMsChangedEvent       | VMList: the complete `vms.list` result                           | A virtual machine was created, started, stopped or deleted, or the number of running virtual machines changed ([VMList](#vmlist)).                                                                                                             |
 | settings.updated  | SettingsUpdatedEvent  | HostSettings                                                     | Host settings changed.                                                                                                                                                                                                                         |
 | claude.updated    | ClaudeUpdatedEvent    | {status ClaudeStatus, models [ClaudeModel]}                      | The Claude CLI status or the model list changed.                                                                                                                                                                                               |
@@ -5460,3 +5503,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R202: The user starts virtual machines from the Ready images in Settings, keeps them between runs, starts, stops and deletes them, and shows the screen of one in a main window, where the mouse and the keyboard drive it; at most 2 run at once, and the app does not restart by itself for an update while one runs.
 - R204: Every chat of every project gives Claude full control of virtual machines with the VM tools: Claude starts one freely or joins Claude's one of the same image, waits up to 10 minutes for a free place, drives it one action at a time across chats, acts on the user's only when named and never stops them; Claude's idle VMs stop after the minutes set in Settings, and each VM gets the Claude token of Settings at its start.
 - R208: Settings gives the default cores, memory and disk size of new virtual machines; an image has no such values, the user chooses them in the New VM sheet, and a virtual machine's disk is grown to the size chosen.
+- R209: Each image stores the user name and the password of its guests' account in clear in its `image.yml`; Settings edits them, `Type Password` in the setup view and in the detail of a virtual machine types the password into the guest through its screen, and Claude reads and stores them with the VM tools and types the password whenever the guest asks for it.

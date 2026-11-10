@@ -31,6 +31,11 @@ public struct VMImage: Codable, Sendable, Hashable, Identifiable {
     public var state: VMImageState
     /// The message of a failed image; nil in the other states.
     public var failure: String?
+    /// The user name of the guests' account; nil while none is stored
+    /// (docs/virtual-machines.md › Guest account).
+    public var userName: String?
+    /// The password of that account, in clear; nil while none is stored.
+    public var password: String?
     /// When `vmImages.add` created the image.
     public var created: Date
     /// Never stored: the fraction done, 0 to 1, of the download or of the install; nil in the other
@@ -44,13 +49,16 @@ public struct VMImage: Codable, Sendable, Hashable, Identifiable {
     public var unknownKeys: [String: JSONValue]
 
     public init(schema: Int = 1, id: UUID, version: String, build: String, state: VMImageState, failure: String? = nil,
-                created: Date, progress: Double? = nil, diskBytes: Int = 0, diskGB: Int = 0, unknownKeys: [String: JSONValue] = [:]) {
+                userName: String? = nil, password: String? = nil, created: Date, progress: Double? = nil, diskBytes: Int = 0,
+                diskGB: Int = 0, unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
         self.id = id
         self.version = version
         self.build = build
         self.state = state
         self.failure = failure
+        self.userName = userName
+        self.password = password
         self.created = created
         self.progress = progress
         self.diskBytes = diskBytes
@@ -58,8 +66,8 @@ public struct VMImage: Codable, Sendable, Hashable, Identifiable {
         self.unknownKeys = unknownKeys
     }
 
-    static let knownKeys: Set<String> = ["schema", "id", "version", "build", "state", "failure", "created", "progress",
-                                         "diskBytes", "diskGB"]
+    static let knownKeys: Set<String> = ["schema", "id", "version", "build", "state", "failure", "userName", "password",
+                                         "created", "progress", "diskBytes", "diskGB"]
 
     public init(from decoder: Decoder) throws {
         let c = try ModelDecodingContainer(decoder)
@@ -73,6 +81,8 @@ public struct VMImage: Codable, Sendable, Hashable, Identifiable {
         }
         self.state = state
         failure = try c.optional("failure")
+        userName = try c.optional("userName")
+        password = try c.optional("password")
         created = try c.requiredDate("created")
         // The runtime-only keys are ignored in a file (docs/data-model.md › Image metadata file).
         progress = c.isYAML ? nil : try c.optional("progress")
@@ -89,6 +99,8 @@ public struct VMImage: Codable, Sendable, Hashable, Identifiable {
         try c.encode(build, "build")
         try c.encode(state.rawValue, "state")
         try c.encodeOptional(failure, "failure")
+        try c.encodeOptional(userName, "userName")
+        try c.encodeOptional(password, "password")
         try c.encodeDate(created, "created")
         if !c.isYAML {
             if let progress {
@@ -114,6 +126,33 @@ public struct VMImage: Codable, Sendable, Hashable, Identifiable {
         image.diskBytes = 0
         image.diskGB = 0
         return image
+    }
+}
+
+/// The rules of the guest account of an image (docs/virtual-machines.md › Guest account).
+public enum VMGuestAccount {
+    /// Applies the values of `vmImages.setAccount` and `vmTools.setAccount` to an image: an absent
+    /// value keeps the stored one, an empty one removes it; the user name is trimmed of white space
+    /// at both ends and the password is stored as given. A value with a line break throws
+    /// `invalid`, `userName` first, and changes nothing.
+    public static func apply(userName: String?, password: String?, to image: inout VMImage) throws {
+        var changed = image
+        if let userName {
+            try checkOneLine(userName, "userName")
+            let trimmed = userName.trimmingCharacters(in: .whitespacesAndNewlines)
+            changed.userName = trimmed.isEmpty ? nil : trimmed
+        }
+        if let password {
+            try checkOneLine(password, "password")
+            changed.password = password.isEmpty ? nil : password
+        }
+        image = changed
+    }
+
+    private static func checkOneLine(_ value: String, _ param: String) throws {
+        if value.contains(where: \.isNewline) {
+            throw ValidationError.invalid(param, "use one line")
+        }
     }
 }
 

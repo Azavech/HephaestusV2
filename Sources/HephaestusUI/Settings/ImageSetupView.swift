@@ -19,13 +19,19 @@ struct ImageSetupView: View {
             if let session = app.imageSetups[imageID] {
                 header(session)
                 Divider()
-                ImageSetupContent(session: session)
+                ImageSetupContent(window: window, session: session)
             } else {
                 // The setup has ended: the window leaves the view, after the alert of a failure.
                 Color.clear
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task {
+            // `Type Password` needs the image's password (docs/virtual-machines.md › Type Password).
+            if app.localWorkspace.vmImages == nil {
+                await app.localWorkspace.loadVMImages()
+            }
+        }
     }
 
     /// The pane header: `Set Up macOS <version>`, `Running · <time>` and `Stop`.
@@ -55,7 +61,15 @@ struct ImageSetupView: View {
 
 /// The screen of the setup virtual machine and, on its right, the column of the three steps.
 struct ImageSetupContent: View {
+    let window: WindowState
     let session: VMSetupSession
+    @Environment(AppModel.self) private var app
+    @State private var keyboard = GuestKeyboard()
+
+    /// The password of the image's guest account (docs/virtual-machines.md › Guest account).
+    private var password: String? {
+        app.localWorkspace.vmImages?.first { $0.id == session.imageID }?.password
+    }
 
     /// The proportions of the setup virtual machine's display.
     private static let displayAspectRatio: CGFloat = 2560.0 / 1600.0
@@ -64,7 +78,7 @@ struct ImageSetupContent: View {
         HStack(spacing: 0) {
             ZStack {
                 Color.black
-                VirtualMachineScreen(virtualMachine: session.virtualMachine)
+                VirtualMachineScreen(virtualMachine: session.virtualMachine, keyboard: keyboard)
                     .aspectRatio(Self.displayAspectRatio, contentMode: .fit)
             }
             .frame(minWidth: 240, maxWidth: .infinity, maxHeight: .infinity)
@@ -99,6 +113,9 @@ struct ImageSetupContent: View {
                     .fixedSize(horizontal: false, vertical: true)
                 CopyButton { GuestTools.installCommand }
             }
+            TypePasswordButton(keyboard: keyboard, password: password) { error in
+                window.alert = WindowAlert.failure(GuestKeyboard.title, error)
+            }
             Spacer(minLength: 0)
             Text(VMImagePresentation.agentStatusText(session.agent))
                 .foregroundStyle(session.agent == nil ? Color.secondary : Color.primary)
@@ -132,17 +149,23 @@ struct ImageSetupContent: View {
 /// `VZVirtualMachineView`.
 struct VirtualMachineScreen: NSViewRepresentable {
     let virtualMachine: VZVirtualMachine?
+    /// The keyboard of `Type Password`, which presses its keys through this view.
+    var keyboard: GuestKeyboard?
 
     func makeNSView(context: Context) -> VZVirtualMachineView {
         let view = VZVirtualMachineView()
         view.capturesSystemKeys = true
         view.virtualMachine = virtualMachine
+        keyboard?.view = view
         return view
     }
 
     func updateNSView(_ view: VZVirtualMachineView, context: Context) {
         if view.virtualMachine !== virtualMachine {
             view.virtualMachine = virtualMachine
+        }
+        if let keyboard, keyboard.view !== view {
+            keyboard.view = view
         }
     }
 }

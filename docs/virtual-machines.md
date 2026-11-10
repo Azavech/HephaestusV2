@@ -1,6 +1,6 @@
 # Virtual machines
 
-HephaestusV2 runs macOS virtual machines with Apple's Virtualization framework, so that Claude can check what the offscreen check instance cannot reach: menus, typing, list rows, system dialogs and permission prompts. A virtual machine starts from an image: one macOS version, installed once from its IPSW and prepared once in a setup view in the centre column of a main window, where the user completes Setup Assistant, turns off System Integrity Protection (SIP) and installs the guest agent, which gives the host full control of the guest. The user starts virtual machines from the Ready images in Settings, with the cores, the memory and the disk size chosen for each one, keeps them between runs, and shows the screen of one in a main window, where the mouse and the keyboard drive it. A bubble in the toolbar of the main window counts the virtual machines that run, and its popover shows a preview of the screen of each one. Claude starts its own virtual machines with the VM tools of the MCP server, in every chat, joins one that Claude already runs from the same image, and drives them, one action at a time on each virtual machine; Claude's virtual machines stop when they stay idle, and each virtual machine gets the Claude token of Settings when it starts. This document defines the images and their states, the list of macOS versions read from ipsw.me, the download and the install, the setup view with its texts and its linked item, the install script, the guest agent and its protocol, the default values of new virtual machines, the virtual machines with their lifecycle, the clone of the image's disk grown to the chosen size, the limit of 2 running virtual machines, Claude's virtual machines with the join, the wait for a free place, the queue, the idle stop, the rule of the user's virtual machines and the Claude token, the detail of a virtual machine and its link in the inspector's composer, the Virtual Machines bubble with its popover, and the storage under `<data dir>/VirtualMachines/`. The Settings tab is in [User interface](ui.md#virtual-machines), the bubble's toolbar item in [Toolbar](ui.md#toolbar), the file formats in [Data model](data-model.md#image-metadata-file), the methods and the events in [Engine API](engine-api.md#virtual-machine-images), the VM tools in [MCP server](mcp.md#rules-of-the-vm-tools).
+HephaestusV2 runs macOS virtual machines with Apple's Virtualization framework, so that Claude can check what the offscreen check instance cannot reach: menus, typing, list rows, system dialogs and permission prompts. A virtual machine starts from an image: one macOS version, installed once from its IPSW and prepared once in a setup view in the centre column of a main window, where the user completes Setup Assistant, turns off System Integrity Protection (SIP) and installs the guest agent, which gives the host full control of the guest. The user starts virtual machines from the Ready images in Settings, with the cores, the memory and the disk size chosen for each one, keeps them between runs, and shows the screen of one in a main window, where the mouse and the keyboard drive it. A bubble in the toolbar of the main window counts the virtual machines that run, and its popover shows a preview of the screen of each one. Claude starts its own virtual machines with the VM tools of the MCP server, in every chat, joins one that Claude already runs from the same image, and drives them, one action at a time on each virtual machine; Claude's virtual machines stop when they stay idle, and each virtual machine gets the Claude token of Settings when it starts. This document defines the images and their states, the list of macOS versions read from ipsw.me, the download and the install, the guest account of an image with `Type Password`, the setup view with its texts and its linked item, the install script, the guest agent and its protocol, the default values of new virtual machines, the virtual machines with their lifecycle, the clone of the image's disk grown to the chosen size, the limit of 2 running virtual machines, Claude's virtual machines with the join, the wait for a free place, the queue, the idle stop, the rule of the user's virtual machines and the Claude token, the detail of a virtual machine and its link in the inspector's composer, the Virtual Machines bubble with its popover, and the storage under `<data dir>/VirtualMachines/`. The Settings tab is in [User interface](ui.md#virtual-machines), the bubble's toolbar item in [Toolbar](ui.md#toolbar), the file formats in [Data model](data-model.md#image-metadata-file), the methods and the events in [Engine API](engine-api.md#virtual-machine-images), the VM tools in [MCP server](mcp.md#rules-of-the-vm-tools).
 
 ## Overview
 
@@ -15,6 +15,7 @@ Settings ▸ Virtual Machines                      engine of This Mac           
                                                  guest agent (LaunchAgent of the account)
   Default radio ── settings.update ────────────► settings.yml, defaultVMImage
   Delete… ───── vmImages.delete ───────────────► the image's folder is deleted
+Guest Account ── vmImages.setAccount ──────────► image.yml, userName, password
   New VMs ───── settings.update ───────────────► settings.yml, defaultVMCores, …MemoryGB, …DiskGB
   New VM… ───── vms.create ────────────────────► vm.yml, clone of the image's disk grown, boot
   Start, Stop ─ vms.start, vms.stop ───────────► the virtual machine boots, shuts down
@@ -26,7 +27,10 @@ Claude section ── settings.update ─────────────►
 Main window toolbar
   Bubble ◄──── vms.changed, image setups ─────── the virtual machines that run, the setup ones included
   Popover ───── VM screens, image setup ───────► a screenshot by the guest agent, every 2 seconds
+Setup view, detail
+  Type Password ── keys through the screen ────► the guest's keyboard focus, without the agent
 chat of Claude
+  vm_list_images, vm_set_account ──────────────► the images, with their guest account
   vm_start, vm_stop ── vmTools.start, .stop ───► Claude's virtual machines: join, wait, idle stop
   vm_click, vm_shell… ── vmTools.* ────────────► the queue of the virtual machine ── agent requests
 ```
@@ -35,6 +39,7 @@ chat of Claude
 | ---------------------------------------- | -------------------------------------------------- |
 | The Settings tab, sheets, alerts         | [User interface](ui.md#virtual-machines)           |
 | `image.yml`, `defaultVMImage`            | [Data model](data-model.md#image-metadata-file)    |
+| `vmImages.setAccount`                    | [Engine API](engine-api.md#vmimagessetaccount)     |
 | `vm.yml`                                 | [Data model](data-model.md#vm-metadata-file)       |
 | `vmImages.*`, `vmImages.changed`         | [Engine API](engine-api.md#virtual-machine-images) |
 | `vms.*`, `vms.changed`                   | [Engine API](engine-api.md#virtual-machines)       |
@@ -57,7 +62,7 @@ chat of Claude
 
 ## Images
 
-An image is one macOS version installed on a disk of 32 GB. The cores, the memory and the disk size of a virtual machine are not the image's: they are chosen when the virtual machine is created, starting from the [default values](#default-values) of Settings. An image has an id, a UUID, which names its folder; its metadata is the [image metadata file](data-model.md#image-metadata-file). Two images may hold the same macOS version. Default chosen at design time.
+An image is one macOS version installed on a disk of 32 GB. The cores, the memory and the disk size of a virtual machine are not the image's: they are chosen when the virtual machine is created, starting from the [default values](#default-values) of Settings. It also holds the user name and the password of its guests' account ([Guest account](#guest-account)). An image has an id, a UUID, which names its folder; its metadata is the [image metadata file](data-model.md#image-metadata-file). Two images may hold the same macOS version. Default chosen at design time.
 
 - The disk size of an image is the size of its `Disk.img`, in GB rounded up: the smallest disk of a virtual machine of that image, whose disk starts as a clone of the image's disk ([Clone](#clone)). The engine API gives it as the image's `diskGB` ([VMImage in the API](engine-api.md#vmimage-in-the-api)).
 - An image added by an earlier version of the app keeps its disk, of the size the user chose then. The `cores`, `memoryGB` and `diskGB` that its `image.yml` holds are no longer used ([Image metadata file](data-model.md#image-metadata-file)).
@@ -93,6 +98,31 @@ The default image is the one Claude uses when it asks for no version. The host s
 2. Only a Ready image can be the default: `settings.update` refuses another id with `invalid` and `defaultVMImage: use the id of an image that is Ready.`, and the radio of an image that is not Ready is disabled. Default chosen at design time.
 3. Deleting the default image sets `defaultVMImage` to null. No image is the default until the user turns a radio on or another image becomes Ready. Default chosen at design time.
 4. At launch, a `defaultVMImage` that names no Ready image is set to null and `settings.yml` is written. A `settings.yml` changed outside the app with such a value is refused as any value `settings.update` refuses ([Reactions](data-model.md#reactions)). Default chosen at design time.
+
+### Guest account
+
+Each image has a guest account: the user name and the password of the account of its guests, the one created in Setup Assistant (step 1 of the [setup view](#setup-view)), which every virtual machine of the image has too, its disk being a clone of the image's.
+
+- Both are stored with the image in its `image.yml`, as `userName` and `password`, in clear ([Image metadata file](data-model.md#image-metadata-file)). The password is not encrypted and not kept in `secrets.json`: it is the easy password of a test computer that holds no sensitive data.
+- The user enters them in the `Guest Account` section of Settings › Virtual Machines, for the image selected in the Images table ([User interface](ui.md#virtual-machines)), which calls `vmImages.setAccount` ([vmImages.setAccount](engine-api.md#vmimagessetaccount)). Claude reads them in the result of `vm_list_images` and stores them with `vm_set_account`, which calls `vmTools.setAccount` ([Rules of the VM tools](mcp.md#rules-of-the-vm-tools)).
+- Both methods take `userName` and `password`, each optional: an absent value keeps the stored one, and an empty one removes it, so that the key holds `null`. The user name is trimmed of white space at both ends; the password is stored as given. A value with a line break fails with `invalid` and `userName: use one line.` or `password: use one line.`, and nothing is stored.
+- The account can be stored in every state of the image, before its setup too, and the engine checks nothing against the guest: a password that differs from the guest's is typed as stored. It is deleted with the image's folder.
+- The engine writes `image.yml` and emits `vmImages.changed` when a value changes; a call that changes nothing writes nothing and emits nothing.
+
+The trimming, the messages, the absent and empty values and the account stored in every state are Default chosen at design time.
+
+#### Type Password
+
+`Type Password` types the stored password of an image into a guest. It shows in the steps column of the [setup view](#setup-view), where it types the password of the image, and in the header of the [detail](#detail) of a virtual machine, before `Stop` or `Start`, where it types the password of the virtual machine's image. The guest shares no pasteboard with this Mac, so the password cannot be pasted there.
+
+1. The button gives the virtual machine's screen (`VZVirtualMachineView`) the keyboard focus of its window.
+2. It presses, for each character of the password, the key that types it, with Shift, Option or both when the character needs them, through that screen, as the user's keyboard does: the keys go where the guest's keyboard focus is, and they work without the agent, in Setup Assistant, at the login window or in a password dialog. The keys are those of the keyboard layout of this Mac at the click; the guest reads keys, not characters, so it gets the password when its keyboard layout is the same.
+3. It does not press Return.
+
+- `Type Password` is disabled while the image has no password stored, while it types, and in the detail of a Stopped virtual machine.
+- A password with a character that the keyboard layout of this Mac cannot type with these keys, such as a letter of another script or the character of a dead key, is not typed at all: the failure alert of [Principles](ui.md#principles) shows on the window, titled `Type Password failed`, with `The keyboard layout of this Mac cannot type “<character>”.`
+
+The button, its places and typing through the screen without Return come from the user ([R209](requirements.md#requirements)). The focus given to the screen, the keyboard layout of this Mac, the button disabled while it types and the alert are Default chosen at design time.
 
 ## Default values
 
@@ -230,7 +260,7 @@ The command is:
 sh "/Volumes/My Shared Files/install.sh"
 ```
 
-Under the steps, a status line and the `Finish Setup` button:
+Under the steps, the `Type Password` button ([Type Password](#type-password)), then a status line and the `Finish Setup` button:
 
 | Agent                                            | Status line                 | `Finish Setup` |
 | ------------------------------------------------ | --------------------------- | -------------- |
@@ -244,6 +274,7 @@ Under the steps, a status line and the `Finish Setup` button:
   3. The engine starts the virtual machine with the framework's option to start up from macOS Recovery. The guest shows its startup options, where the user chooses `Options`, then `Continue`.
 
   The button is disabled while the virtual machine restarts. The restart that the user then asks for in Recovery boots macOS normally.
+- `Type Password` types the password of the image's [guest account](#guest-account), for the account's password asked in Setup Assistant, at the login window, or by `sudo` in step 3; it is disabled while the image has no password.
 - `Copy` copies the command and reads `Copied` for 2 seconds, as the Copy buttons of Settings do. The command goes to the pasteboard of this Mac. The setup virtual machine shares no pasteboard with this Mac, so the command cannot be pasted in the guest: the user types it there.
 - `Finish Setup` shuts the virtual machine down and sets the image to `ready`: the engine asks the agent to run `/sbin/shutdown -h now` as root, waits up to 60 seconds from the click for the virtual machine to stop and stops it itself after that, or at once when the agent answers that the command failed, then writes the image's state, applies the [default image](#default-image) rule and emits `vmImages.changed`.
 - `Stop` of the header, before `Finish Setup`, shuts the virtual machine down and leaves the image in `needsSetup`: through the agent when it is connected, waiting up to 30 seconds, otherwise at once, as a power cut does, so that what the guest wrote in its last seconds may be missing from the disk. `Set Up…` starts again from the image's current disk. `Stop` is disabled while the virtual machine shuts down; while `Restart in Recovery` waits for the guest, it stops the virtual machine at once.
@@ -505,7 +536,16 @@ The Virtualization framework runs at most 2 macOS virtual machines at once on a 
 
 ## Claude's virtual machines
 
-Claude starts and drives virtual machines with the VM tools of the MCP server, in every chat that HephaestusV2 starts, in every project ([Rules of the VM tools](mcp.md#rules-of-the-vm-tools)): `vm_list_images` and `vm_list` list the images and the virtual machines, `vm_start` and `vm_stop` start and stop Claude's virtual machines, and the actions `vm_screenshot`, `vm_click`, `vm_drag`, `vm_scroll`, `vm_type`, `vm_key`, `vm_ui_tree`, `vm_shell`, `vm_copy_in` and `vm_copy_out` drive one. The system prompt tells Claude to start one freely whenever a check needs one ([Default: common](skills.md#default-common)).
+Claude starts and drives virtual machines with the VM tools of the MCP server, in every chat that HephaestusV2 starts, in every project ([Rules of the VM tools](mcp.md#rules-of-the-vm-tools)): `vm_list_images` and `vm_list` list the images, with their [guest account](#guest-account), and the virtual machines, `vm_set_account` stores the guest account of an image, `vm_start` and `vm_stop` start and stop Claude's virtual machines, and the actions `vm_screenshot`, `vm_click`, `vm_drag`, `vm_scroll`, `vm_type`, `vm_key`, `vm_ui_tree`, `vm_shell`, `vm_copy_in` and `vm_copy_out` drive one. The system prompt tells Claude to start one freely whenever a check needs one ([Default: common](skills.md#default-common)).
+
+### The guest account
+
+- `vm_list_images` gives the `userName` and the `password` of each image that has them stored ([Guest account](#guest-account)).
+- Claude types the stored password whenever a guest asks for the password of its account, for example for `sudo` in Terminal or in a dialog of macOS: with `vm_type`, without a line break, then `vm_key` with `return` when the prompt needs it. A password that the guest refuses is reported to the user, not guessed.
+- Claude stores the account of an image with `vm_set_account` when the user gives it in a chat, and when Claude creates the account in Setup Assistant itself.
+- The descriptions of `vm_list_images`, `vm_set_account` and `vm_type` and the system prompt say so ([Default: common](skills.md#default-common)).
+
+Typing the password by itself, reading the account and storing it come from the user ([R209](requirements.md#requirements)); typing it with `vm_type`, the refused password reported and the moments Claude stores the account are Default chosen at design time.
 
 ### Starting and joining
 
@@ -588,7 +628,7 @@ The field, its storage in `secrets.json` through a local-only service, the varia
 | Left by   | anything that selects a section, View ▸ Global Memories, View ▸ Internal Skills, a click on a sub project's row, a switch of device, the [setup view](#setup-view) of an image, and the end of the virtual machine: `Delete…`, or the stop of Claude's |
 | State     | `WindowState.shownVirtualMachineID`, never persisted ([WindowState](ui.md#windowstate))                                                                                                                                                                |
 
-The header is a pane header, 36 points high ([Pane headers](ui.md#pane-headers)). From its leading edge it shows the virtual machine's name in the headline font, then, in the secondary colour, `macOS <version>` and the text of the State column, `Running · <time>` or `Stopped` ([Virtual machine states](#virtual-machine-states)); at its trailing edge, one button:
+The header is a pane header, 36 points high ([Pane headers](ui.md#pane-headers)). From its leading edge it shows the virtual machine's name in the headline font, then, in the secondary colour, `macOS <version>` and the text of the State column, `Running · <time>` or `Stopped` ([Virtual machine states](#virtual-machine-states)); at its trailing edge, `Type Password`, which types the password of the virtual machine's image ([Type Password](#type-password)), disabled while the image has no password and while the virtual machine is Stopped, then one button:
 
 | Virtual machine | Button  | Action                                                                      |
 | --------------- | ------- | --------------------------------------------------------------------------- |
@@ -608,6 +648,7 @@ Rules:
 - A switch of project keeps the detail, as it keeps the Global Memories view.
 - A window restored by macOS, or reopened after a restart for an update, shows its section: the detail is not restored.
 - A failed `Stop` or `Start` of the header shows the failure alert of [Principles](ui.md#principles) on the window, titled `Stop failed` or `Start failed`.
+- `Type Password` follows `vmImages.changed`: it is enabled once a password is stored for the image. The detail reads the images with `vmImages.list` when it appears and the workspace holds none yet.
 
 ### Linked item
 
@@ -744,6 +785,8 @@ The folder and file names are Default chosen at design time.
 | `Sources/HephaestusAgent/`                                     | The guest agent: `main.swift`, the connection loop, the frames, the session, one file per group of methods, the display assertion.                                                                                                                      |
 | `Resources/install-agent.sh`                                   | The install script, `install.sh` in the shared folder.                                                                                                                                                                                                  |
 | `Sources/HephaestusUI/Settings/`                               | `VirtualMachinesSettingsPane`, `AddImageSheet`, `NewVMSheet`, `ImageSetupView`, the setup view, with the view of a virtual machine's screen (`VZVirtualMachineView`), and `VirtualMachineDetailView`, the detail of a virtual machine in a main window. |
+| `Sources/HephaestusUI/Settings/GuestAccountSection.swift`      | The `Guest Account` section of Settings ([Guest account](#guest-account)).                                                                                                                                                                              |
+| `Sources/HephaestusUI/Settings/GuestKeyboard.swift`            | `GuestKeyboard`, the keys of `Type Password` through a virtual machine's screen, and `KeyboardLayoutKeys`, the keys that type each character on the keyboard layout of this Mac ([Type Password](#type-password)).                                      |
 | `Sources/HephaestusUI/Toolbar/VirtualMachinesBubble.swift`     | The [Virtual Machines bubble](#virtual-machines-bubble) and its popover; `VMPopoverPresentation`, the number and the texts of the rows.                                                                                                                 |
 
 Outside the app, the engine reaches ipsw.me, Apple's download server and the Virtualization framework only through `VMImageProvisioning`, the `imageProvisioner` of its configuration ([Engine configuration](architecture.md#engine-configuration)): the app uses `SystemVMImageProvisioner`, and tests a stand-in, so that no test downloads an IPSW or starts a virtual machine ([Test rules](development.md#test-rules)). The clone of an image's disk and the other files of a virtual machine's folder are plain files, which the engine writes itself.
@@ -755,3 +798,4 @@ Outside the app, the engine reaches ipsw.me, Apple's download server and the Vir
 - R203: The toolbar of a main window that shows This Mac has a bubble with the number of virtual machines that run; its popover lists every virtual machine, shows a preview of the screen of each one that runs, refreshed every 2 seconds, its name, who started it and its running time, opens it, stops it or starts it, and creates virtual machines, adds images and opens Settings.
 - R204: Every chat of every project gives Claude full control of virtual machines with the VM tools: Claude starts one freely or joins Claude's one of the same image, waits up to 10 minutes for a free place, drives it one action at a time across chats, acts on the user's only when named and never stops them; Claude's idle VMs stop after the minutes set in Settings, and each VM gets the Claude token of Settings at its start.
 - R208: Settings gives the default cores, memory and disk size of new virtual machines; an image has no such values, the user chooses them in the New VM sheet, and a virtual machine's disk is grown to the size chosen.
+- R209: Each image stores the user name and the password of its guests' account in clear in its `image.yml`; Settings edits them, `Type Password` in the setup view and in the detail of a virtual machine types the password into the guest through its screen, and Claude reads and stores them with the VM tools and types the password whenever the guest asks for it.

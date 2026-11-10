@@ -15,11 +15,19 @@ struct VirtualMachineDetailView: View {
     /// The session of the running virtual machine, from the VM screens service.
     @State private var session: VMSession?
     @State private var acting = false
+    @State private var keyboard = GuestKeyboard()
 
     /// The proportions of a virtual machine's display.
     private static let displayAspectRatio: CGFloat = 2560.0 / 1600.0
 
     private var machine: VirtualMachine? { workspace.virtualMachine(vmID) }
+
+    /// The password of the guest account of the virtual machine's image
+    /// (docs/virtual-machines.md › Guest account).
+    private var password: String? {
+        guard let machine else { return nil }
+        return workspace.vmImages?.first { $0.id == machine.imageID }?.password
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -41,6 +49,9 @@ struct VirtualMachineDetailView: View {
                 await workspace.loadVirtualMachines()
             }
             window.leaveVirtualMachineDetail(ifGoneFrom: workspace)
+            if workspace.vmImages == nil {
+                await workspace.loadVMImages()
+            }
         }
     }
 
@@ -60,6 +71,10 @@ struct VirtualMachineDetailView: View {
                 .monospacedDigit()
                 .lineLimit(1)
             Spacer(minLength: 8)
+            TypePasswordButton(keyboard: keyboard, password: password,
+                               enabled: machine.state == .running && session?.vmID == vmID) { error in
+                window.alert = WindowAlert.failure(GuestKeyboard.title, error)
+            }
             if machine.state == .running {
                 Button("Stop") {
                     act("Stop") {
@@ -87,7 +102,7 @@ struct VirtualMachineDetailView: View {
             ZStack {
                 Color.black
                 if let session, session.vmID == vmID {
-                    VirtualMachineScreen(virtualMachine: session.virtualMachine)
+                    VirtualMachineScreen(virtualMachine: session.virtualMachine, keyboard: keyboard)
                         .aspectRatio(Self.displayAspectRatio, contentMode: .fit)
                 }
             }

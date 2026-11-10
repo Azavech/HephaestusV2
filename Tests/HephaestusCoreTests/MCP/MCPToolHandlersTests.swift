@@ -895,6 +895,8 @@ struct MCPToolHandlersTests {
         let chatID = Self.chatID.uuidString
         let cases: [(tool: String, arguments: String, method: String, params: String)] = [
             ("vm_list_images", "{}", "vmTools.images", #"{"chatID":"\#(chatID)"}"#),
+            ("vm_set_account", #"{"imageID":"\#(Self.vmID)","password":"test"}"#, "vmTools.setAccount",
+             #"{"chatID":"\#(chatID)","imageID":"\#(Self.vmID)","password":"test"}"#),
             ("vm_start", #"{"name":"Menu checks","memory":8}"#, "vmTools.start", #"{"chatID":"\#(chatID)","name":"Menu checks","memory":8}"#),
             ("vm_key", #"{"vmID":"\#(Self.vmID)","key":"⌘S"}"#, "vmTools.key", #"{"chatID":"\#(chatID)","vmID":"\#(Self.vmID)","key":"⌘S"}"#),
             ("vm_copy_in", #"{"vmID":"\#(Self.vmID)","source":"~/Build/Demo.app","destination":"~/Demo.app"}"#, "vmTools.copyIn",
@@ -921,7 +923,7 @@ struct MCPToolHandlersTests {
         for tool in MCPToolCatalog.tools where tool.handling == .vmTool {
             #expect(try await Self.call(handlers, tool.name, #"{"unknown":1}"#, actor: Self.external) == .failure(refused), "\(tool.name)")
         }
-        #expect(MCPToolCatalog.tools.filter { $0.handling == .vmTool }.count == 14)
+        #expect(MCPToolCatalog.tools.filter { $0.handling == .vmTool }.count == 15)
         #expect(engine.calls.isEmpty)
     }
 

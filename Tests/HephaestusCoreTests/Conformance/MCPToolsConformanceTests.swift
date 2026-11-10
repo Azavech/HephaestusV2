@@ -53,7 +53,7 @@ struct MCPToolsConformanceTests {
     @Test("With debug tools disabled, tools/list returns the catalogue in table order")
     func withoutDebugTools() async throws {
         let rows = try Self.documentedRows()
-        #expect(rows.count == 79)
+        #expect(rows.count == 80)
         let expected = rows.filter { !$0.name.hasPrefix("debug_") }.map(\.name)
         #expect(try await Self.listed(debugTools: false).map(\.name) == expected)
     }

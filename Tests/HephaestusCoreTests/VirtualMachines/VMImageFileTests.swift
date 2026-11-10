@@ -28,12 +28,50 @@ struct VMImageFileTests {
                 build: 26B131
                 state: ready
                 failure: null
+                userName: null
+                password: null
                 created: 2026-11-09T14:03:00Z
 
                 """)
             #expect(VMImageStore.files(of: Self.id, in: directory).metadata.path == file.path)
             #expect(VMImageStore.loadAll(directory, log: nil) == [Self.image()])
         }
+    }
+
+    @Test("The guest account is written in clear after failure and read back")
+    func account() throws {
+        try withTemporaryDirectory { folder in
+            let directory = DataDirectory(url: folder)
+            var image = Self.image()
+            image.userName = "tester"
+            image.password = "p@ss word: 1"
+            try VMImageStore.write(image, to: directory)
+            let text = try String(contentsOf: VMImageStore.files(of: Self.id, in: directory).metadata, encoding: .utf8)
+            #expect(text.contains("failure: null\nuserName: tester\npassword: 'p@ss word: 1'\ncreated: "))
+            #expect(VMImageStore.loadAll(directory, log: nil) == [image])
+            let json = try jsonValue(String(decoding: try EngineJSON.encode(image), as: UTF8.self))
+            #expect(json.objectValue?["userName"] == "tester" && json.objectValue?["password"] == "p@ss word: 1")
+        }
+    }
+
+    @Test("The account rule: absent keeps, empty removes, the user name is trimmed, a line break is refused")
+    func accountRule() throws {
+        var image = Self.image()
+        try VMGuestAccount.apply(userName: "  tester ", password: " secret ", to: &image)
+        #expect(image.userName == "tester" && image.password == " secret ")
+        try VMGuestAccount.apply(userName: nil, password: "other", to: &image)
+        #expect(image.userName == "tester" && image.password == "other")
+        try VMGuestAccount.apply(userName: "", password: nil, to: &image)
+        #expect(image.userName == nil && image.password == "other")
+        #expect(throws: ValidationError.invalid("userName", "use one line")) {
+            try VMGuestAccount.apply(userName: "a\nb", password: "x\ny", to: &image)
+        }
+        #expect(throws: ValidationError.invalid("password", "use one line")) {
+            try VMGuestAccount.apply(userName: "kept?", password: "x\ry", to: &image)
+        }
+        // A refused value changes nothing.
+        #expect(image.userName == nil && image.password == "other")
+        #expect(ValidationError.invalid("password", "use one line").message == "password: use one line.")
     }
 
     @Test("A version that YAML would read as a number, the failure and the unknown keys survive a rewrite")
@@ -77,8 +115,8 @@ struct VMImageFileTests {
         let json = try jsonValue(String(decoding: try EngineJSON.encode(image), as: UTF8.self))
         #expect(json == (try jsonValue("""
             {"build": "26B131", "created": "2026-11-09T14:03:00Z", "diskBytes": 123, "diskGB": 32, "failure": null,
-             "id": "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F", "progress": 0.426, "schema": 1, "state": "downloading",
-             "version": "27.2.1"}
+             "id": "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F", "password": null, "progress": 0.426, "schema": 1,
+             "state": "downloading", "userName": null, "version": "27.2.1"}
             """)))
         #expect(try EngineJSON.decode(VMImage.self, from: try EngineJSON.encode(image)) == image)
         #expect(image.percentage == 42)

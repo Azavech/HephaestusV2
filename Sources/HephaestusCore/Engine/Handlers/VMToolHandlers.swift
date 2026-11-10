@@ -7,6 +7,9 @@ extension Engine {
         register(VMToolsImages.self, actors: [.claude]) { [unowned self] params, actor in
             try await self.vmToolImages(params, actor)
         }
+        register(VMToolsSetAccount.self, actors: [.claude]) { [unowned self] params, actor in
+            try await self.vmToolSetAccount(params, actor)
+        }
         register(VMToolsList.self, actors: [.claude]) { [unowned self] params, actor in
             try await self.vmToolList(params, actor)
         }

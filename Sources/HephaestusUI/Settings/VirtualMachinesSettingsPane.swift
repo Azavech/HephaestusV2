@@ -447,6 +447,9 @@ struct VirtualMachinesSettingsPane: View {
                         .disabled(selected == nil)
                 }
             }
+            SettingsRow(label: GuestAccountPresentation.sectionLabel) {
+                GuestAccountSection(image: selected)
+            }
             SettingsRow(label: "Virtual Machines") {
                 // Widths that fit the pane: a table wider than its place loses the inset look of
                 // its rows and cuts its last column.

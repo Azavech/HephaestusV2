@@ -62,11 +62,23 @@ extension Engine {
     /// The images, oldest first, with the default mark.
     func vmToolImages(_ params: VMToolChatParams, _ actor: Actor) throws -> [VMToolImage] {
         _ = try vmToolChat(params.chatID, actor)
-        return VMImageStore.sorted(Array(vmImages.images.values)).filter { !vmImages.deleting.contains($0.id) }.map { image in
-            VMToolImage(id: image.id, version: image.version, build: image.build, state: image.state,
-                        isDefault: settings.defaultVMImage == image.id, diskGB: imageDiskGB(image.id),
-                        failure: image.state == .failed ? image.failure : nil)
-        }
+        return VMImageStore.sorted(Array(vmImages.images.values)).filter { !vmImages.deleting.contains($0.id) }.map(toolImage)
+    }
+
+    /// An image as `vm_list_images` gives it, with its guest account.
+    func toolImage(_ image: VMImage) -> VMToolImage {
+        VMToolImage(id: image.id, version: image.version, build: image.build, state: image.state,
+                    isDefault: settings.defaultVMImage == image.id, diskGB: imageDiskGB(image.id),
+                    failure: image.state == .failed ? image.failure : nil,
+                    userName: image.userName, password: image.password)
+    }
+
+    // MARK: vmTools.setAccount (docs/virtual-machines.md › Guest account)
+
+    /// Stores the guest account of an image for the calling chat, as `vmImages.setAccount` does.
+    func vmToolSetAccount(_ params: VMToolsSetAccount.Params, _ actor: Actor) throws -> VMToolImage {
+        _ = try vmToolChat(params.chatID, actor)
+        return toolImage(try storeVMImageAccount(params.imageID, userName: params.userName, password: params.password, actor))
     }
 
     /// The virtual machines, oldest first.

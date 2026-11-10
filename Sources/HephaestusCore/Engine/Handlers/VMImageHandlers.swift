@@ -16,5 +16,8 @@ extension Engine {
         register(VMImagesDelete.self, actors: [.user]) { [unowned self] params, actor in
             try await self.deleteVMImage(params, actor)
         }
+        register(VMImagesSetAccount.self, actors: [.user]) { [unowned self] params, actor in
+            try await self.setVMImageAccount(params, actor)
+        }
     }
 }

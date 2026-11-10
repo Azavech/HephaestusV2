@@ -1821,18 +1821,21 @@ The file, its format and its rules are design-time choices. Default chosen at de
 
 `<data dir>/VirtualMachines/Images/<IMAGE-ID>/image.yml` describes one macOS image of virtual machines ([Images](virtual-machines.md#images)); the other files of its folder are listed in [Storage](virtual-machines.md#storage). Swift type `VMImage`.
 
-| Swift name  | Key       | Type                  | Required | Default | Rules                                                                                                              |
-| ----------- | --------- | --------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------ |
-| schema      | `schema`  | `Int`                 | no       | `1`     | See [Keys and values](#keys-and-values).                                                                           |
-| id          | `id`      | `UUID`                | yes      | —       | The image's id; it equals the name of the image's folder.                                                          |
-| version     | `version` | `String`              | yes      | —       | The macOS version, for example `27.2.1`: one line, not empty.                                                      |
-| build       | `build`   | `String`              | yes      | —       | The macOS build, for example `26B131`: one line, not empty.                                                        |
-| state       | `state`   | `VMImageState`        | yes      | —       | `downloading`, `installing`, `needsSetup`, `ready` or `failed` ([Image states](virtual-machines.md#image-states)). |
-| failure     | `failure` | `String?`             | no       | `null`  | The message of a failed image, one line ([Failures](virtual-machines.md#failures)); `null` in the other states.    |
-| created     | `created` | `Date`                | yes      | —       | When `vmImages.add` created the image.                                                                             |
-| unknownKeys | —         | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                     |
+| Swift name  | Key        | Type                  | Required | Default | Rules                                                                                                              |
+| ----------- | ---------- | --------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------ |
+| schema      | `schema`   | `Int`                 | no       | `1`     | See [Keys and values](#keys-and-values).                                                                           |
+| id          | `id`       | `UUID`                | yes      | —       | The image's id; it equals the name of the image's folder.                                                          |
+| version     | `version`  | `String`              | yes      | —       | The macOS version, for example `27.2.1`: one line, not empty.                                                      |
+| build       | `build`    | `String`              | yes      | —       | The macOS build, for example `26B131`: one line, not empty.                                                        |
+| state       | `state`    | `VMImageState`        | yes      | —       | `downloading`, `installing`, `needsSetup`, `ready` or `failed` ([Image states](virtual-machines.md#image-states)). |
+| failure     | `failure`  | `String?`             | no       | `null`  | The message of a failed image, one line ([Failures](virtual-machines.md#failures)); `null` in the other states.    |
+| userName    | `userName` | `String?`             | no       | `null`  | The [guest account](virtual-machines.md#guest-account)'s user name, one line; `null` while none is stored.         |
+| password    | `password` | `String?`             | no       | `null`  | The password of that account, in clear, one line; `null` while none is stored.                                     |
+| created     | `created`  | `Date`                | yes      | —       | When `vmImages.add` created the image.                                                                             |
+| unknownKeys | —          | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                     |
 
-- The engine writes the file when it creates the image and at each change of `state`. The percentage of a download or of an install is never written.
+- The engine writes the file when it creates the image, at each change of `state` and at each change of the guest account. The percentage of a download or of an install is never written.
+- `password` is stored in clear, neither encrypted nor kept in the [secrets file](#secrets-file): it is the easy password of a test computer that holds no sensitive data ([Guest account](virtual-machines.md#guest-account)).
 - The engine API adds three keys that are never stored, `progress`, `diskBytes` and `diskGB` ([VMImage in the API](engine-api.md#vmimage-in-the-api)).
 - An image has no values of its virtual machines ([Images](virtual-machines.md#images)). The keys `cores`, `memoryGB` and `diskGB` that earlier versions wrote are no longer used: `cores` and `memoryGB` are kept as unknown keys ([Unknown keys](#unknown-keys)); `diskGB` is ignored, as the API's `diskGB`, and is not written again. Default chosen at design time.
 - The files are read at launch only ([Loading](#loading)): a change made to one of them while the app runs is overwritten by the engine's next write of that file.
@@ -1845,6 +1848,8 @@ version: 27.2.1
 build: 26B131
 state: ready
 failure: null
+userName: tester
+password: test
 created: 2026-11-09T14:03:00Z
 ```
 
@@ -1858,6 +1863,8 @@ version: '26.6'
 build: 25G72
 state: failed
 failure: The app quit before the image was ready.
+userName: null
+password: null
 created: 2026-11-08T09:30:00Z
 ```
 
@@ -2208,3 +2215,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R202: The user starts virtual machines from the Ready images in Settings, keeps them between runs, starts, stops and deletes them, and shows the screen of one in a main window, where the mouse and the keyboard drive it; at most 2 run at once, and the app does not restart by itself for an update while one runs.
 - R204: Every chat of every project gives Claude full control of virtual machines with the VM tools: Claude starts one freely or joins Claude's one of the same image, waits up to 10 minutes for a free place, drives it one action at a time across chats, acts on the user's only when named and never stops them; Claude's idle VMs stop after the minutes set in Settings, and each VM gets the Claude token of Settings at its start.
 - R208: Settings gives the default cores, memory and disk size of new virtual machines; an image has no such values, the user chooses them in the New VM sheet, and a virtual machine's disk is grown to the size chosen.
+- R209: Each image stores the user name and the password of its guests' account in clear in its `image.yml`; Settings edits them, `Type Password` in the setup view and in the detail of a virtual machine types the password into the guest through its screen, and Claude reads and stores them with the VM tools and types the password whenever the guest asks for it.

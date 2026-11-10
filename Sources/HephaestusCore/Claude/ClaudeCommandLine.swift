@@ -12,7 +12,7 @@ enum ClaudeCommandLine {
         "add_comment", "update_comment", "list_bundles", "get_bundle", "create_bundle", "update_bundle", "search", "list_docs",
         "list_web_tabs", "list_skills", "get_skill", "list_chats", "get_chat",
         "k8s_status", "k8s_logs", "k8s_events", "argocd_status", "api_operations",
-        "vm_list_images", "vm_list", "vm_start", "vm_stop", "vm_screenshot", "vm_click", "vm_drag", "vm_scroll", "vm_type", "vm_key",
+        "vm_list_images", "vm_set_account", "vm_list", "vm_start", "vm_stop", "vm_screenshot", "vm_click", "vm_drag", "vm_scroll", "vm_type", "vm_key",
         "vm_ui_tree", "vm_shell", "vm_copy_in",
     ].map { "mcp__hephaestus__\($0)" }.joined(separator: ",")
 

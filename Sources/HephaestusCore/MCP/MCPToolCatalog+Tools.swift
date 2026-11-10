@@ -1561,7 +1561,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "vm_list_images",
             description: #"""
-            List the macOS images of the virtual machines of this Mac, oldest first: id, macOS version and build, state (downloading, installing, needsSetup, ready or failed), isDefault for the default image, which vm_start uses when no image is named, and diskGB, the size of its disk. Only ready images start virtual machines. Only in chats started by HephaestusV2.
+            List the macOS images of the virtual machines of this Mac, oldest first: id, macOS version and build, state (downloading, installing, needsSetup, ready or failed), isDefault for the default image, which vm_start uses when no image is named, diskGB, the size of its disk, and the userName and password of the guests' account when they are stored. Whenever a guest asks for the password of its account, for example for sudo or in a dialog of macOS, type the password of its image with vm_type. Only ready images start virtual machines. Only in chats started by HephaestusV2.
             """#,
             inputSchema: schema(#"""
             {
@@ -1572,6 +1572,36 @@ extension MCPToolCatalog {
             """#),
             isDebug: false,
             engineMethod: "vmTools.images",
+            handling: .vmTool
+        ),
+        MCPToolDefinition(
+            name: "vm_set_account",
+            description: #"""
+            Store the guest account of a macOS image: the userName and password of the account its guests log in with, which vm_list_images then gives. Store it when the user gives it in this chat, or when you create the account in Setup Assistant of the image's setup. An omitted value keeps the stored one; an empty one removes it. The password is stored in clear: it is the easy password of a test computer. Only in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "imageID": {
+                  "type": "string",
+                  "description": "Image id (a UUID) of vm_list_images."
+                },
+                "userName": {
+                  "type": "string",
+                  "description": "User name of the guest's account; empty removes it."
+                },
+                "password": {
+                  "type": "string",
+                  "description": "Password of the guest's account; empty removes it."
+                }
+              },
+              "required": ["imageID"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "vmTools.setAccount",
             handling: .vmTool
         ),
         MCPToolDefinition(
@@ -1796,7 +1826,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "vm_type",
             description: #"""
-            Type text in the guest of a virtual machine, where its keyboard focus is, as Unicode characters whatever the keyboard layout: a line break types Return and a tab Tab. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
+            Type text in the guest of a virtual machine, where its keyboard focus is, as Unicode characters whatever the keyboard layout: a line break types Return and a tab Tab. When the guest asks for the password of its account, type the password that vm_list_images gives for its image. Act on a virtual machine the user started only when the user names it in this chat. Only in chats started by HephaestusV2.
             """#,
             inputSchema: schema(#"""
             {

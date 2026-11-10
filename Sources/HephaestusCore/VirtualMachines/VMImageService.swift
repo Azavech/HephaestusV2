@@ -270,6 +270,41 @@ extension Engine {
         return true
     }
 
+    // MARK: vmImages.setAccount (docs/virtual-machines.md › Guest account)
+
+    /// Stores the guest account of an image: writes its `image.yml` and emits `vmImages.changed`
+    /// when a value changed. Throws `notFound` for an unknown image or one being deleted,
+    /// `invalid` for a value with a line break and `internal` when the file cannot be written.
+    func setVMImageAccount(_ params: VMImagesSetAccount.Params, _ actor: Actor) throws -> VMImage {
+        var image = try storeVMImageAccount(params.imageID, userName: params.userName, password: params.password, actor)
+        image.diskBytes = VMImageStore.diskBytes(of: dataDirectory.vmImageFolder(image.id))
+        return image
+    }
+
+    /// The account rule of `vmImages.setAccount` and `vmTools.setAccount`; returns the image.
+    @discardableResult
+    func storeVMImageAccount(_ id: UUID, userName: String?, password: String?, _ actor: Actor) throws -> VMImage {
+        guard var image = vmImages.images[id], !vmImages.deleting.contains(id) else {
+            throw EngineError.notFound("Image", id.uuidString)
+        }
+        let before = image
+        do {
+            try VMGuestAccount.apply(userName: userName, password: password, to: &image)
+        } catch let error as ValidationError {
+            throw EngineError(error)
+        }
+        guard image != before else { return image }
+        do {
+            try VMImageStore.write(image, to: dataDirectory)
+        } catch let error as StorageError {
+            throw EngineError.storage(error)
+        }
+        vmImages.images[id] = image
+        log.info(.engine, "image \(id.uuidString): guest account changed")
+        emitVMImages(origin: actor)
+        return image
+    }
+
     // MARK: Running virtual machines (docs/virtual-machines.md › Running virtual machines)
 
     /// The number of virtual machines the engine runs.

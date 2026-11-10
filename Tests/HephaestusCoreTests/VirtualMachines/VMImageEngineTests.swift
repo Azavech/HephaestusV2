@@ -46,6 +46,49 @@ struct VMImageEngineTests {
         }
     }
 
+    // MARK: vmImages.setAccount
+
+    @Test("vmImages.setAccount stores the guest account in image.yml in every state and emits vmImages.changed once per change")
+    func setAccount() async throws {
+        try await withVMEngine { engine, connection, provisioner, _ in
+            provisioner.downloadHold = TestHold()
+            let image = try await addImage(connection)
+            let events = connection.events
+            let stored = try await connection.call(VMImagesSetAccount.self, .init(imageID: image.id, userName: " tester ", password: "test 1"))
+            #expect(stored.state == .downloading)
+            #expect(stored.userName == "tester" && stored.password == "test 1")
+            let changed = try #require(await firstImages(on: events) { $0.first?.userName == "tester" })
+            #expect(changed.first?.password == "test 1")
+            let file = VMImageStore.files(of: image.id, in: engine.dataDirectory).metadata
+            #expect(try String(contentsOf: file, encoding: .utf8).contains("userName: tester\npassword: test 1\n"))
+
+            // An absent value keeps the stored one; an empty one removes it.
+            let kept = try await connection.call(VMImagesSetAccount.self, .init(imageID: image.id, password: ""))
+            #expect(kept.userName == "tester" && kept.password == nil)
+            #expect(try String(contentsOf: file, encoding: .utf8).contains("userName: tester\npassword: null\n"))
+            #expect(try await connection.call(VMImagesList.self).first?.password == nil)
+
+            #expect(await engineError {
+                try await connection.call(VMImagesSetAccount.self, .init(imageID: image.id, userName: "a\nb"))
+            } == EngineError(.invalid, "userName: use one line."))
+            #expect(await engineError {
+                try await connection.call(VMImagesSetAccount.self, .init(imageID: image.id, password: "a\nb"))
+            } == EngineError(.invalid, "password: use one line."))
+            let missing = UUID()
+            #expect(await engineError {
+                try await connection.call(VMImagesSetAccount.self, .init(imageID: missing, userName: "x"))
+            } == EngineError(.notFound, "Image \(missing.uuidString) not found."))
+            #expect(try await connection.call(VMImagesList.self).first?.userName == "tester")
+
+            // The account survives a change of state, which rewrites the file.
+            provisioner.downloadHold?.release()
+            _ = try #require(await firstImages(on: connection.events) { $0.first?.state == .needsSetup })
+            let list = try await connection.call(VMImagesList.self)
+            #expect(list.first?.userName == "tester")
+            #expect(VMImageStore.loadAll(engine.dataDirectory, log: nil).first?.userName == "tester")
+        }
+    }
+
     // MARK: vmImages.add
 
     @Test("vmImages.add takes the build alone, and checks the Mac, then the build")

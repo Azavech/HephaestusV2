@@ -76,3 +76,23 @@ public enum VMImagesDelete: EngineMethod {
     }
     public typealias Result = Empty
 }
+
+/// `vmImages.setAccount`: stores the guest account of an image in its `image.yml`
+/// (docs/virtual-machines.md › Guest account). Actors: user.
+public enum VMImagesSetAccount: EngineMethod {
+    public static let name = "vmImages.setAccount"
+    public struct Params: Codable, Sendable, Hashable {
+        public var imageID: UUID
+        /// The user name; empty removes it; nil keeps the stored one.
+        public var userName: String?
+        /// The password; empty removes it; nil keeps the stored one.
+        public var password: String?
+
+        public init(imageID: UUID, userName: String? = nil, password: String? = nil) {
+            self.imageID = imageID
+            self.userName = userName
+            self.password = password
+        }
+    }
+    public typealias Result = VMImage
+}

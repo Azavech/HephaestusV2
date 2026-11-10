@@ -385,6 +385,46 @@ struct VMToolEngineTests {
         }
     }
 
+    // MARK: Guest account
+
+    @Test("vm_list_images gives the guest account of an image, and vm_set_account stores it as vmImages.setAccount does")
+    func guestAccount() async throws {
+        try await Self.withVMTools { engine, connection, _, image, _ in
+            let chat = try await Self.newChat(connection)
+            var images = try await engine.call(VMToolsImages.self, .init(chatID: chat.id), actor: chat.actor)
+            #expect(images.first?.userName == nil && images.first?.password == nil)
+            let json = try jsonValue(String(decoding: try EngineJSON.encode(try #require(images.first)), as: UTF8.self))
+            #expect(json.objectValue?["userName"] == nil && json.objectValue?["password"] == nil)
+
+            let events = connection.events
+            let stored = try await engine.call(VMToolsSetAccount.self, .init(chatID: chat.id, imageID: image.id, userName: "tester", password: "test"),
+                                               actor: chat.actor)
+            #expect(stored.id == image.id && stored.isDefault)
+            #expect(stored.userName == "tester" && stored.password == "test")
+            #expect(await firstImages(on: events) { $0.first?.password == "test" } != nil)
+            images = try await engine.call(VMToolsImages.self, .init(chatID: chat.id), actor: chat.actor)
+            #expect(images.first?.userName == "tester" && images.first?.password == "test")
+            #expect(try await connection.call(VMImagesList.self).first?.password == "test")
+
+            #expect(await engineError {
+                try await engine.call(VMToolsSetAccount.self, .init(chatID: chat.id, imageID: image.id, password: "a\nb"), actor: chat.actor)
+            } == EngineError(.invalid, "password: use one line."))
+            #expect(await engineError {
+                try await engine.call(VMToolsSetAccount.self, .init(chatID: chat.id, imageID: image.id, userName: "x"),
+                                      actor: .claude(chatID: Actor.externalChatID))
+            } == EngineError(.forbidden, "Only the chat's own Claude can use the VM tools."))
+            #expect(await engineError {
+                try await connection.call(VMToolsSetAccount.self, .init(chatID: chat.id, imageID: image.id, userName: "x"))
+            }?.code == .forbidden)
+            #expect(await engineError {
+                try await connection.call(VMImagesSetAccount.self, .init(imageID: image.id, userName: "x"))
+            } == nil)
+            #expect(await engineError {
+                try await engine.call(VMImagesSetAccount.self, .init(imageID: image.id, userName: "y"), actor: chat.actor)
+            }?.code == .forbidden)
+        }
+    }
+
     // MARK: Claude token
 
     @Test("Each virtual machine gets the Claude token when its agent connects; the setup virtual machine and the image never get it")
@@ -539,7 +579,7 @@ struct VMToolEngineTests {
     @Test("The common prompt lists the VM tools and tells Claude to start one freely, and never to stop the user's; all but vm_copy_out are pre-approved")
     func prompt() {
         let common = Prompts.text(.common)
-        #expect(common.contains("- Virtual machines: vm_list_images, vm_list, vm_start, vm_stop, vm_screenshot, vm_click, vm_drag, vm_scroll, "
+        #expect(common.contains("- Virtual machines: vm_list_images, vm_set_account, vm_list, vm_start, vm_stop, vm_screenshot, vm_click, vm_drag, vm_scroll, "
             + "vm_type, vm_key, vm_ui_tree, vm_shell, vm_copy_in, vm_copy_out (macOS virtual machines of this Mac that you start, drive and "
             + "stop for your checks).\n"))
         #expect(common.contains("# Virtual machines\n\nStart a virtual machine with vm_start freely, without asking, whenever a check needs one"))
