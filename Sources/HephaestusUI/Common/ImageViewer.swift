@@ -265,6 +265,15 @@ struct ImageViewerWindow: View {
 
     // MARK: Toolbar
 
+    /// The leading padding of the first text of the toolbar's capsule, so that its glyphs sit as
+    /// far from the capsule's left edge as the Save As… icon from its right edge.
+    private static let capsuleTextInset: CGFloat = 11
+
+    /// `<i> of <n>`, when the image is one of the images to step through.
+    private var counter: String? {
+        currentIndex.map { "\($0 + 1) of \(images.count)" }
+    }
+
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .navigation) {
@@ -284,16 +293,18 @@ struct ImageViewerWindow: View {
             .disabled(!canStep(1))
         }
         ToolbarItemGroup(placement: .automatic) {
-            if let index = currentIndex, images.count > 0 {
-                Text("\(index + 1) of \(images.count)")
+            if let counter {
+                Text(counter)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
+                    .padding(.leading, Self.capsuleTextInset)
             }
             if loadedData != nil {
                 Text("\(Int((model.zoom * 100).rounded())) %")
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
-                    .frame(minWidth: 48)
+                    .frame(minWidth: 48, alignment: counter == nil ? .leading : .center)
+                    .padding(.leading, counter == nil ? Self.capsuleTextInset : 0)
             }
             Button {
                 model.zoomOut()

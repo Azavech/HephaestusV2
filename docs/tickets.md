@@ -536,7 +536,7 @@ The drop areas and ⌘V are defaults. Default chosen at design time.
 
 The keys, gestures and toolbar items above are defaults. Default chosen at design time.
 
-- For a ticket, previous and next go through the ticket's image attachments in order, then the image attachments of each comment in comment order. There is no wrap-around; the buttons are disabled at both ends. The toolbar shows `<i> of <n>` and the zoom percentage. Default chosen at design time.
+- For a ticket, previous and next go through the ticket's image attachments in order, then the image attachments of each comment in comment order. There is no wrap-around; the buttons are disabled at both ends. The toolbar shows `<i> of <n>` and the zoom percentage in the capsule of the zoom buttons and Save As…, before them; the first of the two texts shown, `<i> of <n>` or the zoom percentage when there is no counter (the Feedback screenshot), is inset from the capsule's left edge by the same gap as the Save As… icon from its right edge. Default chosen at design time.
 - While the image loads the window shows a spinner. When the data cannot be decoded it shows `The image cannot be displayed.` and an Open With Default App button. Animated GIFs play. Default chosen at design time.
 - A viewer window closes by itself when its attachment, its comment or its ticket is removed; a chat image's window closes when its chat is deleted, and the feedback screenshot's when its sheet closes. Default chosen at design time.
 
