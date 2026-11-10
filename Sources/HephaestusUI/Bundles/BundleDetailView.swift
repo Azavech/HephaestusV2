@@ -42,6 +42,7 @@ struct BundleDetailView: View {
                         .padding(.top, 10)
                         .padding(.bottom, 8)
                     tabPicker(bundle)
+                        .padding(.horizontal, 16)
                         .padding(.bottom, 8)
                     Divider()
                     switch tab {
@@ -128,27 +129,27 @@ struct BundleDetailView: View {
     private func tabPicker(_ bundle: TicketBundle) -> some View {
         let chatCount = LinkedChatsView.listedChats(bundle.chatIDs, workspace: workspace).count
         let mentionCount = MentionedChatsView.listedChats(owner: .bundle(bundle.id), ownChatIDs: bundle.chatIDs, workspace: workspace).count
-        return Picker("Tab", selection: Binding(
-            get: { tab },
-            set: { newTab in
-                if newTab == .chats, tab != .chats {
-                    LinkedChatsView.selectMostRecent(owner: .bundle(bundle.id), chatIDs: bundle.chatIDs, workspace: workspace,
-                                                     window: window, projectID: projectID)
+        return DetailTabPicker(
+            tabs: [
+                (BundleDetailTab.tickets, "Tickets (\(bundle.ticketIDs.count))"),
+                (.chats, "Chats (\(chatCount))"),
+                (.mentionedIn, "Mentioned In (\(mentionCount))"),
+            ],
+            selection: Binding(
+                get: { tab },
+                set: { newTab in
+                    if newTab == .chats, tab != .chats {
+                        LinkedChatsView.selectMostRecent(owner: .bundle(bundle.id), chatIDs: bundle.chatIDs, workspace: workspace,
+                                                         window: window, projectID: projectID)
+                    }
+                    if newTab == .mentionedIn, tab != .mentionedIn {
+                        MentionedChatsView.selectMostRecent(owner: .bundle(bundle.id), ownChatIDs: bundle.chatIDs, workspace: workspace,
+                                                            window: window, projectID: projectID)
+                    }
+                    window.updateViewState(of: projectID) { $0.bundleTab = newTab }
                 }
-                if newTab == .mentionedIn, tab != .mentionedIn {
-                    MentionedChatsView.selectMostRecent(owner: .bundle(bundle.id), ownChatIDs: bundle.chatIDs, workspace: workspace,
-                                                        window: window, projectID: projectID)
-                }
-                window.updateViewState(of: projectID) { $0.bundleTab = newTab }
-            }
-        )) {
-            Text("Tickets (\(bundle.ticketIDs.count))").tag(BundleDetailTab.tickets)
-            Text("Chats (\(chatCount))").tag(BundleDetailTab.chats)
-            Text("Mentioned In (\(mentionCount))").tag(BundleDetailTab.mentionedIn)
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .fixedSize()
+            )
+        )
     }
 
     // MARK: Tickets tab
