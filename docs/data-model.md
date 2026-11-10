@@ -40,7 +40,7 @@ HephaestusV2 stores everything in plain files: each project's `.hephaestus/` fol
 - The Required column of a field table says whether a file is invalid without the key. A key that is absent or `null` takes the value of the Default column; a required key that is absent or `null` makes the file invalid. Default chosen at design time.
 - The Default column values of `HostSettings` and `ChatSettings` are the product's default settings. The other Default column values only fill keys missing from a file, since the engine always writes every key. Default chosen at design time.
 - Key order is part of the contract for YAML files only. In JSON (`secrets.json`, transcripts, the engine API) key order is not significant.
-- Writing: the engine writes every known key in the order of the field table, `null` for an absent optional value, except the keys `color`, `icon`, `githubPage` and `dashboardWidgets` of the [project file](#project-file) and the key `githubTab` of a [web tab](#web-tab), which are left out when they have no value, `[]` and `{}` for empty collections, then the unknown keys ([Unknown keys](#unknown-keys)). Mappings and non-empty sequences use block style. A nested mapping is indented by two spaces under its key; a sequence that is the value of a key is not indented: its `- ` items start at the key's column, and the keys of a mapping item are aligned after its `- `. This is the only layout the emitter, libyaml through Yams, writes, and the examples of this page use it. A string containing a line break uses literal block style (`|`, or `|-` when the string does not end with a line break). A string that YAML would read as another type, for example `true`, `null`, `12`, `1.5`, `2026-10-31`, `NO` or `ON`, is quoted. Every other layout detail is the emitter's (Yams); the contract is the decoded values and the key order. Default chosen at design time.
+- Writing: the engine writes every known key in the order of the field table, `null` for an absent optional value, except the keys `color`, `icon`, `githubPage` and `dashboardWidgets` of the [project file](#project-file), the keys `column`, `row`, `width` and `height` of a [Dashboard widget](#dashboard-widget) and the key `githubTab` of a [web tab](#web-tab), which are left out when they have no value, `[]` and `{}` for empty collections, then the unknown keys ([Unknown keys](#unknown-keys)). Mappings and non-empty sequences use block style. A nested mapping is indented by two spaces under its key; a sequence that is the value of a key is not indented: its `- ` items start at the key's column, and the keys of a mapping item are aligned after its `- `. This is the only layout the emitter, libyaml through Yams, writes, and the examples of this page use it. A string containing a line break uses literal block style (`|`, or `|-` when the string does not end with a line break). A string that YAML would read as another type, for example `true`, `null`, `12`, `1.5`, `2026-10-31`, `NO` or `ON`, is quoted. Every other layout detail is the emitter's (Yams); the contract is the decoded values and the key order. Default chosen at design time.
 - Reading: any YAML style is accepted, flow or block, quoted or plain. A key of Swift type `String` accepts any scalar, so an unquoted `NO` reads as the string `NO`. Booleans are `true` and `false`; the YAML 1.1 spellings `yes`, `no`, `on` and `off` are accepted too. A mapping with a duplicate key makes the file invalid. Default chosen at design time.
 
 ### Dates
@@ -277,13 +277,17 @@ The keys and their rules are design-time choices. Default chosen at design time.
 
 ### Dashboard widget
 
-Swift type `DashboardWidget`, one element of the key `dashboardWidgets` of the project file: a widget of the project's [Dashboard](dashboard.md#widgets) with its [settings](dashboard.md#settings). The list changes only through `projects.update`, which the Dashboard calls in [edit mode](dashboard.md#edit-mode).
+Swift type `DashboardWidget`, one element of the key `dashboardWidgets` of the project file: a widget of the project's [Dashboard](dashboard.md#widgets) with its position and its size on the Dashboard's [grid](dashboard.md#grid) and its [settings](dashboard.md#settings). The list changes only through `projects.update`, which the Dashboard calls in [edit mode](dashboard.md#edit-mode).
 
 | Swift name         | Key                  | Type                      | Required | Default  | Rules                                                                                                                                                                                                        |
 | ------------------ | -------------------- | ------------------------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | id                 | `id`                 | `UUID`                    | yes      | —        | Unique within the list.                                                                                                                                                                                      |
 | kind               | `kind`               | `DashboardWidgetKind`     | yes      | —        | `project`, `tickets`, `recentChats`, `cost`, `instances`, `serviceGraph`, `busiestCalls`, `failedRequests` or `requestsPerMinute` ([Widgets](dashboard.md#widgets)). Any other value makes the file invalid. |
 | title              | `title`              | `String`                  | no       | `""`     | The `Title` setting: single line, at most 100 characters, trimmed; empty means the title of the kind.                                                                                                        |
+| column             | `column`             | `Int?`                    | no       | `null`   | The first column the widget covers on the [grid](dashboard.md#grid), 0–23 from the left.                                                                                                                     |
+| row                | `row`                | `Int?`                    | no       | `null`   | The first row it covers, 0 or more from the top.                                                                                                                                                             |
+| width              | `width`              | `Int?`                    | no       | `null`   | The columns it covers, 1–24; `column` + `width` is at most 24.                                                                                                                                               |
+| height             | `height`             | `Int?`                    | no       | `null`   | The rows it covers, 1 or more.                                                                                                                                                                               |
 | fields             | `fields`             | `[DashboardProjectField]` | no       | all four | Project widgets: the fields shown, among `name`, `identifier`, `type` and `folder`. At least one, each once.                                                                                                 |
 | statuses           | `statuses`           | `[TicketStatus]`          | no       | all four | Tickets widgets: the counts shown, among the [statuses](#ticket-file) `todo`, `in_progress`, `review` and `done`. At least one, each once.                                                                   |
 | includeSubprojects | `includeSubprojects` | `Bool`                    | no       | `true`   | Tickets and Cost widgets: whether the counts or the total include the loaded descendants.                                                                                                                    |
@@ -292,12 +296,13 @@ Swift type `DashboardWidget`, one element of the key `dashboardWidgets` of the p
 | count              | `count`              | `Int`                     | no       | `5`      | Busiest calls and Failed requests widgets: the `Number` setting, the most rows listed, 1–20.                                                                                                                 |
 | unknownKeys        | —                    | `[String: JSONValue]`     | —        | `[:]`    | [Unknown keys](#unknown-keys).                                                                                                                                                                               |
 
-- A widget has the keys `id`, `kind` and `title`, then the keys of its kind only: `fields` for `project`; `statuses` and `includeSubprojects` for `tickets`; `chatCount` and `chatKinds` for `recentChats`; `includeSubprojects` for `cost`; `count` for `busiestCalls` and `failedRequests`; none for `instances`, `serviceGraph` and `requestsPerMinute`, whose only setting is the title. The engine writes all of them, in the order of the table. A key of another kind is an unknown key of the widget and is kept as it is ([Unknown keys](#unknown-keys)).
+- A widget has the keys `id`, `kind` and `title`, then `column`, `row`, `width` and `height` when it has a stored position, then the keys of its kind only: `fields` for `project`; `statuses` and `includeSubprojects` for `tickets`; `chatCount` and `chatKinds` for `recentChats`; `includeSubprojects` for `cost`; `count` for `busiestCalls` and `failedRequests`; none for `instances`, `serviceGraph` and `requestsPerMinute`, whose only setting is the title. The engine writes all of them, in the order of the table. A key of another kind is an unknown key of the widget and is kept as it is ([Unknown keys](#unknown-keys)).
+- The keys `column`, `row`, `width` and `height` are the widget's stored position and size, integers counted in cells ([Grid](dashboard.md#grid)), which the Dashboard writes together when the user moves, resizes, adds or removes a widget ([Edit mode](dashboard.md#edit-mode)). They are left out of the file while the widget has no stored position ([Lists without positions](dashboard.md#lists-without-positions)), and `null` in the JSON form. `projects.update` refuses a widget it adds or changes that has only some of the four, a column and a width that are not inside the 24 columns, a row below 0 or a height below 1. It checks neither the [smallest size](dashboard.md#edit-mode) of a widget, which depends on the window, nor whether two widgets overlap, which the Dashboard resolves ([Placement](dashboard.md#placement)). A file edited by hand that holds only some of the four keys, or values outside these rules, still loads ([Placement](dashboard.md#placement)).
 - `DashboardWidgetKind` and `DashboardProjectField` are string enumerations of the values above. `all four` is the list of the four values in the order of the Rules column, the order in which the Dashboard shows them whatever the order of the list; a checkbox of the settings writes its list in that order, and the other changes keep the order of the stored list.
-- The default list, which the Dashboard shows while the key is absent or `null`, holds four widgets with an empty title and the defaults of the table: `project` with the id `00000000-0000-0000-0000-000000000001`, then `tickets` with `00000000-0000-0000-0000-000000000002`, `recentChats` with `00000000-0000-0000-0000-000000000003` and `cost` with `00000000-0000-0000-0000-000000000004`. The first change made in edit mode stores the list with these ids.
+- The default list, which the Dashboard shows while the key is absent or `null`, holds four widgets with an empty title, no stored position and the defaults of the table: `project` with the id `00000000-0000-0000-0000-000000000001`, then `tickets` with `00000000-0000-0000-0000-000000000002`, `recentChats` with `00000000-0000-0000-0000-000000000003` and `cost` with `00000000-0000-0000-0000-000000000004`. The first change made in edit mode stores the list with these ids.
 - `projects.update` checks the rules of the table on each widget the call adds or changes, in the list's order; a widget equal to a stored widget is written back as it is ([Write rules](#write-rules)), as many times as the stored list holds it, and a further copy of it is a widget the call adds.
 
-The widget kinds and their settings come from the user; the keys, the values, the ids of the default list and the length limit of the title are design-time choices. Default chosen at design time.
+The widget kinds, their settings and their positions and sizes counted in cells come from the user; the keys, the values, the ids of the default list and the length limit of the title are design-time choices. Default chosen at design time.
 
 - The four kinds `serviceGraph`, `busiestCalls`, `failedRequests` and `requestsPerMinute` are the graph widgets: the Dashboard hides them while the project's graph is not enabled, and keeps them in the list ([Graph widgets](dashboard.md#graph-widgets)). Their time window is the project's `dashboardGraphWindow`.
 
@@ -359,6 +364,10 @@ dashboardWidgets:
 - id: 00000000-0000-0000-0000-000000000001
   kind: project
   title: ''
+  column: 0
+  row: 0
+  width: 12
+  height: 4
   fields:
   - name
   - identifier
@@ -366,6 +375,10 @@ dashboardWidgets:
 - id: 00000000-0000-0000-0000-000000000002
   kind: tickets
   title: Own tickets
+  column: 12
+  row: 0
+  width: 12
+  height: 4
   statuses:
   - todo
   - in_progress
@@ -374,12 +387,20 @@ dashboardWidgets:
 - id: 9B2F4C1D-3E5A-4F6B-8C7D-0E1F2A3B4C5D
   kind: recentChats
   title: Ticket chats
+  column: 0
+  row: 4
+  width: 16
+  height: 5
   chatCount: 3
   chatKinds:
   - ticket
 - id: 00000000-0000-0000-0000-000000000004
   kind: cost
   title: ''
+  column: 16
+  row: 4
+  width: 8
+  height: 3
   includeSubprojects: true
 deletedChats:
 - id: 5B8C2D4E-6F7A-4B9C-8D1E-2F3A4B5C6D7E
@@ -406,7 +427,7 @@ name: Website
 created: 2026-10-31T09:30:00Z
 ```
 
-A Go service with two [environments](#project-environment) and its graph enabled: `local` replaces the URL's port with 8080 and runs on this Mac, and `staging` keeps the URL's own port, accepts invalid certificates and runs on Kubernetes, deployed by the Argo CD Application `orders-staging` of the namespace `argocd`, its Jaeger the Service `jaeger` of the namespace `tracing`; its Dashboard shows a Service graph and a Failed requests widget of 10 rows, over the last 24 hours:
+A Go service with two [environments](#project-environment) and its graph enabled: `local` replaces the URL's port with 8080 and runs on this Mac, and `staging` keeps the URL's own port, accepts invalid certificates and runs on Kubernetes, deployed by the Argo CD Application `orders-staging` of the namespace `argocd`, its Jaeger the Service `jaeger` of the namespace `tracing`; its Dashboard shows a Service graph widget 16 columns wide and, at its right, a Failed requests widget of 10 rows, over the last 24 hours:
 
 ```yaml
 # .hephaestus/project.yml
@@ -439,9 +460,17 @@ dashboardWidgets:
 - id: 2D4F6A8C-1B3E-4D5F-8A7B-9C0E1F2A3B4C
   kind: serviceGraph
   title: ''
+  column: 0
+  row: 0
+  width: 16
+  height: 8
 - id: 3E5A7B9D-2C4F-4E6A-8B9C-0D1E2F3A4B5C
   kind: failedRequests
   title: Errors
+  column: 16
+  row: 0
+  width: 8
+  height: 8
   count: 10
 dashboardGraphWindow: day
 ```
@@ -2037,3 +2066,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R186: A chat shows how much of Claude's context window its conversation uses and what remains before compaction, as a ring and `<n>% left` in the composer that change after each Claude message and stay with the chat.
 - R187: A chat shows when Claude Code compacts its conversation: the status line and the context indicator while the compaction runs, a transcript line with its trigger and the size of the conversation before it when it ends, and the number of compactions in the indicator's tooltip.
 - R188: The user selects the context window of each chat, Auto, 200K or 1M; a running chat takes a new window once its turn and background work end.
+- R200: The user places and sizes each widget of a project's Dashboard on an invisible grid of 24 columns of square cells, like Grafana.

@@ -36,6 +36,8 @@ struct DashboardWidgetCodingTests {
             #expect(widget.includeSubprojects)
             #expect(widget.chatCount == 5)
             #expect(widget.chatKinds == [.project, .ticket, .bundle, .feedback])
+            #expect(widget.column == nil && widget.row == nil && widget.width == nil && widget.height == nil)
+            #expect(widget.cells == nil)
             #expect(widget.unknownKeys.isEmpty)
         }
         #expect(try DashboardWidget.normalized(defaults) == defaults)
@@ -85,7 +87,7 @@ struct DashboardWidgetCodingTests {
         #expect(try YAMLCoding.decode(Project.self, from: yaml) == project)
         #expect(try EngineJSON.decode(Project.self, from: try EngineJSON.encode(project)) == project)
         let cost = try JSONDecoder().decode(JSONValue.self, from: try EngineJSON.encode(widgets[3]))
-        #expect(cost.objectValue.map { Set($0.keys) } == ["id", "kind", "title", "includeSubprojects"])
+        #expect(cost.objectValue.map { Set($0.keys) } == ["id", "kind", "title", "column", "row", "width", "height", "includeSubprojects"])
 
         let empty = Project(id: "WEB", name: "Website", created: Self.created, dashboardWidgets: [])
         let emptyYAML = try YAMLCoding.encode(empty)
@@ -163,6 +165,182 @@ struct DashboardWidgetCodingTests {
         }
     }
 
+    @Test("The position keys column, row, width and height are written after title, left out of the file without position and null in JSON")
+    func positionKeys() throws {
+        let placed = DashboardWidget(id: DashboardWidget.defaultList[0].id, kind: .project, column: 12, row: 3, width: 8, height: 5,
+                                     fields: [.name])
+        let free = DashboardWidget(id: Self.chatsID, kind: .recentChats, title: "Chats")
+        let project = Project(id: "HEPH", name: "Hephaestus V2", created: Self.created, dashboardWidgets: [placed, free])
+        let yaml = try YAMLCoding.encode(project)
+        #expect(yaml.contains("""
+            dashboardWidgets:
+            - id: 00000000-0000-0000-0000-000000000001
+              kind: project
+              title: ''
+              column: 12
+              row: 3
+              width: 8
+              height: 5
+              fields:
+              - name
+            - id: 9B2F4C1D-3E5A-4F6B-8C7D-0E1F2A3B4C5D
+              kind: recentChats
+              title: Chats
+              chatCount: 5
+              chatKinds:
+            """))
+        #expect(try YAMLCoding.decode(Project.self, from: yaml) == project)
+        #expect(try EngineJSON.decode(Project.self, from: try EngineJSON.encode(project)) == project)
+        #expect(placed.cells == DashboardCells(column: 12, row: 3, width: 8, height: 5))
+        #expect(free.cells == nil)
+
+        let placedJSON = try JSONDecoder().decode(JSONValue.self, from: try EngineJSON.encode(placed))
+        #expect(placedJSON.objectValue?["column"] == 12 && placedJSON.objectValue?["row"] == 3)
+        #expect(placedJSON.objectValue?["width"] == 8 && placedJSON.objectValue?["height"] == 5)
+        let freeJSON = try JSONDecoder().decode(JSONValue.self, from: try EngineJSON.encode(free))
+        for key in ["column", "row", "width", "height"] {
+            #expect(freeJSON.objectValue?[key] == .null, "\(key)")
+        }
+        #expect(try EngineJSON.decode(DashboardWidget.self, from: try EngineJSON.encode(free)) == free)
+
+        // The setter writes the four keys together, and nil removes them.
+        var moved = free
+        moved.cells = DashboardCells(column: 0, row: 7, width: 12, height: 2)
+        #expect(moved.column == 0 && moved.row == 7 && moved.width == 12 && moved.height == 2)
+        moved.cells = nil
+        #expect(moved == free)
+    }
+
+    @Test("Positions written by hand still load: only some of the keys is no position, values outside the grid are brought back inside it")
+    func positionReadRules() throws {
+        let project = try Self.project(widgets: """
+            - id: 00000000-0000-0000-0000-000000000001
+              kind: cost
+              column: 3
+              height: 2
+            - id: 00000000-0000-0000-0000-000000000002
+              kind: cost
+              column: 30
+              row: -4
+              width: 40
+              height: 0
+            - id: 00000000-0000-0000-0000-000000000003
+              kind: cost
+              column: 20
+              row: 9000000000000000000
+              width: 12
+              height: 9000000000000000000
+            - id: 00000000-0000-0000-0000-000000000004
+              kind: cost
+              column: null
+              row: null
+              width: null
+              height: null
+            """)
+        let widgets = try #require(project.dashboardWidgets)
+        #expect(widgets[0].column == 3 && widgets[0].row == nil && widgets[0].width == nil && widgets[0].height == 2)
+        #expect(widgets[0].cells == nil)
+        #expect(widgets[0].unknownKeys.isEmpty)
+        #expect(widgets[1].column == 30 && widgets[1].row == -4 && widgets[1].width == 40 && widgets[1].height == 0)
+        #expect(widgets[1].cells == DashboardCells(column: 0, row: 0, width: 24, height: 1))
+        #expect(widgets[2].cells == DashboardCells(column: 12, row: 100_000, width: 12, height: 100_000))
+        #expect(widgets[3].cells == nil)
+
+        // The engine writes back what it read: the keys that are there, in the order of the table.
+        let yaml = try YAMLCoding.encode(project)
+        #expect(yaml.contains("""
+            - id: 00000000-0000-0000-0000-000000000001
+              kind: cost
+              title: ''
+              column: 3
+              height: 2
+              includeSubprojects: true
+            - id: 00000000-0000-0000-0000-000000000002
+              kind: cost
+              title: ''
+              column: 30
+              row: -4
+              width: 40
+              height: 0
+              includeSubprojects: true
+            """))
+        #expect(yaml.contains("""
+            - id: 00000000-0000-0000-0000-000000000004
+              kind: cost
+              title: ''
+              includeSubprojects: true
+            """))
+        #expect(try YAMLCoding.decode(Project.self, from: yaml) == project)
+        #expect(throws: (any Error).self) {
+            try project.validate()
+        }
+
+        for invalid in [
+            "- id: 00000000-0000-0000-0000-000000000001\n  kind: cost\n  column: left",
+            "- id: 00000000-0000-0000-0000-000000000001\n  kind: cost\n  row: 1.5",
+            "- id: 00000000-0000-0000-0000-000000000001\n  kind: cost\n  width: [12]",
+            "- id: 00000000-0000-0000-0000-000000000001\n  kind: cost\n  height: tall",
+        ] {
+            #expect(throws: (any Error).self, "\(invalid)") {
+                try Self.project(widgets: invalid)
+            }
+        }
+    }
+
+    @Test("The write rules of a position: the four keys together or none, a column and a width inside the 24 columns, a row from 0 and a height from 1")
+    func positionWriteRules() throws {
+        func message(_ widget: DashboardWidget, keeping stored: [DashboardWidget] = []) -> String? {
+            do {
+                _ = try DashboardWidget.normalized([DashboardWidget(kind: .cost), widget], keeping: stored)
+                return nil
+            } catch let error as ValidationError {
+                return error.message
+            } catch {
+                return "\(error)"
+            }
+        }
+        func widget(_ column: Int?, _ row: Int?, _ width: Int?, _ height: Int?) -> DashboardWidget {
+            DashboardWidget(kind: .tickets, column: column, row: row, width: width, height: height)
+        }
+        let together = "dashboardWidgets[1]: give the column, row, width and height together."
+        let columns = "dashboardWidgets[1]: use a column and a width inside the 24 columns."
+        let rows = "dashboardWidgets[1]: use a row from 0 and a height of at least 1."
+        #expect(message(widget(nil, nil, nil, nil)) == nil)
+        #expect(message(widget(0, 0, 24, 1)) == nil)
+        #expect(message(widget(23, 0, 1, 1)) == nil)
+        #expect(message(widget(12, 400, 12, 90)) == nil)
+        #expect(message(widget(0, nil, nil, nil)) == together)
+        #expect(message(widget(0, 0, 12, nil)) == together)
+        #expect(message(widget(nil, 0, 12, 3)) == together)
+        // An incomplete position is reported before the values of its keys.
+        #expect(message(widget(40, nil, 12, 0)) == together)
+        #expect(message(widget(-1, 0, 12, 3)) == columns)
+        #expect(message(widget(24, 0, 1, 3)) == columns)
+        #expect(message(widget(0, 0, 0, 3)) == columns)
+        #expect(message(widget(0, 0, 25, 3)) == columns)
+        #expect(message(widget(13, 0, 12, 3)) == columns)
+        #expect(message(widget(0, 0, .max, 3)) == columns)
+        #expect(message(widget(0, -1, 12, 3)) == rows)
+        #expect(message(widget(0, 0, 12, 0)) == rows)
+        // The columns are checked before the rows.
+        #expect(message(widget(30, -1, 12, 0)) == columns)
+        // A title that breaks its rule is reported first, the settings of the kind last.
+        var broken = widget(30, 0, 12, 3)
+        broken.statuses = []
+        #expect(message(broken) == columns)
+        broken.title = "Two\nlines"
+        #expect(message(broken) == "dashboardWidgets[1]: use a title of at most 100 characters on one line.")
+        // A stored widget that a hand edit put outside the grid is written back as it is; moving
+        // it is a change, which is checked.
+        let stored = widget(30, -4, 40, 0)
+        #expect(message(stored, keeping: [stored]) == nil)
+        var changed = stored
+        changed.row = 0
+        #expect(message(changed, keeping: [stored]) == columns)
+        // The engine checks neither the smallest size nor overlaps.
+        #expect(try DashboardWidget.normalized([widget(0, 0, 1, 1), widget(0, 0, 24, 9)]).count == 2)
+    }
+
     @Test("An Instances widget has the keys id, kind and title only; a key of another kind stays as an unknown key")
     func instances() throws {
         let id = UUID(uuidString: "3C4D5E6F-7A8B-4C9D-8E0F-1A2B3C4D5E6F")!
@@ -180,7 +358,7 @@ struct DashboardWidgetCodingTests {
         #expect(try YAMLCoding.decode(Project.self, from: yaml) == project)
         #expect(try EngineJSON.decode(Project.self, from: try EngineJSON.encode(project)) == project)
         let json = try JSONDecoder().decode(JSONValue.self, from: try EngineJSON.encode(widget))
-        #expect(json.objectValue.map { Set($0.keys) } == ["id", "kind", "title"])
+        #expect(json.objectValue.map { Set($0.keys) } == ["id", "kind", "title", "column", "row", "width", "height"])
 
         let edited = try Self.project(widgets: """
             - id: 3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f

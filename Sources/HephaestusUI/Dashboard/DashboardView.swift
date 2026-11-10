@@ -2,7 +2,6 @@
 import AppKit
 import HephaestusCore
 import SwiftUI
-import UniformTypeIdentifiers
 
 /// What the widgets show, from the workspace's data (docs/dashboard.md › Widgets).
 enum DashboardContent {
@@ -138,27 +137,75 @@ struct DashboardSlot: Hashable {
     }
 }
 
-/// The changes of edit mode, each a new list made from the newest one; nil when the widget it
-/// applies to is no longer in the list (docs/dashboard.md › Edit mode, Settings).
-enum DashboardEdits {
-    /// `Add Widget`: the widget is appended with the default settings and a new id.
-    static func appending(_ kind: DashboardWidgetKind, to widgets: [DashboardWidget], id: UUID = UUID()) -> [DashboardWidget] {
-        widgets + [DashboardWidget(id: id, kind: kind)]
+/// What the place of the widgets depends on besides their list: whether the graph widgets show,
+/// and the rows the content of each widget needs at the cell size of the window, which are known
+/// once the widget has been laid out (docs/dashboard.md › Placement, Lists without positions).
+struct DashboardArrangement: Equatable {
+    var graphEnabled = false
+    var rows: [DashboardSlot: Int] = [:]
+
+    /// The cells of each widget of a list, nil for a hidden graph widget. A widget without
+    /// position whose rows are not known yet counts one row.
+    func cells(of widgets: [DashboardWidget]) -> [DashboardCells?] {
+        let slots = DashboardSlot.slots(of: widgets)
+        return DashboardGrid.layout(of: widgets, graphEnabled: graphEnabled) { rows[slots[$0]] ?? 1 }
     }
 
-    static func removing(_ slot: DashboardSlot, from widgets: [DashboardWidget]) -> [DashboardWidget]? {
-        guard let index = slot.index(in: widgets) else { return nil }
+    /// The list with `cells` as the stored position and size of each shown widget. A hidden graph
+    /// widget keeps its own, and a widget without position whose rows are not known yet stays
+    /// without position.
+    func storing(_ cells: [DashboardCells?], in widgets: [DashboardWidget]) -> [DashboardWidget] {
+        let slots = DashboardSlot.slots(of: widgets)
         var list = widgets
-        list.remove(at: index)
+        for (index, cell) in cells.enumerated() where index < list.count {
+            guard let cell, list[index].cells != nil || rows[slots[index]] != nil else { continue }
+            list[index].cells = cell
+        }
         return list
     }
+}
 
-    /// A widget dropped on another takes that widget's place; the widgets between them move by one
-    /// place.
-    static func moving(_ source: DashboardSlot, onto target: DashboardSlot, in widgets: [DashboardWidget]) -> [DashboardWidget]? {
-        guard source != target, let from = source.index(in: widgets), let to = target.index(in: widgets) else { return nil }
-        var list = widgets
-        list.insert(list.remove(at: from), at: to)
+/// The changes of edit mode, each a new list made from the newest one; nil when the widget it
+/// applies to is no longer in the list (docs/dashboard.md › Edit mode, Settings). A move, a
+/// resize, an addition and a removal give each shown widget the position and the size the
+/// Dashboard shows once the change is made; a change of settings stores no position.
+enum DashboardEdits {
+    /// `Add Widget`: the widget is appended with the default settings and a new id, at column 0
+    /// under every widget, 12 columns wide and `rows` high, the rows its content needs at the cell
+    /// size of the window; then it rises by the placement rule.
+    static func appending(_ kind: DashboardWidgetKind, rows: Int, to widgets: [DashboardWidget], arrangement: DashboardArrangement,
+                          id: UUID = UUID()) -> [DashboardWidget] {
+        let shown = arrangement.cells(of: widgets)
+        var list = arrangement.storing(shown, in: widgets)
+        var widget = DashboardWidget(id: id, kind: kind)
+        widget.cells = DashboardCells(column: 0, row: shown.compactMap { $0?.bottom }.max() ?? 0,
+                                      width: DashboardGrid.halfWidth, height: max(rows, 1))
+        list.append(widget)
+        return arrangement.storing(arrangement.cells(of: list), in: list)
+    }
+
+    /// The remove button: the other widgets keep the place the Dashboard shows, and those under
+    /// the removed widget rise.
+    static func removing(_ slot: DashboardSlot, from widgets: [DashboardWidget], arrangement: DashboardArrangement) -> [DashboardWidget]? {
+        guard let index = slot.index(in: widgets) else { return nil }
+        var list = arrangement.storing(arrangement.cells(of: widgets), in: widgets)
+        list.remove(at: index)
+        return arrangement.storing(arrangement.cells(of: list), in: list)
+    }
+
+    /// A widget moved or resized to `cells`: the placement rule applies to the arrangement the
+    /// Dashboard shows, with the widget at these cells and placed before the other widgets that
+    /// start on its row. Nil when the arrangement stays as it is.
+    static func placing(_ slot: DashboardSlot, at cells: DashboardCells, in widgets: [DashboardWidget],
+                        arrangement: DashboardArrangement) -> [DashboardWidget]? {
+        guard let index = slot.index(in: widgets) else { return nil }
+        let shown = arrangement.cells(of: widgets)
+        guard shown[index] != nil else { return nil }
+        let placed = DashboardGrid.layout(shown, placing: index, at: cells)
+        guard placed != shown else { return nil }
+        var list = arrangement.storing(placed, in: widgets)
+        // The widget the user placed gets its position whatever is known of its rows.
+        list[index].cells = placed[index]
         return list
     }
 
@@ -206,25 +253,6 @@ enum DashboardEdits {
     static func steppingCount(of widget: DashboardWidget, by step: Int) -> Int {
         let range = DashboardWidget.countRange
         return min(max(DashboardGraph.rowLimit(of: widget) + step, range.lowerBound), range.upperBound)
-    }
-}
-
-/// The text a dragged widget carries: the token of the Dashboard that drags it and its slot, so
-/// that a drop moves it only within the Dashboard it comes from.
-enum DashboardDrag {
-    static let prefix = "hephaestus-dashboard-widget:"
-
-    static func payload(token: UUID, slot: DashboardSlot) -> String {
-        "\(prefix)\(token.uuidString)/\(slot.id.uuidString)/\(slot.occurrence)"
-    }
-
-    /// The slot of a payload of the Dashboard with this token; nil for any other text.
-    static func slot(from text: String, token: UUID) -> DashboardSlot? {
-        guard text.hasPrefix(prefix) else { return nil }
-        let parts = text.dropFirst(prefix.count).split(separator: "/", omittingEmptySubsequences: false)
-        guard parts.count == 3, UUID(uuidString: String(parts[0])) == token,
-              let id = UUID(uuidString: String(parts[1])), let occurrence = Int(parts[2]) else { return nil }
-        return DashboardSlot(id: id, occurrence: occurrence)
     }
 }
 
@@ -326,24 +354,48 @@ struct DashboardView: View {
     }
 }
 
-/// The bar with `Edit`, or `Add Widget` and `Done` in edit mode, over the widgets of the project.
+/// The bar with `Edit`, or `Add Widget` and `Done` in edit mode, over the widgets of the project
+/// on their grid (docs/dashboard.md › Layout, Edit mode).
 private struct DashboardSection: View {
     let window: WindowState
     let workspace: DeviceWorkspace
     let projectID: String
 
+    /// The coordinate space of the visible part of the widget area.
+    private static let visibleArea = "dashboardVisibleArea"
+    /// The margin around the widget area.
+    private static let margin: CGFloat = 20
+
     @State private var editing = false
     /// The engine's message when the last change failed, until the next change.
     @State private var failure: String?
     @State private var changes = DashboardChanges()
-    /// The token of the widgets this Dashboard drags (docs/dashboard.md › Edit mode).
-    @State private var dragToken = UUID()
-    /// The widget this Dashboard is dragging, which its drops accept.
-    @State private var dragging: DashboardSlot?
-    /// The widget a dragged widget is over.
-    @State private var dropTarget: DashboardSlot?
     /// The graph of the graph widgets (docs/dashboard.md › Graph widgets).
     @State private var graphFeed = DashboardGraphFeed()
+    /// The width of the widget area, which gives the size of the cells, for what happens after
+    /// the layout: a drag, an added widget, a removed one. 0 until the area is laid out.
+    @State private var areaWidth: CGFloat = 0
+    /// The height each widget needs at its width for its title row, its content and its padding:
+    /// the rows of a widget without position (docs/dashboard.md › Lists without positions).
+    @State private var neededHeights: [DashboardSlot: CGFloat] = [:]
+    /// The size of each widget's title row at full width, with its padding: the smallest size of
+    /// the widget, known in edit mode.
+    @State private var smallestSizes: [DashboardSlot: CGSize] = [:]
+    /// The move or the resize in progress.
+    @State private var drag: DashboardDrag?
+    /// The arrangement of the last move or resize, shown until its change is applied.
+    @State private var settling: DashboardSettling?
+    @State private var scrollPosition = ScrollPosition()
+    /// How far the widget area is scrolled; read when a drag starts and while the Dashboard
+    /// scrolls under one, so it is kept outside the view's state.
+    @State private var scroll = DashboardScroll()
+    /// The width macOS keeps for the scroll bar of the widget area when it always shows scroll
+    /// bars; 0 when the scroll bars show over the content.
+    @State private var scrollBarWidth = DashboardSection.scrollBarWidth
+
+    private static var scrollBarWidth: CGFloat {
+        NSScroller.preferredScrollerStyle == .legacy ? NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy) : 0
+    }
 
     /// The stored list, or the default list of a project without one (docs/dashboard.md › Widgets).
     private var widgets: [DashboardWidget] {
@@ -366,17 +418,66 @@ private struct DashboardSection: View {
         workspace.details[projectID]?.project.dashboardGraphWindowValue ?? .hour
     }
 
+    private var metrics: DashboardGridMetrics {
+        DashboardGridMetrics(width: areaWidth)
+    }
+
+    /// What the arrangement depends on now: the rows each widget needs at the cell size of the
+    /// window.
+    private func arrangement(_ metrics: DashboardGridMetrics) -> DashboardArrangement {
+        DashboardArrangement(graphEnabled: graphEnabled, rows: neededHeights.mapValues { metrics.cells(holding: $0) })
+    }
+
     var body: some View {
         if let project = workspace.project(projectID) {
             VStack(alignment: .leading, spacing: 0) {
-                bar
-                ScrollView {
-                    grid(project)
-                        .padding(20)
+                bar(project)
+                GeometryReader { area in
+                    // The widget area is as wide with its scroll bar as without it: the cells
+                    // follow its width, so a bar that took room from it would make the widgets
+                    // lower, and come and go without end.
+                    let width = max(area.size.width - 2 * Self.margin - scrollBarWidth, 0)
+                    ScrollView {
+                        grid(project, metrics: DashboardGridMetrics(width: width))
+                            .frame(width: width)
+                            .padding(Self.margin)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .onChange(of: width, initial: true) {
+                        areaWidth = width
+                    }
+                    .scrollPosition($scrollPosition)
+                    .onScrollGeometryChange(for: DashboardScroll.Metrics.self) { geometry in
+                        DashboardScroll.Metrics(offset: geometry.contentOffset.y, visibleHeight: geometry.containerSize.height,
+                                                contentHeight: geometry.contentSize.height)
+                    } action: { _, metrics in
+                        scroll.metrics = metrics
+                        // The widget stays under the pointer while the Dashboard scrolls under it.
+                        if let drag, drag.offset != metrics.offset {
+                            self.drag?.offset = metrics.offset
+                        }
+                    }
+                    .coordinateSpace(.named(Self.visibleArea))
+                    .pointerStyle(drag?.kind == .resize ? .frameResize(position: .bottomTrailing) : nil)
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSScroller.preferredScrollerStyleDidChangeNotification)) { _ in
+                scrollBarWidth = Self.scrollBarWidth
+            }
             .onChange(of: editing) {
-                dragging = nil
+                drag = nil
+            }
+            .onChange(of: DashboardSlot.slots(of: widgets)) { _, slots in
+                // The sizes of the widgets that left the list are forgotten.
+                let kept = Set(slots)
+                neededHeights = neededHeights.filter { kept.contains($0.key) }
+                smallestSizes = smallestSizes.filter { kept.contains($0.key) }
+                if let drag, !kept.contains(drag.slot) {
+                    self.drag = nil
+                }
+            }
+            .task(id: drag != nil) {
+                await scrollWhileDragging()
             }
             .task(id: DashboardGraphRead(environment: workspace.details[projectID]?.currentWorkingEnvironment, window: graphWindow,
                                          active: showsGraphWidget)) {
@@ -387,7 +488,7 @@ private struct DashboardSection: View {
         }
     }
 
-    private var bar: some View {
+    private func bar(_ project: ProjectSummary) -> some View {
         VStack(alignment: .trailing, spacing: 6) {
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
@@ -403,10 +504,9 @@ private struct DashboardSection: View {
                 }
                 if editing {
                     Menu("Add Widget") {
-                        ForEach(DashboardWidgetKind.addable(for: workspace.project(projectID)?.type ?? ProjectType.none,
-                                                            graphEnabled: graphEnabled), id: \.self) { kind in
+                        ForEach(DashboardWidgetKind.addable(for: project.type, graphEnabled: graphEnabled), id: \.self) { kind in
                             Button(kind.title) {
-                                change { DashboardEdits.appending(kind, to: $0) }
+                                add(kind, project)
                             }
                         }
                     }
@@ -422,14 +522,63 @@ private struct DashboardSection: View {
         .padding(.top, 12)
     }
 
-    private func grid(_ project: ProjectSummary) -> some View {
+    /// The cells the Dashboard shows for each widget of the list, nil for a hidden graph widget:
+    /// their placement, or the arrangement of the last move or resize until its change is applied.
+    private func shownCells(of list: [DashboardWidget], arrangement: DashboardArrangement) -> [DashboardCells?] {
+        var cells = arrangement.cells(of: list)
+        if let settling {
+            for (index, slot) in DashboardSlot.slots(of: list).enumerated() where cells[index] != nil {
+                cells[index] = settling.cells[slot] ?? cells[index]
+            }
+        }
+        return cells
+    }
+
+    /// The arrangement while a widget is moved or resized: the frame at which the widget follows
+    /// the pointer, the cells it asks for, and the cells of every widget once the others have made
+    /// room. Nil when the widget is no longer shown.
+    private func live(_ drag: DashboardDrag, in list: [DashboardWidget], metrics: DashboardGridMetrics) -> DashboardLive? {
+        let shown = shownCells(of: list, arrangement: drag.arrangement)
+        guard let index = drag.slot.index(in: list), let start = shown[index] else { return nil }
+        let smallest = smallestSizes[drag.slot].map(metrics.smallestSize(titleRow:)) ?? DashboardSmallestSize()
+        let target = drag.target(from: start, metrics: metrics, smallest: smallest)
+        return DashboardLive(index: index, frame: target.frame, target: target.cells, shown: shown,
+                             cells: DashboardGrid.layout(shown, placing: index, at: target.cells))
+    }
+
+    private func grid(_ project: ProjectSummary, metrics: DashboardGridMetrics) -> some View {
         let list = widgets
+        let slots = DashboardSlot.slots(of: list)
+        let live = drag.flatMap { self.live($0, in: list, metrics: metrics) }
+        let cells = live?.cells ?? shownCells(of: list, arrangement: arrangement(metrics))
         // The graph widgets are hidden while the graph is not enabled, and kept in the list.
-        let items = zip(DashboardSlot.slots(of: list), list).map { DashboardItem(slot: $0, widget: $1) }
-            .filter { graphEnabled || !$0.widget.kind.isGraph }
-        return DashboardColumnsLayout(spacing: 16) {
+        let items = list.indices.compactMap { index in
+            cells[index].map { DashboardItem(slot: slots[index], widget: list[index], cells: $0) }
+        }
+        return DashboardGridLayout {
+            if let live, let placeholder = live.cells[live.index] {
+                // The cells where the moved or resized widget will land.
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(Color.accentColor, lineWidth: 2)
+                    .dashboardFrame(.cells(placeholder))
+                    .zIndex(1)
+                    .allowsHitTesting(false)
+            }
             ForEach(items, id: \.slot) { item in
+                let floats = live.map { slots[$0.index] == item.slot } ?? false
                 card(item, project)
+                    // The widget that follows the pointer hides the widgets under it; the fill of
+                    // a widget alone would let them show through.
+                    .background {
+                        if floats {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color(nsColor: .windowBackgroundColor))
+                        }
+                    }
+                    .dashboardFrame(floats ? .floating(live?.frame ?? .zero) : .cells(item.cells))
+                    .zIndex(floats ? 2 : 0)
+                    // A widget without position shows once the rows it needs are known.
+                    .opacity(item.widget.cells != nil || neededHeights[item.slot] != nil || settling?.cells[item.slot] != nil ? 1 : 0)
             }
         }
     }
@@ -437,20 +586,103 @@ private struct DashboardSection: View {
     private func card(_ item: DashboardItem, _ project: ProjectSummary) -> some View {
         let slot = item.slot
         return DashboardWidgetCard(window: window, workspace: workspace, project: project, widget: item.widget,
-                                   graphFeed: graphFeed, editing: editing, isDropTarget: editing && dropTarget == slot,
+                                   graphFeed: graphFeed, editing: editing,
                                    remove: {
-                                       change { DashboardEdits.removing(slot, from: $0) }
+                                       let arrangement = arrangement(metrics)
+                                       change { DashboardEdits.removing(slot, from: $0, arrangement: arrangement) }
                                    },
                                    change: { update in
                                        change { DashboardEdits.updating(slot, in: $0, update) }
+                                   },
+                                   measured: { height in
+                                       // Also during a drag, which keeps the rows it started
+                                       // with: a height that changed meanwhile counts once the
+                                       // widget is released.
+                                       if neededHeights[slot] != height {
+                                           neededHeights[slot] = height
+                                       }
+                                   },
+                                   measuredSmallest: { size in
+                                       if smallestSizes[slot] != size {
+                                           smallestSizes[slot] = size
+                                       }
                                    })
-            .modifier(WidgetDragging(enabled: editing,
-                                     payload: DashboardDrag.payload(token: dragToken, slot: slot),
-                                     target: slot, dragging: $dragging, dropTarget: $dropTarget,
-                                     source: { [dragToken] in DashboardDrag.slot(from: $0, token: dragToken) },
-                                     move: { source in
-                                         change { DashboardEdits.moving(source, onto: slot, in: $0) }
-                                     }))
+            .overlay(alignment: .bottomTrailing) {
+                if editing {
+                    DashboardResizeHandle()
+                        .gesture(dragGesture(slot, .resize))
+                }
+            }
+            .gesture(dragGesture(slot, .move), isEnabled: editing)
+    }
+
+    /// The drag that moves a widget, or resizes it by its handle: the widget follows the pointer
+    /// from the place it had, and releasing it applies the arrangement.
+    private func dragGesture(_ slot: DashboardSlot, _ kind: DashboardDrag.Kind) -> some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .named(Self.visibleArea))
+            .onChanged { value in
+                if drag?.slot == slot, drag?.kind == kind {
+                    drag?.location = value.location
+                } else {
+                    drag = DashboardDrag(slot: slot, kind: kind, start: value.startLocation, location: value.location,
+                                         startOffset: scroll.metrics.offset, offset: scroll.metrics.offset,
+                                         arrangement: arrangement(metrics))
+                }
+            }
+            .onEnded { value in
+                guard var ended = drag, ended.slot == slot, ended.kind == kind else { return }
+                ended.location = value.location
+                drag = nil
+                apply(ended)
+            }
+    }
+
+    /// Applies the arrangement of a released move or resize; nothing is sent when no widget
+    /// changed place or size. The Dashboard keeps showing the arrangement until the change is
+    /// applied, so the widgets do not go back to their stored places meanwhile.
+    private func apply(_ drag: DashboardDrag) {
+        let list = widgets
+        guard let live = live(drag, in: list, metrics: metrics), live.cells != live.shown else { return }
+        let id = UUID()
+        let cells = zip(DashboardSlot.slots(of: list), live.cells).compactMap { slot, cells in cells.map { (slot, $0) } }
+        settling = DashboardSettling(id: id, cells: Dictionary(cells, uniquingKeysWith: { first, _ in first }))
+        let slot = drag.slot
+        let target = live.target
+        let arrangement = drag.arrangement
+        change(settling: id) { DashboardEdits.placing(slot, at: target, in: $0, arrangement: arrangement) }
+    }
+
+    /// `Add Widget`: the widget gets the rows its content needs at the cell size of this window.
+    private func add(_ kind: DashboardWidgetKind, _ project: ProjectSummary) {
+        let metrics = metrics
+        let arrangement = arrangement(metrics)
+        let height = DashboardWidgetCard.neededHeight(of: DashboardWidget(kind: kind), width: metrics.length(DashboardGrid.halfWidth),
+                                                      window: window, workspace: workspace, project: project, graphFeed: graphFeed)
+        let rows = metrics.cells(holding: height)
+        change { DashboardEdits.appending(kind, rows: rows, to: $0, arrangement: arrangement) }
+    }
+
+    /// Scrolls the Dashboard while a widget is moved or resized with the pointer near the top or
+    /// the bottom edge of the visible area, until the drag ends.
+    private func scrollWhileDragging() async {
+        guard drag != nil else { return }
+        let clock = ContinuousClock()
+        var last = clock.now
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(16))
+            let now = clock.now
+            let elapsed = now - last
+            last = now
+            guard let drag else { return }
+            let metrics = scroll.metrics
+            let velocity = DashboardAutoScroll.velocity(pointer: drag.location.y, visibleHeight: metrics.visibleHeight)
+            guard velocity != 0 else { continue }
+            let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+            let target = min(max(metrics.offset + velocity * seconds, 0), max(metrics.contentHeight - metrics.visibleHeight, 0))
+            if abs(target - metrics.offset) >= 0.5 {
+                scrollPosition.scrollTo(y: target)
+            }
+        }
     }
 
     /// Applies a window of the `Window` menu; the engine's message shows under the bar when it
@@ -470,8 +702,8 @@ private struct DashboardSection: View {
     }
 
     /// Sends a change; the engine's message shows under the bar when it fails, until the next
-    /// change.
-    private func change(_ edit: @escaping ([DashboardWidget]) -> [DashboardWidget]?) {
+    /// change. `settling` names the arrangement the Dashboard shows until this change is applied.
+    private func change(settling id: UUID? = nil, _ edit: @escaping ([DashboardWidget]) -> [DashboardWidget]?) {
         let workspace = workspace
         let projectID = projectID
         changes.send(stored: { workspace.details[projectID]?.project.dashboardWidgetList ?? DashboardWidget.defaultList },
@@ -499,54 +731,43 @@ private struct DashboardSection: View {
                      },
                      done: { message in
                          failure = message
+                         if let id, settling?.id == id {
+                             settling = nil
+                         }
                      })
     }
 }
 
-/// The widgets in two columns of equal width, filled row by row, when each column is at least
-/// `minimumColumn` wide and every widget fits in a column at its ideal width; otherwise in one
-/// column (docs/dashboard.md › Layout). The last widget of an odd list stays in the first column,
-/// and each widget is as high as its content, at the top of its row.
-struct DashboardColumnsLayout: Layout {
-    var spacing: CGFloat
-    var minimumColumn: CGFloat = 320
-
-    /// 2 or 1.
-    func columns(_ idealWidths: [CGFloat], width: CGFloat) -> Int {
-        let column = (width - spacing) / 2
-        return column >= minimumColumn && idealWidths.allSatisfy({ $0 <= column }) ? 2 : 1
+/// How far the widget area of a Dashboard is scrolled. A reference, so that reading it during a
+/// drag does not make the Dashboard draw again at each scroll.
+@MainActor
+private final class DashboardScroll {
+    struct Metrics: Equatable {
+        var offset: CGFloat = 0
+        var visibleHeight: CGFloat = 0
+        var contentHeight: CGFloat = 0
     }
 
-    /// The frame of each widget from the top-left corner of the layout.
-    private func frames(_ subviews: Subviews, width: CGFloat) -> [CGRect] {
-        let count = columns(subviews.map { $0.sizeThatFits(.unspecified).width }, width: width)
-        let column = count == 2 ? (width - spacing) / 2 : width
-        var frames: [CGRect] = []
-        var y: CGFloat = 0
-        for start in stride(from: 0, to: subviews.count, by: count) {
-            let row = start..<min(start + count, subviews.count)
-            let heights = row.map { subviews[$0].sizeThatFits(ProposedViewSize(width: column, height: nil)).height }
-            for (offset, index) in row.enumerated() {
-                frames.append(CGRect(x: CGFloat(index - start) * (column + spacing), y: y, width: column, height: heights[offset]))
-            }
-            y += (heights.max() ?? 0) + spacing
-        }
-        return frames
-    }
+    var metrics = Metrics()
+}
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        guard !subviews.isEmpty else { return .zero }
-        let width = proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? subviews.map { $0.sizeThatFits(.unspecified).width }.max() ?? 0
-        let height = frames(subviews, width: width).map(\.maxY).max() ?? 0
-        return CGSize(width: width, height: height)
-    }
+/// The arrangement of a released move or resize, by widget, shown until its change is applied.
+private struct DashboardSettling: Equatable {
+    var id: UUID
+    var cells: [DashboardSlot: DashboardCells]
+}
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        for (subview, frame) in zip(subviews, frames(subviews, width: bounds.width)) {
-            subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
-                          proposal: ProposedViewSize(width: frame.width, height: frame.height))
-        }
-    }
+/// The arrangement while a widget is moved or resized.
+private struct DashboardLive {
+    /// The index of the widget in the list.
+    var index: Int
+    /// The frame at which the widget follows the pointer.
+    var frame: CGRect
+    /// The cells the widget asks for.
+    var target: DashboardCells
+    /// The cells of every widget when the drag started, and once the others have made room.
+    var shown: [DashboardCells?]
+    var cells: [DashboardCells?]
 }
 
 /// What makes the Dashboard read the graph of its graph widgets again.
@@ -556,30 +777,118 @@ private struct DashboardGraphRead: Hashable {
     var active: Bool
 }
 
-/// A widget with its slot, for the layouts.
+/// A shown widget with its slot and the cells it covers.
 private struct DashboardItem {
     var slot: DashboardSlot
     var widget: DashboardWidget
+    var cells: DashboardCells
 }
 
-/// One widget: its title row, with the remove and settings buttons in edit mode, over its content
-/// (docs/dashboard.md › Widgets, Edit mode).
-private struct DashboardWidgetCard: View {
+/// One widget: its title row, with the remove and settings buttons in edit mode, over its content,
+/// which scrolls inside the widget when it does not fit (docs/dashboard.md › Content, Widgets,
+/// Edit mode).
+struct DashboardWidgetCard: View {
     let window: WindowState
     let workspace: DeviceWorkspace
     let project: ProjectSummary
     let widget: DashboardWidget
     let graphFeed: DashboardGraphFeed
     let editing: Bool
-    let isDropTarget: Bool
     let remove: () -> Void
     /// Sends a change of the widget's settings.
     let change: (@escaping (inout DashboardWidget) -> Void) -> Void
+    /// Receives the height the widget needs at its width for its title row, its content and its
+    /// padding.
+    let measured: (CGFloat) -> Void
+    /// Receives the size of the title row at full width in edit mode, with the padding: the
+    /// smallest size of the widget.
+    let measuredSmallest: (CGSize) -> Void
+
+    /// The space between the title row and the content.
+    static let spacing: CGFloat = 8
+
+    @State private var titleHeight: CGFloat?
+    @State private var contentHeight: CGFloat?
+
+    private var neededHeight: CGFloat? {
+        guard let titleHeight, let contentHeight else { return nil }
+        return 2 * DashboardGridMetrics.padding + titleHeight + Self.spacing + contentHeight
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Self.spacing) {
+            DashboardWidgetTitleRow(widget: widget, editing: editing, remove: remove, change: change)
+                .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { titleHeight = $0 }
+            DashboardWidgetScroll(measured: { contentHeight = $0 }) {
+                DashboardWidgetContent(window: window, workspace: workspace, project: project, widget: widget,
+                                       graphFeed: graphFeed, editing: editing)
+            }
+            // In edit mode a drag starts anywhere in the widget: its content takes no click and
+            // no scroll, so Recent Chats rows open no chat.
+            .allowsHitTesting(!editing)
+        }
+        .padding(DashboardGridMetrics.padding)
+        // With a minimum as well as a maximum, the frame has the size of the widget's cells also
+        // when the title row and the padding need more, and what does not fit is cut: nothing is
+        // drawn outside a widget.
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(.fill.secondary))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .background {
+            if editing {
+                // The title row at full width, which gives the smallest size of the widget.
+                DashboardWidgetTitleRow(widget: widget, editing: true)
+                    .fixedSize()
+                    .hidden()
+                    .onGeometryChange(for: CGSize.self, of: { $0.size }) { size in
+                        measuredSmallest(CGSize(width: size.width + 2 * DashboardGridMetrics.padding,
+                                                height: size.height + 2 * DashboardGridMetrics.padding))
+                    }
+            }
+        }
+        .onChange(of: neededHeight, initial: true) { _, height in
+            if let height {
+                measured(height)
+            }
+        }
+    }
+
+    /// The height a widget needs at a width for its title row, its content and its padding, for a
+    /// widget that is not in the list yet: `Add Widget` gives it the rows that hold it.
+    @MainActor
+    static func neededHeight(of widget: DashboardWidget, width: CGFloat, window: WindowState, workspace: DeviceWorkspace,
+                             project: ProjectSummary, graphFeed: DashboardGraphFeed) -> CGFloat {
+        let view = VStack(alignment: .leading, spacing: spacing) {
+            DashboardWidgetTitleRow(widget: widget, editing: true)
+            DashboardWidgetContent(window: window, workspace: workspace, project: project, widget: widget,
+                                   graphFeed: graphFeed, editing: true)
+        }
+        .padding(DashboardGridMetrics.padding)
+        .frame(width: width)
+        return NSHostingView(rootView: view).fittingSize.height
+    }
+}
+
+/// The title row of a widget: its title and, in edit mode, the remove button at its start and the
+/// settings button at its end (docs/dashboard.md › Edit mode).
+private struct DashboardWidgetTitleRow: View {
+    let widget: DashboardWidget
+    let editing: Bool
+    var remove: () -> Void = {}
+    /// Sends a change of the widget's settings.
+    var change: (@escaping (inout DashboardWidget) -> Void) -> Void = { _ in }
 
     @State private var showsSettings = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        ZStack(alignment: .leading) {
+            // The row is as high without its buttons as with them, so the rows a widget needs
+            // are the same in and out of edit mode.
+            Image(systemName: "minus.circle.fill")
+                .hidden()
+            Image(systemName: "slider.horizontal.3")
+                .hidden()
             HStack(spacing: 6) {
                 if editing {
                     Button(action: remove) {
@@ -608,36 +917,48 @@ private struct DashboardWidgetCard: View {
                     }
                 }
             }
-            content
-                // In edit mode a drag starts anywhere in the widget, and Recent Chats rows open no chat.
-                .allowsHitTesting(!editing)
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 10).fill(.fill.secondary))
-        .overlay {
-            if isDropTarget {
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(Color.accentColor, lineWidth: 2)
-            }
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 10))
         .onChange(of: editing) { _, isEditing in
             if !isEditing {
                 showsSettings = false
             }
         }
     }
+}
 
-    @ViewBuilder
-    private var content: some View {
+/// What a widget shows under its title row (docs/dashboard.md › Widgets). The content keeps the
+/// height it needs at the width it gets, so that it scrolls when the widget is lower; only the
+/// map of a Service graph widget and the chart of a Requests per minute widget fill the widget.
+private struct DashboardWidgetContent: View {
+    let window: WindowState
+    let workspace: DeviceWorkspace
+    let project: ProjectSummary
+    let widget: DashboardWidget
+    let graphFeed: DashboardGraphFeed
+    let editing: Bool
+
+    var body: some View {
         switch widget.kind {
-        case .project: projectContent
-        case .tickets: ticketsContent
-        case .recentChats: recentChatsContent
-        case .cost: costContent
-        case .instances: InstancesWidgetContent(window: window, workspace: workspace, projectID: project.id)
-        case .serviceGraph, .busiestCalls, .failedRequests, .requestsPerMinute:
+        case .project:
+            projectContent
+                .fixedSize(horizontal: false, vertical: true)
+        case .tickets:
+            ticketsContent
+                .fixedSize(horizontal: false, vertical: true)
+        case .recentChats:
+            recentChatsContent
+                .fixedSize(horizontal: false, vertical: true)
+        case .cost:
+            costContent
+                .fixedSize(horizontal: false, vertical: true)
+        case .instances:
+            InstancesWidgetContent(window: window, workspace: workspace, projectID: project.id)
+                .fixedSize(horizontal: false, vertical: true)
+        case .busiestCalls, .failedRequests:
+            DashboardGraphWidgetContent(window: window, workspace: workspace, project: project, widget: widget, feed: graphFeed,
+                                        editing: editing)
+                .fixedSize(horizontal: false, vertical: true)
+        case .serviceGraph, .requestsPerMinute:
             DashboardGraphWidgetContent(window: window, workspace: workspace, project: project, widget: widget, feed: graphFeed,
                                         editing: editing)
         }
@@ -678,6 +999,8 @@ private struct DashboardWidgetCard: View {
                         count(DashboardContent.count(status, in: counts), status.label)
                     }
                 }
+                // The counts are never truncated or wrapped: a narrower widget scrolls them.
+                .fixedSize()
             }
             if widget.includeSubprojects {
                 Text("Sub projects included")
@@ -735,6 +1058,8 @@ private struct DashboardWidgetCard: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(CostBreakdown.amount(DashboardContent.costUSD(of: project, widget: widget)))
                 .font(.title.weight(.semibold).monospacedDigit())
+                // The total is never truncated or wrapped: a narrower widget scrolls it.
+                .fixedSize()
             if widget.includeSubprojects {
                 Text("Sub projects included")
                     .foregroundStyle(.secondary)
@@ -849,79 +1174,6 @@ private struct InstancesWidgetContent: View {
             }
             try? await Task.sleep(for: DashboardInstances.interval)
         }
-    }
-}
-
-/// In edit mode a widget can be dragged, and a widget dropped on it takes its place
-/// (docs/dashboard.md › Edit mode).
-private struct WidgetDragging: ViewModifier {
-    let enabled: Bool
-    let payload: String
-    let target: DashboardSlot
-    @Binding var dragging: DashboardSlot?
-    @Binding var dropTarget: DashboardSlot?
-    /// The slot of a dropped text that a widget of this Dashboard carries.
-    let source: (String) -> DashboardSlot?
-    let move: (DashboardSlot) -> Void
-
-    func body(content: Content) -> some View {
-        if enabled {
-            content
-                .onDrag {
-                    dragging = target
-                    return NSItemProvider(object: payload as NSString)
-                }
-                .onDrop(of: [.plainText], delegate: WidgetDropDelegate(target: target, dragging: $dragging, dropTarget: $dropTarget,
-                                                                      source: source, move: move))
-        } else {
-            content
-        }
-    }
-}
-
-/// A drop on a widget: only a widget this Dashboard drags is accepted, then moved when the dropped
-/// text names a widget of this Dashboard, so that other text dropped on a widget does nothing.
-private struct WidgetDropDelegate: DropDelegate {
-    let target: DashboardSlot
-    @Binding var dragging: DashboardSlot?
-    @Binding var dropTarget: DashboardSlot?
-    let source: (String) -> DashboardSlot?
-    let move: (DashboardSlot) -> Void
-
-    func validateDrop(info: DropInfo) -> Bool {
-        dragging != nil && info.hasItemsConforming(to: [.plainText])
-    }
-
-    func dropEntered(info: DropInfo) {
-        dropTarget = target
-    }
-
-    func dropExited(info: DropInfo) {
-        if dropTarget == target {
-            dropTarget = nil
-        }
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        dropTarget = nil
-        dragging = nil
-        guard let provider = info.itemProviders(for: [.plainText]).first else { return false }
-        let target = target
-        let source = source
-        let move = move
-        _ = provider.loadObject(ofClass: NSString.self) { object, _ in
-            guard let text = object as? String else { return }
-            Task { @MainActor in
-                if let dragged = source(text), dragged != target {
-                    move(dragged)
-                }
-            }
-        }
-        return true
     }
 }
 

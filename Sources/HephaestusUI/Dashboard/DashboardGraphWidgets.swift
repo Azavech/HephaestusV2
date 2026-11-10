@@ -39,8 +39,15 @@ final class DashboardGraphFeed {
 
 /// What the graph widgets show (docs/dashboard.md › Graph widgets).
 enum DashboardGraph {
-    /// The height of the Service graph widget's map.
+    /// The height the map of a Service graph widget counts for the rows of a widget without
+    /// position and of an added widget; the map itself fills its widget (docs/dashboard.md › Lists
+    /// without positions).
     static let mapHeight: CGFloat = 260
+    /// The height the chart of a Requests per minute widget counts for those rows; the chart
+    /// itself fills its widget.
+    static let chartHeight: CGFloat = 120
+    /// The room under the chart for the lower half of the label of its axis at 0.
+    static let chartLabelRoom: CGFloat = 6
     static let noCalls = "No calls in the window."
     static let noFailedRequests = "No failed requests in the window."
     static let lastMinuteCaption = "in the last minute"
@@ -77,7 +84,8 @@ enum DashboardGraph {
 }
 
 /// The content of a graph widget: the spinner of the first read, a failure, the message without
-/// Jaeger, or the widget's own content.
+/// Jaeger, or the widget's own content. The map of a Service graph widget and the chart of a
+/// Requests per minute widget fill the space the widget gives them (docs/dashboard.md › Content).
 struct DashboardGraphWidgetContent: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -86,7 +94,55 @@ struct DashboardGraphWidgetContent: View {
     let feed: DashboardGraphFeed
     let editing: Bool
 
+    /// The graph of the last read, when the widget has one to show.
+    private var snapshot: GraphSnapshot? {
+        guard workspace.details[project.id]?.currentWorkingEnvironment != nil, feed.failure == nil else { return nil }
+        return feed.snapshot
+    }
+
     var body: some View {
+        switch widget.kind {
+        case .serviceGraph:
+            VStack(alignment: .leading, spacing: 6) {
+                // The map fills the widget; whatever shows in its place counts as high as it.
+                Group {
+                    if let snapshot {
+                        serviceGraph(snapshot)
+                    } else {
+                        unread
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, idealHeight: DashboardGraph.mapHeight, maxHeight: .infinity, alignment: .topLeading)
+                if let jaegerError = snapshot?.jaegerError {
+                    Text(jaegerError)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        case .requestsPerMinute:
+            requestsPerMinute(snapshot)
+        default:
+            if let snapshot {
+                if let jaegerError = snapshot.jaegerError {
+                    Text(jaegerError)
+                        .foregroundStyle(.secondary)
+                } else if widget.kind == .busiestCalls {
+                    busiestCalls(snapshot)
+                } else {
+                    failedRequests(snapshot)
+                }
+            } else {
+                unread
+            }
+        }
+    }
+
+    /// What a graph widget shows while it has no graph: the message of a project without
+    /// environment, the engine's message of a failed read, or the spinner of the first read.
+    @ViewBuilder
+    private var unread: some View {
         if workspace.details[project.id]?.currentWorkingEnvironment == nil {
             VStack(alignment: .leading, spacing: 8) {
                 Text(DashboardInstances.noEnvironmentMessage)
@@ -97,37 +153,9 @@ struct DashboardGraphWidgetContent: View {
             }
         } else if let failure = feed.failure {
             FieldMessage(text: failure)
-        } else if let snapshot = feed.snapshot {
-            content(snapshot)
         } else {
             ProgressView()
                 .controlSize(.small)
-        }
-    }
-
-    @ViewBuilder
-    private func content(_ snapshot: GraphSnapshot) -> some View {
-        switch widget.kind {
-        case .serviceGraph:
-            VStack(alignment: .leading, spacing: 6) {
-                serviceGraph(snapshot)
-                if let jaegerError = snapshot.jaegerError {
-                    Text(jaegerError)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        default:
-            if let jaegerError = snapshot.jaegerError {
-                Text(jaegerError)
-                    .foregroundStyle(.secondary)
-            } else {
-                switch widget.kind {
-                case .busiestCalls: busiestCalls(snapshot)
-                case .failedRequests: failedRequests(snapshot)
-                default: requestsPerMinute(snapshot)
-                }
-            }
         }
     }
 
@@ -146,7 +174,6 @@ struct DashboardGraphWidgetContent: View {
                         .allowsHitTesting(false)
                 }
             }
-            .frame(height: DashboardGraph.mapHeight)
             .clipped()
             .contentShape(Rectangle())
         }
@@ -174,6 +201,8 @@ struct DashboardGraphWidgetContent: View {
                             .monospacedDigit()
                             .fontWeight(.semibold)
                             .foregroundStyle(GraphGeometry.swiftUIColor(GraphColorScale.color(count: row.count, busiest: busiest)))
+                            // The number is never truncated or wrapped: a narrower widget scrolls it.
+                            .fixedSize()
                             .gridColumnAlignment(.trailing)
                     }
                 }
@@ -206,12 +235,16 @@ struct DashboardGraphWidgetContent: View {
                             Text("\(request.firstService) \(request.route)")
                                 .lineLimit(1)
                             Spacer(minLength: 8)
+                            // The status and the start time are never truncated or wrapped: a
+                            // narrower widget scrolls them.
                             Text(request.status.map(String.init) ?? "–")
                                 .monospacedDigit()
                                 .foregroundStyle(.red)
+                                .fixedSize()
                             Text(GraphFormat.time(request.start))
                                 .monospacedDigit()
                                 .foregroundStyle(.secondary)
+                                .fixedSize()
                         }
                         .font(.callout)
                         .contentShape(Rectangle())
@@ -224,22 +257,50 @@ struct DashboardGraphWidgetContent: View {
 
     // MARK: Requests per minute
 
-    private func requestsPerMinute(_ snapshot: GraphSnapshot) -> some View {
-        let counts = GraphAnalysis.requestsPerMinute(snapshot.requests, window: DateInterval(start: snapshot.start, end: snapshot.end))
+    /// The number of the last minute with its caption and, under them, the chart, which fills the
+    /// widget. While there is no graph, or no Jaeger, what shows in place of the number takes its
+    /// row, and the space of the chart stays empty, so the widget counts the same height.
+    private func requestsPerMinute(_ snapshot: GraphSnapshot?) -> some View {
+        let requests = snapshot.flatMap { $0.jaegerError == nil ? $0 : nil }
+        let counts = requests.map { GraphAnalysis.requestsPerMinute($0.requests, window: DateInterval(start: $0.start, end: $0.end)) } ?? []
         let points = counts.enumerated().map { MinutePoint(minute: $0.offset - counts.count + 1, count: $0.element) }
         return VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(String(counts.last ?? 0))
+            ZStack(alignment: .topLeading) {
+                Text("0")
                     .font(.title.weight(.semibold).monospacedDigit())
-                Text(DashboardGraph.lastMinuteCaption)
-                    .foregroundStyle(.secondary)
+                    .hidden()
+                if requests != nil {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(String(counts.last ?? 0))
+                            .font(.title.weight(.semibold).monospacedDigit())
+                            // The number is never truncated or wrapped: a narrower widget scrolls it.
+                            .fixedSize()
+                        Text(DashboardGraph.lastMinuteCaption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else if let jaegerError = snapshot?.jaegerError {
+                    Text(jaegerError)
+                        .foregroundStyle(.secondary)
+                } else {
+                    unread
+                }
             }
-            Chart(points) { point in
-                LineMark(x: .value("Minute", point.minute), y: .value("Requests", point.count))
+            .fixedSize(horizontal: false, vertical: true)
+            Group {
+                if requests != nil {
+                    Chart(points) { point in
+                        LineMark(x: .value("Minute", point.minute), y: .value("Requests", point.count))
+                    }
+                    .chartYScale(domain: 0...max(1, counts.max() ?? 1))
+                    .chartXAxis(.hidden)
+                    // The label of the axis at 0 is drawn half under the chart: it stays inside
+                    // the content, which is cut at its edge.
+                    .padding(.bottom, DashboardGraph.chartLabelRoom)
+                } else {
+                    Color.clear
+                }
             }
-            .chartYScale(domain: 0...max(1, counts.max() ?? 1))
-            .chartXAxis(.hidden)
-            .frame(height: 120)
+            .frame(minHeight: 0, idealHeight: DashboardGraph.chartHeight, maxHeight: .infinity)
         }
     }
 

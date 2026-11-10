@@ -78,6 +78,71 @@ struct DashboardWidgetsTests {
         }
     }
 
+    @Test("projects.update stores the position and the size of each widget, and refuses a position that breaks the rules")
+    func positions() async throws {
+        try await withDomainEngine { h in
+            try await h.create("Heph", name: "Hephaestus V2", identifier: "HEPH")
+            let folder = ProjectFolder(root: URL(fileURLWithPath: h.path("Heph")))
+            var list = DashboardWidget.defaultList
+            list[0].cells = DashboardCells(column: 0, row: 0, width: 12, height: 4)
+            list[1].cells = DashboardCells(column: 12, row: 0, width: 12, height: 4)
+            let events = await DomainEventRecorder.make(h)
+            let detail = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "HEPH", dashboardWidgets: list))
+            #expect(detail.project.dashboardWidgets == list)
+            #expect(await events.wait(for: ProjectUpdatedEvent.name) == ["project.updated"])
+            #expect(try events.all.last!.payload(ProjectUpdatedEvent.self).project.dashboardWidgets == list)
+            #expect(try ProjectFileStore.readProject(folder).dashboardWidgets == list)
+            // The four keys follow the title; a widget without position has none of them.
+            let file = try readFile(folder.projectFile)
+            #expect(file.contains("""
+                dashboardWidgets:
+                - id: 00000000-0000-0000-0000-000000000001
+                  kind: project
+                  title: ''
+                  column: 0
+                  row: 0
+                  width: 12
+                  height: 4
+                  fields:
+                """))
+            #expect(file.contains("""
+                - id: 00000000-0000-0000-0000-000000000003
+                  kind: recentChats
+                  title: ''
+                  chatCount: 5
+                """))
+
+            func update(_ widget: DashboardWidget) async -> EngineError? {
+                await engineError {
+                    try await h.connection.call(ProjectsUpdate.self, .init(projectID: "HEPH", dashboardWidgets: [list[0], widget]))
+                }
+            }
+            #expect(await update(DashboardWidget(kind: .cost, column: 0, row: 4))
+                == EngineError(.invalid, "dashboardWidgets[1]: give the column, row, width and height together."))
+            #expect(await update(DashboardWidget(kind: .cost, column: 20, row: 4, width: 12, height: 3))
+                == EngineError(.invalid, "dashboardWidgets[1]: use a column and a width inside the 24 columns."))
+            #expect(await update(DashboardWidget(kind: .cost, column: 24, row: 4, width: 1, height: 3))
+                == EngineError(.invalid, "dashboardWidgets[1]: use a column and a width inside the 24 columns."))
+            #expect(await update(DashboardWidget(kind: .cost, column: 0, row: 4, width: 0, height: 3))
+                == EngineError(.invalid, "dashboardWidgets[1]: use a column and a width inside the 24 columns."))
+            #expect(await update(DashboardWidget(kind: .cost, column: 0, row: -1, width: 12, height: 3))
+                == EngineError(.invalid, "dashboardWidgets[1]: use a row from 0 and a height of at least 1."))
+            #expect(await update(DashboardWidget(kind: .cost, column: 0, row: 4, width: 12, height: 0))
+                == EngineError(.invalid, "dashboardWidgets[1]: use a row from 0 and a height of at least 1."))
+            #expect(try await h.connection.call(ProjectsGet.self, .init(projectID: "HEPH")).project.dashboardWidgets == list)
+
+            // The engine checks neither the smallest size nor overlaps, which the Dashboard resolves,
+            // and a position can be removed again.
+            var overlapping = list
+            overlapping[2].cells = DashboardCells(column: 6, row: 2, width: 1, height: 1)
+            overlapping[3].cells = DashboardCells(column: 0, row: 900, width: 24, height: 50)
+            overlapping[0].cells = nil
+            let stored = try await h.connection.call(ProjectsUpdate.self, .init(projectID: "HEPH", dashboardWidgets: overlapping))
+            #expect(stored.project.dashboardWidgets == overlapping)
+            #expect(try ProjectFileStore.readProject(folder).dashboardWidgets == overlapping)
+        }
+    }
+
     @Test("projects.update writes back as they are the stored widgets that a hand edit made invalid")
     func keepsStoredWidgets() async throws {
         let widgets = """
