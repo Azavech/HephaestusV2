@@ -372,6 +372,12 @@ struct ChatAgentsTests {
             // Line 48 answers the request id of the capture's run.
             for line in lines.dropFirst(44) { process.emit(Self.answering(line, requestID)) }
             #expect(await eventually { await bed.engine.chatMeta(chat.id)?.backgroundWork == false })
+            // The agents stop after the last read of the workflow's folder, which follows the
+            // workflow's end (docs/chats.md › Agent states).
+            #expect(await eventually {
+                let agents = (try? await Self.listAgents(bed))?.first?.agents ?? []
+                return agents.map(\.state) == [.stopped, .stopped]
+            })
             let entry = try #require(try await Self.listAgents(bed).first)
             #expect(entry.workflows.map(\.state) == [.stopped])
             #expect(entry.workflows.first?.runID == "wf_f5e571da-ecf")
