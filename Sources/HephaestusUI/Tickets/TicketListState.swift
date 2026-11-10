@@ -283,6 +283,61 @@ struct TicketListProjects: Hashable {
         guard projects.count == 1, let project = projects.first ?? nil else { return nil }
         return project
     }
+
+    /// Add to Bundle ▸ of the context menu for the selected tickets: `tickets` holds the listed
+    /// tickets, by id, and `bundles` the workspace's bundles, by project id and bundle id.
+    static func addToBundle(_ ticketIDs: Set<String>, tickets: [String: Ticket],
+                            bundles: [String: [String: TicketBundle]]) -> AddToBundleMenu {
+        guard let project = bundleProject(of: ticketIDs) else { return AddToBundleMenu() }
+        let notDone = ticketIDs.filter { id in tickets[id].map { $0.status != .done } ?? false }
+        let adding = TicketFormat.ascending(Array(notDone))
+        guard !adding.isEmpty else { return AddToBundleMenu() }
+        let open = (bundles[project] ?? [:]).values
+            .filter { $0.status != .done }
+            .sorted { TicketListState.number(of: $0.id) > TicketListState.number(of: $1.id) }
+        return AddToBundleMenu(ticketIDs: adding, items: open.map { bundle in
+            AddToBundleMenu.Item(bundleID: bundle.id, title: "\(bundle.id) · \(bundle.title)",
+                                 isChecked: AddToBundleMenu.ticketIDs(adding: adding, to: bundle) == bundle.ticketIDs)
+        })
+    }
+}
+
+/// Add to Bundle ▸ of the ticket list's context menu (docs/tickets.md › Ticket list): the tickets
+/// it adds and the bundles its submenu lists.
+struct AddToBundleMenu: Hashable {
+    /// A bundle of the submenu.
+    struct Item: Hashable {
+        var bundleID: String
+        /// `<ID> · <title>`.
+        var title: String
+        /// The bundle already lists every ticket to add: its item shows a checkmark and is
+        /// disabled. A bundle that lists only some of them is enabled and has no checkmark.
+        var isChecked: Bool
+
+        var isEnabled: Bool {
+            !isChecked
+        }
+    }
+
+    /// The tickets to add: the selected tickets that are not done, in ascending ticket number.
+    var ticketIDs: [String] = []
+    /// The open bundles, To Do or In Progress, of the selected tickets' project, newest first.
+    var items: [Item] = []
+
+    /// Add to Bundle is disabled and opens no submenu when no ticket is selected, when the
+    /// selected tickets belong to more than one project, when every selected ticket is done, or
+    /// when the project has no open bundle.
+    var isEnabled: Bool {
+        !items.isEmpty
+    }
+
+    /// The `ticketIDs` of the `bundles.update` that a choice of `bundle` calls: the bundle's
+    /// tickets, followed by the tickets to add that it does not list yet, in ascending ticket
+    /// number.
+    static func ticketIDs(adding ticketIDs: [String], to bundle: TicketBundle) -> [String] {
+        let listed = Set(bundle.ticketIDs)
+        return bundle.ticketIDs + TicketFormat.ascending(ticketIDs.filter { !listed.contains($0) })
+    }
 }
 
 /// The bundle list's done filter and sort order (`ProjectViewState.bundleList`, docs/tickets.md ›

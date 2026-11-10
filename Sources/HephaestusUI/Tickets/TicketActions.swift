@@ -1,6 +1,6 @@
 // OWNER: ui-tickets — the actions shared by the ticket list, the ticket detail, the bundle list and
-// the bundle detail: status changes, deleting, Implement, Implement All, copying ids, the
-// confirmations and the shared formats (docs/tickets.md › Ticket list, › Ticket chats and
+// the bundle detail: status changes, Add to Bundle, deleting, Implement, Implement All, copying
+// ids, the confirmations and the shared formats (docs/tickets.md › Ticket list, › Ticket chats and
 // Implement, › Implement sheet, › Implement All, › Deleting).
 import AppKit
 import HephaestusCore
@@ -277,6 +277,22 @@ enum TicketActions {
     }
 
     // MARK: Bundles
+
+    /// Add to Bundle ▸ of the ticket list: `bundles.update` with the bundle's tickets, followed by
+    /// the tickets to add that it does not list yet; the window stays where it is, and a failure
+    /// shows `Add to Bundle failed`.
+    static func addToBundle(_ bundleID: String, ticketIDs: [String], workspace: DeviceWorkspace, window: WindowState) async {
+        do {
+            guard let projectID = Identifiers.projectID(of: bundleID), let bundle = workspace.bundles[projectID]?[bundleID] else {
+                throw EngineError(.notFound, "Bundle \(bundleID) not found.")
+            }
+            let ids = AddToBundleMenu.ticketIDs(adding: ticketIDs, to: bundle)
+            guard ids != bundle.ticketIDs else { return }
+            _ = try await workspace.call(BundlesUpdate.self, BundlesUpdate.Params(bundleID: bundleID, ticketIDs: ids))
+        } catch {
+            window.alert = .failure("Add to Bundle", error)
+        }
+    }
 
     /// Set Status ▸ of the bundle list and the Status pop-up of the bundle header:
     /// `bundles.setStatus`; a failure shows `<item title> failed`.

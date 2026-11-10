@@ -225,12 +225,14 @@ struct TicketListView: View {
 
     // MARK: Menu
 
-    private func menu(for ids: Set<String>) -> [ItemTableMenuItem] {
+    /// The context menu of the selected rows.
+    func menu(for ids: Set<String>) -> [ItemTableMenuItem] {
         let projects = projects
         let tickets = ids.compactMap { projects.tickets(in: workspace)[$0] }
         let single = ids.count == 1 ? tickets.first : nil
         let canImplement = single.map { TicketActions.implementAvailability(of: $0, workspace: workspace).enabled } ?? false
         let ordered = visibleTickets(projects).map(\.id).filter { ids.contains($0) }
+        let addToBundle = TicketListProjects.addToBundle(ids, tickets: projects.tickets(in: workspace), bundles: workspace.bundles)
         return [
             .action("Implement", enabled: canImplement) {
                 guard let single else { return }
@@ -244,6 +246,14 @@ struct TicketListView: View {
             .action("Create Bundle from Selection…", enabled: TicketListProjects.bundleProject(of: ids) != nil) {
                 createBundleFromSelection(ids)
             },
+            // Disabled, it has no bundle to list and opens no submenu.
+            .submenu("Add to Bundle", enabled: addToBundle.isEnabled, addToBundle.items.map { item in
+                .action(item.title, enabled: item.isEnabled, checked: item.isChecked) {
+                    Task {
+                        await TicketActions.addToBundle(item.bundleID, ticketIDs: addToBundle.ticketIDs, workspace: workspace, window: window)
+                    }
+                }
+            }),
             .separator,
             .action("Copy ID", enabled: !ids.isEmpty, keyEquivalent: "c", modifiers: .command) {
                 TicketActions.copyIDs(ordered.isEmpty ? TicketFormat.ascending(Array(ids)) : ordered)

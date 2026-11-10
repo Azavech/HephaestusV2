@@ -46,9 +46,10 @@ struct ItemTableSort: Equatable {
     var ascending: Bool
 }
 
-/// An item of a table's context menu.
+/// An item of a table's context menu; a checked action shows a checkmark.
 enum ItemTableMenuItem {
-    case action(String, enabled: Bool = true, keyEquivalent: String = "", modifiers: NSEvent.ModifierFlags = [], () -> Void)
+    case action(String, enabled: Bool = true, checked: Bool = false, keyEquivalent: String = "",
+                modifiers: NSEvent.ModifierFlags = [], () -> Void)
     case submenu(String, enabled: Bool = true, [ItemTableMenuItem])
     case separator
 }
@@ -296,9 +297,10 @@ struct ItemTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.ID
             switch item {
             case .separator:
                 return .separator()
-            case .action(let title, let enabled, let key, let modifiers, let handler):
+            case .action(let title, let enabled, let checked, let key, let modifiers, let handler):
                 let menuItem = ClosureMenuItem(title: title, handler: handler)
                 menuItem.isEnabled = enabled
+                menuItem.state = checked ? .on : .off
                 menuItem.keyEquivalent = key
                 menuItem.keyEquivalentModifierMask = modifiers
                 return menuItem

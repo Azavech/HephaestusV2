@@ -295,10 +295,21 @@ The capsule colors and the date format are defaults; the [segmented progress bar
 | Implement                                        | One ticket that is not done             | Same as the Implement button ([Ticket chats and Implement](#ticket-chats-and-implement)). |
 | Set Status ▸ To Do, In Progress, In Review, Done | At least one ticket                     | `tickets.setStatus` for each selected ticket.                                             |
 | Create Bundle from Selection…                    | At least one ticket, all of one project | Opens the ticket picker sheet of that project with the selection checked.                 |
+| Add to Bundle ▸ the open bundles                 | See the rules of Add to Bundle ▸ below  | `bundles.update`, which appends the tickets to add to the chosen bundle.                  |
 | Copy ID                                          | At least one ticket                     | Copies the ids, one per line (also ⌘C).                                                   |
 | Delete…                                          | At least one ticket                     | Confirmation, then `tickets.delete` for each ([Deleting](#deleting)).                     |
 
-The context menu is a default. Default chosen at design time.
+The items other than Add to Bundle ▸ are a default. Default chosen at design time.
+
+Add to Bundle ▸ adds the selected tickets to a bundle that already exists:
+
+- The tickets to add are the selected tickets that are not done. Done tickets in the selection are left out.
+- Its submenu lists the open bundles of the selected tickets' project, which can be a sub project of the active project: the bundles whose status is To Do or In Progress ([Bundle status rules](#bundle-status-rules)). It never lists done bundles. It lists them newest first, the starting order of the bundle list ([Bundles section](#bundles-section)), and each item reads `<ID> · <title>`, for example `HEPH-B30 · Ticket list fixes`.
+- A bundle that already lists every ticket to add shows a checkmark and is disabled. A bundle that lists only some of them is enabled and has no checkmark.
+- Add to Bundle is disabled and opens no submenu in each of these cases: no ticket is selected, the selected tickets belong to more than one project, every selected ticket is done, or the project has no open bundle.
+- Choosing a bundle calls `bundles.update` with the bundle's tickets, followed by the tickets to add that it does not list yet, in ascending ticket number (`HEPH-9` before `HEPH-10`), as Add Tickets… appends tickets ([Ticket picker sheet](#ticket-picker-sheet)). The [automatic bundle status rules](#bundle-status-rules) apply as for any `bundles.update`.
+- After the addition the window stays in the ticket list: the section and the selection do not change. The ticket detail's Bundles line, the bundle's Tickets tab and its progress bar follow through the [live updates](#live-updates).
+- A failure shows the alert `Add to Bundle failed` ([UI](ui.md#principles)).
 
 | Empty state                                                 | Shows                                                                                                                                              |
 | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -853,3 +864,4 @@ Shortcuts of this document. All global shortcuts are listed in [UI](ui.md).
 - R189: Every Markdown view of the app draws the SF Symbol, color, font, shortcut, sound and animation markers the same way, and a click on ▶ plays the sound.
 - R194: Every section of the main window shows a title, and so do the Global Memories and Internal Skills views: Dashboard, Tickets, Bundles, Chats, Web, Builds, Skills, Memories and API Explorer show their sidebar title in a title row above their left column.
 - R197: The ticket picker sheet of Add Tickets… and New Bundle leaves out the done tickets, and both buttons are disabled, with a tooltip that says why, when no ticket can go into the bundle.
+- R198: The ticket list's context menu adds the selected tickets to an open bundle of their project.
