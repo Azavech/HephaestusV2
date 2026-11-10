@@ -1846,7 +1846,7 @@ Messages to Swift (`window.webkit.messageHandlers.hephaestus.postMessage`):
 
 ### Tool cards
 
-A tool card is collapsed by default. Its header row shows an icon, the tool name (the short name for MCP tools), the badge `MCP · <server>` for MCP tools, a one-line summary truncated with an ellipsis, and at the trailing edge a spinner (no result yet while the chat is running), the red tag `Error` (result with `isError`), or nothing. Clicking the header expands the card:
+A tool card is collapsed by default. Its header row shows an icon, the tool name (the short name for MCP tools), the badge `MCP · <server>` for MCP tools, a one-line summary truncated with an ellipsis, and at the trailing edge a spinner (no result yet while the chat is running), the red tag `Error` (result with `isError`), or nothing. A spinner turns without restarting when its card is redrawn (a new step count, a new input or any other change of the card), when the card that holds it in its `Steps` is redrawn or expanded, and when a `Preparing tool call…` card updates ([Streaming bubbles](#streaming-bubbles)): every spinner of the transcript page, in a chat view or an [agent view](#agent-view), shows the angle of the page's clock, one turn every 0.8 s since the page loaded, so a spinner drawn again goes on at the angle of the one it replaces. One clock for all spinners: Default chosen at design time. Clicking the header expands the card:
 
 - `Input`: `input` as JSON with 2-space indentation; for `Bash`, the `command` as a shell code block; for `Edit`, `old_string` and `new_string` as two code blocks; for `Write`, `content` as a code block whose language word is the extension of `file_path`, lowercased: the languages of [Code blocks](documentation-viewer.md#code-blocks) are highlighted, other extensions are plain.
 - `Result`: the result text in monospace, first 200 lines with a `Show All` button; result images as thumbnails.
@@ -1870,7 +1870,7 @@ Generic rule: the first of the input fields `command`, `file_path`, `path`, `pat
 ### Streaming bubbles
 
 - The first `chat.delta` of an item id without a fragment creates a streaming bubble: kind `text` an assistant bubble whose caption shows `<Claude name>` alone, made as [Item rendering](#item-rendering) makes it from the `model` and `effort` of that `chat.delta` (`Claude (Opus 5.5 · Extra High)`), the `<created>` of [Item rendering](#item-rendering) being added when the item replaces it, kind `thinking` an expanded `Thinking` block, kind `toolInput` a card `Preparing tool call…` that shows the last 300 characters of the partial JSON in monospace.
-- Each later `chat.delta` appends to that item's streaming buffer (`TranscriptState`, [UI](ui.md#deviceworkspace)); text and thinking bubbles are rendered again as Markdown on every update.
+- Each later `chat.delta` appends to that item's streaming buffer (`TranscriptState`, [UI](ui.md#deviceworkspace)); text and thinking bubbles are rendered again as Markdown on every update. The `Preparing tool call…` card shows the new last 300 characters on every update, and its spinner turns without restarting ([Tool cards](#tool-cards)).
 - A `chat.item` with the same id replaces the streaming bubble in place.
 - When `chat.updated` reports the state idle, waitingAnswers or error, every remaining streaming bubble is removed.
 

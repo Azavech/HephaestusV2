@@ -57,6 +57,23 @@
     window.HephaestusMarkdown.decorate(element);
   }
 
+  // MARK: Spinners (docs/chats.md › Tool cards)
+
+  /// Starts the rotation of every spinner of the page at the origin of the page's timeline, so all
+  /// spinners show the angle of the page's clock and a spinner drawn again in a new element goes
+  /// on at the angle of the one it replaces. A spinner's CSS animation starts over whenever its
+  /// element is new, moved or shown again, so this runs after every change that does one of these.
+  function syncSpinners() {
+    if (!document.getAnimations) return;
+    var animations = document.getAnimations();
+    for (var i = 0; i < animations.length; i++) {
+      var target = animations[i].effect && animations[i].effect.target;
+      if (target && target.classList.contains("spinner") && animations[i].startTime !== 0) {
+        animations[i].startTime = 0;
+      }
+    }
+  }
+
   // MARK: Page structure
 
   var transcript, streamsBox, placeholder, earlier, earlierButton, jump;
@@ -290,6 +307,7 @@
       streamsBox.replaceChildren();
       var newCards = build(options.items || [], transcript);
       for (var i = 0; i < newCards.length; i++) rehome(newCards[i]);
+      syncSpinners();
       setEarlier(!!options.hasEarlier);
       setPlaceholder(options.placeholder);
       stick = true;
@@ -306,6 +324,7 @@
       while (holder.firstChild) batch.appendChild(holder.firstChild);
       transcript.insertBefore(batch, transcript.firstChild);
       for (var i = 0; i < newCards.length; i++) rehome(newCards[i]);
+      syncSpinners();
       setEarlier(!!options.hasEarlier);
       if (fragments.size > 0) hidePlaceholder();
       window.scrollTo(0, oldTop + (page.scrollHeight - oldHeight));
@@ -324,6 +343,7 @@
         place(element, fragment, transcript, null);
         if (fragment.type === "toolUse") rehome(element);
       }
+      syncSpinners();
       hidePlaceholder();
       contentChanged();
     },
@@ -340,6 +360,7 @@
       }
       bubble.innerHTML = options.html;
       decorate(bubble);
+      syncSpinners();
       hidePlaceholder();
       contentChanged();
     },
@@ -429,6 +450,8 @@
       if (card && !card.classList.contains("preparing")) {
         stick = false;
         card.classList.toggle("expanded");
+        // The spinners of its steps were hidden while it was collapsed.
+        syncSpinners();
         requestAnimationFrame(function () {
           stick = atBottom();
           updateJump();
