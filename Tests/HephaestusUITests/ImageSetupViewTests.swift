@@ -149,4 +149,21 @@ struct ImageSetupViewTests {
         state.forgetClosedUnlinkedItems(in: .tickets)
         #expect(state.unlinkedItems.isEmpty)
     }
+
+    @Test("Without a project, the setup view shows the image's newest Auto Setup chat that belongs to no project; the inspector lists setup chats")
+    func setupChatBesideTheView() {
+        func chat(_ kind: ChatKind, image: UUID?, project: String, created: String) -> ChatMeta {
+            ChatMeta(id: UUID(), kind: kind, imageID: image, created: ISODate.date(from: created)!, projectID: project)
+        }
+        let older = chat(.setup, image: Self.imageID, project: "", created: "2026-11-10T20:00:00Z")
+        let newer = chat(.setup, image: Self.imageID, project: "", created: "2026-11-10T21:00:00Z")
+        let inProject = chat(.setup, image: Self.imageID, project: "DEMO", created: "2026-11-10T22:00:00Z")
+        let otherImage = chat(.setup, image: UUID(), project: "", created: "2026-11-10T23:00:00Z")
+        let chats = Dictionary(uniqueKeysWithValues: [older, newer, inProject, otherImage].map { ($0.id.uuidString, $0) })
+        #expect(ImageSetupWithChat.setupChat(of: Self.imageID, in: chats)?.id == newer.id)
+        #expect(ImageSetupWithChat.setupChat(of: UUID(), in: chats) == nil)
+        #expect(ProjectChatPanel.listedKinds == [.project, .setup])
+        #expect(VMImagePresentation.setUpTitle == "Set Up…" && VMImagePresentation.manualSetupTitle == "Manual Setup"
+            && VMImagePresentation.autoSetupTitle == "Auto Setup")
+    }
 }

@@ -67,8 +67,19 @@ extension Engine {
         _ = try vmToolChat(params.chatID, actor)
         let folder = dataDirectory.screenshotsFolder
         return try await runVMAction(params.vmID) { engine in
-            let (machine, session) = try await engine.vmActionSession(params.vmID)
-            let response = try await engine.vmAgentRequest(session, machine, "screenshot")
+            let png: Data
+            let width: Int
+            let height: Int
+            switch try await engine.vmScreenRoute(params.vmID) {
+            case .agent(let target):
+                let response = try await engine.vmAgentRequest(target, "screenshot")
+                png = response.data
+                width = response.result["width"]?.vmIntValue ?? 0
+                height = response.result["height"]?.vmIntValue ?? 0
+            case .screen(let session):
+                let shot = try await engine.vmScreenAction(session) { screen in try await screen.screenshot(name: session.name) }
+                (png, width, height) = (shot.png, shot.width, shot.height)
+            }
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.timeZone = TimeZone(identifier: "UTC")
@@ -76,12 +87,11 @@ extension Engine {
             let file = folder.appendingPathComponent("vm-\(params.vmID.uuidString)-\(formatter.string(from: Date())).png")
             do {
                 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                try response.data.write(to: file, options: .atomic)
+                try png.write(to: file, options: .atomic)
             } catch {
                 throw EngineError(.internal, "The screenshot could not be written: \(Self.withoutFinalPeriod(error.localizedDescription)).")
             }
-            return VMScreenshot(path: file.path, width: response.result["width"]?.vmIntValue ?? 0,
-                                height: response.result["height"]?.vmIntValue ?? 0)
+            return VMScreenshot(path: file.path, width: width, height: height)
         }
     }
 
@@ -98,28 +108,40 @@ extension Engine {
         guard (1...3).contains(count) else {
             throw EngineError.invalid("count", "use a number from 1 to 3")
         }
+        let (x, y) = (params.x, params.y)
         return try await simpleVMAction(params.vmID, "click",
-                                        ["x": .int(params.x), "y": .int(params.y), "button": .string(button), "count": .int(count)])
+                                        ["x": .int(x), "y": .int(y), "button": .string(button), "count": .int(count)]) { screen in
+            try await screen.click(x: x, y: y, button: button, count: count)
+        }
     }
 
     func vmToolDrag(_ params: VMToolsDrag.Params, _ actor: Actor) async throws -> Empty {
         _ = try vmToolChat(params.chatID, actor)
         try Self.requirePoint(params.fromX, params.fromY, x: "fromX", y: "fromY")
         try Self.requirePoint(params.toX, params.toY, x: "toX", y: "toY")
-        return try await simpleVMAction(params.vmID, "drag", ["fromX": .int(params.fromX), "fromY": .int(params.fromY),
-                                                              "toX": .int(params.toX), "toY": .int(params.toY)])
+        let (fromX, fromY, toX, toY) = (params.fromX, params.fromY, params.toX, params.toY)
+        return try await simpleVMAction(params.vmID, "drag", ["fromX": .int(fromX), "fromY": .int(fromY),
+                                                              "toX": .int(toX), "toY": .int(toY)]) { screen in
+            try await screen.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY)
+        }
     }
 
     func vmToolScroll(_ params: VMToolsScroll.Params, _ actor: Actor) async throws -> Empty {
         _ = try vmToolChat(params.chatID, actor)
         try Self.requirePoint(params.x, params.y)
-        return try await simpleVMAction(params.vmID, "scroll", ["x": .int(params.x), "y": .int(params.y),
-                                                                "deltaX": .int(params.deltaX ?? 0), "deltaY": .int(params.deltaY ?? 0)])
+        let (x, y, deltaX, deltaY) = (params.x, params.y, params.deltaX ?? 0, params.deltaY ?? 0)
+        return try await simpleVMAction(params.vmID, "scroll", ["x": .int(x), "y": .int(y),
+                                                                "deltaX": .int(deltaX), "deltaY": .int(deltaY)]) { screen in
+            try await screen.scroll(x: x, y: y, deltaX: deltaX, deltaY: deltaY)
+        }
     }
 
     func vmToolType(_ params: VMToolsType.Params, _ actor: Actor) async throws -> Empty {
         _ = try vmToolChat(params.chatID, actor)
-        return try await simpleVMAction(params.vmID, "type", ["text": .string(params.text)])
+        let text = params.text
+        return try await simpleVMAction(params.vmID, "type", ["text": .string(text)]) { screen in
+            try await screen.type(text)
+        }
     }
 
     func vmToolKey(_ params: VMToolsKey.Params, _ actor: Actor) async throws -> Empty {
@@ -127,7 +149,9 @@ extension Engine {
         guard let key = VMKeyNotation.agentKey(params.key) else {
             throw EngineError(.invalid, VMKeyNotation.invalidMessage)
         }
-        return try await simpleVMAction(params.vmID, "key", ["key": .string(key.key), "modifiers": .array(key.modifiers.map { .string($0) })])
+        return try await simpleVMAction(params.vmID, "key", ["key": .string(key.key), "modifiers": .array(key.modifiers.map { .string($0) })]) { screen in
+            try await screen.key(key.key, modifiers: key.modifiers)
+        }
     }
 
     /// Coordinates are pixels of the screenshot, from 0.
@@ -136,11 +160,17 @@ extension Engine {
         guard yValue >= 0 else { throw EngineError.invalid(y, "use a number of at least 0") }
     }
 
-    /// An action of one request whose result is `{}`.
-    private func simpleVMAction(_ vmID: UUID, _ method: String, _ requestParams: [String: JSONValue]) async throws -> Empty {
+    /// An action of one request whose result is `{}`; on a setup virtual machine without its agent,
+    /// `screen` does it through the screen (docs/virtual-machines.md › The setup virtual machine).
+    private func simpleVMAction(_ vmID: UUID, _ method: String, _ requestParams: [String: JSONValue],
+                                screen: @escaping @MainActor @Sendable (any GuestScreen) async throws -> Void) async throws -> Empty {
         try await runVMAction(vmID) { engine in
-            let (machine, session) = try await engine.vmActionSession(vmID)
-            _ = try await engine.vmAgentRequest(session, machine, method, params: requestParams)
+            switch try await engine.vmScreenRoute(vmID) {
+            case .agent(let target):
+                _ = try await engine.vmAgentRequest(target, method, params: requestParams)
+            case .screen(let session):
+                try await engine.vmScreenAction(session, screen)
+            }
             return Empty()
         }
     }
@@ -162,8 +192,8 @@ extension Engine {
         let timeout = vmTools.timings.requestTimeout * 2
         let request = requestParams
         return try await runVMAction(params.vmID) { engine in
-            let (machine, session) = try await engine.vmActionSession(params.vmID)
-            let response = try await engine.vmAgentRequest(session, machine, "uiTree", params: request, timeout: timeout)
+            let target = try await engine.vmActionTarget(params.vmID)
+            let response = try await engine.vmAgentRequest(target, "uiTree", params: request, timeout: timeout)
             return .object(response.result)
         }
     }
@@ -176,16 +206,16 @@ extension Engine {
         }
         let margin = vmTools.timings.execMargin
         return try await runVMAction(params.vmID) { engine in
-            let (machine, session) = try await engine.vmActionSession(params.vmID)
-            return try await engine.vmExec(session, machine, params.command, asRoot: params.asRoot ?? false, timeout: timeout,
+            let target = try await engine.vmActionTarget(params.vmID)
+            return try await engine.vmExec(target, params.command, asRoot: params.asRoot ?? false, timeout: timeout,
                                            margin: margin)
         }
     }
 
     /// The agent's `exec`, its result read as a `VMShellResult`.
-    func vmExec(_ session: VMSession, _ machine: VirtualMachine, _ command: String, asRoot: Bool = false, timeout: Int = 60,
+    func vmExec(_ target: VMActionTarget, _ command: String, asRoot: Bool = false, timeout: Int = 60,
                 margin: Duration) async throws -> VMShellResult {
-        let response = try await vmAgentRequest(session, machine, "exec",
+        let response = try await vmAgentRequest(target, "exec",
                                                 params: ["command": .string(command), "asRoot": .bool(asRoot), "timeout": .int(timeout)],
                                                 timeout: .seconds(timeout) + margin)
         let result = response.result
@@ -211,11 +241,11 @@ extension Engine {
         let folder = isDirectory.boolValue
         let margin = vmTools.timings.execMargin
         return try await runVMAction(params.vmID) { engine in
-            let (machine, session) = try await engine.vmActionSession(params.vmID)
+            let target = try await engine.vmActionTarget(params.vmID)
             if folder {
-                try await engine.copyFolderIn(params.source, to: params.destination, session, machine, margin: margin)
+                try await engine.copyFolderIn(params.source, to: params.destination, target, margin: margin)
             } else {
-                try await engine.copyFileIn(URL(fileURLWithPath: params.source), to: params.destination, session, machine)
+                try await engine.copyFileIn(URL(fileURLWithPath: params.source), to: params.destination, target)
             }
             return Empty()
         }
@@ -231,16 +261,16 @@ extension Engine {
         }
         let margin = vmTools.timings.execMargin
         return try await runVMAction(params.vmID) { engine in
-            let (machine, session) = try await engine.vmActionSession(params.vmID)
-            let stat = try await engine.vmAgentRequest(session, machine, "stat", params: ["path": .string(params.source)]).result
+            let target = try await engine.vmActionTarget(params.vmID)
+            let stat = try await engine.vmAgentRequest(target, "stat", params: ["path": .string(params.source)]).result
             guard stat["exists"]?.vmBoolValue == true else {
                 throw EngineError(.notFound, "\(params.source) does not exist in the guest.")
             }
             let destination = URL(fileURLWithPath: params.destination)
             if stat["isDirectory"]?.vmBoolValue == true {
-                try await engine.copyFolderOut(params.source, to: destination, session, machine, margin: margin)
+                try await engine.copyFolderOut(params.source, to: destination, target, margin: margin)
             } else {
-                try await engine.copyFileOut(params.source, to: destination, mode: stat["mode"]?.vmIntValue, session, machine)
+                try await engine.copyFileOut(params.source, to: destination, mode: stat["mode"]?.vmIntValue, target)
             }
             return Empty()
         }
@@ -248,7 +278,7 @@ extension Engine {
 
     /// Writes a file of this Mac to `destination` in the guest, 8 MiB at a time, with its
     /// permission bits.
-    private func copyFileIn(_ source: URL, to destination: String, _ session: VMSession, _ machine: VirtualMachine) async throws {
+    private func copyFileIn(_ source: URL, to destination: String, _ target: VMActionTarget) async throws {
         let handle: FileHandle
         let mode: Int?
         do {
@@ -274,7 +304,7 @@ extension Engine {
                     requestParams["mode"] = .int(mode & 0o7777)
                 }
             }
-            _ = try await vmAgentRequest(session, machine, "writeFile", params: requestParams, data: chunk)
+            _ = try await vmAgentRequest(target, "writeFile", params: requestParams, data: chunk)
             offset += chunk.count
             if chunk.count < VMToolService.chunkSize { break }
         } while true
@@ -282,24 +312,23 @@ extension Engine {
 
     /// Copies the content of a folder of this Mac into the folder `destination` of the guest,
     /// through a tar archive.
-    private func copyFolderIn(_ source: String, to destination: String, _ session: VMSession, _ machine: VirtualMachine,
+    private func copyFolderIn(_ source: String, to destination: String, _ target: VMActionTarget,
                               margin: Duration) async throws {
         let archive = try Self.localArchiveFile()
         defer { try? FileManager.default.removeItem(at: archive.deletingLastPathComponent()) }
         try await runLocalTar(["-c", "-f", archive.path, "-C", source, "."])
         let guestArchive = "/tmp/hephaestus-copy-\(UUID().uuidString).tar"
-        try await copyFileIn(archive, to: guestArchive, session, machine)
-        let target = GuestShell.path(destination)
-        let command = "/bin/mkdir -p \(target) && /usr/bin/tar -x -p -f \(GuestShell.quote(guestArchive)) -C \(target); "
+        try await copyFileIn(archive, to: guestArchive, target)
+        let folder = GuestShell.path(destination)
+        let command = "/bin/mkdir -p \(folder) && /usr/bin/tar -x -p -f \(GuestShell.quote(guestArchive)) -C \(folder); "
             + "status=$?; /bin/rm -f \(GuestShell.quote(guestArchive)); exit $status"
-        let result = try await vmExec(session, machine, command, timeout: 1800, margin: margin)
+        let result = try await vmExec(target, command, timeout: 1800, margin: margin)
         try Self.requireTarSuccess(result)
     }
 
     /// Reads a file of the guest into `destination` on this Mac, 8 MiB at a time, through a file
     /// beside it that then takes its place.
-    private func copyFileOut(_ source: String, to destination: URL, mode: Int?, _ session: VMSession,
-                             _ machine: VirtualMachine) async throws {
+    private func copyFileOut(_ source: String, to destination: URL, mode: Int?, _ target: VMActionTarget) async throws {
         let manager = FileManager.default
         let partial = destination.deletingLastPathComponent().appendingPathComponent(".\(destination.lastPathComponent).\(UUID().uuidString)")
         do {
@@ -321,7 +350,7 @@ extension Engine {
         defer { try? handle.close() }
         var offset = 0
         while true {
-            let response = try await vmAgentRequest(session, machine, "readFile",
+            let response = try await vmAgentRequest(target, "readFile",
                                                     params: ["path": .string(source), "offset": .int(offset), "length": .int(VMToolService.chunkSize)])
             do {
                 try handle.write(contentsOf: response.data)
@@ -349,22 +378,22 @@ extension Engine {
 
     /// Copies the content of a folder of the guest into the folder `destination` of this Mac,
     /// through a tar archive.
-    private func copyFolderOut(_ source: String, to destination: URL, _ session: VMSession, _ machine: VirtualMachine,
+    private func copyFolderOut(_ source: String, to destination: URL, _ target: VMActionTarget,
                                margin: Duration) async throws {
         let guestArchive = "/tmp/hephaestus-copy-\(UUID().uuidString).tar"
         let quoted = GuestShell.quote(guestArchive)
         let create = "/usr/bin/tar -c -f \(quoted) -C \(GuestShell.path(source)) .; status=$?; "
             + "[ $status -eq 0 ] || /bin/rm -f \(quoted); exit $status"
-        try Self.requireTarSuccess(try await vmExec(session, machine, create, timeout: 1800, margin: margin))
+        try Self.requireTarSuccess(try await vmExec(target, create, timeout: 1800, margin: margin))
         let archive = try Self.localArchiveFile()
         defer { try? FileManager.default.removeItem(at: archive.deletingLastPathComponent()) }
         do {
-            try await copyFileOut(guestArchive, to: archive, mode: nil, session, machine)
+            try await copyFileOut(guestArchive, to: archive, mode: nil, target)
         } catch {
-            _ = try? await vmExec(session, machine, "/bin/rm -f \(quoted)", margin: margin)
+            _ = try? await vmExec(target, "/bin/rm -f \(quoted)", margin: margin)
             throw error
         }
-        _ = try await vmExec(session, machine, "/bin/rm -f \(quoted)", margin: margin)
+        _ = try await vmExec(target, "/bin/rm -f \(quoted)", margin: margin)
         do {
             try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         } catch {

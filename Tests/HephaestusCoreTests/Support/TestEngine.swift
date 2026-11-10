@@ -147,10 +147,12 @@ extension Trait where Self == FSEventsTrait {
 /// the engine opens it. `body` also receives the temporary directory that holds the data
 /// directory, for other files of the test. `githubCLI` replaces the fake gh that is never found,
 /// `imageProvisioner` the provisioner of virtual machine images whose every operation fails, and
-/// `guestTools` gives the engine a guest agent and an install script.
+/// `guestTools` gives the engine a guest agent and an install script, and `guestScreens` the
+/// screens of its setup virtual machines.
 func withTestEngine<T>(debugTools: Bool = false, githubCLI: (any GitHubCLIRunning)? = nil,
                        claudeLauncher: any ClaudeProcessLauncher = NoClaudeLauncher(),
                        imageProvisioner: (any VMImageProvisioning)? = nil, guestTools: GuestTools? = nil,
+                       guestScreens: (any GuestScreenProviding)? = nil,
                        prepare: (DataDirectory) throws -> Void = { _ in },
                        _ body: (Engine, LocalEngineConnection, URL) async throws -> T) async throws -> T {
     try await TestEngineSlots.withSlot { try await withTemporaryDirectory { folder in
@@ -159,7 +161,8 @@ func withTestEngine<T>(debugTools: Bool = false, githubCLI: (any GitHubCLIRunnin
         try prepare(directory)
         let configuration = EngineConfiguration.test(dataDirectory: directory.url, debugTools: debugTools,
                                                      claudeLauncher: claudeLauncher, githubCLI: githubCLI,
-                                                     imageProvisioner: imageProvisioner, guestTools: guestTools)
+                                                     imageProvisioner: imageProvisioner, guestTools: guestTools,
+                                                     guestScreens: guestScreens)
         let engine = try await Engine(configuration: configuration)
         await engine.useFileTrash(.folder(folder.appendingPathComponent("Trash", isDirectory: true)))
         await engine.useCLITimings(.inert)

@@ -65,7 +65,8 @@ enum Prompts {
 
     /// The system prompt skills of a chat kind, in their order in `--append-system-prompt`: the
     /// common skill, then the project, ticket or bundle skill; the common skill alone for a
-    /// feedback chat; the ci skill alone for a CI chat.
+    /// feedback chat; the ci skill alone for a CI chat; the setup skill alone for an Auto Setup
+    /// chat.
     static func skills(of kind: ChatKind) -> [PromptSkill] {
         switch kind {
         case .project: return [.common, .project]
@@ -73,6 +74,7 @@ enum Prompts {
         case .bundle: return [.common, .bundle]
         case .feedback: return [.common]
         case .ci: return [.ci]
+        case .setup: return [.setup]
         }
     }
 

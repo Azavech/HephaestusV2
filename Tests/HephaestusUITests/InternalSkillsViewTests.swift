@@ -50,7 +50,7 @@ struct InternalSkillsViewTests {
             #expect(!SkillsVisibility.isListed("bundle", in: .project(projectID)))
         }
         #expect(SkillsVisibility.listed(skills, in: .internalSkills).map(\.name) == InternalSkills.names)
-        #expect(InternalSkills.names.count == 14)
+        #expect(InternalSkills.names.count == 16)
         #expect(!SkillsVisibility.isListed("release-notes", in: .internalSkills))
     }
 

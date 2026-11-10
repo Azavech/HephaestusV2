@@ -314,6 +314,7 @@ struct PromptAndNamingTests {
                 + "- staging: https://staging.example.com; deployment: orders-api",
             "ticketID": "HEPH-12", "ticket": "ID: HEPH-12", "bundleID": "HEPH-B2", "bundle": "ID: HEPH-B2",
             "githubRepository": "Azavech/HephaestusV2", "parentMemories": "",
+            "imageID": "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F", "imageVersion": "27.2.1",
             "globalMemories": "The global memories folder is /Users/example/.claude/memory. Its MEMORY.md has no line yet.",
         ]
         for skill in PromptSkill.allCases {

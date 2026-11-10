@@ -57,6 +57,10 @@ enum VMImagePresentation {
     /// The title of the alert of a setup that failed: `Set Up…` that cannot boot the image, and a
     /// setup virtual machine that fails while it runs.
     static let setUpFailedTitle = "Set Up failed"
+    /// `Set Up…` of the Images table and the items of its menu (docs/virtual-machines.md › Setup).
+    static let setUpTitle = "Set Up…"
+    static let manualSetupTitle = "Manual Setup"
+    static let autoSetupTitle = "Auto Setup"
     /// The title of the alert of a `Restart in Recovery` that cannot start the virtual machine.
     static let restartFailedTitle = "Restart in Recovery failed"
 
@@ -461,8 +465,16 @@ struct VirtualMachinesSettingsPane: View {
                     Button("Add Image…") {
                         showsAddImage = true
                     }
-                    Button("Set Up…", action: setUp)
-                        .disabled(selected?.state != .needsSetup)
+                    // A click on the button starts the manual setup; its arrow opens the menu of the
+                    // two setups (docs/virtual-machines.md › Setup).
+                    Menu(VMImagePresentation.setUpTitle) {
+                        Button(VMImagePresentation.manualSetupTitle, action: setUp)
+                        Button(VMImagePresentation.autoSetupTitle, action: autoSetUp)
+                    } primaryAction: {
+                        setUp()
+                    }
+                    .fixedSize()
+                    .disabled(selected?.state != .needsSetup)
                     Button("Delete…", action: delete)
                         .disabled(selected == nil)
                 }
@@ -636,6 +648,19 @@ struct VirtualMachinesSettingsPane: View {
         Task {
             do {
                 try await app.openImageSetup(image.id)
+            } catch {
+                await VMImagePresentation.showFailure(VMImagePresentation.setUpFailedTitle, errorMessage(error), on: window)
+            }
+        }
+    }
+
+    /// Auto Setup shows the setup as Set Up… does, then starts the Auto Setup chat beside it.
+    private func autoSetUp() {
+        guard let image = selected else { return }
+        let window = hostWindow.window
+        Task {
+            do {
+                try await app.openAutoSetup(image.id)
             } catch {
                 await VMImagePresentation.showFailure(VMImagePresentation.setUpFailedTitle, errorMessage(error), on: window)
             }

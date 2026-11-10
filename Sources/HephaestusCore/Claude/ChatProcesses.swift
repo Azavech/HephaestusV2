@@ -79,11 +79,14 @@ extension Engine {
             launchFailed(chatID, "Claude failed to start: \(unavailable ?? "the Claude CLI is not available")")
             return
         }
-        guard let meta = domain.chat(chatID), let root = domain.projectRoot(meta.projectID), let project = domain.project(meta.projectID) else {
+        // A chat without a project runs in its image's folder (docs/chats.md › Chats without a
+        // project).
+        guard let meta = domain.chat(chatID), let root = chatRootFolder(meta) else {
             await abandon()
             launchFailed(chatID, "Claude failed to start: the chat's project is not loaded.")
             return
         }
+        let project = domain.project(meta.projectID)
         runtime.projectID = meta.projectID
         let port: Int
         if case .listening(let listening) = mcpState { port = listening } else { port = effectiveMCPPort }
@@ -101,7 +104,8 @@ extension Engine {
         // (docs/skills.md › Generation).
         ensureInternalSkills()
         do {
-            let folder = try skillsPlugins.preparePlugin(projectID: project.id, skills: project.skills, library: skillsLibraryFolder,
+            let folder = try skillsPlugins.preparePlugin(projectID: project?.id ?? Engine.projectlessPluginFolderName,
+                                                         skills: project?.skills ?? [], library: skillsLibraryFolder,
                                                          dataDirectory: dataDirectory)
             if FileManager.default.fileExists(atPath: folder.path) { pluginDirectory = folder.path }
         } catch {
@@ -116,9 +120,14 @@ extension Engine {
         // An orchestrated ticket chat works in its worktree (docs/chats.md › Working directory).
         let workingDirectory = chatWorkingDirectory(meta, root: root)
         // The inherited memory folders, named in the prompt and readable (docs/memories.md › Inherited memories).
-        let parentMemories = parentMemoryFolders(of: meta.projectID, root: root, environment: context.environment)
-        let systemPrompt = chatSystemPrompt(meta: meta, project: project, root: root, workingDirectory: workingDirectory,
+        let parentMemories = project == nil ? [] : parentMemoryFolders(of: meta.projectID, root: root, environment: context.environment)
+        let systemPrompt: String
+        if let project {
+            systemPrompt = chatSystemPrompt(meta: meta, project: project, root: root, workingDirectory: workingDirectory,
                                             parentMemories: parentMemories, globalMemories: globalMemories.block)
+        } else {
+            systemPrompt = setupSystemPrompt(meta: meta)
+        }
         let argv = ClaudeCommandLine.chat(cliPath: context.path, chatID: chatID, sessionStarted: meta.sessionStarted, settings: meta.settings,
                                           mcpPort: port, mcpConfigPath: configURL.path, systemPrompt: systemPrompt,
                                           pluginDirectory: pluginDirectory, readFolders: readableFolders(parentMemories),
@@ -699,7 +708,7 @@ extension Engine {
     private func approvePendingPermissions(allowedBy mode: PermissionMode, chatID: ChatID, process: ChatProcess, origin: Actor) {
         guard !process.exited, let meta = domain.chat(chatID), meta.settings.permissionMode == mode else { return }
         // Accept Edits approves the edits inside the chat's working directory.
-        let root = domain.projectRoot(meta.projectID).map { chatWorkingDirectory(meta, root: $0).url }
+        let root = chatRootFolder(meta).map { chatWorkingDirectory(meta, root: $0).url }
         let name = senderName(origin)
         var approved = false
         for requestID in process.permissionOrder {

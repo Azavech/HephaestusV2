@@ -109,7 +109,7 @@ public enum EngineMethods {
         ChatsPostFont.self, ChatsAnswerFont.self,
         ChatsPostAnimation.self, ChatsAnswerAnimation.self, ChatsPostImages.self,
         ChatsImplementTicket.self, ChatsImplementBundle.self, ChatsWatchCI.self,
-        ChatsCreateFeedback.self, ChatsListAgents.self, ChatsAgentTranscript.self, ChatsStopWorkflow.self,
+        ChatsCreateFeedback.self, ChatsCreateSetup.self, ChatsListAgents.self, ChatsAgentTranscript.self, ChatsStopWorkflow.self,
         SoundsList.self, SoundsRead.self,
         ClaudeModels.self, ClaudeStatusMethod.self, ClaudePlanUsage.self, ClaudeReportPlanUsage.self,
         FilesList.self, FilesRead.self, FilesWrite.self, FilesCreate.self, FilesRename.self, FilesTrash.self, FilesFonts.self,
@@ -127,7 +127,7 @@ public enum EngineMethods {
         VMsList.self, VMsCreate.self, VMsStart.self, VMsStop.self, VMsUpdate.self, VMsDelete.self,
         VMToolsImages.self, VMToolsSetAccount.self, VMToolsList.self, VMToolsStart.self, VMToolsStop.self, VMToolsScreenshot.self,
         VMToolsClick.self, VMToolsDrag.self, VMToolsScroll.self, VMToolsType.self, VMToolsKey.self, VMToolsUITree.self,
-        VMToolsShell.self, VMToolsCopyIn.self, VMToolsCopyOut.self,
+        VMToolsShell.self, VMToolsCopyIn.self, VMToolsCopyOut.self, VMToolsSetupRecovery.self, VMToolsSetupFinish.self,
         SettingsGet.self, SettingsUpdate.self,
         UIOpen.self,
     ]

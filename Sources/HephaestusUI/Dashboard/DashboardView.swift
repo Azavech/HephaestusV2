@@ -63,6 +63,7 @@ enum DashboardContent {
         case .bundle: return "Bundle"
         case .feedback: return "Feedback"
         case .ci: return "CI"
+        case .setup: return "Auto Setup"
         }
     }
 }

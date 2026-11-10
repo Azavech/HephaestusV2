@@ -503,6 +503,8 @@ The table lists the tools in the order of `tools/list`; the [Kubernetes and Argo
 | `vm_shell`          | `vmID`, `command`                                  | `asRoot`, `timeout`                         | vmTools.shell            | VMShellResult    |
 | `vm_copy_in`        | `vmID`, `source`, `destination`                    | —                                           | vmTools.copyIn           | `{}`             |
 | `vm_copy_out`       | `vmID`, `source`, `destination`                    | —                                           | vmTools.copyOut          | `{}`             |
+| `vm_setup_recovery` | `imageID`                                          | —                                           | vmTools.setupRecovery    | `{}`             |
+| `vm_setup_finish`   | `imageID`                                          | —                                           | vmTools.setupFinish      | `{}`             |
 
 ## Tools
 
@@ -2666,17 +2668,17 @@ A missing required property fails with `target.<property>: required for kind <ki
 
 ### Rules of the VM tools
 
-The fifteen tools from `vm_list_images` to `vm_copy_out` let Claude start and drive the macOS virtual machines of this Mac and store the guest account of their images ([Claude's virtual machines](virtual-machines.md#claudes-virtual-machines)). They follow these rules, in this order; the section of each tool adds its checks and its result.
+The seventeen tools from `vm_list_images` to `vm_setup_finish` let Claude start and drive the macOS virtual machines of this Mac, store the guest account of their images and drive the setup virtual machine of an image ([Claude's virtual machines](virtual-machines.md#claudes-virtual-machines), [The setup virtual machine](virtual-machines.md#the-setup-virtual-machine)). They follow these rules, in this order; the section of each tool adds its checks and its result.
 
 1. **Availability:** chat tokens only. With the external token the call fails before argument validation with `Only the chat's own Claude can use the VM tools.` (`forbidden`); a comment answer cannot call them ([Actor rules](#actor-rules)). The tools are listed for every token and work in every project, whatever its type.
 2. **Engine call:** the tool's engine method with `chatID` = the calling chat and the arguments as given ([VM tools](engine-api.md#vm-tools)).
-3. **Virtual machine:** `vmID` names a virtual machine that `vm_list` lists (`notFound`, `Virtual machine <id> not found.`); a `vmID` that is not a UUID fails with `invalid`.
-4. **Queue:** the actions, the ten tools from `vm_screenshot` to `vm_copy_out`, wait for their turn in the queue of their virtual machine, then for its agent, and fail as [Actions and their queue](virtual-machines.md#actions-and-their-queue) says: a virtual machine that does not run (`conflict`, `The virtual machine “<name>” is not running.`), an agent that is not connected after 60 seconds (`unavailable`, `The agent of “<name>” is not connected.`), a request that the agent fails (`unavailable`, the agent's message), a connection that ends (`unavailable`, `The agent of “<name>” disconnected.`), no answer in time (`unavailable`, `The agent of “<name>” did not answer in time.`).
+3. **Virtual machine:** `vmID` names a virtual machine that `vm_list` lists, the setup virtual machine of an image by the image's id included (`notFound`, `Virtual machine <id> not found.`); a `vmID` that is not a UUID fails with `invalid`.
+4. **Queue:** the actions, the ten tools from `vm_screenshot` to `vm_copy_out`, wait for their turn in the queue of their virtual machine, then for its agent, and fail as [Actions and their queue](virtual-machines.md#actions-and-their-queue) says: a virtual machine that does not run (`conflict`, `The virtual machine “<name>” is not running.`), an agent that is not connected after 60 seconds (`unavailable`, `The agent of “<name>” is not connected.`), except the actions that go through the screen of a setup virtual machine without its agent ([The setup virtual machine](virtual-machines.md#the-setup-virtual-machine)), a request that the agent fails (`unavailable`, the agent's message), a connection that ends (`unavailable`, `The agent of “<name>” disconnected.`), no answer in time (`unavailable`, `The agent of “<name>” did not answer in time.`).
 5. **User's virtual machines:** the descriptions say that Claude acts on a virtual machine that the user started only when the user names it in the chat, by its name or with its linked item chip, and never stops it; the engine does not check the first rule, and `vm_stop` refuses such a virtual machine ([The user's virtual machines](virtual-machines.md#the-users-virtual-machines)).
 6. **Asking:** the tools ask the user nothing, so they run in an implement chat whose metadata holds `questionsBlocked` and while a question set or another request waits for an answer ([Workflow](workflow.md#implement-chats)).
 7. **Permission:** every VM tool except `vm_copy_out` is pre-approved and runs without a permission prompt in every permission mode ([Chats](chats.md#command-line)). `vm_copy_out`, which writes on this Mac, follows the chat's permission mode: in Ask Every Time the user approves each call.
 
-The tool names, what they do and return, their availability in every chat and every project, the rule of the user's virtual machines and the permissions come from the user ([R204](requirements.md#requirements)); the inputs beyond those the user named, the error texts, the JSON layout of the results and the input schemas are Default chosen at design time. The guest account in the result of `vm_list_images` and a tool that stores it come from the user ([R209](requirements.md#requirements)); the name `vm_set_account` and its pre-approval are Default chosen at design time.
+The tool names, what they do and return, their availability in every chat and every project, the rule of the user's virtual machines and the permissions come from the user ([R204](requirements.md#requirements)), and so do the setup virtual machine as their target and the restart into Recovery and `Finish Setup` for Claude ([R211](requirements.md#requirements)); the inputs beyond those the user named, the error texts, the JSON layout of the results and the input schemas are Default chosen at design time. The guest account in the result of `vm_list_images` and a tool that stores it come from the user ([R209](requirements.md#requirements)); the name `vm_set_account` and its pre-approval are Default chosen at design time.
 
 ### vm_list_images
 
@@ -2740,13 +2742,13 @@ Input schema:
 ### vm_list
 
 - **Engine call:** vmTools.list with `chatID` ([Engine API](engine-api.md#vmtoolslist)).
-- **Result:** the [VMToolMachine](engine-api.md#vmtoolmachine) array, oldest first: the `id`, `name`, `imageID`, `version`, `cores` and `memoryGB` of each virtual machine, `startedBy`, the text of the `Started by` column of Settings, `byClaude`, `state`, `runningTime`, the running time of the `State` column, absent for a stopped one, and `agentConnected` ([Lifecycle](virtual-machines.md#lifecycle)).
+- **Result:** the [VMToolMachine](engine-api.md#vmtoolmachine) array, oldest first: the `id`, `name`, `imageID`, `version`, `cores` and `memoryGB` of each virtual machine, `startedBy`, the text of the `Started by` column of Settings, `byClaude`, `setup`, `state`, `runningTime`, the running time of the `State` column, absent for a stopped one, and `agentConnected` ([Lifecycle](virtual-machines.md#lifecycle)); then the setup virtual machines of the images whose setup runs, with the image's id as `id` and `Set Up macOS <version>` as `name` ([The setup virtual machine](virtual-machines.md#the-setup-virtual-machine)).
 - **Errors:** rule 1 of the [rules](#rules-of-the-vm-tools).
 
 Description:
 
 ```text
-List the virtual machines of this Mac, oldest first: id, name, image id and macOS version, cores, memoryGB, startedBy (You for a virtual machine the user started, <project id> · <chat name> for one Claude started), byClaude, state (running or stopped), runningTime, and agentConnected, which tells whether its agent is connected so that the actions work. At most 2 virtual machines run at once. A virtual machine the user started is the user's: act on it only when the user names it in this chat, by its name or with its linked item, and never stop it. Only in chats started by HephaestusV2.
+List the virtual machines of this Mac, oldest first: id, name, image id and macOS version, cores, memoryGB, startedBy (You for a virtual machine the user started, <project id> · <chat name> for one Claude started), byClaude, setup, state (running or stopped), runningTime, and agentConnected, which tells whether its agent is connected so that the actions work. The setup virtual machine of an image whose setup runs comes last, with setup true and the image's id as its id. At most 2 virtual machines run at once. A virtual machine the user started is the user's: act on it only when the user names it in this chat, by its name or with its linked item, and never stop it. Only in chats started by HephaestusV2.
 ```
 
 Input schema:
@@ -3229,6 +3231,65 @@ Input schema:
   "additionalProperties": false
 }
 ```
+
+### vm_setup_recovery
+
+- **Engine call:** vmTools.setupRecovery with `chatID` and `imageID` ([Engine API](engine-api.md#vmtoolssetuprecovery)).
+- **Action:** does what `Restart in Recovery` of the image's setup view does and returns once the restart has begun: the guest is asked to shut down, through the agent when it is connected, else as by the power button, which macOS confirms in the guest; then the virtual machine starts into macOS Recovery ([The setup virtual machine](virtual-machines.md#the-setup-virtual-machine)). It does not wait for the queue.
+- **Result:** `{}`.
+- **Errors:** rule 1 of the [rules](#rules-of-the-vm-tools); an `imageID` that is not a UUID (`invalid`); no image with this id (`notFound`, `Image <id> not found.`); no setup of the image runs (`conflict`, `The setup of the image is not running.`); the setup virtual machine restarts or shuts down (`conflict`, `The setup virtual machine is restarting or shutting down.`).
+
+Description:
+
+```text
+Restart the setup virtual machine of an image into macOS Recovery, as Restart in Recovery of its setup view does, to turn off SIP: the guest is asked to shut down, then the virtual machine starts into Recovery. The call returns once the restart has begun: without the agent, macOS asks in the guest whether to shut down, so take a screenshot and choose Shut Down within 30 seconds; then choose Options and Continue at the startup options. imageID is the id of the image whose setup runs. Only in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "imageID": {
+      "type": "string",
+      "description": "Image id (a UUID) of vm_list_images, whose setup runs."
+    }
+  },
+  "required": ["imageID"],
+  "additionalProperties": false
+}
+```
+
+### vm_setup_finish
+
+- **Engine call:** vmTools.setupFinish with `chatID` and `imageID` ([Engine API](engine-api.md#vmtoolssetupfinish)).
+- **Action:** does what `Finish Setup` of the image's setup view does and returns once the image is `Ready`: the agent shuts the guest down, then the image becomes `Ready` and, while no image is the default, the default image ([The setup virtual machine](virtual-machines.md#the-setup-virtual-machine)). It does not wait for the queue.
+- **Result:** `{}`.
+- **Errors:** rule 1 of the [rules](#rules-of-the-vm-tools); an `imageID` that is not a UUID (`invalid`); no image with this id (`notFound`, `Image <id> not found.`); no setup of the image runs (`conflict`, `The setup of the image is not running.`); the agent is not connected or does not report SIP off (`conflict`, `Finish Setup needs the agent connected with SIP off.`).
+
+Description:
+
+```text
+Finish the setup of an image, as Finish Setup of its setup view does: the setup virtual machine shuts down and the image becomes Ready. It works once the guest's agent is connected and reports SIP off: after the install script ran in a guest whose SIP is off. imageID is the id of the image whose setup runs. Only in chats started by HephaestusV2.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "imageID": {
+      "type": "string",
+      "description": "Image id (a UUID) of vm_list_images, whose setup runs."
+    }
+  },
+  "required": ["imageID"],
+  "additionalProperties": false
+}
+```
+
 ## Kubernetes and Argo CD tools
 
 These nine tools let Claude inspect and operate where a Go service runs: the Kubernetes Deployment of each environment of the project and the Argo CD Application that deploys it ([Environments](projects.md#environments)), with the kubeconfig file and the namespace the environment names, in the current context of that file, so that Claude never guesses them. `tools/list` lists them after the tools of the [tool catalogue](#tool-catalogue), in the order of the table below, which has the format of the tool catalogue; the [conformance test](#conformance) reads it with the other tool tables. `text` in the Result column is the plain text of [Kubectl output](#kubectl-output).
@@ -4208,3 +4269,4 @@ Unauthorized: missing or invalid bearer token.
 - R204: Every chat of every project gives Claude full control of virtual machines with the VM tools: Claude starts one freely or joins Claude's one of the same image, waits up to 10 minutes for a free place, drives it one action at a time across chats, acts on the user's only when named and never stops them; Claude's idle VMs stop after the minutes set in Settings, and each VM gets the Claude token of Settings at its start.
 - R208: Settings gives the default cores, memory and disk size of new virtual machines; an image has no such values, the user chooses them in the New VM sheet, and a virtual machine's disk is grown to the size chosen.
 - R209: Each image stores the user name and the password of its guests' account in clear in its `image.yml`; Settings edits them, `Type Password` in the setup view and in the detail of a virtual machine types the password into the guest through its screen, and Claude reads and stores them with the VM tools and types the password whenever the guest asks for it.
+- R211: `Set Up…` of an image has a menu with `Manual Setup` and `Auto Setup`; Auto Setup starts a chat beside the setup view in which Claude goes through Setup Assistant in English (United States) with the image's stored account, asked for when missing, turns SIP off in Recovery, installs the agent and finishes the setup with the VM tools, through the screen before the agent connects; the user's controls stay, a running setup is taken over, the chat belongs to the window's project or, without a project, to the image, and stays open.

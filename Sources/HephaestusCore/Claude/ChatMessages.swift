@@ -137,6 +137,11 @@ extension Engine {
         "\(skillCall("implement-bundle")) \(bundleID)"
     }
 
+    /// docs/chats.md › Auto Setup chats: `/hephaestus-skills:auto-setup <image id>`.
+    static func autoSetupMessage(imageID: UUID) -> String {
+        "\(skillCall("auto-setup")) \(imageID.uuidString)"
+    }
+
     /// docs/chats.md › Feedback message: the line `/hephaestus-skills:feedback`, then the comment
     /// and the context, whose Screenshot line is left out for feedback without a screenshot and
     /// which ends with one `Attachment:` line per added file.
@@ -254,8 +259,20 @@ extension Engine {
         case .ci:
             // `none` when the project has no GitHub page (docs/chats.md › Placeholders).
             values["githubRepository"] = githubPage(of: project.id).flatMap(GitHubPage.repository(of:)) ?? "none"
+        case .setup:
+            return setupSystemPrompt(meta: meta)
         }
         return Prompts.systemPrompt(kind: meta.kind, values: values, texts: texts)
+    }
+
+    /// The system prompt of an Auto Setup chat, with or without a project: the setup skill alone,
+    /// filled with the device and the chat's image (docs/chats.md › Auto Setup chats).
+    func setupSystemPrompt(meta: ChatMeta) -> String {
+        let texts = promptSkillTexts(Prompts.skills(of: .setup))
+        let imageID = meta.imageID?.uuidString ?? ""
+        let values = ["deviceName": deviceInfo.name, "imageID": imageID,
+                      "imageVersion": meta.imageID.flatMap { vmImages.images[$0]?.version } ?? "unknown"]
+        return Prompts.systemPrompt(kind: .setup, values: values, texts: texts)
     }
 
     /// `{{environments}}` of a project: its environments as they apply and its current working

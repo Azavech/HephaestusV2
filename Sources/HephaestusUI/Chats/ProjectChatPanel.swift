@@ -19,9 +19,13 @@ struct ProjectChatPanel: View {
         window.projectStates[ProjectKey(deviceID: workspace.deviceID, projectID: projectID)] ?? ProjectViewState()
     }
 
-    /// The active project's chats of kind project, most recently updated first.
+    /// The kinds of the chats of the pop-up: project chats and Auto Setup chats (docs/ui.md ›
+    /// Inspector).
+    static let listedKinds: Set<ChatKind> = [.project, .setup]
+
+    /// The active project's chats of the pop-up, most recently updated first.
     private var projectChats: [ChatMeta] {
-        workspace.chats(of: projectID).filter { $0.kind == .project }.sorted { $0.updated > $1.updated }
+        workspace.chats(of: projectID).filter { Self.listedKinds.contains($0.kind) }.sorted { $0.updated > $1.updated }
     }
 
     /// The shown chat: the selected one; without a selection, or when it was deleted, the most
@@ -30,7 +34,7 @@ struct ProjectChatPanel: View {
         let state = viewState
         if state.inspectorShowsDraft { return nil }
         if let chatID = state.inspectorChatID {
-            if workspace.chats[chatID]?.kind == .project || chatID == createdChatID { return chatID }
+            if workspace.chats[chatID].map({ Self.listedKinds.contains($0.kind) }) == true || chatID == createdChatID { return chatID }
         }
         return projectChats.first?.id.uuidString
     }

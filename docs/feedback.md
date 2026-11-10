@@ -248,7 +248,7 @@ The params of feedback sent without a screenshot have no `screenshot` key.
 ## Feedback chat
 
 - The feedback chat is a chat of the HephaestusV2 project: its Claude process runs in the project root, with the project's enabled skills ([Skills](skills.md)) and its own MCP token, so its MCP calls run as actor `claude` with the chat id ([MCP](mcp.md)).
-- Its system prompt is the common skill alone, as in every chat except CI chats ([Composition and rendering](chats.md#composition-and-rendering)).
+- Its system prompt is the common skill alone, as in every chat except CI and Auto Setup chats ([Composition and rendering](chats.md#composition-and-rendering)).
 - Its first message calls the internal skill `feedback` with the comment and the rendered context, whose `Screenshot:` line holds the absolute path of the stored screenshot on the receiving device; feedback sent without a screenshot has no such line. The skill tells Claude that this is a feedback chat, sent from the window the user was using, whose goal is a ticket of the chat's project, and holds Claude's steps; the user edits it in the Internal Skills view ([Internal Skills view](skills.md#internal-skills-view)). Claude Code keeps the called skill, its arguments filled in, after a compaction ([Calls](skills.md#calls)).
 - Claude's steps, as the default `feedback` skill orders them ([Default: feedback](skills.md#default-feedback), [Workflow](workflow.md)):
   1. read the comment, the context and, when the feedback has one, the screenshot;

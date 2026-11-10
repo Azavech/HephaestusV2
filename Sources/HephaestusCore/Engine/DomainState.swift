@@ -16,6 +16,9 @@ struct DomainState {
     private var rootIndex: [String: ProjectID] = [:]
     /// The project that holds each loaded chat.
     private var chatIndex: [ChatID: ProjectID] = [:]
+    /// The loaded chats without a project, stored with their image (docs/chats.md › Chats without
+    /// a project).
+    private(set) var projectlessChats: [ChatID: ChatMeta] = [:]
     /// Tickets whose Haiku naming is pending, with their provisional title.
     var pendingTicketNames: [TicketID: String] = [:]
     /// Bundles whose Haiku naming is pending, with their provisional title.
@@ -87,8 +90,13 @@ struct DomainState {
     /// The metadata of a loaded chat, with its `projectID`; `state` is the stored value
     /// (`idle`): the runtime state comes from `ChatManager`.
     func chat(_ id: ChatID) -> ChatMeta? {
-        guard let projectID = chatIndex[id] else { return nil }
+        guard let projectID = chatIndex[id] else { return projectlessChats[id] }
         return projects[projectID]?.chats[id]
+    }
+
+    /// The loaded chats without a project of an image.
+    func projectlessChats(ofImage imageID: UUID) -> [ChatMeta] {
+        projectlessChats.values.filter { $0.imageID == imageID }
     }
 
     /// The loaded chats of a project, all kinds, by `updated` descending.
@@ -101,6 +109,11 @@ struct DomainState {
     /// Adds or replaces the metadata of a chat in memory, in the project named by its
     /// `projectID` (nothing happens when that project is not loaded). The caller writes the file.
     mutating func upsertChat(_ meta: ChatMeta) {
+        // A chat without a project, stored with its image.
+        if meta.projectID.isEmpty {
+            if meta.imageID != nil { projectlessChats[meta.id] = meta }
+            return
+        }
         guard projects[meta.projectID] != nil else { return }
         if let previous = chatIndex[meta.id], previous != meta.projectID {
             projects[previous]?.chats[meta.id] = nil
@@ -111,6 +124,7 @@ struct DomainState {
 
     /// Removes the metadata of a chat from memory. The caller moves the files to the Trash.
     mutating func removeChat(_ id: ChatID) {
+        projectlessChats[id] = nil
         guard let projectID = chatIndex.removeValue(forKey: id) else { return }
         projects[projectID]?.chats[id] = nil
     }

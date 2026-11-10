@@ -327,6 +327,7 @@ struct LinkedChatsView: View {
         case .bundle: return "shippingbox"
         case .feedback: return "ladybug"
         case .ci: return "checkmark.seal"
+        case .setup: return "display"
         }
     }
 

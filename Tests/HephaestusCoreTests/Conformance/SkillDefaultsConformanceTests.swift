@@ -31,7 +31,7 @@ struct SkillDefaultsConformanceTests {
         #expect(Set(folders) == Set(InternalSkills.names))
         #expect(InternalSkills.names == InternalSkills.names.sorted())
         #expect(Set(InternalSkills.names) == Set(InternalSkills.calledNames + PromptSkill.allCases.map(\.rawValue)))
-        #expect(InternalSkills.names.count == 14)
+        #expect(InternalSkills.names.count == 16)
     }
 
     @Test("Each default SKILL.md equals its block followed by one newline")

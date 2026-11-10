@@ -591,6 +591,26 @@ public enum ChatsCreateFeedback: EngineMethod {
     public typealias Result = ChatMeta
 }
 
+/// `chats.createSetup`: called by `Auto Setup` of Settings ▸ Virtual Machines. Actors: user
+/// (docs/engine-api.md › chats.createSetup).
+public enum ChatsCreateSetup: EngineMethod {
+    public static let name = "chats.createSetup"
+    public struct Params: Codable, Sendable, Hashable {
+        /// The image that the chat sets up.
+        public var imageID: UUID
+        /// The project of the chat; nil for a chat without a project, stored with the image.
+        public var projectID: ProjectID?
+        public var settings: ChatSettings?
+
+        public init(imageID: UUID, projectID: ProjectID? = nil, settings: ChatSettings? = nil) {
+            self.imageID = imageID
+            self.projectID = projectID
+            self.settings = settings
+        }
+    }
+    public typealias Result = ChatMeta
+}
+
 /// `chats.listAgents`: the workflows and agents of the project's chats, one entry per chat that
 /// has at least one, sorted by chat id (docs/chats.md › Agents). Actors: user.
 public enum ChatsListAgents: EngineMethod {

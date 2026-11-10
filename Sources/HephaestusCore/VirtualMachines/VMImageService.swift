@@ -88,11 +88,28 @@ extension Engine {
             }
         }
         vmImages.images = Dictionary(images.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        loadProjectlessChats()
         if let id = settings.defaultVMImage, vmImages.images[id]?.state != .ready {
             do {
                 try storeDefaultVMImage(nil)
             } catch {
                 log.error(.storage, "\(error)")
+            }
+        }
+    }
+
+    /// The Auto Setup chats without a project, read from the `.hephaestus/chats/` folder of each
+    /// image's folder with the rules of a project's chats (docs/data-model.md › Loading, step 2).
+    private func loadProjectlessChats() {
+        for imageID in vmImages.images.keys {
+            let folder = ProjectFolder(root: dataDirectory.vmImageFolder(imageID))
+            guard FileManager.default.fileExists(atPath: folder.chatsFolder.path) else { continue }
+            for meta in ProjectFileStore.loadContents(of: folder, projectID: "", log: log).chats {
+                guard meta.kind == .setup, meta.imageID == imageID else {
+                    log.warn(.storage, "\(folder.chatMetaFile(meta.id).path) skipped: not an Auto Setup chat of its image")
+                    continue
+                }
+                domain.upsertChat(meta)
             }
         }
     }
@@ -394,6 +411,16 @@ extension Engine {
             emit(SettingsUpdatedEvent.self, settings, origin: actor)
         }
 
+        // The image's chats without a project end with it; their files go with its folder
+        // (docs/virtual-machines.md › Deleting an image, step 4).
+        for chat in domain.projectlessChats(ofImage: id) {
+            do {
+                try await discardChat(chat, movesFilesToTrash: false, actor)
+            } catch {
+                log.error(.claude, "chat \(chat.id.uuidString): \(Self.message(of: error))")
+            }
+        }
+
         let folder = dataDirectory.vmImageFolder(id)
         do {
             if FileManager.default.fileExists(atPath: folder.path) {
@@ -496,7 +523,8 @@ extension Engine {
             var registered: VMSetupSession?
             do {
                 let session = try await MainActor.run {
-                    VMSetupSession(image: image, machine: try provisioner.makeMachine(request), engine: self)
+                    VMSetupSession(image: image, machine: try provisioner.makeMachine(request), engine: self, cores: defaults.cores,
+                                   memoryGB: defaults.memoryGB, screens: configuration.guestScreens)
                 }
                 vmImages.setups[image.id] = session
                 registered = session

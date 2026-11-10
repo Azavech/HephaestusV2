@@ -46,6 +46,9 @@ public struct VMToolMachine: Codable, Sendable, Hashable {
     public var startedBy: String
     /// True for a virtual machine that Claude started.
     public var byClaude: Bool
+    /// True for the setup virtual machine of an image, whose id is the image's id
+    /// (docs/virtual-machines.md › The setup virtual machine).
+    public var setup: Bool
     public var state: VirtualMachineState
     /// The running time of the State column, for example `12 min`; nil for a stopped one.
     public var runningTime: String?
@@ -53,7 +56,7 @@ public struct VMToolMachine: Codable, Sendable, Hashable {
     public var agentConnected: Bool
 
     public init(id: UUID, name: String, imageID: UUID, version: String, cores: Int, memoryGB: Int, startedBy: String, byClaude: Bool,
-                state: VirtualMachineState, runningTime: String?, agentConnected: Bool) {
+                setup: Bool = false, state: VirtualMachineState, runningTime: String?, agentConnected: Bool) {
         self.id = id
         self.name = name
         self.imageID = imageID
@@ -62,6 +65,7 @@ public struct VMToolMachine: Codable, Sendable, Hashable {
         self.memoryGB = memoryGB
         self.startedBy = startedBy
         self.byClaude = byClaude
+        self.setup = setup
         self.state = state
         self.runningTime = runningTime
         self.agentConnected = agentConnected
@@ -368,5 +372,32 @@ public enum VMToolsCopyIn: EngineMethod {
 public enum VMToolsCopyOut: EngineMethod {
     public static let name = "vmTools.copyOut"
     public typealias Params = VMToolCopyParams
+    public typealias Result = Empty
+}
+
+/// The params of `vmTools.setupRecovery` and `vmTools.setupFinish`: the image whose setup runs.
+public struct VMToolSetupParams: Codable, Sendable, Hashable {
+    public var chatID: ChatID
+    public var imageID: UUID
+
+    public init(chatID: ChatID, imageID: UUID) {
+        self.chatID = chatID
+        self.imageID = imageID
+    }
+}
+
+/// `vmTools.setupRecovery`: `Restart in Recovery` of the setup of an image, returned once the
+/// restart has begun. Actors: claude.
+public enum VMToolsSetupRecovery: EngineMethod {
+    public static let name = "vmTools.setupRecovery"
+    public typealias Params = VMToolSetupParams
+    public typealias Result = Empty
+}
+
+/// `vmTools.setupFinish`: `Finish Setup` of the setup of an image, returned once the image is
+/// Ready. Actors: claude.
+public enum VMToolsSetupFinish: EngineMethod {
+    public static let name = "vmTools.setupFinish"
+    public typealias Params = VMToolSetupParams
     public typealias Result = Empty
 }

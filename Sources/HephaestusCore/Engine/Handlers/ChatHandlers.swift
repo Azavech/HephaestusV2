@@ -94,6 +94,9 @@ extension Engine {
         register(ChatsCreateFeedback.self, actors: [.user]) { [unowned self] params, actor in
             try await self.chatsCreateFeedback(params, actor)
         }
+        register(ChatsCreateSetup.self, actors: [.user]) { [unowned self] params, actor in
+            try await self.chatsCreateSetup(params, actor)
+        }
         register(ChatsListAgents.self, actors: [.user]) { [unowned self] params, actor in
             try await self.chatsListAgents(params, actor)
         }
@@ -160,6 +163,8 @@ extension Engine {
             throw EngineError.invalid("kind", "feedback chats are created by chats.createFeedback")
         case .ci:
             throw EngineError.invalid("kind", "CI chats are created by chats.watchCI")
+        case .setup:
+            throw EngineError.invalid("kind", "Auto Setup chats are created by chats.createSetup")
         case .project:
             guard params.ticketID == nil else { throw EngineError.invalid("ticketID", "only a ticket chat has a ticket") }
             guard params.bundleID == nil else { throw EngineError.invalid("bundleID", "only a bundle chat has a bundle") }
@@ -208,14 +213,14 @@ extension Engine {
     /// project's `chatDefaults`, else the host's `defaultChatSettings`; writes its metadata file
     /// (`chat.updated`), then links it to its ticket or bundle (docs/data-model.md › Changes that
     /// touch several files). A given `bundleStatus` is set on the bundle in the same write.
-    private func createChat(kind: ChatKind, project: Project, ticketID: TicketID?, bundleID: BundleID?, settings chosen: ChatSettings?,
-                            orchestratorChatID: ChatID? = nil, questionsBlocked: Bool = false, bundleStatus: BundleStatus? = nil,
-                            origin: Actor) throws -> ChatMeta {
+    private func createChat(kind: ChatKind, project: Project?, ticketID: TicketID?, bundleID: BundleID?, settings chosen: ChatSettings?,
+                            orchestratorChatID: ChatID? = nil, imageID: UUID? = nil, questionsBlocked: Bool = false,
+                            bundleStatus: BundleStatus? = nil, origin: Actor) throws -> ChatMeta {
         let now = ISODate.now()
         let meta = ChatMeta(id: UUID(), kind: kind, ticketID: ticketID, bundleID: bundleID, orchestratorChatID: orchestratorChatID,
-                            created: now, updated: now,
-                            settings: chosen ?? project.chatDefaults ?? settings.defaultChatSettings, questionsBlocked: questionsBlocked,
-                            projectID: project.id)
+                            imageID: imageID, created: now, updated: now,
+                            settings: chosen ?? project?.chatDefaults ?? settings.defaultChatSettings, questionsBlocked: questionsBlocked,
+                            projectID: project?.id ?? "")
         let saved = try saveChatMeta(meta, origin: origin)
         chats.scannedChats.insert(meta.id)
         chats.hasTextMessage[meta.id] = false
@@ -405,6 +410,31 @@ extension Engine {
         return try requireChat(meta.id)
     }
 
+    /// `chats.createSetup` (docs/engine-api.md › chats.createSetup, docs/chats.md › Auto Setup
+    /// chats): a chat of kind setup for the image, in the project given or in no project, whose
+    /// first message calls the internal skill auto-setup.
+    func chatsCreateSetup(_ params: ChatsCreateSetup.Params, _ actor: Actor) async throws -> ChatMeta {
+        let projectID = try params.projectID.map { try Engine.projectIdentifier($0) }
+        if let settings = params.settings { try Engine.validated { try settings.validate() } }
+        func checkTargets() throws -> Project? {
+            guard vmImages.images[params.imageID] != nil, !vmImages.deleting.contains(params.imageID) else {
+                throw EngineError.notFound("Image", params.imageID.uuidString)
+            }
+            guard let projectID else { return nil }
+            guard let project = domain.project(projectID) else { throw EngineError.notFound("Project", projectID) }
+            return project
+        }
+        _ = try checkTargets()
+        _ = try await requireClaudeCLI()
+        let sender = senderName(actor)
+        let project = try checkTargets()
+        let meta = try createChat(kind: .setup, project: project, ticketID: nil, bundleID: nil, settings: params.settings,
+                                  imageID: params.imageID, origin: actor)
+        recordDrivingDevice(meta.id, actor)
+        try sendChatMessage(meta.id, text: Engine.autoSetupMessage(imageID: params.imageID), attachments: [], sender: sender, origin: actor)
+        return try requireChat(meta.id)
+    }
+
     /// The files the user added to a feedback, checked and read as chat attachments. With the
     /// screenshot, when the feedback has one, they are the attachments of one request: at most
     /// 20 MiB together (docs/engine-api.md › chats.createFeedback, › Limits).
@@ -477,8 +507,16 @@ extension Engine {
     /// bundle's `chats`, and its metadata, transcript and attachment folder go to the Trash. From
     /// the start, the lines of the terminating process are ignored.
     func chatsDelete(_ params: ChatsDelete.Params, _ actor: Actor) async throws -> Empty {
-        let chatID = params.chatID
-        let meta = try requireChat(chatID)
+        let meta = try requireChat(params.chatID)
+        try await discardChat(meta, movesFilesToTrash: true, actor)
+        return Empty()
+    }
+
+    /// Ends a chat as `chats.delete` does, its files moved to the Trash or, for a chat without a
+    /// project whose image is deleted, left to the deletion of the image's folder
+    /// (docs/virtual-machines.md › Deleting an image).
+    func discardChat(_ meta: ChatMeta, movesFilesToTrash: Bool, _ actor: Actor) async throws {
+        let chatID = meta.id
         let folder = try chatFolder(meta)
         // The cost is known once the transcript has been replayed (docs/costs.md › Deleted chats).
         try? ensureChatScanned(chatID)
@@ -525,12 +563,13 @@ extension Engine {
         chats.reportedCompactingSince[chatID] = nil
         forgetAgents(chatID)
         try unlinkChat(chatID, origin: actor)
-        try moveChatItemToTrash(folder.chatMetaFile(chatID))
-        try moveChatItemToTrash(folder.transcriptFile(chatID))
-        try moveChatItemToTrash(folder.chatAttachmentsFolder(chatID))
+        if movesFilesToTrash {
+            try moveChatItemToTrash(folder.chatMetaFile(chatID))
+            try moveChatItemToTrash(folder.transcriptFile(chatID))
+            try moveChatItemToTrash(folder.chatAttachmentsFolder(chatID))
+        }
         domain.removeChat(chatID)
         emit(ChatDeletedEvent.self, .init(projectID: meta.projectID, chatID: chatID), origin: actor)
-        return Empty()
     }
 
     // MARK: Closing

@@ -1,6 +1,6 @@
 # Virtual machines
 
-HephaestusV2 runs macOS virtual machines with Apple's Virtualization framework, so that Claude can check what the offscreen check instance cannot reach: menus, typing, list rows, system dialogs and permission prompts. A virtual machine starts from an image: one macOS version, installed once from its IPSW and prepared once in a setup view in the centre column of a main window, where the user completes Setup Assistant, turns off System Integrity Protection (SIP) and installs the guest agent, which gives the host full control of the guest. The user starts virtual machines from the Ready images in Settings, with the cores, the memory and the disk size chosen for each one, keeps them between runs, edits the name, the cores, the memory and the disk size of a stopped one, and shows the screen of one in a main window, where the mouse and the keyboard drive it. A bubble in the toolbar of the main window counts the virtual machines that run, and its popover shows a preview of the screen of each one. Claude starts its own virtual machines with the VM tools of the MCP server, in every chat, joins one that Claude already runs from the same image, and drives them, one action at a time on each virtual machine; Claude's virtual machines stop when they stay idle, and each virtual machine gets the Claude token of Settings when it starts. This document defines the images and their states, the list of macOS versions read from ipsw.me, the download and the install, the guest account of an image with `Type Password`, the setup view with its texts and its linked item, the install script, the guest agent and its protocol, the default values of new virtual machines, the virtual machines with their lifecycle, the clone of the image's disk grown to the chosen size, the edit of a stopped virtual machine, the limit of 2 running virtual machines, Claude's virtual machines with the join, the wait for a free place, the queue, the idle stop, the rule of the user's virtual machines and the Claude token, the detail of a virtual machine and its link in the inspector's composer, the Virtual Machines bubble with its popover, and the storage under `<data dir>/VirtualMachines/`. The Settings tab is in [User interface](ui.md#virtual-machines), the bubble's toolbar item in [Toolbar](ui.md#toolbar), the file formats in [Data model](data-model.md#image-metadata-file), the methods and the events in [Engine API](engine-api.md#virtual-machine-images), the VM tools in [MCP server](mcp.md#rules-of-the-vm-tools).
+HephaestusV2 runs macOS virtual machines with Apple's Virtualization framework, so that Claude can check what the offscreen check instance cannot reach: menus, typing, list rows, system dialogs and permission prompts. A virtual machine starts from an image: one macOS version, installed once from its IPSW and prepared once in a setup view in the centre column of a main window, where the user completes Setup Assistant, turns off System Integrity Protection (SIP) and installs the guest agent, which gives the host full control of the guest, or where Claude does it in an Auto Setup chat beside the view. The user starts virtual machines from the Ready images in Settings, with the cores, the memory and the disk size chosen for each one, keeps them between runs, edits the name, the cores, the memory and the disk size of a stopped one, and shows the screen of one in a main window, where the mouse and the keyboard drive it. A bubble in the toolbar of the main window counts the virtual machines that run, and its popover shows a preview of the screen of each one. Claude starts its own virtual machines with the VM tools of the MCP server, in every chat, joins one that Claude already runs from the same image, and drives them, one action at a time on each virtual machine; Claude's virtual machines stop when they stay idle, and each virtual machine gets the Claude token of Settings when it starts. This document defines the images and their states, the list of macOS versions read from ipsw.me, the download and the install, the guest account of an image with `Type Password`, the setup view with its texts and its linked item, Auto Setup with its chat, the install script, the guest agent and its protocol, the default values of new virtual machines, the virtual machines with their lifecycle, the clone of the image's disk grown to the chosen size, the edit of a stopped virtual machine, the limit of 2 running virtual machines, Claude's virtual machines with the join, the wait for a free place, the setup virtual machine as a target of the VM tools, the queue, the idle stop, the rule of the user's virtual machines and the Claude token, the detail of a virtual machine and its link in the inspector's composer, the Virtual Machines bubble with its popover, and the storage under `<data dir>/VirtualMachines/`. The Settings tab is in [User interface](ui.md#virtual-machines), the bubble's toolbar item in [Toolbar](ui.md#toolbar), the file formats in [Data model](data-model.md#image-metadata-file), the methods and the events in [Engine API](engine-api.md#virtual-machine-images), the VM tools in [MCP server](mcp.md#rules-of-the-vm-tools).
 
 ## Overview
 
@@ -11,6 +11,7 @@ Settings ▸ Virtual Machines                      engine of This Mac           
                                                  install (Virtualization framework)
   Images table ◄── vmImages.changed ──────────── image.yml, state, progress
   Set Up… ───── image setup service ───────────► setup virtual machine ──── screen in the setup view
+    ▾ Auto Setup ── chats.createSetup ─────────► Auto Setup chat ─────────── in the inspector
                                                         ▲ virtio socket, port 47822
                                                  guest agent (LaunchAgent of the account)
   Default radio ── settings.update ────────────► settings.yml, defaultVMImage
@@ -34,6 +35,8 @@ chat of Claude
   vm_list_images, vm_set_account ──────────────► the images, with their guest account
   vm_start, vm_stop ── vmTools.start, .stop ───► Claude's virtual machines: join, wait, idle stop
   vm_click, vm_shell… ── vmTools.* ────────────► the queue of the virtual machine ── agent requests
+                                                 setup virtual machine without agent ── its screen
+  vm_setup_recovery, vm_setup_finish ─────► the setup of an image
 ```
 
 | Piece                                    | Defined in                                         |
@@ -46,6 +49,8 @@ chat of Claude
 | `vms.*`, `vms.changed`                   | [Engine API](engine-api.md#virtual-machines)       |
 | The `virtualMachine` target              | [User interface](ui.md#resolving-a-target)         |
 | The linked items of the detail, setup    | [Chats](chats.md#linked-items)                     |
+| `chats.createSetup`, the chat            | [Engine API](engine-api.md#chatscreatesetup)       |
+| The internal skill `auto-setup`          | [Skills](skills.md#default-auto-setup)             |
 | The Virtual Machines bubble              | [User interface](ui.md#toolbar)                    |
 | The entitlement, the bundle files        | [CI and release](ci.md#entitlements)               |
 | The agent's target, the processes        | [Architecture](architecture.md#modules)            |
@@ -57,7 +62,7 @@ chat of Claude
 
 ## Host
 
-- Virtual machines run only on a Mac with Apple silicon: the Virtualization framework runs macOS guests on no other Mac. On an Intel Mac, `vmImages.add`, `Set Up…`, `vms.create` and `vms.start` fail with `unavailable` and the message `Virtual machines need a Mac with Apple silicon.` Default chosen at design time.
+- Virtual machines run only on a Mac with Apple silicon: the Virtualization framework runs macOS guests on no other Mac. On an Intel Mac, `vmImages.add`, `Set Up…` and its menu, `vms.create` and `vms.start` fail with `unavailable` and the message `Virtual machines need a Mac with Apple silicon.` Default chosen at design time.
 - The app process needs the entitlement `com.apple.security.virtualization`, which `scripts/build-app.sh` gives every bundle it signs ([Entitlements](ci.md#entitlements)). A process without it, such as a test run, cannot create a virtual machine: the framework's error becomes the failure of the install, of `Set Up…` or of the start of a virtual machine.
 - Every virtual machine runs inside the app process's own Virtualization service ([Processes](architecture.md#processes)); the engine starts no other process for it.
 
@@ -199,9 +204,17 @@ The checksum, the timeout and the two messages are Default chosen at design time
 
 ## Setup
 
-An image in `needsSetup` is prepared once, by the user, in the setup view of a main window ([Setup view](#setup-view)). `Set Up…` belongs to the image setup service, a [local-only service](architecture.md#local-only-services) of This Mac: the screen of a virtual machine shows only on the Mac that runs it, so no engine method starts a setup and no remote device can.
+An image in `needsSetup` is prepared once in the setup view of a main window ([Setup view](#setup-view)): by the user, or by Claude in an [Auto Setup](#auto-setup) chat beside the view. The setup belongs to the image setup service, a [local-only service](architecture.md#local-only-services) of This Mac: the screen of a virtual machine shows only on the Mac that runs it, so no engine method starts a setup and no remote device can.
 
-`Set Up…` on the selected image:
+`Set Up…` of the Images table is a button with a down arrow ([User interface](ui.md#virtual-machines)):
+
+- A click on the button starts the manual setup: the setup view, without a chat.
+- A click on the arrow opens a menu with `Manual Setup` and `Auto Setup`. Both items are enabled when the button is.
+- `Manual Setup` does what a click on the button does. `Auto Setup` does it too, then starts the Auto Setup chat ([Auto Setup](#auto-setup)).
+
+The button with its menu and its two items come from the user ([R211](requirements.md#requirements)).
+
+`Set Up…`, `Manual Setup` and `Auto Setup` on the selected image:
 
 1. Shows the image's setup view when its setup virtual machine already runs, whether a window shows it or not. When the virtual machine of an earlier setup of the image still shuts down after `Stop`, `Set Up…` first waits for that virtual machine to stop: two virtual machines never share a disk.
 2. Otherwise checks that the image exists (`notFound`), that the Mac has Apple silicon ([Host](#host)), that the image is in `needsSetup` (`conflict`, `The image is not waiting for setup.`) and that fewer than 2 virtual machines run (`conflict`, `2 virtual machines are already running.`).
@@ -210,7 +223,7 @@ An image in `needsSetup` is prepared once, by the user, in the setup view of a m
 
 The setup view shows in the frontmost main window that shows This Mac, which comes to front, or in a new main window on This Mac when there is none ([Choosing the window](ui.md#choosing-the-window)), as `Show` shows the [detail](#detail) of a virtual machine.
 
-A failure shows the alert `Set Up failed` with the message ([Principles](ui.md#principles)), on the Settings window. A virtual machine that stops with a failure while it starts counts as one that cannot be started. The checks, their messages and the folder are Default chosen at design time.
+A failure shows the alert `Set Up failed` with the message ([Principles](ui.md#principles)), on the Settings window; after `Auto Setup`, no chat starts then. A virtual machine that stops with a failure while it starts counts as one that cannot be started. The checks, their messages and the folder are Default chosen at design time.
 
 ### Setup virtual machine
 
@@ -243,7 +256,7 @@ The setup view shows the setup of one image in the centre column of a main windo
 | Window    | `Set Up…`: the frontmost main window that shows This Mac, brought to front; a new main window on This Mac without one ([Choosing the window](ui.md#choosing-the-window)); a preview: the popover's window   |
 | Place     | the centre column, in place of the selected section, as the detail of a virtual machine ([Main window layout](ui.md#main-window-layout)); in a window whose device has no project, the welcome view's place |
 | Sidebar   | keeps its rows, none of them selected ([Sidebar](ui.md#sidebar))                                                                                                                                            |
-| Inspector | stays; its composer links the setup virtual machine ([Linked item](#linked-item))                                                                                                                           |
+| Inspector | stays; its composer links the setup virtual machine ([Linked item](#linked-item)); it shows the [Auto Setup](#auto-setup) chat                                                                              |
 | Left by   | anything that leaves the detail of a virtual machine, the detail of a virtual machine itself, and the end of the setup                                                                                      |
 | State     | `WindowState.shownImageSetupID`, the image's id, never persisted ([WindowState](ui.md#windowstate))                                                                                                         |
 
@@ -279,7 +292,7 @@ Under the steps, the `Type Password` button ([Type Password](#type-password)), t
 - `Copy` copies the command and reads `Copied` for 2 seconds, as the Copy buttons of Settings do. The command goes to the pasteboard of this Mac. The setup virtual machine shares no pasteboard with this Mac, so the command cannot be pasted in the guest: the user types it there.
 - `Finish Setup` shuts the virtual machine down and sets the image to `ready`: the engine asks the agent to run `/sbin/shutdown -h now` as root, waits up to 60 seconds from the click for the virtual machine to stop and stops it itself after that, or at once when the agent answers that the command failed, then writes the image's state, applies the [default image](#default-image) rule and emits `vmImages.changed`.
 - `Stop` of the header, before `Finish Setup`, shuts the virtual machine down and leaves the image in `needsSetup`: through the agent when it is connected, waiting up to 30 seconds, otherwise at once, as a power cut does, so that what the guest wrote in its last seconds may be missing from the disk. `Set Up…` starts again from the image's current disk. `Stop` is disabled while the virtual machine shuts down; while `Restart in Recovery` waits for the guest, it stops the virtual machine at once.
-- Leaving the setup view does not stop the setup: the virtual machine keeps running, the bubble keeps counting it, and `Set Up…` on the image, or a click on its preview in the [Virtual Machines popover](#previews), shows the setup view again.
+- Leaving the setup view does not stop the setup: the virtual machine keeps running, the bubble keeps counting it, and `Set Up…` on the image, one of its items, or a click on its preview in the [Virtual Machines popover](#previews), shows the setup view again.
 - The setup ends when its virtual machine has stopped: after `Finish Setup`, after `Stop`, from the header or from the popover, when the guest shuts down by itself, when the virtual machine fails and when the image is deleted. Every window that shows the setup view then goes back to the section it showed before, which the window kept.
 - When the virtual machine fails while it runs, the setup ends and the image stays in `needsSetup`: the failure alert of [Principles](ui.md#principles), titled `Set Up failed`, with the framework's message, shows on every main window that shows the setup view, which goes back to its section after `OK`; when no window shows it, on the frontmost main window that shows This Mac. When `Restart in Recovery` cannot start the virtual machine, the alert is titled `Restart in Recovery failed`.
 - The setup view shows only in a window that shows This Mac: a switch of device leaves it. A switch of project keeps it, as it keeps the detail.
@@ -287,6 +300,33 @@ Under the steps, the `Type Password` button ([Type Password](#type-password)), t
 - The setup virtual machine counts as a running virtual machine ([Running virtual machines](#running-virtual-machines)).
 
 The texts of the three steps, the command's place, the status texts `Waiting for the agent…` and `Agent connected · SIP off`, and the buttons are the user's choices, and so are the setup view in the centre column with the inspector beside it, its header with `Stop`, the virtual machine that keeps running when the window leaves the view, and the chip. The status text `Agent connected · SIP on`, the way the virtual machine restarts and shuts down, the waits, the end of the setup when the guest shuts down, the alerts of a virtual machine that fails and the window that shows them when no window shows the setup view, the `Stop` disabled while the virtual machine shuts down and acting at once during `Restart in Recovery`, and keeping the view across a switch of project are Default chosen at design time.
+
+### Auto Setup
+
+`Auto Setup` shows the setup of the image as `Set Up…` does, then starts a new chat in which Claude sets the image up: the Auto Setup chat, a chat of the kind `setup` ([Auto Setup chats](chats.md#auto-setup-chats)).
+
+1. The setup starts, or the setup that already runs is shown, as by `Set Up…` ([Setup](#setup)). A failure shows the alert `Set Up failed` and starts no chat.
+2. The app calls `chats.createSetup` with the image's id and, when the window that shows the setup view shows a project, that project's identifier ([chats.createSetup](engine-api.md#chatscreatesetup)). The chat is then a chat of that project. When This Mac has no project, the chat belongs to no project and is stored with the image ([Chats without a project](chats.md#chats-without-a-project)).
+3. The window shows the chat beside the setup view: in its inspector, which is shown when it was hidden, with the chat selected ([Inspector](ui.md#inspector)); in a window without a project, in a column on the right of the setup view, where both take the welcome view's place ([Welcome view](ui.md#welcome-view)).
+
+A failure of step 2 shows the alert `Auto Setup failed` with its message on the window; the setup goes on, for the user. Default chosen at design time.
+
+The first message of the chat calls the internal skill `auto-setup` with the image's id, `/hephaestus-skills:auto-setup <image id>` ([Calls](skills.md#calls)). Its steps, in the skill's text ([Default: auto-setup](skills.md#default-auto-setup)):
+
+| Step               | What Claude does                                                                                                                                                                                                                                                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Account            | Reads the image's [guest account](#guest-account) with `vm_list_images`. When the image has no user name or no password stored, Claude first asks for both with `ask_questions`, then stores the answers with `vm_set_account`.                                                                                                       |
+| 1. Setup Assistant | The language English and the region United States; the account created with the stored user name and password; the macOS licence agreement agreed to without asking the user; every optional screen skipped or turned off, such as Apple Account, Location Services, Analytics, Siri and Screen Time; then automatic login turned on. |
+| 2. SIP off         | `vm_setup_recovery`; in Recovery, Utilities ▸ Terminal, `csrutil disable`, with the password typed when it is asked for, then a restart.                                                                                                                                                                                              |
+| 3. The agent       | In Terminal, `sh "/Volumes/My Shared Files/install.sh"`, with the password typed for `sudo`.                                                                                                                                                                                                                                          |
+| 4. `Finish Setup`  | `vm_setup_finish` once the agent reports SIP off: the image becomes `Ready`.                                                                                                                                                                                                                                                          |
+
+- Claude drives the setup virtual machine with the VM tools, through its screen before its agent connects ([The setup virtual machine](#the-setup-virtual-machine)), and starts or stops no other virtual machine in this chat.
+- `Auto Setup` on an image whose setup already runs, started with `Set Up…` or `Manual Setup`, shows that setup and starts the chat: Claude takes a screenshot first and takes over from the step that the guest's screen shows. A setup that already has an Auto Setup chat gets another one: each `Auto Setup` starts a new chat.
+- During Auto Setup, the setup view stays as it is: the three steps with their buttons, `Type Password`, `Finish Setup`, `Stop` and the user's mouse and keyboard on the screen. The user talks to Claude in the chat and takes over at any time; when the user asks Claude to stop, Claude stops driving the guest, and when the user asks it to go on, it takes a screenshot and goes on from what the guest shows.
+- The chat is not closed when the setup ends, whether it was finished, stopped or failed: it stays open, as any chat, and Claude ends its last turn with a summary.
+
+The button with its menu, the chat beside the setup view, its four steps with English and United States, the account asked for and stored, the licence agreed to, the optional screens skipped, automatic login, the takeover of a running setup, the user's controls that stay, the chat of a Mac without a project stored with the image and the chat that stays open come from the user ([R211](requirements.md#requirements)). The kind `setup`, the alert of step 2, the new chat at each `Auto Setup` and the summary at the end are Default chosen at design time.
 
 ### Install script
 
@@ -544,7 +584,7 @@ The Virtualization framework runs at most 2 macOS virtual machines at once on a 
 | Virtual machine           | Counts from                           | Until                                                                                                            |
 | ------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | The install of an image   | The start of the install              | The install ends.                                                                                                |
-| The setup virtual machine | `Set Up…` starts it                   | It has stopped: `Finish Setup`, `Stop`, a guest that shut down, a failure, a deleted image, the quit of the app. |
+| The setup virtual machine | `Set Up…` or an item starts it        | It has stopped: `Finish Setup`, `Stop`, a guest that shut down, a failure, a deleted image, the quit of the app. |
 | A virtual machine         | `vms.create` or `vms.start` starts it | It has stopped: `Stop`, a guest that shut down, a failure, `Delete…`, a deleted image, the quit of the app.      |
 
 - Every virtual machine of the table counts, whoever started it: the user's, Claude's, the setup virtual machine of an image and its install.
@@ -556,7 +596,7 @@ The Virtualization framework runs at most 2 macOS virtual machines at once on a 
 
 ## Claude's virtual machines
 
-Claude starts and drives virtual machines with the VM tools of the MCP server, in every chat that HephaestusV2 starts, in every project ([Rules of the VM tools](mcp.md#rules-of-the-vm-tools)): `vm_list_images` and `vm_list` list the images, with their [guest account](#guest-account), and the virtual machines, `vm_set_account` stores the guest account of an image, `vm_start` and `vm_stop` start and stop Claude's virtual machines, and the actions `vm_screenshot`, `vm_click`, `vm_drag`, `vm_scroll`, `vm_type`, `vm_key`, `vm_ui_tree`, `vm_shell`, `vm_copy_in` and `vm_copy_out` drive one. The system prompt tells Claude to start one freely whenever a check needs one ([Default: common](skills.md#default-common)).
+Claude starts and drives virtual machines with the VM tools of the MCP server, in every chat that HephaestusV2 starts, in every project ([Rules of the VM tools](mcp.md#rules-of-the-vm-tools)): `vm_list_images` and `vm_list` list the images, with their [guest account](#guest-account), and the virtual machines, `vm_set_account` stores the guest account of an image, `vm_start` and `vm_stop` start and stop Claude's virtual machines, the actions `vm_screenshot`, `vm_click`, `vm_drag`, `vm_scroll`, `vm_type`, `vm_key`, `vm_ui_tree`, `vm_shell`, `vm_copy_in` and `vm_copy_out` drive one, and `vm_setup_recovery` and `vm_setup_finish` do what `Restart in Recovery` and `Finish Setup` of a [setup view](#setup-view) do ([The setup virtual machine](#the-setup-virtual-machine)). The system prompt tells Claude to start one freely whenever a check needs one ([Default: common](skills.md#default-common)).
 
 ### The guest account
 
@@ -582,15 +622,48 @@ Typing the password by itself, reading the account and storing it come from the 
 
 The 10 minutes of the wait, the join, the `Started by` text and the default values come from the user ([R204](requirements.md#requirements), [R208](requirements.md#requirements)). The order of the steps, the choice of an image and of a virtual machine among several, the messages, the wait for the agent and the idle time that starts again are Default chosen at design time.
 
+### The setup virtual machine
+
+The VM tools reach the [setup virtual machine](#setup-virtual-machine) of an image while its setup runs, so that Claude sets the image up in an [Auto Setup](#auto-setup) chat:
+
+- `vm_list` lists it after the virtual machines, the setup that started first first, with the image's id as its `id`, `Set Up macOS <version>` as its `name`, the image's id as its `imageID`, the cores and the memory it was started with, `startedBy` `You`, `byClaude` false, `setup` true, `state` `running`, its running time from `Set Up…` on, and `agentConnected` true while its agent is connected ([VMToolMachine](engine-api.md#vmtoolmachine)).
+- The actions take the image's id as `vmID` and run in the queue of the setup virtual machine, as for any virtual machine ([Actions and their queue](#actions-and-their-queue)).
+- While its agent is not connected, before the install script has run, in Recovery or while the guest starts up, `vm_screenshot`, `vm_click`, `vm_drag`, `vm_scroll`, `vm_type` and `vm_key` go through the virtual machine's screen (`VZVirtualMachineView`), as the user's mouse and keyboard and `Type Password` do ([Screen of the setup virtual machine](#screen-of-the-setup-virtual-machine)). Once the agent is connected, they go through the agent, as for any virtual machine. `vm_ui_tree`, `vm_shell`, `vm_copy_in` and `vm_copy_out` need the agent: they wait for it as any action does.
+- `vm_setup_recovery` with the image's id does what `Restart in Recovery` of the setup view does ([Setup view](#setup-view)) and returns once the restart has begun, so that Claude can choose `Shut Down` in the guest when macOS asks for it, then `Options` and `Continue` at the startup options. It fails with `conflict` and `The setup of the image is not running.` while no setup of the image runs, and `The setup virtual machine is restarting or shutting down.` while `Restart in Recovery` is disabled.
+- `vm_setup_finish` with the image's id does what `Finish Setup` does and returns once the image is `Ready`. It fails with `conflict` and `The setup of the image is not running.` while no setup of the image runs, and `Finish Setup needs the agent connected with SIP off.` while `Finish Setup` is disabled.
+- Neither is an action: they do not wait for the queue.
+- `vm_start` never joins the setup virtual machine, and `vm_stop` refuses it, as a virtual machine of the user: `forbidden`, `“Set Up macOS <version>” was started by the user: only the user stops it.` The setup virtual machine is no virtual machine of Claude: it has no idle stop and never gets the [Claude token](#claude-token).
+
+The tools on the setup virtual machine, through its screen before its agent connects, the restart into Recovery and `Finish Setup` for Claude come from the user ([R211](requirements.md#requirements)). The image's id as the id, the fields of `vm_list`, the actions through the agent once it is connected, the two tool names, their returns and their messages are Default chosen at design time.
+
+#### Screen of the setup virtual machine
+
+The image setup service drives the screen of a setup virtual machine with a `VZVirtualMachineView` of its own, in a window that is never shown on screen, made at the first action through the screen and closed when the setup ends. Its view has the proportions of the display, 1280 × 800 points; the screenshots have the display's pixels, 2560 × 1600.
+
+| Tool            | Through the screen                                                                                                                                                                                                                                                                                                            |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vm_screenshot` | The image that the view shows, as a PNG of the display's pixels, without the pointer. No image while the guest's display is off or the virtual machine starts: `unavailable`, `The screen of “<name>” shows nothing yet.`                                                                                                     |
+| `vm_click`      | The pointer moves to the point, then each click presses and releases the button, the clicks of a double or triple click counted.                                                                                                                                                                                              |
+| `vm_drag`       | The left button pressed at the first point, the pointer moved to the second in steps, then released.                                                                                                                                                                                                                          |
+| `vm_scroll`     | Scroll wheel events at the point, in pixels.                                                                                                                                                                                                                                                                                  |
+| `vm_type`       | The keys that type each character on the keyboard layout of this Mac, as `Type Password` presses them ([Type Password](#type-password)); a line break presses Return and a tab Tab. A character that the layout cannot type fails before any key: `unavailable`, `The keyboard layout of this Mac cannot type “<character>”.` |
+| `vm_key`        | The key with its modifiers: a letter, a digit or a punctuation character by the key that types it on the keyboard layout of this Mac, the named keys by their key; the modifiers pressed first and released last.                                                                                                             |
+
+- The coordinates are pixels of the screenshot from its top-left corner, as with the agent.
+- The guest reads keys, not characters: it gets the text when its keyboard layout is that of this Mac. Setup Assistant in English (United States) and a U.S. layout on this Mac type every ASCII character.
+- The events go to that view only: the windows that show the setup view, their focus and the user's keyboard are not touched.
+
+The window never shown, the display's pixels, the events, the layout of this Mac and the messages are Default chosen at design time. Not checked in a guest: the view of its own window, its image and its events.
+
 ### Actions and their queue
 
 The ten tools from `vm_screenshot` to `vm_copy_out` are the actions on a virtual machine. Each virtual machine has one queue:
 
 - The actions of every chat on one virtual machine run one at a time, in the order the engine receives them: an action starts once the actions received before it have ended, whatever their chat.
-- When its turn comes, an action needs a virtual machine that runs: one that is stopped fails it with `conflict` and `The virtual machine “<name>” is not running.`; one that left the list, with `notFound` and `Virtual machine <id> not found.`
-- An action whose virtual machine's agent is not connected, has not been given the token yet or still grows the guest's container ([Starting](#starting)), waits for it up to 60 seconds, keeping its turn, then fails with `unavailable` and `The agent of “<name>” is not connected.`
+- When its turn comes, an action needs a virtual machine that runs: one that is stopped fails it with `conflict` and `The virtual machine “<name>” is not running.`; one that left the list, with `notFound` and `Virtual machine <id> not found.` A setup virtual machine leaves the list when its setup ends; while `Restart in Recovery` restarts it, it stays in the list.
+- An action whose virtual machine's agent is not connected, has not been given the token yet or still grows the guest's container ([Starting](#starting)), waits for it up to 60 seconds, keeping its turn, then fails with `unavailable` and `The agent of “<name>” is not connected.` On a setup virtual machine, the six actions that go through its screen do not wait: they go through the screen while the agent is not connected ([The setup virtual machine](#the-setup-virtual-machine)).
 - Each action sends one request or more to the [agent](#methods), in the table below. A request has 60 seconds to be answered, `uiTree` 120 seconds and `exec` its `timeout` plus 15 seconds. A request that the agent fails fails the action with `unavailable` and the agent's message; a connection that ends, with `The agent of “<name>” disconnected.`; a request that gets no answer in time, with `The agent of “<name>” did not answer in time.`
-- `vm_stop` is not an action: it does not wait for the queue, and the actions that wait fail as above once the virtual machine has stopped.
+- `vm_stop`, `vm_setup_recovery` and `vm_setup_finish` are not actions: they do not wait for the queue, and the actions that wait fail as above once the virtual machine has stopped.
 
 | Tool            | Requests of the agent                                                                                                                                                                                                                                    |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -622,6 +695,7 @@ The idle stop, its setting and its default come from the user ([R204](requiremen
 - Claude acts on a virtual machine that the user started only when the user names it in the chat, by its name or with its [linked item](#linked-item) chip. The descriptions of the VM tools and the system prompt say so; the engine does not check it, so the actions accept any virtual machine that runs.
 - `vm_stop` refuses a virtual machine that the user started, with `forbidden` and `“<name>” was started by the user: only the user stops it.` The descriptions and the system prompt say that Claude never stops one.
 - `vm_start` never joins one.
+- The setup virtual machine of an image counts as one of the user's: `vm_stop` refuses it too, and an Auto Setup chat names it in its first message ([The setup virtual machine](#the-setup-virtual-machine)).
 
 ### Claude token
 
@@ -749,8 +823,9 @@ The bubble, its symbol, its place and its look, the virtual machines it counts, 
 1. The engine ends the image's download or install, and stops its setup virtual machine at once, which ends its setup: the windows that show its setup view go back to their section.
 2. It deletes every virtual machine whose `imageID` is the image, as `vms.delete` does: one that runs is stopped at once first ([Deleting a virtual machine](#deleting-a-virtual-machine)). `vms.changed` is emitted when it deleted one. A virtual machine whose folder cannot be deleted stays, and the image is deleted all the same: the virtual machine has its own disk.
 3. When the image is the default image, `defaultVMImage` becomes null, with `settings.updated`.
-4. The folder `<data dir>/VirtualMachines/Images/<image id>/` is deleted with everything in it. It is not moved to the Trash: a disk in the Trash would keep its space. Default chosen at design time.
-5. `vmImages.changed` is emitted.
+4. It deletes the image's [chats without a project](chats.md#chats-without-a-project), stored in its folder: each chat's Claude process ends and `chat.deleted` is emitted, as for `chats.delete`, without moving the files to the Trash. Default chosen at design time.
+5. The folder `<data dir>/VirtualMachines/Images/<image id>/` is deleted with everything in it. It is not moved to the Trash: a disk in the Trash would keep its space. Default chosen at design time.
+6. `vmImages.changed` is emitted.
 
 ## Storage
 
@@ -765,6 +840,7 @@ The bubble, its symbol, its place and its look, the virtual machines it counts, 
         MachineIdentifier       the machine identifier of the image's own virtual machine
         AuxiliaryStorage        the auxiliary storage of the virtual machine
         Disk.img                the disk, a sparse file of 32 GB, or of the size chosen for an earlier image
+        .hephaestus/chats/      the image's Auto Setup chats without a project, laid out as a project's chats
     Machines/
       <VM-ID>/                  one folder per virtual machine, named by its id, an uppercase UUID
         vm.yml                  the VM metadata file
@@ -783,6 +859,7 @@ The bubble, its symbol, its place and its look, the virtual machines it counts, 
 - The engine creates `VirtualMachines/Machines/` with the first virtual machine. At launch, the folders of `Machines/` whose name is not a UUID, or whose `vm.yml` is missing or invalid, are skipped and logged, and the folder of a virtual machine that Claude started is deleted: such a folder is left only when the app ended without stopping the virtual machine ([Loading](data-model.md#loading)).
 - A clone shares the blocks of the image's disk until one of the two files changes them, so a new virtual machine takes almost no space, and its disk grows with what the guest writes. A grown clone also takes the blocks of the moved recovery container that hold data ([Clone](#clone)). The image's disk no longer changes once the image is Ready.
 - `Runtime/guest/` is generated: the engine fills it each time a setup virtual machine starts.
+- `.hephaestus/chats/` holds the metadata, transcript and attachment folder of each chat of the image that belongs to no project, as the `.hephaestus/chats/` folder of a project holds its chats ([Chats without a project](chats.md#chats-without-a-project)). The engine creates it with the first such chat and reads it when it loads the images.
 
 The folder and file names are Default chosen at design time.
 
@@ -808,6 +885,9 @@ The folder and file names are Default chosen at design time.
 | `Sources/HephaestusUI/Settings/`                               | `VirtualMachinesSettingsPane`, `AddImageSheet`, `NewVMSheet`, `EditVMSheet`, `ImageSetupView`, the setup view, with the view of a virtual machine's screen (`VZVirtualMachineView`), and `VirtualMachineDetailView`, the detail of a virtual machine in a main window. |
 | `Sources/HephaestusUI/Settings/GuestAccountSection.swift`      | The `Guest Account` section of Settings ([Guest account](#guest-account)).                                                                                                                                                                                             |
 | `Sources/HephaestusUI/Settings/GuestKeyboard.swift`            | `GuestKeyboard`, the keys of `Type Password` through a virtual machine's screen, and `KeyboardLayoutKeys`, the keys that type each character on the keyboard layout of this Mac ([Type Password](#type-password)).                                                     |
+| `Sources/HephaestusCore/VirtualMachines/GuestScreen.swift`     | `GuestScreen` and `GuestScreenProviding`: the screen of a setup virtual machine that the VM tools drive without its agent ([Screen of the setup virtual machine](#screen-of-the-setup-virtual-machine)).                                                               |
+| `Sources/HephaestusCore/VirtualMachines/VMSetupTools.swift`    | The setup virtual machine as a target of the VM tools: its entry of `vm_list`, its actions through the screen or the agent, `vmTools.setupRecovery` and `vmTools.setupFinish`.                                                                                         |
+| `Sources/HephaestusUI/Settings/GuestScreenDriver.swift`        | `GuestScreenDriver`, the `VZVirtualMachineView` of a window never shown that the screen actions use, and `AppGuestScreens`, the provider the app gives the engine.                                                                                                     |
 | `Sources/HephaestusUI/Toolbar/VirtualMachinesBubble.swift`     | The [Virtual Machines bubble](#virtual-machines-bubble) and its popover; `VMPopoverPresentation`, the number and the texts of the rows.                                                                                                                                |
 
 Outside the app, the engine reaches ipsw.me, Apple's download server and the Virtualization framework only through `VMImageProvisioning`, the `imageProvisioner` of its configuration ([Engine configuration](architecture.md#engine-configuration)): the app uses `SystemVMImageProvisioner`, and tests a stand-in, so that no test downloads an IPSW or starts a virtual machine ([Test rules](development.md#test-rules)). The clone of an image's disk and the other files of a virtual machine's folder are plain files, which the engine writes itself.
@@ -821,3 +901,4 @@ Outside the app, the engine reaches ipsw.me, Apple's download server and the Vir
 - R208: Settings gives the default cores, memory and disk size of new virtual machines; an image has no such values, the user chooses them in the New VM sheet, and a virtual machine's disk is grown to the size chosen.
 - R209: Each image stores the user name and the password of its guests' account in clear in its `image.yml`; Settings edits them, `Type Password` in the setup view and in the detail of a virtual machine types the password into the guest through its screen, and Claude reads and stores them with the VM tools and types the password whenever the guest asks for it.
 - R210: `Edit…`, in the Virtual Machines popover and in Settings, changes the name, the cores, the memory and the disk size of a stopped virtual machine of the user; the disk cannot be smaller, a larger one is grown, and a running virtual machine cannot be edited.
+- R211: `Set Up…` of an image has a menu with `Manual Setup` and `Auto Setup`; Auto Setup starts a chat beside the setup view in which Claude goes through Setup Assistant in English (United States) with the image's stored account, asked for when missing, turns SIP off in Recovery, installs the agent and finishes the setup with the VM tools, through the screen before the agent connects; the user's controls stay, a running setup is taken over, the chat belongs to the window's project or, without a project, to the image, and stays open.

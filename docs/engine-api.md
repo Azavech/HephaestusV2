@@ -273,6 +273,7 @@ The first column lists every engine method; it is the list the docs conformance 
 | `chats.implementBundle`          | ChatsImplementBundle          | bundleID, settings?                                        | ChatMeta           | user, claude |
 | `chats.watchCI`                  | ChatsWatchCI                  | commit                                                     | ChatMeta           | claude       |
 | `chats.createFeedback`           | ChatsCreateFeedback           | projectID, comment, screenshot?, context, settings?        | ChatMeta           | user         |
+| `chats.createSetup`              | ChatsCreateSetup              | imageID, projectID?, settings?                             | ChatMeta           | user         |
 | `chats.listAgents`               | ChatsListAgents               | projectID                                                  | [ChatAgents]       | user         |
 | `chats.agentTranscript`          | ChatsAgentTranscript          | chatID, agentID                                            | [ChatItem]         | user         |
 | `chats.stopWorkflow`             | ChatsStopWorkflow             | chatID, workflowID                                         | Empty              | user         |
@@ -347,6 +348,8 @@ The first column lists every engine method; it is the list the docs conformance 
 | `vmTools.shell`                  | VMToolsShell                  | chatID, vmID, command, asRoot?, timeout?                   | VMShellResult      | claude       |
 | `vmTools.copyIn`                 | VMToolsCopyIn                 | chatID, vmID, source, destination                          | Empty              | claude       |
 | `vmTools.copyOut`                | VMToolsCopyOut                | chatID, vmID, source, destination                          | Empty              | claude       |
+| `vmTools.setupRecovery`          | VMToolsSetupRecovery          | chatID, imageID                                            | Empty              | claude       |
+| `vmTools.setupFinish`            | VMToolsSetupFinish            | chatID, imageID                                            | Empty              | claude       |
 | `settings.get`                   | SettingsGet                   | none                                                       | HostSettings       | user         |
 | `settings.update`                | SettingsUpdate                | any HostSettings key (partial)                             | HostSettings       | user         |
 | `ui.open`                        | UIOpen                        | target, deviceID?                                          | Empty              | user, claude |
@@ -1332,7 +1335,7 @@ Chat states and their transitions, Claude processes, CLI flags, the stream-json 
 
 Every ChatMeta returned by a method or carried by chat.updated has the fields of the metadata file, `closed` included, which tells every client that the chat is closed ([Chats](chats.md#closing-a-chat)), and `contextUsage`, which the context indicator of every client shows ([Context indicator](chats.md#context-indicator)), and six fields computed by the engine and never written to `chats/<chatID>.yml`. They are the runtime keys `projectID`, `state`, `backgroundWork`, `compactingSince`, `costUSD` and `mentionedIDs` of [ChatMeta](data-model.md#chat-metadata-file). The engine emits chat.updated when the chat's `state` or `backgroundWork` changes ([Background work](chats.md#background-work)), when a compaction starts or ends, which sets or clears `compactingSince` ([Compaction](chats.md#compaction)), and each time a new context usage replaces `contextUsage` ([Context usage](chats.md#context-usage)). The engine emits chat.updated when the chat's `costUSD` changes, followed by projects.changed, since the `ownCostUSD` and `costUSD` of its project and of the project's ancestors change with it ([Live updates](costs.md#live-updates)). The engine emits chat.updated when the chat's `mentionedIDs` changes: when the replay of its transcript at launch or by `chats.get` finds other ids, and when a `user` or `assistant` item that it adds changes the list ([Mentioned ids](data-model.md#mentioned-ids)); the clients read the chats that mention a ticket or a bundle from the chats they hold, which `chats.list` seeds ([Mentioned In tab](tickets.md#mentioned-in-tab)).
 
-The **driving device** of a chat is the device of the user actor that last called `chats.create` with a message, `chats.send`, `chats.answerQuestion`, `chats.answerSymbol`, `chats.answerColor`, `chats.answerSound`, `chats.answerShortcut`, `chats.answerFont`, `chats.answerAnimation`, `chats.answerPermission`, `chats.implementTicket`, `chats.implementBundle` or `chats.createFeedback` for it since the engine started; it is kept in memory only. A `ui.open` call made by that chat's Claude targets it. Default chosen at design time.
+The **driving device** of a chat is the device of the user actor that last called `chats.create` with a message, `chats.send`, `chats.answerQuestion`, `chats.answerSymbol`, `chats.answerColor`, `chats.answerSound`, `chats.answerShortcut`, `chats.answerFont`, `chats.answerAnimation`, `chats.answerPermission`, `chats.implementTicket`, `chats.implementBundle`, `chats.createFeedback` or `chats.createSetup` for it since the engine started; it is kept in memory only. A `ui.open` call made by that chat's Claude targets it. Default chosen at design time.
 
 ### chats.list
 
@@ -2014,6 +2017,29 @@ The files of `attachments` are those the user added in the feedback sheet ([Feed
 | forbidden   | screenshot or an attachment has sourcePath.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | unavailable | The Claude CLI is not available.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | internal    | A file cannot be written.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+
+Events: chat.updated, chat.item (the first user message), then the events of a running chat.
+
+### chats.createSetup
+
+Swift type `ChatsCreateSetup` · actors: user · result: [ChatMeta](data-model.md#chat-metadata-file)
+
+Called by `Auto Setup` of Settings ▸ Virtual Machines once the setup of the image shows, with the project of the window that shows the setup view, or without a project when This Mac has none ([Auto Setup](virtual-machines.md#auto-setup)).
+
+| Param     | Type         | Required | Description                                                                                               |
+| --------- | ------------ | -------- | --------------------------------------------------------------------------------------------------------- |
+| imageID   | UUID         | yes      | The image that the chat sets up.                                                                          |
+| projectID | ProjectID    | no       | The project of the chat; absent, the chat belongs to no project and is stored with the image.             |
+| settings  | ChatSettings | no       | Default: the project's `chatDefaults`, else the host `defaultChatSettings`; the host's without a project. |
+
+Creates a chat of kind `setup` whose `image` is `imageID`, in the project's `.hephaestus/chats/`, or without `projectID` in `<data dir>/VirtualMachines/Images/<imageID>/.hephaestus/chats/` ([Chats without a project](chats.md#chats-without-a-project)), then sends its first user message, with `sender` the name of the actor's device: `/hephaestus-skills:auto-setup <imageID>`, which calls the internal skill `auto-setup` ([Auto Setup chats](chats.md#auto-setup-chats)). The returned ChatMeta has the empty string as `projectID` for a chat without a project.
+
+| Error       | When                                                                                   |
+| ----------- | -------------------------------------------------------------------------------------- |
+| invalid     | imageID is not a UUID; projectID is malformed; settings invalid.                       |
+| notFound    | No image has this id (`Image <id> not found.`); no loaded project has this identifier. |
+| unavailable | The Claude CLI is not available.                                                       |
+| internal    | A file cannot be written.                                                              |
 
 Events: chat.updated, chat.item (the first user message), then the events of a running chat.
 
@@ -3224,7 +3250,7 @@ Events: vms.changed.
 
 ## VM tools
 
-The methods of the VM tools of the MCP server, one per tool ([Rules of the VM tools](mcp.md#rules-of-the-vm-tools)): Claude lists the images and the virtual machines, starts, joins and stops its own virtual machines, and drives a virtual machine through its agent, one action at a time ([Claude's virtual machines](virtual-machines.md#claudes-virtual-machines)). Only the claude actor calls them, with the `chatID` of its own chat: another chat id, and the external token, fail with `forbidden` and `Only the chat's own Claude can use the VM tools.` ([Rules for Claude](#rules-for-claude)). The ten methods from `vmTools.screenshot` to `vmTools.copyOut` are actions: they run in the queue of their virtual machine.
+The methods of the VM tools of the MCP server, one per tool ([Rules of the VM tools](mcp.md#rules-of-the-vm-tools)): Claude lists the images and the virtual machines, starts, joins and stops its own virtual machines, and drives a virtual machine through its agent, one action at a time ([Claude's virtual machines](virtual-machines.md#claudes-virtual-machines)). Only the claude actor calls them, with the `chatID` of its own chat: another chat id, and the external token, fail with `forbidden` and `Only the chat's own Claude can use the VM tools.` ([Rules for Claude](#rules-for-claude)). The ten methods from `vmTools.screenshot` to `vmTools.copyOut` are actions: they run in the queue of their virtual machine. The setup virtual machine of an image whose setup runs is a virtual machine of these methods, with the image's id as its id, and `vmTools.setupRecovery` and `vmTools.setupFinish` act on its setup ([The setup virtual machine](virtual-machines.md#the-setup-virtual-machine)).
 
 ### VMToolImage
 
@@ -3256,6 +3282,7 @@ An element of the result of `vmTools.list`, and the result of `vmTools.start`.
 | memoryGB       | Int                 | yes      | Its memory in GB.                                                                                                                                                                                                        |
 | startedBy      | String              | yes      | The text of the `Started by` column: `You`, or `<project id> · <chat name>` for a virtual machine that Claude started, `<project id>` alone when the chat no longer exists ([Lifecycle](virtual-machines.md#lifecycle)). |
 | byClaude       | Bool                | yes      | True for a virtual machine that Claude started.                                                                                                                                                                          |
+| setup          | Bool                | yes      | True for the setup virtual machine of an image, whose `id` is the image's id ([The setup virtual machine](virtual-machines.md#the-setup-virtual-machine)).                                                               |
 | state          | VirtualMachineState | yes      | `running` or `stopped`.                                                                                                                                                                                                  |
 | runningTime    | String              | no       | The running time of the `State` column, for example `12 min` or `1 h 05 min`; absent for a stopped virtual machine.                                                                                                      |
 | agentConnected | Bool                | yes      | True while the agent is connected and has been given the [Claude token](virtual-machines.md#claude-token): the actions run without waiting for it.                                                                       |
@@ -3270,6 +3297,7 @@ An element of the result of `vmTools.list`, and the result of `vmTools.start`.
   "memoryGB": 4,
   "name": "Menu checks",
   "runningTime": "3 min",
+  "setup": false,
   "startedBy": "HEPH · Fix the View menu",
   "state": "running",
   "version": "27.2.1"
@@ -3540,6 +3568,36 @@ Copies a file or a folder of the guest to this Mac ([vm_copy_out](mcp.md#vm_copy
 Errors: those of [vm_copy_out](mcp.md#vm_copy_out).
 
 Events: none.
+
+### vmTools.setupRecovery
+
+Swift type `VMToolsSetupRecovery` · actors: claude · result: [Empty](#empty)
+
+Does what `Restart in Recovery` of the image's setup view does, and returns once the restart has begun ([vm_setup_recovery](mcp.md#vm_setup_recovery)).
+
+| Param   | Type | Required | Description                               |
+| ------- | ---- | -------- | ----------------------------------------- |
+| chatID  | UUID | yes      | The calling chat; the MCP server sets it. |
+| imageID | UUID | yes      | Id of the image whose setup runs.         |
+
+Errors: those of [vm_setup_recovery](mcp.md#vm_setup_recovery).
+
+Events: none; the setup view follows its setup.
+
+### vmTools.setupFinish
+
+Swift type `VMToolsSetupFinish` · actors: claude · result: [Empty](#empty)
+
+Does what `Finish Setup` of the image's setup view does, and returns once the image is Ready ([vm_setup_finish](mcp.md#vm_setup_finish)).
+
+| Param   | Type | Required | Description                               |
+| ------- | ---- | -------- | ----------------------------------------- |
+| chatID  | UUID | yes      | The calling chat; the MCP server sets it. |
+| imageID | UUID | yes      | Id of the image whose setup runs.         |
+
+Errors: those of [vm_setup_finish](mcp.md#vm_setup_finish).
+
+Events: vmImages.changed, and settings.updated when the image becomes the default image.
 
 ## Settings
 
@@ -5529,3 +5587,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R208: Settings gives the default cores, memory and disk size of new virtual machines; an image has no such values, the user chooses them in the New VM sheet, and a virtual machine's disk is grown to the size chosen.
 - R209: Each image stores the user name and the password of its guests' account in clear in its `image.yml`; Settings edits them, `Type Password` in the setup view and in the detail of a virtual machine types the password into the guest through its screen, and Claude reads and stores them with the VM tools and types the password whenever the guest asks for it.
 - R210: `Edit…`, in the Virtual Machines popover and in Settings, changes the name, the cores, the memory and the disk size of a stopped virtual machine of the user; the disk cannot be smaller, a larger one is grown, and a running virtual machine cannot be edited.
+- R211: `Set Up…` of an image has a menu with `Manual Setup` and `Auto Setup`; Auto Setup starts a chat beside the setup view in which Claude goes through Setup Assistant in English (United States) with the image's stored account, asked for when missing, turns SIP off in Recovery, installs the agent and finishes the setup with the VM tools, through the screen before the agent connects; the user's controls stay, a running setup is taken over, the chat belongs to the window's project or, without a project, to the image, and stays open.

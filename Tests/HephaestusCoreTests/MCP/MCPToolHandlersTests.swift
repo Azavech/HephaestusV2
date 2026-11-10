@@ -923,7 +923,7 @@ struct MCPToolHandlersTests {
         for tool in MCPToolCatalog.tools where tool.handling == .vmTool {
             #expect(try await Self.call(handlers, tool.name, #"{"unknown":1}"#, actor: Self.external) == .failure(refused), "\(tool.name)")
         }
-        #expect(MCPToolCatalog.tools.filter { $0.handling == .vmTool }.count == 15)
+        #expect(MCPToolCatalog.tools.filter { $0.handling == .vmTool }.count == 17)
         #expect(engine.calls.isEmpty)
     }
 

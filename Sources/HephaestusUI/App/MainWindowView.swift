@@ -133,7 +133,9 @@ private struct MainWindowColumns: View {
                     VirtualMachineDetailView(window: state, workspace: workspace, vmID: vmID)
                         .id("\(workspace.deviceID)/vm/\(vmID.uuidString)")
                 } else if let imageID = state.shownImageSetupID {
-                    ImageSetupView(window: state, imageID: imageID)
+                    // The image's Auto Setup chat without a project shows beside the setup view
+                    // (docs/ui.md › Welcome view).
+                    ImageSetupWithChat(window: state, workspace: workspace, imageID: imageID)
                         .id("\(workspace.deviceID)/setup/\(imageID.uuidString)")
                 } else if state.showsGlobalMemories {
                     GlobalMemoriesView(window: state, workspace: workspace)

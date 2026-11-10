@@ -104,17 +104,18 @@ enum ChatFormat {
         case .bundle: return "Bundle"
         case .feedback: return "Feedback"
         case .ci: return "CI"
+        case .setup: return "Auto Setup"
         }
     }
 
     /// The transcript placeholder of an empty chat (docs/chats.md › Empty transcript); nil for a
-    /// feedback chat and a CI chat, which are never empty.
+    /// feedback chat, a CI chat and an Auto Setup chat, which are never empty.
     static func placeholder(kind: ChatKind, projectName: String, ticketID: String?, bundleID: String?) -> String? {
         switch kind {
         case .project: return "Ask Claude to plan, create tickets or work on \(projectName)."
         case .ticket: return "Ask Claude about \(ticketID ?? ""), or click Implement."
         case .bundle: return "Ask Claude about \(bundleID ?? ""), or click Implement All."
-        case .feedback, .ci: return nil
+        case .feedback, .ci, .setup: return nil
         }
     }
 }

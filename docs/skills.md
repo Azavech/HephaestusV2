@@ -135,10 +135,10 @@ Every file of a skill folder other than its `SKILL.md` is an extra file: templat
 
 ## Internal skills
 
-HephaestusV2 has fourteen internal skills, which hold every instruction it gives Claude. They are skills of the device's library, shown and edited only in the [Internal Skills view](#internal-skills-view), which belongs to no project, so that the user changes what Claude does:
+HephaestusV2 has sixteen internal skills, which hold every instruction it gives Claude. They are skills of the device's library, shown and edited only in the [Internal Skills view](#internal-skills-view), which belongs to no project, so that the user changes what Claude does:
 
-- four called skills, `feedback`, `implement-ticket`, `implement-bundle` and `finish-implementation`, which hold the steps Claude follows to turn feedback into a ticket and to implement tickets and bundles: the first message of a chat or Claude calls them ([Calls](#calls)), and they are always active in every project;
-- ten [system prompt skills](#system-prompt-skills), `common`, `project`, `ticket`, `bundle`, `ci`, `comment-answer`, `naming-ticket`, `naming-chat`, `naming-bundle` and `notification-summary`, which hold the system prompts of chats, comment answers and Haiku calls: HephaestusV2 puts them in the system prompt of the chats and calls that use them, and nothing calls them.
+- five called skills, `feedback`, `implement-ticket`, `implement-bundle`, `finish-implementation` and `auto-setup`, which hold the steps Claude follows to turn feedback into a ticket, to implement tickets and bundles and to set up a macOS image: the first message of a chat or Claude calls them ([Calls](#calls)), and they are always active in every project;
+- eleven [system prompt skills](#system-prompt-skills), `common`, `project`, `ticket`, `bundle`, `ci`, `setup`, `comment-answer`, `naming-ticket`, `naming-chat`, `naming-bundle` and `notification-summary`, which hold the system prompts of chats, comment answers and Haiku calls: HephaestusV2 puts them in the system prompt of the chats and calls that use them, and nothing calls them.
 
 | Skill                   | Holds                                                                                                                                                                                        | Called by                                                                                                         |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -146,6 +146,7 @@ HephaestusV2 has fourteen internal skills, which hold every instruction it gives
 | `implement-ticket`      | the steps of implementing a ticket ([Implementation workflow](workflow.md#implementation-workflow)) and the rules of a ticket chat started by a bundle chat ([Bundles](workflow.md#bundles)) | the first message of Implement and of `implement_ticket`; Claude whenever it implements a ticket, in any chat     |
 | `implement-bundle`      | the steps of the orchestrator of a bundle ([Bundles](workflow.md#bundles))                                                                                                                   | the first message of Implement All and of `implement_bundle`; Claude whenever it implements a bundle, in any chat |
 | `finish-implementation` | the [completion comment](workflow.md#completion-comment), [Waiting for CI](workflow.md#waiting-for-ci) and the checks of [Go service projects](workflow.md#go-service-projects)              | `implement-ticket` and `implement-bundle`, which tell Claude to call it                                           |
+| `auto-setup`            | the steps of an Auto Setup chat, from the guest account to `Finish Setup` ([Auto Setup](virtual-machines.md#auto-setup))                                                                     | the first message of an Auto Setup chat                                                                           |
 
 The common skill keeps the other rules of [Claude workflow](workflow.md) and tells Claude to use `implement-ticket` whenever it implements a ticket and `implement-bundle` whenever it implements a bundle ([Default: common](#default-common)).
 
@@ -159,31 +160,33 @@ The first message of a chat that runs a called internal skill calls it as a Clau
 | a ticket chat started by a bundle chat | `/hephaestus-skills:implement-ticket <ticket id> <bundle id>`, for example `/hephaestus-skills:implement-ticket HEPH-12 HEPH-B2`  |
 | Implement All and `implement_bundle`   | `/hephaestus-skills:implement-bundle <bundle id>`, for example `/hephaestus-skills:implement-bundle HEPH-B2`                      |
 | feedback                               | `/hephaestus-skills:feedback`, a line break, then the [feedback message](chats.md#feedback-message), with any screenshot attached |
+| Auto Setup                             | `/hephaestus-skills:auto-setup <image id>`, for example `/hephaestus-skills:auto-setup 5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F`      |
 
 - Claude Code 2.1.309 runs a user message of a stream-json session as a skill call when its last content block is a text that starts with `/<plugin>:<skill>`: the skill's body follows the message, with `$ARGUMENTS` replaced by the rest of the text, line breaks included, and the message's image blocks stay visible to Claude. A message whose image block comes after its text is passed on as plain text, so the engine writes the image blocks before the text block ([User messages](chats.md#user-messages)). The CLI reports the message with `command_lifecycle` lines as any other ([Turn tracking](chats.md#turn-tracking)).
 - Claude Code 2.1.309 keeps the text of a called skill, its arguments filled in, after a compaction of the session, so a feedback chat keeps its comment and context.
 - The default skills read their arguments with `$ARGUMENTS` only: with Claude Code 2.1.309, a positional `$1` stays as written when the call has no second argument.
 - Implement chats keep `questionsBlocked` and every other rule the engine enforces ([Implement chats](workflow.md#implement-chats)).
-- The user calls a skill the same way: in a chat composer, typing `/` at the start of a message lists the skills of the chat's project, the four called internal skills included, and completes the call `/hephaestus-skills:<name> ` of the chosen one ([Skill completion](chats.md#skill-completion)).
+- The user calls a skill the same way: in a chat composer, typing `/` at the start of a message lists the skills of the chat's project, the five called internal skills included, and completes the call `/hephaestus-skills:<name> ` of the chosen one ([Skill completion](chats.md#skill-completion)).
 
 ### System prompt skills
 
 The engine puts each system prompt skill in the system prompt of the chats or the calls that use it; how it composes and renders them is in [Composition and rendering](chats.md#composition-and-rendering). Each skill is filled with its own set of [placeholders](chats.md#placeholders). The chat placeholders are `{{projectName}}`, `{{projectID}}`, `{{projectRoot}}`, `{{workingDirectory}}`, `{{parentMemories}}`, `{{deviceName}}`, `{{docsPath}}`, `{{projectType}}`, `{{environments}}` and `{{globalMemories}}`.
 
-| Skill                  | Put in the system prompt of                                                           | Placeholders                                                                                            | `<where>` of the editor caption |
-| ---------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| `common`               | every chat except CI chats, first                                                     | the chat placeholders                                                                                   | `every chat except CI chats`    |
-| `project`              | project chats, after `common`                                                         | the chat placeholders                                                                                   | `project chats`                 |
-| `ticket`               | ticket chats, after `common`                                                          | the chat placeholders, `{{ticketID}}` and `{{ticket}}`                                                  | `ticket chats`                  |
-| `bundle`               | bundle chats, after `common`                                                          | the chat placeholders, `{{bundleID}}` and `{{bundle}}`                                                  | `bundle chats`                  |
-| `ci`                   | CI chats, alone                                                                       | the chat placeholders and `{{githubRepository}}`                                                        | `CI chats`                      |
-| `comment-answer`       | comment answers, alone ([Comment answers](chats.md#comment-answers))                  | `{{projectName}}`, `{{projectID}}`, `{{projectRoot}}`, `{{deviceName}}`, `{{docsPath}}`, `{{ticketID}}` | `comment answers`               |
-| `naming-ticket`        | the Haiku calls that name a ticket ([Haiku naming](chats.md#haiku-naming))            | none                                                                                                    | `ticket naming calls`           |
-| `naming-chat`          | the Haiku calls that name a chat                                                      | none                                                                                                    | `chat naming calls`             |
-| `naming-bundle`        | the Haiku calls that name a bundle                                                    | none                                                                                                    | `bundle naming calls`           |
-| `notification-summary` | the Haiku calls that summarize a notification ([Summary call](chats.md#summary-call)) | none                                                                                                    | `notification summary calls`    |
+| Skill                  | Put in the system prompt of                                                           | Placeholders                                                                                            | `<where>` of the editor caption             |
+| ---------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `common`               | every chat except CI and Auto Setup chats, first                                      | the chat placeholders                                                                                   | `every chat except CI and Auto Setup chats` |
+| `project`              | project chats, after `common`                                                         | the chat placeholders                                                                                   | `project chats`                             |
+| `ticket`               | ticket chats, after `common`                                                          | the chat placeholders, `{{ticketID}}` and `{{ticket}}`                                                  | `ticket chats`                              |
+| `bundle`               | bundle chats, after `common`                                                          | the chat placeholders, `{{bundleID}}` and `{{bundle}}`                                                  | `bundle chats`                              |
+| `ci`                   | CI chats, alone                                                                       | the chat placeholders and `{{githubRepository}}`                                                        | `CI chats`                                  |
+| `setup`                | Auto Setup chats, alone ([Auto Setup chats](chats.md#auto-setup-chats))               | `{{deviceName}}`, `{{imageID}}`, `{{imageVersion}}`                                                     | `Auto Setup chats`                          |
+| `comment-answer`       | comment answers, alone ([Comment answers](chats.md#comment-answers))                  | `{{projectName}}`, `{{projectID}}`, `{{projectRoot}}`, `{{deviceName}}`, `{{docsPath}}`, `{{ticketID}}` | `comment answers`                           |
+| `naming-ticket`        | the Haiku calls that name a ticket ([Haiku naming](chats.md#haiku-naming))            | none                                                                                                    | `ticket naming calls`                       |
+| `naming-chat`          | the Haiku calls that name a chat                                                      | none                                                                                                    | `chat naming calls`                         |
+| `naming-bundle`        | the Haiku calls that name a bundle                                                    | none                                                                                                    | `bundle naming calls`                       |
+| `notification-summary` | the Haiku calls that summarize a notification ([Summary call](chats.md#summary-call)) | none                                                                                                    | `notification summary calls`                |
 
-- Nothing calls them: the generated plugins do not link them ([Generation](#generation)), so Claude cannot call them, and the [skill completion](chats.md#skill-completion) does not offer them. A feedback chat gets the common skill alone: the description of the feedback chat is in the called skill `feedback`.
+- Nothing calls them: the generated plugins do not link them ([Generation](#generation)), so Claude cannot call them, and the [skill completion](chats.md#skill-completion) does not offer them. A feedback chat gets the common skill alone: the description of the feedback chat is in the called skill `feedback`. An Auto Setup chat gets the setup skill alone, and its steps are in the called skill `auto-setup`.
 - The engine reads their bodies from the library at every launch of a chat process, the first launch and every `--resume` relaunch, and at every comment answer, naming call and summary call: a saved edit applies at the next launch of any chat, resumed chats and chats created before the edit included, and at the next call. Running processes are not restarted.
 - Before it reads them, the engine writes the missing internal skills and lets an unedited copy take a new default, as before it generates a plugin ([Protection](#protection)).
 - The text of a skill is its body without the white space and line breaks at its start and at its end. Default chosen at design time.
@@ -193,7 +196,7 @@ The engine puts each system prompt skill in the system prompt of the chats or th
 
 ### Availability
 
-- They are always active: the generated plugin of every project links the four called skills, whatever the project's `skills` list ([Generation](#generation)), so every chat of every project can use them, and the system prompt skills are in the system prompts of the chats and calls of every project.
+- They are always active: the generated plugin of every project, and that of the [chats without a project](chats.md#chats-without-a-project), links the five called skills, whatever the project's `skills` list ([Generation](#generation)), so every chat of every project can use them, and the system prompt skills are in the system prompts of the chats and calls of every project.
 - They are shown and edited only in the [Internal Skills view](#internal-skills-view) of a main window, View ▸ Internal Skills, which belongs to no project. The Skills section of every project, the HephaestusV2 project included, does not list them, and a skill selected there that is internal shows `Skill <name> was not found.`
 - The view has no `Enabled in <project name>` toggle: they stay active in every project.
 - The view shows and edits them whether the window's device's HephaestusV2 project is loaded, not loaded or hidden ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)).
@@ -408,6 +411,29 @@ After the push, follow these steps:
 6. Set each ticket whose Claude tests have all passed to done, following "Ticket status"; set the other tickets to review. Then stop the test service and close the chats you started, as "Closing chats" describes. The bundle chat then closes its chat.
 
 The bundle chat fixes the failed CI runs and checks itself and sets the tickets to done in step 6: these are the exceptions to "Do not implement the tickets yourself" and "Never set a ticket to done". It still asks as hephaestus-skills:implement-bundle describes after a ticket chat ends in error or is stopped, and when main fails to build or test before the push, and as "Waiting for CI" describes when CI fails in a project with a GitHub page.
+```
+
+#### Default: auto-setup
+
+`Sources/HephaestusCore/Resources/skills/auto-setup/SKILL.md`:
+
+```markdown
+---
+name: auto-setup
+description: Sets up a macOS image of HephaestusV2 in its setup virtual machine, from Setup Assistant to Finish Setup. The first message of an Auto Setup chat calls it with the image's id.
+---
+
+# Set up a macOS image
+
+This is an Auto Setup chat. Set up the image $ARGUMENTS in its setup virtual machine, which runs now, by driving it with the VM tools: its id in vm_list and the vmID of the actions is the image's id. The user may already have started the setup: take a screenshot first and start at the step that the guest's screen shows. Follow these steps:
+
+1. **Account.** Call vm_list_images and read the userName and password of the image. When either is missing, ask the user for both with ask_questions and end your turn; when the answers arrive, store them with vm_set_account before you go on. Use this account wherever the steps below ask for a user name or a password.
+2. **Setup Assistant.** Choose the language English and the region United States. Create the account with the stored user name, as full name and account name, and the stored password. Agree to the macOS licence agreement without asking the user. Skip, or turn off, every optional screen: Apple Account, Location Services, Analytics, Siri, Screen Time and the like. Once the desktop shows, turn on automatic login for the account in System Settings ▸ Users & Groups, typing the password when macOS asks for it.
+3. **SIP off.** Call vm_setup_recovery. When macOS asks whether to shut down, choose Shut Down within 30 seconds. At the startup options, choose Options, then Continue. In Recovery, open Utilities ▸ Terminal and run csrutil disable, confirming with y and typing the user name and the password when they are asked for. Then restart from the Apple menu ▸ Restart: macOS starts up normally and logs in by itself.
+4. **The agent.** Open Terminal, from the Finder: Applications ▸ Utilities ▸ Terminal. Run sh "/Volumes/My Shared Files/install.sh" and type the password when sudo asks for it. Wait until the script has ended, and report its last lines when it fails.
+5. **Finish Setup.** Check with vm_list that the setup virtual machine's agentConnected is true, then call vm_setup_finish: it shuts the virtual machine down and the image becomes Ready. When it fails because the agent does not report SIP off, go back to step 3.
+
+Reply with a short summary of the setup: the account, the steps done and the image Ready. Do not close this chat: it stays open when the setup ends.
 ```
 
 #### Default: common
@@ -763,6 +789,50 @@ End your turn with a final reply whose first line is exactly one of these lines,
 Change no file, make no commit and push nothing. Do not re-run or cancel a run: the orchestrator asks the user what to do. Ask no question: call none of ask_questions, ask_symbol, ask_color, ask_sound, ask_shortcut, ask_font and ask_animation, and write no question in your reply.
 ```
 
+#### Default: setup
+
+`Sources/HephaestusCore/Resources/skills/setup/SKILL.md`:
+
+```markdown
+---
+name: setup
+description: Describes an Auto Setup chat to Claude, with the image it sets up, the tools it uses and the rules of questions. HephaestusV2 puts it alone in the system prompt of Auto Setup chats; nothing calls it.
+---
+
+You are Claude, working inside HephaestusV2, a macOS app that coordinates the work on many projects and runs macOS virtual machines. The user talks to you in an Auto Setup chat, which sets up the image {{imageID}} of macOS {{imageVersion}} on the device {{deviceName}}: its setup virtual machine boots the image's own disk, and the setup view of the app shows the guest's screen to the user beside this chat. Every path you read or write is on this device.
+
+# HephaestusV2 tools
+
+HephaestusV2 gives you the MCP server "hephaestus". Its tools appear to you as mcp__hephaestus__<name>. In this chat, use:
+
+- Virtual machines: vm_list_images, vm_set_account, vm_list, vm_screenshot, vm_click, vm_drag, vm_scroll, vm_type, vm_key, vm_ui_tree, vm_shell, vm_copy_in, vm_copy_out, vm_setup_recovery and vm_setup_finish. The setup virtual machine has the image's id as its id in vm_list and as the vmID of the actions. Never call vm_start or vm_stop in this chat.
+- Questions to the user: ask_questions.
+- Images: show_image (shows images in this chat).
+
+Before the guest's agent connects, vm_screenshot, vm_click, vm_drag, vm_scroll, vm_type and vm_key go through the screen of the virtual machine: vm_type and vm_key press the keys of the keyboard layout of this Mac, which the guest reads with its own layout. vm_ui_tree, vm_shell, vm_copy_in and vm_copy_out need the agent. x and y are pixels of the last vm_screenshot. Read each screenshot before you act, and take a new one after each action that changes the screen.
+
+# Asking questions
+
+- Ask only what you cannot find yourself: the image's guest account when vm_list_images gives none, or a decision the user has to make.
+- Ask only with ask_questions, never with questions written in your reply.
+- Put every point that is unknown at that moment into one call. Label the questions A, B, C and so on, in order, starting at A in every call.
+- Make each question ask for one decision, and give it 2 to 10 options. An option's label is the answer itself; its optional description is one line that states the consequence of that answer. Set recommended to the label of exactly one option of each question: the option you recommend. Add no "Other" option: the user can always answer another way.
+- After ask_questions returns, end your turn: call no other tool, and do not repeat the questions in your reply, because the chat shows them.
+- Never call ask_questions while earlier questions of this chat still wait for their answers.
+
+The user answers the questions one by one in HephaestusV2. All the answers arrive in your next user message, in this form:
+
+Answers:
+A: <answer to question A>
+B: <answer to question B>
+
+An answer is the label of one of your options or the user's own words. The answer Skipped means that the user skipped the question: leave that point out, without acting on it or guessing, and mention it in your reply. Answers are decisions: apply them and do not ask them again.
+
+# The user
+
+The user sees the guest's screen in the setup view and keeps its buttons, Type Password, Finish Setup, Stop, the mouse and the keyboard: the user can take over at any time. When the user asks you to stop, stop driving the guest and end your turn. When the user asks you to go on, take a screenshot first and go on from what the guest shows. Report what you did and checked, and report a step that fails instead of guessing.
+```
+
 #### Default: comment-answer
 
 `Sources/HephaestusCore/Resources/skills/comment-answer/SKILL.md`:
@@ -941,7 +1011,7 @@ Parameters, results and errors are in [Engine API](engine-api.md#skills). All mu
 
 - The `skills` key of `project.yml` lists the names of the skills enabled in the project ([Data model](data-model.md#enabled-skills)), in the order they were enabled: `skills.setEnabled` appends.
 - Names that are not skills of the library are missing: they stay in the file, the plugin leaves them out, and the Skills section shows them so that they can be disabled.
-- The [internal skills](#internal-skills) are active in every project whatever its list: `skills.setEnabled` never adds or removes them, the plugin links the four called ones, and the [system prompt skills](#system-prompt-skills) are in the system prompts of the project's chats and calls.
+- The [internal skills](#internal-skills) are active in every project whatever its list: `skills.setEnabled` never adds or removes them, the plugin links the five called ones, and the [system prompt skills](#system-prompt-skills) are in the system prompts of the project's chats and calls.
 - Each project, sub projects included, has its own list; a sub project does not inherit the skills of its parent. Default chosen at design time.
 - Every chat of a project, whatever its kind, uses that project's list.
 - Users enable and disable skills in the Skills section (`skills.setEnabled`); Claude does the same with `set_skill_enabled`.
@@ -965,7 +1035,7 @@ Parameters, results and errors are in [Engine API](engine-api.md#skills). All mu
       swift-testing -> <skills library>/swift-testing
 ```
 
-The `skills/` folder links the four called internal skills and the project's enabled skills, never the [system prompt skills](#system-prompt-skills).
+The `skills/` folder links the five called internal skills and the project's enabled skills, never the [system prompt skills](#system-prompt-skills).
 
 `plugin.json`, for project `HEPH`:
 
@@ -1190,3 +1260,4 @@ The library folder is chosen in Settings ▸ Skills, whose controls are specifie
 - R204: Every chat of every project gives Claude full control of virtual machines with the VM tools: Claude starts one freely or joins Claude's one of the same image, waits up to 10 minutes for a free place, drives it one action at a time across chats, acts on the user's only when named and never stops them; Claude's idle VMs stop after the minutes set in Settings, and each VM gets the Claude token of Settings at its start.
 - R205: A ticket Claude writes has a User Testing bullet only for a check that needs the user's own accounts, data or hardware; Claude runs every other check itself, in a virtual machine that it starts without asking when the check needs what the offscreen check instance cannot do.
 - R209: Each image stores the user name and the password of its guests' account in clear in its `image.yml`; Settings edits them, `Type Password` in the setup view and in the detail of a virtual machine types the password into the guest through its screen, and Claude reads and stores them with the VM tools and types the password whenever the guest asks for it.
+- R211: `Set Up…` of an image has a menu with `Manual Setup` and `Auto Setup`; Auto Setup starts a chat beside the setup view in which Claude goes through Setup Assistant in English (United States) with the image's stored account, asked for when missing, turns SIP off in Recovery, installs the agent and finishes the setup with the VM tools, through the screen before the agent connects; the user's controls stay, a running setup is taken over, the chat belongs to the window's project or, without a project, to the image, and stays open.

@@ -89,7 +89,8 @@ extension Engine {
         where !virtualMachines.deleting.contains(machine.id) {
             result.append(await vmToolMachine(machine))
         }
-        return result
+        // The setup virtual machines come last (docs/virtual-machines.md › The setup virtual machine).
+        return result + (await vmToolSetupMachines())
     }
 
     /// A virtual machine as the VM tools give it, with the texts of the Settings table.
@@ -106,7 +107,7 @@ extension Engine {
         let runningTime = machine.state == .running ? VMRunningTime.text(since: machine.startedAt ?? now, now: now) : nil
         return VMToolMachine(id: machine.id, name: machine.name, imageID: machine.imageID, version: machine.version,
                              cores: machine.cores, memoryGB: machine.memoryGB, startedBy: startedBy, byClaude: machine.isDeletedWhenStopped,
-                             state: machine.state, runningTime: runningTime, agentConnected: machine.state == .running && agentReady)
+                             setup: false, state: machine.state, runningTime: runningTime, agentConnected: machine.state == .running && agentReady)
     }
 
     // MARK: vmTools.start (docs/virtual-machines.md › Starting and joining)
@@ -255,6 +256,11 @@ extension Engine {
     /// Stops a virtual machine that Claude started, which is then deleted; refuses the user's.
     func vmToolStop(_ params: VMToolMachineParams, _ actor: Actor) async throws -> Empty {
         _ = try vmToolChat(params.chatID, actor)
+        // The setup virtual machine counts as one of the user's (docs/virtual-machines.md › The
+        // user's virtual machines).
+        if virtualMachines.machines[params.vmID] == nil, let setup = vmImages.setups[params.vmID] {
+            throw EngineError(.forbidden, "“\(await setup.name)” was started by the user: only the user stops it.")
+        }
         guard let machine = virtualMachines.machines[params.vmID], !virtualMachines.deleting.contains(params.vmID) else {
             throw EngineError.notFound("Virtual machine", params.vmID.uuidString)
         }
@@ -271,7 +277,7 @@ extension Engine {
     /// The idle time of the virtual machine ends while actions are queued or run, and starts
     /// again once the queue is empty.
     func runVMAction<T: Sendable>(_ vmID: UUID, _ action: @escaping @Sendable (Engine) async throws -> T) async throws -> T {
-        guard virtualMachines.machines[vmID] != nil, !virtualMachines.deleting.contains(vmID) else {
+        guard virtualMachines.machines[vmID] != nil && !virtualMachines.deleting.contains(vmID) || vmImages.setups[vmID] != nil else {
             throw EngineError.notFound("Virtual machine", vmID.uuidString)
         }
         let queue: VMActionQueue
@@ -302,9 +308,13 @@ extension Engine {
         return try result.get()
     }
 
-    /// The virtual machine of an action whose turn came, and its session once the agent is ready:
-    /// a start in flight is waited for, then the agent, up to 60 seconds.
-    func vmActionSession(_ vmID: UUID) async throws -> (VirtualMachine, VMSession) {
+    /// The agent of the virtual machine of an action whose turn came, once it is ready: a start in
+    /// flight is waited for, then the agent, up to 60 seconds. The setup virtual machine of an
+    /// image is named by the image's id (docs/virtual-machines.md › The setup virtual machine).
+    func vmActionTarget(_ vmID: UUID) async throws -> VMActionTarget {
+        if virtualMachines.machines[vmID] == nil, virtualMachines.starts[vmID] == nil {
+            return try await vmSetupActionTarget(vmID)
+        }
         if let start = virtualMachines.starts[vmID] {
             _ = try? await start.value
         }
@@ -317,20 +327,22 @@ extension Engine {
         guard await session.waitForAgent(timeout: vmTools.timings.actionAgentWait) else {
             throw EngineError(.unavailable, "The agent of “\(machine.name)” is not connected.")
         }
-        return (machine, session)
+        return VMActionTarget(name: machine.name) { method, params, data, timeout in
+            try await session.agentRequest(method, params: params, data: data, timeout: timeout)
+        }
     }
 
     /// One request of an action to the agent, its failures worded for the VM tools.
-    func vmAgentRequest(_ session: VMSession, _ machine: VirtualMachine, _ method: String, params: [String: JSONValue] = [:],
+    func vmAgentRequest(_ target: VMActionTarget, _ method: String, params: [String: JSONValue] = [:],
                         data: Data = Data(), timeout: Duration? = nil) async throws -> GuestAgentResponse {
         do {
-            return try await session.agentRequest(method, params: params, data: data, timeout: timeout ?? vmTools.timings.requestTimeout)
+            return try await target.request(method, params, data, timeout ?? vmTools.timings.requestTimeout)
         } catch GuestAgentError.failed(let message) {
             throw EngineError(.unavailable, message)
         } catch GuestAgentError.timedOut {
-            throw EngineError(.unavailable, "The agent of “\(machine.name)” did not answer in time.")
+            throw EngineError(.unavailable, "The agent of “\(target.name)” did not answer in time.")
         } catch GuestAgentError.disconnected {
-            throw EngineError(.unavailable, "The agent of “\(machine.name)” disconnected.")
+            throw EngineError(.unavailable, "The agent of “\(target.name)” disconnected.")
         } catch {
             throw EngineError(.unavailable, VMImageFailure.message(of: error))
         }

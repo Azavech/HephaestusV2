@@ -101,7 +101,7 @@ extension Engine {
         case .ticket:
             guard let ticketID = meta.ticketID else { return }
             text = report.message(subject: "Chat of \(ticketID)", state: meta.state)
-        case .project, .bundle, .feedback:
+        case .project, .bundle, .feedback, .setup:
             return
         }
         sendOrchestratorReport(text, to: orchestratorID, from: meta.id, ciFailure: ciFailure)

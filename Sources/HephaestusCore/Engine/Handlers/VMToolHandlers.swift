@@ -49,5 +49,11 @@ extension Engine {
         register(VMToolsCopyOut.self, actors: [.claude]) { [unowned self] params, actor in
             try await self.vmToolCopyOut(params, actor)
         }
+        register(VMToolsSetupRecovery.self, actors: [.claude]) { [unowned self] params, actor in
+            try await self.vmToolSetupRecovery(params, actor)
+        }
+        register(VMToolsSetupFinish.self, actors: [.claude]) { [unowned self] params, actor in
+            try await self.vmToolSetupFinish(params, actor)
+        }
     }
 }

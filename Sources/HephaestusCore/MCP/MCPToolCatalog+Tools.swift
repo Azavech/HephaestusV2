@@ -1607,7 +1607,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "vm_list",
             description: #"""
-            List the virtual machines of this Mac, oldest first: id, name, image id and macOS version, cores, memoryGB, startedBy (You for a virtual machine the user started, <project id> · <chat name> for one Claude started), byClaude, state (running or stopped), runningTime, and agentConnected, which tells whether its agent is connected so that the actions work. At most 2 virtual machines run at once. A virtual machine the user started is the user's: act on it only when the user names it in this chat, by its name or with its linked item, and never stop it. Only in chats started by HephaestusV2.
+            List the virtual machines of this Mac, oldest first: id, name, image id and macOS version, cores, memoryGB, startedBy (You for a virtual machine the user started, <project id> · <chat name> for one Claude started), byClaude, setup, state (running or stopped), runningTime, and agentConnected, which tells whether its agent is connected so that the actions work. The setup virtual machine of an image whose setup runs comes last, with setup true and the image's id as its id. At most 2 virtual machines run at once. A virtual machine the user started is the user's: act on it only when the user names it in this chat, by its name or with its linked item, and never stop it. Only in chats started by HephaestusV2.
             """#,
             inputSchema: schema(#"""
             {
@@ -2001,6 +2001,50 @@ extension MCPToolCatalog {
             """#),
             isDebug: false,
             engineMethod: "vmTools.copyOut",
+            handling: .vmTool
+        ),
+        MCPToolDefinition(
+            name: "vm_setup_recovery",
+            description: #"""
+            Restart the setup virtual machine of an image into macOS Recovery, as Restart in Recovery of its setup view does, to turn off SIP: the guest is asked to shut down, then the virtual machine starts into Recovery. The call returns once the restart has begun: without the agent, macOS asks in the guest whether to shut down, so take a screenshot and choose Shut Down within 30 seconds; then choose Options and Continue at the startup options. imageID is the id of the image whose setup runs. Only in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "imageID": {
+                  "type": "string",
+                  "description": "Image id (a UUID) of vm_list_images, whose setup runs."
+                }
+              },
+              "required": ["imageID"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "vmTools.setupRecovery",
+            handling: .vmTool
+        ),
+        MCPToolDefinition(
+            name: "vm_setup_finish",
+            description: #"""
+            Finish the setup of an image, as Finish Setup of its setup view does: the setup virtual machine shuts down and the image becomes Ready. It works once the guest's agent is connected and reports SIP off: after the install script ran in a guest whose SIP is off. imageID is the id of the image whose setup runs. Only in chats started by HephaestusV2.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "imageID": {
+                  "type": "string",
+                  "description": "Image id (a UUID) of vm_list_images, whose setup runs."
+                }
+              },
+              "required": ["imageID"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "vmTools.setupFinish",
             handling: .vmTool
         ),
         MCPToolDefinition(

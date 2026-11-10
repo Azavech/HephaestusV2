@@ -40,6 +40,10 @@ public struct EngineConfiguration: Sendable {
     public var imageProvisioner: any VMImageProvisioning
     /// The guest agent and the install script of the app bundle; nil when the bundle has none.
     public var guestTools: GuestTools?
+    /// Makes the screen of a setup virtual machine that the VM tools drive without its agent; nil
+    /// fails those actions (docs/virtual-machines.md › Screen of the setup virtual machine). The app
+    /// sets it once the engine's configuration is made.
+    public var guestScreens: (any GuestScreenProviding)?
 
     public init(dataDirectory: URL, mcpPort: Int?, syncPort: Int?, syncInterface: SyncInterface, advertisesBonjour: Bool,
                 debugTools: Bool, claudePath: String?, claudeLauncher: any ClaudeProcessLauncher, appVersion: String, build: Int,
@@ -47,7 +51,8 @@ public struct EngineConfiguration: Sendable {
                 memoryFolders: any MemoryFolderResolving = ClaudeMemoryFolderResolver(homeDirectory: NSHomeDirectory()),
                 githubCLI: any GitHubCLIRunning = MissingGitHubCLI(),
                 downloadsFolder: URL = EngineConfiguration.userDownloadsFolder(homeDirectory: NSHomeDirectory()),
-                imageProvisioner: any VMImageProvisioning = UnavailableVMImageProvisioner(), guestTools: GuestTools? = nil) {
+                imageProvisioner: any VMImageProvisioning = UnavailableVMImageProvisioner(), guestTools: GuestTools? = nil,
+                guestScreens: (any GuestScreenProviding)? = nil) {
         self.dataDirectory = dataDirectory
         self.mcpPort = mcpPort
         self.syncPort = syncPort
@@ -64,6 +69,7 @@ public struct EngineConfiguration: Sendable {
         self.downloadsFolder = downloadsFolder
         self.imageProvisioner = imageProvisioner
         self.guestTools = guestTools
+        self.guestScreens = guestScreens
     }
 
     /// The Downloads folder of the user, `<home>/Downloads` when the system names none.
@@ -115,7 +121,7 @@ public struct EngineConfiguration: Sendable {
                             memoryFolders: (any MemoryFolderResolving)? = nil,
                             githubCLI: (any GitHubCLIRunning)? = nil,
                             imageProvisioner: (any VMImageProvisioning)? = nil,
-                            guestTools: GuestTools? = nil) -> EngineConfiguration {
+                            guestTools: GuestTools? = nil, guestScreens: (any GuestScreenProviding)? = nil) -> EngineConfiguration {
         let testFolder = dataDirectory.deletingLastPathComponent()
         return EngineConfiguration(
             dataDirectory: dataDirectory,
@@ -136,7 +142,8 @@ public struct EngineConfiguration: Sendable {
             githubCLI: githubCLI ?? MissingGitHubCLI(),
             downloadsFolder: testFolder.appendingPathComponent("Downloads", isDirectory: true),
             imageProvisioner: imageProvisioner ?? UnavailableVMImageProvisioner(),
-            guestTools: guestTools
+            guestTools: guestTools,
+            guestScreens: guestScreens
         )
     }
 

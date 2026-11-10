@@ -38,8 +38,11 @@ extension AppModel {
         let info = Bundle.main.infoDictionary ?? [:]
         let appVersion = AppVersion(infoPlist: info)
             ?? AppVersion(version: info["CFBundleShortVersionString"] as? String ?? "", build: 0)
-        let configuration = EngineConfiguration.app(environment: environment, appVersion: appVersion.version,
+        var configuration = EngineConfiguration.app(environment: environment, appVersion: appVersion.version,
                                                     build: appVersion.build)
+        // The screen of a setup virtual machine that the VM tools drive without its agent
+        // (docs/virtual-machines.md › Screen of the setup virtual machine).
+        configuration.guestScreens = AppGuestScreens()
 
         let engine: Engine
         do {

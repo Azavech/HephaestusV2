@@ -429,10 +429,11 @@ public final class AppModel {
     }
 
     /// `Set Up…`: boots the image through the image setup service, or takes its setup that runs,
-    /// and shows its setup view in the window that `Show` chooses; a setup that shuts down after
-    /// `Stop` is waited for by the service first (docs/virtual-machines.md › Setup). Throws
-    /// EngineError.
-    func openImageSetup(_ imageID: UUID) async throws {
+    /// and shows its setup view in the window that `Show` chooses, which it returns; a setup that
+    /// shuts down after `Stop` is waited for by the service first (docs/virtual-machines.md ›
+    /// Setup). Throws EngineError.
+    @discardableResult
+    func openImageSetup(_ imageID: UUID) async throws -> WindowState? {
         if imageSetups[imageID].map({ $0.isShuttingDown }) ?? true {
             let session = try await engine.beginImageSetup(imageID)
             guard session.phase != .ended else {
@@ -440,11 +441,11 @@ public final class AppModel {
                 if let failure = session.failure {
                     throw EngineError(.unavailable, failure)
                 }
-                return
+                return nil
             }
             addImageSetup(session)
         }
-        showImageSetup(imageID)
+        return showImageSetup(imageID)
     }
 
     /// Keeps a setup that runs until its virtual machine has stopped.
@@ -461,22 +462,51 @@ public final class AppModel {
     /// the Virtual Machines popover; otherwise in the most recently key main window that shows This
     /// Mac, ordered front and made key, or in a new main window on This Mac (docs/ui.md › Choosing
     /// the window).
-    func showImageSetup(_ imageID: UUID, in window: WindowState? = nil) {
-        guard let session = imageSetups[imageID], !session.isShuttingDown else { return }
+    @discardableResult
+    func showImageSetup(_ imageID: UUID, in window: WindowState? = nil) -> WindowState? {
+        guard let session = imageSetups[imageID], !session.isShuttingDown else { return nil }
         if let window {
-            guard window.deviceID == localDeviceID else { return }
+            guard window.deviceID == localDeviceID else { return nil }
             window.shownImageSetupID = imageID
-            return
+            return window
         }
         guard let chosen = mainWindowsByKeyOrder.first(where: { $0.deviceID == localDeviceID }) else {
             let state = WindowState(deviceID: localDeviceID)
             state.needsDefaultProject = true
             state.shownImageSetupID = imageID
             openMainWindow(state)
-            return
+            return state
         }
         windowRegistry.window(forMain: chosen.id)?.makeKeyAndOrderFront(nil)
         chosen.shownImageSetupID = imageID
+        return chosen
+    }
+
+    /// `Auto Setup`: shows the setup of the image as `Set Up…` does, then starts its Auto Setup
+    /// chat with `chats.createSetup`, in the project of the window that shows the setup view, and
+    /// selects it in that window's inspector; without a project, the chat belongs to no project and
+    /// shows beside the setup view (docs/virtual-machines.md › Auto Setup). Throws the EngineError
+    /// of the setup; a chat that cannot be created shows `Auto Setup failed` on the window.
+    func openAutoSetup(_ imageID: UUID) async throws {
+        guard let window = try await openImageSetup(imageID) else { return }
+        let workspace = localWorkspace
+        if window.projectID == nil || window.needsDefaultProject {
+            window.reconcileProject(with: workspace)
+        }
+        let projectID = workspace.projects.isEmpty ? nil : window.projectID
+        do {
+            let meta = try await workspace.call(ChatsCreateSetup.self, ChatsCreateSetup.Params(imageID: imageID, projectID: projectID))
+            workspace.chats[meta.id.uuidString] = workspace.chats[meta.id.uuidString] ?? meta
+            if let projectID {
+                window.inspectorVisible = true
+                window.updateViewState(of: projectID) {
+                    $0.inspectorChatID = meta.id.uuidString
+                    $0.inspectorShowsDraft = false
+                }
+            }
+        } catch {
+            window.alert = WindowAlert.failure(VMImagePresentation.autoSetupTitle, error)
+        }
     }
 
     /// `Stop` of the setup view and of the Virtual Machines popover: the setup virtual machine

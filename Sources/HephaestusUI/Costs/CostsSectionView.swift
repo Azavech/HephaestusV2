@@ -129,6 +129,7 @@ struct CostBreakdown: Equatable {
         case .bundle: return "Bundle " + (bundleID ?? "")
         case .feedback: return ticketID.map { "Feedback " + $0 } ?? "Feedback"
         case .ci: return "CI " + (bundleID ?? ticketID ?? "")
+        case .setup: return "Auto Setup"
         }
     }
 

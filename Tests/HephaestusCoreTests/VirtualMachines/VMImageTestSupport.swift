@@ -349,14 +349,15 @@ func makeGuestTools(in folder: URL) throws -> GuestTools {
 
 /// Runs `body` with a test engine whose images come from a `FakeVMImageProvisioner` that answers
 /// the list with the ipsw.me capture, and whose guest tools are files of the test's folder.
-func withVMEngine<T>(prepare: (DataDirectory) throws -> Void = { _ in },
+func withVMEngine<T>(guestScreens: (any GuestScreenProviding)? = nil, prepare: (DataDirectory) throws -> Void = { _ in },
                      _ body: (Engine, LocalEngineConnection, FakeVMImageProvisioner, URL) async throws -> T) async throws -> T {
     let provisioner = FakeVMImageProvisioner(list: try ipswFixture())
     let toolsFolder = FileManager.default.temporaryDirectory
         .appendingPathComponent("HephaestusCoreTests-tools-\(UUID().uuidString)", isDirectory: true)
     let tools = try makeGuestTools(in: toolsFolder)
     defer { try? FileManager.default.removeItem(at: toolsFolder) }
-    return try await withTestEngine(imageProvisioner: provisioner, guestTools: tools, prepare: prepare) { engine, connection, folder in
+    return try await withTestEngine(imageProvisioner: provisioner, guestTools: tools, guestScreens: guestScreens,
+                                    prepare: prepare) { engine, connection, folder in
         try await body(engine, connection, provisioner, folder)
     }
 }

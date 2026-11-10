@@ -15,6 +15,9 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     /// that bundle chat (docs/chats.md › Orchestrated ticket chats); for a CI chat, the ticket or
     /// bundle chat that started it with `watch_ci` (docs/chats.md › CI chats).
     public var orchestratorChatID: ChatID?
+    /// Key `image`: for an Auto Setup chat, the image it sets up (docs/chats.md › Auto Setup
+    /// chats). Written only when set.
+    public var imageID: UUID?
     public var created: Date
     public var updated: Date
     public var settings: ChatSettings
@@ -29,8 +32,9 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     /// The chat's last context usage, read from the Claude CLI (docs/chats.md › Context usage);
     /// nil before the first one. Written only when set.
     public var contextUsage: ContextUsage?
-    /// Runtime only: the project whose folder holds the file. Never written to the file and
-    /// ignored when read from it; always present in the engine API.
+    /// Runtime only: the project whose folder holds the file; empty for a chat without a project,
+    /// stored with its image (docs/chats.md › Chats without a project). Never written to the file
+    /// and ignored when read from it; always present in the engine API.
     public var projectID: ProjectID
     /// Runtime only: never written to the file and ignored when read from it; always present
     /// in the engine API.
@@ -58,7 +62,8 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     public static let defaultTitle = "New Chat"
 
     public init(schema: Int = 1, id: ChatID, title: String = ChatMeta.defaultTitle, kind: ChatKind,
-                ticketID: TicketID? = nil, bundleID: BundleID? = nil, orchestratorChatID: ChatID? = nil, created: Date, updated: Date? = nil,
+                ticketID: TicketID? = nil, bundleID: BundleID? = nil, orchestratorChatID: ChatID? = nil, imageID: UUID? = nil,
+                created: Date, updated: Date? = nil,
                 settings: ChatSettings = ChatSettings(), sessionStarted: Bool = false, closed: Bool = false, questionsBlocked: Bool = false,
                 contextUsage: ContextUsage? = nil, projectID: ProjectID = "",
                 state: ChatState = .idle, backgroundWork: Bool = false, compactingSince: Date? = nil, costUSD: Double? = nil,
@@ -70,6 +75,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         self.ticketID = ticketID
         self.bundleID = bundleID
         self.orchestratorChatID = orchestratorChatID
+        self.imageID = imageID
         self.created = created
         self.updated = updated ?? created
         self.settings = settings
@@ -87,7 +93,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     }
 
     static let fileKeys: Set<String> = [
-        "schema", "id", "title", "kind", "ticket", "bundle", "orchestrator", "created", "updated", "settings", "sessionStarted", "closed",
+        "schema", "id", "title", "kind", "ticket", "bundle", "orchestrator", "image", "created", "updated", "settings", "sessionStarted", "closed",
         "questionsBlocked", "contextUsage",
     ]
     static let runtimeKeys: Set<String> = ["projectID", "state", "backgroundWork", "compactingSince", "costUSD", "mentionedIDs"]
@@ -103,6 +109,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         bundleID = try c.optional("bundle")
         if let bundleID { try c.check("bundle", bundleID, Identifiers.isBundleID, "bundle id") }
         orchestratorChatID = try c.optional("orchestrator")
+        imageID = try c.optional("image")
         created = try c.requiredDate("created")
         updated = try c.optionalDate("updated") ?? created
         settings = try c.value("settings", default: ChatSettings())
@@ -127,7 +134,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         }
         unknownKeys = try c.unknownKeys(known: Self.fileKeys.union(Self.runtimeKeys))
         if let problem = ChatMeta.kindProblem(kind: kind, ticketID: ticketID, bundleID: bundleID, orchestratorChatID: orchestratorChatID,
-                                              questionsBlocked: questionsBlocked) {
+                                              imageID: imageID, questionsBlocked: questionsBlocked) {
             throw c.invalid("kind", problem)
         }
     }
@@ -142,6 +149,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         try c.encodeOptional(bundleID, "bundle")
         // Written only when set (docs/data-model.md › Chat metadata file).
         if let orchestratorChatID { try c.encode(orchestratorChatID, "orchestrator") }
+        if let imageID { try c.encode(imageID, "image") }
         try c.encodeDate(created, "created")
         try c.encodeDate(updated, "updated")
         try c.encode(settings, "settings")
@@ -162,12 +170,13 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         try c.encodeUnknownKeys(unknownKeys, known: Self.fileKeys.union(Self.runtimeKeys))
     }
 
-    /// Why `ticket`, `bundle`, `orchestrator` and `questionsBlocked` do not match `kind`
+    /// Why `ticket`, `bundle`, `orchestrator`, `image` and `questionsBlocked` do not match `kind`
     /// (docs/data-model.md › Chat kinds), or nil.
     public static func kindProblem(kind: ChatKind, ticketID: TicketID?, bundleID: BundleID?,
-                                   orchestratorChatID: ChatID? = nil, questionsBlocked: Bool = false) -> String? {
+                                   orchestratorChatID: ChatID? = nil, imageID: UUID? = nil, questionsBlocked: Bool = false) -> String? {
         if kind != .ticket, kind != .ci, orchestratorChatID != nil { return "only a ticket chat or a CI chat has an orchestrator" }
         if kind != .ticket, questionsBlocked { return "only a ticket chat has questionsBlocked" }
+        if kind != .setup, imageID != nil { return "only an Auto Setup chat has an image" }
         switch kind {
         case .project:
             if ticketID != nil || bundleID != nil { return "a project chat has neither ticket nor bundle" }
@@ -182,6 +191,9 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
         case .ci:
             if orchestratorChatID == nil { return "a CI chat needs its orchestrator" }
             if (ticketID == nil) == (bundleID == nil) { return "a CI chat has either a ticket or a bundle" }
+        case .setup:
+            if imageID == nil { return "an Auto Setup chat needs its image" }
+            if ticketID != nil || bundleID != nil { return "an Auto Setup chat has neither ticket nor bundle" }
         }
         return nil
     }
@@ -190,7 +202,7 @@ public struct ChatMeta: Codable, Sendable, Hashable, Identifiable {
     public func validate() throws {
         _ = try ModelRules.chatTitle(title)
         if let problem = ChatMeta.kindProblem(kind: kind, ticketID: ticketID, bundleID: bundleID, orchestratorChatID: orchestratorChatID,
-                                              questionsBlocked: questionsBlocked) {
+                                              imageID: imageID, questionsBlocked: questionsBlocked) {
             throw ValidationError.invalid("kind", problem)
         }
         try settings.validate()
@@ -209,4 +221,7 @@ public enum ChatKind: String, Codable, Sendable, Hashable, CaseIterable {
     case feedback
     /// CI chat: follows the CI of a pushed commit for its orchestrator (docs/chats.md › CI chats).
     case ci
+    /// Auto Setup chat: sets up a macOS image in its setup virtual machine
+    /// (docs/chats.md › Auto Setup chats).
+    case setup
 }

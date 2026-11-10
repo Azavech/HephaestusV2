@@ -34,6 +34,10 @@ public final class VMSetupSession {
     public let imageID: UUID
     /// The macOS version of the image, for the title of the setup view.
     public let version: String
+    /// The cores and the memory in GB the setup virtual machine was started with, as `vm_list`
+    /// gives them (docs/virtual-machines.md › The setup virtual machine).
+    public let cores: Int
+    public let memoryGB: Int
     public private(set) var phase = Phase.running
     /// The status of the guest agent while it is connected.
     public private(set) var agent: GuestAgentStatus?
@@ -58,6 +62,10 @@ public final class VMSetupSession {
     @ObservationIgnored private var isEnding = false
     @ObservationIgnored private var endWaiters: [CheckedContinuation<Void, Never>] = []
     @ObservationIgnored var timings = Timings()
+    /// Makes the screen that the VM tools drive without the agent.
+    @ObservationIgnored private let screens: (any GuestScreenProviding)?
+    /// That screen, made at the first action through it and closed when the session ends.
+    @ObservationIgnored private var screen: (any GuestScreen)?
 
     /// The framework's virtual machine, for the view of its screen.
     public var virtualMachine: VZVirtualMachine? { machine.virtualMachine }
@@ -77,11 +85,15 @@ public final class VMSetupSession {
         await withCheckedContinuation { endWaiters.append($0) }
     }
 
-    init(image: VMImage, machine: any GuestMachine, engine: Engine) {
+    init(image: VMImage, machine: any GuestMachine, engine: Engine, cores: Int = 0, memoryGB: Int = 0,
+         screens: (any GuestScreenProviding)? = nil) {
         imageID = image.id
         version = image.version
+        self.cores = cores
+        self.memoryGB = memoryGB
         self.machine = machine
         self.engine = engine
+        self.screens = screens
         machine.events = { [weak self] event in
             self?.handle(event)
         }
@@ -100,8 +112,22 @@ public final class VMSetupSession {
     /// guest down when it is connected; otherwise macOS asks in the guest to confirm the
     /// shutdown. A virtual machine that has not stopped 30 seconds later is stopped at once.
     public func restartInRecovery() async {
-        guard phase == .running else { return }
+        guard beginRestartInRecovery() else { return }
+        await continueRestartInRecovery()
+    }
+
+    /// The first step of `Restart in Recovery`: the virtual machine is restarting. False while
+    /// `Restart in Recovery` is disabled.
+    func beginRestartInRecovery() -> Bool {
+        guard phase == .running else { return false }
         phase = .restarting
+        return true
+    }
+
+    /// The rest of `Restart in Recovery`, once it has begun: the shutdown, then the start into
+    /// Recovery.
+    func continueRestartInRecovery() async {
+        guard phase == .restarting else { return }
         await shutDown(wait: timings.restartWait, asksGuest: true)
         guard phase == .restarting else { return }
         agent = nil
@@ -235,12 +261,47 @@ public final class VMSetupSession {
         }
     }
 
+    // MARK: The VM tools (docs/virtual-machines.md › The setup virtual machine)
+
+    /// The title of the setup view, the name of the setup virtual machine in the VM tools.
+    public var name: String { "Set Up macOS \(version)" }
+
+    /// One request to the connected agent.
+    func agentRequest(_ method: String, params: [String: JSONValue] = [:], data: Data = Data(),
+                      timeout: Duration) async throws -> GuestAgentResponse {
+        try await machine.agentRequest(method, params: params, data: data, timeout: timeout)
+    }
+
+    /// Waits up to `timeout` for the agent; false when it is not connected then, or once the
+    /// session has ended.
+    func waitForAgent(timeout: Duration) async -> Bool {
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while agent == nil {
+            guard phase != .ended, !isEnding, ContinuousClock.now < deadline else { return false }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return true
+    }
+
+    /// Runs `body` with the screen of the virtual machine, made at the first call. Fails with the
+    /// message of the screen, or when the engine has no screens or the machine no screen.
+    func withScreen<T: Sendable>(_ body: @MainActor (any GuestScreen) async throws -> T) async throws -> T {
+        guard phase != .ended, !isEnding else { throw GuestScreenError("The setup virtual machine “\(name)” has stopped.") }
+        if screen == nil {
+            screen = screens?.screen(for: machine)
+        }
+        guard let screen else { throw GuestScreenError("The screen of “\(name)” cannot be driven by this app.") }
+        return try await body(screen)
+    }
+
     /// Ends the session once: the engine frees the virtual machine's place and, after
     /// `Finish Setup`, sets the image to Ready.
     private func end(finished: Bool, failure: String? = nil) async {
         guard !isEnding else { return }
         isEnding = true
         agent = nil
+        screen?.close()
+        screen = nil
         await engine?.endImageSetup(imageID, session: self, finished: finished)
         self.finished = finished
         self.failure = failure

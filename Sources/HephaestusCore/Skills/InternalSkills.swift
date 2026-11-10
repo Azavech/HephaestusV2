@@ -6,7 +6,7 @@ import Foundation
 public enum InternalSkills {
     /// The internal skills that a first message or Claude calls, which the generated plugins link
     /// and the skill completion offers, sorted.
-    public static let calledNames = ["feedback", "finish-implementation", "implement-bundle", "implement-ticket"]
+    public static let calledNames = ["auto-setup", "feedback", "finish-implementation", "implement-bundle", "implement-ticket"]
 
     /// The names of every internal skill, the called skills and the system prompt skills, sorted.
     public static let names = (calledNames + PromptSkill.allCases.map(\.rawValue)).sorted()
@@ -113,7 +113,7 @@ public enum PromptSkill: String, CaseIterable, Sendable {
     case namingChat = "naming-chat"
     case namingTicket = "naming-ticket"
     case notificationSummary = "notification-summary"
-    case project, ticket
+    case project, setup, ticket
 
     /// The placeholders of a chat's system prompt skills (docs/chats.md › Placeholders).
     static let chatPlaceholders = ["projectName", "projectID", "projectRoot", "workingDirectory", "parentMemories", "deviceName",
@@ -127,6 +127,7 @@ public enum PromptSkill: String, CaseIterable, Sendable {
         case .ticket: return Self.chatPlaceholders + ["ticketID", "ticket"]
         case .bundle: return Self.chatPlaceholders + ["bundleID", "bundle"]
         case .ci: return Self.chatPlaceholders + ["githubRepository"]
+        case .setup: return ["deviceName", "imageID", "imageVersion"]
         case .commentAnswer: return ["projectName", "projectID", "projectRoot", "deviceName", "docsPath", "ticketID"]
         case .namingTicket, .namingChat, .namingBundle, .notificationSummary: return []
         }
@@ -136,11 +137,12 @@ public enum PromptSkill: String, CaseIterable, Sendable {
     /// <where>` (docs/skills.md › System prompt skills).
     public var use: String {
         switch self {
-        case .common: return "every chat except CI chats"
+        case .common: return "every chat except CI and Auto Setup chats"
         case .project: return "project chats"
         case .ticket: return "ticket chats"
         case .bundle: return "bundle chats"
         case .ci: return "CI chats"
+        case .setup: return "Auto Setup chats"
         case .commentAnswer: return "comment answers"
         case .namingTicket: return "ticket naming calls"
         case .namingChat: return "chat naming calls"

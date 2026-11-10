@@ -74,7 +74,10 @@ struct SystemPromptSkillsTests {
                     text = text.replacingOccurrences(of: current, with: previous)
                 }
             }
-            #expect(AtomicFile.sha256(Data(text.utf8)) == Self.previousReleaseDigests[skill], "\(skill.rawValue)")
+            // The setup skill came after that release (HEPH-158).
+            if skill != .setup {
+                #expect(AtomicFile.sha256(Data(text.utf8)) == Self.previousReleaseDigests[skill], "\(skill.rawValue)")
+            }
             // The default's body is a blank line, the text and a final newline.
             let data = try #require(InternalSkills.defaultContent(skill.rawValue))
             #expect(try SkillDocument.parse(data, folderName: skill.rawValue).body == "\n" + Prompts.text(skill) + "\n")
@@ -127,10 +130,10 @@ struct SystemPromptSkillsTests {
 
     @Test("The editor captions of the system prompt skills")
     func captions() {
-        #expect(PromptSkill.common.caption == "HephaestusV2 puts this skill in the system prompt of every chat except CI chats")
-        #expect(PromptSkill.allCases.map(\.use) == ["bundle chats", "CI chats", "every chat except CI chats", "comment answers", "bundle naming calls",
-                                                    "chat naming calls", "ticket naming calls", "notification summary calls", "project chats",
-                                                    "ticket chats"])
+        #expect(PromptSkill.common.caption == "HephaestusV2 puts this skill in the system prompt of every chat except CI and Auto Setup chats")
+        #expect(PromptSkill.allCases.map(\.use) == ["bundle chats", "CI chats", "every chat except CI and Auto Setup chats", "comment answers",
+                                                    "bundle naming calls", "chat naming calls", "ticket naming calls", "notification summary calls",
+                                                    "project chats", "Auto Setup chats", "ticket chats"])
         #expect(PromptSkill.allCases.allSatisfy { InternalSkills.isInternal($0.rawValue) && !InternalSkills.calledNames.contains($0.rawValue) })
     }
 

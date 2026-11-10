@@ -25,13 +25,32 @@ extension Engine {
         return meta
     }
 
-    /// The `.hephaestus/` folder of the chat's project.
+    /// The `.hephaestus/` folder of the chat's project, or of its image's folder for a chat
+    /// without a project (docs/chats.md › Chats without a project).
     func chatFolder(_ meta: ChatMeta) throws -> ProjectFolder {
+        if meta.projectID.isEmpty, let imageID = meta.imageID {
+            return ProjectFolder(root: dataDirectory.vmImageFolder(imageID))
+        }
         guard let root = domain.projectRoot(meta.projectID) else {
             throw EngineError.notFound("Project", meta.projectID)
         }
         return ProjectFolder(root: root)
     }
+
+    /// The folder a chat's Claude process works from: its project's root, or the image's folder
+    /// for a chat without a project; nil while its project is not loaded or its image is gone
+    /// (docs/chats.md › Chats without a project).
+    func chatRootFolder(_ meta: ChatMeta) -> URL? {
+        if meta.projectID.isEmpty {
+            guard let imageID = meta.imageID, vmImages.images[imageID] != nil else { return nil }
+            return dataDirectory.vmImageFolder(imageID)
+        }
+        return domain.projectRoot(meta.projectID)
+    }
+
+    /// The folder of the skills plugin of the chats without a project, `Runtime/plugins/none/`:
+    /// no project identifier is lowercase (docs/chats.md › Chats without a project).
+    static let projectlessPluginFolderName = "none"
 
     /// Writes the metadata file atomically with `updated` set to now, keeps it in memory and
     /// emits `chat.updated` (docs/chats.md › Persistence).

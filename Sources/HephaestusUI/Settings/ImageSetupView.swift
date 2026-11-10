@@ -59,6 +59,57 @@ struct ImageSetupView: View {
     }
 }
 
+/// The setup view in a window without a project, which takes the welcome view's place, and on
+/// its right, while the workspace holds one, the image's newest Auto Setup chat without a project,
+/// in a column of the inspector's width with its title in a pane header (docs/ui.md › Welcome
+/// view).
+struct ImageSetupWithChat: View {
+    let window: WindowState
+    let workspace: DeviceWorkspace
+    let imageID: UUID
+    @Environment(AppModel.self) private var app
+
+    /// The newest Auto Setup chat of the image that belongs to no project.
+    static func setupChat(of imageID: UUID, in chats: [String: ChatMeta]) -> ChatMeta? {
+        chats.values.filter { $0.kind == .setup && $0.projectID.isEmpty && $0.imageID == imageID }
+            .max { $0.created != $1.created ? $0.created < $1.created : $0.id.uuidString < $1.id.uuidString }
+    }
+
+    var body: some View {
+        if let chat = Self.setupChat(of: imageID, in: workspace.chats) {
+            HSplitView {
+                ImageSetupView(window: window, imageID: imageID)
+                    .frame(minWidth: 540, maxWidth: .infinity, maxHeight: .infinity)
+                chatColumn(chat)
+                    .frame(minWidth: PaneWidthMemory.minimumInspectorWidth, idealWidth: CGFloat(window.inspectorWidth), maxWidth: 600,
+                           maxHeight: .infinity)
+            }
+        } else {
+            ImageSetupView(window: window, imageID: imageID)
+        }
+    }
+
+    private func chatColumn(_ chat: ChatMeta) -> some View {
+        let linked = LinkedItems.linked(state: ProjectViewState(), section: nil, tickets: [:], bundles: [:], chats: [:], webTabs: [],
+                                        imageSetupID: imageID, setupVersions: app.imageSetupVersions)
+        return VStack(spacing: 0) {
+            HStack(spacing: 5) {
+                ChatStateMark(state: chat.state)
+                    .frame(width: 12)
+                Text(chat.title)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .paneHeaderBar()
+            Divider()
+            ChatView(chatID: chat.id.uuidString, workspace: workspace, showsHeader: false, isInInspector: true, linkedItems: linked)
+        }
+        .background(FrostedPaneBackground())
+    }
+}
+
 /// The screen of the setup virtual machine and, on its right, the column of the three steps.
 struct ImageSetupContent: View {
     let window: WindowState
