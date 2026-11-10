@@ -394,10 +394,10 @@ struct GraphNodeView: View {
     /// The SF Symbol of a kind of box.
     static func icon(of kind: GraphBoxKind) -> String {
         switch kind {
-        case .service: return "shippingbox"
+        case .service: return "cpu"
         case .cluster: return "cylinder.split.1x2"
-        case .bucket: return "archivebox"
-        case .client: return "person.2"
+        case .bucket: return "externaldrive.connected.to.line.below"
+        case .client: return "person"
         }
     }
 }

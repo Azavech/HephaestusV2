@@ -295,3 +295,18 @@ struct GraphArrowTests {
         }
     }
 }
+
+@MainActor
+@Suite("Graph nodes")
+struct GraphNodeTests {
+    @Test("Each kind of box has its icon, a symbol of the system")
+    func icons() {
+        let icons: [GraphBoxKind: String] = [
+            .service: "cpu", .cluster: "cylinder.split.1x2", .bucket: "externaldrive.connected.to.line.below", .client: "person",
+        ]
+        for kind in GraphBoxKind.allCases {
+            #expect(GraphNodeView.icon(of: kind) == icons[kind])
+            #expect(NSImage(systemSymbolName: GraphNodeView.icon(of: kind), accessibilityDescription: nil) != nil)
+        }
+    }
+}
