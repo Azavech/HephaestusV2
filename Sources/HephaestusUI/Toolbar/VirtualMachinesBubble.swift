@@ -4,8 +4,8 @@ import AppKit
 import HephaestusCore
 import SwiftUI
 
-/// One row of the popover: a running virtual machine of the user or of Claude, or the setup
-/// virtual machine of an image (docs/virtual-machines.md › Popover).
+/// One row of the popover: a virtual machine of the user or of Claude, Running or Stopped, or the
+/// setup virtual machine of an image (docs/virtual-machines.md › Popover).
 struct VMPopoverRow: Identifiable, Hashable {
     enum Source: Hashable {
         /// A virtual machine of the user or of Claude, by its id.
@@ -19,8 +19,10 @@ struct VMPopoverRow: Identifiable, Hashable {
     let name: String
     /// `Started by you`, `<project id> · <chat name>`, or `<project id>` without the chat.
     let startedBy: String
-    /// When the virtual machine started: its running time counts from it.
-    let startedAt: Date
+    /// When the virtual machine started: its running time counts from it. Nil while it is Stopped.
+    let startedAt: Date?
+
+    var isStopped: Bool { startedAt == nil }
 
     var id: String {
         switch source {
@@ -43,7 +45,10 @@ struct VMPopoverSetup: Hashable {
 enum VMPopoverPresentation {
     static let symbol = "display"
     static let tooltip = "Virtual Machines"
-    static let emptyText = "No virtual machines running"
+    static let emptyText = "No virtual machines"
+    static let newVMTitle = "New VM…"
+    static let addImageTitle = "Add Image…"
+    static let settingsTitle = "Virtual Machines Settings…"
     static let startedByUser = "Started by you"
     /// The size of a preview, in points: the proportions of the display of a virtual machine.
     static let previewSize = CGSize(width: 160, height: 100)
@@ -55,25 +60,37 @@ enum VMPopoverPresentation {
         count > 0 ? String(count) : nil
     }
 
-    /// The number of the bubble: the number of rows, without reading the chats of their texts.
+    /// The number of the bubble: the Running virtual machines and the setup virtual machines.
     static func count(_ list: VMList?, setups: [VMPopoverSetup]) -> Int {
         (list?.machines.filter { $0.state == .running }.count ?? 0) + setups.count
     }
 
-    /// The rows, the virtual machine that started first at the top: the Running virtual
-    /// machines of the user and of Claude in `list`, and the setup virtual machines. The install
-    /// of an image runs a virtual machine without a screen: it has no row.
+    /// The rows: first the Running virtual machines of the user and of Claude in `list` and the
+    /// setup virtual machines, the one that started first at the top, then the Stopped virtual
+    /// machines, the oldest created first. The install of an image runs a virtual machine without
+    /// a screen: it has no row.
     static func rows(_ list: VMList?, chats: [String: ChatMeta], setups: [VMPopoverSetup]) -> [VMPopoverRow] {
-        let machines = (list?.machines ?? []).filter { $0.state == .running }.map { machine in
-            VMPopoverRow(source: .machine(machine.id), name: machine.name, startedBy: startedByText(machine, chats: chats),
-                         startedAt: machine.startedAt ?? machine.created)
+        let machines = list?.machines ?? []
+        let running = machines.filter { $0.state == .running }.map { machine in
+            (row: VMPopoverRow(source: .machine(machine.id), name: machine.name,
+                               startedBy: startedByText(machine, chats: chats), startedAt: machine.startedAt ?? machine.created),
+             date: machine.startedAt ?? machine.created)
         }
         let setupRows = setups.map { setup in
-            VMPopoverRow(source: .setup(imageID: setup.imageID),
-                         name: VMImagePresentation.setupTitle(version: setup.version), startedBy: startedByUser,
-                         startedAt: setup.startedAt)
+            (row: VMPopoverRow(source: .setup(imageID: setup.imageID),
+                               name: VMImagePresentation.setupTitle(version: setup.version), startedBy: startedByUser,
+                               startedAt: setup.startedAt),
+             date: setup.startedAt)
         }
-        return (machines + setupRows).sorted { ($0.startedAt, $0.name, $0.id) < ($1.startedAt, $1.name, $1.id) }
+        let stopped = machines.filter { $0.state == .stopped }.map { machine in
+            (row: VMPopoverRow(source: .machine(machine.id), name: machine.name,
+                               startedBy: startedByText(machine, chats: chats), startedAt: nil),
+             date: machine.created)
+        }
+        func sorted(_ rows: [(row: VMPopoverRow, date: Date)]) -> [VMPopoverRow] {
+            rows.sorted { ($0.date, $0.row.name, $0.row.id) < ($1.date, $1.row.name, $1.row.id) }.map(\.row)
+        }
+        return sorted(running + setupRows) + sorted(stopped)
     }
 
     /// `Started by you` for a virtual machine of the user; for one that Claude started, the text
@@ -86,9 +103,16 @@ enum VMPopoverPresentation {
         }
     }
 
-    /// The running time of a row at `now`: `<m> min`, or `<h> h <mm> min` from an hour on.
+    /// The running time of a row at `now`: `<m> min`, or `<h> h <mm> min` from an hour on;
+    /// `Stopped` for a Stopped virtual machine.
     static func runningTime(_ row: VMPopoverRow, now: Date) -> String {
-        VMRunningTime.text(since: row.startedAt, now: max(now, row.startedAt))
+        guard let startedAt = row.startedAt else { return VirtualMachinePresentation.stoppedText }
+        return VMRunningTime.text(since: startedAt, now: max(now, startedAt))
+    }
+
+    /// `Start` of a Stopped row is disabled while 2 virtual machines run, as in Settings.
+    static func canStart(_ list: VMList?) -> Bool {
+        VirtualMachinePresentation.canCreate(list)
     }
 }
 
@@ -141,8 +165,8 @@ struct VirtualMachinesBubble: View {
     }
 }
 
-/// The popover: one row per virtual machine that the bubble counts, or `No virtual machines
-/// running`.
+/// The popover: one row per virtual machine of This Mac and per setup virtual machine, or `No
+/// virtual machines`, then the row of buttons.
 private struct VirtualMachinesPopover: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -151,25 +175,46 @@ private struct VirtualMachinesPopover: View {
 
     var body: some View {
         let rows = VMPopoverPresentation.rows(workspace.virtualMachines, chats: workspace.chats, setups: app.popoverSetups)
-        Group {
+        // One column: each cell gets the column's width, so the buttons span the widest row.
+        Grid(alignment: .leading, verticalSpacing: 12) {
             if rows.isEmpty {
-                Text(VMPopoverPresentation.emptyText)
-                    .foregroundStyle(.secondary)
-                    .padding(16)
+                GridRow {
+                    Text(VMPopoverPresentation.emptyText)
+                        .foregroundStyle(.secondary)
+                }
             } else {
-                VStack(alignment: .leading, spacing: 12) {
-                    ForEach(rows) { row in
+                ForEach(rows) { row in
+                    GridRow {
                         VMPopoverRowView(row: row, window: window, workspace: workspace, close: close)
                     }
                 }
-                .padding(12)
+            }
+            GridRow {
+                HStack(spacing: 8) {
+                    Button(VMPopoverPresentation.newVMTitle) {
+                        close()
+                        window.sheet = .newVM
+                    }
+                    .disabled(!VirtualMachinePresentation.canCreate(workspace.virtualMachines))
+                    Button(VMPopoverPresentation.addImageTitle) {
+                        close()
+                        window.sheet = .addImage
+                    }
+                    Spacer(minLength: 16)
+                    Button(VMPopoverPresentation.settingsTitle) {
+                        close()
+                        app.openSettings(tab: .virtualMachines)
+                    }
+                }
             }
         }
+        .padding(12)
         .fixedSize()
     }
 }
 
-/// A row: the preview, the name, the Started by line, the running time and `Stop`.
+/// A row: the preview, the name, the Started by line, the running time and `Stop`; for a Stopped
+/// virtual machine a black preview, `Stopped` and `Start`.
 private struct VMPopoverRowView: View {
     let row: VMPopoverRow
     let window: WindowState
@@ -180,6 +225,8 @@ private struct VMPopoverRowView: View {
     @State private var machineSession: VMSession?
     /// True from a click on `Stop` until `vms.stop` returns.
     @State private var stopping = false
+    /// True from a click on `Start` until `vms.start` returns.
+    @State private var starting = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -198,19 +245,34 @@ private struct VMPopoverRowView: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .help(row.startedBy)
-                TimelineView(.periodic(from: row.startedAt, by: 60)) { context in
-                    Text(VMPopoverPresentation.runningTime(row, now: context.date))
+                Group {
+                    if let startedAt = row.startedAt {
+                        TimelineView(.periodic(from: startedAt, by: 60)) { context in
+                            Text(VMPopoverPresentation.runningTime(row, now: context.date))
+                        }
+                    } else {
+                        Text(VMPopoverPresentation.runningTime(row, now: Date()))
+                    }
                 }
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
             }
             .frame(width: 200, alignment: .leading)
-            Button("Stop", action: stop)
-                .disabled(stopDisabled)
+            if row.isStopped {
+                Button("Start", action: start)
+                    .disabled(starting || !VMPopoverPresentation.canStart(workspace.virtualMachines))
+            } else {
+                Button("Stop", action: stop)
+                    .disabled(stopDisabled)
+            }
         }
-        // The session of a virtual machine that starts again is a new one.
+        // The session of a virtual machine that starts again is a new one; a Stopped one has none,
+        // and its preview is never captured.
         .task(id: row.startedAt) {
-            guard case .machine(let vmID) = row.source, workspace.isLocal else { return }
+            guard case .machine(let vmID) = row.source, !row.isStopped, workspace.isLocal else {
+                machineSession = nil
+                return
+            }
             machineSession = await app.engine.virtualMachineSession(vmID)
         }
     }
@@ -218,6 +280,7 @@ private struct VMPopoverRowView: View {
     private var previewSource: VMPreviewSource {
         switch row.source {
         case .machine:
+            guard !row.isStopped else { return .none }
             return machineSession.map(VMPreviewSource.machine) ?? .none
         case .setup(let imageID):
             return app.imageSetups[imageID].map(VMPreviewSource.setup) ?? .none
@@ -249,6 +312,21 @@ private struct VMPopoverRowView: View {
             guard let session = app.imageSetups[imageID], !session.isShuttingDown else { return }
             close()
             app.showImageSetup(imageID, in: window)
+        }
+    }
+
+    /// Starts a Stopped virtual machine with `vms.start`; a failure shows `Start failed` on the
+    /// window.
+    private func start() {
+        guard case .machine(let vmID) = row.source else { return }
+        starting = true
+        Task {
+            do {
+                _ = try await workspace.call(VMsStart.self, VMParams(vmID: vmID))
+            } catch {
+                window.alert = WindowAlert.failure("Start", error)
+            }
+            starting = false
         }
     }
 

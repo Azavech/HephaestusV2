@@ -3,9 +3,9 @@ import HephaestusCore
 import Testing
 @testable import HephaestusUI
 
-/// docs/virtual-machines.md › Bubble, › Popover: the number of the Virtual Machines bubble, the
-/// rows of its popover with their texts and order, and the running time. No test starts a
-/// virtual machine.
+/// docs/virtual-machines.md › Bubble, › Popover, › Buttons: the number of the Virtual Machines
+/// bubble, the rows of its popover with their texts and order, Stopped rows included, the running
+/// time and the buttons. No test starts a virtual machine.
 @MainActor
 @Suite("Virtual Machines bubble")
 struct VirtualMachinesBubbleTests {
@@ -14,9 +14,9 @@ struct VirtualMachinesBubbleTests {
     static let imageID = UUID(uuidString: "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F")!
 
     static func machine(_ name: String, _ state: VirtualMachineState = .running, startedBy: VMStarter = .user,
-                        after seconds: TimeInterval = 0) -> VirtualMachine {
+                        after seconds: TimeInterval = 0, createdAfter created: TimeInterval = -3600) -> VirtualMachine {
         VirtualMachine(id: UUID(), name: name, imageID: imageID, version: "27.2.1", build: "26B131", cores: 4, memoryGB: 8,
-                       startedBy: startedBy, created: started.addingTimeInterval(-3600), state: state,
+                       startedBy: startedBy, created: started.addingTimeInterval(created), state: state,
                        startedAt: state == .running ? started.addingTimeInterval(seconds) : nil)
     }
 
@@ -31,7 +31,17 @@ struct VirtualMachinesBubbleTests {
         #expect(VMPopoverPresentation.countText(2) == "2")
         #expect(VMPopoverPresentation.symbol == "display")
         #expect(VMPopoverPresentation.tooltip == "Virtual Machines")
-        #expect(VMPopoverPresentation.emptyText == "No virtual machines running")
+        #expect(VMPopoverPresentation.emptyText == "No virtual machines")
+    }
+
+    @Test("The row of buttons reads New VM…, Add Image… and Virtual Machines Settings…; New VM… is disabled while 2 run")
+    func buttons() {
+        #expect(VMPopoverPresentation.newVMTitle == "New VM…")
+        #expect(VMPopoverPresentation.addImageTitle == "Add Image…")
+        #expect(VMPopoverPresentation.settingsTitle == "Virtual Machines Settings…")
+        #expect(VirtualMachinePresentation.canCreate(nil))
+        #expect(VirtualMachinePresentation.canCreate(VMList(machines: [], runningCount: 1)))
+        #expect(!VirtualMachinePresentation.canCreate(VMList(machines: [], runningCount: 2)))
     }
 
     @Test("The number counts the Running virtual machines of the user and of Claude and the setup virtual machines, not an install")
@@ -39,9 +49,13 @@ struct VirtualMachinesBubbleTests {
         let claude = Self.machine("Settings check", startedBy: .claude(projectID: "DEMO", chatID: Self.chatID))
         let list = VMList(machines: [Self.machine("Menu checks"), Self.machine("Old", .stopped), claude], runningCount: 2)
         #expect(VMPopoverPresentation.rows(nil, chats: [:], setups: []).isEmpty)
-        #expect(VMPopoverPresentation.rows(VMList(machines: [Self.machine("Old", .stopped)], runningCount: 0), chats: [:], setups: []).isEmpty)
-        #expect(VMPopoverPresentation.rows(list, chats: [:], setups: []).count == 2)
-        #expect(VMPopoverPresentation.rows(list, chats: [:], setups: [Self.setup()]).count == 3)
+        #expect(VMPopoverPresentation.rows(VMList(machines: [], runningCount: 0), chats: [:], setups: []).isEmpty)
+        // Every virtual machine has a row; the Stopped ones are not counted.
+        let stoppedOnly = VMList(machines: [Self.machine("Old", .stopped)], runningCount: 0)
+        #expect(VMPopoverPresentation.rows(stoppedOnly, chats: [:], setups: []).count == 1)
+        #expect(VMPopoverPresentation.count(stoppedOnly, setups: []) == 0)
+        #expect(VMPopoverPresentation.rows(list, chats: [:], setups: []).count == 3)
+        #expect(VMPopoverPresentation.rows(list, chats: [:], setups: [Self.setup()]).count == 4)
         #expect(VMPopoverPresentation.count(list, setups: []) == 2)
         #expect(VMPopoverPresentation.count(list, setups: [Self.setup(), Self.setup(imageID: UUID())]) == 4)
         #expect(VMPopoverPresentation.count(nil, setups: []) == 0)
@@ -75,14 +89,31 @@ struct VirtualMachinesBubbleTests {
         #expect(setup.name == "Set Up macOS 26.6.2" && setup.startedBy == "Started by you")
     }
 
-    @Test("The rows are listed by their start, the virtual machine that started first at the top")
+    @Test("The Running rows come first, the one that started first at the top, then the Stopped ones, the oldest created first")
     func order() {
         let late = Self.machine("Late", after: 600)
         let early = Self.machine("Early", after: 0)
-        let list = VMList(machines: [late, early], runningCount: 2)
+        // Stopped virtual machines created before and after the Running ones still come last.
+        let newer = Self.machine("Newer", .stopped, createdAfter: 1200)
+        let older = Self.machine("Older", .stopped, createdAfter: -7200)
+        let list = VMList(machines: [newer, late, older, early], runningCount: 2)
         let rows = VMPopoverPresentation.rows(list, chats: [:], setups: [Self.setup(after: 300)])
-        #expect(rows.map(\.name) == ["Early", "Set Up macOS 26.6.2", "Late"])
+        #expect(rows.map(\.name) == ["Early", "Set Up macOS 26.6.2", "Late", "Older", "Newer"])
+        #expect(rows.map(\.isStopped) == [false, false, false, true, true])
         #expect(VMPopoverPresentation.rows(list, chats: [:], setups: [Self.setup(after: -1)]).first?.name == "Set Up macOS 26.6.2")
+    }
+
+    @Test("A Stopped row shows its name, Started by you and Stopped; Start is disabled while 2 virtual machines run")
+    func stoppedRow() throws {
+        let machine = Self.machine("Menu checks", .stopped)
+        let row = try #require(VMPopoverPresentation.rows(VMList(machines: [machine], runningCount: 0), chats: [:], setups: []).first)
+        #expect(row.source == .machine(machine.id))
+        #expect(row.name == "Menu checks")
+        #expect(row.startedBy == "Started by you")
+        #expect(row.isStopped && row.startedAt == nil)
+        #expect(VMPopoverPresentation.runningTime(row, now: Self.started) == "Stopped")
+        #expect(VMPopoverPresentation.canStart(VMList(machines: [machine], runningCount: 1)))
+        #expect(!VMPopoverPresentation.canStart(VMList(machines: [machine], runningCount: 2)))
     }
 
     @Test("The running time reads <m> min under an hour and <h> h <mm> min after")

@@ -53,6 +53,12 @@ public enum WindowSheet: Codable, Hashable, Sendable, Identifiable {
     /// A JavaScript `alert`, `confirm` or `prompt` of a web tab (docs/web-tabs.md › Page permissions
     /// and dialogs).
     case webPageDialog(tabID: String)
+    /// New VM sheet, opened by `New VM…` of the Virtual Machines popover (docs/ui.md › Virtual
+    /// Machines, docs/virtual-machines.md › Buttons).
+    case newVM
+    /// Add Image sheet, opened by `Add Image…` of the Virtual Machines popover (docs/ui.md ›
+    /// Virtual Machines, docs/virtual-machines.md › Buttons).
+    case addImage
 
     public var id: Self { self }
 }
@@ -103,6 +109,13 @@ struct WindowSheetView: View {
             RenameFileSheet(window: window, workspace: workspace, projectID: projectID, path: path)
         case .webPageDialog(let tabID):
             WebPageDialogSheet(window: window, tabID: tabID)
+        case .newVM:
+            // A main window has no table under which to show a failed start: it shows the alert.
+            NewVMSheet { message in
+                window.alert = WindowAlert(title: "Start failed", message: message)
+            }
+        case .addImage:
+            AddImageSheet()
         }
     }
 }

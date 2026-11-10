@@ -575,19 +575,19 @@ The header's layout, the black around the screen, the capture of the system shor
 
 ## Virtual Machines bubble
 
-Every main window that shows This Mac has the Virtual Machines bubble in its toolbar ([Toolbar](ui.md#toolbar)): it counts the virtual machines that run on This Mac, and its popover shows the screen of each one, stops it and opens it.
+Every main window that shows This Mac has the Virtual Machines bubble in its toolbar ([Toolbar](ui.md#toolbar)): it counts the virtual machines that run on This Mac, and its popover lists every virtual machine of This Mac, shows the screen of each one that runs, starts, stops and opens them, and opens the New VM and Add Image sheets and Settings.
 
 ### Bubble
 
-- The bubble is a pill of its own, right of the breadcrumb selector's pill and drawn as a pill like it. It holds the symbol `display` and, beside it, the number of the popover's rows: the virtual machines of the user and of Claude that are Running, and the setup virtual machines of the images. At 0 the number is hidden, and the bubble holds the symbol alone.
+- The bubble is a pill of its own, right of the breadcrumb selector's pill and drawn as a pill like it. It holds the symbol `display` and, beside it, the number of the virtual machines of the user and of Claude that are Running and of the setup virtual machines of the images: the popover's rows without the Stopped ones. At 0 the number is hidden, and the bubble holds the symbol alone.
 - The install of an image runs a virtual machine without a screen: it has no row and is not counted, so the number can be lower than `runningCount` ([Running virtual machines](#running-virtual-machines)).
 - Its tooltip is `Virtual Machines`. A click opens the popover under the bubble; a click outside the popover closes it.
 - A window that shows a remote device has no bubble: the screen of a virtual machine shows only on the Mac that runs it.
-- The bubble and its popover follow This Mac's workspace and its image setups. The workspace reads the virtual machines with `vms.list` when the bubble appears and it holds none yet, then follows `vms.changed` ([DeviceWorkspace](ui.md#deviceworkspace)); the setup virtual machines are those of `imageSetups` ([AppModel](ui.md#appmodel)). The number and the rows change at once when a virtual machine starts or stops.
+- The bubble and its popover follow This Mac's workspace and its image setups. The workspace reads the virtual machines with `vms.list` when the bubble appears and it holds none yet, then follows `vms.changed` ([DeviceWorkspace](ui.md#deviceworkspace)); the setup virtual machines are those of `imageSetups` ([AppModel](ui.md#appmodel)). The number and the rows change at once when a virtual machine is created, starts, stops or is deleted.
 
 ### Popover
 
-The popover lists one row per virtual machine that the bubble counts, the one that started first at the top. With none, it reads `No virtual machines running`, in the secondary colour.
+The popover lists one row per virtual machine of This Mac and per setup virtual machine of an image: first the Running ones and the setup virtual machines, the one that started first at the top, then the Stopped ones, the oldest created first. With none at all, it reads `No virtual machines`, in the secondary colour. Under the rows, or under that text, one row of buttons ([Buttons](#buttons)).
 
 A row shows, from its leading edge:
 
@@ -599,9 +599,12 @@ A row shows, from its leading edge:
 | Running time | Under it, in the secondary colour: `<m> min` under an hour and `<h> h <mm> min` after, changing with the minute, as in the State column ([Virtual machine states](#virtual-machine-states)). A setup virtual machine runs from `Set Up…` on: `Restart in Recovery` does not start its time again.       |
 | `Stop`       | At the trailing edge ([Stop](#stop)).                                                                                                                                                                                                                                                                   |
 
+The row of a Stopped virtual machine shows a black preview, `Stopped` in place of the running time and `Start` in place of `Stop`.
+
 #### Previews
 
 - The image is a screenshot that the guest agent takes with its `screenshot` method ([Methods](#methods)), scaled to fit the preview with the proportions of the display, on black.
+- A Stopped virtual machine's preview is black: no screenshot is ever asked for it. Once it has started, its preview is taken as for the others.
 - The first screenshot is asked for when the popover opens, then one every 2 seconds while it stays open; none while it is closed.
 - The preview stays black while the guest agent is not connected, for example while the guest starts up, and until the first screenshot arrives. A screenshot that fails, without the Screen Recording permission for example, leaves the image that shows.
 - A click on the preview closes the popover and shows the virtual machine: the virtual machine of the user or of Claude shows its [detail](#detail) in the window's centre column, as a `virtualMachine` target does; the setup virtual machine of an image shows its [setup view](#setup-view) in the window's centre column.
@@ -614,8 +617,19 @@ The previews come from the local-only services of This Mac ([Local-only services
 - A virtual machine that shuts down keeps its row, with `Stop` disabled, until it has stopped, whoever asked for the stop: the popover, Settings, the detail or the setup view.
 - A click on the preview of a setup virtual machine that shuts down does nothing: its setup view no longer shows once it has stopped.
 - A failed `Stop` shows the failure alert of [Principles](ui.md#principles) on the window, titled `Stop failed`.
+- `Start` of a Stopped virtual machine calls `vms.start` ([Starting](#starting)); it is disabled while 2 virtual machines run ([Running virtual machines](#running-virtual-machines)) and from the click until the call returns. Once it has started, the row moves among the Running ones and shows its running time and `Stop`. A failed `Start` shows the failure alert on the window, titled `Start failed`.
 
-The bubble, its symbol, its place and its look, the virtual machines it counts, the number hidden at 0, its tooltip, the windows that show it, the popover's rows with their preview refreshed every 2 seconds and empty without the agent, their texts, `Stop` without confirmation, the click on a preview, `No virtual machines running` and following the events at once come from the user ([R203](requirements.md#requirements)), and so do the name of a setup virtual machine's row, the order of the rows, the layout of a row with its 160 × 100 preview, the black of an empty preview, the row kept with `Stop` disabled while the virtual machine shuts down after `Stop` and the popover that a click on a preview closes. The fonts and colours of the texts, the time of a setup virtual machine that restarts in Recovery, the image kept after a failed screenshot, `Stop` disabled too for a stop asked elsewhere, the stop of a setup virtual machine as by `Stop` of its setup view, the click that does nothing on a setup virtual machine that shuts down and the alert of a failed `Stop` are Default chosen at design time.
+#### Buttons
+
+The row of buttons at the bottom of the popover holds `New VM…` and `Add Image…` at its leading edge and `Virtual Machines Settings…` at its trailing edge. Each closes the popover first.
+
+| Button                       | Action                                                                                                                                              |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `New VM…`                    | Opens the New VM sheet on the popover's window ([Virtual Machines](ui.md#virtual-machines)); disabled while 2 virtual machines run, as in Settings. |
+| `Add Image…`                 | Opens the Add Image sheet on the popover's window ([Virtual Machines](ui.md#virtual-machines)).                                                     |
+| `Virtual Machines Settings…` | Opens the Settings window on its Virtual Machines tab ([Settings window](ui.md#settings-window)).                                                   |
+
+The bubble, its symbol, its place and its look, the virtual machines it counts, the number hidden at 0, its tooltip, the windows that show it, the popover's rows with their preview refreshed every 2 seconds and empty without the agent, their texts, `Stop` without confirmation, the click on a preview, `No virtual machines` and following the events at once come from the user ([R203](requirements.md#requirements)), and so do the Stopped virtual machines listed after the Running ones, the oldest created first, their black preview, `Stopped` and `Start` with its alert, the row of buttons with their places and their actions, the name of a setup virtual machine's row, the order of the rows, the layout of a row with its 160 × 100 preview, the black of an empty preview, the row kept with `Stop` disabled while the virtual machine shuts down after `Stop` and the popover that a click on a preview closes. The fonts and colours of the texts, the time of a setup virtual machine that restarts in Recovery, the image kept after a failed screenshot, `Stop` disabled too for a stop asked elsewhere, the stop of a setup virtual machine as by `Stop` of its setup view, the click that does nothing on a setup virtual machine that shuts down, the alert of a failed `Stop`, `Start` disabled until its call returns and the order of the Stopped virtual machines that were created at the same time are Default chosen at design time.
 
 ## Deleting an image
 
@@ -688,5 +702,5 @@ Outside the app, the engine reaches ipsw.me, Apple's download server and the Vir
 
 - R201: Settings has a Virtual Machines tab whose Images section adds macOS images for virtual machines from the versions ipsw.me lists, downloads and installs them, prepares each one once in a setup view of the main window so that an agent in the guest gives full control of it, marks the default image and deletes images.
 - R202: The user starts virtual machines from the Ready images in Settings, keeps them between runs, starts, stops and deletes them, and shows the screen of one in a main window, where the mouse and the keyboard drive it; at most 2 run at once, and the app does not restart by itself for an update while one runs.
-- R203: The toolbar of a main window that shows This Mac has a bubble with the number of virtual machines that run; its popover shows a preview of the screen of each one, refreshed every 2 seconds, its name, who started it and its running time, opens it and stops it.
+- R203: The toolbar of a main window that shows This Mac has a bubble with the number of virtual machines that run; its popover lists every virtual machine, shows a preview of the screen of each one that runs, refreshed every 2 seconds, its name, who started it and its running time, opens it, stops it or starts it, and creates virtual machines, adds images and opens Settings.
 - R204: Every chat of every project gives Claude full control of virtual machines with the VM tools: Claude starts one freely or joins Claude's one of the same image, waits up to 10 minutes for a free place, drives it one action at a time across chats, acts on the user's only when named and never stops them; Claude's idle VMs stop after the minutes set in Settings, and each VM gets the Claude token of Settings at its start.

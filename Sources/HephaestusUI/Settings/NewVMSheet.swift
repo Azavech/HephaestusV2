@@ -6,7 +6,8 @@ import SwiftUI
 /// New VM: the name, the Ready image and the values of a virtual machine. `Start` calls
 /// `vms.create`, which clones the image's disk and boots the virtual machine. A value the engine
 /// refuses shows under the fields; any other failure is a failed start, which closes the sheet and
-/// goes to `startFailed`, the red line under the table.
+/// goes to `startFailed`: the red line under the table in Settings, the failure alert on a main
+/// window. On a main window the images may not be read yet: the sheet reads them.
 struct NewVMSheet: View {
     let startFailed: (String) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -58,8 +59,16 @@ struct NewVMSheet: View {
         }
         .padding(20)
         .frame(width: 380)
-        .onAppear {
+        .task {
+            if app.localWorkspace.vmImages == nil {
+                await app.localWorkspace.loadVMImages()
+            }
             select(VirtualMachinePresentation.initialImage(images, defaultImageID: app.localWorkspace.settings?.defaultVMImage))
+        }
+        .onChange(of: images.map(\.id)) { _, _ in
+            if imageID == nil {
+                select(VirtualMachinePresentation.initialImage(images, defaultImageID: app.localWorkspace.settings?.defaultVMImage))
+            }
         }
         .onChange(of: imageID) { _, id in
             select(images.first { $0.id == id })
