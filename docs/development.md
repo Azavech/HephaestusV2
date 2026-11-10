@@ -1,6 +1,6 @@
 # Development
 
-This document is for the people and the Claude sessions that change HephaestusV2. It explains how to build, run and test the app on one Mac, how to run a second isolated instance to test remote sync locally, how automated UI checks drive an offscreen instance through the debug MCP tools without using the user's displays, keyboard or pointer, how Claude CLI fixtures are recorded, and the contribution rules: docs first, public repository. The exact rules of the environment variables, the data directory and the processes are in [Architecture](architecture.md); the pipelines, the scripts and the make targets are in [CI and release](ci.md).
+This document is for the people and the Claude sessions that change HephaestusV2. It explains how to build, run and test the app on one Mac, how to run a second isolated instance to test remote sync locally, how automated UI checks drive an offscreen instance through the debug MCP tools, and a virtual machine for what those tools cannot do, without using the user's displays, keyboard or pointer, how Claude CLI fixtures are recorded, and the contribution rules: docs first, public repository. The exact rules of the environment variables, the data directory and the processes are in [Architecture](architecture.md); the pipelines, the scripts and the make targets are in [CI and release](ci.md).
 
 ## Prerequisites
 
@@ -136,13 +136,13 @@ The app handles `SIGTERM` like Quit, without the confirmation alerts ([Shutdown]
 
 ## Automated UI checks
 
-Automated checks, run by a script or by a Claude session, start instance C and see it only through the debug MCP tools. They never use the user's displays, keyboard or pointer. Claude follows this procedure whenever it checks the UI of HephaestusV2 itself ([Workflow](workflow.md#build-and-test)).
+Automated checks, run by a script or by a Claude session, start instance C and see it only through the debug MCP tools. They never use the user's displays, keyboard or pointer. A check that the debug tools cannot do runs in a virtual machine instead ([VM checks](#vm-checks)). Claude follows this procedure whenever it checks the UI of HephaestusV2 itself ([Workflow](workflow.md#build-and-test)).
 
 ### Rules
 
 1. Start check instances with `HEPHAESTUS_WINDOW_SCREEN=offscreen` and `open -g`. Every window of the instance opens outside all displays, the instance shows no Dock icon and no menu bar, and it never takes the keyboard focus ([Window placement](architecture.md#window-placement)).
 2. Observe and drive the UI only with `debug_ui_state`, `debug_navigate`, `debug_screenshot` and `debug_click`, click only with `debug_click`, and create data with the regular MCP tools (`create_project`, `create_ticket` and the others of [MCP server](mcp.md#tools)).
-3. Never use `screencapture`, the Screen Recording or Accessibility permissions, AppleScript UI scripting, or mouse and keyboard events posted to the system, such as `CGEvent` posts or `cliclick`. `debug_click` is the only way to click: it builds the click inside the app ([debug_click](mcp.md#debug_click)).
+3. On this Mac, never use `screencapture`, the Screen Recording or Accessibility permissions, AppleScript UI scripting, or mouse and keyboard events posted to the system, such as `CGEvent` posts or `cliclick`. `debug_click` is the only way to click on this Mac: it builds the click inside the app ([debug_click](mcp.md#debug_click)). This rule does not apply inside the guest of a virtual machine ([VM checks](#vm-checks)).
 4. Use a new temporary data directory with scratch projects inside it; never the default data directory, never the user's projects.
 5. Give each check instance its own ports and `HEPHAESTUS_DISABLE_UPDATER=1`.
 6. `builtin` is for a person who wants to watch an instance on the built-in display; checks use `offscreen`.
@@ -210,6 +210,38 @@ pkill -TERM -f "$C_ROOT/HephaestusV2.app/Contents/MacOS/HephaestusV2"
 while pgrep -f "$C_ROOT/HephaestusV2.app/Contents/MacOS/HephaestusV2" > /dev/null; do sleep 0.5; done
 rm -rf "$C_ROOT"
 ```
+
+### VM checks
+
+A check that the debug tools of the check instance cannot do runs in one of Claude's virtual machines ([Claude's virtual machines](virtual-machines.md#claudes-virtual-machines)): a menu, typed text, a list row, scrolling, a drag, a keyboard shortcut, a system dialog or a permission prompt. Claude starts the virtual machine with the VM tools whenever such a check needs one, without asking. The other checks stay on the offscreen check instance.
+
+1. **Build.** Run `make app` on this Mac, as for a check instance.
+2. **Virtual machine.** The guest needs macOS 26 or later, the app's minimum ([Prerequisites](#prerequisites)): `vm_list_images` lists the Ready images. Call `vm_start` with a `name`, for example `HEPH-147 checks`, and with `image` set to the version or the id of such an image, or without `image` when the default image is one. It returns a new virtual machine, or the one that Claude already runs from that image, which the chat joins.
+3. **Copy.** Call `vm_copy_in` with `source` set to the absolute path of `build/HephaestusV2.app` in the worktree and `destination` set to `~/Checks/<ticket id>/HephaestusV2.app`. The content of the bundle goes into that folder, which becomes the bundle in the guest.
+4. **Start.** Start the instance with `vm_shell`, then wait for its MCP server and read its token as in [Start a check instance](#start-a-check-instance). Each `vm_shell` call is a new shell, so each one sets `C_ROOT` again:
+
+```sh
+C_ROOT="$HOME/Checks/HEPH-147"
+mkdir -p "$C_ROOT/projects"
+open -n \
+  --env HEPHAESTUS_DATA_DIR="$C_ROOT/data" \
+  --env HEPHAESTUS_MCP_PORT=47840 \
+  --env HEPHAESTUS_SYNC_PORT=47841 \
+  --env HEPHAESTUS_DISABLE_UPDATER=1 \
+  --stderr "$C_ROOT/stderr.log" \
+  "$C_ROOT/HephaestusV2.app"
+```
+
+5. **Drive.** `vm_screenshot` returns a PNG of the guest's screen; `vm_click`, `vm_drag` and `vm_scroll` take points of it in pixels. A menu item is picked with a click on its menu in the menu bar, then on the item. `vm_type` types into the focused field, `vm_key` presses a key in the menu notation, for example `⇧⌘K`, and `vm_ui_tree` with `app` `HephaestusV2` reads the app's Accessibility tree, with the frames of its elements in screenshot pixels. System dialogs and permission prompts show on the guest's screen, where Claude answers them with `vm_click`. Data is created with the regular MCP tools of the instance, called with `curl` through `vm_shell` as in [Call the tools](#call-the-tools). `vm_copy_out` copies a file of the guest to this Mac.
+6. **End.** Quit the instance and delete its folder with `vm_shell`, as in [Stop the check instance](#stop-the-check-instance). Leave the virtual machine running: it stops and is deleted with its disk after the idle time of Settings ([Idle stop](virtual-machines.md#idle-stop)), and other chats may have joined it, for which `vm_stop` would stop it too.
+
+- Without `HEPHAESTUS_WINDOW_SCREEN` and `-g`, the instance shows its windows, its Dock icon and its menu bar on the guest's screen and takes the guest's keyboard focus, as the app does for a user.
+- Rule 3 of [Rules](#rules) applies to this Mac only. Inside the guest, the agent takes screenshots with the guest's Screen Recording permission, and posts mouse and keyboard events and reads the Accessibility tree with its Accessibility permission ([Guest agent](virtual-machines.md#guest-agent)); none of it reaches the user's displays, keyboard or pointer. The VM tools take the place of the debug tools of rule 2, and rules 4, 5 and 7 apply to the instance in the guest as they do on this Mac.
+- Several chats can share one virtual machine, whose actions run one at a time ([Actions and their queue](virtual-machines.md#actions-and-their-queue)): each chat gives its instance its own folder under `~/Checks/` and its own ports.
+- The guest's Claude CLI runs with the Claude token of Settings, when the user set one, so the chats of an instance in the guest run with the user's Claude account ([Claude token](virtual-machines.md#claude-token)).
+- When no virtual machine can start, for example because no Ready image of macOS 26 or later exists, the check cannot run, and its Testing line gets the result `failed` with the reason ([Build and test](workflow.md#build-and-test)).
+
+The procedure, the folder `~/Checks/` and leaving the virtual machine to its idle stop are Default chosen at design time.
 
 ## Debug MCP tools
 
@@ -340,10 +372,11 @@ Session ids, message ids and tool use ids stay as recorded.
 1. The docs describe the change, and their tables are aligned.
 2. `make check` passes.
 3. `make test` passes.
-4. A UI change was checked on an offscreen check instance ([Automated UI checks](#automated-ui-checks)).
+4. A UI change was checked on an offscreen check instance, and in a virtual machine for what its debug tools cannot do ([Automated UI checks](#automated-ui-checks), [VM checks](#vm-checks)).
 
 ## Requirements covered
 
 - R3: The app is created without reading or taking inspiration from its first version, v1.
 - R52: The app is on GitHub.
 - R55: The app is built against the docs.
+- R205: A ticket Claude writes has a User Testing bullet only for a check that needs the user's own accounts, data or hardware; Claude runs every other check itself, in a virtual machine that it starts without asking when the check needs what the offscreen check instance cannot do.

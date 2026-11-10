@@ -42,7 +42,21 @@ struct SystemPromptSkillsTests {
             + "it only when the user names it in this chat, by its name or with its linked item, and never stop it.\n\n",
     ]
 
-    @Test("The text of each unedited default is the prompt of the previous release, byte for byte, but for the text the common default gained since")
+    /// The text of the common default that changed since that release, each as its current text and
+    /// the text it replaced: the User rule and the virtual machine of the Testing bullet, and the VM
+    /// checks of HephaestusV2 (HEPH-147).
+    static let commonReplacements = [
+        ("- Claude: <test> for a check you run, on an isolated instance or in a virtual machine, or - User: <test> for a check the user "
+            + "performs. Write a User bullet only for a check that needs the user's own accounts, data or hardware; every other check is a "
+            + "Claude bullet. Never write a code test there:",
+         "- Claude: <test> for a check you run, for example on an isolated instance, or - User: <test> for a check the user performs. "
+            + "Never write a code test there:"),
+        ("- To check the user interface, use a second, isolated instance of the app and the debug MCP tools, and a virtual machine for "
+            + "what those tools cannot do, as docs/development.md › VM checks describes; never use the app the user is running.",
+         "- To check the user interface, use a second, isolated instance of the app and the debug MCP tools, never the app the user is running."),
+    ]
+
+    @Test("The text of each unedited default is the prompt of the previous release, byte for byte, but for the text the common default gained or changed since")
     func defaultsAreThePreviousPrompts() throws {
         for skill in PromptSkill.allCases {
             var text = Prompts.text(skill)
@@ -50,6 +64,10 @@ struct SystemPromptSkillsTests {
                 for addition in Self.commonAdditions {
                     #expect(text.contains(addition))
                     text = text.replacingOccurrences(of: addition, with: "")
+                }
+                for (current, previous) in Self.commonReplacements {
+                    #expect(text.contains(current))
+                    text = text.replacingOccurrences(of: current, with: previous)
                 }
             }
             #expect(AtomicFile.sha256(Data(text.utf8)) == Self.previousReleaseDigests[skill], "\(skill.rawValue)")

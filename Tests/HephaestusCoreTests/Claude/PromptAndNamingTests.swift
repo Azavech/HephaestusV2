@@ -524,6 +524,32 @@ struct PromptAndNamingTests {
         #expect(tool.description.contains("counts as passed once a release built by CI contains the ticket's commit."))
     }
 
+    @Test("Testing: a User bullet only for the user's own accounts, data or hardware; Claude runs the other checks, in a VM when an isolated instance cannot")
+    func userBulletsAndVMChecks() throws {
+        let common = Prompts.text(.common)
+        let writing = try Self.part(common, "# Writing tickets", "# Ticket status")
+        #expect(writing.contains("- Claude: <test> for a check you run, on an isolated instance or in a virtual machine, or - User: <test> for a check the user performs."))
+        #expect(writing.contains("Write a User bullet only for a check that needs the user's own accounts, data or hardware; every other check is a Claude bullet."))
+        #expect(writing.contains("In a project whose type is Go service, the Testing section has only Claude bullets"))
+        let hephaestus = try Self.part(common, "# When the project is HephaestusV2")
+        #expect(hephaestus.contains("and a virtual machine for what those tools cannot do, as docs/development.md › VM checks describes"))
+
+        let steps = try Self.part(try Self.skill("implement-ticket"), "## Steps", "## Ticket chat started by a bundle chat")
+        let build = try #require(steps.range(of: "5. Build and test."))
+        let commit = try #require(steps.range(of: "6. Commit"))
+        let step5 = String(steps[build.lowerBound..<commit.lowerBound])
+        #expect(step5.contains("Then run the Claude tests of the ticket's Testing section; in a project whose type is Go service, "
+            + "they run on the test service after the push instead."))
+        #expect(step5.contains("Run a check that needs what an isolated instance cannot do, for example menus, typed text, list rows, scrolling, "
+            + "system dialogs or permission prompts, in a virtual machine, without asking, as \"Virtual machines\" describes: copy the build in "
+            + "with vm_copy_in, run it there, and drive and observe it with the VM tools."))
+        #expect(step5.contains("A check that cannot run, for example because vm_start fails, gets the result failed with the reason."))
+
+        let comment = try Self.part(try Self.skill("finish-implementation"), "## Completion comment", "## Waiting for CI")
+        #expect(comment.contains("You run the check of each Claude line yourself, in a virtual machine when an isolated instance cannot do it, "
+            + "as step 5 of hephaestus-skills:implement-ticket describes."))
+    }
+
     @Test("CI: the chat that pushed starts a CI chat with watch_ci and waits for CI before the status; a CI chat gets the ci prompt alone")
     func ciPrompts() throws {
         let common = Prompts.text(.common)
