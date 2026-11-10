@@ -830,6 +830,9 @@ struct ChatInteractionTests {
             let screenshot = try #require(user.attachments.first)
             #expect(screenshot.name == "screenshot.png")
             let path = bed.folder.attachmentFile(path: screenshot.path).path
+            // The screenshot is the one file of the chat's attachment folder.
+            #expect(try Data(contentsOf: URL(fileURLWithPath: path)) == Data([0x89, 0x50, 0x4E, 0x47]))
+            #expect(try FileManager.default.contentsOfDirectory(atPath: bed.folder.chatAttachmentsFolder(chat.id).path).count == 1)
             // The image block comes before the text, which calls the internal skill feedback.
             #expect(line.range(of: #"{"type":"image""#)!.lowerBound < line.range(of: #"{"type":"text""#)!.lowerBound)
             #expect(user.text == """
@@ -850,6 +853,47 @@ struct ChatInteractionTests {
             #expect(prompt.hasPrefix("You are Claude, working inside HephaestusV2"))
             #expect(prompt.hasSuffix("wait for CI as hephaestus-skills:finish-implementation describes."))
             #expect(!prompt.contains("<feedback>") && !prompt.contains("This is a feedback chat") && !prompt.contains("# This chat"))
+        }
+    }
+
+    @Test("Feedback without a screenshot: no file is stored, and the message has no image block and no Screenshot line")
+    func feedbackWithoutScreenshot() async throws {
+        try await withChatEngine { bed in
+            let context = FeedbackContext(appVersion: "0.4.0", build: 57, deviceName: "MacBook", mainDeviceName: "MacBook", projectID: "DEMO",
+                                          section: .tickets, item: "DEMO-1")
+            let chat = try await bed.connection.call(ChatsCreateFeedback.self, .init(projectID: "DEMO", comment: "The list is empty.", context: context))
+            #expect(chat.kind == .feedback)
+            let process = try #require(await bed.launcher.chatProcess())
+            let line = try #require(await process.line { $0.hasPrefix(#"{"type":"user""#) })
+            #expect(!line.contains(#""type":"image""#))
+            #expect(!line.contains("Screenshot:") && !line.contains("Attached files:"))
+            #expect(await bed.waitForState(chat.id, .idle))
+            guard case .user(let user)? = try await bed.transcript(chat.id).first else {
+                Issue.record("no user item")
+                return
+            }
+            #expect(user.attachments.isEmpty)
+            #expect(user.text == """
+            /hephaestus-skills:feedback
+            The list is empty.
+
+            Feedback context:
+            - App: HephaestusV2 v0.4.0(57)
+            - Device: MacBook
+            - Project: Demo (DEMO)
+            - Section: tickets
+            - Item: DEMO-1
+            """)
+            // The chat's attachment folder holds no file.
+            let stored = (try? FileManager.default.contentsOfDirectory(atPath: bed.folder.chatAttachmentsFolder(chat.id).path)) ?? []
+            #expect(stored.isEmpty)
+            // A null screenshot is an absent one, and the params of feedback without a screenshot
+            // have no `screenshot` key (docs/engine-api.md › JSON encoding).
+            let json = #"{"comment": "x", "context": {"appVersion": "0.4.0", "build": 57, "deviceName": "MacBook", "mainDeviceName": "MacBook"}, "#
+                + #""projectID": "DEMO", "screenshot": null}"#
+            let params = try EngineJSON.decode(ChatsCreateFeedback.Params.self, from: Data(json.utf8))
+            #expect(params.screenshot == nil)
+            #expect(!String(decoding: try EngineJSON.encode(params), as: UTF8.self).contains("screenshot"))
         }
     }
 

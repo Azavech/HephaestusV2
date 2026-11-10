@@ -870,10 +870,12 @@ struct PromptAndNamingTests {
             comment: "  The lock icon disappears when I drag a locked tab to another position.\n", context: context, projectName: "Hephaestus V2",
             screenshotPath: "/Users/example/Developer/HephaestusV2/.hephaestus/chats/3F2504E0-4F89-11D3-9A0C-0305E82C3301/1B4E28BA-2FA1-11D2-883F-0016D3CCA427-screenshot.png")
         #expect(text == documented.text)
-        let bare = Engine.feedbackMessage(comment: " ", context: FeedbackContext(appVersion: "1.0.0", build: 0, deviceName: "Studio",
-                                                                                 mainDeviceName: "Studio"),
-                                          projectName: nil, screenshotPath: "/s.png")
+        let bareContext = FeedbackContext(appVersion: "1.0.0", build: 0, deviceName: "Studio", mainDeviceName: "Studio")
+        let bare = Engine.feedbackMessage(comment: " ", context: bareContext, projectName: nil, screenshotPath: "/s.png")
         #expect(bare == "/hephaestus-skills:feedback\n(no comment)\n\nFeedback context:\n- App: HephaestusV2 v1.0.0(0)\n- Device: Studio\n- Screenshot: /s.png")
+        // Feedback sent without a screenshot has no Screenshot line.
+        let withoutScreenshot = Engine.feedbackMessage(comment: "Hello", context: bareContext, projectName: nil, screenshotPath: nil)
+        #expect(withoutScreenshot == "/hephaestus-skills:feedback\nHello\n\nFeedback context:\n- App: HephaestusV2 v1.0.0(0)\n- Device: Studio")
     }
 
     @Test("The first messages of Implement, of an orchestrated ticket chat and of Implement All call the internal skills")

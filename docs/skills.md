@@ -158,7 +158,7 @@ The first message of a chat that runs a called internal skill calls it as a Clau
 | Implement and `implement_ticket`       | `/hephaestus-skills:implement-ticket <ticket id>`, for example `/hephaestus-skills:implement-ticket HEPH-12`                      |
 | a ticket chat started by a bundle chat | `/hephaestus-skills:implement-ticket <ticket id> <bundle id>`, for example `/hephaestus-skills:implement-ticket HEPH-12 HEPH-B2`  |
 | Implement All and `implement_bundle`   | `/hephaestus-skills:implement-bundle <bundle id>`, for example `/hephaestus-skills:implement-bundle HEPH-B2`                      |
-| feedback                               | `/hephaestus-skills:feedback`, a line break, then the [feedback message](chats.md#feedback-message), with the screenshot attached |
+| feedback                               | `/hephaestus-skills:feedback`, a line break, then the [feedback message](chats.md#feedback-message), with any screenshot attached |
 
 - Claude Code 2.1.309 runs a user message of a stream-json session as a skill call when its last content block is a text that starts with `/<plugin>:<skill>`: the skill's body follows the message, with `$ARGUMENTS` replaced by the rest of the text, line breaks included, and the message's image blocks stay visible to Claude. A message whose image block comes after its text is passed on as plain text, so the engine writes the image blocks before the text block ([User messages](chats.md#user-messages)). The CLI reports the message with `command_lifecycle` lines as any other ([Turn tracking](chats.md#turn-tracking)).
 - Claude Code 2.1.309 keeps the text of a called skill, its arguments filled in, after a compaction of the session, so a feedback chat keeps its comment and context.
@@ -236,11 +236,11 @@ This is a feedback chat. The user sent feedback about HephaestusV2 from the wind
 $ARGUMENTS
 </feedback>
 
-The first message of this chat includes a screenshot of that window, saved at the path of the context's Screenshot line. Your goal is to turn the feedback into a ticket of this chat's project. Work out what the feedback means from the comment, the screenshot and the context, asking questions when it is unclear, then create its ticket with the screenshot path as an attachment and summarize the ticket. Follow these steps:
+The user sends feedback with or without a screenshot of that window. When the context has a Screenshot line, the first message of this chat includes the screenshot, saved at the path of that line. When the context has no Screenshot line, the feedback has no screenshot. Your goal is to turn the feedback into a ticket of this chat's project. Work out what the feedback means from the comment, the context and the screenshot when there is one, asking questions when it is unclear, then create its ticket, with the screenshot path as an attachment when there is one, and summarize the ticket. Follow these steps:
 
-1. Read the comment, the context and the screenshot, then the docs and the code of this project that concern them.
+1. Read the comment, the context and the screenshot when there is one, then the docs and the code of this project that concern them.
 2. List every decision the ticket's implementation needs, as "Writing tickets" says, ask every one still open with ask_questions and end your turn. Continue when the answers arrive, and go to step 3 only once every decision is answered.
-3. Call create_ticket with the identifier of this chat's project as projectID, a description that follows the template and holds the answers, and the screenshot path in attachments. When the feedback reports several problems, create one ticket per problem.
+3. Call create_ticket with the identifier of this chat's project as projectID, a description that follows the template and holds the answers, and, when the context has a Screenshot line, the screenshot path in attachments. When the feedback reports several problems, create one ticket per problem.
 4. Reply with a short summary of the ticket that names its id.
 
 Implement the ticket in this chat only when the user asks for that, and then use the skill hephaestus-skills:implement-ticket.

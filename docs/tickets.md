@@ -198,7 +198,7 @@ The placeholder, font and keys in this table are defaults. Default chosen at des
 - The ticket gets `status: todo` and `createdBy: claude`.
 - `attachments` are file paths on the main device ([Adding attachments](#adding-attachments)).
 - `links` declares the ticket's links to other tickets of the project ([Ticket links](#ticket-links)).
-- A feedback chat creates its ticket this way, with the screenshot attached, and is linked to that ticket ([Feedback](feedback.md)).
+- A feedback chat creates its ticket this way, with the screenshot attached when the feedback has one, and is linked to that ticket ([Feedback](feedback.md)).
 - A ticket created from a project chat is not linked to that chat. Default chosen at design time.
 
 ### Creation steps

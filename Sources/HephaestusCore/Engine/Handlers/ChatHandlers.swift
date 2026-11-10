@@ -362,14 +362,19 @@ extension Engine {
     /// `chats.createFeedback` (docs/engine-api.md › chats.createFeedback, docs/chats.md ›
     /// Feedback message).
     func chatsCreateFeedback(_ params: ChatsCreateFeedback.Params, _ actor: Actor) async throws -> ChatMeta {
-        try ActorRules.requireNoSourcePath([params.screenshot], actor)
+        try ActorRules.requireNoSourcePath(params.screenshot.map { [$0] }, actor)
         let projectID = try Engine.projectIdentifier(params.projectID)
-        // docs/engine-api.md › chats.createFeedback, errors
-        guard params.screenshot.contentType == "image/png" else { throw EngineError.invalid("screenshot", "use a PNG image (image/png)") }
-        guard let base64 = params.screenshot.dataBase64 else { throw EngineError.invalid("screenshot", "give its content in dataBase64") }
-        guard let screenshot = Data(base64Encoded: base64) else { throw EngineError.invalid("screenshot", "dataBase64 is not valid base64") }
-        guard screenshot.count <= AttachmentUploads.maximumSize else {
-            throw EngineError(.invalid, "\(params.screenshot.name) is larger than 20 MB.")
+        // docs/engine-api.md › chats.createFeedback, errors; feedback sent without a screenshot
+        // stores no file.
+        var screenshots: [ChatAttachments.Prepared] = []
+        if let upload = params.screenshot {
+            guard upload.contentType == "image/png" else { throw EngineError.invalid("screenshot", "use a PNG image (image/png)") }
+            guard let base64 = upload.dataBase64 else { throw EngineError.invalid("screenshot", "give its content in dataBase64") }
+            guard let screenshot = Data(base64Encoded: base64) else { throw EngineError.invalid("screenshot", "dataBase64 is not valid base64") }
+            guard screenshot.count <= AttachmentUploads.maximumSize else {
+                throw EngineError(.invalid, "\(upload.name) is larger than 20 MB.")
+            }
+            screenshots = [ChatAttachments.Prepared(name: "screenshot.png", contentType: "image/png", data: screenshot)]
         }
         if let settings = params.settings { try Engine.validated { try settings.validate() } }
         if let contextProject = params.context.projectID, Identifiers.normalizedProjectID(contextProject) == nil {
@@ -385,12 +390,11 @@ extension Engine {
         let project = try checkProject()
         let meta = try createChat(kind: .feedback, project: project, ticketID: nil, bundleID: nil, settings: params.settings, origin: actor)
         recordDrivingDevice(meta.id, actor)
-        let stored = try storeChatAttachments([ChatAttachments.Prepared(name: "screenshot.png", contentType: "image/png", data: screenshot)],
-                                              chatID: meta.id)
+        let stored = try storeChatAttachments(screenshots, chatID: meta.id)
         let folder = try chatFolder(meta)
         let contextProjectName = params.context.projectID.flatMap { Identifiers.normalizedProjectID($0) }.flatMap { domain.project($0)?.name }
         let text = Engine.feedbackMessage(comment: params.comment, context: params.context, projectName: contextProjectName,
-                                          screenshotPath: folder.attachmentFile(path: stored[0].0.path).path)
+                                          screenshotPath: stored.first.map { folder.attachmentFile(path: $0.0.path).path })
         try sendChatMessage(meta.id, text: text, attachments: stored, sender: sender, origin: actor)
         return try requireChat(meta.id)
     }

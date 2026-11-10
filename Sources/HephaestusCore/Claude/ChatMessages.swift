@@ -135,8 +135,8 @@ extension Engine {
     }
 
     /// docs/chats.md › Feedback message: the line `/hephaestus-skills:feedback`, then the comment
-    /// and the context.
-    static func feedbackMessage(comment: String, context: FeedbackContext, projectName: String?, screenshotPath: String) -> String {
+    /// and the context, whose Screenshot line is left out for feedback without a screenshot.
+    static func feedbackMessage(comment: String, context: FeedbackContext, projectName: String?, screenshotPath: String?) -> String {
         let trimmed = comment.trimmingCharacters(in: .whitespacesAndNewlines)
         var lines = [skillCall("feedback"), trimmed.isEmpty ? "(no comment)" : ModelRules.normalizedLineBreaks(trimmed), "", "Feedback context:"]
         lines.append("- App: HephaestusV2 v\(context.appVersion)(\(context.build))")
@@ -149,7 +149,7 @@ extension Engine {
         }
         if let section = context.section { lines.append("- Section: \(section.rawValue)") }
         if let item = context.item { lines.append("- Item: \(item)") }
-        lines.append("- Screenshot: \(screenshotPath)")
+        if let screenshotPath { lines.append("- Screenshot: \(screenshotPath)") }
         return lines.joined(separator: "\n")
     }
 

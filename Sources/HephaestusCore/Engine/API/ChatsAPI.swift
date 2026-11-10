@@ -570,12 +570,13 @@ public enum ChatsCreateFeedback: EngineMethod {
         public var projectID: ProjectID
         /// The user's comment; may be empty.
         public var comment: String
-        /// The captured window: contentType `image/png`, content in `dataBase64`.
-        public var screenshot: AttachmentUpload
+        /// The captured window: contentType `image/png`, content in `dataBase64`; nil for feedback
+        /// sent without a screenshot.
+        public var screenshot: AttachmentUpload?
         public var context: FeedbackContext
         public var settings: ChatSettings?
 
-        public init(projectID: ProjectID, comment: String, screenshot: AttachmentUpload, context: FeedbackContext,
+        public init(projectID: ProjectID, comment: String, screenshot: AttachmentUpload? = nil, context: FeedbackContext,
                     settings: ChatSettings? = nil) {
             self.projectID = projectID
             self.comment = comment

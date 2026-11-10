@@ -3,11 +3,33 @@ import AppKit
 import HephaestusCore
 import SwiftUI
 
-/// Send Feedback: the screenshot (`AppModel.feedbackPreviews[previewID]`), the comment, the chat
-/// settings menus and the context; Send calls `chats.createFeedback` on the receiving device with
-/// its HephaestusV2 project, and a main window shows the returned chat in its Chats section
-/// (docs/feedback.md › Feedback sheet, › Chat settings menus, › Feedback project, › Creating the
-/// feedback chat).
+/// The icon in the top-right corner of the Feedback sheet's screenshot preview: it shows whether
+/// Send sends the screenshot, and a click on it switches (docs/feedback.md › Screenshot preview).
+struct FeedbackScreenshotIcon: Equatable {
+    /// The SF Symbol: `eye` while the screenshot is included, `eye.slash` while it is excluded.
+    let symbol: String
+    /// The tooltip and the accessibility label, which name what a click does.
+    let label: String
+    /// The icon shows while the pointer is over the preview, and always while the screenshot is
+    /// excluded.
+    let isShown: Bool
+    /// False when the window could not be captured: no screenshot can be included.
+    let isEnabled: Bool
+
+    init(captured: Bool, included: Bool, hovered: Bool) {
+        let sent = captured && included
+        symbol = sent ? "eye" : "eye.slash"
+        label = sent ? "Exclude Screenshot" : "Include Screenshot"
+        isShown = hovered || !sent
+        isEnabled = captured
+    }
+}
+
+/// Send Feedback: the screenshot (`AppModel.feedbackPreviews[previewID]`) with the icon that
+/// leaves it out, the comment, the chat settings menus and the context; Send calls
+/// `chats.createFeedback` on the receiving device with its HephaestusV2 project, and a main window
+/// shows the returned chat in its Chats section (docs/feedback.md › Feedback sheet, › Screenshot
+/// preview, › Chat settings menus, › Feedback project, › Creating the feedback chat).
 struct FeedbackSheet: View {
     let previewID: UUID
     let source: FeedbackSource
@@ -31,6 +53,10 @@ struct FeedbackSheet: View {
     @FocusState private var commentFocused: Bool
     /// The screenshot, decoded once.
     @State private var image: NSImage?
+    /// Whether Send sends the screenshot: true each time the sheet opens, and never saved.
+    @State private var screenshotIncluded = true
+    /// True while the pointer is over the preview.
+    @State private var previewHovered = false
 
     private var capture: FeedbackCapture? {
         app.feedbackController.capture(for: previewID)
@@ -102,7 +128,8 @@ struct FeedbackSheet: View {
 
     // MARK: Elements
 
-    /// The PNG scaled to fit 480 × 300 pt; a click opens it in the image viewer.
+    /// The PNG scaled to fit 480 × 300 pt, dimmed while the screenshot is excluded, with the icon
+    /// in its top-right corner; a click outside the icon opens it in the image viewer.
     @ViewBuilder
     private var screenshot: some View {
         if let image {
@@ -113,11 +140,16 @@ struct FeedbackSheet: View {
                     .resizable()
                     .scaledToFit()
                     .frame(maxWidth: 480, maxHeight: 300)
+                    .opacity(screenshotIncluded ? 1 : Self.excludedOpacity)
                     .overlay(Rectangle().strokeBorder(Color(nsColor: .separatorColor)))
             }
             .buttonStyle(.plain)
-            .frame(maxWidth: .infinity)
             .accessibilityLabel("Screenshot")
+            .overlay(alignment: .topTrailing) {
+                screenshotIcon(FeedbackScreenshotIcon(captured: true, included: screenshotIncluded, hovered: previewHovered))
+            }
+            .onHover { previewHovered = $0 }
+            .frame(maxWidth: .infinity)
         } else if png != nil {
             // The PNG is being decoded.
             Color.clear
@@ -128,11 +160,44 @@ struct FeedbackSheet: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 480, height: 300)
                 .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .quaternaryLabelColor).opacity(0.3)))
+                .overlay(alignment: .topTrailing) {
+                    screenshotIcon(FeedbackScreenshotIcon(captured: false, included: screenshotIncluded, hovered: false))
+                }
                 .frame(maxWidth: .infinity)
         }
     }
 
-    /// A multi-line field with the focus; it may stay empty.
+    /// The opacity of the preview while the screenshot is excluded.
+    private static let excludedOpacity = 0.4
+
+    /// The icon, white on a small circle of dark material, 8 pt from the top and right edges of
+    /// the preview: a button that takes a click also while the icon is hidden. The black fill
+    /// over the material keeps the circle dark on dark screenshots and where the material is not
+    /// blurred, as in the in-process capture.
+    private func screenshotIcon(_ icon: FeedbackScreenshotIcon) -> some View {
+        Button {
+            screenshotIncluded.toggle()
+        } label: {
+            Image(systemName: icon.symbol)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(width: 24, height: 24)
+                .background {
+                    Circle().fill(.ultraThinMaterial)
+                    Circle().fill(.black.opacity(0.4))
+                }
+                .environment(\.colorScheme, .dark)
+                .opacity(icon.isShown ? 1 : 0)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!icon.isEnabled)
+        .help(icon.label)
+        .accessibilityLabel(icon.label)
+        .padding(8)
+    }
+
+    /// A multi-line field with the focus; Send needs a comment that is not blank.
     private var commentField: some View {
         MultilineField(text: $comment, focus: $commentFocused)
             .frame(height: 96)
@@ -211,11 +276,8 @@ struct FeedbackSheet: View {
     // MARK: Send conditions
 
     /// The first failing condition's message, or nil when no condition with a message fails
-    /// (docs/feedback.md › Feedback sheet).
+    /// (docs/feedback.md › Feedback sheet). A screenshot is not a condition.
     private var blockingMessage: String? {
-        if png == nil {
-            return "The window could not be captured."
-        }
         guard let workspace, hephaestusProject != nil else {
             return "HephaestusV2 is not available on \(workspace?.deviceName ?? app.deviceName(receivingDeviceID))."
         }
@@ -234,7 +296,12 @@ struct FeedbackSheet: View {
     }
 
     private var canSend: Bool {
-        !isSending && blockingMessage == nil && chatDefaultsKnown && hephaestusProject != nil
+        !isSending && blockingMessage == nil && chatDefaultsKnown && hephaestusProject != nil && !Self.isBlank(comment)
+    }
+
+    /// A comment of white space and line breaks alone is blank; the condition has no message.
+    static func isBlank(_ comment: String) -> Bool {
+        comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     // MARK: Chat settings (docs/feedback.md › Chat settings menus)
@@ -290,15 +357,22 @@ struct FeedbackSheet: View {
 
     // MARK: Send (docs/feedback.md › Creating the feedback chat)
 
+    /// The `screenshot` param of Send: nil, so left out, while the screenshot is excluded and when
+    /// the window could not be captured.
+    static func screenshotUpload(png: Data?, included: Bool) -> AttachmentUpload? {
+        guard included, let png else { return nil }
+        return AttachmentUpload(name: "screenshot.png", contentType: "image/png", dataBase64: png.base64EncodedString())
+    }
+
     private func send() {
-        guard canSend, let workspace, let png, let capture else { return }
+        guard canSend, let workspace, let capture else { return }
         let projectID = FeedbackProject.projectID
         isSending = true
         sendError = nil
         let params = ChatsCreateFeedback.Params(
             projectID: projectID,
             comment: comment,
-            screenshot: AttachmentUpload(name: "screenshot.png", contentType: "image/png", dataBase64: png.base64EncodedString()),
+            screenshot: Self.screenshotUpload(png: png, included: screenshotIncluded),
             context: capture.context,
             settings: chatSettings
         )
@@ -308,7 +382,8 @@ struct FeedbackSheet: View {
                 closeSheet()
                 await app.feedbackController.showChat(meta, in: workspace, source: source)
             } catch {
-                // The sheet stays open; the comment and the chat settings are kept.
+                // The sheet stays open; the comment, the state of the screenshot and the chat
+                // settings are kept.
                 sendError = errorMessage(error)
                 isSending = false
             }
