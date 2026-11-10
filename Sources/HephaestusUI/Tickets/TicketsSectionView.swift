@@ -46,8 +46,8 @@ struct TicketsSectionView: View {
                 let bundleProjectID = TicketListProjects.bundleProject(of: ids)
                 Button("Create Bundle from Selection") {
                     guard let bundleProjectID else { return }
-                    window.sheet = .ticketPicker(projectID: bundleProjectID, bundleID: nil,
-                                                 checkedTicketIDs: TicketFormat.ascending(Array(ids)))
+                    window.sheet = .ticketPicker(projectID: bundleProjectID,
+                                                 use: .selection(ticketIDs: TicketFormat.ascending(Array(ids))))
                 }
                 .disabled(bundleProjectID == nil || !window.isConnected)
             }

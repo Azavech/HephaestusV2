@@ -131,6 +131,7 @@ struct BundlesSectionView: View {
     private var list: some View {
         VStack(spacing: 0) {
             let state = listState
+            let newBundleAvailability = newBundleAvailability
             // The list's pane header (docs/ui.md › Pane headers); the list header is under it.
             PaneTitleRow(section: .bundles)
             HStack {
@@ -149,9 +150,10 @@ struct BundlesSectionView: View {
                     Image(systemName: "plus")
                 }
                 .buttonStyle(.borderless)
-                .help("New Bundle")
                 .accessibilityLabel("New Bundle")
-                .disabled(!window.isConnected)
+                .disabled(!newBundleAvailability.enabled)
+                // While disabled, its tooltip says why in place of `New Bundle`.
+                .help(newBundleAvailability.help ?? "New Bundle")
             }
             .padding(.horizontal, 8)
             .paneHeaderBar()
@@ -165,8 +167,7 @@ struct BundlesSectionView: View {
                     Text("Select tickets in Tickets and choose Create Bundle from Selection, or create a bundle here.")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                    Button("New Bundle") { newBundle() }
-                        .disabled(!window.isConnected)
+                    newBundleButton(newBundleAvailability)
                         .padding(.top, 4)
                 }
                 .padding()
@@ -176,8 +177,7 @@ struct BundlesSectionView: View {
                 VStack(spacing: 8) {
                     Text(BundleListState.noOpenBundles)
                         .font(.title3.weight(.semibold))
-                    Button("New Bundle") { newBundle() }
-                        .disabled(!window.isConnected)
+                    newBundleButton(newBundleAvailability)
                         .padding(.top, 4)
                 }
                 .padding()
@@ -283,9 +283,23 @@ struct BundlesSectionView: View {
         ]
     }
 
+    /// Whether New Bundle is enabled, and its tooltip while no ticket can go into a new bundle
+    /// (docs/tickets.md › Bundles section).
+    private var newBundleAvailability: (enabled: Bool, help: String?) {
+        TicketActions.newBundleAvailability(workspace: workspace, projectID: projectID, connected: window.isConnected)
+    }
+
+    /// The New Bundle button of `No Bundles` and `No Open Bundles`, disabled when the + button of
+    /// the header is, with the same tooltips.
+    private func newBundleButton(_ availability: (enabled: Bool, help: String?)) -> some View {
+        Button("New Bundle") { newBundle() }
+            .disabled(!availability.enabled)
+            .help(availability.help ?? "")
+    }
+
     private func newBundle() {
-        guard window.isConnected else { return }
-        window.sheet = .ticketPicker(projectID: projectID, bundleID: nil, checkedTicketIDs: [])
+        guard newBundleAvailability.enabled else { return }
+        window.sheet = .ticketPicker(projectID: projectID, use: .newBundle)
     }
 
     // MARK: Detail

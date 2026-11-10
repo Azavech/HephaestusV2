@@ -160,15 +160,13 @@ struct BundleDetailView: View {
             VStack(spacing: 10) {
                 Text("No Tickets in This Bundle")
                     .font(.title3.weight(.semibold))
-                Button("Add Tickets…") { addTickets() }
-                    .disabled(!window.isConnected)
+                addTicketsButton
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             VStack(spacing: 0) {
                 HStack {
-                    Button("Add Tickets…") { addTickets() }
-                        .disabled(!window.isConnected)
+                    addTicketsButton
                     Spacer()
                 }
                 .padding(.horizontal, 12)
@@ -249,9 +247,24 @@ struct BundleDetailView: View {
 
     // MARK: Actions
 
+    /// Whether Add Tickets… is enabled, and its tooltip while no ticket can be added
+    /// (docs/tickets.md › Bundles section).
+    private var addTicketsAvailability: (enabled: Bool, help: String?) {
+        TicketActions.addTicketsAvailability(bundleID: bundleID, workspace: workspace, projectID: projectID,
+                                             connected: window.isConnected)
+    }
+
+    /// Add Tickets…, above the table and in the empty tab.
+    private var addTicketsButton: some View {
+        let availability = addTicketsAvailability
+        return Button("Add Tickets…") { addTickets() }
+            .disabled(!availability.enabled)
+            .help(availability.help ?? "")
+    }
+
     private func addTickets() {
-        guard window.isConnected else { return }
-        window.sheet = .ticketPicker(projectID: projectID, bundleID: bundleID, checkedTicketIDs: [])
+        guard addTicketsAvailability.enabled else { return }
+        window.sheet = .ticketPicker(projectID: projectID, use: .addTickets(bundleID: bundleID))
     }
 
     /// Show Ticket: opens the ticket in the Tickets section.

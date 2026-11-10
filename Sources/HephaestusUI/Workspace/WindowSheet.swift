@@ -20,9 +20,9 @@ public enum WindowSheet: Codable, Hashable, Sendable, Identifiable {
     case openProjectFolder
     /// New Ticket sheet (docs/tickets.md › New Ticket sheet).
     case newTicket(projectID: String)
-    /// Ticket picker sheet: Create Bundle from Selection, or Add Tickets of a bundle
+    /// Ticket picker sheet of New Bundle, Create Bundle from Selection or Add Tickets… of a bundle
     /// (docs/tickets.md › Ticket picker sheet).
-    case ticketPicker(projectID: String, bundleID: String?, checkedTicketIDs: [String])
+    case ticketPicker(projectID: String, use: TicketPickerUse)
     /// Implement sheet of a ticket (docs/tickets.md › Implement sheet).
     case implementTicket(ticketID: String)
     /// Implement sheet of Implement All (docs/tickets.md › Implement sheet).
@@ -75,9 +75,8 @@ struct WindowSheetView: View {
             ChooseFolderSheet(window: window, workspace: workspace, purpose: .openProject)
         case .newTicket(let projectID):
             NewTicketSheet(window: window, workspace: workspace, projectID: projectID)
-        case .ticketPicker(let projectID, let bundleID, let checked):
-            TicketPickerSheet(window: window, workspace: workspace, projectID: projectID, bundleID: bundleID,
-                              checkedTicketIDs: checked)
+        case .ticketPicker(let projectID, let use):
+            TicketPickerSheet(window: window, workspace: workspace, projectID: projectID, use: use)
         case .implementTicket(let ticketID):
             ImplementSheet(window: window, workspace: workspace, owner: .ticket(ticketID))
         case .implementBundle(let bundleID):

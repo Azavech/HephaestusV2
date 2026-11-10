@@ -3,14 +3,52 @@ import AppKit
 import HephaestusCore
 import SwiftUI
 
-/// Create Bundle from Selection, or Add Tickets of a bundle.
+/// What the ticket picker sheet is opened for: the `use` of `WindowSheet.ticketPicker`
+/// (docs/tickets.md › Ticket picker sheet).
+public enum TicketPickerUse: Codable, Hashable, Sendable {
+    /// New Bundle: creates a bundle, with no ticket checked.
+    case newBundle
+    /// Create Bundle from Selection: creates a bundle, with the selected tickets checked.
+    case selection(ticketIDs: [String])
+    /// Add Tickets…: adds tickets to a bundle.
+    case addTickets(bundleID: String)
+
+    /// The bundle tickets are added to; nil creates a bundle.
+    var bundleID: String? {
+        if case .addTickets(let bundleID) = self { return bundleID }
+        return nil
+    }
+
+    /// The tickets checked when the sheet opens: the selection of Create Bundle from Selection.
+    var checkedTicketIDs: [String] {
+        if case .selection(let ticketIDs) = self { return ticketIDs }
+        return []
+    }
+
+    /// The tickets the sheet lists, in ascending ticket number: every ticket of the project for
+    /// Create Bundle from Selection; New Bundle and Add Tickets… leave out the done tickets, and
+    /// Add Tickets… also the tickets already in the bundle.
+    func candidates(tickets: [String: Ticket], bundles: [String: TicketBundle]) -> [Ticket] {
+        let listed: [Ticket]
+        switch self {
+        case .selection:
+            listed = Array(tickets.values)
+        case .newBundle:
+            listed = tickets.values.filter { $0.status != .done }
+        case .addTickets(let bundleID):
+            let inBundle = Set(bundles[bundleID]?.ticketIDs ?? [])
+            listed = tickets.values.filter { $0.status != .done && !inBundle.contains($0.id) }
+        }
+        return listed.sorted { TicketListState.number(of: $0.id) < TicketListState.number(of: $1.id) }
+    }
+}
+
+/// New Bundle, Create Bundle from Selection, or Add Tickets… of a bundle.
 struct TicketPickerSheet: View {
     let window: WindowState
     let workspace: DeviceWorkspace
     let projectID: String
-    /// The bundle tickets are added to; nil creates a bundle.
-    let bundleID: String?
-    let checkedTicketIDs: [String]
+    let use: TicketPickerUse
     @Environment(\.dismiss) private var dismiss
 
     @State private var title = ""
@@ -22,21 +60,12 @@ struct TicketPickerSheet: View {
     @State private var didAppear = false
 
     private var creating: Bool {
-        bundleID == nil
+        use.bundleID == nil
     }
 
-    private var projectTickets: [Ticket] {
-        (workspace.tickets[projectID] ?? [:]).values.sorted {
-            TicketListState.number(of: $0.id) < TicketListState.number(of: $1.id)
-        }
-    }
-
-    /// Every ticket of the project in ascending number; Add Tickets… leaves out the tickets
-    /// already in the bundle.
+    /// The tickets the sheet lists, which follow the tickets and the bundle as they change.
     private var candidates: [Ticket] {
-        guard let bundleID, let bundle = workspace.bundles[projectID]?[bundleID] else { return projectTickets }
-        let inBundle = Set(bundle.ticketIDs)
-        return projectTickets.filter { !inBundle.contains($0.id) }
+        use.candidates(tickets: workspace.tickets[projectID] ?? [:], bundles: workspace.bundles[projectID] ?? [:])
     }
 
     private var visible: [Ticket] {
@@ -92,13 +121,17 @@ struct TicketPickerSheet: View {
         .onAppear {
             guard !didAppear else { return }
             didAppear = true
-            checked = Set(checkedTicketIDs)
+            checked = Set(use.checkedTicketIDs)
+        }
+        // A ticket that leaves the list, one that becomes done for example, is no longer checked.
+        .onChange(of: candidates.map(\.id)) { _, ids in
+            checked.formIntersection(ids)
         }
     }
 
     @ViewBuilder
     private var ticketList: some View {
-        if projectTickets.isEmpty {
+        if (workspace.tickets[projectID] ?? [:]).isEmpty {
             Text("This project has no tickets.")
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -142,7 +175,7 @@ struct TicketPickerSheet: View {
         Task {
             defer { isWorking = false }
             do {
-                if let bundleID {
+                if let bundleID = use.bundleID {
                     guard let bundle = workspace.bundles[projectID]?[bundleID] else {
                         throw EngineError(.notFound, "Bundle \(bundleID) not found.")
                     }

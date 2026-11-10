@@ -265,7 +265,7 @@ struct TicketListView: View {
     /// Opens the ticket picker sheet of the selected tickets' project, when they all belong to one.
     private func createBundleFromSelection(_ ids: Set<String>) {
         guard let bundleProjectID = TicketListProjects.bundleProject(of: ids) else { return }
-        window.sheet = .ticketPicker(projectID: bundleProjectID, bundleID: nil, checkedTicketIDs: TicketFormat.ascending(Array(ids)))
+        window.sheet = .ticketPicker(projectID: bundleProjectID, use: .selection(ticketIDs: TicketFormat.ascending(Array(ids))))
     }
 }
 

@@ -312,6 +312,40 @@ enum TicketActions {
         return (true, nil)
     }
 
+    /// Whether New Bundle is enabled, and its tooltip while it is disabled because no ticket can go
+    /// into a new bundle: the project has no tickets, or all of them are done (docs/tickets.md ›
+    /// Bundles section). While the window's device is not connected, it is disabled without tooltip.
+    static func newBundleAvailability(workspace: DeviceWorkspace, projectID: String,
+                                      connected: Bool) -> (enabled: Bool, help: String?) {
+        pickerAvailability(of: .newBundle, emptyHelp: "Every ticket of this project is done.",
+                           workspace: workspace, projectID: projectID, connected: connected)
+    }
+
+    /// Whether Add Tickets… of a bundle is enabled, and its tooltip while it is disabled because no
+    /// ticket can be added: the project has no tickets, or all of them are done or already in the
+    /// bundle (docs/tickets.md › Bundles section). While the window's device is not connected, it is
+    /// disabled without tooltip.
+    static func addTicketsAvailability(bundleID: String, workspace: DeviceWorkspace, projectID: String,
+                                       connected: Bool) -> (enabled: Bool, help: String?) {
+        pickerAvailability(of: .addTickets(bundleID: bundleID),
+                           emptyHelp: "Every ticket of this project is done or already in this bundle.",
+                           workspace: workspace, projectID: projectID, connected: connected)
+    }
+
+    /// A button that opens the ticket picker sheet is enabled when the sheet would list a ticket.
+    private static func pickerAvailability(of use: TicketPickerUse, emptyHelp: String, workspace: DeviceWorkspace,
+                                           projectID: String, connected: Bool) -> (enabled: Bool, help: String?) {
+        guard connected else { return (false, nil) }
+        let tickets = workspace.tickets[projectID] ?? [:]
+        if tickets.isEmpty {
+            return (false, "This project has no tickets.")
+        }
+        if use.candidates(tickets: tickets, bundles: workspace.bundles[projectID] ?? [:]).isEmpty {
+            return (false, emptyHelp)
+        }
+        return (true, nil)
+    }
+
     /// Implement All: opens the Implement sheet, whatever chats of the bundle are active.
     static func implementAll(bundleID: String, window: WindowState) {
         window.sheet = .implementBundle(bundleID: bundleID)
