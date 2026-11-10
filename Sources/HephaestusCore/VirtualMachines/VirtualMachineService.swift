@@ -68,7 +68,8 @@ extension Engine {
     // MARK: vms.create (docs/virtual-machines.md › Creating)
 
     /// Checks the Mac, the name, the image, the ranges and the 2 running virtual machines, creates
-    /// the virtual machine's folder with a clone of the image's disk, then starts it. `startedBy`
+    /// the virtual machine's folder with a clone of the image's disk grown to `diskGB`, then starts
+    /// it. `startedBy`
     /// is the user for `vms.create`, or the chat of Claude that starts it.
     func createVirtualMachine(_ params: VMsCreate.Params, startedBy: VMStarter, _ actor: Actor) async throws -> VirtualMachine {
         guard configuration.imageProvisioner.supportsVirtualMachines else {
@@ -86,8 +87,9 @@ extension Engine {
         guard image.state == .ready else {
             throw EngineError(.conflict, "The image is not Ready.")
         }
+        let imageDiskGB = imageDiskGB(image.id)
         do {
-            try VMImageLimits.host.check(cores: params.cores, memoryGB: params.memoryGB)
+            try VMImageLimits.host.check(cores: params.cores, memoryGB: params.memoryGB, diskGB: params.diskGB, imageDiskGB: imageDiskGB)
         } catch let error as ValidationError {
             throw EngineError(error)
         }
@@ -96,10 +98,17 @@ extension Engine {
             throw EngineError(.conflict, Self.twoVirtualMachinesRunning)
         }
         let machine = VirtualMachine(id: id, name: name, imageID: image.id, version: image.version, build: image.build,
-                                     cores: params.cores, memoryGB: params.memoryGB, startedBy: startedBy,
+                                     cores: params.cores, memoryGB: params.memoryGB, diskGB: params.diskGB,
+                                     growContainer: params.diskGB > imageDiskGB, startedBy: startedBy,
                                      created: Date().truncatedToSeconds)
         do {
-            try VirtualMachineStore.create(machine, from: VMImageStore.files(of: image.id, in: dataDirectory), in: dataDirectory)
+            // A disk larger than the image's grows (docs/virtual-machines.md › Clone).
+            let diskBytes = machine.growContainer ? UInt64(params.diskGB) * VMImageLimits.bytesPerGB : nil
+            let layout = try VirtualMachineStore.create(machine, from: VMImageStore.files(of: image.id, in: dataDirectory),
+                                                        growingDiskTo: diskBytes, in: dataDirectory)
+            if layout == .extendedOnly {
+                log.warn(.engine, "virtual machine \(id.uuidString): its disk has no recovery container to move, it was only extended")
+            }
         } catch {
             removeVirtualMachineFolder(id)
             releaseVMSlot(.machine(id))
@@ -155,8 +164,11 @@ extension Engine {
         let provisioner = configuration.imageProvisioner
         var registered: VMSession?
         do {
+            let growsContainer = machine.growContainer
             let session = try await MainActor.run {
-                VMSession(vmID: id, machine: try provisioner.makeMachine(request), engine: self)
+                let session = VMSession(vmID: id, machine: try provisioner.makeMachine(request), engine: self)
+                session.growsContainer = growsContainer
+                return session
             }
             virtualMachines.sessions[id] = session
             registered = session
@@ -190,6 +202,20 @@ extension Engine {
         restartIdleTime(of: id)
         emitVirtualMachines(origin: origin)
         return running
+    }
+
+    /// The guest's container of a virtual machine has grown over its disk: `vm.yml` is written with
+    /// `growContainer: false` (docs/virtual-machines.md › Starting).
+    func virtualMachineContainerGrew(_ id: UUID) {
+        guard var machine = virtualMachines.machines[id], machine.growContainer else { return }
+        machine.growContainer = false
+        virtualMachines.machines[id] = machine
+        do {
+            try VirtualMachineStore.write(machine, to: dataDirectory)
+        } catch {
+            log.error(.storage, "\(error)")
+        }
+        log.info(.engine, "virtual machine \(id.uuidString): the guest's container has grown")
     }
 
     // MARK: vms.stop (docs/virtual-machines.md › Stopping)

@@ -31,11 +31,21 @@ public struct HostSettings: Codable, Sendable, Hashable {
     /// Minutes without an action after which a virtual machine that Claude started stops
     /// (docs/virtual-machines.md › Idle stop).
     public var claudeVMIdleMinutes: Int
+    /// Processor cores of new virtual machines, of the install and of the setup virtual machine of
+    /// an image (docs/virtual-machines.md › Default values).
+    public var defaultVMCores: Int
+    /// Their memory in GB, 1024³ bytes each.
+    public var defaultVMMemoryGB: Int
+    /// The disk size in GB that the New VM sheet starts with and that Claude's virtual machines get.
+    public var defaultVMDiskGB: Int
     public var unknownKeys: [String: JSONValue]
 
     public static let defaultMCPPort = 47820
     public static let defaultSyncPort = 47821
     public static let defaultClaudeVMIdleMinutes = 10
+    public static let defaultDefaultVMCores = 2
+    public static let defaultDefaultVMMemoryGB = 4
+    public static let defaultDefaultVMDiskGB = 64
 
     public init(schema: Int = 1, claudePath: String? = nil, defaultChatSettings: ChatSettings = ChatSettings(),
                 mcpPort: Int = HostSettings.defaultMCPPort, syncEnabled: Bool = true,
@@ -43,7 +53,9 @@ public struct HostSettings: Codable, Sendable, Hashable {
                 updateCheckIntervalMinutes: Int = 30, formatGoOnSave: Bool = true, formatSwiftOnSave: Bool = false,
                 notifyNeedsYou: Bool = true, notifyFinished: Bool = true, notifyAISummary: Bool = true,
                 showHephaestusProject: Bool = true, defaultVMImage: UUID? = nil,
-                claudeVMIdleMinutes: Int = HostSettings.defaultClaudeVMIdleMinutes, unknownKeys: [String: JSONValue] = [:]) {
+                claudeVMIdleMinutes: Int = HostSettings.defaultClaudeVMIdleMinutes,
+                defaultVMCores: Int = HostSettings.defaultDefaultVMCores, defaultVMMemoryGB: Int = HostSettings.defaultDefaultVMMemoryGB,
+                defaultVMDiskGB: Int = HostSettings.defaultDefaultVMDiskGB, unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
         self.claudePath = claudePath
         self.defaultChatSettings = defaultChatSettings
@@ -61,6 +73,9 @@ public struct HostSettings: Codable, Sendable, Hashable {
         self.showHephaestusProject = showHephaestusProject
         self.defaultVMImage = defaultVMImage
         self.claudeVMIdleMinutes = claudeVMIdleMinutes
+        self.defaultVMCores = defaultVMCores
+        self.defaultVMMemoryGB = defaultVMMemoryGB
+        self.defaultVMDiskGB = defaultVMDiskGB
         self.unknownKeys = unknownKeys
     }
 
@@ -68,6 +83,7 @@ public struct HostSettings: Codable, Sendable, Hashable {
         "schema", "claudePath", "defaultChatSettings", "mcpPort", "syncEnabled", "syncPort",
         "skillsLibraryPath", "autoUpdate", "updateCheckIntervalMinutes", "formatGoOnSave", "formatSwiftOnSave",
         "notifyNeedsYou", "notifyFinished", "notifyAISummary", "showHephaestusProject", "defaultVMImage", "claudeVMIdleMinutes",
+        "defaultVMCores", "defaultVMMemoryGB", "defaultVMDiskGB",
     ]
 
     public init(from decoder: Decoder) throws {
@@ -89,6 +105,9 @@ public struct HostSettings: Codable, Sendable, Hashable {
         showHephaestusProject = try c.value("showHephaestusProject", default: true)
         defaultVMImage = try c.optional("defaultVMImage")
         claudeVMIdleMinutes = try c.value("claudeVMIdleMinutes", default: HostSettings.defaultClaudeVMIdleMinutes)
+        defaultVMCores = try c.value("defaultVMCores", default: HostSettings.defaultDefaultVMCores)
+        defaultVMMemoryGB = try c.value("defaultVMMemoryGB", default: HostSettings.defaultDefaultVMMemoryGB)
+        defaultVMDiskGB = try c.value("defaultVMDiskGB", default: HostSettings.defaultDefaultVMDiskGB)
         unknownKeys = try c.unknownKeys(known: Self.knownKeys)
     }
 
@@ -111,6 +130,9 @@ public struct HostSettings: Codable, Sendable, Hashable {
         try c.encode(showHephaestusProject, "showHephaestusProject")
         try c.encodeOptional(defaultVMImage, "defaultVMImage")
         try c.encode(claudeVMIdleMinutes, "claudeVMIdleMinutes")
+        try c.encode(defaultVMCores, "defaultVMCores")
+        try c.encode(defaultVMMemoryGB, "defaultVMMemoryGB")
+        try c.encode(defaultVMDiskGB, "defaultVMDiskGB")
         try c.encodeUnknownKeys(unknownKeys, known: Self.knownKeys)
     }
 }

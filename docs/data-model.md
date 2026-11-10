@@ -1650,10 +1650,14 @@ projects:
 | showHephaestusProject      | `showHephaestusProject`      | `Bool`                | no       | `true`                                                                                           | Whether the clients and Claude see the HephaestusV2 project and its sub projects; `false` hides them and the feedback entry points of this device ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)). |
 | defaultVMImage             | `defaultVMImage`             | `UUID?`               | no       | `null`                                                                                           | The id of the default image of virtual machines, a Ready image; `null` while no image is the default ([Default image](virtual-machines.md#default-image)).                                                                          |
 | claudeVMIdleMinutes        | `claudeVMIdleMinutes`        | `Int`                 | no       | `10`                                                                                             | Minutes without an action after which a virtual machine that Claude started stops and is deleted ([Idle stop](virtual-machines.md#idle-stop)). 1–1440.                                                                              |
+| defaultVMCores             | `defaultVMCores`             | `Int`                 | no       | `2`                                                                                              | Processor cores of new virtual machines, of the install and of the setup virtual machine of an image ([Default values](virtual-machines.md#default-values)). 2 to the number of cores of the Mac.                                   |
+| defaultVMMemoryGB          | `defaultVMMemoryGB`          | `Int`                 | no       | `4`                                                                                              | Their memory in GB, 1024³ bytes each. 4 to the memory of the Mac in GB, rounded down.                                                                                                                                               |
+| defaultVMDiskGB            | `defaultVMDiskGB`            | `Int`                 | no       | `64`                                                                                             | The disk size in GB that the New VM sheet starts with and that Claude's virtual machines get. 32–2048.                                                                                                                              |
 | unknownKeys                | —                            | `[String: JSONValue]` | —        | `[:]`                                                                                            | [Unknown keys](#unknown-keys).                                                                                                                                                                                                      |
 
 - The engine writes the whole file when a setting changes; `settings.update` takes partial changes ([Engine API](engine-api.md)).
 - The environment variables `HEPHAESTUS_MCP_PORT` and `HEPHAESTUS_SYNC_PORT` change the ports in effect, never the file ([Architecture](architecture.md)).
+- The ranges of `defaultVMCores` and `defaultVMMemoryGB` depend on the Mac. A `settings.yml` changed outside the app with a value outside them is refused as any value `settings.update` refuses ([Reactions](#reactions)); a value read at launch outside them, from a file written on a larger Mac for example, is kept, and is brought to the nearest end of its range where it is used ([Default values](virtual-machines.md#default-values)). Default chosen at design time.
 - The key `feedbackProjectID` of earlier versions is no longer read; a value already in the file is kept as an unknown key ([Unknown keys](#unknown-keys), [Feedback project](feedback.md#feedback-project)).
 
 A complete settings file:
@@ -1682,6 +1686,9 @@ notifyAISummary: false
 showHephaestusProject: true
 defaultVMImage: 5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F
 claudeVMIdleMinutes: 10
+defaultVMCores: 4
+defaultVMMemoryGB: 8
+defaultVMDiskGB: 100
 ```
 
 A settings file that reads as all defaults:
@@ -1814,22 +1821,20 @@ The file, its format and its rules are design-time choices. Default chosen at de
 
 `<data dir>/VirtualMachines/Images/<IMAGE-ID>/image.yml` describes one macOS image of virtual machines ([Images](virtual-machines.md#images)); the other files of its folder are listed in [Storage](virtual-machines.md#storage). Swift type `VMImage`.
 
-| Swift name  | Key        | Type                  | Required | Default | Rules                                                                                                              |
-| ----------- | ---------- | --------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------ |
-| schema      | `schema`   | `Int`                 | no       | `1`     | See [Keys and values](#keys-and-values).                                                                           |
-| id          | `id`       | `UUID`                | yes      | —       | The image's id; it equals the name of the image's folder.                                                          |
-| version     | `version`  | `String`              | yes      | —       | The macOS version, for example `27.2.1`: one line, not empty.                                                      |
-| build       | `build`    | `String`              | yes      | —       | The macOS build, for example `26B131`: one line, not empty.                                                        |
-| cores       | `cores`    | `Int`                 | yes      | —       | Processor cores of the image's virtual machines; `vmImages.add` accepts 2 to the number of cores of the Mac.       |
-| memoryGB    | `memoryGB` | `Int`                 | yes      | —       | Their memory in GB, 1024³ bytes each; `vmImages.add` accepts 4 to the memory of the Mac.                           |
-| diskGB      | `diskGB`   | `Int`                 | yes      | —       | The size of the image's disk in GB; `vmImages.add` accepts 32 to 2048.                                             |
-| state       | `state`    | `VMImageState`        | yes      | —       | `downloading`, `installing`, `needsSetup`, `ready` or `failed` ([Image states](virtual-machines.md#image-states)). |
-| failure     | `failure`  | `String?`             | no       | `null`  | The message of a failed image, one line ([Failures](virtual-machines.md#failures)); `null` in the other states.    |
-| created     | `created`  | `Date`                | yes      | —       | When `vmImages.add` created the image.                                                                             |
-| unknownKeys | —          | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                     |
+| Swift name  | Key       | Type                  | Required | Default | Rules                                                                                                              |
+| ----------- | --------- | --------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------ |
+| schema      | `schema`  | `Int`                 | no       | `1`     | See [Keys and values](#keys-and-values).                                                                           |
+| id          | `id`      | `UUID`                | yes      | —       | The image's id; it equals the name of the image's folder.                                                          |
+| version     | `version` | `String`              | yes      | —       | The macOS version, for example `27.2.1`: one line, not empty.                                                      |
+| build       | `build`   | `String`              | yes      | —       | The macOS build, for example `26B131`: one line, not empty.                                                        |
+| state       | `state`   | `VMImageState`        | yes      | —       | `downloading`, `installing`, `needsSetup`, `ready` or `failed` ([Image states](virtual-machines.md#image-states)). |
+| failure     | `failure` | `String?`             | no       | `null`  | The message of a failed image, one line ([Failures](virtual-machines.md#failures)); `null` in the other states.    |
+| created     | `created` | `Date`                | yes      | —       | When `vmImages.add` created the image.                                                                             |
+| unknownKeys | —         | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                     |
 
 - The engine writes the file when it creates the image and at each change of `state`. The percentage of a download or of an install is never written.
-- The engine API adds two keys that are never stored, `progress` and `diskBytes` ([VMImage in the API](engine-api.md#vmimage-in-the-api)).
+- The engine API adds three keys that are never stored, `progress`, `diskBytes` and `diskGB` ([VMImage in the API](engine-api.md#vmimage-in-the-api)).
+- An image has no values of its virtual machines ([Images](virtual-machines.md#images)). The keys `cores`, `memoryGB` and `diskGB` that earlier versions wrote are no longer used: `cores` and `memoryGB` are kept as unknown keys ([Unknown keys](#unknown-keys)); `diskGB` is ignored, as the API's `diskGB`, and is not written again. Default chosen at design time.
 - The files are read at launch only ([Loading](#loading)): a change made to one of them while the app runs is overwritten by the engine's next write of that file.
 
 ```yaml
@@ -1838,9 +1843,6 @@ schema: 1
 id: 5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F
 version: 27.2.1
 build: 26B131
-cores: 2
-memoryGB: 4
-diskGB: 64
 state: ready
 failure: null
 created: 2026-11-09T14:03:00Z
@@ -1854,9 +1856,6 @@ schema: 1
 id: 0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D
 version: '26.6'
 build: 25G72
-cores: 4
-memoryGB: 8
-diskGB: 100
 state: failed
 failure: The app quit before the image was ready.
 created: 2026-11-08T09:30:00Z
@@ -1868,23 +1867,25 @@ The file, its format and its rules are design-time choices. Default chosen at de
 
 `<data dir>/VirtualMachines/Machines/<VM-ID>/vm.yml` describes one virtual machine ([Lifecycle](virtual-machines.md#lifecycle)); the other files of its folder are listed in [Storage](virtual-machines.md#storage). Swift type `VirtualMachine`.
 
-| Swift name  | Key         | Type                  | Required | Default | Rules                                                                                |
-| ----------- | ----------- | --------------------- | -------- | ------- | ------------------------------------------------------------------------------------ |
-| schema      | `schema`    | `Int`                 | no       | `1`     | See [Keys and values](#keys-and-values).                                             |
-| id          | `id`        | `UUID`                | yes      | —       | The virtual machine's id; it equals the name of its folder.                          |
-| name        | `name`      | `String`              | yes      | —       | The name the user gave it: one line of 1 to 100 characters.                          |
-| imageID     | `imageID`   | `UUID`                | yes      | —       | The image it was created from.                                                       |
-| version     | `version`   | `String`              | yes      | —       | The macOS version of that image, for example `27.2.1`: one line, not empty.          |
-| build       | `build`     | `String`              | yes      | —       | The macOS build of that image, for example `26B131`: one line, not empty.            |
-| cores       | `cores`     | `Int`                 | yes      | —       | Its processor cores; `vms.create` accepts 2 to the number of cores of the Mac.       |
-| memoryGB    | `memoryGB`  | `Int`                 | yes      | —       | Its memory in GB, 1024³ bytes each; `vms.create` accepts 4 to the memory of the Mac. |
-| startedBy   | `startedBy` | `VMStarter`           | yes      | —       | `user` or `claude`: who started it ([Lifecycle](virtual-machines.md#lifecycle)).     |
-| projectID   | `projectID` | `ProjectID?`          | no       | `null`  | For `claude`, required: the project of the chat that started it. `null` for `user`.  |
-| chatID      | `chatID`    | `ChatID?`             | no       | `null`  | For `claude`, required: the chat that started it. `null` for `user`.                 |
-| created     | `created`   | `Date`                | yes      | —       | When the virtual machine was created.                                                |
-| unknownKeys | —           | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                       |
+| Swift name    | Key             | Type                  | Required | Default | Rules                                                                                                                                                                                                   |
+| ------------- | --------------- | --------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| schema        | `schema`        | `Int`                 | no       | `1`     | See [Keys and values](#keys-and-values).                                                                                                                                                                |
+| id            | `id`            | `UUID`                | yes      | —       | The virtual machine's id; it equals the name of its folder.                                                                                                                                             |
+| name          | `name`          | `String`              | yes      | —       | The name the user gave it: one line of 1 to 100 characters.                                                                                                                                             |
+| imageID       | `imageID`       | `UUID`                | yes      | —       | The image it was created from.                                                                                                                                                                          |
+| version       | `version`       | `String`              | yes      | —       | The macOS version of that image, for example `27.2.1`: one line, not empty.                                                                                                                             |
+| build         | `build`         | `String`              | yes      | —       | The macOS build of that image, for example `26B131`: one line, not empty.                                                                                                                               |
+| cores         | `cores`         | `Int`                 | yes      | —       | Its processor cores; `vms.create` accepts 2 to the number of cores of the Mac.                                                                                                                          |
+| memoryGB      | `memoryGB`      | `Int`                 | yes      | —       | Its memory in GB, 1024³ bytes each; `vms.create` accepts 4 to the memory of the Mac.                                                                                                                    |
+| diskGB        | `diskGB`        | `Int?`                | no       | `null`  | The size of its disk in GB, chosen when it was created; `vms.create` accepts the image's disk size to 2048. `null` for a virtual machine of an earlier version, whose disk has the size of its image's. |
+| growContainer | `growContainer` | `Bool`                | no       | `false` | True while the guest's APFS container has not yet grown over the disk grown at the creation ([Starting](virtual-machines.md#starting)).                                                                 |
+| startedBy     | `startedBy`     | `VMStarter`           | yes      | —       | `user` or `claude`: who started it ([Lifecycle](virtual-machines.md#lifecycle)).                                                                                                                        |
+| projectID     | `projectID`     | `ProjectID?`          | no       | `null`  | For `claude`, required: the project of the chat that started it. `null` for `user`.                                                                                                                     |
+| chatID        | `chatID`        | `ChatID?`             | no       | `null`  | For `claude`, required: the chat that started it. `null` for `user`.                                                                                                                                    |
+| created       | `created`       | `Date`                | yes      | —       | When the virtual machine was created.                                                                                                                                                                   |
+| unknownKeys   | —               | `[String: JSONValue]` | —        | `[:]`   | [Unknown keys](#unknown-keys).                                                                                                                                                                          |
 
-- The engine writes the file once, when it creates the virtual machine.
+- The engine writes the file when it creates the virtual machine, and again when the guest's container has grown: `growContainer` becomes false.
 - The engine API adds two keys that are never stored, `state` and `startedAt` ([VirtualMachine in the API](engine-api.md#virtualmachine-in-the-api)): after a launch every virtual machine is stopped.
 - The files are read at launch only ([Loading](#loading)): a change made to one of them while the app runs is not read. The file of a virtual machine that Claude started exists only while that virtual machine runs.
 - In Swift, `startedBy`, `projectID` and `chatID` are one value: `VMStarter.user`, or `VMStarter.claude(projectID:chatID:)`.
@@ -1899,6 +1900,8 @@ version: 27.2.1
 build: 26B131
 cores: 4
 memoryGB: 8
+diskGB: 100
+growContainer: false
 startedBy: user
 projectID: null
 chatID: null
@@ -1917,6 +1920,8 @@ version: 27.2.1
 build: 26B131
 cores: 2
 memoryGB: 4
+diskGB: 64
+growContainer: true
 startedBy: claude
 projectID: DEMO
 chatID: 3F2504E0-4F89-11D3-9A0C-0305E82C3301
@@ -2202,3 +2207,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R201: Settings has a Virtual Machines tab whose Images section adds macOS images for virtual machines from the versions ipsw.me lists, downloads and installs them, prepares each one once in a setup view of the main window so that an agent in the guest gives full control of it, marks the default image and deletes images.
 - R202: The user starts virtual machines from the Ready images in Settings, keeps them between runs, starts, stops and deletes them, and shows the screen of one in a main window, where the mouse and the keyboard drive it; at most 2 run at once, and the app does not restart by itself for an update while one runs.
 - R204: Every chat of every project gives Claude full control of virtual machines with the VM tools: Claude starts one freely or joins Claude's one of the same image, waits up to 10 minutes for a free place, drives it one action at a time across chats, acts on the user's only when named and never stops them; Claude's idle VMs stop after the minutes set in Settings, and each VM gets the Claude token of Settings at its start.
+- R208: Settings gives the default cores, memory and disk size of new virtual machines; an image has no such values, the user chooses them in the New VM sheet, and a virtual machine's disk is grown to the size chosen.

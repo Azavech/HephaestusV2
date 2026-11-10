@@ -1561,7 +1561,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "vm_list_images",
             description: #"""
-            List the macOS images of the virtual machines of this Mac, oldest first: id, macOS version and build, state (downloading, installing, needsSetup, ready or failed), isDefault for the default image, which vm_start uses when no image is named, and the cores, memoryGB and diskGB of their virtual machines. Only ready images start virtual machines. Only in chats started by HephaestusV2.
+            List the macOS images of the virtual machines of this Mac, oldest first: id, macOS version and build, state (downloading, installing, needsSetup, ready or failed), isDefault for the default image, which vm_start uses when no image is named, and diskGB, the size of its disk. Only ready images start virtual machines. Only in chats started by HephaestusV2.
             """#,
             inputSchema: schema(#"""
             {
@@ -1593,7 +1593,7 @@ extension MCPToolCatalog {
         MCPToolDefinition(
             name: "vm_start",
             description: #"""
-            Start a macOS virtual machine for your checks, or join one: when a virtual machine that Claude started runs from the same image, this chat joins it and gets its id, and name, cores and memory are not used. Otherwise a new virtual machine starts from a clone of the image's disk when fewer than 2 run; while 2 run, the call waits up to 10 minutes for one to stop, then fails. image is a macOS version, for example 27.2.1, or an image id of vm_list_images; the default image when omitted. cores and memory (GB) are the image's when omitted. The call returns once the guest's agent is connected, at most 3 minutes later: check agentConnected. Start a virtual machine freely whenever a check needs one. A virtual machine Claude started stops and is deleted with vm_stop, or after some minutes without an action. The actions of every chat on one virtual machine run one at a time, in the order they arrive. Only in chats started by HephaestusV2.
+            Start a macOS virtual machine for your checks, or join one: when a virtual machine that Claude started runs from the same image, this chat joins it and gets its id, and name, cores and memory are not used. Otherwise a new virtual machine starts from a clone of the image's disk when fewer than 2 run; while 2 run, the call waits up to 10 minutes for one to stop, then fails. image is a macOS version, for example 27.2.1, or an image id of vm_list_images; the default image when omitted. cores and memory (GB) are the defaults of Settings when omitted, and a new virtual machine gets the default disk size of Settings. The call returns once the guest's agent is connected, at most 3 minutes later: check agentConnected. Start a virtual machine freely whenever a check needs one. A virtual machine Claude started stops and is deleted with vm_stop, or after some minutes without an action. The actions of every chat on one virtual machine run one at a time, in the order they arrive. Only in chats started by HephaestusV2.
             """#,
             inputSchema: schema(#"""
             {
@@ -1609,11 +1609,11 @@ extension MCPToolCatalog {
                 },
                 "cores": {
                   "type": "integer",
-                  "description": "Processor cores, from 2; the image's when omitted."
+                  "description": "Processor cores, from 2; the default of Settings when omitted."
                 },
                 "memory": {
                   "type": "integer",
-                  "description": "Memory in GB, from 4; the image's when omitted."
+                  "description": "Memory in GB, from 4; the default of Settings when omitted."
                 }
               },
               "required": ["name"],

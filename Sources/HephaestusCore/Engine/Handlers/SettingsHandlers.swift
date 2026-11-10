@@ -20,6 +20,7 @@ extension Engine {
         let new = params.applied(to: old)
         do {
             try new.validate()
+            try new.checkVMDefaults(changedFrom: old)
         } catch let error as ValidationError {
             throw EngineError(error)
         }

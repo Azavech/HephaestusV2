@@ -11,21 +11,18 @@ public struct VMToolImage: Codable, Sendable, Hashable {
     public var state: VMImageState
     /// True for the default image (docs/virtual-machines.md › Default image).
     public var isDefault: Bool
-    public var cores: Int
-    public var memoryGB: Int
+    /// The size of its disk in GB, the smallest disk of its virtual machines; 0 while it has none.
     public var diskGB: Int
     /// The failure of a failed image.
     public var failure: String?
 
-    public init(id: UUID, version: String, build: String, state: VMImageState, isDefault: Bool, cores: Int, memoryGB: Int,
-                diskGB: Int, failure: String? = nil) {
+    public init(id: UUID, version: String, build: String, state: VMImageState, isDefault: Bool, diskGB: Int,
+                failure: String? = nil) {
         self.id = id
         self.version = version
         self.build = build
         self.state = state
         self.isDefault = isDefault
-        self.cores = cores
-        self.memoryGB = memoryGB
         self.diskGB = diskGB
         self.failure = failure
     }
@@ -139,9 +136,9 @@ public enum VMToolsStart: EngineMethod {
         /// A macOS version or the id of an image; the default image when nil.
         public var image: String?
         public var name: String
-        /// The image's when nil.
+        /// `defaultVMCores` when nil.
         public var cores: Int?
-        /// In GB; the image's when nil.
+        /// In GB; `defaultVMMemoryGB` when nil.
         public var memory: Int?
 
         public init(chatID: ChatID, image: String? = nil, name: String, cores: Int? = nil, memory: Int? = nil) {

@@ -10,8 +10,8 @@ import Testing
 @MainActor
 struct VirtualMachinesSettingsTests {
     static func image(_ state: VMImageState, progress: Double? = nil, failure: String? = nil) -> VMImage {
-        VMImage(id: UUID(uuidString: "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F")!, version: "27.2.1", build: "26B131", cores: 2, memoryGB: 4,
-                diskGB: 64, state: state, failure: failure, created: Date(timeIntervalSince1970: 1_800_000_000), progress: progress)
+        VMImage(id: UUID(uuidString: "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F")!, version: "27.2.1", build: "26B131", state: state,
+                failure: failure, created: Date(timeIntervalSince1970: 1_800_000_000), progress: progress, diskGB: 32)
     }
 
     @Test("The Virtual Machines tab is the last one, after Editor, with display")
@@ -154,17 +154,28 @@ struct VirtualMachinesSettingsTests {
         #expect(!VirtualMachinePresentation.canStop(nil))
     }
 
-    @Test("The New VM sheet selects the default image, enables Start with a name and an image, and keeps only refused values")
+    @Test("The New VM sheet selects the default image, starts with the New VMs values, enables Start with a name and an image, and keeps only refused values")
     func newVMSheet() {
         let first = Self.image(.ready)
         var second = Self.image(.ready)
         second.id = UUID(uuidString: "0A1B2C3D-4E5F-4A6B-8C7D-9E0F1A2B3C4D")!
-        second.cores = 6
+        second.diskGB = 100
         #expect(VirtualMachinePresentation.initialImage([first, second], defaultImageID: second.id) == second)
         // Without a default image, the first Ready image.
         #expect(VirtualMachinePresentation.initialImage([first, second], defaultImageID: nil) == first)
         #expect(VirtualMachinePresentation.initialImage([first, second], defaultImageID: UUID()) == first)
         #expect(VirtualMachinePresentation.initialImage([], defaultImageID: second.id) == nil)
+
+        // The values of the New VMs section; the disk is at least the image's.
+        let limits = VMImageLimits(processorCount: 10, physicalMemory: 16 * VMImageLimits.bytesPerGB)
+        let settings = HostSettings(defaultVMCores: 4, defaultVMMemoryGB: 8, defaultVMDiskGB: 64)
+        #expect(VirtualMachinePresentation.initialValues(settings: settings, image: first, limits: limits) == (4, 8, 64))
+        #expect(VirtualMachinePresentation.initialValues(settings: settings, image: second, limits: limits) == (4, 8, 100))
+        #expect(VirtualMachinePresentation.initialValues(settings: settings, image: nil, limits: limits) == (4, 8, 64))
+        #expect(VirtualMachinePresentation.initialValues(settings: HostSettings(), image: first, limits: limits) == (2, 4, 64))
+        // A value of a larger Mac's file is brought into this Mac's range.
+        let larger = HostSettings(defaultVMCores: 24, defaultVMMemoryGB: 64, defaultVMDiskGB: 64)
+        #expect(VirtualMachinePresentation.initialValues(settings: larger, image: first, limits: limits) == (10, 16, 64))
 
         #expect(VirtualMachinePresentation.canSubmit(name: "Menu checks", imageID: first.id))
         #expect(!VirtualMachinePresentation.canSubmit(name: "  ", imageID: first.id))
@@ -241,5 +252,25 @@ struct VirtualMachinesSettingsTests {
             return
         }
         #expect(error.message == "claudeVMIdleMinutes: use a number from 1 to 1440.")
+    }
+
+    @Test("The New VMs section: its labels, keys and values, and the message of a text that is not a number")
+    func newVMsSection() throws {
+        typealias Field = NewVMsPresentation.Field
+        #expect(Field.allCases.map(\.label) == ["Default cores", "Default memory (GB)", "Default disk (GB)"])
+        #expect(Field.allCases.map(\.key) == ["defaultVMCores", "defaultVMMemoryGB", "defaultVMDiskGB"])
+        #expect(Field.allCases.map { $0.stored(HostSettings()) } == [2, 4, 64])
+        #expect(Field.disk.update(100) == SettingsUpdate.Params(defaultVMDiskGB: 100))
+        let limits = VMImageLimits(processorCount: 14, physicalMemory: 36 * VMImageLimits.bytesPerGB)
+        #expect(try NewVMsPresentation.value(" 8 ", .cores, limits: limits).get() == 8)
+        for (field, message) in [(Field.cores, "defaultVMCores: use a number from 2 to 14."),
+                                 (.memory, "defaultVMMemoryGB: use a number from 4 to 36."),
+                                 (.disk, "defaultVMDiskGB: use a number from 32 to 2048.")] {
+            guard case .failure(let error) = NewVMsPresentation.value("many", field, limits: limits) else {
+                Issue.record("a text that is not a number was read")
+                continue
+            }
+            #expect(error.message == message)
+        }
     }
 }

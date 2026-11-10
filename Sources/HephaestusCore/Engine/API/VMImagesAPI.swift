@@ -55,18 +55,9 @@ public enum VMImagesAdd: EngineMethod {
     public struct Params: Codable, Sendable, Hashable {
         /// The `build` of a version of the list of `vmImages.versions`.
         public var build: String
-        /// Processor cores of the image's virtual machines.
-        public var cores: Int
-        /// Their memory in GB.
-        public var memoryGB: Int
-        /// The size of the image's disk in GB.
-        public var diskGB: Int
 
-        public init(build: String, cores: Int, memoryGB: Int, diskGB: Int) {
+        public init(build: String) {
             self.build = build
-            self.cores = cores
-            self.memoryGB = memoryGB
-            self.diskGB = diskGB
         }
     }
     public typealias Result = VMImage

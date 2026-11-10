@@ -45,6 +45,9 @@ public final class VMSession {
     /// connection changes nothing.
     @ObservationIgnored private var connectionNumber = 0
     @ObservationIgnored private var readyWaiters: [UUID: CheckedContinuation<Bool, Never>] = [:]
+    /// True while the guest's APFS container has to grow over the disk grown at the creation: the
+    /// agent grows it once it has the token, before it is ready (docs/virtual-machines.md › Starting).
+    @ObservationIgnored var growsContainer = false
 
     /// The framework's virtual machine, for the view of its screen; nil for a stand-in.
     public var virtualMachine: VZVirtualMachine? { machine.virtualMachine }
@@ -119,28 +122,64 @@ public final class VMSession {
         try await machine.agentRequest(method, params: params, data: data, timeout: timeout)
     }
 
-    /// A new connection of the agent: the Claude token is given first, then the agent is ready
-    /// (docs/virtual-machines.md › Claude token). Without a token it is ready at once; a failure
-    /// is logged and the agent is ready all the same.
+    /// A new connection of the agent: the Claude token is given first, then, at a first start
+    /// whose disk grew, the guest's container grows, then the agent is ready
+    /// (docs/virtual-machines.md › Claude token, › Starting). Without a token and without a growth
+    /// it is ready at once; a failure is logged and the agent is ready all the same.
     private func agentDidConnect() {
         connectionNumber += 1
         let number = connectionNumber
         agentReady = false
-        guard let engine, let token = engine.secrets.current.claudeVMToken else {
+        guard let engine else {
+            becomeReady(number)
+            return
+        }
+        let token = engine.secrets.current.claudeVMToken
+        guard token != nil || growsContainer else {
             becomeReady(number)
             return
         }
         let log = engine.log
         let vmID = vmID
         Task {
-            do {
-                _ = try await machine.agentRequest(VMToolService.setEnvMethod,
-                                                   params: ["name": .string(VMToolService.tokenVariable), "value": .string(token)],
-                                                   data: Data(), timeout: .seconds(30))
-            } catch {
-                log.warn(.engine, "virtual machine \(vmID.uuidString): the agent did not take the Claude token: \(VMImageFailure.message(of: error))")
+            if let token {
+                do {
+                    _ = try await machine.agentRequest(VMToolService.setEnvMethod,
+                                                       params: ["name": .string(VMToolService.tokenVariable), "value": .string(token)],
+                                                       data: Data(), timeout: .seconds(30))
+                } catch {
+                    log.warn(.engine, "virtual machine \(vmID.uuidString): the agent did not take the Claude token: \(VMImageFailure.message(of: error))")
+                }
+            }
+            if growsContainer, number == connectionNumber {
+                await growContainer()
             }
             becomeReady(number)
+        }
+    }
+
+    /// Has the agent run the command that grows the guest's container, as root; on success the
+    /// engine writes `growContainer: false`, and a failure is logged for the next start to try
+    /// again.
+    private func growContainer() async {
+        let timeout = GuestDisk.growContainerTimeout
+        let failure: String?
+        do {
+            let response = try await machine.agentRequest("exec", params: [
+                "command": .string(GuestDisk.growContainerCommand), "asRoot": .bool(true), "timeout": .int(timeout),
+            ], data: Data(), timeout: .seconds(timeout + 15))
+            let status = response.result["exitStatus"]?.vmIntValue ?? -1
+            let stderr = (response.result["stderr"]?.stringValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            failure = status == 0 ? nil : VMImageFailure.message(of: VMImageFailure(stderr.isEmpty ? "exit status \(status)" : stderr))
+        } catch {
+            failure = VMImageFailure.message(of: error)
+        }
+        guard let engine else { return }
+        if let failure {
+            engine.log.warn(.engine, "virtual machine \(vmID.uuidString): the guest's container did not grow: \(failure)")
+        } else {
+            growsContainer = false
+            await engine.virtualMachineContainerGrew(vmID)
         }
     }
 

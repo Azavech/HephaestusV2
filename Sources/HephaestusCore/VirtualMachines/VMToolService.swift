@@ -64,8 +64,8 @@ extension Engine {
         _ = try vmToolChat(params.chatID, actor)
         return VMImageStore.sorted(Array(vmImages.images.values)).filter { !vmImages.deleting.contains($0.id) }.map { image in
             VMToolImage(id: image.id, version: image.version, build: image.build, state: image.state,
-                        isDefault: settings.defaultVMImage == image.id, cores: image.cores, memoryGB: image.memoryGB,
-                        diskGB: image.diskGB, failure: image.state == .failed ? image.failure : nil)
+                        isDefault: settings.defaultVMImage == image.id, diskGB: imageDiskGB(image.id),
+                        failure: image.state == .failed ? image.failure : nil)
         }
     }
 
@@ -114,8 +114,11 @@ extension Engine {
             throw EngineError(error)
         }
         let limits = VMImageLimits.host
-        let cores = params.cores ?? image.cores
-        let memory = params.memory ?? image.memoryGB
+        let defaults = settings.vmDefaults(limits)
+        let cores = params.cores ?? defaults.cores
+        let memory = params.memory ?? defaults.memoryGB
+        // The disk of a new virtual machine (docs/virtual-machines.md › Starting and joining, step 3).
+        let disk = max(defaults.diskGB, imageDiskGB(image.id))
         guard limits.cores.contains(cores) else {
             throw EngineError(.invalid, VMImageLimits.message("cores", limits.cores))
         }
@@ -136,7 +139,7 @@ extension Engine {
             if runningVMCount < VMImageService.maximumRunning {
                 do {
                     let created = try await createVirtualMachine(
-                        VMsCreate.Params(name: name, imageID: image.id, cores: cores, memoryGB: memory),
+                        VMsCreate.Params(name: name, imageID: image.id, cores: cores, memoryGB: memory, diskGB: disk),
                         startedBy: .claude(projectID: chat.projectID, chatID: chat.id), actor)
                     return try await finishVMToolStart(created.id)
                 } catch let error as EngineError where error.code == .conflict && error.message == Self.twoVirtualMachinesRunning {

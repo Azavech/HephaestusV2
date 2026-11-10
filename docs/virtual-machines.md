@@ -1,6 +1,6 @@
 # Virtual machines
 
-HephaestusV2 runs macOS virtual machines with Apple's Virtualization framework, so that Claude can check what the offscreen check instance cannot reach: menus, typing, list rows, system dialogs and permission prompts. A virtual machine starts from an image: one macOS version, installed once from its IPSW and prepared once in a setup view in the centre column of a main window, where the user completes Setup Assistant, turns off System Integrity Protection (SIP) and installs the guest agent, which gives the host full control of the guest. The user starts virtual machines from the Ready images in Settings, keeps them between runs, and shows the screen of one in a main window, where the mouse and the keyboard drive it. A bubble in the toolbar of the main window counts the virtual machines that run, and its popover shows a preview of the screen of each one. Claude starts its own virtual machines with the VM tools of the MCP server, in every chat, joins one that Claude already runs from the same image, and drives them, one action at a time on each virtual machine; Claude's virtual machines stop when they stay idle, and each virtual machine gets the Claude token of Settings when it starts. This document defines the images and their states, the list of macOS versions read from ipsw.me, the download and the install, the setup view with its texts and its linked item, the install script, the guest agent and its protocol, the virtual machines with their lifecycle, the clone of the image's disk, the limit of 2 running virtual machines, Claude's virtual machines with the join, the wait for a free place, the queue, the idle stop, the rule of the user's virtual machines and the Claude token, the detail of a virtual machine and its link in the inspector's composer, the Virtual Machines bubble with its popover, and the storage under `<data dir>/VirtualMachines/`. The Settings tab is in [User interface](ui.md#virtual-machines), the bubble's toolbar item in [Toolbar](ui.md#toolbar), the file formats in [Data model](data-model.md#image-metadata-file), the methods and the events in [Engine API](engine-api.md#virtual-machine-images), the VM tools in [MCP server](mcp.md#rules-of-the-vm-tools).
+HephaestusV2 runs macOS virtual machines with Apple's Virtualization framework, so that Claude can check what the offscreen check instance cannot reach: menus, typing, list rows, system dialogs and permission prompts. A virtual machine starts from an image: one macOS version, installed once from its IPSW and prepared once in a setup view in the centre column of a main window, where the user completes Setup Assistant, turns off System Integrity Protection (SIP) and installs the guest agent, which gives the host full control of the guest. The user starts virtual machines from the Ready images in Settings, with the cores, the memory and the disk size chosen for each one, keeps them between runs, and shows the screen of one in a main window, where the mouse and the keyboard drive it. A bubble in the toolbar of the main window counts the virtual machines that run, and its popover shows a preview of the screen of each one. Claude starts its own virtual machines with the VM tools of the MCP server, in every chat, joins one that Claude already runs from the same image, and drives them, one action at a time on each virtual machine; Claude's virtual machines stop when they stay idle, and each virtual machine gets the Claude token of Settings when it starts. This document defines the images and their states, the list of macOS versions read from ipsw.me, the download and the install, the setup view with its texts and its linked item, the install script, the guest agent and its protocol, the default values of new virtual machines, the virtual machines with their lifecycle, the clone of the image's disk grown to the chosen size, the limit of 2 running virtual machines, Claude's virtual machines with the join, the wait for a free place, the queue, the idle stop, the rule of the user's virtual machines and the Claude token, the detail of a virtual machine and its link in the inspector's composer, the Virtual Machines bubble with its popover, and the storage under `<data dir>/VirtualMachines/`. The Settings tab is in [User interface](ui.md#virtual-machines), the bubble's toolbar item in [Toolbar](ui.md#toolbar), the file formats in [Data model](data-model.md#image-metadata-file), the methods and the events in [Engine API](engine-api.md#virtual-machine-images), the VM tools in [MCP server](mcp.md#rules-of-the-vm-tools).
 
 ## Overview
 
@@ -15,7 +15,8 @@ Settings ▸ Virtual Machines                      engine of This Mac           
                                                  guest agent (LaunchAgent of the account)
   Default radio ── settings.update ────────────► settings.yml, defaultVMImage
   Delete… ───── vmImages.delete ───────────────► the image's folder is deleted
-  New VM… ───── vms.create ────────────────────► vm.yml, clone of the image's disk, boot
+  New VMs ───── settings.update ───────────────► settings.yml, defaultVMCores, …MemoryGB, …DiskGB
+  New VM… ───── vms.create ────────────────────► vm.yml, clone of the image's disk grown, boot
   Start, Stop ─ vms.start, vms.stop ───────────► the virtual machine boots, shuts down
   Virtual Machines table ◄── vms.changed ─────── the virtual machines, the number that run
   Delete… ───── vms.delete ────────────────────► the virtual machine's folder is deleted
@@ -30,22 +31,23 @@ chat of Claude
   vm_click, vm_shell… ── vmTools.* ────────────► the queue of the virtual machine ── agent requests
 ```
 
-| Piece                                 | Defined in                                         |
-| ------------------------------------- | -------------------------------------------------- |
-| The Settings tab, sheets, alerts      | [User interface](ui.md#virtual-machines)           |
-| `image.yml`, `defaultVMImage`         | [Data model](data-model.md#image-metadata-file)    |
-| `vm.yml`                              | [Data model](data-model.md#vm-metadata-file)       |
-| `vmImages.*`, `vmImages.changed`      | [Engine API](engine-api.md#virtual-machine-images) |
-| `vms.*`, `vms.changed`                | [Engine API](engine-api.md#virtual-machines)       |
-| The `virtualMachine` target           | [User interface](ui.md#resolving-a-target)         |
-| The linked items of the detail, setup | [Chats](chats.md#linked-items)                     |
-| The Virtual Machines bubble           | [User interface](ui.md#toolbar)                    |
-| The entitlement, the bundle files     | [CI and release](ci.md#entitlements)               |
-| The agent's target, the processes     | [Architecture](architecture.md#modules)            |
-| The VM tools                          | [MCP server](mcp.md#rules-of-the-vm-tools)         |
-| `vmTools.*`                           | [Engine API](engine-api.md#vm-tools)               |
-| `claudeVMIdleMinutes`                 | [Data model](data-model.md#settings-file)          |
-| `claudeVMToken`, its service          | [Data model](data-model.md#secrets-file)           |
+| Piece                                    | Defined in                                         |
+| ---------------------------------------- | -------------------------------------------------- |
+| The Settings tab, sheets, alerts         | [User interface](ui.md#virtual-machines)           |
+| `image.yml`, `defaultVMImage`            | [Data model](data-model.md#image-metadata-file)    |
+| `vm.yml`                                 | [Data model](data-model.md#vm-metadata-file)       |
+| `vmImages.*`, `vmImages.changed`         | [Engine API](engine-api.md#virtual-machine-images) |
+| `vms.*`, `vms.changed`                   | [Engine API](engine-api.md#virtual-machines)       |
+| The `virtualMachine` target              | [User interface](ui.md#resolving-a-target)         |
+| The linked items of the detail, setup    | [Chats](chats.md#linked-items)                     |
+| The Virtual Machines bubble              | [User interface](ui.md#toolbar)                    |
+| The entitlement, the bundle files        | [CI and release](ci.md#entitlements)               |
+| The agent's target, the processes        | [Architecture](architecture.md#modules)            |
+| The VM tools                             | [MCP server](mcp.md#rules-of-the-vm-tools)         |
+| `vmTools.*`                              | [Engine API](engine-api.md#vm-tools)               |
+| `claudeVMIdleMinutes`                    | [Data model](data-model.md#settings-file)          |
+| `defaultVMCores`, `…MemoryGB`, `…DiskGB` | [Data model](data-model.md#settings-file)          |
+| `claudeVMToken`, its service             | [Data model](data-model.md#secrets-file)           |
 
 ## Host
 
@@ -55,9 +57,13 @@ chat of Claude
 
 ## Images
 
-An image is one macOS version installed on a disk, with the values its virtual machines start with: `cores`, `memoryGB` and `diskGB`. Each virtual machine started from the image uses them unless it asks for others. An image has an id, a UUID, which names its folder; its metadata is the [image metadata file](data-model.md#image-metadata-file). Two images may hold the same macOS version. Default chosen at design time.
+An image is one macOS version installed on a disk of 32 GB. The cores, the memory and the disk size of a virtual machine are not the image's: they are chosen when the virtual machine is created, starting from the [default values](#default-values) of Settings. An image has an id, a UUID, which names its folder; its metadata is the [image metadata file](data-model.md#image-metadata-file). Two images may hold the same macOS version. Default chosen at design time.
 
-`GB` stands for 1024³ bytes in `memoryGB`, in `diskGB` and in the fields of the Add Image sheet: 4 GB of memory are 4,294,967,296 bytes. Default chosen at design time.
+- The disk size of an image is the size of its `Disk.img`, in GB rounded up: the smallest disk of a virtual machine of that image, whose disk starts as a clone of the image's disk ([Clone](#clone)). The engine API gives it as the image's `diskGB` ([VMImage in the API](engine-api.md#vmimage-in-the-api)).
+- An image added by an earlier version of the app keeps its disk, of the size the user chose then. The `cores`, `memoryGB` and `diskGB` that its `image.yml` holds are no longer used ([Image metadata file](data-model.md#image-metadata-file)).
+- The 32 GB disk, the smallest disk of a virtual machine, comes from the user.
+
+`GB` stands for 1024³ bytes in `memoryGB`, in `diskGB`, in the default values and in the fields of the sheets: 4 GB of memory are 4,294,967,296 bytes. Default chosen at design time.
 
 ### Image states
 
@@ -88,6 +94,24 @@ The default image is the one Claude uses when it asks for no version. The host s
 3. Deleting the default image sets `defaultVMImage` to null. No image is the default until the user turns a radio on or another image becomes Ready. Default chosen at design time.
 4. At launch, a `defaultVMImage` that names no Ready image is set to null and `settings.yml` is written. A `settings.yml` changed outside the app with such a value is refused as any value `settings.update` refuses ([Reactions](data-model.md#reactions)). Default chosen at design time.
 
+## Default values
+
+Three host settings of `settings.yml`, the `New VMs` section of Settings › Virtual Machines, give the values that new virtual machines start with ([Settings file](data-model.md#settings-file), [User interface](ui.md#virtual-machines)):
+
+| Setting             | Field of Settings     | Default | Range                                          |
+| ------------------- | --------------------- | ------- | ---------------------------------------------- |
+| `defaultVMCores`    | `Default cores`       | 2       | 2 to the number of cores of the Mac            |
+| `defaultVMMemoryGB` | `Default memory (GB)` | 4       | 4 to the memory of the Mac in GB, rounded down |
+| `defaultVMDiskGB`   | `Default disk (GB)`   | 64      | 32 to 2048                                     |
+
+- `settings.update` refuses a value outside its range with `invalid` and `<setting>: use a number from <min> to <max>.`, and stores nothing.
+- The New VM sheet starts with the three values ([Creating](#creating)), and `vm_start` uses them when Claude gives no value ([Starting and joining](#starting-and-joining)).
+- The [install](#install) of an image and its [setup virtual machine](#setup-virtual-machine) run with `defaultVMCores` and `defaultVMMemoryGB`.
+- A change applies to the virtual machines, installs and setups that start afterwards: those that run keep their values.
+- A value outside the range of this Mac, read at launch from a `settings.yml` written on a larger Mac for example, is brought to the nearest end of its range where it is used: in the New VM sheet, by `vm_start`, the install and the setup.
+
+The three settings, their place, their defaults and their ranges come from the user ([R208](requirements.md#requirements)). The message, the change that applies to what starts afterwards and the value brought into its range are Default chosen at design time.
+
 ## macOS versions
 
 The `Version` pop-up of the Add Image sheet lists the macOS versions for virtual machines that ipsw.me gives. That list is the only source of versions: the engine asks neither Apple nor the Virtualization framework for one.
@@ -112,11 +136,10 @@ The header, the timeout, the rules for the elements and the order within one ver
 
 ## Adding an image
 
-`Add` of the Add Image sheet calls `vmImages.add` with the `build` of the chosen version and the values of the fields ([vmImages.add](engine-api.md#vmimagesadd)).
+`Add` of the Add Image sheet calls `vmImages.add` with the `build` of the chosen version ([vmImages.add](engine-api.md#vmimagesadd)). The sheet asks for nothing else: the values of the virtual machines are chosen when they are created.
 
-1. The engine checks the values: `cores` from 2 to the number of cores of the Mac, `memoryGB` from 4 to the memory of the Mac in GB, rounded down, `diskGB` from 32 to 2048. A value outside its range fails with `invalid` and `<param>: use a number from <min> to <max>.` The ranges are Default chosen at design time.
-2. It finds the version whose `build` equals the param in the list it keeps, reading the list first when it has none ([macOS versions](#macos-versions)); no version: `notFound` `macOS build <build> not found.`
-3. It creates the image: a new id, the folder `<data dir>/VirtualMachines/Images/<image id>/` and its `image.yml` with the state `downloading`. It emits `vmImages.changed` and returns the image. The download and the install then run in the background.
+1. The engine finds the version whose `build` equals the param in the list it keeps, reading the list first when it has none ([macOS versions](#macos-versions)); no version: `notFound` `macOS build <build> not found.`
+2. It creates the image: a new id, the folder `<data dir>/VirtualMachines/Images/<image id>/` and its `image.yml` with the state `downloading`. It emits `vmImages.changed` and returns the image. The download and the install then run in the background.
 
 ### Download
 
@@ -131,9 +154,9 @@ The checksum, the timeout and the two messages are Default chosen at design time
 ### Install
 
 1. The install takes one of the 2 running virtual machines ([Running virtual machines](#running-virtual-machines)). While 2 already run it waits, and the row shows `Installing… 0%`.
-2. The engine reads `Restore.ipsw` with the Virtualization framework (`VZMacOSRestoreImage`) and takes its most featureful configuration that this Mac supports. Without one, the image fails with `This Mac cannot run macOS <version>.` When the image's `cores` or `memoryGB` is below the minimum of that configuration, the image fails with `macOS <version> needs at least <n> cores and <m> GB of memory.` The two messages are Default chosen at design time.
-3. It writes the files of the virtual machine in the image's folder: `HardwareModel` (the hardware model of the configuration), `MachineIdentifier` (a new machine identifier), `AuxiliaryStorage` and `Disk.img`, a sparse file of `diskGB` GB.
-4. It installs macOS with `VZMacOSInstaller` in a virtual machine that has the image's `cores` and `memoryGB` and the devices of the [setup virtual machine](#setup-virtual-machine), without its shared folder. `progress` is the installer's fraction completed.
+2. The engine reads `Restore.ipsw` with the Virtualization framework (`VZMacOSRestoreImage`) and takes its most featureful configuration that this Mac supports. Without one, the image fails with `This Mac cannot run macOS <version>.` When `defaultVMCores` or `defaultVMMemoryGB` ([Default values](#default-values)) is below the minimum of that configuration, the image fails with `macOS <version> needs at least <n> cores and <m> GB of memory.` The two messages are Default chosen at design time.
+3. It writes the files of the virtual machine in the image's folder: `HardwareModel` (the hardware model of the configuration), `MachineIdentifier` (a new machine identifier), `AuxiliaryStorage` and `Disk.img`, a sparse file of 32 GB.
+4. It installs macOS with `VZMacOSInstaller` in a virtual machine that has `defaultVMCores` cores and `defaultVMMemoryGB` GB of memory, read when the install starts, and the devices of the [setup virtual machine](#setup-virtual-machine), without its shared folder. `progress` is the installer's fraction completed.
 5. The IPSW file is deleted once the install ends, whether it succeeded or failed.
 6. The image's state becomes `needsSetup`.
 
@@ -164,8 +187,8 @@ The setup virtual machine boots the image's own disk, so everything the user doe
 
 | Part            | Configuration                                                                                                                                                          |
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Processor       | The image's `cores`.                                                                                                                                                   |
-| Memory          | The image's `memoryGB`.                                                                                                                                                |
+| Processor       | `defaultVMCores` cores, read when `Set Up…` boots the virtual machine ([Default values](#default-values)).                                                             |
+| Memory          | `defaultVMMemoryGB` GB, read then too.                                                                                                                                 |
 | Platform        | The image's `HardwareModel`, `MachineIdentifier` and `AuxiliaryStorage`, started with the macOS boot loader.                                                           |
 | Disk            | `Disk.img`, a virtio block device.                                                                                                                                     |
 | Display         | One display of 2560 × 1600 pixels at 220 pixels per inch.                                                                                                              |
@@ -353,7 +376,7 @@ The methods, their params, results, limits and messages are Default chosen at de
 
 ## Lifecycle
 
-A virtual machine is a Mac started from a Ready image: it has a name, its own disk, which starts as a clone of the image's disk, and the cores and the memory chosen for it. It has an id, a UUID, which names its folder; its metadata is the [VM metadata file](data-model.md#vm-metadata-file). The user starts virtual machines with `New VM…` of [Settings](ui.md#virtual-machines); Claude starts its own for its checks. Who started a virtual machine decides what becomes of it when it stops:
+A virtual machine is a Mac started from a Ready image: it has a name, its own disk, which starts as a clone of the image's disk grown to the size chosen for it, and the cores and the memory chosen for it. It has an id, a UUID, which names its folder; its metadata is the [VM metadata file](data-model.md#vm-metadata-file). The user starts virtual machines with `New VM…` of [Settings](ui.md#virtual-machines); Claude starts its own for its checks. Who started a virtual machine decides what becomes of it when it stops:
 
 | Started by | `startedBy`                                         | `Started by` column                                                                     | When it stops                                                              |
 | ---------- | --------------------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -380,22 +403,32 @@ The hours that go on past 24, the virtual machine that stays Running while it sh
 
 ### Creating
 
-`Start` of the New VM sheet calls `vms.create` with the name, the image, the cores and the memory ([vms.create](engine-api.md#vmscreate)).
+`Start` of the New VM sheet calls `vms.create` with the name, the image, the cores, the memory and the disk size ([vms.create](engine-api.md#vmscreate)).
 
 1. The engine checks, in this order:
    1. that the Mac has Apple silicon ([Host](#host));
    2. the name: one line of 1 to 100 characters once trimmed, otherwise `invalid` and `name: use 1 to 100 characters on one line.`;
    3. that the image exists (`notFound`, `Image <id> not found.`) and is Ready (`conflict`, `The image is not Ready.`);
-   4. `cores` and `memoryGB`, with the ranges of [Adding an image](#adding-an-image) and its message;
+   4. `cores` and `memoryGB`, with the ranges of `defaultVMCores` and `defaultVMMemoryGB` ([Default values](#default-values)), then `diskGB`, from the image's disk size to 2048, each outside its range with `invalid` and `<param>: use a number from <min> to <max>.`;
    5. that fewer than 2 virtual machines run (`conflict`, `2 virtual machines are already running.`).
-2. It creates the virtual machine: a new id and the folder `<data dir>/VirtualMachines/Machines/<VM id>/`, into which it copies the image's `HardwareModel`, `MachineIdentifier` and `AuxiliaryStorage`, clones the image's `Disk.img` ([Clone](#clone)) and writes `vm.yml`. When a file cannot be written, on a full disk for example, the folder is deleted and the call fails with `internal` and `The virtual machine could not be created: <reason>.`, `<reason>` being the system's message.
+2. It creates the virtual machine: a new id and the folder `<data dir>/VirtualMachines/Machines/<VM id>/`, into which it copies the image's `HardwareModel`, `MachineIdentifier` and `AuxiliaryStorage`, clones the image's `Disk.img` and grows the clone to `diskGB` GB ([Clone](#clone)), then writes `vm.yml`. When a file cannot be written, on a full disk for example, the folder is deleted and the call fails with `internal` and `The virtual machine could not be created: <reason>.`, `<reason>` being the system's message.
 3. It starts the virtual machine ([Starting](#starting)). When the start fails, the call fails with the message of the start; a user's virtual machine stays, Stopped, with its disk, and Claude's is deleted.
 
-The name's rule, the order of the checks and the messages are Default chosen at design time.
+The disk size, its field and its range come from the user ([R208](requirements.md#requirements)). The name's rule, the order of the checks and the messages are Default chosen at design time.
 
 ### Clone
 
 The disk of a new virtual machine is an APFS clone of the image's `Disk.img`, made with `clonefile`: the two files share their blocks until one of them changes, so the clone is made at once, whatever the size of the disk, and takes no space of its own until the guest writes. On a volume that cannot clone a file, the disk is copied instead. The copy on such a volume is Default chosen at design time.
+
+When `diskGB` is larger than the image's disk size, the engine grows the clone on this Mac before it writes `vm.yml`:
+
+1. It extends the file to `diskGB` GB. The space added is sparse: it takes no room until the guest writes.
+2. The installer of macOS lays the disk out as a GUID partition table with three partitions: `iBootSystemContainer`, `Container`, the APFS container of macOS, and `RecoveryOSContainer`, the APFS container of macOS Recovery, last. The engine moves `RecoveryOSContainer` to the end of the grown disk, its end aligned on 4096 bytes, so that the free space lies right after `Container`. It copies the partition's bytes from its end to its start, so that a move shorter than the partition overwrites nothing it still has to copy; a block of 1 MiB that holds only zeros is not written where the file was extended, so it takes no room.
+3. It rewrites the partition table: the start and the end of `RecoveryOSContainer`, the last usable block, the backup table at the new end of the disk with its header, the checksums of both copies, and the size of the protective MBR. The backup table of the old size is cleared.
+
+A disk without a GUID partition table, or whose last partition is not `RecoveryOSContainer`, is only extended: its guest cannot grow its container then. The guest's container grows at the virtual machine's first start ([Starting](#starting)).
+
+The layout was read in the `Disk.img` of a macOS 27.2.1 image. The move of the recovery container, which keeps macOS Recovery, the order of the copy, the blocks of zeros left unwritten and the disk only extended for another layout are Default chosen at design time. Not checked in a guest: the start of a virtual machine whose disk was grown.
 
 The virtual machine keeps the hardware model and the machine identifier of its image and starts from a copy of the image's auxiliary storage, so every virtual machine of an image has the identity that the image was set up with. Default chosen at design time. Not checked in a guest: that two virtual machines of one image run at once with the same machine identifier, and that the guest keeps SIP off with it.
 
@@ -408,7 +441,23 @@ The virtual machine keeps the hardware model and the machine identifier of its i
 3. A virtual machine that cannot be made or started, or that stops with a failure while it starts, fails the start with `unavailable` and the framework's message, and frees its place.
 4. The virtual machine is Running, with the time of the start as `startedAt`, and `vms.changed` is emitted.
 
-Each start listens for the [guest agent](#guest-agent) on the virtual machine's virtio socket device, as the setup virtual machine does. The devices and the missing shared folder are Default chosen at design time.
+Each start listens for the [guest agent](#guest-agent) on the virtual machine's virtio socket device, as the setup virtual machine does.
+
+At the first start of a virtual machine whose disk was grown ([Clone](#clone)), its `vm.yml` holds `growContainer: true`. Once the agent is connected and has been given the [Claude token](#claude-token), the engine has it run, as root, with a timeout of 120 seconds:
+
+```
+/usr/sbin/diskutil apfs resizeContainer "$(/usr/sbin/diskutil info / | /usr/bin/awk -F': +' '/APFS Physical Store/ {print $2}')" 0
+```
+
+`diskutil info /` names the partition of the guest's APFS container, `disk0s2`, and `resizeContainer` with the size 0 grows that container over the free space that follows it: the guest then sees the whole disk.
+
+- The agent is ready for the actions of the VM tools once the command has ended ([Actions and their queue](#actions-and-their-queue)).
+- When the command succeeds, the engine writes `growContainer: false` in `vm.yml`.
+- When it fails, or the agent's connection ends first, `engine.log` gets `virtual machine <id>: the guest's container did not grow: <message>`, `growContainer` stays true, and the next start tries again.
+
+The growth of the container at the first start comes from the user ([R208](requirements.md#requirements)). The command, its timeout, the agent ready only after it, the key and the try at the next start are Default chosen at design time.
+
+The devices and the missing shared folder are Default chosen at design time.
 
 ### Stopping
 
@@ -464,14 +513,14 @@ Claude starts and drives virtual machines with the VM tools of the MCP server, i
 
 1. **Mac.** On a Mac without Apple silicon the call fails as `vms.create` does ([Host](#host)).
 2. **Image.** Without `image`, the [default image](#default-image); while no image is the default, the call fails with `conflict` and `No image is the default; name one with image.` An `image` that is a UUID names the image with that id (`notFound`, `Image <id> not found.`). Any other value is a macOS version, compared exactly with the `version` of the Ready images: the default image when it has that version, else the oldest of them (`notFound`, `No Ready image of macOS <version>.`). The image must be Ready (`conflict`, `The image is not Ready.`).
-3. **Values.** `name`, `cores` and `memory` are checked as `vms.create` checks the name, `cores` and `memoryGB` ([Creating](#creating)); `cores` and `memory` are the image's `cores` and `memoryGB` when absent.
+3. **Values.** `name`, `cores` and `memory` are checked as `vms.create` checks the name, `cores` and `memoryGB` ([Creating](#creating)); `cores` and `memory` are `defaultVMCores` and `defaultVMMemoryGB` when absent ([Default values](#default-values)). The disk of a new virtual machine is `defaultVMDiskGB` GB, or the image's disk size when that is larger.
 4. **Joining.** When a virtual machine that Claude started from that image runs, or starts, and is neither shutting down nor being deleted, the chat joins it: the call returns that virtual machine and starts nothing. With several, the oldest. Any chat joins it, whichever chat started it, and its name, cores and memory stay as they are.
 5. **Starting.** Otherwise, while fewer than 2 virtual machines run ([Running virtual machines](#running-virtual-machines)), the engine creates and starts a new virtual machine as `vms.create` does ([Creating](#creating), [Starting](#starting)), with `startedBy` `claude` and the `projectID` and `chatID` of the calling chat, so that its `Started by` column reads `<project id> · <chat name>` ([Lifecycle](#lifecycle)). A start that fails fails the call, with the errors of `vms.create`.
 6. **Waiting.** While 2 run, the call waits. Each time a place frees up, or a virtual machine of Claude starts, it takes steps 4 and 5 again. After 10 minutes of wait it fails with `unavailable` and `2 virtual machines are still running after a wait of 10 minutes.` A call that waits takes no place: an install that waits gets a freed place first ([Install](#install)). The quit of the app ends the wait with the same failure.
-7. **Agent.** The call then waits for the virtual machine's agent: it returns once the agent is connected and has been given the [Claude token](#claude-token), at most 3 minutes after the virtual machine started or was joined; after that it returns the virtual machine all the same, with `agentConnected` false.
+7. **Agent.** The call then waits for the virtual machine's agent: it returns once the agent is connected, has been given the [Claude token](#claude-token) and, at a first start, has grown the guest's container ([Starting](#starting)), at most 3 minutes after the virtual machine started or was joined; after that it returns the virtual machine all the same, with `agentConnected` false.
 8. **Idle time.** The [idle time](#idle-stop) of the virtual machine starts again from the end of the call.
 
-The 10 minutes of the wait, the join and the `Started by` text come from the user ([R204](requirements.md#requirements)). The order of the steps, the choice of an image and of a virtual machine among several, the messages, the wait for the agent and the idle time that starts again are Default chosen at design time.
+The 10 minutes of the wait, the join, the `Started by` text and the default values come from the user ([R204](requirements.md#requirements), [R208](requirements.md#requirements)). The order of the steps, the choice of an image and of a virtual machine among several, the messages, the wait for the agent and the idle time that starts again are Default chosen at design time.
 
 ### Actions and their queue
 
@@ -479,7 +528,7 @@ The ten tools from `vm_screenshot` to `vm_copy_out` are the actions on a virtual
 
 - The actions of every chat on one virtual machine run one at a time, in the order the engine receives them: an action starts once the actions received before it have ended, whatever their chat.
 - When its turn comes, an action needs a virtual machine that runs: one that is stopped fails it with `conflict` and `The virtual machine “<name>” is not running.`; one that left the list, with `notFound` and `Virtual machine <id> not found.`
-- An action whose virtual machine's agent is not connected, or has not been given the token yet, waits for it up to 60 seconds, keeping its turn, then fails with `unavailable` and `The agent of “<name>” is not connected.`
+- An action whose virtual machine's agent is not connected, has not been given the token yet or still grows the guest's container ([Starting](#starting)), waits for it up to 60 seconds, keeping its turn, then fails with `unavailable` and `The agent of “<name>” is not connected.`
 - Each action sends one request or more to the [agent](#methods), in the table below. A request has 60 seconds to be answered, `uiTree` 120 seconds and `exec` its `timeout` plus 15 seconds. A request that the agent fails fails the action with `unavailable` and the agent's message; a connection that ends, with `The agent of “<name>” disconnected.`; a request that gets no answer in time, with `The agent of “<name>” did not answer in time.`
 - `vm_stop` is not an action: it does not wait for the queue, and the actions that wait fail as above once the virtual machine has stopped.
 
@@ -653,14 +702,14 @@ The bubble, its symbol, its place and its look, the virtual machines it counts, 
         HardwareModel           the hardware model the image was installed for
         MachineIdentifier       the machine identifier of the image's own virtual machine
         AuxiliaryStorage        the auxiliary storage of the virtual machine
-        Disk.img                the disk, a sparse file of diskGB GB
+        Disk.img                the disk, a sparse file of 32 GB, or of the size chosen for an earlier image
     Machines/
       <VM-ID>/                  one folder per virtual machine, named by its id, an uppercase UUID
         vm.yml                  the VM metadata file
         HardwareModel           a copy of the image's hardware model
         MachineIdentifier       a copy of the image's machine identifier
         AuxiliaryStorage        a copy of the image's auxiliary storage, then the virtual machine's own
-        Disk.img                the disk: a clone of the image's disk, then the virtual machine's own
+        Disk.img                the disk: a clone of the image's disk grown to diskGB, then its own
   Runtime/
     guest/                      the folder shared into the guests
       install.sh                the install script
@@ -668,9 +717,9 @@ The bubble, its symbol, its place and its look, the virtual machines it counts, 
 ```
 
 - The engine creates `VirtualMachines/Images/` with the first image. Folders of `Images/` whose name is not a UUID, or whose `image.yml` is missing or invalid, are skipped and logged at launch ([Loading](data-model.md#loading)).
-- The `Disk` column of the Images table is the image's `diskBytes`: the space the files of its folder take on disk, which for the sparse `Disk.img` is the space written so far, not `diskGB`.
+- The `Disk` column of the Images table is the image's `diskBytes`: the space the files of its folder take on disk, which for the sparse `Disk.img` is the space written so far, not the size of the disk.
 - The engine creates `VirtualMachines/Machines/` with the first virtual machine. At launch, the folders of `Machines/` whose name is not a UUID, or whose `vm.yml` is missing or invalid, are skipped and logged, and the folder of a virtual machine that Claude started is deleted: such a folder is left only when the app ended without stopping the virtual machine ([Loading](data-model.md#loading)).
-- A clone shares the blocks of the image's disk until one of the two files changes them, so a new virtual machine takes almost no space, and its disk grows with what the guest writes. The image's disk no longer changes once the image is Ready.
+- A clone shares the blocks of the image's disk until one of the two files changes them, so a new virtual machine takes almost no space, and its disk grows with what the guest writes. A grown clone also takes the blocks of the moved recovery container that hold data ([Clone](#clone)). The image's disk no longer changes once the image is Ready.
 - `Runtime/guest/` is generated: the engine fills it each time a setup virtual machine starts.
 
 The folder and file names are Default chosen at design time.
@@ -683,6 +732,7 @@ The folder and file names are Default chosen at design time.
 | `Sources/HephaestusCore/Models/VirtualMachine.swift`           | `VirtualMachine`, `VirtualMachineState`, `VMStarter`: the VM metadata file; `VMRunningTime`, the text of a running time.                                                                                                                                |
 | `Sources/HephaestusCore/VirtualMachines/`                      | The images, the provisioner, the setup and the host side of the agent's protocol: see [HephaestusCore folders](architecture.md#hephaestuscore-folders).                                                                                                 |
 | `Sources/HephaestusCore/VirtualMachines/VirtualMachine*.swift` | `VirtualMachineStore`, the folders and the clone; `VirtualMachineService`, the lifecycle; `VMSession`, one running virtual machine.                                                                                                                     |
+| `Sources/HephaestusCore/VirtualMachines/GuestDisk.swift`       | `GuestDisk`: the growth of a clone, the move of its recovery container and its GUID partition table; the command that grows the guest's container.                                                                                                      |
 | `Sources/HephaestusCore/VirtualMachines/VMScreenPreview.swift` | `GuestPreviewCapturing` and `capturePreview()` of `VMSession` and `VMSetupSession`: the screenshots of the previews of the [Virtual Machines popover](#previews).                                                                                       |
 | `Sources/HephaestusCore/Engine/API/VMImagesAPI.swift`          | The `vmImages.*` methods and `MacOSVersion`.                                                                                                                                                                                                            |
 | `Sources/HephaestusCore/Engine/API/VMsAPI.swift`               | The `vms.*` methods and `VMList`.                                                                                                                                                                                                                       |
@@ -704,3 +754,4 @@ Outside the app, the engine reaches ipsw.me, Apple's download server and the Vir
 - R202: The user starts virtual machines from the Ready images in Settings, keeps them between runs, starts, stops and deletes them, and shows the screen of one in a main window, where the mouse and the keyboard drive it; at most 2 run at once, and the app does not restart by itself for an update while one runs.
 - R203: The toolbar of a main window that shows This Mac has a bubble with the number of virtual machines that run; its popover lists every virtual machine, shows a preview of the screen of each one that runs, refreshed every 2 seconds, its name, who started it and its running time, opens it, stops it or starts it, and creates virtual machines, adds images and opens Settings.
 - R204: Every chat of every project gives Claude full control of virtual machines with the VM tools: Claude starts one freely or joins Claude's one of the same image, waits up to 10 minutes for a free place, drives it one action at a time across chats, acts on the user's only when named and never stops them; Claude's idle VMs stop after the minutes set in Settings, and each VM gets the Claude token of Settings at its start.
+- R208: Settings gives the default cores, memory and disk size of new virtual machines; an image has no such values, the user chooses them in the New VM sheet, and a virtual machine's disk is grown to the size chosen.

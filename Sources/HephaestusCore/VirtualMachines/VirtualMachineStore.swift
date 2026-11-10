@@ -67,16 +67,24 @@ public enum VirtualMachineStore {
 
     /// Creates the folder of a new virtual machine (docs/virtual-machines.md › Creating, step 2):
     /// the image's hardware model, machine identifier and auxiliary storage, a clone of the
-    /// image's disk, then `vm.yml`. Throws the system's error; what was written stays for the
-    /// caller to delete.
-    public static func create(_ machine: VirtualMachine, from image: VMImageFiles, in directory: DataDirectory) throws {
+    /// image's disk, grown to `diskBytes` when given (docs/virtual-machines.md › Clone), then
+    /// `vm.yml`. Returns how the disk grew, nil when it kept its size. Throws the system's error;
+    /// what was written stays for the caller to delete.
+    @discardableResult
+    public static func create(_ machine: VirtualMachine, from image: VMImageFiles, growingDiskTo diskBytes: UInt64? = nil,
+                              in directory: DataDirectory) throws -> GuestDisk.Growth? {
         let files = files(of: machine.id, in: directory)
         try FileManager.default.createDirectory(at: files.folder, withIntermediateDirectories: true)
         try clone(image.hardwareModel, to: files.hardwareModel)
         try clone(image.machineIdentifier, to: files.machineIdentifier)
         try clone(image.auxiliaryStorage, to: files.auxiliaryStorage)
         try clone(image.disk, to: files.disk)
+        var growth: GuestDisk.Growth?
+        if let diskBytes {
+            growth = try GuestDisk.grow(files.disk, to: diskBytes)
+        }
         try write(machine, to: directory)
+        return growth
     }
 
     /// An APFS clone of `source` at `destination`, made with `clonefile`: the two files share their

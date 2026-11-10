@@ -39,13 +39,18 @@ public enum SettingsUpdate: EngineMethod {
         /// Minutes after which an idle virtual machine of Claude stops, 1 to 1440
         /// (docs/virtual-machines.md › Idle stop).
         public var claudeVMIdleMinutes: Int?
+        /// The default values of new virtual machines (docs/virtual-machines.md › Default values).
+        public var defaultVMCores: Int?
+        public var defaultVMMemoryGB: Int?
+        public var defaultVMDiskGB: Int?
 
         public init(claudePath: Patch<String> = .keep, defaultChatSettings: ChatSettings? = nil,
                     mcpPort: Int? = nil, syncEnabled: Bool? = nil,
                     syncPort: Int? = nil, skillsLibraryPath: Patch<String> = .keep, autoUpdate: Bool? = nil,
                     updateCheckIntervalMinutes: Int? = nil, formatGoOnSave: Bool? = nil, formatSwiftOnSave: Bool? = nil,
                     notifyNeedsYou: Bool? = nil, notifyFinished: Bool? = nil, notifyAISummary: Bool? = nil,
-                    showHephaestusProject: Bool? = nil, defaultVMImage: Patch<UUID> = .keep, claudeVMIdleMinutes: Int? = nil) {
+                    showHephaestusProject: Bool? = nil, defaultVMImage: Patch<UUID> = .keep, claudeVMIdleMinutes: Int? = nil,
+                    defaultVMCores: Int? = nil, defaultVMMemoryGB: Int? = nil, defaultVMDiskGB: Int? = nil) {
             self.claudePath = claudePath
             self.defaultChatSettings = defaultChatSettings
             self.mcpPort = mcpPort
@@ -62,6 +67,9 @@ public enum SettingsUpdate: EngineMethod {
             self.showHephaestusProject = showHephaestusProject
             self.defaultVMImage = defaultVMImage
             self.claudeVMIdleMinutes = claudeVMIdleMinutes
+            self.defaultVMCores = defaultVMCores
+            self.defaultVMMemoryGB = defaultVMMemoryGB
+            self.defaultVMDiskGB = defaultVMDiskGB
         }
 
         /// `settings` with every present param applied.
@@ -83,6 +91,9 @@ public enum SettingsUpdate: EngineMethod {
             if let showHephaestusProject { result.showHephaestusProject = showHephaestusProject }
             result.defaultVMImage = defaultVMImage.applied(to: settings.defaultVMImage)
             if let claudeVMIdleMinutes { result.claudeVMIdleMinutes = claudeVMIdleMinutes }
+            if let defaultVMCores { result.defaultVMCores = defaultVMCores }
+            if let defaultVMMemoryGB { result.defaultVMMemoryGB = defaultVMMemoryGB }
+            if let defaultVMDiskGB { result.defaultVMDiskGB = defaultVMDiskGB }
             return result
         }
     }

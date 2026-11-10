@@ -48,27 +48,21 @@ struct VMImageEngineTests {
 
     // MARK: vmImages.add
 
-    @Test("vmImages.add checks the Mac, then the ranges, then the build")
+    @Test("vmImages.add takes the build alone, and checks the Mac, then the build")
     func addErrors() async throws {
         try await withVMEngine { _, connection, provisioner, _ in
-            let limits = VMImageLimits.host
-            func add(_ build: String, _ cores: Int, _ memoryGB: Int, _ diskGB: Int) async -> EngineError? {
+            func add(_ build: String) async -> EngineError? {
                 await engineError {
-                    try await connection.call(VMImagesAdd.self, VMImagesAdd.Params(build: build, cores: cores, memoryGB: memoryGB, diskGB: diskGB))
+                    try await connection.call(VMImagesAdd.self, VMImagesAdd.Params(build: build))
                 }
             }
-            #expect(await add("26B131", 1, 4, 64) == EngineError(.invalid, "cores: use a number from 2 to \(limits.cores.upperBound)."))
-            #expect(await add("26B131", limits.cores.upperBound + 1, 4, 64)?.code == .invalid)
-            #expect(await add("26B131", 2, 3, 64) == EngineError(.invalid, "memoryGB: use a number from 4 to \(limits.memoryGB.upperBound)."))
-            #expect(await add("26B131", 2, 4, 31) == EngineError(.invalid, "diskGB: use a number from 32 to 2048."))
-            #expect(await add("26B131", 2, 4, 2049)?.code == .invalid)
-            #expect(await add("99Z99", 2, 4, 64) == EngineError(.notFound, "macOS build 99Z99 not found."))
+            #expect(await add("99Z99") == EngineError(.notFound, "macOS build 99Z99 not found."))
             #expect(provisioner.downloads.isEmpty)
             let images = try await connection.call(VMImagesList.self)
             #expect(images.isEmpty)
 
             provisioner.supportsVirtualMachines = false
-            #expect(await add("26B131", 1, 4, 64) == EngineError(.unavailable, "Virtual machines need a Mac with Apple silicon."))
+            #expect(await add("26B131") == EngineError(.unavailable, "Virtual machines need a Mac with Apple silicon."))
         }
     }
 
@@ -96,10 +90,11 @@ struct VMImageEngineTests {
             provisioner.installFractions = [0.635]
             let events = connection.events
 
-            let added = try await connection.call(VMImagesAdd.self, VMImagesAdd.Params(build: "26B123", cores: 2, memoryGB: 4, diskGB: 64))
+            _ = try await connection.call(SettingsUpdate.self, .init(defaultVMCores: 3, defaultVMMemoryGB: 5))
+            let added = try await connection.call(VMImagesAdd.self, VMImagesAdd.Params(build: "26B123"))
             #expect(added.state == .downloading)
             #expect(added.version == "27.2" && added.build == "26B123")
-            #expect(added.cores == 2 && added.memoryGB == 4 && added.diskGB == 64)
+            #expect(added.diskGB == 0 && added.unknownKeys.isEmpty)
             #expect(added.progress == 0 && added.percentage == 0)
             #expect(added.failure == nil)
             let files = VMImageStore.files(of: added.id, in: engine.dataDirectory)
@@ -118,7 +113,8 @@ struct VMImageEngineTests {
             #expect(try ProjectFileStore.decodeYAML(VMImage.self, at: files.metadata).state == .installing)
             #expect(await engine.runningVMCount == 1)
             let request = try #require(provisioner.installs.first)
-            #expect(request == VMImageInstallRequest(version: "27.2", files: files, cores: 2, memoryGB: 4, diskGB: 64))
+            // The install runs with the default values of Settings, on a disk of 32 GB.
+            #expect(request == VMImageInstallRequest(version: "27.2", files: files, cores: 3, memoryGB: 5, diskGB: 32))
             #expect(FileManager.default.fileExists(atPath: files.restoreImage.path))
 
             let finishing = connection.events

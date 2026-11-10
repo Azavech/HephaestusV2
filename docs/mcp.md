@@ -2680,13 +2680,13 @@ The tool names, what they do and return, their availability in every chat and ev
 ### vm_list_images
 
 - **Engine call:** vmTools.images with `chatID` ([Engine API](engine-api.md#vmtoolsimages)).
-- **Result:** the [VMToolImage](engine-api.md#vmtoolimage) array, oldest first: the `id`, `version`, `build` and `state` of each image, `isDefault`, true for the [default image](virtual-machines.md#default-image), the `cores`, `memoryGB` and `diskGB` of its virtual machines and, for a failed image, its `failure`.
+- **Result:** the [VMToolImage](engine-api.md#vmtoolimage) array, oldest first: the `id`, `version`, `build` and `state` of each image, `isDefault`, true for the [default image](virtual-machines.md#default-image), `diskGB`, the size of its disk, the smallest disk of its virtual machines, and, for a failed image, its `failure`.
 - **Errors:** rule 1 of the [rules](#rules-of-the-vm-tools).
 
 Description:
 
 ```text
-List the macOS images of the virtual machines of this Mac, oldest first: id, macOS version and build, state (downloading, installing, needsSetup, ready or failed), isDefault for the default image, which vm_start uses when no image is named, and the cores, memoryGB and diskGB of their virtual machines. Only ready images start virtual machines. Only in chats started by HephaestusV2.
+List the macOS images of the virtual machines of this Mac, oldest first: id, macOS version and build, state (downloading, installing, needsSetup, ready or failed), isDefault for the default image, which vm_start uses when no image is named, and diskGB, the size of its disk. Only ready images start virtual machines. Only in chats started by HephaestusV2.
 ```
 
 Input schema:
@@ -2724,14 +2724,14 @@ Input schema:
 ### vm_start
 
 - **Engine call:** vmTools.start with `chatID`, `image`, `name`, `cores` and `memory` ([Engine API](engine-api.md#vmtoolsstart)).
-- **Steps:** those of [Starting and joining](virtual-machines.md#starting-and-joining): the image, the values, the join of a virtual machine that Claude runs from the image, else the start of a new one while fewer than 2 run, else a wait of up to 10 minutes, then the wait for the agent, at most 3 minutes.
+- **Steps:** those of [Starting and joining](virtual-machines.md#starting-and-joining): the image, the values, `cores` and `memory` being the [default values](virtual-machines.md#default-values) of Settings when absent and the disk of a new virtual machine `defaultVMDiskGB`, or the image's disk size when larger, the join of a virtual machine that Claude runs from the image, else the start of a new one while fewer than 2 run, else a wait of up to 10 minutes, then the wait for the agent, at most 3 minutes.
 - **Result:** the [VMToolMachine](engine-api.md#vmtoolmachine) of the virtual machine started or joined.
 - **Errors:** rule 1 of the [rules](#rules-of-the-vm-tools); no Apple silicon (`unavailable`); no default image (`conflict`, `No image is the default; name one with image.`); no image with this id (`notFound`, `Image <id> not found.`); no Ready image of this version (`notFound`, `No Ready image of macOS <version>.`); an image that is not Ready (`conflict`, `The image is not Ready.`); the name, cores or memory, checked as for `vms.create` (`invalid`, `name: use 1 to 100 characters on one line.`, `cores: use a number from <min> to <max>.`, `memory: use a number from <min> to <max>.`); still 2 virtual machines after the wait (`unavailable`, `2 virtual machines are still running after a wait of 10 minutes.`); the failures of the start of [vms.create](engine-api.md#vmscreate) (`unavailable`, `internal`).
 
 Description:
 
 ```text
-Start a macOS virtual machine for your checks, or join one: when a virtual machine that Claude started runs from the same image, this chat joins it and gets its id, and name, cores and memory are not used. Otherwise a new virtual machine starts from a clone of the image's disk when fewer than 2 run; while 2 run, the call waits up to 10 minutes for one to stop, then fails. image is a macOS version, for example 27.2.1, or an image id of vm_list_images; the default image when omitted. cores and memory (GB) are the image's when omitted. The call returns once the guest's agent is connected, at most 3 minutes later: check agentConnected. Start a virtual machine freely whenever a check needs one. A virtual machine Claude started stops and is deleted with vm_stop, or after some minutes without an action. The actions of every chat on one virtual machine run one at a time, in the order they arrive. Only in chats started by HephaestusV2.
+Start a macOS virtual machine for your checks, or join one: when a virtual machine that Claude started runs from the same image, this chat joins it and gets its id, and name, cores and memory are not used. Otherwise a new virtual machine starts from a clone of the image's disk when fewer than 2 run; while 2 run, the call waits up to 10 minutes for one to stop, then fails. image is a macOS version, for example 27.2.1, or an image id of vm_list_images; the default image when omitted. cores and memory (GB) are the defaults of Settings when omitted, and a new virtual machine gets the default disk size of Settings. The call returns once the guest's agent is connected, at most 3 minutes later: check agentConnected. Start a virtual machine freely whenever a check needs one. A virtual machine Claude started stops and is deleted with vm_stop, or after some minutes without an action. The actions of every chat on one virtual machine run one at a time, in the order they arrive. Only in chats started by HephaestusV2.
 ```
 
 Input schema:
@@ -2750,11 +2750,11 @@ Input schema:
     },
     "cores": {
       "type": "integer",
-      "description": "Processor cores, from 2; the image's when omitted."
+      "description": "Processor cores, from 2; the default of Settings when omitted."
     },
     "memory": {
       "type": "integer",
-      "description": "Memory in GB, from 4; the image's when omitted."
+      "description": "Memory in GB, from 4; the default of Settings when omitted."
     }
   },
   "required": ["name"],
@@ -4168,3 +4168,4 @@ Unauthorized: missing or invalid bearer token.
 - R190: Every chat of a Go service project whose API Explorer shows a contract lists the contract's operations and calls them on an environment through HephaestusV2's API tools, with the credentials and headers stored in the API Explorer; GET and HEAD calls run without a permission prompt.
 - R202: The user starts virtual machines from the Ready images in Settings, keeps them between runs, starts, stops and deletes them, and shows the screen of one in a main window, where the mouse and the keyboard drive it; at most 2 run at once, and the app does not restart by itself for an update while one runs.
 - R204: Every chat of every project gives Claude full control of virtual machines with the VM tools: Claude starts one freely or joins Claude's one of the same image, waits up to 10 minutes for a free place, drives it one action at a time across chats, acts on the user's only when named and never stops them; Claude's idle VMs stop after the minutes set in Settings, and each VM gets the Claude token of Settings at its start.
+- R208: Settings gives the default cores, memory and disk size of new virtual machines; an image has no such values, the user chooses them in the New VM sheet, and a virtual machine's disk is grown to the size chosen.

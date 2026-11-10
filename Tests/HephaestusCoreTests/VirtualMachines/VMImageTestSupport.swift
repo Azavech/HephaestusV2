@@ -178,6 +178,7 @@ final class FakeVMImageProvisioner: VMImageProvisioning, @unchecked Sendable {
         try Data("model".utf8).write(to: request.files.hardwareModel)
         try Data("identifier".utf8).write(to: request.files.machineIdentifier)
         try Data("auxiliary".utf8).write(to: request.files.auxiliaryStorage)
+        // A disk of 4 bytes: its size, rounded up, is 1 GB.
         try Data("disk".utf8).write(to: request.files.disk)
     }
 
@@ -215,8 +216,16 @@ final class FakeGuestMachine: GuestMachine {
     var events: ((GuestMachineEvent) -> Void)?
     var virtualMachine: VZVirtualMachine? { nil }
     private(set) var calls: [Call] = []
-    /// The requests to the agent, in the order they were sent.
+    /// The requests to the agent, in the order they were sent, without those that grow the
+    /// guest's container.
     private(set) var agentCalls: [AgentCall] = []
+    /// The requests that grow the guest's container (docs/virtual-machines.md › Starting). They
+    /// never reach `agentHandler`, which may run commands on this Mac.
+    private(set) var growCalls: [AgentCall] = []
+    /// The answer to a request that grows the guest's container: nil answers exit status 0.
+    var growFailure: Error?
+    /// The exit status of a request that grows the guest's container.
+    var growExitStatus = 0
     /// True while the agent is connected.
     private(set) var agentIsConnected = false
     /// True: the agent connects as soon as the virtual machine starts.
@@ -253,6 +262,12 @@ final class FakeGuestMachine: GuestMachine {
     func agentRequest(_ method: String, params: [String: JSONValue], data: Data, timeout: Duration) async throws -> GuestAgentResponse {
         guard agentIsConnected else { throw GuestAgentError.disconnected }
         let call = AgentCall(method: method, params: params, data: data)
+        if method == "exec", params["command"] == .string(GuestDisk.growContainerCommand) {
+            growCalls.append(call)
+            if let growFailure { throw growFailure }
+            return GuestAgentResponse(result: ["exitStatus": .int(growExitStatus), "timedOut": .bool(false), "stdout": "",
+                                               "stderr": .string(growExitStatus == 0 ? "" : "Error: -69519"), "truncated": .bool(false)])
+        }
         agentCalls.append(call)
         if let hold = agentHolds[method] {
             try await hold.wait()
@@ -346,9 +361,9 @@ func withVMEngine<T>(prepare: (DataDirectory) throws -> Void = { _ in },
     }
 }
 
-/// Adds an image of the newest version with 2 cores, 4 GB of memory and 64 GB of disk.
+/// Adds an image of the newest version.
 func addImage(_ connection: LocalEngineConnection, build: String = "26B131") async throws -> VMImage {
-    try await connection.call(VMImagesAdd.self, VMImagesAdd.Params(build: build, cores: 2, memoryGB: 4, diskGB: 64))
+    try await connection.call(VMImagesAdd.self, VMImagesAdd.Params(build: build))
 }
 
 /// Adds an image and waits until it is in `needsSetup`.
@@ -381,15 +396,16 @@ func firstVMList(on stream: AsyncStream<EngineEventEnvelope>, where predicate: @
     return envelope.flatMap { try? $0.payload(VMsChangedEvent.self) }
 }
 
-/// `vms.create` with the image's own cores and memory.
+/// `vms.create` with 2 cores, 4 GB of memory and the image's own disk size, so that the disk does
+/// not grow.
 func createVM(_ connection: LocalEngineConnection, image: VMImage, name: String = "Menu checks") async throws -> VirtualMachine {
-    try await connection.call(VMsCreate.self, VMsCreate.Params(name: name, imageID: image.id, cores: image.cores, memoryGB: image.memoryGB))
+    try await connection.call(VMsCreate.self, VMsCreate.Params(name: name, imageID: image.id, cores: 2, memoryGB: 4, diskGB: image.diskGB))
 }
 
 /// Starts a virtual machine for Claude, as a chat of the project DEMO, without the checks of the
 /// chat that `vm_start` makes (docs/virtual-machines.md › Lifecycle).
 func createClaudeVM(_ engine: Engine, image: VMImage, chatID: ChatID = UUID(), name: String = "Settings check") async throws -> VirtualMachine {
-    try await engine.createVirtualMachine(VMsCreate.Params(name: name, imageID: image.id, cores: image.cores, memoryGB: image.memoryGB),
+    try await engine.createVirtualMachine(VMsCreate.Params(name: name, imageID: image.id, cores: 2, memoryGB: 4, diskGB: image.diskGB),
                                           startedBy: .claude(projectID: "DEMO", chatID: chatID), .system)
 }
 

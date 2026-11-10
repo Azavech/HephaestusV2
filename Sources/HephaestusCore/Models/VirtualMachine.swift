@@ -47,6 +47,12 @@ public struct VirtualMachine: Codable, Sendable, Hashable, Identifiable {
     public var cores: Int
     /// Its memory in GB, 1024³ bytes each.
     public var memoryGB: Int
+    /// The size of its disk in GB, chosen when it was created; nil for a virtual machine of an
+    /// earlier version, whose disk has the size of its image's.
+    public var diskGB: Int?
+    /// True while the guest's APFS container has not yet grown over the disk grown at the creation
+    /// (docs/virtual-machines.md › Starting).
+    public var growContainer: Bool
     /// The keys `startedBy`, `projectID` and `chatID`.
     public var startedBy: VMStarter
     /// When the virtual machine was created.
@@ -58,7 +64,7 @@ public struct VirtualMachine: Codable, Sendable, Hashable, Identifiable {
     public var unknownKeys: [String: JSONValue]
 
     public init(schema: Int = 1, id: UUID, name: String, imageID: UUID, version: String, build: String, cores: Int, memoryGB: Int,
-                startedBy: VMStarter = .user, created: Date, state: VirtualMachineState = .stopped, startedAt: Date? = nil,
+                diskGB: Int? = nil, growContainer: Bool = false, startedBy: VMStarter = .user, created: Date, state: VirtualMachineState = .stopped, startedAt: Date? = nil,
                 unknownKeys: [String: JSONValue] = [:]) {
         self.schema = schema
         self.id = id
@@ -68,6 +74,8 @@ public struct VirtualMachine: Codable, Sendable, Hashable, Identifiable {
         self.build = build
         self.cores = cores
         self.memoryGB = memoryGB
+        self.diskGB = diskGB
+        self.growContainer = growContainer
         self.startedBy = startedBy
         self.created = created
         self.state = state
@@ -75,7 +83,7 @@ public struct VirtualMachine: Codable, Sendable, Hashable, Identifiable {
         self.unknownKeys = unknownKeys
     }
 
-    static let knownKeys: Set<String> = ["schema", "id", "name", "imageID", "version", "build", "cores", "memoryGB", "startedBy",
+    static let knownKeys: Set<String> = ["schema", "id", "name", "imageID", "version", "build", "cores", "memoryGB", "diskGB", "growContainer", "startedBy",
                                          "projectID", "chatID", "created", "state", "startedAt"]
 
     public init(from decoder: Decoder) throws {
@@ -88,6 +96,8 @@ public struct VirtualMachine: Codable, Sendable, Hashable, Identifiable {
         build = try c.required("build")
         cores = try c.required("cores")
         memoryGB = try c.required("memoryGB")
+        diskGB = try c.optional("diskGB")
+        growContainer = try c.value("growContainer", default: false)
         let rawStarter: String = try c.required("startedBy")
         switch VMStarter.Kind(rawValue: rawStarter) {
         case .user:
@@ -124,6 +134,8 @@ public struct VirtualMachine: Codable, Sendable, Hashable, Identifiable {
         try c.encode(build, "build")
         try c.encode(cores, "cores")
         try c.encode(memoryGB, "memoryGB")
+        try c.encodeOptional(diskGB, "diskGB")
+        try c.encode(growContainer, "growContainer")
         try c.encode(startedBy.kind.rawValue, "startedBy")
         switch startedBy {
         case .user:

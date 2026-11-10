@@ -8,8 +8,7 @@ struct VMImageFileTests {
     static let id = UUID(uuidString: "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F")!
 
     static func image(_ id: UUID = VMImageFileTests.id, state: VMImageState = .ready, created: String = "2026-11-09T14:03:00Z") -> VMImage {
-        VMImage(id: id, version: "27.2.1", build: "26B131", cores: 2, memoryGB: 4, diskGB: 64, state: state,
-                created: ISODate.date(from: created)!)
+        VMImage(id: id, version: "27.2.1", build: "26B131", state: state, created: ISODate.date(from: created)!)
     }
 
     @Test("An image is written with its keys in the order of the field table, without the keys that are never stored")
@@ -19,6 +18,7 @@ struct VMImageFileTests {
             var image = Self.image()
             image.progress = 0.42
             image.diskBytes = 1_000
+            image.diskGB = 32
             try VMImageStore.write(image, to: directory)
             let file = folder.appendingPathComponent("VirtualMachines/Images/\(Self.id.uuidString)/image.yml")
             #expect(try String(contentsOf: file, encoding: .utf8) == """
@@ -26,9 +26,6 @@ struct VMImageFileTests {
                 id: 5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F
                 version: 27.2.1
                 build: 26B131
-                cores: 2
-                memoryGB: 4
-                diskGB: 64
                 state: ready
                 failure: null
                 created: 2026-11-09T14:03:00Z
@@ -49,9 +46,6 @@ struct VMImageFileTests {
                 id: 5b8e7f60-3c1d-4a2b-9e8f-7a6b5c4d3e2f
                 version: '26.6'
                 build: 25G72
-                cores: 4
-                memoryGB: 8
-                diskGB: 100
                 state: failed
                 failure: The app quit before the image was ready.
                 created: 2026-11-08T09:30:00Z
@@ -74,15 +68,16 @@ struct VMImageFileTests {
         }
     }
 
-    @Test("The engine API adds progress and diskBytes")
+    @Test("The engine API adds progress, diskBytes and diskGB")
     func apiKeys() throws {
         var image = Self.image(state: .downloading)
         image.progress = 0.426
         image.diskBytes = 123
+        image.diskGB = 32
         let json = try jsonValue(String(decoding: try EngineJSON.encode(image), as: UTF8.self))
         #expect(json == (try jsonValue("""
-            {"build": "26B131", "cores": 2, "created": "2026-11-09T14:03:00Z", "diskBytes": 123, "diskGB": 64, "failure": null,
-             "id": "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F", "memoryGB": 4, "progress": 0.426, "schema": 1, "state": "downloading",
+            {"build": "26B131", "created": "2026-11-09T14:03:00Z", "diskBytes": 123, "diskGB": 32, "failure": null,
+             "id": "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F", "progress": 0.426, "schema": 1, "state": "downloading",
              "version": "27.2.1"}
             """)))
         #expect(try EngineJSON.decode(VMImage.self, from: try EngineJSON.encode(image)) == image)
@@ -156,23 +151,71 @@ struct VMImageFileTests {
         }
     }
 
-    @Test("The ranges of an image's values on a Mac, and the message of a value outside its range")
+    @Test("The ranges of a virtual machine's values on a Mac, its disk from the image's, and the message of a value outside its range")
     func limits() throws {
         let limits = VMImageLimits(processorCount: 14, physicalMemory: 36 * 1024 * 1024 * 1024)
         #expect(limits.cores == 2...14)
         #expect(limits.memoryGB == 4...36)
         #expect(limits.diskGB == 32...2048)
-        try limits.check(cores: 2, memoryGB: 4, diskGB: 64)
-        try limits.check(cores: 14, memoryGB: 36, diskGB: 2048)
-        #expect(throws: ValidationError.invalid("cores", "use a number from 2 to 14")) { try limits.check(cores: 1, memoryGB: 1, diskGB: 1) }
-        #expect(throws: ValidationError.invalid("memoryGB", "use a number from 4 to 36")) { try limits.check(cores: 2, memoryGB: 37, diskGB: 1) }
-        #expect(throws: ValidationError.invalid("diskGB", "use a number from 32 to 2048")) { try limits.check(cores: 2, memoryGB: 4, diskGB: 31) }
+        #expect(limits.diskGB(imageDiskGB: 32) == 32...2048)
+        #expect(limits.diskGB(imageDiskGB: 64) == 64...2048)
+        try limits.check(cores: 2, memoryGB: 4, diskGB: 32, imageDiskGB: 32)
+        try limits.check(cores: 14, memoryGB: 36, diskGB: 2048, imageDiskGB: 64)
+        #expect(throws: ValidationError.invalid("cores", "use a number from 2 to 14")) {
+            try limits.check(cores: 1, memoryGB: 1, diskGB: 1, imageDiskGB: 32)
+        }
+        #expect(throws: ValidationError.invalid("memoryGB", "use a number from 4 to 36")) {
+            try limits.check(cores: 2, memoryGB: 37, diskGB: 1, imageDiskGB: 32)
+        }
+        #expect(throws: ValidationError.invalid("diskGB", "use a number from 64 to 2048")) {
+            try limits.check(cores: 2, memoryGB: 4, diskGB: 63, imageDiskGB: 64)
+        }
+        #expect(throws: ValidationError.invalid("diskGB", "use a number from 32 to 2048")) {
+            try limits.check(cores: 2, memoryGB: 4, diskGB: 2049, imageDiskGB: 32)
+        }
         #expect(VMImageLimits.message("cores", limits.cores) == "cores: use a number from 2 to 14.")
         // A Mac smaller than the defaults still accepts them.
         let small = VMImageLimits(processorCount: 1, physicalMemory: 2 * 1024 * 1024 * 1024)
         #expect(small.cores == 2...2)
         #expect(small.memoryGB == 4...4)
-        #expect(VMImageLimits.defaultCores == 2 && VMImageLimits.defaultMemoryGB == 4 && VMImageLimits.defaultDiskGB == 64)
+        #expect(VMImageLimits.imageDiskGB == 32)
+        #expect(VMImageLimits.gigabytes(ofBytes: 32 * VMImageLimits.bytesPerGB) == 32)
+        #expect(VMImageLimits.gigabytes(ofBytes: 32 * VMImageLimits.bytesPerGB + 1) == 33)
+    }
+
+    @Test("An image.yml with the cores, memoryGB and diskGB of an earlier version loads; cores and memoryGB stay as unknown keys")
+    func oldValues() throws {
+        try withTemporaryDirectory { folder in
+            let directory = DataDirectory(url: folder)
+            let file = VMImageStore.files(of: Self.id, in: directory).metadata
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("""
+                schema: 1
+                id: 5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F
+                version: 27.2.1
+                build: 26B131
+                cores: 2
+                memoryGB: 4
+                diskGB: 64
+                state: ready
+                failure: null
+                created: 2026-11-09T14:03:00Z
+                """.utf8).write(to: file)
+            let image = try #require(VMImageStore.loadAll(directory, log: nil).first)
+            #expect(image.state == .ready && image.version == "27.2.1")
+            #expect(image.diskGB == 0)
+            #expect(image.unknownKeys == ["cores": .int(2), "memoryGB": .int(4)])
+            try VMImageStore.write(image, to: directory)
+            let written = try String(contentsOf: file, encoding: .utf8)
+            #expect(written.contains("cores: 2") && written.contains("memoryGB: 4") && !written.contains("diskGB"))
+            // The disk size comes from Disk.img.
+            let disk = VMImageStore.files(of: Self.id, in: directory).disk
+            try Data().write(to: disk)
+            let handle = try FileHandle(forWritingTo: disk)
+            try handle.truncate(atOffset: 64 * VMImageLimits.bytesPerGB)
+            try handle.close()
+            #expect(VMImageStore.diskGB(of: VMImageStore.files(of: Self.id, in: directory)) == 64)
+        }
     }
 
     @Test("Paths of docs/virtual-machines.md › Storage")

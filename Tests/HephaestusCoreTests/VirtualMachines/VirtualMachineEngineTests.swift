@@ -46,12 +46,15 @@ struct VirtualMachineEngineTests {
             let image = try await addReadyImage(engine, connection, provisioner)
             #expect(try await connection.call(VMsList.self) == VMList())
             let events = connection.events
+            // The image's disk of 4 bytes is 1 GB: a disk of 1 GB keeps the clone's size.
+            #expect(image.diskGB == 1)
             let created = try await connection.call(VMsCreate.self, VMsCreate.Params(name: "  Menu checks ", imageID: image.id,
-                                                                                     cores: 2, memoryGB: 5))
+                                                                                     cores: 2, memoryGB: 5, diskGB: 1))
             #expect(created.name == "Menu checks")
             #expect(created.imageID == image.id)
             #expect(created.version == "27.2.1" && created.build == "26B131")
             #expect(created.cores == 2 && created.memoryGB == 5)
+            #expect(created.diskGB == 1 && !created.growContainer)
             #expect(created.startedBy == .user)
             #expect(created.state == .running)
             #expect(created.startedAt != nil)
@@ -78,6 +81,73 @@ struct VirtualMachineEngineTests {
         }
     }
 
+    @Test("vms.create grows the clone to the disk size chosen, and the first start whose agent connects grows the guest's container")
+    func createGrown() async throws {
+        try await withVMEngine { engine, connection, provisioner, _ in
+            let image = try await addReadyImage(engine, connection, provisioner)
+            let created = try await connection.call(VMsCreate.self, VMsCreate.Params(name: "Big", imageID: image.id, cores: 2,
+                                                                                     memoryGB: 4, diskGB: 3))
+            #expect(created.diskGB == 3 && created.growContainer)
+            let files = VirtualMachineStore.files(of: created.id, in: engine.dataDirectory)
+            let metadata = VirtualMachineStore.metadataFile(of: created.id, in: engine.dataDirectory)
+            #expect(try FileManager.default.attributesOfItem(atPath: files.disk.path)[.size] as? UInt64 == 3 * VMImageLimits.bytesPerGB)
+            #expect(try ProjectFileStore.decodeYAML(VirtualMachine.self, at: metadata).growContainer)
+            // The image's disk keeps its size.
+            #expect(try String(contentsOf: VMImageStore.files(of: image.id, in: engine.dataDirectory).disk, encoding: .utf8) == "disk")
+
+            // A command that fails leaves growContainer for the next start, and the agent is ready all the same.
+            let machine = try await Self.lastMachine(provisioner)
+            await MainActor.run {
+                machine.growExitStatus = 1
+                machine.agentConnects(sip: .disabled)
+            }
+            let session = try #require(await engine.virtualMachineSession(created.id))
+            #expect(await session.waitForAgent(timeout: .seconds(5)))
+            let grow = try #require(await MainActor.run { machine.growCalls.first })
+            #expect(grow.params == ["command": .string(GuestDisk.growContainerCommand), "asRoot": true, "timeout": 120])
+            #expect(try ProjectFileStore.decodeYAML(VirtualMachine.self, at: metadata).growContainer)
+            _ = try await connection.call(VMsStop.self, VMParams(vmID: created.id))
+
+            // The next start grows it, and vm.yml is written with growContainer false.
+            _ = try await connection.call(VMsStart.self, VMParams(vmID: created.id))
+            let again = try await Self.lastMachine(provisioner)
+            await MainActor.run { again.agentConnects(sip: .disabled) }
+            let next = try #require(await engine.virtualMachineSession(created.id))
+            #expect(await next.waitForAgent(timeout: .seconds(5)))
+            #expect(await MainActor.run { again.growCalls.count } == 1)
+            await waitUntil { (try? ProjectFileStore.decodeYAML(VirtualMachine.self, at: metadata).growContainer) == false }
+            #expect(try ProjectFileStore.decodeYAML(VirtualMachine.self, at: metadata).growContainer == false)
+            #expect(try await connection.call(VMsList.self).machines.first?.growContainer == false)
+            _ = try await connection.call(VMsStop.self, VMParams(vmID: created.id))
+
+            // Later starts grow nothing.
+            _ = try await connection.call(VMsStart.self, VMParams(vmID: created.id))
+            let third = try await Self.lastMachine(provisioner)
+            await MainActor.run { third.agentConnects(sip: .disabled) }
+            #expect(await (try #require(await engine.virtualMachineSession(created.id))).waitForAgent(timeout: .seconds(5)))
+            #expect(await MainActor.run { third.growCalls }.isEmpty)
+        }
+    }
+
+    @Test("A vm.yml of an earlier version, without diskGB and growContainer, loads")
+    func oldMachineFile() throws {
+        let machine = try YAMLCoding.decode(VirtualMachine.self, from: """
+            schema: 1
+            id: 7D2C1A90-5E4B-4F3A-8B6C-1D0E9F8A7B6C
+            name: Menu checks
+            imageID: 5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F
+            version: 27.2.1
+            build: 26B131
+            cores: 4
+            memoryGB: 8
+            startedBy: user
+            projectID: null
+            chatID: null
+            created: 2026-11-10T09:12:00Z
+            """)
+        #expect(machine.diskGB == nil && !machine.growContainer && machine.unknownKeys.isEmpty)
+    }
+
     @Test("vms.create checks the Mac, the name, the image, the ranges, then the 2 running virtual machines")
     func createErrors() async throws {
         try await withVMEngine { engine, connection, provisioner, _ in
@@ -85,9 +155,10 @@ struct VirtualMachineEngineTests {
             let waiting = try await addInstalledImage(connection, build: "26B123")
             let limits = VMImageLimits.host
             let made = provisioner.machines.count
-            func create(_ name: String, _ imageID: UUID, _ cores: Int = 2, _ memoryGB: Int = 4) async -> EngineError? {
+            func create(_ name: String, _ imageID: UUID, _ cores: Int = 2, _ memoryGB: Int = 4, _ diskGB: Int = 1) async -> EngineError? {
                 await engineError {
-                    try await connection.call(VMsCreate.self, VMsCreate.Params(name: name, imageID: imageID, cores: cores, memoryGB: memoryGB))
+                    try await connection.call(VMsCreate.self, VMsCreate.Params(name: name, imageID: imageID, cores: cores,
+                                                                               memoryGB: memoryGB, diskGB: diskGB))
                 }
             }
             let missing = UUID()
@@ -101,6 +172,10 @@ struct VirtualMachineEngineTests {
             #expect(await create("VM", ready.id, limits.cores.upperBound + 1)?.code == .invalid)
             #expect(await create("VM", ready.id, 2, 3) == EngineError(.invalid, "memoryGB: use a number from 4 to \(limits.memoryGB.upperBound)."))
             #expect(await create("VM", ready.id, 2, limits.memoryGB.upperBound + 1)?.code == .invalid)
+            // The disk goes from the image's disk size, 1 GB here, to 2048.
+            #expect(await create("VM", ready.id, 2, 4, 0) == EngineError(.invalid, "diskGB: use a number from 1 to 2048."))
+            #expect(await create("VM", ready.id, 2, 4, 2049) == EngineError(.invalid, "diskGB: use a number from 1 to 2048."))
+            #expect(await create("VM", ready.id, 1, 4, 0)?.message.hasPrefix("cores:") == true)
             #expect(try await connection.call(VMsList.self) == VMList())
             #expect(provisioner.machines.count == made)
             #expect(Self.machineFolders(engine).isEmpty)

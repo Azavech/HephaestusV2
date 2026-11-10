@@ -103,7 +103,7 @@ enum MacVMConfiguration {
 @MainActor
 enum MacVMInstaller {
     /// Reads the IPSW, writes `HardwareModel`, `MachineIdentifier`, `AuxiliaryStorage` and
-    /// `Disk.img`, then installs macOS in a virtual machine with the image's cores and memory.
+    /// `Disk.img`, then installs macOS in a virtual machine with the cores and the memory of the request.
     /// Cancelling the task cancels the installer.
     static func install(_ request: VMImageInstallRequest, progress: @escaping @Sendable (Double) -> Void) async throws {
         let files = request.files

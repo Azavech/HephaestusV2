@@ -138,6 +138,14 @@ enum VirtualMachinePresentation {
         readyImages.first { $0.id == defaultImageID } ?? readyImages.first
     }
 
+    /// The values of the New VM sheet when it opens: the default values of Settings, brought into
+    /// this Mac's ranges, and a disk of at least the image's (docs/ui.md › Virtual Machines).
+    static func initialValues(settings: HostSettings, image: VMImage?,
+                              limits: VMImageLimits = .host) -> (cores: Int, memoryGB: Int, diskGB: Int) {
+        let defaults = settings.vmDefaults(limits)
+        return (defaults.cores, defaults.memoryGB, max(defaults.diskGB, image?.diskGB ?? 0))
+    }
+
     /// `Start` of the New VM sheet is enabled once the name is not empty and an image is selected.
     static func canSubmit(name: String, imageID: UUID?) -> Bool {
         imageID != nil && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -147,6 +155,111 @@ enum VirtualMachinePresentation {
     /// engine refuses. Any other failure is a failed start, shown under the table.
     static func staysInSheet(_ error: Error) -> Bool {
         (error as? EngineError)?.code == .invalid
+    }
+}
+
+/// The fields of the New VMs section, the default values of new virtual machines (docs/ui.md ›
+/// Virtual Machines, docs/virtual-machines.md › Default values).
+enum NewVMsPresentation {
+    enum Field: CaseIterable {
+        case cores, memory, disk
+
+        var label: String {
+            switch self {
+            case .cores: return "Default cores"
+            case .memory: return "Default memory (GB)"
+            case .disk: return "Default disk (GB)"
+            }
+        }
+
+        /// The key of `settings.yml`.
+        var key: String {
+            switch self {
+            case .cores: return "defaultVMCores"
+            case .memory: return "defaultVMMemoryGB"
+            case .disk: return "defaultVMDiskGB"
+            }
+        }
+
+        func range(_ limits: VMImageLimits) -> ClosedRange<Int> {
+            switch self {
+            case .cores: return limits.cores
+            case .memory: return limits.memoryGB
+            case .disk: return limits.diskGB
+            }
+        }
+
+        func stored(_ settings: HostSettings) -> Int {
+            switch self {
+            case .cores: return settings.defaultVMCores
+            case .memory: return settings.defaultVMMemoryGB
+            case .disk: return settings.defaultVMDiskGB
+            }
+        }
+
+        func update(_ value: Int) -> SettingsUpdate.Params {
+            switch self {
+            case .cores: return SettingsUpdate.Params(defaultVMCores: value)
+            case .memory: return SettingsUpdate.Params(defaultVMMemoryGB: value)
+            case .disk: return SettingsUpdate.Params(defaultVMDiskGB: value)
+            }
+        }
+    }
+
+    /// The number of a field; a text that is not a whole number gets the engine's message for a
+    /// value outside the range.
+    static func value(_ text: String, _ field: Field, limits: VMImageLimits = .host) -> Result<Int, ValidationError> {
+        guard let value = Int(text.trimmingCharacters(in: .whitespaces)) else {
+            let range = field.range(limits)
+            return .failure(.invalid(field.key, "use a number from \(range.lowerBound) to \(range.upperBound)"))
+        }
+        return .success(value)
+    }
+}
+
+/// The New VMs section: three number fields, each a `settings.yml` key applied with
+/// `settings.update` on Return or when it loses the focus.
+struct NewVMsSection: View {
+    @Environment(AppModel.self) private var app
+    @State private var messages: [NewVMsPresentation.Field: String] = [:]
+
+    private var settings: HostSettings { app.localWorkspace.settings ?? HostSettings() }
+
+    var body: some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 6, verticalSpacing: 6) {
+            ForEach(NewVMsPresentation.Field.allCases, id: \.self) { field in
+                GridRow {
+                    Text(field.label)
+                        .gridColumnAlignment(.trailing)
+                    CommitTextField(title: field.label, value: String(field.stored(settings))) { text in
+                        commit(field, text)
+                    }
+                    .frame(width: 60)
+                }
+                if let message = messages[field] {
+                    GridRow {
+                        Color.clear
+                            .gridCellUnsizedAxes([.horizontal, .vertical])
+                        FieldMessage(text: message)
+                    }
+                }
+            }
+        }
+    }
+
+    private func commit(_ field: NewVMsPresentation.Field, _ text: String) {
+        switch NewVMsPresentation.value(text, field) {
+        case .failure(let error):
+            messages[field] = error.message
+        case .success(let value):
+            guard value != field.stored(settings) else {
+                messages[field] = nil
+                return
+            }
+            Task {
+                messages[field] = await updateLocalSettings(app, field.update(value))
+            }
+        }
     }
 }
 
@@ -382,6 +495,9 @@ struct VirtualMachinesSettingsPane: View {
                     Button("Delete…", action: deleteMachine)
                         .disabled(selectedMachine == nil)
                 }
+            }
+            SettingsRow(label: "New VMs") {
+                NewVMsSection()
             }
             SettingsRow(label: "Claude") {
                 ClaudeVMSection()

@@ -99,13 +99,21 @@ extension Engine {
 
     // MARK: vmImages.list and vmImages.changed
 
-    /// The images, oldest first, with the space their folders take on disk.
+    /// The images, oldest first, with the space their folders take on disk and the size of their
+    /// disk.
     func vmImageList() -> [VMImage] {
         VMImageStore.sorted(Array(vmImages.images.values)).map { image in
             var image = image
             image.diskBytes = VMImageStore.diskBytes(of: dataDirectory.vmImageFolder(image.id))
+            image.diskGB = imageDiskGB(image.id)
             return image
         }
+    }
+
+    /// The size of an image's disk in GB, rounded up; 0 while it has none
+    /// (docs/virtual-machines.md › Images).
+    func imageDiskGB(_ id: UUID) -> Int {
+        VMImageStore.diskGB(of: VMImageStore.files(of: id, in: dataDirectory))
     }
 
     func emitVMImages(origin: Actor) {
@@ -131,16 +139,11 @@ extension Engine {
 
     // MARK: vmImages.add (docs/virtual-machines.md › Adding an image)
 
-    /// Checks the Mac, the ranges and the build, creates the image in the state `downloading`,
-    /// then starts its download and install in the background.
+    /// Checks the Mac and the build, creates the image in the state `downloading`, then starts its
+    /// download and install in the background.
     func addVMImage(_ params: VMImagesAdd.Params, _ actor: Actor) async throws -> VMImage {
         guard configuration.imageProvisioner.supportsVirtualMachines else {
             throw EngineError(.unavailable, VMImageFailure.needsAppleSilicon.message)
-        }
-        do {
-            try VMImageLimits.host.check(cores: params.cores, memoryGB: params.memoryGB, diskGB: params.diskGB)
-        } catch let error as ValidationError {
-            throw EngineError(error)
         }
         // A build the kept list lacks may be newer than that list: it is read again.
         var version = vmImages.versions?.first { $0.build == params.build }
@@ -151,8 +154,7 @@ extension Engine {
             throw EngineError(.notFound, "macOS build \(params.build) not found.")
         }
 
-        let image = VMImage(id: UUID(), version: version.version, build: version.build, cores: params.cores,
-                            memoryGB: params.memoryGB, diskGB: params.diskGB, state: .downloading,
+        let image = VMImage(id: UUID(), version: version.version, build: version.build, state: .downloading,
                             created: Date().truncatedToSeconds, progress: 0)
         do {
             try VMImageStore.write(image, to: dataDirectory)
@@ -185,8 +187,10 @@ extension Engine {
             try await acquireVMSlot(.install(id))
             holdsSlot = true
             guard let image = vmImages.images[id] else { throw CancellationError() }
-            let request = VMImageInstallRequest(version: image.version, files: files, cores: image.cores,
-                                                memoryGB: image.memoryGB, diskGB: image.diskGB)
+            // The default values of Settings when the install starts (docs/virtual-machines.md › Install).
+            let defaults = settings.vmDefaults()
+            let request = VMImageInstallRequest(version: image.version, files: files, cores: defaults.cores,
+                                                memoryGB: defaults.memoryGB, diskGB: VMImageLimits.imageDiskGB)
             try await withProgress(of: id, in: .installing) { progress in
                 try await provisioner.install(request, progress: progress)
             }
@@ -450,8 +454,9 @@ extension Engine {
             } catch {
                 throw EngineError(.internal, "\(share.path) cannot be written: \(Self.withoutFinalPeriod(error.localizedDescription)).")
             }
-            let request = GuestMachineRequest(files: VMImageStore.files(of: image.id, in: dataDirectory), cores: image.cores,
-                                              memoryGB: image.memoryGB, sharedFolder: share)
+            let defaults = settings.vmDefaults()
+            let request = GuestMachineRequest(files: VMImageStore.files(of: image.id, in: dataDirectory), cores: defaults.cores,
+                                              memoryGB: defaults.memoryGB, sharedFolder: share)
             let provisioner = configuration.imageProvisioner
             var registered: VMSetupSession?
             do {

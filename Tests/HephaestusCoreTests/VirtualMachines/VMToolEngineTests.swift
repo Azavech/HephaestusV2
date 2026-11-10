@@ -72,7 +72,8 @@ struct VMToolEngineTests {
             let started = try await Self.start(engine, chat)
             #expect(started.name == "Menu checks")
             #expect(started.imageID == image.id && started.version == image.version)
-            #expect(started.cores == image.cores && started.memoryGB == image.memoryGB)
+            // The default values of Settings.
+            #expect(started.cores == 2 && started.memoryGB == 4)
             #expect(started.byClaude && started.state == .running && started.agentConnected)
             #expect(started.startedBy == "DEMO · \(chat.meta.title)")
             #expect(started.runningTime == "0 min")
@@ -278,6 +279,60 @@ struct VMToolEngineTests {
             #expect(!FileManager.default.fileExists(atPath: engine.dataDirectory.virtualMachineFolder(vm.id).path))
             #expect(try await connection.call(VMsList.self).machines.first?.state == .running)
         }
+    }
+
+    @Test("vm_start without cores or memory uses the New VMs values, and a new virtual machine gets defaultVMDiskGB or the image's disk")
+    func startDefaults() async throws {
+        try await Self.withVMTools { engine, connection, provisioner, image, _ in
+            _ = try await connection.call(SettingsUpdate.self, .init(defaultVMCores: 3, defaultVMMemoryGB: 5, defaultVMDiskGB: 40))
+            let chat = try await Self.newChat(connection)
+            let started = try await Self.start(engine, chat)
+            #expect(started.cores == 3 && started.memoryGB == 5)
+            let machine = try #require(try await connection.call(VMsList.self).machines.first)
+            // Its disk grew from the image's 1 GB, and the guest's container grew at the start.
+            #expect(image.diskGB == 1)
+            #expect(machine.diskGB == 40 && !machine.growContainer)
+            #expect(await MainActor.run { provisioner.machines.last?.growCalls.count } == 1)
+            _ = try await engine.call(VMToolsStop.self, .init(chatID: chat.id, vmID: started.id), actor: chat.actor)
+
+            // Values given win over the defaults.
+            let given = try await Self.start(engine, chat, cores: 2, memory: 4)
+            #expect(given.cores == 2 && given.memoryGB == 4)
+        }
+    }
+
+    @Test("The New VMs values: 2, 4 and 64 by default, each refused outside its range on this Mac")
+    func newVMsSettings() async throws {
+        let defaults = HostSettings()
+        #expect(defaults.defaultVMCores == 2 && defaults.defaultVMMemoryGB == 4 && defaults.defaultVMDiskGB == 64)
+        let read = try YAMLCoding.decode(HostSettings.self, from: "schema: 1\n")
+        #expect(read.defaultVMCores == 2 && read.defaultVMMemoryGB == 4 && read.defaultVMDiskGB == 64)
+        let limits = VMImageLimits.host
+        try await withTestEngine { _, connection, _ in
+            let refused: [(SettingsUpdate.Params, String)] = [
+                (.init(defaultVMCores: 1), "defaultVMCores: use a number from 2 to \(limits.cores.upperBound)."),
+                (.init(defaultVMCores: limits.cores.upperBound + 1), "defaultVMCores: use a number from 2 to \(limits.cores.upperBound)."),
+                (.init(defaultVMMemoryGB: 3), "defaultVMMemoryGB: use a number from 4 to \(limits.memoryGB.upperBound)."),
+                (.init(defaultVMMemoryGB: limits.memoryGB.upperBound + 1),
+                 "defaultVMMemoryGB: use a number from 4 to \(limits.memoryGB.upperBound)."),
+                (.init(defaultVMDiskGB: 31), "defaultVMDiskGB: use a number from 32 to 2048."),
+                (.init(defaultVMDiskGB: 2049), "defaultVMDiskGB: use a number from 32 to 2048."),
+            ]
+            for (params, message) in refused {
+                #expect(await engineError { try await connection.call(SettingsUpdate.self, params) } == EngineError(.invalid, message))
+            }
+            #expect(try await connection.call(SettingsGet.self) == HostSettings())
+            let updated = try await connection.call(SettingsUpdate.self, .init(defaultVMCores: 2, defaultVMMemoryGB: 4, defaultVMDiskGB: 2048))
+            #expect(updated.defaultVMDiskGB == 2048)
+        }
+        // A value of a larger Mac's file stays until it changes, and is brought into the range where it is used.
+        let small = VMImageLimits(processorCount: 4, physicalMemory: 8 * VMImageLimits.bytesPerGB)
+        let larger = HostSettings(defaultVMCores: 12, defaultVMMemoryGB: 32)
+        try larger.checkVMDefaults(changedFrom: larger, limits: small)
+        #expect(throws: ValidationError.invalid("defaultVMCores", "use a number from 2 to 4")) {
+            try HostSettings(defaultVMCores: 6, defaultVMMemoryGB: 32).checkVMDefaults(changedFrom: larger, limits: small)
+        }
+        #expect(larger.vmDefaults(small) == (4, 8, 64))
     }
 
     @Test("claudeVMIdleMinutes: 10 by default, 1 to 1440")

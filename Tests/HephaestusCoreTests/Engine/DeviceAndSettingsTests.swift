@@ -72,7 +72,7 @@ struct DeviceAndSettingsTests {
                 {"autoUpdate": true, "claudePath": null, "claudeVMIdleMinutes": 10,
                  "defaultChatSettings": {"contextWindow": "auto", "effort": "high", "model": "default", "permissionMode": "manual",
                                          "ultracode": false},
-                 "defaultVMImage": null,
+                 "defaultVMCores": 2, "defaultVMDiskGB": 64, "defaultVMImage": null, "defaultVMMemoryGB": 4,
                  "formatGoOnSave": true, "formatSwiftOnSave": true, "mcpPort": 47830,
                  "notifyAISummary": true, "notifyFinished": true, "notifyNeedsYou": true, "schema": 1,
                  "showHephaestusProject": true, "skillsLibraryPath": null, "syncEnabled": true, "syncPort": 47821, "updateCheckIntervalMinutes": 30}

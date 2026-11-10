@@ -60,7 +60,7 @@ struct BackgroundWorkRestartTests {
         try await withAppModel { app in
             @MainActor func set(_ state: VMImageState) {
                 app.localWorkspace.vmImages = [VMImage(id: UUID(uuidString: "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F")!, version: "27.2.1",
-                                                       build: "26B131", cores: 2, memoryGB: 4, diskGB: 64, state: state,
+                                                       build: "26B131", state: state,
                                                        created: Self.created)]
             }
             #expect(app.updateController.isAppIdle)

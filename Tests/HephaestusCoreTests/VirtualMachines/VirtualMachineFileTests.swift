@@ -34,6 +34,8 @@ struct VirtualMachineFileTests {
                 build: 26B131
                 cores: 4
                 memoryGB: 8
+                diskGB: null
+                growContainer: false
                 startedBy: user
                 projectID: null
                 chatID: null

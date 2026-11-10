@@ -2962,25 +2962,24 @@ The macOS images of virtual machines, their states, the download, the install an
 
 ### VMImage in the API
 
-The methods and `vmImages.changed` send [VMImage](data-model.md#image-metadata-file) with two keys that are never stored:
+The methods and `vmImages.changed` send [VMImage](data-model.md#image-metadata-file) with three keys that are never stored:
 
-| Key       | Type             | Value                                                                                                                                           |
-| --------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| progress  | Double, optional | The fraction done, 0 to 1: of the download while `state` is `downloading`, of the install while it is `installing`; absent in the other states. |
-| diskBytes | Int              | The space the files of the image's folder take on disk, in bytes ([Storage](virtual-machines.md#storage)).                                      |
+| Key       | Type             | Value                                                                                                                                                                            |
+| --------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| progress  | Double, optional | The fraction done, 0 to 1: of the download while `state` is `downloading`, of the install while it is `installing`; absent in the other states.                                  |
+| diskBytes | Int              | The space the files of the image's folder take on disk, in bytes ([Storage](virtual-machines.md#storage)).                                                                       |
+| diskGB    | Int              | The size of the image's disk, its `Disk.img`, in GB rounded up: the smallest disk of its virtual machines ([Images](virtual-machines.md#images)); 0 while the image has no disk. |
 
 An image whose IPSW downloads:
 
 ```json
 {
   "build": "26B131",
-  "cores": 2,
   "created": "2026-11-09T14:03:00Z",
   "diskBytes": 10876243968,
-  "diskGB": 64,
+  "diskGB": 0,
   "failure": null,
   "id": "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F",
-  "memoryGB": 4,
   "progress": 0.426,
   "schema": 1,
   "state": "downloading",
@@ -3016,21 +3015,19 @@ Swift type `VMImagesAdd` · actors: user · result: [VMImage](#vmimage-in-the-ap
 
 Creates an image of a macOS version, then downloads the version's IPSW and installs macOS in the background ([Adding an image](virtual-machines.md#adding-an-image)). The result is the new image, in the state `downloading`.
 
-| Param    | Type   | Required | Description                                                                           |
-| -------- | ------ | -------- | ------------------------------------------------------------------------------------- |
-| build    | String | yes      | The `build` of a version of the list of `vmImages.versions`.                          |
-| cores    | Int    | yes      | Processor cores of the image's virtual machines: 2 to the number of cores of the Mac. |
-| memoryGB | Int    | yes      | Their memory in GB: 4 to the memory of the Mac in GB, rounded down.                   |
-| diskGB   | Int    | yes      | The size of the image's disk in GB: 32 to 2048.                                       |
+| Param | Type   | Required | Description                                                  |
+| ----- | ------ | -------- | ------------------------------------------------------------ |
+| build | String | yes      | The `build` of a version of the list of `vmImages.versions`. |
+
+The image has no values of its virtual machines, and its disk is 32 GB ([Images](virtual-machines.md#images)).
 
 | Error       | When                                                                                                                                                               |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | unavailable | The Mac has no Apple silicon (`Virtual machines need a Mac with Apple silicon.`); the list of versions must be read and ipsw.me fails, as for `vmImages.versions`. |
-| invalid     | cores, memoryGB or diskGB is outside its range (`<param>: use a number from <min> to <max>.`).                                                                     |
 | notFound    | No version of the list has this build (`macOS build <build> not found.`).                                                                                          |
 | internal    | The image's folder or its `image.yml` cannot be written.                                                                                                           |
 
-The Apple silicon check comes first, then the ranges, then the build. Events: vmImages.changed, at once, then at every change of the image's state or percentage.
+The Apple silicon check comes first, then the build. Events: vmImages.changed, at once, then at every change of the image's state or percentage.
 
 ### vmImages.delete
 
@@ -3070,6 +3067,8 @@ A virtual machine of the user that runs:
   "chatID": null,
   "cores": 4,
   "created": "2026-11-10T09:12:00Z",
+  "diskGB": 100,
+  "growContainer": false,
   "id": "7D2C1A90-5E4B-4F3A-8B6C-1D0E9F8A7B6C",
   "imageID": "5B8E7F60-3C1D-4A2B-9E8F-7A6B5C4D3E2F",
   "memoryGB": 8,
@@ -3104,22 +3103,23 @@ Params: none. Errors: dispatcher errors only. Events: none.
 
 Swift type `VMsCreate` · actors: user · result: [VirtualMachine](#virtualmachine-in-the-api)
 
-Creates a virtual machine of the user from a Ready image, with a clone of the image's disk, and starts it ([Creating](virtual-machines.md#creating)). The result is the new virtual machine, running.
+Creates a virtual machine of the user from a Ready image, with a clone of the image's disk grown to the size chosen, and starts it ([Creating](virtual-machines.md#creating)). The result is the new virtual machine, running.
 
-| Param    | Type   | Required | Description                                                           |
-| -------- | ------ | -------- | --------------------------------------------------------------------- |
-| name     | String | yes      | The virtual machine's name: one line of 1 to 100 characters, trimmed. |
-| imageID  | UUID   | yes      | Id of a Ready image.                                                  |
-| cores    | Int    | yes      | Its processor cores: 2 to the number of cores of the Mac.             |
-| memoryGB | Int    | yes      | Its memory in GB: 4 to the memory of the Mac in GB, rounded down.     |
+| Param    | Type   | Required | Description                                                                                     |
+| -------- | ------ | -------- | ----------------------------------------------------------------------------------------------- |
+| name     | String | yes      | The virtual machine's name: one line of 1 to 100 characters, trimmed.                           |
+| imageID  | UUID   | yes      | Id of a Ready image.                                                                            |
+| cores    | Int    | yes      | Its processor cores: 2 to the number of cores of the Mac.                                       |
+| memoryGB | Int    | yes      | Its memory in GB: 4 to the memory of the Mac in GB, rounded down.                               |
+| diskGB   | Int    | yes      | The size of its disk in GB: the image's disk size to 2048 ([Clone](virtual-machines.md#clone)). |
 
 | Error       | When                                                                                                                                                                                   |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | unavailable | The Mac has no Apple silicon (`Virtual machines need a Mac with Apple silicon.`); the virtual machine cannot be made or started, with the framework's message: it then stays, stopped. |
-| invalid     | The name breaks its rule (`name: use 1 to 100 characters on one line.`); cores or memoryGB is outside its range (`<param>: use a number from <min> to <max>.`).                        |
+| invalid     | The name breaks its rule (`name: use 1 to 100 characters on one line.`); cores, memoryGB or diskGB is outside its range (`<param>: use a number from <min> to <max>.`).                |
 | notFound    | No image has this id (`Image <id> not found.`).                                                                                                                                        |
 | conflict    | The image is not Ready (`The image is not Ready.`); 2 virtual machines run (`2 virtual machines are already running.`).                                                                |
-| internal    | The virtual machine's folder, the clone or `vm.yml` cannot be written (`The virtual machine could not be created: <reason>.`); nothing of the virtual machine stays.                   |
+| internal    | The virtual machine's folder, the clone, its growth or `vm.yml` cannot be written (`The virtual machine could not be created: <reason>.`); nothing of the virtual machine stays.       |
 
 The checks come in this order: Apple silicon, the name, the image, the ranges, the 2 running virtual machines. Events: vms.changed, each time the list or the number of running virtual machines changes.
 
@@ -3189,9 +3189,7 @@ An element of the result of `vmTools.images`.
 | build     | String       | yes      | Its macOS build, for example `26B131`.                                                                             |
 | state     | VMImageState | yes      | `downloading`, `installing`, `needsSetup`, `ready` or `failed` ([Image states](virtual-machines.md#image-states)). |
 | isDefault | Bool         | yes      | True for the [default image](virtual-machines.md#default-image).                                                   |
-| cores     | Int          | yes      | The cores of its virtual machines.                                                                                 |
-| memoryGB  | Int          | yes      | Their memory in GB.                                                                                                |
-| diskGB    | Int          | yes      | The size of its disk in GB.                                                                                        |
+| diskGB    | Int          | yes      | The size of its disk in GB: the smallest disk of its virtual machines; 0 while it has no disk.                     |
 | failure   | String       | no       | The failure of a `failed` image.                                                                                   |
 
 ### VMToolMachine
@@ -3274,13 +3272,15 @@ Swift type `VMToolsStart` · actors: claude · result: [VMToolMachine](#vmtoolma
 
 Joins the virtual machine that Claude runs from the image, or starts a new one for the calling chat, waiting up to 10 minutes for a free place, then for its agent ([Starting and joining](virtual-machines.md#starting-and-joining)).
 
-| Param  | Type   | Required | Description                                                                                |
-| ------ | ------ | -------- | ------------------------------------------------------------------------------------------ |
-| chatID | UUID   | yes      | The calling chat; the MCP server sets it.                                                  |
-| image  | String | no       | A macOS version or the id of an image; the default image when absent.                      |
-| name   | String | yes      | The name of a new virtual machine: one line of 1 to 100 characters, trimmed.               |
-| cores  | Int    | no       | Its processor cores: 2 to the number of cores of the Mac; the image's when absent.         |
-| memory | Int    | no       | Its memory in GB: 4 to the memory of the Mac in GB, rounded down; the image's when absent. |
+| Param  | Type   | Required | Description                                                                                        |
+| ------ | ------ | -------- | -------------------------------------------------------------------------------------------------- |
+| chatID | UUID   | yes      | The calling chat; the MCP server sets it.                                                          |
+| image  | String | no       | A macOS version or the id of an image; the default image when absent.                              |
+| name   | String | yes      | The name of a new virtual machine: one line of 1 to 100 characters, trimmed.                       |
+| cores  | Int    | no       | Its processor cores: 2 to the number of cores of the Mac; `defaultVMCores` when absent.            |
+| memory | Int    | no       | Its memory in GB: 4 to the memory of the Mac in GB, rounded down; `defaultVMMemoryGB` when absent. |
+
+A new virtual machine gets a disk of `defaultVMDiskGB` GB, or of the image's disk size when that is larger ([Default values](virtual-machines.md#default-values)).
 
 Errors: those of [vm_start](mcp.md#vm_start).
 
@@ -3508,20 +3508,24 @@ Every param is optional; an absent param keeps its value. Value rules are those 
 | showHephaestusProject      | Bool         | no            | Show the HephaestusV2 project ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)).                                     |
 | defaultVMImage             | UUID         | no, clearable | The default image of virtual machines, a Ready image; null leaves none ([Default image](virtual-machines.md#default-image)).                        |
 | claudeVMIdleMinutes        | Int          | no            | Minutes after which an idle virtual machine of Claude stops, 1–1440 ([Idle stop](virtual-machines.md#idle-stop)).                                   |
+| defaultVMCores             | Int          | no            | Cores of new virtual machines, 2 to the number of cores of the Mac ([Default values](virtual-machines.md#default-values)).                          |
+| defaultVMMemoryGB          | Int          | no            | Their memory in GB, 4 to the memory of the Mac in GB, rounded down.                                                                                 |
+| defaultVMDiskGB            | Int          | no            | Their disk size in GB, 32–2048.                                                                                                                     |
 
-| Changed key                                     | Effect                                                                                                                                                                                                                                                                                                 |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| claudePath                                      | The CLI status is computed again ([Chats](chats.md#version-and-status)).                                                                                                                                                                                                                               |
-| defaultChatSettings                             | Used by chats created afterwards.                                                                                                                                                                                                                                                                      |
-| mcpPort                                         | The MCP server moves to the new port and chat processes launched before are terminated when their turn ends ([MCP server](mcp.md#server-lifecycle)).                                                                                                                                                   |
-| syncEnabled, syncPort                           | The sync server stops, or restarts on the new port; connected remote devices are disconnected ([Remote devices](remote.md)).                                                                                                                                                                           |
-| skillsLibraryPath                               | The engine uses the new folder, created when missing; skills of the previous folder are not moved ([Skills](skills.md#settings)).                                                                                                                                                                      |
-| autoUpdate, updateCheckIntervalMinutes          | Sent to the Updater ([Updater](updater.md)).                                                                                                                                                                                                                                                           |
-| formatGoOnSave, formatSwiftOnSave               | Used by `files.write`.                                                                                                                                                                                                                                                                                 |
-| notifyNeedsYou, notifyFinished, notifyAISummary | Used by the notifications This Mac posts ([UI › Status bar](ui.md#status-bar)).                                                                                                                                                                                                                        |
-| showHephaestusProject                           | false: the chat processes and comment answers of the HephaestusV2 project and its sub projects stop, and project.removed is emitted for each of them, then projects.changed; true: projects.changed lists them again ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)). |
-| claudeVMIdleMinutes                             | The idle virtual machines of Claude stop after the new number of minutes, those idle for longer at once ([Idle stop](virtual-machines.md#idle-stop)).                                                                                                                                                  |
-| defaultVMImage                                  | The image that a virtual machine starts from when none is named ([Default image](virtual-machines.md#default-image)).                                                                                                                                                                                  |
+| Changed key                                        | Effect                                                                                                                                                                                                                                                                                                 |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| claudePath                                         | The CLI status is computed again ([Chats](chats.md#version-and-status)).                                                                                                                                                                                                                               |
+| defaultChatSettings                                | Used by chats created afterwards.                                                                                                                                                                                                                                                                      |
+| mcpPort                                            | The MCP server moves to the new port and chat processes launched before are terminated when their turn ends ([MCP server](mcp.md#server-lifecycle)).                                                                                                                                                   |
+| syncEnabled, syncPort                              | The sync server stops, or restarts on the new port; connected remote devices are disconnected ([Remote devices](remote.md)).                                                                                                                                                                           |
+| skillsLibraryPath                                  | The engine uses the new folder, created when missing; skills of the previous folder are not moved ([Skills](skills.md#settings)).                                                                                                                                                                      |
+| autoUpdate, updateCheckIntervalMinutes             | Sent to the Updater ([Updater](updater.md)).                                                                                                                                                                                                                                                           |
+| formatGoOnSave, formatSwiftOnSave                  | Used by `files.write`.                                                                                                                                                                                                                                                                                 |
+| notifyNeedsYou, notifyFinished, notifyAISummary    | Used by the notifications This Mac posts ([UI › Status bar](ui.md#status-bar)).                                                                                                                                                                                                                        |
+| showHephaestusProject                              | false: the chat processes and comment answers of the HephaestusV2 project and its sub projects stop, and project.removed is emitted for each of them, then projects.changed; true: projects.changed lists them again ([Hiding the HephaestusV2 project](projects.md#hiding-the-hephaestusv2-project)). |
+| claudeVMIdleMinutes                                | The idle virtual machines of Claude stop after the new number of minutes, those idle for longer at once ([Idle stop](virtual-machines.md#idle-stop)).                                                                                                                                                  |
+| defaultVMImage                                     | The image that a virtual machine starts from when none is named ([Default image](virtual-machines.md#default-image)).                                                                                                                                                                                  |
+| defaultVMCores, defaultVMMemoryGB, defaultVMDiskGB | Used by the virtual machines, installs and setups that start afterwards ([Default values](virtual-machines.md#default-values)).                                                                                                                                                                        |
 
 | Error    | When                                                                                                                                                                                                                                                                                               |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -3838,7 +3842,10 @@ Any JSON value, defined in [Data model](data-model.md#swift-types) with the case
     "claudePath": null,
     "claudeVMIdleMinutes": 10,
     "defaultChatSettings": {"contextWindow": "auto", "effort": "high", "model": "default", "permissionMode": "manual", "ultracode": false},
+    "defaultVMCores": 2,
+    "defaultVMDiskGB": 64,
     "defaultVMImage": null,
+    "defaultVMMemoryGB": 4,
     "formatGoOnSave": true,
     "formatSwiftOnSave": false,
     "mcpPort": 47820,
@@ -5452,3 +5459,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R201: Settings has a Virtual Machines tab whose Images section adds macOS images for virtual machines from the versions ipsw.me lists, downloads and installs them, prepares each one once in a setup view of the main window so that an agent in the guest gives full control of it, marks the default image and deletes images.
 - R202: The user starts virtual machines from the Ready images in Settings, keeps them between runs, starts, stops and deletes them, and shows the screen of one in a main window, where the mouse and the keyboard drive it; at most 2 run at once, and the app does not restart by itself for an update while one runs.
 - R204: Every chat of every project gives Claude full control of virtual machines with the VM tools: Claude starts one freely or joins Claude's one of the same image, waits up to 10 minutes for a free place, drives it one action at a time across chats, acts on the user's only when named and never stops them; Claude's idle VMs stop after the minutes set in Settings, and each VM gets the Claude token of Settings at its start.
+- R208: Settings gives the default cores, memory and disk size of new virtual machines; an image has no such values, the user chooses them in the New VM sheet, and a virtual machine's disk is grown to the size chosen.

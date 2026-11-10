@@ -79,6 +79,13 @@ public enum VMImageStore {
         try ProjectFileStore.writeYAML(image.stored, to: files(of: image.id, in: directory).metadata)
     }
 
+    /// The size of the disk of an image in GB, rounded up: the size of its `Disk.img`, not the space
+    /// it takes. 0 while the image has no disk (docs/virtual-machines.md › Images).
+    public static func diskGB(of files: VMImageFiles) -> Int {
+        guard let size = (try? FileManager.default.attributesOfItem(atPath: files.disk.path))?[.size] as? NSNumber else { return 0 }
+        return VMImageLimits.gigabytes(ofBytes: size.uint64Value)
+    }
+
     /// The space the files of a folder take on disk, in bytes: for a sparse file, the space written
     /// so far. 0 for a folder that cannot be read.
     public static func diskBytes(of folder: URL) -> Int {

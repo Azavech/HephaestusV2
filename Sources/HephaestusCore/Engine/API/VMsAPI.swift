@@ -33,7 +33,7 @@ public enum VMsList: EngineMethod {
 }
 
 /// `vms.create`: creates a virtual machine of the user from a Ready image, with a clone of the
-/// image's disk, and starts it. Actors: user.
+/// image's disk grown to the size chosen, and starts it. Actors: user.
 public enum VMsCreate: EngineMethod {
     public static let name = "vms.create"
     public struct Params: Codable, Sendable, Hashable {
@@ -44,12 +44,15 @@ public enum VMsCreate: EngineMethod {
         public var cores: Int
         /// Its memory in GB.
         public var memoryGB: Int
+        /// The size of its disk in GB: the image's disk size to 2048.
+        public var diskGB: Int
 
-        public init(name: String, imageID: UUID, cores: Int, memoryGB: Int) {
+        public init(name: String, imageID: UUID, cores: Int, memoryGB: Int, diskGB: Int) {
             self.name = name
             self.imageID = imageID
             self.cores = cores
             self.memoryGB = memoryGB
+            self.diskGB = diskGB
         }
     }
     public typealias Result = VirtualMachine

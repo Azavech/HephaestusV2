@@ -3,9 +3,9 @@
 import HephaestusCore
 import SwiftUI
 
-/// Add Image: the macOS versions that ipsw.me gives, newest first, and the values of the image.
-/// `Add` calls `vmImages.add` and closes the sheet; the download and the install then show in the
-/// Images table.
+/// Add Image: the macOS versions that ipsw.me gives, newest first. The sheet asks for nothing else:
+/// the values of a virtual machine are chosen when it is created. `Add` calls `vmImages.add` and
+/// closes the sheet; the download and the install then show in the Images table.
 struct AddImageSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppModel.self) private var app
@@ -13,9 +13,6 @@ struct AddImageSheet: View {
     @State private var versions: [MacOSVersion] = []
     @State private var selectedBuild: String?
     @State private var loading = true
-    @State private var cores = String(VMImageLimits.defaultCores)
-    @State private var memory = String(VMImageLimits.defaultMemoryGB)
-    @State private var disk = String(VMImageLimits.defaultDiskGB)
     @State private var message: String?
     @State private var adding = false
 
@@ -43,9 +40,6 @@ struct AddImageSheet: View {
                         }
                     }
                 }
-                numberRow("Cores", text: $cores)
-                numberRow("Memory (GB)", text: $memory)
-                numberRow("Disk (GB)", text: $disk)
             }
             .disabled(adding)
             FieldMessage(text: message)
@@ -55,15 +49,6 @@ struct AddImageSheet: View {
         .frame(width: 380)
         .task {
             await loadVersions()
-        }
-    }
-
-    private func numberRow(_ label: String, text: Binding<String>) -> some View {
-        GridRow {
-            Text(label)
-            TextField(label, text: text)
-                .labelsHidden()
-                .frame(width: 80)
         }
     }
 
@@ -79,26 +64,13 @@ struct AddImageSheet: View {
         loading = false
     }
 
-    /// The whole number of a field, or nil with the engine's message for a value outside the range
-    /// of its param.
-    private func value(_ text: String, _ param: String, _ range: ClosedRange<Int>) -> Int? {
-        if let number = Int(text.trimmingCharacters(in: .whitespaces)) { return number }
-        message = VMImageLimits.message(param, range)
-        return nil
-    }
-
     private func add() {
         guard let build = selectedBuild, !adding else { return }
-        let limits = VMImageLimits.host
-        guard let coresValue = value(cores, "cores", limits.cores),
-              let memoryValue = value(memory, "memoryGB", limits.memoryGB),
-              let diskValue = value(disk, "diskGB", limits.diskGB) else { return }
         message = nil
         adding = true
         Task {
             do {
-                _ = try await app.localWorkspace.call(VMImagesAdd.self, VMImagesAdd.Params(
-                    build: build, cores: coresValue, memoryGB: memoryValue, diskGB: diskValue))
+                _ = try await app.localWorkspace.call(VMImagesAdd.self, VMImagesAdd.Params(build: build))
                 dismiss()
             } catch {
                 message = errorMessage(error)
