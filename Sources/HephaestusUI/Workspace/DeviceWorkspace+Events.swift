@@ -32,6 +32,7 @@ extension DeviceWorkspace {
             bundles[payload.projectID]?[payload.bundleID] = nil
         case .chatUpdated(let meta):
             chats[meta.id.uuidString] = meta
+            updateAgentResumes(of: meta.id.uuidString)
         case .chatDeleted(let payload):
             chats[payload.chatID.uuidString] = nil
             transcripts[payload.chatID.uuidString] = nil
@@ -43,6 +44,7 @@ extension DeviceWorkspace {
             transcripts[payload.chatID.uuidString]?.append(payload)
         case .chatAgents(let payload):
             agents[payload.chatID.uuidString] = payload.isEmpty ? nil : payload
+            updateAgentResumes(of: payload.chatID.uuidString)
         case .chatAgentItem(let payload):
             agentTranscripts[DeviceWorkspace.agentKey(chatID: payload.chatID.uuidString, agentID: payload.agentID)]?.upsert(payload.item)
         case .filesChanged(let payload):

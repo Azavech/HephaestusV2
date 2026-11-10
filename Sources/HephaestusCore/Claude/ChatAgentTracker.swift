@@ -84,6 +84,23 @@ struct ChatAgentTracker: Sendable {
 
     var isEmpty: Bool { workflows.isEmpty && agents.isEmpty }
 
+    /// True when a sub-agent has no `taskID`.
+    var lacksTaskIDs: Bool {
+        agents.contains { $0.kind == .subagent && $0.taskID == nil }
+    }
+
+    /// The sub-agents without `taskID` get it from the result of their call among the chat's items
+    /// (docs/chats.md › Workflows and agents); nothing is stored.
+    mutating func fillTaskIDs(from items: [ChatItem]) {
+        for item in items {
+            guard case .toolResult(let result) = item,
+                  let index = agents.firstIndex(where: { $0.id == result.toolUseID && $0.kind == .subagent }),
+                  agents[index].taskID == nil, let agentID = Self.agentID(inResult: result.text)
+            else { continue }
+            agents[index].taskID = agentID
+        }
+    }
+
     func workflow(_ id: String) -> ChatWorkflow? {
         workflows.first { $0.id == id }
     }
@@ -291,6 +308,11 @@ struct ChatAgentTracker: Sendable {
             }
         case .toolResult(let result):
             effects.agentItems = (callOwners[result.toolUseID] ?? []).map { ($0, item) }
+            if let index = agents.firstIndex(where: { $0.id == result.toolUseID && $0.kind == .subagent }), agents[index].taskID == nil,
+               let agentID = Self.agentID(inResult: result.text) {
+                agents[index].taskID = agentID
+                effects.changes.record(agents[index])
+            }
             if let agent = agent(result.toolUseID), agent.kind == .subagent, !backgroundCalls.contains(result.toolUseID) {
                 effects.changes.formUnion(end(agentID: agent.id, state: result.isError ? .failed : .completed, now: result.created))
             }
@@ -361,6 +383,18 @@ struct ChatAgentTracker: Sendable {
     static func promptItem(_ call: ToolUseItem) -> UserItem {
         UserItem(id: "\(call.toolUseID)#prompt", created: call.created,
                  text: StreamMapper.truncated(call.input.objectValue?["prompt"]?.stringValue ?? ""), sender: AgentTranscriptMapper.sender)
+    }
+
+    /// docs/chats.md › Workflows and agents: the agent id of the last line of a sub-agent call's
+    /// result that starts with `agentId: <id>` followed by a space or the line's end, `<id>`
+    /// matching `^[A-Za-z0-9_-]{1,64}$`.
+    static func agentID(inResult text: String) -> String? {
+        let prefix = "agentId: "
+        for line in text.components(separatedBy: "\n").reversed() where line.hasPrefix(prefix) {
+            let id = String(line.dropFirst(prefix.count).prefix { $0 != " " })
+            if ChatAgent.isWorkflowAgentID(id) { return id }
+        }
+        return nil
     }
 
     /// docs/chats.md › Workflow folder: `Task ID: `, `Transcript dir: ` and `Run ID: ` of a

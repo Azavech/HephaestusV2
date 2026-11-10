@@ -115,6 +115,9 @@ final class DeviceWorkspace {
     var agents: [String: ChatAgents] = [:]
     /// One transcript state per agent shown in an agent view, by `<chat id>/<agent id>`.
     var agentTranscripts: [String: TranscriptState] = [:]
+    /// The sub-agents whose Resume button is disabled after a click, by `<chat id>/<agent id>`, each
+    /// with whether its chat has been running since the click (docs/chats.md › Agent view).
+    var agentResumes: [String: Bool] = [:]
     /// Projects whose detail, tickets, bundles and web tabs are loaded.
     var loadedProjectIDs: Set<String> = []
     /// Unsent composer text, attachments and added resources of existing chats, by chat id.
@@ -263,11 +266,49 @@ final class DeviceWorkspace {
         "\(chatID)/\(agentID)"
     }
 
-    /// Drops the workflows and agents of a chat and the transcript states of its agents.
+    /// Drops the workflows and agents of a chat, the transcript states of its agents and their
+    /// Resume clicks.
     func dropAgents(of chatID: String) {
         agents[chatID] = nil
         for key in agentTranscripts.keys where key.hasPrefix(chatID + "/") {
             agentTranscripts[key] = nil
+        }
+        for key in agentResumes.keys where key.hasPrefix(chatID + "/") {
+            agentResumes[key] = nil
+        }
+    }
+
+    // MARK: Resume of sub-agents (docs/chats.md › Agent view)
+
+    /// A click on Resume: the button stays disabled from now on; the chat counts as running since
+    /// the click when it runs now.
+    func agentResumeClicked(chatID: String, agentID: String) {
+        agentResumes[Self.agentKey(chatID: chatID, agentID: agentID)] = chats[chatID]?.state.isChatRunning == true
+    }
+
+    /// The call failed: the button is enabled again.
+    func agentResumeFailed(chatID: String, agentID: String) {
+        agentResumes[Self.agentKey(chatID: chatID, agentID: agentID)] = nil
+    }
+
+    /// The chat or its agents changed: a Resume click ends once its agent runs again, or once the
+    /// chat, running since the click, no longer runs. With `reloaded`, after a reconnect, it ends
+    /// unless the chat runs.
+    func updateAgentResumes(of chatID: String, reloaded: Bool = false) {
+        let prefix = chatID + "/"
+        let keys = agentResumes.keys.filter { $0.hasPrefix(prefix) }
+        guard !keys.isEmpty else { return }
+        let running = chats[chatID]?.state.isChatRunning == true
+        for key in keys {
+            let agentID = String(key.dropFirst(prefix.count))
+            let agent = agents[chatID]?.agents.first { $0.id == agentID }
+            if agent == nil || agent?.state == .running {
+                agentResumes[key] = nil
+            } else if running {
+                agentResumes[key] = true
+            } else if reloaded || agentResumes[key] == true {
+                agentResumes[key] = nil
+            }
         }
     }
 

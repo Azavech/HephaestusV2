@@ -7,8 +7,9 @@ import Foundation
 extension Engine {
     // MARK: Records
 
-    /// The chat's workflows and agents, read from its agents file the first time
-    /// (docs/chats.md › Storage of agents).
+    /// The chat's workflows and agents, read from its agents file the first time; a sub-agent
+    /// without `taskID` gets it from its call's result in the chat's transcript (docs/chats.md ›
+    /// Storage of agents, › Workflows and agents).
     func agentTracker(_ chatID: ChatID) -> ChatAgentTracker {
         if let tracker = chats.agentTrackers[chatID] { return tracker }
         var tracker = ChatAgentTracker()
@@ -17,6 +18,13 @@ extension Engine {
                 tracker = ChatAgentTracker(loaded: try ChatAgentsReplay.replay(fileAt: folder.chatAgentsFile(chatID), log: log))
             } catch {
                 log.error(.claude, "chat \(chatID.uuidString): the agents file cannot be read: \(error)")
+            }
+            if tracker.lacksTaskIDs {
+                do {
+                    tracker.fillTaskIDs(from: try TranscriptReplay.replay(fileAt: folder.transcriptFile(chatID), log: log))
+                } catch {
+                    log.error(.claude, "chat \(chatID.uuidString): the transcript cannot be read for the agent ids: \(error)")
+                }
             }
         }
         chats.agentTrackers[chatID] = tracker

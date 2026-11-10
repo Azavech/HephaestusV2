@@ -283,6 +283,74 @@ struct ChatAgentsTests {
         #expect(tracker.taskNotification("t1", toolUseID: "send", status: "completed", now: Self.date).0.agents.map(\.state) == [.completed])
     }
 
+    @Test("The agent id of a sub-agent call's result: the last line starting with agentId: and a valid id")
+    func agentIDInResult() throws {
+        var mapper = try StreamMapperTests.mapper(settings: Self.captureSettings)
+        let replay = try StreamMapperTests.replay("stream-background-agent.jsonl", mapper: &mapper)
+        let results = StreamMapperTests.items(replay[20].outputs).compactMap { item -> ToolResultItem? in
+            if case .toolResult(let result) = item { return result }
+            return nil
+        }
+        #expect(results.map(\.toolUseID) == ["toolu_01P13PE4h122VQc4ctmUmWLB"])
+        #expect(ChatAgentTracker.agentID(inResult: try #require(results.first).text) == "a20896a2a89380e93")
+        #expect(ChatAgentTracker.agentID(inResult: "ok\nagentId: a1b2 (use SendMessage with to: 'a1b2' to continue this agent)") == "a1b2")
+        #expect(ChatAgentTracker.agentID(inResult: "agentId: first\ntext\nagentId: last") == "last")
+        #expect(ChatAgentTracker.agentID(inResult: "agentId: good\nagentId: b/ad (x)") == "good")
+        #expect(ChatAgentTracker.agentID(inResult: "The agentId: a1 is not at the line's start") == nil)
+        #expect(ChatAgentTracker.agentID(inResult: "agentId:  a1") == nil)
+        #expect(ChatAgentTracker.agentID(inResult: "agentId: ") == nil)
+        #expect(ChatAgentTracker.agentID(inResult: "agentId: " + String(repeating: "a", count: 65)) == nil)
+        #expect(ChatAgentTracker.agentID(inResult: "done") == nil)
+    }
+
+    @Test("A sub-agent's call result gives it its taskID when it has none; a taskID it has stays")
+    func taskIDFromResult() {
+        var tracker = ChatAgentTracker()
+        // A foreground call: its result gives the id and ends it, in one record.
+        _ = tracker.itemAdded(Self.agentCall("fore"))
+        let ended = tracker.itemAdded(.toolResult(ToolResultItem(id: "fore#result", created: Self.date, toolUseID: "fore",
+                                                                 text: "found\nagentId: f1 (use SendMessage)", isError: true)))
+        #expect(ended.changes.agents.map(\.taskID) == ["f1"])
+        #expect(ended.changes.agents.map(\.state) == [.failed])
+        // Resumed by that id, it runs again.
+        #expect(tracker.taskStarted(Self.agentStart("f1", call: "send"), now: Self.date).changes.agents.map(\.state) == [.running])
+        // A background call whose task_started gave its id keeps it.
+        _ = tracker.itemAdded(Self.agentCall("back", background: true))
+        _ = tracker.taskStarted(Self.agentStart("t1", call: "back"), now: Self.date)
+        #expect(tracker.itemAdded(.toolResult(ToolResultItem(id: "back#result", created: Self.date, toolUseID: "back",
+                                                             text: "agentId: other"))).changes.isEmpty)
+        #expect(tracker.agent("back")?.taskID == "t1")
+        // A result without the line leaves the id unknown; another tool's result names no agent.
+        _ = tracker.itemAdded(Self.agentCall("plain", background: true))
+        #expect(tracker.itemAdded(.toolResult(ToolResultItem(id: "plain#result", created: Self.date, toolUseID: "plain",
+                                                             text: "Async agent launched successfully."))).changes.isEmpty)
+        #expect(tracker.agent("plain")?.taskID == nil)
+        #expect(tracker.itemAdded(.toolResult(ToolResultItem(id: "g#result", created: Self.date, toolUseID: "g",
+                                                             text: "agentId: g1"))).changes.isEmpty)
+    }
+
+    @Test("Sub-agents read from the agents file without taskID get it from their call's result among the chat's items")
+    func fillTaskIDs() throws {
+        let legacy = ChatAgent(id: "call", kind: .subagent, title: "Find the code", state: .failed, started: Self.date, ended: Self.date)
+        let known = ChatAgent(id: "known", kind: .subagent, title: "Known", taskID: "k1", state: .stopped, started: Self.date, ended: Self.date)
+        let encoder = StorageJSON.lineEncoder()
+        let data = Data([try encoder.encode(ChatAgentsLine(agent: legacy)), try encoder.encode(ChatAgentsLine(agent: known))]
+            .map { $0 + Data([0x0A]) }.joined())
+        var tracker = ChatAgentTracker(loaded: ChatAgentsReplay.replay(data))
+        #expect(tracker.lacksTaskIDs)
+        tracker.fillTaskIDs(from: [
+            Self.agentCall("call"),
+            .toolResult(ToolResultItem(id: "call#result", created: Self.date, toolUseID: "call", text: "agentId: a1 (internal ID)")),
+            .toolResult(ToolResultItem(id: "known#result", created: Self.date, toolUseID: "known", text: "agentId: other")),
+        ])
+        #expect(!tracker.lacksTaskIDs)
+        #expect(tracker.agent("call")?.taskID == "a1")
+        #expect(tracker.agent("call")?.state == .failed)
+        #expect(tracker.agent("known")?.taskID == "k1")
+        // Resumed, it runs again.
+        #expect(tracker.taskStarted(Self.agentStart("a1", call: "send"), now: Self.date).changes.agents.map(\.state) == [.running])
+    }
+
     @Test("A sub-agent's transcript: its prompt, then the items it holds, nested calls included")
     func subAgentTranscript() {
         let items: [ChatItem] = [
@@ -502,6 +570,7 @@ struct ChatAgentsTests {
             #expect(agent.kind == .subagent)
             #expect(agent.title == "Sleep 15 seconds")
             #expect(agent.workflowID == nil)
+            #expect(agent.taskID == "a20896a2a89380e93")
             let transcript = try await bed.connection.call(ChatsAgentTranscript.self, .init(chatID: chat.id, agentID: call))
             #expect(transcript.map(\.id) == ["\(call)#prompt", "msg_011CgdMDKj2DpSVA1QB5rswx#0", "toolu_015RLF2zoV76K9UNqrMgjxjE#result",
                                              "msg_011CgdMEVEnsh9QvsQPsupn5#0"])
@@ -518,6 +587,50 @@ struct ChatAgentsTests {
             await #expect(throws: EngineError(.notFound, "Agent nope not found.")) {
                 try await bed.connection.call(ChatsAgentTranscript.self, .init(chatID: chat.id, agentID: "nope"))
             }
+        }
+    }
+
+    @Test("stream-background-agent.jsonl without its task_started line: the call's result gives the sub-agent its taskID")
+    func taskIDFromResultThroughEngine() async throws {
+        let launcher = FakeClaudeLauncher()
+        launcher.chatScript = FakeClaudeLauncher.silentChat()
+        try await withChatEngine(launcher: launcher) { bed in
+            let chat = try await bed.createChat(settings: Self.captureSettings, message: "Run it in the background.")
+            let process = try #require(await launcher.chatProcess())
+            _ = try #require(await ChatTurnTests.userLine(process, "Run it in the background."))
+            for (index, line) in JSONLines.lines(of: try FakeClaudeLauncher.fixture("stream-background-agent.jsonl")).enumerated()
+                where index != 19 {
+                process.emit(String(decoding: line, as: UTF8.self))
+            }
+            #expect(try await ChatTurnTests.waitForResults(bed, chat.id, 2))
+            #expect(await eventually { (try? await Self.listAgents(bed))?.first?.agents.map(\.state) == [.completed] })
+            let agent = try #require(try await Self.listAgents(bed).first?.agents.first)
+            #expect(agent.id == "toolu_01P13PE4h122VQc4ctmUmWLB")
+            #expect(agent.taskID == "a20896a2a89380e93")
+            let data = try Data(contentsOf: bed.folder.chatAgentsFile(chat.id))
+            let records = try JSONLines.lines(of: data).map { try StorageJSON.decoder().decode(ChatAgentsLine.self, from: $0).agent }
+            #expect(records.map { $0?.taskID } == [nil, "a20896a2a89380e93", "a20896a2a89380e93"])
+            #expect(records.map { $0?.state } == [.running, .running, .completed])
+        }
+    }
+
+    @Test("A sub-agent of the agents file without taskID gets it from the chat's transcript; the file is not rewritten")
+    func taskIDFromTranscriptThroughEngine() async throws {
+        try await withChatEngine { bed in
+            let chat = try await bed.createChat()
+            let started = ISODate.date(from: "2026-11-03T23:17:35Z")!
+            let agent = ChatAgent(id: "call", kind: .subagent, title: "Find the code", state: .failed, started: started, ended: started)
+            let writer = JSONLinesWriter()
+            try writer.append(ChatAgentsLine(agent: agent), to: bed.folder.chatAgentsFile(chat.id))
+            try writer.append(TranscriptLine(op: .add, item: Self.agentCall("call")), to: bed.folder.transcriptFile(chat.id))
+            try writer.append(TranscriptLine(op: .add, item: .toolResult(ToolResultItem(
+                id: "call#result", created: started, toolUseID: "call", text: "API Error\nagentId: a7 (use SendMessage)", isError: true))),
+                to: bed.folder.transcriptFile(chat.id))
+            let before = try Data(contentsOf: bed.folder.chatAgentsFile(chat.id))
+            let listed = try #require(try await Self.listAgents(bed).first?.agents.first)
+            #expect(listed.taskID == "a7")
+            #expect(listed.state == .failed)
+            #expect(try Data(contentsOf: bed.folder.chatAgentsFile(chat.id)) == before)
         }
     }
 

@@ -72,6 +72,10 @@ extension DeviceWorkspace {
                                 for entry in list {
                                     agents[entry.chatID.uuidString] = entry
                                 }
+                                for chatID in Set(agentResumes.keys.compactMap { $0.split(separator: "/").first.map(String.init) })
+                                    where chats[chatID]?.projectID == projectID {
+                                    updateAgentResumes(of: chatID, reloaded: true)
+                                }
                             },
                             replay: { event in var event = event; apply(&event) })
     }

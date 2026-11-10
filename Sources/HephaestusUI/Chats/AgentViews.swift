@@ -151,8 +151,66 @@ private struct StopWorkflowButton: View {
     }
 }
 
+/// Resume in a sub-agent's view (docs/chats.md › Agent view): when it shows, and the message it
+/// sends.
+@MainActor
+enum AgentResume {
+    /// A failed or stopped sub-agent whose agent id, its `taskID`, the engine knows, in a chat that
+    /// is not closed.
+    static func showsButton(_ agent: ChatAgent, chatClosed: Bool) -> Bool {
+        !chatClosed && agent.kind == .subagent && (agent.state == .failed || agent.state == .stopped) && agent.taskID != nil
+    }
+
+    static func message(title: String, agentID: String) -> String {
+        "Resume the agent “\(title)” (agent id \(agentID)) where it stopped."
+    }
+
+    /// Enabled under the conditions of Send that do not depend on the text, the window's device
+    /// connected and the CLI available, unless a click on it waits for its effect.
+    static func isEnabled(chatID: String, agentID: String, workspace: DeviceWorkspace) -> Bool {
+        let status = workspace.claudeStatus
+        return workspace.isConnected && status?.available == true && status?.checking == false
+            && workspace.agentResumes[DeviceWorkspace.agentKey(chatID: chatID, agentID: agentID)] == nil
+    }
+
+    /// `chats.send` with the resume message; a failed call shows `Resume failed` and enables the
+    /// button again.
+    static func resume(_ agent: ChatAgent, chatID: String, workspace: DeviceWorkspace, window: WindowState) {
+        guard let taskID = agent.taskID, let uuid = UUID(uuidString: chatID),
+              isEnabled(chatID: chatID, agentID: agent.id, workspace: workspace) else { return }
+        workspace.agentResumeClicked(chatID: chatID, agentID: agent.id)
+        let text = message(title: agent.title, agentID: taskID)
+        Task {
+            do {
+                _ = try await workspace.call(ChatsSend.self, ChatsSend.Params(chatID: uuid, message: ChatMessageInput(text: text)))
+            } catch {
+                workspace.agentResumeFailed(chatID: chatID, agentID: agent.id)
+                window.alert = .failure("Resume", error)
+            }
+        }
+    }
+}
+
+/// The `Resume` button of a failed or stopped sub-agent's view.
+private struct ResumeAgentButton: View {
+    let chatID: String
+    let agent: ChatAgent
+    let workspace: DeviceWorkspace
+    let window: WindowState
+
+    var body: some View {
+        Button {
+            AgentResume.resume(agent, chatID: chatID, workspace: workspace, window: window)
+        } label: {
+            Label("Resume", systemImage: "arrow.uturn.forward")
+        }
+        .disabled(!AgentResume.isEnabled(chatID: chatID, agentID: agent.id, workspace: workspace))
+    }
+}
+
 /// docs/chats.md › Agent view: the agent's title, chip and state, the Stop button of a running
-/// workflow's agent, and its transcript, read-only.
+/// workflow's agent or the Resume button of a failed or stopped sub-agent, and its transcript,
+/// read-only.
 struct AgentView: View {
     let chatID: String
     let agentID: String
@@ -247,6 +305,8 @@ struct AgentView: View {
             Spacer(minLength: 8)
             if let workflowID = runningWorkflowID {
                 StopWorkflowButton(chatID: chatID, workflowID: workflowID, workspace: workspace, window: window)
+            } else if AgentResume.showsButton(agent, chatClosed: workspace.chats[chatID]?.closed ?? false) {
+                ResumeAgentButton(chatID: chatID, agent: agent, workspace: workspace, window: window)
             }
         }
         .padding(.horizontal, 12)

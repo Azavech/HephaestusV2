@@ -813,6 +813,7 @@ Responsibilities:
 | `transcripts`      | `[String: TranscriptState]`        | One transcript state per chat shown in a view: its items in transcript order and its streaming buffers ([UI state](chats.md#ui-state)).                                                              |
 | `agents`           | `[String: ChatAgents]`             | The workflows and agents of every chat of every project, by chat id, from `chats.listAgents` and `chat.agents` ([UI state](chats.md#ui-state)).                                                      |
 | `agentTranscripts` | `[String: TranscriptState]`        | One transcript state per agent shown in an agent view, by `<chat id>/<agent id>`, from `chats.agentTranscript` and `chat.agentItem` ([UI state](chats.md#ui-state)).                                 |
+| `agentResumes`     | `[String: Bool]`                   | The sub-agents whose Resume button is disabled after a click, by `<chat id>/<agent id>`, each with whether its chat has been running since the click ([UI state](chats.md#ui-state)).                |
 | `loadedProjectIDs` | `Set<String>`                      | Projects whose detail, tickets, bundles and web tabs are loaded.                                                                                                                                     |
 | `drafts`           | `[String: ComposerDraft]`          | Unsent composer text, attachments and added resources of existing chats, by chat id, shared by each chat's views; kept while the workspace is open, never persisted ([Composer](chats.md#composer)). |
 
