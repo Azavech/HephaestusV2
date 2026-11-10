@@ -5,7 +5,8 @@ import AppKit
 import HephaestusCore
 import SwiftUI
 
-/// A plain-text `NSTextView` that grows from `minLines` to `maxLines` visible lines, then scrolls.
+/// A plain-text `NSTextView` that grows from `minLines` to `maxLines` visible lines, then scrolls;
+/// while its text fits in `maxLines` lines, it neither scrolls nor bounces under a scroll gesture.
 /// In the composer Return sends and Shift-Return inserts a line break; in the answer field Return
 /// inserts a line break.
 struct ChatTextEditor: NSViewRepresentable {
@@ -37,7 +38,6 @@ struct ChatTextEditor: NSViewRepresentable {
 
     func makeNSView(context: Context) -> ChatTextScrollView {
         let scrollView = ChatTextScrollView()
-        scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
@@ -163,26 +163,42 @@ struct ChatTextEditor: NSViewRepresentable {
             return true
         }
 
-        /// The height of `minLines` to `maxLines` lines that fits the text.
-        func height(forWidth width: CGFloat) -> CGFloat {
+        /// The heights of the text and of `minLines` and `maxLines` lines in a field `width` points
+        /// wide, each with the text view's inset.
+        private func heights(forWidth width: CGFloat) -> (text: CGFloat, minimum: CGFloat, maximum: CGFloat) {
             guard let textView, let layoutManager = textView.layoutManager, let container = textView.textContainer else {
-                return 22
+                return (22, 22, 22)
             }
             let lineHeight = layoutManager.defaultLineHeight(for: ChatTextEditor.font)
             let inset = textView.textContainerInset.height * 2
-            let minimum = lineHeight * CGFloat(parent.minLines) + inset
-            let maximum = lineHeight * CGFloat(parent.maxLines) + inset
             if container.containerSize.width != width, width > 0 {
                 container.containerSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
             }
             layoutManager.ensureLayout(for: container)
-            let used = layoutManager.usedRect(for: container).height + inset
-            return min(max(used, minimum), maximum).rounded(.up)
+            return (layoutManager.usedRect(for: container).height + inset,
+                    lineHeight * CGFloat(parent.minLines) + inset, lineHeight * CGFloat(parent.maxLines) + inset)
+        }
+
+        /// The height of `minLines` to `maxLines` lines that fits the text.
+        func height(forWidth width: CGFloat) -> CGFloat {
+            let heights = heights(forWidth: width)
+            return min(max(heights.text, heights.minimum), heights.maximum).rounded(.up)
+        }
+
+        /// True for a text higher than `maxLines` lines: only then the field scrolls.
+        func scrolls(forWidth width: CGFloat) -> Bool {
+            let heights = heights(forWidth: width)
+            return heights.text > heights.maximum
         }
 
         func updateHeight() {
             guard let scrollView else { return }
-            let height = height(forWidth: scrollView.contentSize.width)
+            let width = scrollView.contentSize.width
+            let height = height(forWidth: width)
+            // The field has no width before its first layout.
+            if width > 0 {
+                scrollView.scrollsText = scrolls(forWidth: width)
+            }
             guard height != lastHeight else { return }
             lastHeight = height
             scrollView.invalidateIntrinsicContentSize()
@@ -284,10 +300,52 @@ struct ChatTextEditor: NSViewRepresentable {
 }
 
 /// The scroll view of a chat text field; it reports layout changes so the height follows the
-/// width.
+/// width. It scrolls only a text higher than the field's lines: a text that fits neither scrolls
+/// nor bounces under a scroll gesture, which goes to the views around the field
+/// (docs/chats.md › Composer, › Chat view).
 final class ChatTextScrollView: NSScrollView {
     weak var textView: ChatNSTextView?
     var onLayout: (() -> Void)?
+    /// True while the text is higher than the field's `maxLines` lines.
+    var scrollsText = false {
+        didSet {
+            guard scrollsText != oldValue else { return }
+            applyScrolling()
+        }
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        applyScrolling()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    /// The scroller and the elasticity of a text that scrolls; neither for a text that fits.
+    private func applyScrolling() {
+        hasVerticalScroller = scrollsText
+        verticalScrollElasticity = scrollsText ? .automatic : .none
+    }
+
+    /// AppKit turns responsive scrolling off for a class that overrides `scrollWheel(with:)`
+    /// unless the class says it stays compatible, which keeps the scrolling of a longer text
+    /// unchanged.
+    override class var isCompatibleWithResponsiveScrolling: Bool {
+        true
+    }
+
+    /// A scroll event over a text that fits goes to the views around the field, for example the
+    /// pinned cards, which scroll when they are taller than their space.
+    override func scrollWheel(with event: NSEvent) {
+        if scrollsText {
+            super.scrollWheel(with: event)
+        } else {
+            nextResponder?.scrollWheel(with: event)
+        }
+    }
 
     override func layout() {
         super.layout()
