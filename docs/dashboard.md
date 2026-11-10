@@ -51,7 +51,7 @@ Each project has its own list of widgets, the key `dashboardWidgets` of its proj
 
 ### Instances widget
 
-An Instances widget lists the pods where a Go service runs: the pods of the deployment of the shown project's [current working environment](projects.md#current-working-environment), found with the deployment's [label selector](engine-api.md#label-selector) as [k8s_status](mcp.md#k8s_status) finds them, in kubectl's order. It follows the current working environment, which the user chooses under the project identifier in the sidebar footer ([Sidebar](ui.md#sidebar)), and has no environment of its own. The engine of the main device reads the pods with [kubernetes.pods](engine-api.md#kubernetespods): kubectl runs on the main device, so the widget works in the windows of remote devices too.
+An Instances widget lists the pods where a Go service runs: the pods of the deployment of the shown project's [current working environment](projects.md#current-working-environment), found with the deployment's [label selector](engine-api.md#label-selector) as [k8s_status](mcp.md#k8s_status) finds them, in kubectl's order. It follows the current working environment, which the user chooses next to the project identifier in the sidebar footer ([Sidebar](ui.md#sidebar)), and has no environment of its own. The engine of the main device reads the pods with [kubernetes.pods](engine-api.md#kubernetespods): kubectl runs on the main device, so the widget works in the windows of remote devices too.
 
 It is a table with the column headers of `kubectl get pods -o wide`, in their order, one row per pod:
 

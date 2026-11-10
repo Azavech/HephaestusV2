@@ -171,6 +171,21 @@ extension WindowState {
     }
 }
 
+/// The bounds of the footer's identifier and of its pop-up, read by the tests of the footer's
+/// layout: the hosted views have no accessibility tree.
+struct SidebarFooterAnchors: PreferenceKey {
+    enum Part: Hashable {
+        case identifier
+        case popUp
+    }
+
+    static let defaultValue: [Part: Anchor<CGRect>] = [:]
+
+    static func reduce(value: inout [Part: Anchor<CGRect>], nextValue: () -> [Part: Anchor<CGRect>]) {
+        value.merge(nextValue()) { $1 }
+    }
+}
+
 /// The categories of the active project, the pinned Project Settings row and the footer.
 struct SidebarView: View {
     let window: WindowState
@@ -277,19 +292,22 @@ struct SidebarView: View {
         return count > 0 ? String(count) : nil
     }
 
-    /// The active project's identifier, then, for a Go service with environments, the pop-up of its
-    /// current working environment (docs/ui.md › Sidebar).
+    /// One line: the active project's identifier at its left end and, for a Go service with
+    /// environments, the pop-up of its current working environment at its right end (docs/ui.md ›
+    /// Sidebar).
     private var footer: some View {
         let detail = workspace.details[project.id]
         let environments = Self.footerEnvironments(detail)
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(project.id)
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-            .frame(height: 30)
+        return HStack {
+            // The identifier stays whole: on a line too narrow for both, the pop-up shrinks and
+            // truncates its title at its end.
+            Text(project.id)
+                .font(.system(.body, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .fixedSize()
+                .layoutPriority(1)
+                .anchorPreference(key: SidebarFooterAnchors.self, value: .bounds) { [.identifier: $0] }
+            Spacer()
             if let detail, !environments.isEmpty {
                 Picker("Environment", selection: Binding(get: { detail.currentWorkingEnvironment?.name },
                                                          set: { name in if let name { selectEnvironment(name) } })) {
@@ -300,14 +318,16 @@ struct SidebarView: View {
                 .pickerStyle(.menu)
                 .labelsHidden()
                 .controlSize(.small)
-                .padding(.bottom, 8)
+                .truncationMode(.tail)
+                .anchorPreference(key: SidebarFooterAnchors.self, value: .bounds) { [.popUp: $0] }
             }
         }
+        .frame(height: 30)
         .padding(.horizontal, 12)
     }
 
     /// The environments the footer's pop-up lists: those of a Go service as they apply, in their
-    /// order; none for a project of another type, which shows nothing under the identifier.
+    /// order; none for a project of another type, which shows the identifier alone.
     static func footerEnvironments(_ detail: ProjectDetail?) -> [ProjectEnvironment] {
         guard let detail, detail.project.type == .goService else { return [] }
         return detail.environments

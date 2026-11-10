@@ -2765,7 +2765,7 @@ Memories of the project Suite (identifier SUITE), in the folder /Users/example/.
 - R169: Claude keeps global memories that every chat of every project receives; the user shows and edits them with View ▸ Global Memories.
 - R174: A sub project that uses its parent's settings inherits its parent's environments and changes their URL, port, deployment and Argo CD application.
 - R175: Ticket descriptions and comments draw the SF Symbol, color, font, shortcut, sound and animation markers, and Claude writes them there when it names one.
-- R177: Each Go service project has a current working environment, chosen in the sidebar under the project identifier and shared by every device, which the Contract view, Project Settings and Claude use.
+- R177: Each Go service project has a current working environment, chosen in the sidebar footer, next to the project identifier, and shared by every device, which the Contract view, Project Settings and Claude use.
 - R179: The Chats section lists, in one list, only the chats the user starts in the project (project and feedback chats) and the chats whose ticket or bundle was deleted; ticket, bundle and CI chats show only on their ticket or bundle.
 - R180: The detail of a ticket or a bundle lists, in a Mentioned In tab, the other chats of the device that mention it.
 - R181: Feedback, Implement and Implement All start their chat by calling the internal skills feedback, implement-ticket and implement-bundle, which, with finish-implementation, hold the instructions of these tasks, are always active in every project, and are shown and edited only with View ▸ Internal Skills.
