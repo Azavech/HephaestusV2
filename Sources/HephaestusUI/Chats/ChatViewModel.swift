@@ -411,6 +411,35 @@ final class ChatViewModel {
         workspace.drafts[chatID] = created.isEmpty ? nil : created
     }
 
+    /// The status line reads `Claude stopped with an error` (docs/chats.md › Chat states).
+    var stoppedWithError: Bool {
+        ChatResume.stoppedWithError(state: state, newestResult: transcriptState?.newestResult)
+    }
+
+    /// Resume follows that text while the chat is open (docs/chats.md › Chat view).
+    var showsResume: Bool {
+        ChatResume.showsButton(state: state, closed: isClosed, newestResult: transcriptState?.newestResult)
+    }
+
+    /// Resume is enabled under the conditions of Send that do not depend on the text: the window's
+    /// device is connected and the CLI is available.
+    var canResume: Bool {
+        let status = workspace.claudeStatus
+        return workspace.isConnected && status?.available == true && status?.checking == false
+    }
+
+    /// Resume: `chats.send` with the resume message; the composer is left unchanged.
+    func resume() {
+        guard canResume, let chatID, let uuid = UUID(uuidString: chatID) else { return }
+        Task {
+            do {
+                _ = try await workspace.call(ChatsSend.self, ChatsSend.Params(chatID: uuid, message: ChatMessageInput(text: ChatResume.message)))
+            } catch {
+                alert(.failure("Resume", error))
+            }
+        }
+    }
+
     /// Stop and Escape while running: `chats.interrupt`.
     func stop() {
         guard let chatID, let uuid = UUID(uuidString: chatID), state.isChatRunning else { return }

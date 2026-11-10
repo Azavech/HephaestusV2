@@ -403,10 +403,36 @@ private struct TranscriptLoadFailedView: View {
 
 // MARK: - Status line
 
+/// Resume in the status line (docs/chats.md › Chat view): when it shows, and the message it sends.
+enum ChatResume {
+    static let message = "Resume where you stopped, and resume the agents that ended with you."
+
+    /// The status line reads `Claude stopped with an error`: the chat is in the error state, or idle
+    /// with a newest `result` that is an error and not the result of a Stop (docs/chats.md › Chat
+    /// states).
+    static func stoppedWithError(state: ChatState, newestResult: ResultItem?) -> Bool {
+        switch state {
+        case .error:
+            return true
+        case .idle:
+            guard let result = newestResult else { return false }
+            return result.isError && result.summary != Engine.stoppedSummary
+        default:
+            return false
+        }
+    }
+
+    /// The Resume button follows that text while the chat is not closed.
+    static func showsButton(state: ChatState, closed: Bool, newestResult: ResultItem?) -> Bool {
+        !closed && stoppedWithError(state: state, newestResult: newestResult)
+    }
+}
+
 /// The line above the composer (docs/chats.md › Chat states): hidden for idle, `Starting Claude…`,
 /// `Claude is working… m:ss`, `Waiting for your permission`, `Waiting for your answers`, or
-/// `Claude stopped with an error` in red; `Compacting the conversation… m:ss` in place of them
-/// while a compaction runs.
+/// `Claude stopped with an error` in red, also for an idle chat whose newest result is an error
+/// that is not a Stop, followed by Resume while the chat is open; `Compacting the conversation…
+/// m:ss` in place of them while a compaction runs.
 struct ChatStatusLine: View {
     let model: ChatViewModel
 
@@ -429,7 +455,9 @@ struct ChatStatusLine: View {
         Group {
             switch model.state {
             case .idle:
-                EmptyView()
+                if model.stoppedWithError {
+                    errorLine
+                }
             case .starting:
                 line("Starting Claude…")
             case .running:
@@ -442,10 +470,30 @@ struct ChatStatusLine: View {
             case .waitingAnswers:
                 line("Waiting for your answers")
             case .error:
-                line("Claude stopped with an error")
-                    .foregroundStyle(.red)
+                errorLine
             }
         }
+    }
+
+    /// `Claude stopped with an error` in red, then Resume while the chat is open.
+    private var errorLine: some View {
+        HStack(spacing: 8) {
+            Text("Claude stopped with an error")
+                .font(.callout)
+                .foregroundStyle(Color.red.secondary)
+            if model.showsResume {
+                Button {
+                    model.resume()
+                } label: {
+                    Label("Resume", systemImage: "arrow.uturn.forward")
+                }
+                .controlSize(.small)
+                .disabled(!model.canResume)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.top, 6)
     }
 
     private func line(_ text: String) -> some View {

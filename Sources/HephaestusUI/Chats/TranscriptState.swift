@@ -131,6 +131,14 @@ struct TranscriptState {
         return nil
     }
 
+    /// The newest `result` item, which ended the chat's last CLI turn.
+    var newestResult: ResultItem? {
+        for item in items.reversed() {
+            if case .result(let result) = item { return result }
+        }
+        return nil
+    }
+
     /// The symbol request without answer; a chat has at most one.
     var waitingSymbolRequest: SymbolItem? {
         for item in items {

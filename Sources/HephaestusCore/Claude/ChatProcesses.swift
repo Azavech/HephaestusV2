@@ -560,7 +560,7 @@ extension Engine {
     }
 
     /// The `summary` of the first error `result` after Stop (docs/chats.md › Turn result).
-    static let stoppedSummary = "Stopped by the user."
+    public static let stoppedSummary = "Stopped by the user."
 
     static func refusedSettingText(_ setting: String, _ description: String) -> String {
         var description = description.trimmingCharacters(in: .whitespacesAndNewlines)
