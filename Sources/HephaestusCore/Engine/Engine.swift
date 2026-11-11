@@ -63,6 +63,9 @@ public actor Engine {
     /// The source files, the port forwards to Jaeger and the shared reads of the `graph.*` methods
     /// (Graph/GraphService.swift).
     let graphs = GraphService()
+    /// The views of the projects, the builds of their previews, the preview hosts and the
+    /// preview sessions (SwiftViews/PreviewService.swift).
+    let previews = PreviewService()
     /// Gets the answers of Jaeger (Graph/JaegerClient.swift); tests replace it.
     var jaegerFetch: JaegerClient.Fetch = JaegerClient.urlSessionFetch
     /// The temporary folder of the body files of `api.call` (docs/mcp.md › api_call); tests change it.
@@ -214,8 +217,9 @@ public actor Engine {
         async let githubRuns: Void = stopGitHubCLIRuns()
         async let jaegerForwards: Void = stopJaegerForwards()
         async let virtualMachines: Void = stopVirtualMachines()
+        async let previewProcesses: Void = stopPreviews()
         _ = await (chatProcesses, claudeHelpers, hephaestusClone, portForwardProcesses, kubectlProcesses, githubRuns, jaegerForwards,
-                   virtualMachines)
+                   virtualMachines, previewProcesses)
 
         await stopMCPServer()
         await stopSyncServer()
@@ -384,6 +388,7 @@ public actor Engine {
         registerKubernetesHandlers()
         registerServiceAPIHandlers()
         registerGraphHandlers()
+        registerViewHandlers()
         registerTicketHandlers()
         registerAttachmentHandlers()
         registerBundleHandlers()

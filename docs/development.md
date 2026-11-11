@@ -267,6 +267,7 @@ Input schemas, errors and examples: [Debug tools](mcp.md#debug-tools).
 - `make test`, or `swift test`, runs every test target. CI runs `swift test` for every pull request and before every release ([CI and release](ci.md)).
 - `swift test --filter HephaestusTextTests` runs one target; `--filter` also accepts a suite or test name.
 - `SWT_EXPERIMENTAL_MAXIMUM_PARALLELIZATION_WIDTH=4 swift test` runs at most 4 tests at a time, as CI does ([Test parallelism](ci.md#test-parallelism)).
+- `PREVIEW_BUILD_TESTS=1 swift test --filter PreviewMethodsTests` also runs the tests that build previews (rule 12).
 
 ### Test targets
 
@@ -290,6 +291,7 @@ Input schemas, errors and examples: [Debug tools](mcp.md#debug-tools).
 9. A test that binds a port it chose earlier, or checks that a stopped server's port refuses connections, uses a free port below the ephemeral range (49152 to 65535). A released ephemeral port can go to another test's listener that asks for port 0 at any time, and a later bind of 127.0.0.1 on it succeeds and takes that listener's loopback connections. Default chosen at design time.
 10. The speed of the machine changes how long a test takes, never its result. A test that checks that something happens (a state, an event, an output, a process) waits for it, not for a fixed time; the bound of such a wait, `waitLimit` (60 s), only ends a test that fails. The timeouts of the code under test that a test does not check are long bounds that a busy machine never reaches, and the timers a test checks keep a wide margin to the delays of a loaded run. No test blocks a thread of the Swift concurrency pool while a child process runs, and a test that loads the machine on purpose bounds its work and yields between its steps. Default chosen at design time.
 11. Tests start no virtual machine and reach neither ipsw.me nor Apple's servers: the `imageProvisioner` of a test engine is a stand-in whose every operation fails unless the test gives its own, and its `guestTools` is nil unless the test gives files of its temporary directory ([Engine configuration](architecture.md#engine-configuration)). The protocol of the guest agent is tested in one process, the host's connection against the agent's own session over a socket pair, with the methods that need neither the Accessibility nor the Screen Recording permission. No test runs `sudo`: the commands of `exec` run as the user who runs the tests, and a stand-in takes the place of the kill as root of a timeout. Default chosen at design time.
+12. The tests that build the previews of a Swift package and of an Xcode project with the toolchain of Xcode ([Builds](views.md#builds)) run only when the environment variable `PREVIEW_BUILD_TESTS` is `1`, and CI does not set it: each of their builds uses every core of the Mac for seconds, and the timing-sensitive suites that run beside them, the guest agent's among them, then fail. They build fixtures of their temporary directory, without dependencies and without network. Default chosen at design time.
 
 ### Docs conformance tests
 

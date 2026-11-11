@@ -247,6 +247,12 @@ private struct ViewCommands: View {
             window?.section = .graph
         }
         .disabled(!(window?.showsGraph ?? false))
+        // Enabled while the active project's sidebar shows the row, without shortcut
+        // (docs/views.md › Visibility).
+        Button(ProjectSection.views.title) {
+            window?.section = .views
+        }
+        .disabled(!(window?.showsViews ?? false))
         Divider()
         let showsDoc = window?.shownSection == .docs && window?.viewState.selectedDocPath != nil
         Menu("Doc Mode") {

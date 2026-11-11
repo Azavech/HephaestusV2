@@ -283,6 +283,7 @@ extension Engine {
             guard !paths.isEmpty else { continue }
             emit(FilesChangedEvent.self, FilesChangedEvent.Payload(projectID: root.id, paths: ChangedPaths.limited(paths)),
                  origin: .system)
+            previewFilesChanged(rootPath: root.path, paths: paths)
         }
     }
 

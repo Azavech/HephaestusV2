@@ -5,9 +5,9 @@ import SwiftUI
 
 extension ProjectSection {
     /// The sections of the Project category, listed from the top of the sidebar, in order;
-    /// `apiExplorer` and `graph` are the rows of the Go Service category and `settings` is pinned to
-    /// the bottom.
-    static let listed: [ProjectSection] = allCases.filter { $0 != .apiExplorer && $0 != .graph && $0 != .settings }
+    /// `apiExplorer` and `graph` are the rows of the Go Service category, `views` the row of the
+    /// Swift Application category, and `settings` is pinned to the bottom.
+    static let listed: [ProjectSection] = allCases.filter { $0 != .apiExplorer && $0 != .graph && $0 != .views && $0 != .settings }
 
     /// The sidebar title.
     var title: String {
@@ -25,6 +25,7 @@ extension ProjectSection {
         case .costs: return "Costs"
         case .apiExplorer: return "API Explorer"
         case .graph: return "Graph"
+        case .views: return "Views"
         case .settings: return "Project Settings"
         }
     }
@@ -45,12 +46,14 @@ extension ProjectSection {
         case .costs: return "dollarsign.circle"
         case .apiExplorer: return "point.3.connected.trianglepath.dotted"
         case .graph: return "circle.hexagongrid"
+        case .views: return "rectangle.3.group"
         case .settings: return "gearshape"
         }
     }
 
     /// Its shortcut: ⌘1 to ⌘9, then ⌘0, and ⇧⌘E in the View menu, with ⌘B for Builds, and ⇧⌘, for
-    /// Project ▸ Project Settings…; none for Graph (docs/graph.md › Section).
+    /// Project ▸ Project Settings…; none for Graph (docs/graph.md › Section) and Views
+    /// (docs/views.md › Section).
     var shortcut: KeyboardShortcut? {
         switch self {
         case .dashboard: return KeyboardShortcut("1", modifiers: .command)
@@ -65,7 +68,7 @@ extension ProjectSection {
         case .memories: return KeyboardShortcut("9", modifiers: .command)
         case .costs: return KeyboardShortcut("0", modifiers: .command)
         case .apiExplorer: return KeyboardShortcut("e", modifiers: [.command, .shift])
-        case .graph: return nil
+        case .graph, .views: return nil
         case .settings: return KeyboardShortcut(",", modifiers: [.command, .shift])
         }
     }
@@ -84,8 +87,9 @@ struct SidebarCategory: Equatable, Identifiable {
     /// `Project` with every listed section, Builds only for a project with a GitHub page
     /// (docs/builds.md › Visibility), then `Go Service` for the `goService` type, with the API
     /// Explorer row while it shows (docs/openapi.md › Availability) and the Graph row while the
-    /// graph is enabled (docs/graph.md › Enabling), then `Sub Projects` when the active project has
-    /// a loaded sub project.
+    /// graph is enabled (docs/graph.md › Enabling), or `Swift Application` with the Views row for the
+    /// `swiftApplication` type (docs/views.md › Visibility), then `Sub Projects` when the active
+    /// project has a loaded sub project.
     static func categories(for type: ProjectType, showsBuilds: Bool = false, showsAPIExplorer: Bool = false,
                            showsGraph: Bool = false, subProjects: [SidebarSubProject] = []) -> [SidebarCategory] {
         let sections = ProjectSection.listed.filter { $0 != .builds || showsBuilds }
@@ -96,6 +100,9 @@ struct SidebarCategory: Equatable, Identifiable {
                 rows.append(.graph)
             }
             categories.append(SidebarCategory(title: "Go Service", sections: rows))
+        }
+        if type == .swiftApplication {
+            categories.append(SidebarCategory(title: "Swift Application", sections: [.views]))
         }
         if !subProjects.isEmpty {
             categories.append(SidebarCategory(title: "Sub Projects", sections: [], subProjects: subProjects))

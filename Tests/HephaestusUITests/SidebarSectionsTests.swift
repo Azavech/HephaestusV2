@@ -135,7 +135,7 @@ struct SidebarSectionsTests {
 /// docs/ui.md › Sidebar: the categories shown for each project type.
 @Suite("Sidebar categories")
 struct SidebarCategoriesTests {
-    @Test("Project holds every listed section; Go Service only for the Go service type, with API Explorer and Graph while they show",
+    @Test("Project holds every listed section; Go Service only for the Go service type, with API Explorer and Graph while they show; Swift Application with Views only for the Swift application type",
           arguments: ProjectType.allCases, [false, true])
     func categories(_ type: ProjectType, showsAPIExplorer: Bool) {
         for showsGraph in [false, true] {
@@ -146,6 +146,9 @@ struct SidebarCategoriesTests {
             if type == .goService {
                 #expect(categories.map(\.title) == ["Project", "Go Service"])
                 #expect(categories[1].sections == (showsAPIExplorer ? [.apiExplorer] : []) + (showsGraph ? [.graph] : []))
+            } else if type == .swiftApplication {
+                #expect(categories.map(\.title) == ["Project", "Swift Application"])
+                #expect(categories[1].sections == [.views])
             } else {
                 #expect(categories.map(\.title) == ["Project"])
             }
@@ -153,6 +156,8 @@ struct SidebarCategoriesTests {
         let categories = SidebarCategory.categories(for: type, showsBuilds: true, showsAPIExplorer: showsAPIExplorer)
         if type == .goService {
             #expect(categories[1].sections == (showsAPIExplorer ? [.apiExplorer] : []))
+        } else if type == .swiftApplication {
+            #expect(categories.map(\.title) == ["Project", "Swift Application"])
         } else {
             #expect(categories.map(\.title) == ["Project"])
         }
@@ -162,5 +167,36 @@ struct SidebarCategoriesTests {
     func withoutGitHubPage(_ type: ProjectType) {
         let categories = SidebarCategory.categories(for: type, showsBuilds: false)
         #expect(categories.first?.sections == ProjectSection.listed.filter { $0 != .builds })
+    }
+}
+
+/// docs/views.md › Section and › Visibility: the Swift Application category and its Views row.
+@MainActor
+@Suite("Swift Application category")
+struct SwiftApplicationCategoryTests {
+    @Test("The Views row: its title, its symbol, no shortcut, and not in the Project category")
+    func viewsRow() {
+        #expect(ProjectSection.views.title == "Views")
+        #expect(ProjectSection.views.symbol == "rectangle.3.group")
+        #expect(ProjectSection.views.shortcut == nil)
+        #expect(!ProjectSection.listed.contains(.views))
+    }
+
+    @Test("Swift Application comes after Project and before Sub Projects, for the Swift application type only",
+          arguments: ProjectType.allCases)
+    func placeAndTypes(_ type: ProjectType) {
+        let subProject = SidebarSubProject(id: "SUB", name: "Sub", symbol: "folder", color: nil, level: 0)
+        let titles = SidebarCategory.categories(for: type, showsBuilds: true, subProjects: [subProject]).map(\.title)
+        switch type {
+        case .swiftApplication: #expect(titles == ["Project", "Swift Application", "Sub Projects"])
+        case .goService: #expect(titles == ["Project", "Go Service", "Sub Projects"])
+        case .none: #expect(titles == ["Project", "Sub Projects"])
+        }
+    }
+
+    @Test("The Views section links no item and counts as a section with its own header")
+    func noItemOwnHeader() {
+        #expect(ProjectViewState().openItems(in: .views).isEmpty)
+        #expect(PaneTitle.title(of: .views) == nil)
     }
 }

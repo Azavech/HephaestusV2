@@ -63,7 +63,7 @@ struct MCPSchemaValidatorTests {
          "questions[1].question: required."),
         ("open_in_app", #"{"target":{"kind":"file","line":"3"}}"#, "target.line: must be an integer."),
         ("open_in_app", #"{"target":{"kind":"section","projectID":"HEPH","section":"home"}}"#,
-         "target.section: must be one of dashboard, tickets, bundles, chats, code, docs, web, builds, skills, memories, costs, apiExplorer, graph, settings."),
+         "target.section: must be one of dashboard, tickets, bundles, chats, code, docs, web, builds, skills, memories, costs, apiExplorer, graph, views, settings."),
     ])
     func messages(tool: String, arguments: String, expected: String) throws {
         #expect(try Self.message(tool, arguments) == expected)

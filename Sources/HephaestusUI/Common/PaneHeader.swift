@@ -27,12 +27,12 @@ enum PaneTitle {
     static let internalSkills = "Internal Skills"
 
     /// The title a section shows in its title row, its sidebar title; nil for Docs, Costs, Code,
-    /// Graph and Project Settings, which keep their own header and have no title row.
+    /// Graph, Views and Project Settings, which keep their own header and have no title row.
     static func title(of section: ProjectSection) -> String? {
         switch section {
         case .dashboard, .tickets, .bundles, .chats, .web, .builds, .skills, .memories, .apiExplorer:
             return section.title
-        case .code, .docs, .costs, .graph, .settings:
+        case .code, .docs, .costs, .graph, .views, .settings:
             return nil
         }
     }

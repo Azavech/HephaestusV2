@@ -244,7 +244,21 @@ private struct ProjectColumns: View {
                                     isShown: workspace.details[project.id].map(\.graphEnabled)), initial: true) {
             state.leaveHiddenGraph(in: workspace)
         }
+        // The window leaves the Views of a project that is not a Swift application (docs/views.md ›
+        // Visibility).
+        .onChange(of: ViewsRowState(deviceID: workspace.deviceID, projectID: project.id, section: state.section,
+                                    type: project.type), initial: true) {
+            state.leaveHiddenViews(in: workspace)
+        }
     }
+}
+
+/// What makes the window check that its project's Views row is shown.
+private struct ViewsRowState: Hashable {
+    var deviceID: String
+    var projectID: String
+    var section: ProjectSection
+    var type: ProjectType
 }
 
 /// What makes a main window load the descendants of its project again.
@@ -362,6 +376,9 @@ struct SectionContent: View {
             APIExplorerView(window: state, workspace: workspace, projectID: projectID)
         case .graph:
             GraphSectionView(window: state, workspace: workspace, projectID: projectID)
+                .id("\(workspace.deviceID)/\(projectID)")
+        case .views:
+            ViewsSectionView(window: state, workspace: workspace, projectID: projectID)
                 .id("\(workspace.deviceID)/\(projectID)")
         case .settings:
             ProjectSettingsView(window: state, workspace: workspace, projectID: projectID)

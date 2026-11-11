@@ -95,6 +95,7 @@ public enum EngineMethods {
         KubernetesCheck.self, KubernetesNamespaces.self, KubernetesDeployments.self, KubernetesPods.self,
         APIOperations.self, APICall.self,
         GraphRead.self, GraphRequest.self,
+        ViewsList.self, PreviewsStart.self, PreviewsUpdate.self, PreviewsPoll.self, PreviewsInput.self, PreviewsStop.self,
         TicketsList.self, TicketsGet.self, TicketsCreate.self, TicketsUpdate.self, TicketsSetStatus.self,
         TicketsDelete.self, TicketsAddComment.self, TicketsUpdateComment.self, TicketsDeleteComment.self, TicketsRetryAnswer.self,
         TicketsAddAttachments.self, TicketsRemoveAttachment.self,

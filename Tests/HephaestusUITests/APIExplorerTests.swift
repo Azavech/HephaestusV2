@@ -60,7 +60,7 @@ struct APIExplorerTests {
         try? await Task.sleep(for: .milliseconds(100))
         #expect(connection.reads.isEmpty)
         #expect(workspace.showsAPIExplorer("API") == false)
-        #expect(SidebarCategory.categories(for: type, showsAPIExplorer: false).map(\.title) == ["Project"])
+        #expect(!SidebarCategory.categories(for: type, showsAPIExplorer: false).contains { $0.title == "Go Service" })
     }
 
     @Test("files.changed naming the contract, the openapi folder or the whole project reads the contract again")

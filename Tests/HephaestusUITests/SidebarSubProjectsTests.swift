@@ -34,7 +34,9 @@ struct SidebarSubProjectsTests {
     func nestedSubProjects(_ type: ProjectType) throws {
         let workspace = workspace(type: type)
         let demo = try categories(of: "DEMO", in: workspace)
-        #expect(demo.map(\.title) == ["Project", "Sub Projects"])
+        // A Swift application has its Swift Application category before Sub Projects.
+        let middle = type == .swiftApplication ? ["Swift Application"] : []
+        #expect(demo.map(\.title) == ["Project"] + middle + ["Sub Projects"])
         // Without a GitHub page the Project category has no Builds row (docs/builds.md › Visibility).
         #expect(demo[0].sections == ProjectSection.listed.filter { $0 != .builds } && demo[0].subProjects.isEmpty)
         let subProjects = try #require(demo.last)
@@ -45,7 +47,7 @@ struct SidebarSubProjectsTests {
 
         // In a sub project, the depth counts from it: its direct sub project is not indented.
         let music = try categories(of: "MUS", in: workspace)
-        #expect(music.map(\.title) == ["Project", "Sub Projects"])
+        #expect(music.map(\.title) == ["Project"] + middle + ["Sub Projects"])
         #expect(music.last?.subProjects.map(\.id) == ["API"])
         #expect(music.last?.subProjects.map(\.level) == [0])
         #expect(SidebarSubProject.indentation == 16)
@@ -62,7 +64,7 @@ struct SidebarSubProjectsTests {
     @Test("A project without loaded sub projects shows no Sub Projects heading", arguments: ProjectType.allCases)
     func withoutSubProjects(_ type: ProjectType) throws {
         let workspace = workspace(type: type)
-        let expected = type == .goService ? ["Project", "Go Service"] : ["Project"]
+        let expected = type == .goService ? ["Project", "Go Service"] : type == .swiftApplication ? ["Project", "Swift Application"] : ["Project"]
         for projectID in ["API", "SHR", "WEB"] {
             #expect(try categories(of: projectID, in: workspace).map(\.title) == expected)
         }

@@ -1539,7 +1539,7 @@ extension MCPToolCatalog {
                     "section": {
                       "type": "string",
                       "description": "Project section to show.",
-                      "enum": ["dashboard", "tickets", "bundles", "chats", "code", "docs", "web", "builds", "skills", "memories", "costs", "apiExplorer", "graph", "settings"]
+                      "enum": ["dashboard", "tickets", "bundles", "chats", "code", "docs", "web", "builds", "skills", "memories", "costs", "apiExplorer", "graph", "views", "settings"]
                     },
                     "vmID": {
                       "type": "string",
@@ -2434,7 +2434,7 @@ extension MCPToolCatalog {
                     "section": {
                       "type": "string",
                       "description": "Project section to show.",
-                      "enum": ["dashboard", "tickets", "bundles", "chats", "code", "docs", "web", "builds", "skills", "memories", "costs", "apiExplorer", "graph", "settings"]
+                      "enum": ["dashboard", "tickets", "bundles", "chats", "code", "docs", "web", "builds", "skills", "memories", "costs", "apiExplorer", "graph", "views", "settings"]
                     },
                     "vmID": {
                       "type": "string",

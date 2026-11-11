@@ -422,6 +422,9 @@ struct ProjectViewState {
     /// The state of the Graph section (docs/graph.md); created when the section first shows; never
     /// encoded.
     var graphState: GraphSectionState?
+    /// The state of the Views section (docs/views.md); created when the section first shows; never
+    /// encoded.
+    var viewsState: ViewsSectionState?
     /// Filters and sort order of the ticket list, kept per window and project while the window is
     /// open (docs/tickets.md › Ticket list).
     var ticketList = TicketListState()

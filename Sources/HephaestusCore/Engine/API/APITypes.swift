@@ -493,6 +493,8 @@ public enum ProjectSection: String, Codable, Sendable, Hashable, CaseIterable {
     case apiExplorer
     /// The Graph of a Go service whose graph is enabled (docs/graph.md).
     case graph
+    /// The Views of a Swift application (docs/views.md).
+    case views
     case settings
 
     public init(from decoder: Decoder) throws {

@@ -1,6 +1,6 @@
 # Engine API
 
-The engine API is the single interface to everything a device's engine owns: projects, sub projects, tickets, bundles, chats, files, docs, web tabs, skills, the memories the Claude CLI saves for the projects and the device's global memories, host settings, the macOS images of virtual machines, the virtual machines and the Claude plan usage; it also reads the workflow runs and releases of the projects' GitHub repositories with the GitHub CLI ([Builds](builds.md)). Local windows, remote devices and Claude (through the MCP server) call the same named methods with JSON params and JSON results, and all of them receive the same stream of named events, so every client sees every change live wherever it was made, and a remote window works as if it were the main device itself. This document is the contract for every method (params, result, errors, allowed actors, events emitted), every event, every API-only type, the JSON conventions and the Swift shape of the API. Persisted types (Project, WebTab, ChatSettings, Ticket, Comment, TicketLink, Attachment, TicketBundle, ChatMeta, ChatItem, Question, HostSettings, PlanUsage, VMImage) are defined in [Data model](data-model.md); the transports are described in [Remote devices](remote.md) and [MCP server](mcp.md).
+The engine API is the single interface to everything a device's engine owns: projects, sub projects, tickets, bundles, chats, files, docs, web tabs, skills, the memories the Claude CLI saves for the projects and the device's global memories, host settings, the macOS images of virtual machines, the virtual machines and the Claude plan usage; it also reads the workflow runs and releases of the projects' GitHub repositories with the GitHub CLI ([Builds](builds.md)). It also lists the views of the Swift files of a project and builds and runs their previews ([Views](views.md)). Local windows, remote devices and Claude (through the MCP server) call the same named methods with JSON params and JSON results, and all of them receive the same stream of named events, so every client sees every change live wherever it was made, and a remote window works as if it were the main device itself. This document is the contract for every method (params, result, errors, allowed actors, events emitted), every event, every API-only type, the JSON conventions and the Swift shape of the API. Persisted types (Project, WebTab, ChatSettings, Ticket, Comment, TicketLink, Attachment, TicketBundle, ChatMeta, ChatItem, Question, HostSettings, PlanUsage, VMImage) are defined in [Data model](data-model.md); the transports are described in [Remote devices](remote.md) and [MCP server](mcp.md).
 
 ## Overview
 
@@ -224,6 +224,12 @@ The first column lists every engine method; it is the list the docs conformance 
 | `api.call`                       | APICall                       | chatID, environment, operation, options?                   | APICallResult      | claude       |
 | `graph.read`                     | GraphRead                     | projectID, environment, window                             | GraphSnapshot      | user         |
 | `graph.request`                  | GraphRequest                  | projectID, environment, correlationID                      | GraphRequestDetail | user         |
+| `views.list`                     | ViewsList                     | projectID                                                  | [ProjectView]      | user         |
+| `previews.start`                 | PreviewsStart                 | projectID, path, name, settings                            | PreviewSession     | user         |
+| `previews.update`                | PreviewsUpdate                | sessionID, settings                                        | Empty              | user         |
+| `previews.poll`                  | PreviewsPoll                  | sessionID, after                                           | PreviewStatus      | user         |
+| `previews.input`                 | PreviewsInput                 | sessionID, preview, event                                  | Empty              | user         |
+| `previews.stop`                  | PreviewsStop                  | sessionID                                                  | Empty              | user         |
 | `tickets.list`                   | TicketsList                   | projectID, includeSubprojects?                             | [Ticket]           | user, claude |
 | `tickets.get`                    | TicketsGet                    | ticketID                                                   | Ticket             | user, claude |
 | `tickets.create`                 | TicketsCreate                 | projectID, title?, description, attachments?               | Ticket             | user, claude |
@@ -908,6 +914,124 @@ Builds the graph of the environment as [graph.read](#graphread) does, without it
 | notFound    | Jaeger has no trace with this id, refuses the id, or the trace is not a request ([Requests](graph.md#requests)): `Request <correlationID> not found.`                                            |
 
 And the [checks](#graph).
+
+Events: none.
+
+## Views and previews
+
+The methods of the [Views](views.md) section, which the windows of every device call with the actor user: [views.list](#viewslist) lists the views that the Swift files of a project declare, and a preview session shows the `#Preview` blocks of one view, live: [previews.start](#previewsstart) starts it, [previews.poll](#previewspoll) gives its state and the images of its previews, [previews.input](#previewsinput) gives a preview the user's clicks, scrolls and keys, [previews.update](#previewsupdate) changes its settings and [previews.stop](#previewsstop) ends it. They run on the main device: the files are read there, and the builds and the preview hosts run there ([Builds](views.md#builds), [Preview host](views.md#preview-host)). They emit no events: their results go to the caller only.
+
+- A session belongs to no window: the window that started it polls it and stops it. A session that no call of `previews.poll` has followed for 60 seconds stops, as with `previews.stop`, so that the sessions of a window that closed or of a remote device that disconnected end.
+- The engine builds the target of a session's view when it has no build or when a file of its package or Xcode project changed since its build ([Refresh](views.md#refresh)); the sessions of the same target share its build and its preview host.
+
+The methods, their user-only actor, the sessions and their 60 seconds are design-time choices. Default chosen at design time.
+
+### views.list
+
+Swift type `ViewsList` · actors: user · result: [[ProjectView](#projectview)]
+
+| Param     | Type      | Required | Description         |
+| --------- | --------- | -------- | ------------------- |
+| projectID | ProjectID | yes      | Project identifier. |
+
+Reads every Swift file of the project's folder, the folders of its sub projects included, and returns its views, sorted by path, then by line ([List of views](views.md#list-of-views)). It accepts a project of any type. The engine keeps the result of each file until its modification date or its size changes.
+
+| Error    | When                                                                    |
+| -------- | ----------------------------------------------------------------------- |
+| invalid  | `projectID` is not 2 to 8 letters: `projectID: use 2 to 8 letters A–Z.` |
+| notFound | No loaded project has this identifier: `Project <projectID> not found.` |
+
+Events: none.
+
+### previews.start
+
+Swift type `PreviewsStart` · actors: user · result: [PreviewSession](#previewsession)
+
+| Param     | Type                                | Required | Description                                                      |
+| --------- | ----------------------------------- | -------- | ---------------------------------------------------------------- |
+| projectID | ProjectID                           | yes      | Project identifier.                                              |
+| path      | String                              | yes      | Project path of the Swift file that declares the view.           |
+| name      | String                              | yes      | The view's name, as [ProjectView](#projectview) `name` has it.   |
+| settings  | [PreviewSettings](#previewsettings) | yes      | The width, the height, the appearance and the Dynamic Type size. |
+
+Starts a session that shows the previews of the view: the engine builds the view's target when it needs to, starts its preview host, and gives the host the view's previews with the settings. The call returns once the session exists, before the build; the state of the session comes with `previews.poll`.
+
+| Error    | When                                                                                                                                                             |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid  | `projectID` is not 2 to 8 letters: `projectID: use 2 to 8 letters A–Z.`                                                                                          |
+| notFound | No loaded project has this identifier: `Project <projectID> not found.`                                                                                          |
+| invalid  | `path` breaks the rules of project paths ([Paths](#paths)): `path: <reason>.`                                                                                    |
+| notFound | The project has no Swift file at `path`: `File <path> not found.`                                                                                                |
+| notFound | The file declares no view named `name`: `View <name> not found in <path>.`                                                                                       |
+| invalid  | The view has no preview block ([Preview blocks](views.md#preview-blocks)): `<name> has no #Preview.`                                                             |
+| invalid  | `settings.width` or `settings.height` is not a whole number from 50 to 2000: `settings.width: use 50 to 2000 points.`, `settings.height: use 50 to 2000 points.` |
+
+Events: none.
+
+### previews.update
+
+Swift type `PreviewsUpdate` · actors: user · result: [Empty](#empty)
+
+| Param     | Type                                | Required | Description                                              |
+| --------- | ----------------------------------- | -------- | -------------------------------------------------------- |
+| sessionID | UUID                                | yes      | The session.                                             |
+| settings  | [PreviewSettings](#previewsettings) | yes      | The new width, height, appearance and Dynamic Type size. |
+
+Applies the settings to the session's previews: the host gives their windows the new size and appearance and their SwiftUI environment the new Dynamic Type size, without a build.
+
+| Error    | When                                                                                                                                |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| notFound | No running session has this id: `Preview session <sessionID> not found.`                                                            |
+| invalid  | `settings.width` or `settings.height` is not a whole number from 50 to 2000, with the messages of [previews.start](#previewsstart). |
+
+Events: none.
+
+### previews.poll
+
+Swift type `PreviewsPoll` · actors: user · result: [PreviewStatus](#previewstatus)
+
+| Param     | Type | Required | Description                                                                  |
+| --------- | ---- | -------- | ---------------------------------------------------------------------------- |
+| sessionID | UUID | yes      | The session.                                                                 |
+| after     | Int  | yes      | The `sequence` of the last status the caller received, 0 for its first call. |
+
+Returns the session's status as soon as its `sequence` is greater than `after`: at once when it already is, otherwise when the state, the progress of the build or the image of a preview changes, or after 20 seconds without a change, with the same `sequence`. The status carries the image of each preview that changed after `after`, so that a caller polling again at once receives each image once.
+
+| Error    | When                                                                     |
+| -------- | ------------------------------------------------------------------------ |
+| notFound | No running session has this id: `Preview session <sessionID> not found.` |
+| invalid  | `after` is negative: `after: use 0 or more.`                             |
+
+Events: none.
+
+### previews.input
+
+Swift type `PreviewsInput` · actors: user · result: [Empty](#empty)
+
+| Param     | Type                                    | Required | Description                                                          |
+| --------- | --------------------------------------- | -------- | -------------------------------------------------------------------- |
+| sessionID | UUID                                    | yes      | The session.                                                         |
+| preview   | Int                                     | yes      | The `index` of the preview, as [PreviewFrame](#previewframe) has it. |
+| event     | [PreviewInputEvent](#previewinputevent) | yes      | The click, move, scroll or key.                                      |
+
+Gives the event to the preview's view in the host, at its place in the view's coordinates. An event that comes while the host is not running, during the first build or after the host stopped, is dropped.
+
+| Error    | When                                                                     |
+| -------- | ------------------------------------------------------------------------ |
+| notFound | No running session has this id: `Preview session <sessionID> not found.` |
+| invalid  | The session has no preview with this index: `preview: use 0 to <n − 1>.` |
+
+Events: none.
+
+### previews.stop
+
+Swift type `PreviewsStop` · actors: user · result: [Empty](#empty)
+
+| Param     | Type | Required | Description  |
+| --------- | ---- | -------- | ------------ |
+| sessionID | UUID | yes      | The session. |
+
+Ends the session: its previews leave the host, which stops 60 seconds after its last session ended ([Preview host](views.md#preview-host)). A session that no longer runs is not an error.
 
 Events: none.
 
@@ -4311,6 +4435,89 @@ The result of [graph.request](#graphrequest).
 | message | String                      | yes      | The event's name.                                   |
 | fields  | [[GraphField](#graphfield)] | yes      | Its other attributes, by name.                      |
 
+### ProjectView
+
+A view that a Swift file of a project declares ([What a view is](views.md#what-a-view-is)), in the result of [views.list](#viewslist).
+
+| Field    | Type                          | Required | Description                                                                                             |
+| -------- | ----------------------------- | -------- | ------------------------------------------------------------------------------------------------------- |
+| name     | String                        | yes      | The type's name, after the names of the types it is declared in, separated by `.`.                      |
+| path     | String                        | yes      | Project path of its file.                                                                               |
+| line     | Int                           | yes      | The line of its declaration, from 1.                                                                    |
+| kind     | [ViewKind](#viewkind)         | yes      | `swiftUI`, `appKit` or `uiKit`.                                                                         |
+| previews | [[ViewPreview](#viewpreview)] | yes      | Its preview blocks, in the order of the file ([Preview blocks](views.md#preview-blocks)); may be empty. |
+
+### ViewKind
+
+String enum of the kinds of views: `swiftUI`, a type that conforms to SwiftUI's `View`; `appKit`, a subclass of `NSView`; `uiKit`, a subclass of `UIView` ([What a view is](views.md#what-a-view-is)).
+
+### ViewPreview
+
+A `#Preview` block of a view: `name`, String, optional, its name, absent for a block without one; `line`, Int, the line of its `#Preview`, from 1.
+
+### PreviewSettings
+
+| Field           | Type                                    | Required | Description                                              |
+| --------------- | --------------------------------------- | -------- | -------------------------------------------------------- |
+| width           | Int                                     | yes      | The width of a Mac preview, in points, from 50 to 2000.  |
+| height          | Int                                     | yes      | The height of a Mac preview, in points, from 50 to 2000. |
+| appearance      | [PreviewAppearance](#previewappearance) | yes      | `light` or `dark`.                                       |
+| dynamicTypeSize | [DynamicTypeSize](#dynamictypesize)     | yes      | The `dynamicTypeSize` of the SwiftUI environment.        |
+
+### PreviewAppearance
+
+String enum of the appearances of the previews: `light` (Aqua) and `dark` (Dark Aqua).
+
+### DynamicTypeSize
+
+String enum of the Dynamic Type sizes, the cases of SwiftUI's `DynamicTypeSize`: `xSmall`, `small`, `medium`, `large`, `xLarge`, `xxLarge`, `xxxLarge`, `accessibility1`, `accessibility2`, `accessibility3`, `accessibility4` and `accessibility5`, shown as `Extra Small` to `Accessibility 5` ([Preview settings](views.md#preview-settings)).
+
+### PreviewSession
+
+The result of [previews.start](#previewsstart): `sessionID`, UUID, the session's id.
+
+### PreviewStatus
+
+| Field    | Type                            | Required | Description                                                                                                                                                                                                       |
+| -------- | ------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| sequence | Int                             | yes      | Greater at each change of the session: its state, its progress, its messages or the image of one of its previews.                                                                                                 |
+| state    | [PreviewState](#previewstate)   | yes      | `building`, `running`, `buildFailed` or `stopped`.                                                                                                                                                                |
+| progress | String                          | no       | While `building`: the last progress of the build tool's output, `<n>/<m>`; absent before the first one.                                                                                                           |
+| builtAt  | Date                            | no       | The end of the build the preview host runs; absent before the first build that succeeded.                                                                                                                         |
+| messages | [String]                        | yes      | For `buildFailed`: the compiler's errors or the failure ([Build rules](views.md#build-rules)); for `stopped`: `The previews stopped: <reason>.` and the last lines of the host's standard error; empty otherwise. |
+| previews | [[PreviewFrame](#previewframe)] | yes      | The view's previews, in the order of their blocks.                                                                                                                                                                |
+
+### PreviewState
+
+String enum of the states of a preview session: `building`, a build of its target runs, the previews keeping their last images when they have some; `running`, the preview host shows the previews; `buildFailed`, the last build failed; `stopped`, the preview host stopped by itself ([Preview host](views.md#preview-host)).
+
+### PreviewFrame
+
+| Field     | Type   | Required | Description                                                                                    |
+| --------- | ------ | -------- | ---------------------------------------------------------------------------------------------- |
+| index     | Int    | yes      | The rank of the preview among the view's previews, from 0.                                     |
+| title     | String | yes      | The name of its block, or `Preview <index + 1>`.                                               |
+| sequence  | Int    | yes      | The `sequence` of the status that brought its image; 0 before its first image.                 |
+| pngBase64 | String | no       | Its image, a PNG at 2 pixels per point, present when it changed after the `after` of the poll. |
+| width     | Int    | yes      | The width of its image in pixels; 0 before its first image.                                    |
+| height    | Int    | yes      | The height of its image in pixels; 0 before its first image.                                   |
+
+### PreviewInputEvent
+
+| Field                       | Type     | Required | Description                                                                                                             |
+| --------------------------- | -------- | -------- | ----------------------------------------------------------------------------------------------------------------------- |
+| kind                        | String   | yes      | `mouseDown`, `mouseUp`, `mouseDragged`, `mouseMoved`, `scroll`, `keyDown` or `keyUp`.                                   |
+| x                           | Double   | no       | For the mouse and the scroll: the place in the preview, in points from its left edge.                                   |
+| y                           | Double   | no       | For the mouse and the scroll: the place in the preview, in points from its top edge.                                    |
+| button                      | String   | no       | For `mouseDown`, `mouseUp` and `mouseDragged`: `left` or `right`; `left` when absent.                                   |
+| clickCount                  | Int      | no       | For `mouseDown` and `mouseUp`: 1 for a click, 2 for a double click; 1 when absent.                                      |
+| deltaX                      | Double   | no       | For `scroll`: the horizontal scroll in points, positive towards the left of the content, as AppKit's `scrollingDeltaX`. |
+| deltaY                      | Double   | no       | For `scroll`: the vertical scroll in points, positive towards the top of the content, as AppKit's `scrollingDeltaY`.    |
+| characters                  | String   | no       | For the keys: the characters of the key, as AppKit's `characters`.                                                      |
+| charactersIgnoringModifiers | String   | no       | For the keys: as AppKit's `charactersIgnoringModifiers`.                                                                |
+| keyCode                     | Int      | no       | For the keys: the virtual key code.                                                                                     |
+| modifiers                   | [String] | no       | The modifier keys held: `shift`, `control`, `option`, `command`, `capsLock` and `function`; none when absent.           |
+
 ### APIContract
 
 The operations of the contract `openapi/contract.yaml` of a Go service project, the result of [api.operations](#apioperations) ([api_operations](mcp.md#api_operations)).
@@ -4653,7 +4860,7 @@ public enum NavigationTarget: Codable, Sendable, Hashable {
 
 ### ProjectSection
 
-String enum of the sidebar sections: `dashboard`, `tickets`, `bundles`, `chats`, `code`, `docs`, `web`, `builds`, `skills`, `memories`, `costs`, `apiExplorer`, `graph`, `settings` ([Sidebar](ui.md#sidebar)). The Swift name avoids SwiftUI's `Section`. Default chosen at design time.
+String enum of the sidebar sections: `dashboard`, `tickets`, `bundles`, `chats`, `code`, `docs`, `web`, `builds`, `skills`, `memories`, `costs`, `apiExplorer`, `graph`, `views`, `settings` ([Sidebar](ui.md#sidebar)). The Swift name avoids SwiftUI's `Section`. Default chosen at design time.
 
 ### AttachmentUpload
 
@@ -5335,6 +5542,7 @@ One macOS version of the list of ipsw.me ([macOS versions](virtual-machines.md#m
 | API/EngineJSON.swift                        | The JSON encoder and decoder of the API.                                                                                                                                                                                                                                                                                                                                     |
 | API/APITypes.swift                          | The other types of [API types](#api-types).                                                                                                                                                                                                                                                                                                                                  |
 | API/(Area)API.swift                         | The method declarations of one area: `DeviceAPI` (device.info, snapshot.get), `ProjectsAPI`, `TicketsAPI`, `AttachmentsAPI`, `BundlesAPI`, `ChatsAPI`, `SoundsAPI`, `ClaudeAPI`, `FilesAPI`, `DocsAPI`, `FSAPI`, `WebTabsAPI`, `SearchAPI`, `SkillsAPI`, `MemoriesAPI`, `BuildsAPI`, `SettingsAPI`, `UIAPI`, `KubernetesAPI` (kubernetes.*, argoCD.*), `ServiceAPI` (api.*). |
+| API/ViewsAPI.swift                          | The methods of `views.*` and `previews.*` and their types ([Views and previews](#views-and-previews)).                                                                                                                                                                                                                                                                       |
 | API/Events.swift                            | One `EngineEvent` type per event, with the payload types.                                                                                                                                                                                                                                                                                                                    |
 | Handlers/(Area)Handlers.swift               | `register<Area>Handlers()` and the handlers of one area.                                                                                                                                                                                                                                                                                                                     |
 
@@ -5588,3 +5796,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R209: Each image stores the user name and the password of its guests' account in clear in its `image.yml`; Settings edits them, `Type Password` in the setup view and in the detail of a virtual machine types the password into the guest through its screen, and Claude reads and stores them with the VM tools and types the password whenever the guest asks for it.
 - R210: `Edit…`, in the Virtual Machines popover and in Settings, changes the name, the cores, the memory and the disk size of a stopped virtual machine of the user; the disk cannot be smaller, a larger one is grown, and a running virtual machine cannot be edited.
 - R211: `Set Up…` of an image has a menu with `Manual Setup` and `Auto Setup`; Auto Setup starts a chat beside the setup view in which Claude goes through Setup Assistant in English (United States) with the image's stored account, asked for when missing, turns SIP off in Recovery, installs the agent and finishes the setup with the VM tools, through the screen before the agent connects; the user's controls stay, a running setup is taken over, the chat belongs to the window's project or, without a project, to the image, and stays open.
+- R212: A Swift application has a Views section, in a Swift Application category, that lists its SwiftUI, AppKit and UIKit views by folder, sub projects included, and shows a view's `#Preview` blocks side by side, live and interactive on the Mac, at the entered size, in Light or Dark and a Dynamic Type size, built in the background and refreshed on save, with compiler errors, for packages, Xcode projects and remote windows.
