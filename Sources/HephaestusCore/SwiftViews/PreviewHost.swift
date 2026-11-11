@@ -25,16 +25,22 @@ final class PreviewHost: @unchecked Sendable {
         var charactersIgnoringModifiers: String?
         var keyCode: Int?
         var modifiers: [String]?
+        /// For a device preview: its size classes, `compact` or `regular`, its idiom, `phone` or
+        /// `pad`, and its scale.
+        var horizontalSizeClass: String?
+        var verticalSizeClass: String?
+        var idiom: String?
+        var scale: Int?
 
-        static func open(window: String, preview: String, settings: PreviewSettings) -> Command {
+        static func open(window: String, preview: String, settings: PreviewSettings, device: PreviewDevice? = nil) -> Command {
             var command = Command(type: "open", window: window, preview: preview)
-            command.apply(settings)
+            command.apply(settings, device: device)
             return command
         }
 
-        static func update(window: String, settings: PreviewSettings) -> Command {
+        static func update(window: String, settings: PreviewSettings, device: PreviewDevice? = nil) -> Command {
             var command = Command(type: "update", window: window)
-            command.apply(settings)
+            command.apply(settings, device: device)
             return command
         }
 
@@ -51,11 +57,22 @@ final class PreviewHost: @unchecked Sendable {
                            modifiers: event.modifiers)
         }
 
-        mutating func apply(_ settings: PreviewSettings) {
+        /// The settings of a Mac preview, or of a device preview: the device's size and size
+        /// classes in the orientation of the settings (docs/views.md › Device rows).
+        mutating func apply(_ settings: PreviewSettings, device: PreviewDevice? = nil) {
             width = settings.width
             height = settings.height
             appearance = settings.appearance.rawValue
             dynamicTypeSize = settings.dynamicTypeSize.rawValue
+            guard let device else { return }
+            let size = device.size(in: settings.orientation)
+            let classes = device.sizeClasses(in: settings.orientation)
+            width = size.width
+            height = size.height
+            horizontalSizeClass = classes.horizontal.rawValue
+            verticalSizeClass = classes.vertical.rawValue
+            idiom = device.family == .iPad ? "pad" : "phone"
+            scale = device.scale
         }
     }
 
@@ -66,6 +83,8 @@ final class PreviewHost: @unchecked Sendable {
         var width: Int?
         var height: Int?
         var png: String?
+        /// A line of the standard error of the iOS host.
+        var line: String?
     }
 
     let process: ChildProcess

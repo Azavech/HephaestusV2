@@ -36,7 +36,8 @@ struct DataModelExamplesTests {
     func everyTypeHasAnExample() throws {
         let paths = try Self.examples().map(\.path)
         let suffixes = [".hephaestus/project.yml", "/device.yml", "/registry.yml", "/settings.yml", "/remotes.yml",
-                        "/plan-usage.yml", "/current-environments.yml", "/image.yml", "/vm.yml", "/secrets.json", "/SKILL.md"]
+                        "/plan-usage.yml", "/current-environments.yml", "/image.yml", "/vm.yml", "/secrets.json", "/devices.json",
+                        "/SKILL.md"]
         for suffix in suffixes {
             #expect(paths.contains { $0.hasSuffix(suffix) }, "no example for \(suffix)")
         }
@@ -87,6 +88,8 @@ struct DataModelExamplesTests {
             #expect(machine.id.uuidString == folder)
         } else if path.hasSuffix("/secrets.json") {
             try checkSecrets(example)
+        } else if path.hasSuffix("/devices.json") {
+            try checkDevices(example)
         } else if path.hasSuffix("/SKILL.md") {
             let frontmatter = try checkYAML(SkillFrontmatter.self, example)
             #expect(frontmatter.name == folder)
@@ -118,6 +121,21 @@ struct DataModelExamplesTests {
         let encoded = try StorageJSON.fileEncoder().encode(value)
         let decodedAgain = try StorageJSON.decodeObject(Secrets.self, from: encoded)
         #expect(decodedAgain == value)
+        let exampleTree = try JSONDecoder().decode(JSONValue.self, from: data)
+        let encodedTree = try JSONDecoder().decode(JSONValue.self, from: encoded)
+        for missing in missingKeys(exampleTree, in: encodedTree, path: "") {
+            Issue.record("\(example.path): the key \(missing) is missing from the encoded output")
+        }
+    }
+
+    /// `devices.json`: decodes as `PreviewDevicesFile`, every device kept by the reading rules,
+    /// round-trips and keeps its keys.
+    private func checkDevices(_ example: Example) throws {
+        let data = Data(example.text.utf8)
+        let value = try JSONDecoder().decode(PreviewDevicesFile.self, from: data)
+        #expect(PreviewDeviceCatalog.parse(data) == .devices(value.devices))
+        let encoded = try JSONEncoder().encode(value)
+        #expect(try JSONDecoder().decode(PreviewDevicesFile.self, from: encoded) == value)
         let exampleTree = try JSONDecoder().decode(JSONValue.self, from: data)
         let encodedTree = try JSONDecoder().decode(JSONValue.self, from: encoded)
         for missing in missingKeys(exampleTree, in: encodedTree, path: "") {

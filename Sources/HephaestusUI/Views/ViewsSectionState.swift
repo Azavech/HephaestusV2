@@ -17,6 +17,9 @@ final class ViewsSectionState {
     var collapsed: Set<String> = []
     var selection: ViewSelection?
     var settings: PreviewSettings
+    /// The names of the devices checked in the devices popover, kept by name
+    /// (docs/views.md › Preview settings).
+    private(set) var checkedDevices: Set<String> = []
     /// The width of the list, which its divider changes (docs/views.md › Layout).
     var listWidth: Double = 260
     /// The session of the previews of the selected view.
@@ -26,6 +29,8 @@ final class ViewsSectionState {
     @ObservationIgnored private var projectID: String?
     @ObservationIgnored private var tasks: [Task<Void, Never>] = []
     @ObservationIgnored private var reloadRequested = false
+    /// True once the first iPhone of the list was checked by default.
+    @ObservationIgnored private var defaultDeviceChosen = false
 
     init(appearance: PreviewAppearance) {
         settings = PreviewSettings(appearance: appearance)
@@ -161,14 +166,54 @@ final class ViewsSectionState {
     func settingsChanged() {
         session?.update(settings)
     }
+
+    // MARK: Devices
+
+    /// Follows the devices of `devices.json`: at first the first device of the iPhone family is
+    /// checked; a device the file no longer lists is no longer checked; the settings get the
+    /// checked devices with their values, in the order of the file (docs/views.md › Preview
+    /// settings).
+    func syncDevices(_ available: [PreviewDevice]) {
+        if !defaultDeviceChosen, !available.isEmpty {
+            defaultDeviceChosen = true
+            if let first = available.first(where: { $0.family == .iPhone }) ?? available.first {
+                checkedDevices.insert(first.name)
+            }
+        }
+        let names = Set(available.map(\.name))
+        if !checkedDevices.isSubset(of: names) {
+            checkedDevices.formIntersection(names)
+        }
+        let devices = PreviewDeviceCatalog.grouped(available).flatMap(\.devices).filter { checkedDevices.contains($0.name) }
+        if settings.devices != devices {
+            settings.devices = devices
+            settingsChanged()
+        }
+    }
+
+    func isChecked(_ device: PreviewDevice) -> Bool {
+        checkedDevices.contains(device.name)
+    }
+
+    /// Checks or unchecks a device of the list.
+    func setChecked(_ device: PreviewDevice, _ checked: Bool, available: [PreviewDevice]) {
+        defaultDeviceChosen = true
+        if checked {
+            checkedDevices.insert(device.name)
+        } else {
+            checkedDevices.remove(device.name)
+        }
+        syncDevices(available)
+    }
 }
 
-/// One preview shown: its title and its last image.
+/// One preview shown: its title, its device, nil for the Mac, and its last image.
 struct PreviewImage: Identifiable {
     var index: Int
     var title: String
+    var device: String?
     var image: NSImage?
-    var id: Int { index }
+    var id: String { "\(index)/\(device ?? "")" }
 }
 
 /// A preview session followed by the window (docs/views.md › Showing a view): started with
@@ -191,7 +236,7 @@ final class PreviewSessionModel {
     @ObservationIgnored private var settings: PreviewSettings
     @ObservationIgnored private var sessionID: UUID?
     @ObservationIgnored private var task: Task<Void, Never>?
-    @ObservationIgnored private var pending: [(preview: Int, event: PreviewInputEvent)] = []
+    @ObservationIgnored private var pending: [(preview: Int, device: String?, event: PreviewInputEvent)] = []
     @ObservationIgnored private var sending = false
     @ObservationIgnored private var stopped = false
 
@@ -248,21 +293,25 @@ final class PreviewSessionModel {
         }
     }
 
+    /// The status's previews, in its order, the Mac's then each device's, with their last images.
     private func apply(_ status: PreviewStatus) {
         state = status.state
         progress = status.progress
         builtAt = status.builtAt
         messages = status.messages
-        var images = previews
-        for frame in status.previews {
-            guard images.indices.contains(frame.index) else { continue }
-            images[frame.index].title = frame.title
+        var known: [String: NSImage] = [:]
+        for preview in previews {
+            if let image = preview.image { known[preview.id] = image }
+        }
+        previews = status.previews.map { frame in
+            var preview = PreviewImage(index: frame.index, title: frame.title, device: frame.device)
+            preview.image = known[preview.id]
             if let base64 = frame.pngBase64, let data = Data(base64Encoded: base64), let image = NSImage(data: data) {
                 image.size = NSSize(width: CGFloat(frame.width) / 2, height: CGFloat(frame.height) / 2)
-                images[frame.index].image = image
+                preview.image = image
             }
+            return preview
         }
-        previews = images
     }
 
     /// Ends the session.
@@ -282,8 +331,8 @@ final class PreviewSessionModel {
     }
 
     /// Sends an input after those before it; moves and scrolls that wait are merged.
-    func send(preview: Int, _ event: PreviewInputEvent) {
-        if let last = pending.last, last.preview == preview {
+    func send(preview: Int, device: String? = nil, _ event: PreviewInputEvent) {
+        if let last = pending.last, last.preview == preview, last.device == device {
             if event.kind == .scroll, last.event.kind == .scroll {
                 var merged = event
                 merged.deltaX = (last.event.deltaX ?? 0) + (event.deltaX ?? 0)
@@ -296,7 +345,7 @@ final class PreviewSessionModel {
                 return
             }
         }
-        pending.append((preview, event))
+        pending.append((preview, device, event))
         drain()
     }
 
@@ -308,7 +357,8 @@ final class PreviewSessionModel {
         sending = true
         let next = pending.removeFirst()
         Task { @MainActor [weak self] in
-            _ = try? await workspace.call(PreviewsInput.self, PreviewsInput.Params(sessionID: sessionID, preview: next.preview, event: next.event))
+            _ = try? await workspace.call(PreviewsInput.self, PreviewsInput.Params(sessionID: sessionID, preview: next.preview, device: next.device,
+                                                                                  event: next.event))
             guard let self else { return }
             self.sending = false
             self.drain()

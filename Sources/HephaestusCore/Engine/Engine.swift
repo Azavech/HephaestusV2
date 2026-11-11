@@ -195,6 +195,7 @@ public actor Engine {
         await startMCPServer()
         await startSyncServer()
         await startClaudeBackgroundTasks()
+        shutDownLeftoverPreviewSimulators()
     }
 
     /// docs/architecture.md › Shutdown, steps 1 to 3 and 5: background work drops its results from

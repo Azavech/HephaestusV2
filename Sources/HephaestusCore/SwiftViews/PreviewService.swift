@@ -3,7 +3,8 @@ import Foundation
 
 /// The engine's state for the `views.*` and `previews.*` methods (docs/engine-api.md › Views and
 /// previews): the scans of the Swift files kept, the packages and Xcode projects with their builds
-/// and preview hosts, and the preview sessions. Engine state, used only on the engine actor.
+/// and preview hosts per target and platform, the preview sessions and the simulator devices of
+/// the iOS hosts. Engine state, used only on the engine actor.
 final class PreviewService {
     /// The scan of a file, kept until its size or its modification date changes.
     struct CachedScan: Sendable {
@@ -18,10 +19,15 @@ final class PreviewService {
         let buildFolder: URL
         /// The running build.
         var build: Task<Void, Never>?
-        /// A file of the folder changed since the last build, or no build ran yet.
-        var outOfDate = true
-        /// The target of each file, by absolute path, as the last build found it.
+        /// Grows at each change of a file of the folder: a build of an earlier generation is out
+        /// of date.
+        var generation = 1
+        /// The generation of the last read of its targets; 0 before the first.
+        var readGeneration = 0
+        /// The target of each file, by absolute path, as the last read found it.
         var fileTargets: [String: String] = [:]
+        /// Why a file has no target to preview, as the last read found it.
+        var fileFailures: [String: PreviewUnitBuild.FileFailure] = [:]
         var targets: [String: Target] = [:]
         /// The targets whose copy the build folder of a package holds, by name.
         var mirrored: [String: PackageTarget] = [:]
@@ -34,21 +40,48 @@ final class PreviewService {
         }
     }
 
-    /// A target previewed, with the result of its last build and its preview host.
+    /// A target previewed: its platforms and, for each, its last build and its preview host.
     final class Target {
         let name: String
-        var executable: URL?
-        var builtAt: Date?
-        /// The messages of its last build when it failed.
-        var failure: [String]?
-        var host: PreviewHost?
-        /// Changes at each start of a host, so that the end of a replaced host changes nothing.
-        var hostID = UUID()
-        var idleStop: Task<Void, Never>?
+        /// The platforms it builds for (docs/views.md › Platforms of a target).
+        var platforms: Set<PreviewPlatform> = [.macOS]
+        var builds: [PreviewPlatform: PlatformBuild] = [:]
 
         init(name: String) {
             self.name = name
         }
+
+        func build(for platform: PreviewPlatform) -> PlatformBuild {
+            if let build = builds[platform] { return build }
+            let build = PlatformBuild()
+            builds[platform] = build
+            return build
+        }
+    }
+
+    /// The build of a target for one platform, and its preview host.
+    final class PlatformBuild {
+        /// The host's executable on macOS, its app on iOS.
+        var product: URL?
+        /// The identifier of the iOS app.
+        var bundleID: String?
+        var builtAt: Date?
+        /// The messages of its last build when it failed.
+        var failure: [String]?
+        /// The unit's generation it was built from; 0 before its first build.
+        var generation = 0
+        var host: (any PreviewHostConnection)?
+        /// Changes at each start of a host, so that the end of a replaced host changes nothing.
+        var hostID = UUID()
+        var idleStop: Task<Void, Never>?
+        /// Why its host stopped by itself.
+        var stopMessages: [String]?
+    }
+
+    /// A preview of a session: its rank and its device, nil for the Mac.
+    struct FrameKey: Hashable {
+        var index: Int
+        var device: String?
     }
 
     /// The image of one preview of a session.
@@ -77,7 +110,7 @@ final class PreviewService {
         var progress: String?
         var builtAt: Date?
         var messages: [String] = []
-        var frames: [Int: Frame] = [:]
+        var frames: [FrameKey: Frame] = [:]
         var sequence = 1
         var lastPoll = Date()
         var polls = 0
@@ -95,8 +128,15 @@ final class PreviewService {
             self.settings = settings
         }
 
-        func windowKey(_ index: Int) -> String {
-            "\(id.uuidString)/\(index)"
+        /// The platforms it asks for: macOS, and iOS while a device is checked.
+        var wantedPlatforms: Set<PreviewPlatform> {
+            settings.devices.isEmpty ? [.macOS] : [.macOS, .iOS]
+        }
+
+        /// The key of the host window of a preview: `<session>/<index>` on the Mac,
+        /// `<session>/<index>/<device>` on a device.
+        func windowKey(_ index: Int, device: String? = nil) -> String {
+            device.map { "\(id.uuidString)/\(index)/\($0)" } ?? "\(id.uuidString)/\(index)"
         }
     }
 
@@ -104,6 +144,8 @@ final class PreviewService {
     var units: [String: Unit] = [:]
     var sessions: [UUID: Session] = [:]
     var sweeper: Task<Void, Never>?
+    /// The simulator device of each iOS host, by `<unit key>/<target>`.
+    var simulatorLeases: [String: String] = [:]
 
     /// A session that no poll followed for this long stops.
     static let sessionLifetime: TimeInterval = 60
@@ -118,6 +160,20 @@ final class PreviewService {
 
     func sessions(ofUnit key: String, target: String) -> [Session] {
         sessions.values.filter { $0.unitKey == key && $0.targetName == target }
+    }
+
+    /// The platforms a session shows: those of its target that it asks for; nil while its
+    /// target is not known (docs/views.md › Device rows).
+    func shownPlatforms(_ session: Session) -> Set<PreviewPlatform>? {
+        guard let key = session.unitKey, let unit = units[key], let name = session.targetName, let target = unit.targets[name] else {
+            return nil
+        }
+        return target.platforms.intersection(session.wantedPlatforms)
+    }
+
+    /// The sessions of a target that show a platform.
+    func sessions(ofUnit key: String, target: String, showing platform: PreviewPlatform) -> [Session] {
+        sessions(ofUnit: key, target: target).filter { shownPlatforms($0)?.contains(platform) == true }
     }
 }
 
@@ -135,7 +191,8 @@ final class ProcessBox: @unchecked Sendable {
 /// The result of the build of a package or an Xcode project.
 struct PreviewUnitBuild: Sendable {
     enum Outcome: Sendable {
-        case success(executable: URL)
+        /// The host's executable, or its iOS app with its identifier.
+        case success(product: URL, bundleID: String?)
         case failure([String])
     }
 
@@ -150,7 +207,9 @@ struct PreviewUnitBuild: Sendable {
 
     /// The failure of each file without target.
     var fileFailures: [String: FileFailure] = [:]
-    var targets: [String: Outcome] = [:]
+    /// The platforms of each target read.
+    var targetPlatforms: [String: Set<PreviewPlatform>] = [:]
+    var outcomes: [String: [PreviewPlatform: Outcome]] = [:]
 }
 
 extension Engine {
@@ -226,16 +285,60 @@ extension Engine {
         return PreviewSession(sessionID: session.id)
     }
 
-    /// `previews.update` (docs/engine-api.md › previews.update).
+    /// `previews.update` (docs/engine-api.md › previews.update): the Mac windows take the new
+    /// settings; the windows of the devices no longer checked close, those of the new devices
+    /// open, and the first device of a target without iOS build starts that build.
     func previewsUpdate(_ params: PreviewsUpdate.Params) async throws -> Empty {
         let session = try previewSession(params.sessionID)
         try Self.checkPreviewSettings(params.settings)
+        let old = session.settings
+        let oldShown = previews.shownPlatforms(session) ?? []
         session.settings = params.settings
-        if let host = previewHost(of: session) {
+        let shown = previews.shownPlatforms(session) ?? []
+        let names = Set(params.settings.devices.map(\.name))
+        session.frames = session.frames.filter { key, _ in key.device.map(names.contains) ?? true }
+        guard let key = session.unitKey, let unit = previews.units[key], let name = session.targetName, let target = unit.targets[name] else {
+            notifyPreviewSession(session)
+            return Empty()
+        }
+        if shown.contains(.macOS), let host = target.builds[.macOS]?.host {
             for index in session.previews.indices {
                 host.send(.update(window: session.windowKey(index), settings: params.settings))
             }
         }
+        let oldDevices = oldShown.contains(.iOS) ? old.devices : []
+        let newDevices = shown.contains(.iOS) ? params.settings.devices : []
+        if let host = target.builds[.iOS]?.host {
+            let kept = Set(newDevices.map(\.name))
+            let before = Set(oldDevices.map(\.name))
+            for device in oldDevices where !kept.contains(device.name) {
+                for index in session.previews.indices {
+                    host.send(PreviewHost.Command(type: "close", window: session.windowKey(index, device: device.name)))
+                }
+            }
+            for device in newDevices {
+                for (index, preview) in session.previews.enumerated() {
+                    let window = session.windowKey(index, device: device.name)
+                    host.send(before.contains(device.name)
+                              ? .update(window: window, settings: params.settings, device: device)
+                              : .open(window: window, preview: preview.key, settings: params.settings, device: device))
+                }
+            }
+        }
+        if shown.contains(.iOS) {
+            let build = target.build(for: .iOS)
+            build.idleStop?.cancel()
+            build.idleStop = nil
+            if previewUnitNeedsBuild(unit) {
+                requestPreviewBuild(unit)
+            } else {
+                startPreviewHosts(unit)
+            }
+        } else if oldShown.contains(.iOS) {
+            schedulePreviewHostIdleStop(key, name, .iOS)
+        }
+        notifyPreviewSession(session)
+        refreshPreviewSession(session)
         return Empty()
     }
 
@@ -276,8 +379,12 @@ extension Engine {
         guard session.previews.indices.contains(params.preview) else {
             throw EngineError.invalid("preview", "use 0 to \(session.previews.count - 1)")
         }
-        if session.state == .running || session.state == .building, let host = previewHost(of: session) {
-            host.send(.input(window: session.windowKey(params.preview), event: params.event))
+        if let device = params.device, !session.settings.devices.contains(where: { $0.name == device }) {
+            throw EngineError.invalid("device", "\(device) is not a device of the session")
+        }
+        let platform: PreviewPlatform = params.device == nil ? .macOS : .iOS
+        if session.state == .running || session.state == .building, let host = previewHost(of: session, platform) {
+            host.send(.input(window: session.windowKey(params.preview, device: params.device), event: params.event))
         }
         return Empty()
     }
@@ -336,6 +443,15 @@ extension Engine {
         guard PreviewSettings.sizeRange.contains(settings.height) else {
             throw EngineError.invalid("settings.height", "use 50 to 2000 points")
         }
+        var names: Set<String> = []
+        for device in settings.devices {
+            if let problem = device.problem {
+                throw EngineError.invalid("settings.devices", "\(device.name): \(problem)")
+            }
+            guard names.insert(device.name).inserted else {
+                throw EngineError.invalid("settings.devices", "\(device.name) is listed twice")
+            }
+        }
     }
 
     // MARK: Sessions
@@ -347,17 +463,33 @@ extension Engine {
         return session
     }
 
-    func previewHost(of session: PreviewService.Session) -> PreviewHost? {
+    func previewHost(of session: PreviewService.Session, _ platform: PreviewPlatform) -> (any PreviewHostConnection)? {
         guard let key = session.unitKey, let name = session.targetName else { return nil }
-        return previews.units[key]?.targets[name]?.host
+        return previews.units[key]?.targets[name]?.builds[platform]?.host
     }
 
+    /// The status of a session: the Mac's previews in the order of their blocks, then each
+    /// device's, for the platforms it shows whose last build did not fail.
     func status(of session: PreviewService.Session, after: Int) -> PreviewStatus {
-        let frames = session.previews.enumerated().map { index, preview -> PreviewFrame in
-            guard let frame = session.frames[index] else {
-                return PreviewFrame(index: index, title: preview.title)
+        var shown = previews.shownPlatforms(session) ?? []
+        if let key = session.unitKey, let name = session.targetName, let target = previews.units[key]?.targets[name] {
+            shown = shown.filter { target.builds[$0]?.failure == nil }
+        }
+        var keys: [PreviewService.FrameKey] = []
+        if shown.contains(.macOS) {
+            keys += session.previews.indices.map { PreviewService.FrameKey(index: $0, device: nil) }
+        }
+        if shown.contains(.iOS) {
+            for device in session.settings.devices {
+                keys += session.previews.indices.map { PreviewService.FrameKey(index: $0, device: device.name) }
             }
-            return PreviewFrame(index: index, title: preview.title, sequence: frame.sequence,
+        }
+        let frames = keys.map { key -> PreviewFrame in
+            let title = session.previews[key.index].title
+            guard let frame = session.frames[key] else {
+                return PreviewFrame(index: key.index, title: title, device: key.device)
+            }
+            return PreviewFrame(index: key.index, title: title, device: key.device, sequence: frame.sequence,
                                 pngBase64: frame.sequence > after ? frame.png : nil, width: frame.width, height: frame.height)
         }
         return PreviewStatus(sequence: session.sequence, state: session.state, progress: session.state == .building ? session.progress : nil,
@@ -376,34 +508,116 @@ extension Engine {
         previews.sessions[sessionID]?.waiters.removeValue(forKey: waiter)?.resume()
     }
 
-    /// Ends a session: its windows close, and its target's host stops 60 seconds after its last
-    /// session.
+    /// Sets the state of a session from its target's builds and hosts (docs/views.md › Build
+    /// rules): `building` while a build of a platform it shows runs, `buildFailed` when one
+    /// failed, `stopped` when a host stopped by itself, `running` otherwise.
+    func refreshPreviewSession(_ session: PreviewService.Session) {
+        guard let key = session.unitKey, let unit = previews.units[key] else { return }
+        if unit.build != nil && unit.readGeneration != unit.generation {
+            setPreviewSessionState(session, .building, messages: [], builtAt: session.builtAt)
+            return
+        }
+        if let failure = unit.fileFailures[session.file] {
+            let messages: [String]
+            switch failure {
+            case .noTarget:
+                messages = ["No target of \(unit.unit.displayName) builds \(session.path)."]
+            case .notPreviewable(let target, let productType):
+                messages = ["Previews need an application or framework target: \(target) is \(productType)."]
+            case .messages(let lines):
+                messages = Self.previewMessages(lines, projectRoot: session.projectRoot)
+            }
+            setPreviewSessionState(session, .buildFailed, messages: messages, builtAt: session.builtAt)
+            return
+        }
+        guard let shown = previews.shownPlatforms(session), let name = session.targetName, let target = unit.targets[name] else {
+            setPreviewSessionState(session, .building, messages: [], builtAt: session.builtAt)
+            return
+        }
+        let building = unit.build != nil && shown.contains { (target.builds[$0]?.generation ?? 0) != unit.generation }
+        var failed: [(platform: PreviewPlatform, messages: [String])] = []
+        var stopped: [String]?
+        var builtAt: Date?
+        for platform in shown.sorted() {
+            guard let build = target.builds[platform] else { continue }
+            if let failure = build.failure {
+                failed.append((platform, Self.previewMessages(failure, projectRoot: session.projectRoot)))
+            } else if let messages = build.stopMessages, stopped == nil {
+                stopped = messages
+            }
+            if let date = build.builtAt { builtAt = max(builtAt ?? date, date) }
+        }
+        // The errors of a failed platform, after its line, while the other one's previews run.
+        let partial = failed.count < shown.count ? failed.flatMap { [$0.platform.heading] + $0.messages } : []
+        if building {
+            setPreviewSessionState(session, .building, messages: partial, builtAt: builtAt ?? session.builtAt)
+        } else if !failed.isEmpty && failed.count == shown.count {
+            let messages = failed.count == 1 ? failed[0].messages : failed.flatMap { [$0.platform.heading] + $0.messages }
+            setPreviewSessionState(session, .buildFailed, messages: messages, builtAt: builtAt)
+        } else if let stopped {
+            setPreviewSessionState(session, .stopped, messages: stopped, builtAt: builtAt)
+        } else {
+            setPreviewSessionState(session, .running, messages: partial, builtAt: builtAt)
+        }
+    }
+
+    private func setPreviewSessionState(_ session: PreviewService.Session, _ state: PreviewState, messages: [String], builtAt: Date?) {
+        guard session.state != state || session.messages != messages || session.builtAt != builtAt else { return }
+        if state == .building && session.state != .building { session.progress = nil }
+        session.state = state
+        session.messages = messages
+        session.builtAt = builtAt
+        notifyPreviewSession(session)
+    }
+
+    /// Ends a session: its windows close, and the hosts of its target stop 60 seconds after their
+    /// last session.
     func stopPreviewSession(_ id: UUID) {
-        guard let session = previews.sessions.removeValue(forKey: id) else { return }
+        guard let session = previews.sessions[id] else { return }
+        let shown = previews.shownPlatforms(session) ?? []
+        previews.sessions.removeValue(forKey: id)
         let waiters = session.waiters.values
         session.waiters.removeAll()
         waiters.forEach { $0.resume() }
         guard let key = session.unitKey, let name = session.targetName, let target = previews.units[key]?.targets[name] else { return }
-        if let host = target.host {
+        for platform in shown {
+            guard let host = target.builds[platform]?.host else { continue }
             for index in session.previews.indices {
-                host.send(PreviewHost.Command(type: "close", window: session.windowKey(index)))
+                if platform == .macOS {
+                    host.send(PreviewHost.Command(type: "close", window: session.windowKey(index)))
+                } else {
+                    for device in session.settings.devices {
+                        host.send(PreviewHost.Command(type: "close", window: session.windowKey(index, device: device.name)))
+                    }
+                }
             }
         }
-        if previews.sessions(ofUnit: key, target: name).isEmpty {
-            target.idleStop?.cancel()
-            target.idleStop = Task { [weak self] in
-                try? await Task.sleep(for: PreviewService.hostIdleTime)
-                guard !Task.isCancelled else { return }
-                await self?.stopIdlePreviewHost(key, name)
-            }
+        for platform in PreviewPlatform.allCases {
+            schedulePreviewHostIdleStop(key, name, platform)
         }
     }
 
-    private func stopIdlePreviewHost(_ key: String, _ name: String) {
-        guard previews.sessions(ofUnit: key, target: name).isEmpty, let target = previews.units[key]?.targets[name] else { return }
-        target.host?.stop()
-        target.host = nil
-        target.idleStop = nil
+    /// Stops the host of a target and platform 60 seconds after its last session.
+    func schedulePreviewHostIdleStop(_ key: String, _ name: String, _ platform: PreviewPlatform) {
+        guard let build = previews.units[key]?.targets[name]?.builds[platform],
+              previews.sessions(ofUnit: key, target: name, showing: platform).isEmpty, build.host != nil || platform == .iOS else { return }
+        build.idleStop?.cancel()
+        build.idleStop = Task { [weak self] in
+            try? await Task.sleep(for: PreviewService.hostIdleTime)
+            guard !Task.isCancelled else { return }
+            await self?.stopIdlePreviewHost(key, name, platform)
+        }
+    }
+
+    private func stopIdlePreviewHost(_ key: String, _ name: String, _ platform: PreviewPlatform) {
+        guard previews.sessions(ofUnit: key, target: name, showing: platform).isEmpty,
+              let build = previews.units[key]?.targets[name]?.builds[platform] else { return }
+        build.host?.stop()
+        build.host = nil
+        build.idleStop = nil
+        if platform == .iOS {
+            releasePreviewSimulator("\(key)/\(name)")
+        }
     }
 
     /// Stops the sessions that no poll followed for 60 seconds, every 10 seconds while sessions
@@ -434,30 +648,50 @@ extension Engine {
 
     /// Gives a new session what its target has, or starts a build.
     func attachPreviewSession(_ session: PreviewService.Session, to unit: PreviewService.Unit) {
-        guard !unit.outOfDate, unit.build == nil, let name = unit.fileTargets[session.file], let target = unit.targets[name] else {
-            requestPreviewBuild(unit)
-            return
+        if unit.readGeneration == unit.generation, let name = unit.fileTargets[session.file], unit.targets[name] != nil {
+            session.targetName = name
         }
-        session.targetName = name
-        target.idleStop?.cancel()
-        target.idleStop = nil
-        if let failure = target.failure {
-            session.state = .buildFailed
-            session.messages = Self.previewMessages(failure, projectRoot: session.projectRoot)
-        } else if let host = target.host {
-            session.state = .running
-            session.builtAt = target.builtAt
-            openPreviewWindows(session, host: host)
-        } else if target.executable != nil {
-            startPreviewHost(unit, target)
-        } else {
+        if previewUnitNeedsBuild(unit) {
             requestPreviewBuild(unit)
+        }
+        refreshPreviewSession(session)
+        guard let name = session.targetName, let target = unit.targets[name], let shown = previews.shownPlatforms(session) else { return }
+        for platform in shown {
+            let build = target.build(for: platform)
+            build.idleStop?.cancel()
+            build.idleStop = nil
+            if let host = build.host {
+                openPreviewWindows(session, platform, host: host)
+            }
+        }
+        startPreviewHosts(unit)
+    }
+
+    /// Starts the hosts of the current builds that sessions show and that have none, except a
+    /// host that stopped by itself: the next build starts it again (docs/views.md › Preview host).
+    func startPreviewHosts(_ unit: PreviewService.Unit) {
+        let key = unit.unit.folder.standardizedFileURL.path
+        for target in unit.targets.values {
+            for platform in PreviewPlatform.allCases {
+                guard let build = target.builds[platform], build.host == nil, build.product != nil, build.failure == nil,
+                      build.stopMessages == nil, build.generation == unit.generation,
+                      !previews.sessions(ofUnit: key, target: target.name, showing: platform).isEmpty else { continue }
+                startPreviewHost(unit, target, platform)
+            }
         }
     }
 
-    func openPreviewWindows(_ session: PreviewService.Session, host: PreviewHost) {
+    /// Opens the windows of a session's previews in the host of a platform.
+    func openPreviewWindows(_ session: PreviewService.Session, _ platform: PreviewPlatform, host: any PreviewHostConnection) {
         for (index, preview) in session.previews.enumerated() {
-            host.send(.open(window: session.windowKey(index), preview: preview.key, settings: session.settings))
+            if platform == .macOS {
+                host.send(.open(window: session.windowKey(index), preview: preview.key, settings: session.settings))
+            } else {
+                for device in session.settings.devices {
+                    host.send(.open(window: session.windowKey(index, device: device.name), preview: preview.key,
+                                    settings: session.settings, device: device))
+                }
+            }
         }
     }
 
@@ -476,150 +710,292 @@ extension Engine {
                 return !components.contains(where: ViewFinder.skippedFolderNames.contains)
             }
             guard changed else { continue }
-            if previews.sessions(ofUnit: key).isEmpty {
-                unit.outOfDate = true
-            } else {
+            unit.generation += 1
+            if !previews.sessions(ofUnit: key).isEmpty {
                 requestPreviewBuild(unit)
             }
         }
     }
 
+    /// True when a session of the unit has no current read of its file's target, or shows a
+    /// platform whose build is not of the unit's generation.
+    func previewUnitNeedsBuild(_ unit: PreviewService.Unit) -> Bool {
+        let key = unit.unit.folder.standardizedFileURL.path
+        for session in previews.sessions(ofUnit: key) {
+            guard unit.readGeneration == unit.generation else { return true }
+            if unit.fileFailures[session.file] != nil { continue }
+            guard let name = unit.fileTargets[session.file], let target = unit.targets[name] else { return true }
+            let shown = target.platforms.intersection(session.wantedPlatforms)
+            if shown.contains(where: { (target.builds[$0]?.generation ?? 0) != unit.generation }) { return true }
+        }
+        return false
+    }
+
     func requestPreviewBuild(_ unit: PreviewService.Unit) {
-        unit.outOfDate = true
         guard unit.build == nil, !hasStopped else { return }
         let key = unit.unit.folder.standardizedFileURL.path
         unit.build = Task { [weak self] in
             await self?.runPreviewBuilds(key)
         }
+        for session in previews.sessions(ofUnit: key) {
+            refreshPreviewSession(session)
+        }
     }
 
-    /// Builds the unit until no change came during its last build.
+    /// Builds the unit until its sessions need no build: a change that came during a build
+    /// starts another.
     private func runPreviewBuilds(_ key: String) async {
-        while let unit = previews.units[key], unit.outOfDate, !hasStopped {
+        while let unit = previews.units[key], !hasStopped {
             let sessions = previews.sessions(ofUnit: key)
-            if sessions.isEmpty { break }
-            unit.outOfDate = false
+            if sessions.isEmpty || !previewUnitNeedsBuild(unit) { break }
+            let generation = unit.generation
+            var requests: [String: Set<PreviewPlatform>] = [:]
             for session in sessions {
-                session.state = .building
-                session.progress = nil
-                notifyPreviewSession(session)
+                requests[session.file, default: []].formUnion(session.wantedPlatforms)
+                refreshPreviewSession(session)
             }
             let environment = await childProcessEnvironment()
-            let files = Set(sessions.map(\.file))
-            let result = await buildPreviewUnit(unit, files: files, environment: environment)
+            let result = await buildPreviewUnit(unit, requests: requests, generation: generation, environment: environment)
             if hasStopped { break }
-            applyPreviewBuild(result, to: unit, key: key, environment: environment)
+            applyPreviewBuild(result, to: unit, key: key, generation: generation, environment: environment)
         }
-        previews.units[key]?.build = nil
+        guard let unit = previews.units[key] else { return }
+        unit.build = nil
+        startPreviewHosts(unit)
+        for session in previews.sessions(ofUnit: key) {
+            refreshPreviewSession(session)
+        }
     }
 
-    private func applyPreviewBuild(_ result: PreviewUnitBuild, to unit: PreviewService.Unit, key: String, environment: [String: String]) {
-        unit.fileTargets.merge(result.fileTargets) { $1 }
-        let builtAt = Date()
-        for (name, outcome) in result.targets {
+    private func applyPreviewBuild(_ result: PreviewUnitBuild, to unit: PreviewService.Unit, key: String, generation: Int,
+                                   environment: [String: String]) {
+        unit.readGeneration = generation
+        for (file, name) in result.fileTargets {
+            unit.fileTargets[file] = name
+            unit.fileFailures[file] = nil
+        }
+        for (file, failure) in result.fileFailures {
+            unit.fileTargets[file] = nil
+            unit.fileFailures[file] = failure
+        }
+        for (name, platforms) in result.targetPlatforms {
             let target = unit.targets[name] ?? PreviewService.Target(name: name)
             unit.targets[name] = target
-            target.host?.stop()
-            target.host = nil
-            switch outcome {
-            case .success(let executable):
-                target.executable = executable
-                target.builtAt = builtAt
-                target.failure = nil
-            case .failure(let messages):
-                target.executable = nil
-                target.failure = messages
+            target.platforms = platforms
+        }
+        let builtAt = Date()
+        for (name, outcomes) in result.outcomes {
+            let target = unit.targets[name] ?? PreviewService.Target(name: name)
+            unit.targets[name] = target
+            for (platform, outcome) in outcomes {
+                let build = target.build(for: platform)
+                build.host?.stop()
+                build.host = nil
+                build.generation = generation
+                build.stopMessages = nil
+                switch outcome {
+                case .success(let product, let bundleID):
+                    build.product = product
+                    build.bundleID = bundleID
+                    build.builtAt = builtAt
+                    build.failure = nil
+                case .failure(let messages):
+                    build.product = nil
+                    build.failure = messages
+                }
+            }
+        }
+        var newlyKnown: [PreviewService.Session] = []
+        for session in previews.sessions(ofUnit: key) {
+            let name = unit.fileTargets[session.file]
+            if name != session.targetName, name != nil { newlyKnown.append(session) }
+            session.targetName = name
+        }
+        var started: Set<String> = []
+        for (name, outcomes) in result.outcomes {
+            guard let target = unit.targets[name] else { continue }
+            for (platform, outcome) in outcomes {
+                guard case .success = outcome, !previews.sessions(ofUnit: key, target: name, showing: platform).isEmpty else { continue }
+                startPreviewHost(unit, target, platform, environment: environment)
+                started.insert("\(name)/\(platform.rawValue)")
+            }
+        }
+        // A session whose target this read found shows its previews in the hosts that already run.
+        for session in newlyKnown {
+            guard let name = session.targetName, let target = unit.targets[name] else { continue }
+            for platform in previews.shownPlatforms(session) ?? [] where !started.contains("\(name)/\(platform.rawValue)") {
+                guard let build = target.builds[platform], let host = build.host else { continue }
+                build.idleStop?.cancel()
+                build.idleStop = nil
+                openPreviewWindows(session, platform, host: host)
             }
         }
         for session in previews.sessions(ofUnit: key) {
-            if let failure = result.fileFailures[session.file] {
-                session.targetName = nil
-                session.state = .buildFailed
-                switch failure {
-                case .noTarget:
-                    session.messages = ["No target of \(unit.unit.displayName) builds \(session.path)."]
-                case .notPreviewable(let target, let productType):
-                    session.messages = ["Previews need an application or framework target: \(target) is \(productType)."]
-                case .messages(let messages):
-                    session.messages = Self.previewMessages(messages, projectRoot: session.projectRoot)
-                }
-                notifyPreviewSession(session)
-                continue
-            }
-            session.targetName = unit.fileTargets[session.file]
-            guard let name = session.targetName, let target = unit.targets[name] else { continue }
-            if let failure = target.failure {
-                session.state = .buildFailed
-                session.messages = Self.previewMessages(failure, projectRoot: session.projectRoot)
-                notifyPreviewSession(session)
-            }
-        }
-        for (name, outcome) in result.targets {
-            guard case .success = outcome, let target = unit.targets[name] else { continue }
-            if !previews.sessions(ofUnit: key, target: name).isEmpty {
-                startPreviewHost(unit, target, environment: environment)
-            }
+            refreshPreviewSession(session)
         }
     }
 
-    /// Starts the host of a target that built, and opens the windows of its sessions.
-    func startPreviewHost(_ unit: PreviewService.Unit, _ target: PreviewService.Target, environment: [String: String]? = nil) {
-        guard let executable = target.executable else { return }
+    /// Starts the host of a target that built for a platform, and opens the windows of its
+    /// sessions: the Mac host as a process, the iOS host as an app in a simulator device.
+    func startPreviewHost(_ unit: PreviewService.Unit, _ target: PreviewService.Target, _ platform: PreviewPlatform,
+                          environment: [String: String]? = nil) {
+        let build = target.build(for: platform)
+        guard let product = build.product else { return }
         let key = unit.unit.folder.standardizedFileURL.path
         let name = target.name
         let hostID = UUID()
-        target.hostID = hostID
+        build.hostID = hostID
+        build.stopMessages = nil
         let environment = environment ?? ProcessEnvironment.withoutHephaestusVariables(claudeCLI.loginEnvironment ?? ProcessInfo.processInfo.environment)
         let (stream, continuation) = AsyncStream<PreviewHost.Message>.makeStream()
         do {
-            let host = try PreviewHost(executable: executable, directory: executable.deletingLastPathComponent(), environment: environment,
-                                       onMessage: { continuation.yield($0) },
-                                       onExit: { termination, tail in
-                                           continuation.finish()
-                                           Task { [weak self] in await self?.previewHostExited(key, name, hostID, termination, tail) }
-                                       })
-            target.host = host
+            switch platform {
+            case .macOS:
+                build.host = try PreviewHost(executable: product, directory: product.deletingLastPathComponent(), environment: environment,
+                                             onMessage: { continuation.yield($0) },
+                                             onExit: { [weak self] termination, tail in
+                                                 continuation.finish()
+                                                 Task { [weak self] in
+                                                     await self?.previewHostEnded(key, name, platform, hostID,
+                                                                                  "The previews stopped: \(PreviewHost.reason(termination)).", tail)
+                                                 }
+                                             })
+            case .iOS:
+                let host = try PreviewSimulatorHost(onMessage: { continuation.yield($0) },
+                                                    onEnd: { [weak self] reason, tail in
+                                                        continuation.finish()
+                                                        Task { [weak self] in
+                                                            await self?.previewHostEnded(key, name, platform, hostID,
+                                                                                         "The previews stopped: \(reason).", tail)
+                                                        }
+                                                    })
+                build.host = host
+                launchPreviewSimulatorHost(host, app: product, bundleID: build.bundleID ?? "", leaseKey: "\(key)/\(name)",
+                                           environment: environment)
+            }
         } catch {
-            target.host = nil
-            for session in previews.sessions(ofUnit: key, target: name) {
-                session.state = .stopped
-                session.messages = ["The previews stopped: \(error)."]
-                notifyPreviewSession(session)
+            build.host = nil
+            build.stopMessages = ["The previews stopped: \(error)."]
+            for session in previews.sessions(ofUnit: key, target: name, showing: platform) {
+                refreshPreviewSession(session)
             }
             return
         }
         Task { [weak self] in
             for await message in stream {
-                await self?.previewHostMessage(key, name, hostID, message)
+                await self?.previewHostMessage(key, name, platform, hostID, message)
             }
         }
-        for session in previews.sessions(ofUnit: key, target: name) {
-            session.state = .running
-            session.builtAt = target.builtAt
-            session.messages = []
-            notifyPreviewSession(session)
-            if let host = target.host { openPreviewWindows(session, host: host) }
+        for session in previews.sessions(ofUnit: key, target: name, showing: platform) {
+            refreshPreviewSession(session)
+            if let host = build.host { openPreviewWindows(session, platform, host: host) }
         }
     }
 
-    private func previewHostMessage(_ key: String, _ name: String, _ hostID: UUID, _ message: PreviewHost.Message) {
-        guard previews.units[key]?.targets[name]?.hostID == hostID, message.type == "frame", let window = message.window,
+    /// Leases a simulator device, installs the app in it and launches it with the port and the
+    /// token of its connection (docs/views.md › iOS Simulator).
+    private func launchPreviewSimulatorHost(_ host: PreviewSimulatorHost, app: URL, bundleID: String, leaseKey: String,
+                                            environment: [String: String]) {
+        let set = previewSimulatorSet
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let udid = try await self.leasePreviewSimulator(leaseKey, environment: environment)
+                try await PreviewSimulator.install(app, on: udid, set: set, environment: environment)
+                // A launch just after a first boot may come to nothing: the app is launched again.
+                for _ in 0..<PreviewSimulatorHost.launches {
+                    guard !host.isEnded else { return }
+                    try await PreviewSimulator.launch(bundleID, on: udid, port: host.port, token: host.token, set: set, environment: environment)
+                    let deadline = ContinuousClock.now + PreviewSimulatorHost.connectWait
+                    while !host.isConnected, !host.isEnded, ContinuousClock.now < deadline {
+                        try await Task.sleep(for: .milliseconds(250))
+                    }
+                    if host.isConnected || host.isEnded { return }
+                }
+                host.fail("the app did not start in the iOS Simulator")
+            } catch {
+                host.fail(String(describing: error).trimmingCharacters(in: CharacterSet(charactersIn: ".")))
+            }
+        }
+    }
+
+    /// `Runtime/simulators/`: the device set of the engine's simulator devices.
+    var previewSimulatorSet: URL {
+        dataDirectory.runtimeFolder.appendingPathComponent("simulators", isDirectory: true)
+    }
+
+    /// The simulator device of an iOS host: the one it already has, else a free device of the set,
+    /// else a new one; booted.
+    func leasePreviewSimulator(_ leaseKey: String, environment: [String: String]) async throws -> String {
+        let set = previewSimulatorSet
+        if let udid = previews.simulatorLeases[leaseKey] {
+            try await PreviewSimulator.boot(udid, set: set, environment: environment)
+            return udid
+        }
+        guard let runtime = try await PreviewSimulator.runtime(set: set, environment: environment) else {
+            throw PreviewSimulator.Failure(message: PreviewSimulator.noRuntimeMessage)
+        }
+        let devices = try await PreviewSimulator.devices(set: set, runtime: runtime.identifier, environment: environment)
+        let udid: String
+        if let leased = previews.simulatorLeases[leaseKey] {
+            udid = leased
+        } else if let free = devices.first(where: { !Set(previews.simulatorLeases.values).contains($0.udid) }) {
+            udid = free.udid
+            previews.simulatorLeases[leaseKey] = udid
+        } else {
+            let names = Set(devices.map(\.name))
+            var number = 1
+            while names.contains(PreviewSimulator.deviceNamePrefix + String(number)) { number += 1 }
+            udid = try await PreviewSimulator.create(name: PreviewSimulator.deviceNamePrefix + String(number), runtime: runtime, set: set,
+                                                     environment: environment)
+            previews.simulatorLeases[leaseKey] = udid
+        }
+        try await PreviewSimulator.boot(udid, set: set, environment: environment)
+        return udid
+    }
+
+    /// At launch: the devices of the set that an earlier run left booted, after a crash for
+    /// example, shut down (docs/views.md › iOS Simulator).
+    func shutDownLeftoverPreviewSimulators() {
+        let set = previewSimulatorSet
+        guard FileManager.default.fileExists(atPath: set.path) else { return }
+        let environment = ProcessEnvironment.withoutHephaestusVariables(ProcessInfo.processInfo.environment)
+        Task.detached {
+            await PreviewSimulator.shutdownAll(set: set, environment: environment)
+        }
+    }
+
+    /// The host of a lease stopped for good: its device shuts down.
+    func releasePreviewSimulator(_ leaseKey: String) {
+        guard let udid = previews.simulatorLeases.removeValue(forKey: leaseKey) else { return }
+        let set = previewSimulatorSet
+        let environment = ProcessEnvironment.withoutHephaestusVariables(claudeCLI.loginEnvironment ?? ProcessInfo.processInfo.environment)
+        Task.detached {
+            await PreviewSimulator.shutdown(udid, set: set, environment: environment)
+        }
+    }
+
+    private func previewHostMessage(_ key: String, _ name: String, _ platform: PreviewPlatform, _ hostID: UUID,
+                                    _ message: PreviewHost.Message) {
+        guard previews.units[key]?.targets[name]?.builds[platform]?.hostID == hostID, message.type == "frame", let window = message.window,
               let png = message.png else { return }
-        let parts = window.split(separator: "/")
-        guard parts.count == 2, let id = UUID(uuidString: String(parts[0])), let index = Int(parts[1]),
+        let parts = window.split(separator: "/", maxSplits: 2, omittingEmptySubsequences: false)
+        guard parts.count >= 2, let id = UUID(uuidString: String(parts[0])), let index = Int(parts[1]),
               let session = previews.sessions[id] else { return }
-        session.frames[index] = PreviewService.Frame(sequence: session.sequence + 1, png: png, width: message.width ?? 0,
-                                                     height: message.height ?? 0)
+        let device = parts.count == 3 ? String(parts[2]) : nil
+        if let device, !session.settings.devices.contains(where: { $0.name == device }) { return }
+        session.frames[PreviewService.FrameKey(index: index, device: device)] = PreviewService.Frame(
+            sequence: session.sequence + 1, png: png, width: message.width ?? 0, height: message.height ?? 0)
         notifyPreviewSession(session)
     }
 
-    private func previewHostExited(_ key: String, _ name: String, _ hostID: UUID, _ termination: ProcessTermination, _ tail: [String]) {
-        guard let target = previews.units[key]?.targets[name], target.hostID == hostID else { return }
-        target.host = nil
-        for session in previews.sessions(ofUnit: key, target: name) {
-            session.state = .stopped
-            session.messages = ["The previews stopped: \(PreviewHost.reason(termination))."] + tail
-            notifyPreviewSession(session)
+    private func previewHostEnded(_ key: String, _ name: String, _ platform: PreviewPlatform, _ hostID: UUID, _ reason: String,
+                                  _ tail: [String]) {
+        guard let build = previews.units[key]?.targets[name]?.builds[platform], build.hostID == hostID else { return }
+        build.host = nil
+        build.stopMessages = [reason] + tail
+        for session in previews.sessions(ofUnit: key, target: name, showing: platform) {
+            refreshPreviewSession(session)
         }
     }
 
@@ -631,10 +1007,17 @@ extension Engine {
         }
     }
 
-    /// Builds the targets of the files asked for.
-    private func buildPreviewUnit(_ unit: PreviewService.Unit, files: Set<String>, environment: [String: String]) async -> PreviewUnitBuild {
+    /// True when the build of a target for a platform is of the generation built.
+    private func previewBuildIsCurrent(_ unit: PreviewService.Unit, _ name: String, _ platform: PreviewPlatform, _ generation: Int) -> Bool {
+        unit.targets[name]?.builds[platform]?.generation == generation
+    }
+
+    /// Builds the targets of the files asked for, for the platforms asked for that they build for
+    /// and whose build is not of `generation`.
+    private func buildPreviewUnit(_ unit: PreviewService.Unit, requests: [String: Set<PreviewPlatform>], generation: Int,
+                                  environment: [String: String]) async -> PreviewUnitBuild {
         let key = unit.unit.folder.standardizedFileURL.path
-        let makeOutput = { () -> PreviewBuildOutput in
+        let makeOutput = { [weak self] () -> PreviewBuildOutput in
             PreviewBuildOutput { [weak self] progress in
                 Task { await self?.previewBuildProgress(key, progress) }
             }
@@ -644,11 +1027,31 @@ extension Engine {
         var result = PreviewUnitBuild()
         let folder = unit.unit.folder
         let folderPath = folder.standardizedFileURL.path
+        let files = Set(requests.keys)
         func failAll(_ messages: [String]) {
             for file in files { result.fileFailures[file] = .messages(messages) }
         }
         func relative(_ file: String) -> String {
             file.hasPrefix(folderPath + "/") ? String(file.dropFirst(folderPath.count + 1)) : file
+        }
+        /// The platforms to build for a target: asked for, built for, and not current.
+        func platforms(_ name: String, wanted: Set<PreviewPlatform>, supported: Set<PreviewPlatform>) -> [PreviewPlatform] {
+            wanted.intersection(supported).filter { !previewBuildIsCurrent(unit, name, $0, generation) }.sorted()
+        }
+        /// The iOS Simulator SDK, or why the iOS builds fail.
+        var iOSSDK: Result<String, PreviewSimulator.Failure>?
+        func simulatorSDK() async -> Result<String, PreviewSimulator.Failure> {
+            if let iOSSDK { return iOSSDK }
+            let value: Result<String, PreviewSimulator.Failure>
+            if (try? await PreviewSimulator.runtime(set: previewSimulatorSet, environment: environment)) == nil {
+                value = .failure(PreviewSimulator.Failure(message: PreviewSimulator.noRuntimeMessage))
+            } else if let path = await PreviewSimulator.sdkPath(environment: environment, directory: folder) {
+                value = .success(path)
+            } else {
+                value = .failure(PreviewSimulator.Failure(message: "The iOS Simulator SDK of Xcode cannot be found."))
+            }
+            iOSSDK = value
+            return value
         }
         switch unit.unit.kind {
         case .package:
@@ -660,19 +1063,22 @@ extension Engine {
                 return result
             }
             let describeOutput = makeOutput()
-            guard let targets = await SwiftPackagePreviewBuild.describe(buildFolder: unit.buildFolder, environment: environment,
-                                                                        output: describeOutput, track: track) else {
+            guard let described = await SwiftPackagePreviewBuild.describe(buildFolder: unit.buildFolder, environment: environment,
+                                                                          output: describeOutput, track: track) else {
                 failAll(describeOutput.lastLines.isEmpty ? ["swift package describe failed."] : describeOutput.lastLines)
                 return result
             }
             var wanted: [String: PackageTarget] = [:]
+            var wantedPlatforms: [String: Set<PreviewPlatform>] = [:]
             for file in files {
-                guard let target = PackageTarget.target(of: relative(file), in: targets) else {
+                guard let target = PackageTarget.target(of: relative(file), in: described.targets) else {
                     result.fileFailures[file] = .noTarget
                     continue
                 }
                 result.fileTargets[file] = target.name
+                result.targetPlatforms[target.name] = described.platforms
                 wanted[target.name] = target
+                wantedPlatforms[target.name, default: []].formUnion(requests[file] ?? [])
             }
             var maps: [String: [String: PreviewSourceMap]] = [:]
             for target in wanted.values.sorted(by: { $0.name < $1.name }) {
@@ -680,7 +1086,10 @@ extension Engine {
                     maps[target.name] = try SwiftPackagePreviewBuild.mirror(target: target, package: folder, buildFolder: unit.buildFolder)
                     unit.mirrored[target.name] = target
                 } catch {
-                    result.targets[target.name] = .failure(["The build folder cannot be written: \(error.localizedDescription)"])
+                    let failure = PreviewUnitBuild.Outcome.failure(["The build folder cannot be written: \(error.localizedDescription)"])
+                    for platform in platforms(target.name, wanted: wantedPlatforms[target.name] ?? [], supported: described.platforms) {
+                        result.outcomes[target.name, default: [:]][platform] = failure
+                    }
                     wanted[target.name] = nil
                 }
             }
@@ -692,13 +1101,33 @@ extension Engine {
                 return result
             }
             for target in wanted.values.sorted(by: { $0.name < $1.name }) {
-                let output = makeOutput()
-                output.sourceMaps = maps[target.name] ?? [:]
-                if let executable = await SwiftPackagePreviewBuild.build(target: target, buildFolder: unit.buildFolder,
-                                                                         environment: environment, output: output, track: track) {
-                    result.targets[target.name] = .success(executable: executable)
-                } else {
-                    result.targets[target.name] = .failure(output.failureMessages)
+                for platform in platforms(target.name, wanted: wantedPlatforms[target.name] ?? [], supported: described.platforms) {
+                    let output = makeOutput()
+                    output.sourceMaps = maps[target.name] ?? [:]
+                    var sdk: String?
+                    if platform == .iOS {
+                        switch await simulatorSDK() {
+                        case .success(let path): sdk = path
+                        case .failure(let failure):
+                            result.outcomes[target.name, default: [:]][platform] = .failure([failure.message])
+                            continue
+                        }
+                    }
+                    guard let executable = await SwiftPackagePreviewBuild.build(target: target, buildFolder: unit.buildFolder, iOSSDK: sdk,
+                                                                                environment: environment, output: output, track: track) else {
+                        result.outcomes[target.name, default: [:]][platform] = .failure(output.failureMessages)
+                        continue
+                    }
+                    if platform == .macOS {
+                        result.outcomes[target.name, default: [:]][platform] = .success(product: executable, bundleID: nil)
+                        continue
+                    }
+                    do {
+                        let app = try SwiftPackagePreviewBuild.makeIOSApp(target: target, executable: executable, buildFolder: unit.buildFolder)
+                        result.outcomes[target.name, default: [:]][platform] = .success(product: app.app, bundleID: app.bundleID)
+                    } catch {
+                        result.outcomes[target.name, default: [:]][platform] = .failure(["The app of the previews cannot be written: \(error.localizedDescription)"])
+                    }
                 }
             }
         case .xcodeProject(let projectURL):
@@ -707,6 +1136,7 @@ extension Engine {
                 return result
             }
             var wanted: [String: XcodeProject.Target] = [:]
+            var wantedPlatforms: [String: Set<PreviewPlatform>] = [:]
             for file in files {
                 guard let target = project.target(of: file) else {
                     result.fileFailures[file] = .noTarget
@@ -717,37 +1147,63 @@ extension Engine {
                     continue
                 }
                 result.fileTargets[file] = target.name
+                result.targetPlatforms[target.name] = target.platforms
                 wanted[target.name] = target
+                wantedPlatforms[target.name, default: []].formUnion(requests[file] ?? [])
             }
             for target in wanted.values.sorted(by: { $0.name < $1.name }) {
-                let output = makeOutput()
+                let toBuild = platforms(target.name, wanted: wantedPlatforms[target.name] ?? [], supported: target.platforms)
+                guard !toBuild.isEmpty else { continue }
+                let schemeOutput = makeOutput()
                 guard let scheme = await XcodePreviewBuild.scheme(for: target.name, project: projectURL, folder: folder,
-                                                                  environment: environment, output: output, track: track) else {
-                    result.targets[target.name] = .failure(output.lastLines.isEmpty ? ["No scheme of \(unit.unit.displayName) builds \(target.name)."] : output.lastLines)
+                                                                  environment: environment, output: schemeOutput, track: track) else {
+                    let messages = schemeOutput.lastLines.isEmpty ? ["No scheme of \(unit.unit.displayName) builds \(target.name)."] : schemeOutput.lastLines
+                    for platform in toBuild { result.outcomes[target.name, default: [:]][platform] = .failure(messages) }
                     continue
                 }
-                guard await XcodePreviewBuild.build(project: projectURL, scheme: scheme, folder: folder, buildFolder: unit.buildFolder,
-                                                    environment: environment, output: output, track: track) else {
-                    result.targets[target.name] = .failure(output.failureMessages)
-                    continue
-                }
-                let settingsOutput = makeOutput()
-                guard let settings = await XcodePreviewBuild.settings(target: target.name, project: projectURL, scheme: scheme, folder: folder,
-                                                                      buildFolder: unit.buildFolder, environment: environment,
-                                                                      output: settingsOutput, track: track) else {
-                    result.targets[target.name] = .failure(settingsOutput.lastLines)
-                    continue
-                }
-                let hostOutput = makeOutput()
-                if let executable = await XcodePreviewBuild.compileHost(target: target, settings: settings, buildFolder: unit.buildFolder,
-                                                                        environment: environment, output: hostOutput, track: track) {
-                    result.targets[target.name] = .success(executable: executable)
-                } else {
-                    result.targets[target.name] = .failure(hostOutput.failureMessages)
+                for platform in toBuild {
+                    if platform == .iOS, case .failure(let failure) = await simulatorSDK() {
+                        result.outcomes[target.name, default: [:]][platform] = .failure([failure.message])
+                        continue
+                    }
+                    result.outcomes[target.name, default: [:]][platform] = await buildXcodeTarget(
+                        target, project: projectURL, scheme: scheme, platform: platform, unit: unit, environment: environment,
+                        makeOutput: makeOutput, track: track)
                 }
             }
         }
         return result
+    }
+
+    /// Builds an Xcode target for a platform, then its host, and for iOS its app.
+    private func buildXcodeTarget(_ target: XcodeProject.Target, project: URL, scheme: String, platform: PreviewPlatform,
+                                  unit: PreviewService.Unit, environment: [String: String], makeOutput: () -> PreviewBuildOutput,
+                                  track: @escaping (ChildProcess?) -> Void) async -> PreviewUnitBuild.Outcome {
+        let folder = unit.unit.folder
+        let output = makeOutput()
+        guard await XcodePreviewBuild.build(project: project, scheme: scheme, folder: folder, buildFolder: unit.buildFolder,
+                                            platform: platform, environment: environment, output: output, track: track) else {
+            return .failure(output.failureMessages)
+        }
+        let settingsOutput = makeOutput()
+        guard let settings = await XcodePreviewBuild.settings(target: target.name, project: project, scheme: scheme, folder: folder,
+                                                              buildFolder: unit.buildFolder, platform: platform, environment: environment,
+                                                              output: settingsOutput, track: track) else {
+            return .failure(settingsOutput.lastLines)
+        }
+        let hostOutput = makeOutput()
+        guard let executable = await XcodePreviewBuild.compileHost(target: target, settings: settings, buildFolder: unit.buildFolder,
+                                                                   platform: platform, environment: environment, output: hostOutput,
+                                                                   track: track) else {
+            return .failure(hostOutput.failureMessages)
+        }
+        guard platform == .iOS else { return .success(product: executable, bundleID: nil) }
+        do {
+            let app = try XcodePreviewBuild.makeIOSApp(target: target, settings: settings, executable: executable, buildFolder: unit.buildFolder)
+            return .success(product: app.app, bundleID: app.bundleID)
+        } catch {
+            return .failure(["The app of the previews cannot be written: \(error.localizedDescription)"])
+        }
     }
 
     /// The messages of a build for a session: the paths of its project made project paths.
@@ -761,10 +1217,11 @@ extension Engine {
         }
     }
 
-    /// At shutdown: the builds and the hosts end.
+    /// At shutdown: the builds and the hosts end, and the simulator devices shut down.
     func stopPreviews() async {
         previews.sweeper?.cancel()
         var processes: [ChildProcess] = []
+        var usedSimulators = !previews.simulatorLeases.isEmpty
         for unit in previews.units.values {
             unit.build?.cancel()
             if let process = unit.process.process {
@@ -772,14 +1229,20 @@ extension Engine {
                 processes.append(process)
             }
             for target in unit.targets.values {
-                target.idleStop?.cancel()
-                if let host = target.host {
-                    host.process.signalGroup(SIGTERM)
-                    processes.append(host.process)
-                    target.host = nil
+                for build in target.builds.values {
+                    build.idleStop?.cancel()
+                    if let host = build.host as? PreviewHost {
+                        host.process.signalGroup(SIGTERM)
+                        processes.append(host.process)
+                    } else if let host = build.host {
+                        host.stop()
+                        usedSimulators = true
+                    }
+                    build.host = nil
                 }
             }
         }
+        previews.simulatorLeases.removeAll()
         for session in previews.sessions.values {
             let waiters = session.waiters.values
             session.waiters.removeAll()
@@ -791,6 +1254,10 @@ extension Engine {
                 try? await Task.sleep(for: .milliseconds(50))
             }
             if !process.hasExited { process.signalGroup(SIGKILL) }
+        }
+        if usedSimulators {
+            let environment = ProcessEnvironment.withoutHephaestusVariables(ProcessInfo.processInfo.environment)
+            await PreviewSimulator.shutdownAll(set: previewSimulatorSet, environment: environment)
         }
     }
 }

@@ -8,7 +8,8 @@ enum SwiftPackagePreviewBuild {
     /// The folder of the host targets' copies, in the build folder.
     static let hostsFolder = "HephaestusPreviewHosts"
     /// The entries of the package that are not linked into the build folder.
-    static let unlinkedEntries: Set<String> = ["Package.swift", "Package.resolved", ".build", ".swiftpm", ".git", ".hephaestus", hostsFolder]
+    static let unlinkedEntries: Set<String> = ["Package.swift", "Package.resolved", ".build", ".swiftpm", ".git", ".hephaestus", hostsFolder,
+                                                     PreviewIOSApp.appsFolder]
 
     /// The name of the host target of a target.
     static func hostTargetName(_ target: String) -> String {
@@ -79,16 +80,19 @@ enum SwiftPackagePreviewBuild {
         }
     }
 
-    /// The targets of the package, read from the build folder.
+    /// The targets of the package and its platforms (docs/views.md › Platforms of a target), read
+    /// from the build folder.
     static func describe(buildFolder: URL, environment: [String: String], output: PreviewBuildOutput,
-                         track: (ChildProcess?) -> Void) async -> [PackageTarget]? {
+                         track: (ChildProcess?) -> Void) async -> (targets: [PackageTarget], platforms: Set<PreviewPlatform>)? {
         let (termination, data) = await PreviewBuildRun.run(["swift", "package", "describe", "--type", "json"], environment: environment,
                                                             directory: buildFolder.path, timeout: PreviewBuildRun.readTimeout,
                                                             output: output, track: track)
         guard termination?.isSuccess == true else { return nil }
         // Warnings may come before the JSON.
-        guard let start = data.firstIndex(of: UInt8(ascii: "{")) else { return nil }
-        return PackageTarget.decode(describe: data[start...])
+        guard let start = data.firstIndex(of: UInt8(ascii: "{")), let targets = PackageTarget.decode(describe: data[start...]) else {
+            return nil
+        }
+        return (targets, PackageTarget.platforms(describe: data[start...]))
     }
 
     /// Writes the copy of a target in the build folder: its files, each Swift source with its
@@ -163,16 +167,33 @@ enum SwiftPackagePreviewBuild {
         return maps
     }
 
-    /// `swift build --product <host target>` in the build folder; the host's executable.
-    static func build(target: PackageTarget, buildFolder: URL, environment: [String: String], output: PreviewBuildOutput,
-                      track: (ChildProcess?) -> Void) async -> URL? {
+    /// `swift build --product <host target>` in the build folder, for macOS, or for the iOS
+    /// Simulator with the path of its SDK; the host's executable, its links resolved, since the
+    /// build of the other platform moves `.build/debug`.
+    static func build(target: PackageTarget, buildFolder: URL, iOSSDK: String? = nil, environment: [String: String],
+                      output: PreviewBuildOutput, track: (ChildProcess?) -> Void) async -> URL? {
         let product = hostTargetName(target.name)
-        let (termination, _) = await PreviewBuildRun.run(["swift", "build", "--package-path", buildFolder.path, "--product", product],
-                                                         environment: environment, directory: buildFolder.path,
+        var arguments = ["swift", "build", "--package-path", buildFolder.path, "--product", product]
+        if let iOSSDK {
+            arguments += ["--triple", "\(PreviewBuildRun.nativeArchitecture)-apple-ios-simulator", "--sdk", iOSSDK]
+        }
+        let (termination, _) = await PreviewBuildRun.run(arguments, environment: environment, directory: buildFolder.path,
                                                          timeout: PreviewBuildRun.buildTimeout, output: output, track: track)
         guard termination?.isSuccess == true else { return nil }
-        let executable = buildFolder.appendingPathComponent(".build/debug").appendingPathComponent(product)
+        let executable = buildFolder.appendingPathComponent(".build/debug").appendingPathComponent(product).resolvingSymlinksInPath()
         return FileManager.default.isExecutableFile(atPath: executable.path) ? executable : nil
+    }
+
+    /// The app of the iOS host of a target, with the executable of its build and the resource
+    /// bundles beside it.
+    static func makeIOSApp(target: PackageTarget, executable: URL, buildFolder: URL) throws -> (app: URL, bundleID: String) {
+        let folder = executable.deletingLastPathComponent()
+        let resources = ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.pathExtension == "bundle" }
+        let app = PreviewIOSApp.appFolder(buildFolder: buildFolder, target: target.name)
+        let bundleID = PreviewIOSApp.bundleID(buildFolder: buildFolder, target: target.name)
+        try PreviewIOSApp.make(at: app, executable: executable, base: nil, resources: resources, bundleID: bundleID)
+        return (app, bundleID)
     }
 
     // MARK: Files

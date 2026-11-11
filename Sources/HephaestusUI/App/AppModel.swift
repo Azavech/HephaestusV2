@@ -78,6 +78,9 @@ public final class AppModel {
     @ObservationIgnored let windowRegistry = WindowRegistry()
     @ObservationIgnored let updateController: UpdateController
     @ObservationIgnored let feedbackController: FeedbackController
+    /// The devices of the device previews, from `devices.json` of this Mac (docs/views.md ›
+    /// Devices file): created at launch, which writes the file when it is missing.
+    @ObservationIgnored let previewDevices: PreviewDevicesModel
     /// The macOS notifications of chats (docs/ui.md › Status bar).
     @ObservationIgnored let chatNotifier: ChatNotifier
     @ObservationIgnored var debugUI: AppDebugUI?
@@ -148,6 +151,7 @@ public final class AppModel {
         isRestartLaunch = restartWindows != nil
         updateController = UpdateController(environment: environment, appVersion: appVersion)
         feedbackController = FeedbackController()
+        previewDevices = PreviewDevicesModel(dataDirectory: engine.dataDirectory)
         chatNotifier = ChatNotifier(enabled: environment.dataDirectory == nil)
         pairedDevices = engine.pairedDevices.devices
         updateController.app = self

@@ -1,6 +1,22 @@
 import CryptoKit
 import Foundation
 
+/// A platform that a target's previews build and run for (docs/views.md › Platforms of a target):
+/// macOS for the Mac previews, iOS for the device previews, in the iOS Simulator.
+public enum PreviewPlatform: String, Sendable, Hashable, CaseIterable, Comparable {
+    case macOS
+    case iOS
+
+    public static func < (a: PreviewPlatform, b: PreviewPlatform) -> Bool {
+        a == .macOS && b == .iOS
+    }
+
+    /// The line before its errors when both platforms failed (docs/views.md › Build rules).
+    public var heading: String {
+        rawValue + ":"
+    }
+}
+
 /// The Swift package or the Xcode project that builds a file (docs/views.md › Package or Xcode
 /// project of a view).
 public struct PreviewBuildUnit: Sendable, Hashable {
@@ -76,6 +92,17 @@ public struct PackageTarget: Sendable, Hashable {
                                  sources: target["sources"] as? [String] ?? [],
                                  type: target["type"] as? String ?? "", moduleType: target["module_type"] as? String ?? "")
         }
+    }
+
+    /// The platforms of a package, from the `platforms` of `swift package describe --type json`:
+    /// macOS when it lists `macos`, iOS when it lists `ios`; both when it lists neither.
+    public static func platforms(describe data: Data) -> Set<PreviewPlatform> {
+        let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let names = Set((object?["platforms"] as? [[String: Any]] ?? []).compactMap { ($0["name"] as? String)?.lowercased() })
+        var platforms: Set<PreviewPlatform> = []
+        if names.contains("macos") { platforms.insert(.macOS) }
+        if names.contains("ios") { platforms.insert(.iOS) }
+        return platforms.isEmpty ? [.macOS, .iOS] : platforms
     }
 
     /// The Swift target whose sources hold a file, given relative to the package; a test target

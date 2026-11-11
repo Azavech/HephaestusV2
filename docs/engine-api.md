@@ -952,9 +952,9 @@ Swift type `PreviewsStart` · actors: user · result: [PreviewSession](#previews
 | projectID | ProjectID                           | yes      | Project identifier.                                              |
 | path      | String                              | yes      | Project path of the Swift file that declares the view.           |
 | name      | String                              | yes      | The view's name, as [ProjectView](#projectview) `name` has it.   |
-| settings  | [PreviewSettings](#previewsettings) | yes      | The width, the height, the appearance and the Dynamic Type size. |
+| settings  | [PreviewSettings](#previewsettings) | yes      | The Mac size, appearance, Dynamic Type size and devices checked. |
 
-Starts a session that shows the previews of the view: the engine builds the view's target when it needs to, starts its preview host, and gives the host the view's previews with the settings. The call returns once the session exists, before the build; the state of the session comes with `previews.poll`.
+Starts a session that shows the previews of the view: the engine builds the view's target for the platforms the session shows when it needs to, macOS for the Mac previews and the iOS Simulator for the devices of `settings.devices` ([Platforms of a target](views.md#platforms-of-a-target)), starts its preview hosts, and gives them the view's previews with the settings. The call returns once the session exists, before the build; the state of the session comes with `previews.poll`.
 
 | Error    | When                                                                                                                                                             |
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -965,6 +965,7 @@ Starts a session that shows the previews of the view: the engine builds the view
 | notFound | The file declares no view named `name`: `View <name> not found in <path>.`                                                                                       |
 | invalid  | The view has no preview block ([Preview blocks](views.md#preview-blocks)): `<name> has no #Preview.`                                                             |
 | invalid  | `settings.width` or `settings.height` is not a whole number from 50 to 2000: `settings.width: use 50 to 2000 points.`, `settings.height: use 50 to 2000 points.` |
+| invalid  | A device of `settings.devices` breaks a rule of [Preview device](data-model.md#preview-device): `settings.devices: <reason>.`                                    |
 
 Events: none.
 
@@ -975,14 +976,15 @@ Swift type `PreviewsUpdate` · actors: user · result: [Empty](#empty)
 | Param     | Type                                | Required | Description                                              |
 | --------- | ----------------------------------- | -------- | -------------------------------------------------------- |
 | sessionID | UUID                                | yes      | The session.                                             |
-| settings  | [PreviewSettings](#previewsettings) | yes      | The new width, height, appearance and Dynamic Type size. |
+| settings  | [PreviewSettings](#previewsettings) | yes      | The new Mac size, appearance, Dynamic Type, and devices. |
 
-Applies the settings to the session's previews: the host gives their windows the new size and appearance and their SwiftUI environment the new Dynamic Type size, without a build.
+Applies the settings to the session's previews: the hosts give their windows the new size, size classes and appearance and their SwiftUI environment the new Dynamic Type size, without a build. The previews of a device that `settings.devices` no longer has close, and those of a new device open; the first device of a session whose target has no build for the iOS Simulator yet starts that build.
 
 | Error    | When                                                                                                                                |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | notFound | No running session has this id: `Preview session <sessionID> not found.`                                                            |
 | invalid  | `settings.width` or `settings.height` is not a whole number from 50 to 2000, with the messages of [previews.start](#previewsstart). |
+| invalid  | A device of `settings.devices` breaks a rule, with the message of [previews.start](#previewsstart).                                 |
 
 Events: none.
 
@@ -1012,14 +1014,16 @@ Swift type `PreviewsInput` · actors: user · result: [Empty](#empty)
 | --------- | --------------------------------------- | -------- | -------------------------------------------------------------------- |
 | sessionID | UUID                                    | yes      | The session.                                                         |
 | preview   | Int                                     | yes      | The `index` of the preview, as [PreviewFrame](#previewframe) has it. |
+| device    | String                                  | no       | The `device` of the frame; absent for a Mac preview.                 |
 | event     | [PreviewInputEvent](#previewinputevent) | yes      | The click, move, scroll or key.                                      |
 
-Gives the event to the preview's view in the host, at its place in the view's coordinates. An event that comes while the host is not running, during the first build or after the host stopped, is dropped.
+Gives the event to the preview's view in the host, at its place in the view's coordinates; a device preview takes it as a touch screen does ([Device preview behaviour](views.md#device-preview-behaviour)). An event that comes while the host is not running, during the first build or after the host stopped, is dropped.
 
 | Error    | When                                                                     |
 | -------- | ------------------------------------------------------------------------ |
 | notFound | No running session has this id: `Preview session <sessionID> not found.` |
 | invalid  | The session has no preview with this index: `preview: use 0 to <n − 1>.` |
+| invalid  | No device of this name: `device: <name> is not a device of the session.` |
 
 Events: none.
 
@@ -4463,6 +4467,28 @@ A `#Preview` block of a view: `name`, String, optional, its name, absent for a b
 | height          | Int                                     | yes      | The height of a Mac preview, in points, from 50 to 2000. |
 | appearance      | [PreviewAppearance](#previewappearance) | yes      | `light` or `dark`.                                       |
 | dynamicTypeSize | [DynamicTypeSize](#dynamictypesize)     | yes      | The `dynamicTypeSize` of the SwiftUI environment.        |
+| orientation     | String                                  | no       | `portrait` or `landscape`; `portrait` when absent.       |
+| devices         | [[PreviewDevice](#previewdevice)]       | no       | The checked devices, in order; none when absent.         |
+
+### PreviewOrientation
+
+String enum of the orientations of the device previews, the `orientation` of [PreviewSettings](#previewsettings): `portrait`, the device's width and height and its portrait size classes, and `landscape`, its height as width, its width as height and its landscape size classes ([Devices side by side](views.md#devices-side-by-side)).
+
+### PreviewDevice
+
+An iPhone or iPad device of the device previews, as `devices.json` has it ([Preview device](data-model.md#preview-device)): `name`, `family` ([PreviewDeviceFamily](#previewdevicefamily)), `width` and `height` in points in portrait, `scale`, and the size classes `portrait` and `landscape` ([PreviewSizeClasses](#previewsizeclasses)), all required. The names of a session's devices are unique.
+
+### PreviewDeviceFamily
+
+String enum of the device families: `iPhone` and `iPad`.
+
+### PreviewSizeClasses
+
+The size classes of a device in one orientation: `horizontal` and `vertical`, both required, each a [PreviewSizeClass](#previewsizeclass).
+
+### PreviewSizeClass
+
+String enum of the size classes: `compact` and `regular`.
 
 ### PreviewAppearance
 
@@ -4484,18 +4510,19 @@ The result of [previews.start](#previewsstart): `sessionID`, UUID, the session's
 | state    | [PreviewState](#previewstate)   | yes      | `building`, `running`, `buildFailed` or `stopped`.                                                                                                                                                                |
 | progress | String                          | no       | While `building`: the last progress of the build tool's output, `<n>/<m>`; absent before the first one.                                                                                                           |
 | builtAt  | Date                            | no       | The end of the build the preview host runs; absent before the first build that succeeded.                                                                                                                         |
-| messages | [String]                        | yes      | For `buildFailed`: the compiler's errors or the failure ([Build rules](views.md#build-rules)); for `stopped`: `The previews stopped: <reason>.` and the last lines of the host's standard error; empty otherwise. |
-| previews | [[PreviewFrame](#previewframe)] | yes      | The view's previews, in the order of their blocks.                                                                                                                                                                |
+| messages | [String]                        | yes      | For `buildFailed`, and `running` with a failed platform: its errors ([Build rules](views.md#build-rules)); for `stopped`: `The previews stopped: <reason>.` and the host's last standard error lines; else empty. |
+| previews | [[PreviewFrame](#previewframe)] | yes      | Mac's in block order, then each device's; none before platforms are known, none of a failed platform.                                                                                                             |
 
 ### PreviewState
 
-String enum of the states of a preview session: `building`, a build of its target runs, the previews keeping their last images when they have some; `running`, the preview host shows the previews; `buildFailed`, the last build failed; `stopped`, the preview host stopped by itself ([Preview host](views.md#preview-host)).
+String enum of the states of a preview session: `building`, a build of its target runs, the previews keeping their last images when they have some; `running`, the preview hosts show the previews, those of a platform whose build failed left out; `buildFailed`, the last build failed, of both platforms when the session shows both; `stopped`, the preview host stopped by itself ([Preview host](views.md#preview-host)).
 
 ### PreviewFrame
 
 | Field     | Type   | Required | Description                                                                                    |
 | --------- | ------ | -------- | ---------------------------------------------------------------------------------------------- |
 | index     | Int    | yes      | The rank of the preview among the view's previews, from 0.                                     |
+| device    | String | no       | The `name` of its device in the settings; absent for a Mac preview.                            |
 | title     | String | yes      | The name of its block, or `Preview <index + 1>`.                                               |
 | sequence  | Int    | yes      | The `sequence` of the status that brought its image; 0 before its first image.                 |
 | pngBase64 | String | no       | Its image, a PNG at 2 pixels per point, present when it changed after the `after` of the poll. |

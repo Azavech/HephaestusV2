@@ -12,7 +12,7 @@ struct ViewsSectionView: View {
 
     var body: some View {
         if let state = window.viewsState(of: projectID) {
-            ViewsSectionContent(workspace: workspace, projectID: projectID, state: state)
+            ViewsSectionContent(workspace: workspace, projectID: projectID, state: state, devices: window.app?.previewDevices)
         } else {
             Color.clear
                 .onAppear { _ = window.ensureViewsState(of: projectID) }
@@ -57,15 +57,21 @@ private struct ViewsSectionContent: View {
     let workspace: DeviceWorkspace
     let projectID: String
     @Bindable var state: ViewsSectionState
+    /// The devices of this Mac's `devices.json` (docs/views.md › Devices file).
+    let devices: PreviewDevicesModel?
 
     var body: some View {
         SplitPanes(leadingWidth: $state.listWidth, leadingRange: 180...480, minimumTrailingWidth: 300) {
             ViewsList(state: state)
         } trailing: {
-            ViewsDetail(state: state)
+            ViewsDetail(state: state, devices: devices)
         }
-        .onAppear { state.appear(workspace: workspace, projectID: projectID) }
+        .onAppear {
+            state.syncDevices(devices?.devices ?? [])
+            state.appear(workspace: workspace, projectID: projectID)
+        }
         .onDisappear { state.disappear() }
+        .onChange(of: devices?.devices ?? []) { _, list in state.syncDevices(list) }
     }
 }
 
@@ -209,6 +215,7 @@ private struct ViewsListRow: View {
 
 private struct ViewsDetail: View {
     @Bindable var state: ViewsSectionState
+    let devices: PreviewDevicesModel?
 
     var body: some View {
         if let view = state.selectedView {
@@ -229,7 +236,7 @@ private struct ViewsDetail: View {
                 .padding(.horizontal, 12)
                 .paneHeaderBar()
                 Divider()
-                PreviewControls(state: state)
+                PreviewControls(state: state, devices: devices)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                 Divider()
@@ -242,7 +249,7 @@ private struct ViewsDetail: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let session = state.session {
-                    PreviewsArea(session: session, settings: state.settings)
+                    PreviewsArea(session: session, settings: state.settings, viewName: view.name)
                 } else {
                     Color.clear
                 }
@@ -295,42 +302,90 @@ private struct PreviewStatusLine: View {
     }
 }
 
-/// The Width and Height fields, Light / Dark and the Dynamic Type pop-up (docs/views.md ›
-/// Preview settings).
+/// The Width and Height fields, Light / Dark, the Dynamic Type pop-up, Portrait / Landscape and
+/// the device button (docs/views.md › Preview settings).
 private struct PreviewControls: View {
     @Bindable var state: ViewsSectionState
+    let devices: PreviewDevicesModel?
+    @State private var showsDevices = false
 
     var body: some View {
-        HStack(spacing: 16) {
-            SizeField(title: "Width", value: state.settings.width) { value in
-                state.settings.width = value
-                state.settingsChanged()
+        // The orientation and the device button go to a second line when one is too narrow
+        // (docs/views.md › Layout).
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) {
+                macControls
+                deviceControls
+                Spacer(minLength: 0)
             }
-            SizeField(title: "Height", value: state.settings.height) { value in
-                state.settings.height = value
-                state.settingsChanged()
-            }
-            Picker("Appearance", selection: Binding(get: { state.settings.appearance }, set: { appearance in
-                state.settings.appearance = appearance
-                state.settingsChanged()
-            })) {
-                Text("Light").tag(PreviewAppearance.light)
-                Text("Dark").tag(PreviewAppearance.dark)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            Picker("Dynamic Type", selection: Binding(get: { state.settings.dynamicTypeSize }, set: { size in
-                state.settings.dynamicTypeSize = size
-                state.settingsChanged()
-            })) {
-                ForEach(DynamicTypeSize.allCases, id: \.self) { size in
-                    Text(size.title).tag(size)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 16) {
+                    macControls
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: 16) {
+                    deviceControls
+                    Spacer(minLength: 0)
                 }
             }
-            .pickerStyle(.menu)
-            .fixedSize()
-            Spacer(minLength: 0)
+        }
+    }
+
+    @ViewBuilder
+    private var macControls: some View {
+        SizeField(title: "Width", value: state.settings.width) { value in
+            state.settings.width = value
+            state.settingsChanged()
+        }
+        SizeField(title: "Height", value: state.settings.height) { value in
+            state.settings.height = value
+            state.settingsChanged()
+        }
+        Picker("Appearance", selection: Binding(get: { state.settings.appearance }, set: { appearance in
+            state.settings.appearance = appearance
+            state.settingsChanged()
+        })) {
+            Text("Light").tag(PreviewAppearance.light)
+            Text("Dark").tag(PreviewAppearance.dark)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+        Picker("Dynamic Type", selection: Binding(get: { state.settings.dynamicTypeSize }, set: { size in
+            state.settings.dynamicTypeSize = size
+            state.settingsChanged()
+        })) {
+            ForEach(DynamicTypeSize.allCases, id: \.self) { size in
+                Text(size.title).tag(size)
+            }
+        }
+        .pickerStyle(.menu)
+        .fixedSize()
+    }
+
+    @ViewBuilder
+    private var deviceControls: some View {
+        Picker("Orientation", selection: Binding(get: { state.settings.orientation }, set: { orientation in
+            state.settings.orientation = orientation
+            state.settingsChanged()
+        })) {
+            Text("Portrait").tag(PreviewOrientation.portrait)
+            Text("Landscape").tag(PreviewOrientation.landscape)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+        Button {
+            showsDevices.toggle()
+        } label: {
+            Image(systemName: "ipad.and.iphone")
+        }
+        .help("Devices")
+        .accessibilityLabel("Devices")
+        .popover(isPresented: $showsDevices, arrowEdge: .bottom) {
+            if let devices {
+                DevicesPopover(model: devices, state: state)
+            }
         }
     }
 }
@@ -375,10 +430,31 @@ private struct SizeField: View {
     }
 }
 
-/// The previews side by side, or what takes their place (docs/views.md › Layout, Build rules).
+/// The previews side by side in one row, grouped by device, the Mac's first, or what takes their
+/// place (docs/views.md › Layout, Devices side by side, Build rules).
 private struct PreviewsArea: View {
     let session: PreviewSessionModel
     let settings: PreviewSettings
+    let viewName: String
+
+    /// The previews of one device, nil for the Mac.
+    struct Group: Identifiable {
+        var device: String?
+        var previews: [PreviewImage]
+        var id: String { device ?? "" }
+    }
+
+    var groups: [Group] {
+        var groups: [Group] = []
+        for preview in session.previews {
+            if let last = groups.indices.last, groups[last].device == preview.device {
+                groups[last].previews.append(preview)
+            } else {
+                groups.append(Group(device: preview.device, previews: [preview]))
+            }
+        }
+        return groups
+    }
 
     var body: some View {
         if let error = session.startError, session.state == nil {
@@ -399,6 +475,15 @@ private struct PreviewsArea: View {
                 .padding(20)
             }
             .defaultScrollAnchor(.topLeading)
+        } else if session.state == .running, session.previews.isEmpty {
+            VStack(spacing: 6) {
+                Text("No Device Checked")
+                    .font(.headline)
+                Text("Check a device with the device button to preview \(viewName).")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if session.previews.allSatisfy({ $0.image == nil }) {
             VStack(spacing: 12) {
                 ProgressView()
@@ -408,24 +493,79 @@ private struct PreviewsArea: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
+            let groups = self.groups
             ScrollView([.horizontal, .vertical]) {
-                HStack(alignment: .top, spacing: 20) {
-                    ForEach(session.previews) { preview in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(preview.title)
-                                .font(.subheadline)
-                                .lineLimit(1)
-                            PreviewCanvas(image: preview.image) { event in
-                                session.send(preview: preview.index, event)
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(alignment: .top, spacing: 40) {
+                        ForEach(groups) { group in
+                            VStack(alignment: .leading, spacing: 10) {
+                                if groups.count > 1 || group.device != nil {
+                                    Text(heading(group.device))
+                                        .font(.subheadline.weight(.semibold))
+                                        .lineLimit(1)
+                                        .fixedSize()
+                                }
+                                HStack(alignment: .top, spacing: 20) {
+                                    ForEach(group.previews) { preview in
+                                        cell(preview)
+                                    }
+                                }
                             }
-                            .frame(width: CGFloat(settings.width), height: CGFloat(settings.height))
-                            .overlay(Rectangle().stroke(Color(nsColor: .separatorColor), lineWidth: 1))
                         }
+                    }
+                    // The errors of the platform whose build failed (docs/views.md › Build rules).
+                    if !session.messages.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(Array(session.messages.enumerated()), id: \.offset) { _, line in
+                                Self.message(line)
+                            }
+                        }
+                        .font(.system(.body, design: .monospaced))
+                        .textSelection(.enabled)
                     }
                 }
                 .padding(20)
             }
             .defaultScrollAnchor(.topLeading)
+        }
+    }
+
+    /// The device of a group, from the settings.
+    func device(_ name: String?) -> HephaestusCore.PreviewDevice? {
+        name.flatMap { name in settings.devices.first { $0.name == name } }
+    }
+
+    /// `Mac · 400 × 300 pt`, `iPhone 18 Pro · 402 × 874 pt · wC hR`.
+    func heading(_ name: String?) -> String {
+        guard let name else { return "Mac · \(settings.width) × \(settings.height) pt" }
+        guard let device = device(name) else { return name }
+        let size = device.size(in: settings.orientation)
+        return "\(name) · \(size.width) × \(size.height) pt · \(device.sizeClasses(in: settings.orientation).notation)"
+    }
+
+    func size(_ preview: PreviewImage) -> CGSize {
+        guard let device = device(preview.device) else { return CGSize(width: settings.width, height: settings.height) }
+        let size = device.size(in: settings.orientation)
+        return CGSize(width: size.width, height: size.height)
+    }
+
+    func cell(_ preview: PreviewImage) -> some View {
+        let size = size(preview)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(preview.title)
+                .font(.subheadline)
+                .lineLimit(1)
+            PreviewCanvas(image: preview.image) { event in
+                session.send(preview: preview.index, device: preview.device, event)
+            }
+            .frame(width: size.width, height: size.height)
+            .overlay(Rectangle().stroke(Color(nsColor: .separatorColor), lineWidth: 1))
+            .overlay {
+                if preview.image == nil {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
         }
     }
 

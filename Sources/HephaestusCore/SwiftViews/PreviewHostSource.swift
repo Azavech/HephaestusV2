@@ -371,21 +371,22 @@ fileprivate struct __HephaestusPreviewSettings {
 }
 """#
 
-    /// The host's file: the support code, the registry of the previews by key and the entry point.
+    /// The host's file: for iOS the iOS host, else the Mac host (docs/views.md › Preview host),
+    /// each with the registry of the previews by key and its entry point, so that the same file
+    /// builds for both platforms.
     public static func hostFile(entries: [(key: String, function: String)]) -> String {
-        var text = support + "\n\n"
-        text += "@MainActor fileprivate func __hephaestusPreviewRegistry() -> [String: @MainActor () -> __HephaestusPreviewContent] {\n"
+        var registry = "@MainActor fileprivate func __hephaestusPreviewRegistry() -> [String: @MainActor () -> __HephaestusPreviewContent] {\n"
         if entries.isEmpty {
-            text += "    [:]\n"
+            registry += "    [:]\n"
         } else {
-            text += "    [\n"
+            registry += "    [\n"
             for entry in entries {
-                text += "        \(swiftStringLiteral(entry.key)): \(entry.function),\n"
+                registry += "        \(swiftStringLiteral(entry.key)): \(entry.function),\n"
             }
-            text += "    ]\n"
+            registry += "    ]\n"
         }
-        text += "}\n\n"
-        text += """
+        registry += "}\n\n"
+        let macMain = """
         @main
         fileprivate enum __HephaestusPreviewHostMain {
             @MainActor static func main() {
@@ -394,7 +395,7 @@ fileprivate struct __HephaestusPreviewSettings {
         }
 
         """
-        return text
+        return "#if os(iOS)\n" + iOSSupport + "\n\n" + registry + iOSMain + "#else\n" + support + "\n\n" + registry + macMain + "#endif\n"
     }
 
     /// The key of a preview block in the registry: the absolute path of its file and its rank among

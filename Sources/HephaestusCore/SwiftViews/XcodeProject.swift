@@ -13,9 +13,11 @@ public struct XcodeProject: Sendable {
         /// The absolute paths of the folders it synchronizes, with the paths each one excludes,
         /// relative to the folder.
         public var synchronizedFolders: [(folder: String, exceptions: Set<String>)]
+        /// The platforms it builds for (docs/views.md › Platforms of a target).
+        public var platforms: Set<PreviewPlatform> = [.macOS]
 
         public static func == (a: Target, b: Target) -> Bool {
-            a.name == b.name && a.productType == b.productType && a.sourceFiles == b.sourceFiles
+            a.name == b.name && a.productType == b.productType && a.sourceFiles == b.sourceFiles && a.platforms == b.platforms
                 && a.synchronizedFolders.map(\.folder) == b.synchronizedFolders.map(\.folder)
                 && a.synchronizedFolders.map(\.exceptions) == b.synchronizedFolders.map(\.exceptions)
         }
@@ -95,9 +97,43 @@ public struct XcodeProject: Sendable {
                 folders.append((folder, exceptions))
             }
             targets.append(Target(name: name, productType: target["productType"] as? String ?? "", sourceFiles: sources,
-                                  synchronizedFolders: folders))
+                                  synchronizedFolders: folders,
+                                  platforms: platforms(debugSettings(target, objects), projectSettings: debugSettings(root, objects))))
         }
         return XcodeProject(targets: targets)
+    }
+
+    /// The build settings of the Debug configuration of a target or of the project, else of its
+    /// first configuration.
+    static func debugSettings(_ object: [String: Any], _ objects: [String: [String: Any]]) -> [String: Any] {
+        guard let listID = object["buildConfigurationList"] as? String,
+              let configurations = objects[listID]?["buildConfigurations"] as? [String] else { return [:] }
+        let all = configurations.compactMap { objects[$0] }
+        let chosen = all.first { $0["name"] as? String == "Debug" } ?? all.first
+        return chosen?["buildSettings"] as? [String: Any] ?? [:]
+    }
+
+    /// The platforms of a target (docs/views.md › Platforms of a target): its or the project's
+    /// `SUPPORTED_PLATFORMS`, else its or the project's `SDKROOT`, else macOS.
+    static func platforms(_ settings: [String: Any], projectSettings: [String: Any]) -> Set<PreviewPlatform> {
+        func value(_ key: String) -> String? {
+            for source in [settings, projectSettings] {
+                if let text = source[key] as? String { return text }
+                if let list = source[key] as? [String] { return list.joined(separator: " ") }
+            }
+            return nil
+        }
+        if let supported = value("SUPPORTED_PLATFORMS") {
+            let names = Set(supported.split(whereSeparator: { $0 == " " || $0 == "\"" }).map(String.init))
+            var platforms: Set<PreviewPlatform> = []
+            if names.contains("macosx") { platforms.insert(.macOS) }
+            if names.contains("iphoneos") || names.contains("iphonesimulator") { platforms.insert(.iOS) }
+            if !platforms.isEmpty { return platforms }
+        }
+        switch value("SDKROOT") {
+        case "iphoneos", "iphonesimulator": return [.iOS]
+        default: return [.macOS]
+        }
     }
 
     /// The target that builds a file: an application or a framework first, then any other.

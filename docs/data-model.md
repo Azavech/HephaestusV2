@@ -22,6 +22,7 @@ HephaestusV2 stores everything in plain files: each project's `.hephaestus/` fol
 | Remotes file              | `<data dir>/remotes.yml`                                                    | `RemotesFile`                 | YAML                           | [Remotes file](#remotes-file)                           |
 | Plan usage file           | `<data dir>/plan-usage.yml`                                                 | `PlanUsage`                   | YAML                           | [Plan usage file](#plan-usage-file)                     |
 | Current environments file | `<data dir>/current-environments.yml`                                       | `CurrentEnvironments`         | YAML                           | [Current environments file](#current-environments-file) |
+| Devices file              | `<data dir>/devices.json`                                                   | `PreviewDevicesFile`          | JSON                           | [Devices file](#devices-file)                           |
 | Image metadata file       | `<data dir>/VirtualMachines/Images/<IMAGE-ID>/image.yml`                    | `VMImage`                     | YAML                           | [Image metadata file](#image-metadata-file)             |
 | VM metadata file          | `<data dir>/VirtualMachines/Machines/<VM-ID>/vm.yml`                        | `VirtualMachine`              | YAML                           | [VM metadata file](#vm-metadata-file)                   |
 | Skill file                | `<skills library>/<name>/SKILL.md`                                          | `SkillFrontmatter` and body   | Markdown with YAML frontmatter | [Skill file](#skill-file)                               |
@@ -1606,6 +1607,7 @@ allowed-tools: Bash(git log:*), Read
 | `openapi-requests.json`    | The values typed in the OpenAPI request forms, credentials included; file mode 0600. Written by HephaestusUI; format in [OpenAPI contracts](openapi.md#stored-values).                                                                                                                                                                                                                                                                                          |                                                         |
 | `plan-usage.yml`           | The last known weekly usage of the Claude plan; absent until the engine knows a first value.                                                                                                                                                                                                                                                                                                                                                                    | [Plan usage file](#plan-usage-file)                     |
 | `current-environments.yml` | The current working environment of each Go service project of this device; absent until the user first chooses one.                                                                                                                                                                                                                                                                                                                                             | [Current environments file](#current-environments-file) |
+| `devices.json`             | The iPhone and iPad devices of the device previews of the Views section in this Mac's windows; written with the built-in devices when missing. Written by HephaestusUI.                                                                                                                                                                                                                                                                                         | [Devices file](#devices-file)                           |
 | `Skills/`                  | Default skills library.                                                                                                                                                                                                                                                                                                                                                                                                                                         | [Skill file](#skill-file)                               |
 | `Runtime/`                 | Generated files, safe to delete: `Runtime/plugins/<projectID>/` ([Skills](skills.md)), `Runtime/mcp/<chatID>.json` ([Chats](chats.md)), `Runtime/mcp/answer-<answer id>.json` ([Comment answers](chats.md#answer-command)), `Runtime/screenshots/` ([MCP](mcp.md)), `Runtime/claude-cwd/`, the empty working directory of the naming calls and the models probe ([Chats](chats.md#models)). The engine regenerates them as needed and never reads them as data. | —                                                       |
 | `Worktrees/`               | The git worktrees of the orchestrated ticket chats, `Worktrees/<projectID>/<ticketID>/`, each with the branch `<bundleID>/<ticketID>` checked out. `chats.implementTicket` creates one for each orchestrated ticket chat, and the bundle chat removes those of the merged tickets after its push ([Orchestrated ticket chats](chats.md#branch-and-worktree)).                                                                                                   | —                                                       |
@@ -1842,6 +1844,48 @@ projects:
 ```
 
 The file, its format and its rules are design-time choices. Default chosen at design time.
+
+## Devices file
+
+`<data dir>/devices.json` lists the iPhone and iPad devices of the [device previews](views.md#device-previews) of the Views section, for the windows of this Mac, the windows of remote devices included. It is one JSON object; the user may edit it. Swift type `PreviewDevicesFile`.
+
+| Swift name | Key       | Type                                 | Required | Default | Rules                                                                                        |
+| ---------- | --------- | ------------------------------------ | -------- | ------- | -------------------------------------------------------------------------------------------- |
+| schema     | `schema`  | `Int`                                | no       | `1`     | See [Keys and values](#keys-and-values).                                                     |
+| devices    | `devices` | [`[PreviewDevice]`](#preview-device) | no       | `[]`    | The devices, in the order of the [devices popover](views.md#devices-popover) in each family. |
+
+- **Reading.** A file that is not a JSON object, whose `schema` is not `1` or whose `devices` is not an array of objects, is invalid: it gives no device, and HephaestusV2 neither sets it aside nor writes over it ([Devices file](views.md#devices-file)). A device that lacks a required key, has a value of another type or breaks a rule of [Preview device](#preview-device), or has the name of an earlier device of the file, is left out; the others are read. Keys HephaestusV2 does not know are ignored.
+- **Writing.** HephaestusUI writes the file only when it is missing, with the [built-in devices](views.md#built-in-devices), and when the user adds a [custom size](views.md#custom-size): it then reads the file again, appends the device to `devices` and writes every key it read, the keys it does not know and the devices it left out included. It writes `schema` first, then `devices`, one device per line with its keys in the order of [Preview device](#preview-device), then the other keys of the file in name order, with two spaces of indentation and a final line break, atomically.
+
+```json <data dir>/devices.json
+{
+  "schema": 1,
+  "devices": [
+    {"name": "iPhone 18 Pro", "family": "iPhone", "width": 402, "height": 874, "scale": 3, "portrait": {"horizontal": "compact", "vertical": "regular"}, "landscape": {"horizontal": "compact", "vertical": "compact"}},
+    {"name": "iPad Pro 11-inch (M5) · 1/3 window", "family": "iPad", "width": 375, "height": 834, "scale": 2, "portrait": {"horizontal": "compact", "vertical": "regular"}, "landscape": {"horizontal": "compact", "vertical": "regular"}}
+  ]
+}
+```
+
+The file name and the content of a device come from the user. The JSON format, the keys, the ranges, the devices left out, the invalid file kept and the layout of the writes are design-time choices. Default chosen at design time.
+
+### Preview device
+
+One device, Swift type `PreviewDevice`; [PreviewSettings](engine-api.md#previewsettings) sends the checked ones to the engine in this form.
+
+| Swift name | Key         | Type                                          | Required | Default | Rules                                                                                   |
+| ---------- | ----------- | --------------------------------------------- | -------- | ------- | --------------------------------------------------------------------------------------- |
+| name       | `name`      | `String`                                      | yes      | —       | 1 to 100 characters, one line, shown in the popover and in the heading of its group.    |
+| family     | `family`    | `PreviewDeviceFamily`                         | yes      | —       | `iPhone` or `iPad`: its group in the popover and the idiom of its previews.             |
+| width      | `width`     | `Int`                                         | yes      | —       | Its width in points in portrait, 50 to 2000.                                            |
+| height     | `height`    | `Int`                                         | yes      | —       | Its height in points in portrait, 50 to 2000. Landscape swaps the width and the height. |
+| scale      | `scale`     | `Int`                                         | yes      | —       | Its pixels per point, 1 to 3: its size in pixels is its size in points times its scale. |
+| portrait   | `portrait`  | [`PreviewSizeClasses`](#preview-size-classes) | yes      | —       | Its horizontal and vertical size classes in portrait.                                   |
+| landscape  | `landscape` | [`PreviewSizeClasses`](#preview-size-classes) | yes      | —       | Its horizontal and vertical size classes in landscape.                                  |
+
+### Preview size classes
+
+Swift type `PreviewSizeClasses`: `horizontal` and `vertical`, both required, each `compact` or `regular` (Swift type `PreviewSizeClass`), the size classes Compact and Regular of UIKit and SwiftUI.
 
 ## Image metadata file
 
@@ -2183,6 +2227,7 @@ The type is chosen by the end of the path:
 | `/remotes.yml`                                 | `RemotesFile`                                          | —                                         |
 | `/plan-usage.yml`                              | `PlanUsage`                                            | —                                         |
 | `/current-environments.yml`                    | `CurrentEnvironments`                                  | —                                         |
+| `/devices.json`                                | `PreviewDevicesFile`, as JSON                          | —                                         |
 | `/VirtualMachines/Images/<name>/image.yml`     | `VMImage`                                              | `id` equals `<name>`                      |
 | `/VirtualMachines/Machines/<name>/vm.yml`      | `VirtualMachine`                                       | `id` equals `<name>`                      |
 | `/secrets.json`                                | `Secrets`                                              | —                                         |
@@ -2245,3 +2290,4 @@ For every decoded value, encoding it and decoding the output gives an equal valu
 - R209: Each image stores the user name and the password of its guests' account in clear in its `image.yml`; Settings edits them, `Type Password` in the setup view and in the detail of a virtual machine types the password into the guest through its screen, and Claude reads and stores them with the VM tools and types the password whenever the guest asks for it.
 - R210: `Edit…`, in the Virtual Machines popover and in Settings, changes the name, the cores, the memory and the disk size of a stopped virtual machine of the user; the disk cannot be smaller, a larger one is grown, and a running virtual machine cannot be edited.
 - R211: `Set Up…` of an image has a menu with `Manual Setup` and `Auto Setup`; Auto Setup starts a chat beside the setup view in which Claude goes through Setup Assistant in English (United States) with the image's stored account, asked for when missing, turns SIP off in Recovery, installs the agent and finishes the setup with the VM tools, through the screen before the agent connects; the user's controls stay, a running setup is taken over, the chat belongs to the window's project or, without a project, to the image, and stays open.
+- R213: A view whose target builds for iOS shows its previews live and interactive in the Views section on the iPhone and iPad devices checked in a devices popover, beside its Mac previews, with each device's size and size classes, in portrait or landscape, run in the iOS Simulator; the devices come from `devices.json` of the Mac showing the window, written with built-in models and iPad windows when missing, plus custom sizes.

@@ -75,11 +75,14 @@ public enum PreviewsInput: EngineMethod {
         public var sessionID: UUID
         /// The preview's `index`.
         public var preview: Int
+        /// The `device` of the frame; nil for a Mac preview.
+        public var device: String?
         public var event: PreviewInputEvent
 
-        public init(sessionID: UUID, preview: Int, event: PreviewInputEvent) {
+        public init(sessionID: UUID, preview: Int, device: String? = nil, event: PreviewInputEvent) {
             self.sessionID = sessionID
             self.preview = preview
+            self.device = device
             self.event = event
         }
     }
@@ -154,15 +157,34 @@ public struct PreviewSettings: Codable, Sendable, Hashable {
     public var height: Int
     public var appearance: PreviewAppearance
     public var dynamicTypeSize: DynamicTypeSize
+    /// The orientation of the device previews.
+    public var orientation: PreviewOrientation
+    /// The devices checked, in the order of the devices popover (docs/views.md › Device rows).
+    public var devices: [PreviewDevice]
 
     /// The range of the width and the height.
     public static let sizeRange = 50...2000
 
-    public init(width: Int = 400, height: Int = 300, appearance: PreviewAppearance = .light, dynamicTypeSize: DynamicTypeSize = .large) {
+    public init(width: Int = 400, height: Int = 300, appearance: PreviewAppearance = .light, dynamicTypeSize: DynamicTypeSize = .large,
+                orientation: PreviewOrientation = .portrait, devices: [PreviewDevice] = []) {
         self.width = width
         self.height = height
         self.appearance = appearance
         self.dynamicTypeSize = dynamicTypeSize
+        self.orientation = orientation
+        self.devices = devices
+    }
+
+    /// `orientation` and `devices` may be absent, in the settings of a window of an earlier
+    /// version.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        width = try c.decode(Int.self, forKey: .width)
+        height = try c.decode(Int.self, forKey: .height)
+        appearance = try c.decode(PreviewAppearance.self, forKey: .appearance)
+        dynamicTypeSize = try c.decode(DynamicTypeSize.self, forKey: .dynamicTypeSize)
+        orientation = try c.decodeIfPresent(PreviewOrientation.self, forKey: .orientation) ?? .portrait
+        devices = try c.decodeIfPresent([PreviewDevice].self, forKey: .devices) ?? []
     }
 }
 
@@ -265,6 +287,8 @@ public struct PreviewFrame: Codable, Sendable, Hashable {
     public var index: Int
     /// The name of its block, or `Preview <index + 1>`.
     public var title: String
+    /// The name of its device; nil for a Mac preview.
+    public var device: String?
     /// The sequence of the status that brought its image; 0 before its first image.
     public var sequence: Int
     /// A PNG at 2 pixels per point; present when it changed after the poll's `after`.
@@ -273,9 +297,11 @@ public struct PreviewFrame: Codable, Sendable, Hashable {
     public var width: Int
     public var height: Int
 
-    public init(index: Int, title: String, sequence: Int = 0, pngBase64: String? = nil, width: Int = 0, height: Int = 0) {
+    public init(index: Int, title: String, device: String? = nil, sequence: Int = 0, pngBase64: String? = nil, width: Int = 0,
+                height: Int = 0) {
         self.index = index
         self.title = title
+        self.device = device
         self.sequence = sequence
         self.pngBase64 = pngBase64
         self.width = width
