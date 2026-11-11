@@ -96,6 +96,7 @@ public enum EngineMethods {
         APIOperations.self, APICall.self,
         GraphRead.self, GraphRequest.self,
         ViewsList.self, PreviewsStart.self, PreviewsUpdate.self, PreviewsPoll.self, PreviewsInput.self, PreviewsStop.self,
+        PreviewsCapture.self,
         TicketsList.self, TicketsGet.self, TicketsCreate.self, TicketsUpdate.self, TicketsSetStatus.self,
         TicketsDelete.self, TicketsAddComment.self, TicketsUpdateComment.self, TicketsDeleteComment.self, TicketsRetryAnswer.self,
         TicketsAddAttachments.self, TicketsRemoveAttachment.self,

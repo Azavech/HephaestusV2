@@ -24,6 +24,8 @@ final class PreviewService {
         var generation = 1
         /// The generation of the last read of its targets; 0 before the first.
         var readGeneration = 0
+        /// The start of the last build.
+        var buildStartedAt: Date?
         /// The target of each file, by absolute path, as the last read found it.
         var fileTargets: [String: String] = [:]
         /// Why a file has no target to preview, as the last read found it.
@@ -112,6 +114,9 @@ final class PreviewService {
         var messages: [String] = []
         var frames: [FrameKey: Frame] = [:]
         var sequence = 1
+        /// The sequence when the session's windows last opened in a preview host: the images of
+        /// the hosts that run have a greater sequence.
+        var runningSince = 0
         var lastPoll = Date()
         var polls = 0
         var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
@@ -153,6 +158,12 @@ final class PreviewService {
     static let hostIdleTime: Duration = .seconds(60)
     /// The longest wait of `previews.poll`.
     static let pollWait: Duration = .seconds(20)
+    /// The longest wait of `previews.capture` for its previews.
+    static let captureLimit: Duration = .seconds(15 * 60)
+    /// `previews.capture` returns once no image changed for this long...
+    static let captureQuiet: Duration = .seconds(1)
+    /// ...or this long after every preview had its image.
+    static let captureSettle: Duration = .seconds(5)
 
     func sessions(ofUnit key: String) -> [Session] {
         sessions.values.filter { $0.unitKey == key }
@@ -233,6 +244,9 @@ extension Engine {
         register(PreviewsStop.self, actors: [.user]) { [unowned self] params, _ in
             await self.previewsStop(params)
         }
+        register(PreviewsCapture.self, actors: [.claude]) { [unowned self] params, _ in
+            try await self.previewsCapture(params)
+        }
     }
 
     // MARK: Methods
@@ -246,22 +260,32 @@ extension Engine {
 
     /// `previews.start` (docs/engine-api.md › previews.start).
     func previewsStart(_ params: PreviewsStart.Params) async throws -> PreviewSession {
-        let id = try fileProjectID(params.projectID)
+        let session = try await startPreviewSession(projectID: params.projectID, path: params.path, name: params.name,
+                                                    settings: params.settings)
+        return PreviewSession(sessionID: session.id)
+    }
+
+    /// The checks and the start of `previews.start`, also used by `previews.capture`, which first
+    /// marks the view's package or Xcode project out of date when one of its Swift files changed
+    /// since the start of its last build (`checksModified`).
+    func startPreviewSession(projectID: ProjectID, path rawPath: String, name: String, settings: PreviewSettings,
+                             checksModified: Bool = false) async throws -> PreviewService.Session {
+        let id = try fileProjectID(projectID)
         _ = try fileProjectRoot(id)
-        let path = try ProjectPaths.normalize(params.path, param: "path", allowRoot: false)
+        let path = try ProjectPaths.normalize(rawPath, param: "path", allowRoot: false)
         let root = try fileProjectRoot(id)
         let absolute = URL(fileURLWithPath: root.absolutePath(path)).standardizedFileURL.path
         guard absolute.hasSuffix(".swift"), FileItem.at(absolute)?.kind == .file else {
             throw EngineError.notFound("File", path)
         }
         let views = await projectViews(rootPath: root.path)
-        guard let view = views.first(where: { $0.path == path && $0.name == params.name }) else {
-            throw EngineError(.notFound, "View \(params.name) not found in \(path).")
+        guard let view = views.first(where: { $0.path == path && $0.name == name }) else {
+            throw EngineError(.notFound, "View \(name) not found in \(path).")
         }
         guard !view.previews.isEmpty else {
-            throw EngineError(.invalid, "\(params.name) has no #Preview.")
+            throw EngineError(.invalid, "\(name) has no #Preview.")
         }
-        try Self.checkPreviewSettings(params.settings)
+        try Self.checkPreviewSettings(settings)
         let scan = previews.scans[absolute]?.scan ?? ViewFinder.scanFile(at: URL(fileURLWithPath: absolute)) ?? SwiftFileScan()
         let ordinals = ViewFinder.previewOrdinals(of: view, in: scan)
         let items = zip(view.previews, ordinals).enumerated().map { index, pair in
@@ -269,8 +293,15 @@ extension Engine {
         }
         let unit = topLevelRoot(of: id).flatMap { PreviewBuildUnit.of(file: URL(fileURLWithPath: absolute), root: $0) }
         let unitKey = unit.map { $0.folder.standardizedFileURL.path }
-        let session = PreviewService.Session(id: UUID(), projectRoot: root.path, file: absolute, path: path, name: params.name,
-                                             previews: items, unitKey: unitKey, settings: params.settings)
+        if checksModified, let unitKey, let state = previews.units[unitKey], let startedAt = state.buildStartedAt {
+            let folder = URL(fileURLWithPath: unitKey)
+            let changed = await Task.detached {
+                ViewFinder.swiftFiles(under: folder).contains { $0.modified > startedAt }
+            }.value
+            if changed { state.generation += 1 }
+        }
+        let session = PreviewService.Session(id: UUID(), projectRoot: root.path, file: absolute, path: path, name: name,
+                                             previews: items, unitKey: unitKey, settings: settings)
         previews.sessions[session.id] = session
         startPreviewSweeper()
         if let unit, let unitKey {
@@ -282,7 +313,99 @@ extension Engine {
             session.state = .buildFailed
             session.messages = ["No Swift package or Xcode project holds \(path)."]
         }
-        return PreviewSession(sessionID: session.id)
+        return session
+    }
+
+    /// `previews.capture` (docs/engine-api.md › previews.capture): a session that no window
+    /// shows, followed until its previews of the last build are drawn, its build failed or its
+    /// host stopped; the images are written to `Runtime/screenshots/`.
+    func previewsCapture(_ params: PreviewsCapture.Params) async throws -> PreviewCapture {
+        let session = try await startPreviewSession(projectID: params.projectID, path: params.path, name: params.name,
+                                                    settings: params.settings, checksModified: true)
+        // A session followed by a capture is never swept.
+        session.polls += 1
+        defer {
+            session.polls -= 1
+            stopPreviewSession(session.id)
+        }
+        let deadline = ContinuousClock.now + PreviewService.captureLimit
+        var complete: ContinuousClock.Instant?
+        var changed = ContinuousClock.now
+        var shown: [PreviewService.FrameKey: Int] = [:]
+        while previews.sessions[session.id] != nil {
+            let unit = session.unitKey.flatMap { previews.units[$0] }
+            let pending = unit.map { $0.build != nil || previewUnitNeedsBuild($0) } ?? false
+            let now = ContinuousClock.now
+            switch session.state {
+            case .buildFailed where !pending, .stopped where !pending:
+                return PreviewCapture(state: session.state, builtAt: session.builtAt, messages: session.messages)
+            case .running where !pending && session.previews.indices.allSatisfy({
+                (session.frames[PreviewService.FrameKey(index: $0, device: nil)]?.sequence ?? 0) > session.runningSince
+            }):
+                let sequences = session.frames.mapValues(\.sequence)
+                if complete == nil {
+                    complete = now
+                    changed = now
+                } else if sequences != shown {
+                    changed = now
+                }
+                shown = sequences
+                if let complete, now - changed >= PreviewService.captureQuiet || now - complete >= PreviewService.captureSettle {
+                    return try writePreviewImages(session)
+                }
+            default:
+                complete = nil
+            }
+            guard now < deadline else { break }
+            var wait = deadline - now
+            if let complete {
+                wait = min(wait, max(.milliseconds(10), min(changed + PreviewService.captureQuiet, complete + PreviewService.captureSettle) - now))
+            }
+            await waitForPreviewChange(session, at: wait)
+        }
+        throw EngineError(.unavailable, "The previews of \(params.name) did not show within 15 minutes.")
+    }
+
+    /// Writes the images of a session's previews to `Runtime/screenshots/`.
+    private func writePreviewImages(_ session: PreviewService.Session) throws -> PreviewCapture {
+        let folder = dataDirectory.runtimeFolder.appendingPathComponent("screenshots")
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "yyyyMMdd'T'HHmmss.SSS'Z'"
+        let time = formatter.string(from: Date())
+        var images: [PreviewImageFile] = []
+        for (index, preview) in session.previews.enumerated() {
+            guard let frame = session.frames[PreviewService.FrameKey(index: index, device: nil)], let png = Data(base64Encoded: frame.png) else {
+                continue
+            }
+            let file = folder.appendingPathComponent("preview-\(time)-\(index + 1).png")
+            do {
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                try png.write(to: file, options: .atomic)
+            } catch {
+                throw EngineError(.internal, "\(file.path) cannot be written: \(Self.withoutFinalPeriod(error.localizedDescription)).")
+            }
+            images.append(PreviewImageFile(index: index, title: preview.title, path: file.path, width: frame.width, height: frame.height))
+        }
+        return PreviewCapture(state: .running, builtAt: session.builtAt, previews: images)
+    }
+
+    /// Waits for a change of the session, at most `timeout`.
+    private func waitForPreviewChange(_ session: PreviewService.Session, at timeout: Duration) async {
+        let waiter = UUID()
+        let timer = Task { [weak self] in
+            try? await Task.sleep(for: timeout)
+            await self?.resumePreviewWaiter(session.id, waiter)
+        }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            if previews.sessions[session.id] == nil {
+                continuation.resume()
+            } else {
+                session.waiters[waiter] = continuation
+            }
+        }
+        timer.cancel()
     }
 
     /// `previews.update` (docs/engine-api.md › previews.update): the Mac windows take the new
@@ -683,6 +806,7 @@ extension Engine {
 
     /// Opens the windows of a session's previews in the host of a platform.
     func openPreviewWindows(_ session: PreviewService.Session, _ platform: PreviewPlatform, host: any PreviewHostConnection) {
+        session.runningSince = session.sequence
         for (index, preview) in session.previews.enumerated() {
             if platform == .macOS {
                 host.send(.open(window: session.windowKey(index), preview: preview.key, settings: session.settings))
@@ -749,6 +873,7 @@ extension Engine {
             let sessions = previews.sessions(ofUnit: key)
             if sessions.isEmpty || !previewUnitNeedsBuild(unit) { break }
             let generation = unit.generation
+            unit.buildStartedAt = Date()
             var requests: [String: Set<PreviewPlatform>] = [:]
             for session in sessions {
                 requests[session.file, default: []].formUnion(session.wantedPlatforms)

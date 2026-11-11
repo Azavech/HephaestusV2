@@ -403,3 +403,94 @@ extension PreviewMethodsTests {
         }
     }
 }
+
+extension Engine {
+    /// The preview sessions that run, the windows' and the captures'.
+    func previewSessionCount() -> Int {
+        previews.sessions.count
+    }
+}
+
+/// docs/engine-api.md › previews.capture: the images of a view's previews for Claude.
+extension PreviewMethodsTests {
+    static let claude = Actor.claude(chatID: Actor.externalChatID)
+
+    @Test("previews.capture is Claude's, checks as previews.start does, and gives at once the failure of a file under no package")
+    func captureChecks() async throws {
+        try await withTestEngine { engine, connection, folder in
+            _ = try await Self.makeProject(connection, in: folder)
+            let greeting = PreviewsCapture.Params(projectID: "DEMO", path: "Sources/Demo/Greeting.swift", name: "Greeting")
+            #expect(await engineError { try await connection.call(PreviewsCapture.self, greeting) }?.code == .forbidden)
+            func capture(_ path: String, _ name: String, width: Int = 400) async -> EngineError? {
+                await engineError {
+                    try await engine.call(PreviewsCapture.self, .init(projectID: "DEMO", path: path, name: name, settings: PreviewSettings(width: width)),
+                                          actor: Self.claude)
+                }
+            }
+            #expect(await capture("Sources/Demo/None.swift", "Greeting") == EngineError(.notFound, "File Sources/Demo/None.swift not found."))
+            #expect(await capture("Sources/Demo/Greeting.swift", "Other") == EngineError(.notFound, "View Other not found in Sources/Demo/Greeting.swift."))
+            #expect(await capture("Sources/Demo/Canvas.swift", "Canvas") == EngineError(.invalid, "Canvas has no #Preview."))
+            #expect(await capture("Sources/Demo/Greeting.swift", "Greeting", width: 3000) == EngineError(.invalid, "settings.width: use 50 to 2000 points."))
+
+            // A view of a folder without Package.swift or Xcode project.
+            let loose = folder.appendingPathComponent("Loose")
+            let file = loose.appendingPathComponent("Views/Badge.swift")
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try "import SwiftUI\nstruct Badge: View { var body: some View { Text(\"B\") } }\n#Preview { Badge() }\n"
+                .write(to: file, atomically: true, encoding: .utf8)
+            _ = try await connection.call(ProjectsCreate.self, .init(rootPath: loose.path, name: "Loose", identifier: "LOOSE",
+                                                                     type: .swiftApplication, createDirectory: false))
+            let result = try await engine.call(PreviewsCapture.self, .init(projectID: "LOOSE", path: "Views/Badge.swift", name: "Badge"),
+                                               actor: Self.claude)
+            #expect(result == PreviewCapture(state: .buildFailed, messages: ["No Swift package or Xcode project holds Views/Badge.swift."]))
+            #expect(await engine.previewSessionCount() == 0)
+        }
+    }
+
+    @Test("previews.capture builds the view, writes the images of its previews, builds again a file saved just before, and gives a failed build's errors",
+          .enabled(if: runsBuilds, "Set PREVIEW_BUILD_TESTS=1 to build previews"), .timeLimit(.minutes(10)))
+    func capture() async throws {
+        try await withTestEngine { engine, connection, folder in
+            await engine.useLoginEnvironment(ProcessInfo.processInfo.environment)
+            let root = try await Self.makeProject(connection, in: folder)
+            let file = root.appendingPathComponent("Sources/Demo/Greeting.swift")
+            let params = PreviewsCapture.Params(projectID: "DEMO", path: "Sources/Demo/Greeting.swift", name: "Greeting",
+                                                settings: PreviewSettings(width: 200, height: 100))
+            let first = try await engine.call(PreviewsCapture.self, params, actor: Self.claude)
+            #expect(first.state == .running, "\(first.messages)")
+            #expect(first.messages.isEmpty)
+            #expect(first.previews.map(\.title) == ["Hello", "Preview 2"])
+            #expect(first.previews.map(\.index) == [0, 1])
+            for image in first.previews {
+                #expect(image.width == 400 && image.height == 200)
+                #expect(image.path.contains("/Runtime/screenshots/preview-") && image.path.hasSuffix("-\(image.index + 1).png"))
+                let data = try Data(contentsOf: URL(fileURLWithPath: image.path))
+                #expect(data.starts(with: [0x89, 0x50, 0x4E, 0x47]))
+            }
+            let firstBuild = try #require(first.builtAt)
+            let firstImage = try Data(contentsOf: URL(fileURLWithPath: first.previews[0].path))
+            #expect(await engine.previewSessionCount() == 0)
+
+            // Saved just before the call, without a files.changed: the capture builds it first.
+            try Self.view("A much longer greeting than before").write(to: file, atomically: true, encoding: .utf8)
+            let second = try await engine.call(PreviewsCapture.self, params, actor: Self.claude)
+            #expect(second.state == .running, "\(second.messages)")
+            #expect((second.builtAt ?? .distantPast) > firstBuild)
+            #expect(try Data(contentsOf: URL(fileURLWithPath: second.previews[0].path)) != firstImage)
+
+            // Dark, at another size, from the same build.
+            let dark = try await engine.call(PreviewsCapture.self, .init(projectID: "DEMO", path: params.path, name: "Greeting",
+                                                                          settings: PreviewSettings(width: 100, height: 60, appearance: .dark)),
+                                             actor: Self.claude)
+            #expect(dark.builtAt == second.builtAt)
+            #expect(dark.previews.allSatisfy { $0.width == 200 && $0.height == 120 })
+
+            // A syntax error: the build's errors, without images.
+            try (Self.view("Hi") + "\n}}}\n").write(to: file, atomically: true, encoding: .utf8)
+            let failed = try await engine.call(PreviewsCapture.self, params, actor: Self.claude)
+            #expect(failed.state == .buildFailed)
+            #expect(failed.previews.isEmpty)
+            #expect(failed.messages.contains { $0.hasPrefix("Sources/Demo/Greeting.swift:") && $0.contains(": error: ") }, "\(failed.messages)")
+        }
+    }
+}

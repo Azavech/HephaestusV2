@@ -162,6 +162,8 @@ final class WindowState: Identifiable {
     var searchPick: SearchPick?
     /// A request of a menu item to the shown section.
     var pendingSectionCommand: SectionCommand?
+    /// A message for the inspector's chat to send (docs/views.md › Create Preview).
+    var inspectorMessage: InspectorMessage?
     /// True while the window waits for its device's projects to choose the default project
     /// (docs/projects.md › Project selector).
     var needsDefaultProject = false

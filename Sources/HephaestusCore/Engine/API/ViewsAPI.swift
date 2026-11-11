@@ -102,6 +102,28 @@ public enum PreviewsStop: EngineMethod {
     public typealias Result = Empty
 }
 
+/// `previews.capture`: the images of the previews of a view after their last build, for
+/// `get_view_previews`. Actors: claude.
+public enum PreviewsCapture: EngineMethod {
+    public static let name = "previews.capture"
+    public struct Params: Codable, Sendable, Hashable {
+        public var projectID: ProjectID
+        /// Project path of the view's file.
+        public var path: String
+        /// The view's name, as `ProjectView.name` has it.
+        public var name: String
+        public var settings: PreviewSettings
+
+        public init(projectID: ProjectID, path: String, name: String, settings: PreviewSettings = PreviewSettings()) {
+            self.projectID = projectID
+            self.path = path
+            self.name = name
+            self.settings = settings
+        }
+    }
+    public typealias Result = PreviewCapture
+}
+
 // MARK: Types
 
 /// A view that a Swift file of a project declares (docs/engine-api.md › ProjectView).
@@ -304,6 +326,46 @@ public struct PreviewFrame: Codable, Sendable, Hashable {
         self.device = device
         self.sequence = sequence
         self.pngBase64 = pngBase64
+        self.width = width
+        self.height = height
+    }
+}
+
+/// The result of `previews.capture` (docs/engine-api.md › PreviewCapture).
+public struct PreviewCapture: Codable, Sendable, Hashable {
+    /// `running`, `buildFailed` or `stopped`.
+    public var state: PreviewState
+    /// The end of the build the preview host runs.
+    public var builtAt: Date?
+    /// The errors of a failed build, or why the host stopped; empty for `running`.
+    public var messages: [String]
+    /// The images, for `running`.
+    public var previews: [PreviewImageFile]
+
+    public init(state: PreviewState, builtAt: Date? = nil, messages: [String] = [], previews: [PreviewImageFile] = []) {
+        self.state = state
+        self.builtAt = builtAt
+        self.messages = messages
+        self.previews = previews
+    }
+}
+
+/// The PNG file of one preview of `previews.capture` (docs/engine-api.md › PreviewImageFile).
+public struct PreviewImageFile: Codable, Sendable, Hashable {
+    /// Its rank among the view's previews, from 0.
+    public var index: Int
+    /// The name of its block, or `Preview <index + 1>`.
+    public var title: String
+    /// The absolute path of the PNG on the main device.
+    public var path: String
+    /// Pixels, 2 per point.
+    public var width: Int
+    public var height: Int
+
+    public init(index: Int, title: String, path: String, width: Int, height: Int) {
+        self.index = index
+        self.title = title
+        self.path = path
         self.width = width
         self.height = height
     }

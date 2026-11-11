@@ -24,6 +24,14 @@ extension WindowState {
         pendingSectionCommand = .focusInspectorComposer
     }
 
+    /// Shows the inspector when it is hidden and has its chat send `text` with its linked items
+    /// (docs/views.md › Create Preview).
+    func sendFromInspector(_ text: String) {
+        guard let projectID else { return }
+        inspectorVisible = true
+        inspectorMessage = InspectorMessage(projectID: projectID, text: text)
+    }
+
     /// Search (⇧⌘F): opens the search panel, or closes it when it is open.
     func toggleSearch() {
         searchVisible.toggle()

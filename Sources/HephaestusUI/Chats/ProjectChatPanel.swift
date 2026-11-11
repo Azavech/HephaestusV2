@@ -3,7 +3,7 @@ import AppKit
 import HephaestusCore
 import SwiftUI
 
-/// The inspector: the picker of project chats, New Chat, Open in New Window and the selected chat's view or a draft (`ProjectViewState.inspectorChatID`, `inspectorShowsDraft`). It consumes `SectionCommand.focusInspectorComposer`.
+/// The inspector: the picker of project chats, New Chat, Open in New Window and the selected chat's view or a draft (`ProjectViewState.inspectorChatID`, `inspectorShowsDraft`). It consumes `SectionCommand.focusInspectorComposer` and `WindowState.inspectorMessage`.
 struct ProjectChatPanel: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -13,6 +13,8 @@ struct ProjectChatPanel: View {
     @State private var focusRequest = 0
     /// The chat the draft's first Send created, until its metadata arrives.
     @State private var createdChatID: String?
+    /// The message of `WindowState.inspectorMessage` until the chat view has sent it.
+    @State private var outgoing: InspectorMessage?
     @Environment(AppModel.self) private var app
 
     private var viewState: ProjectViewState {
@@ -63,10 +65,11 @@ struct ProjectChatPanel: View {
             Divider()
             if let shown {
                 ChatView(chatID: shown, workspace: workspace, showsHeader: false, isInInspector: true,
-                         linkedItems: linked, onUnlink: unlink)
+                         linkedItems: linked, onUnlink: unlink, message: outgoing) { outgoing = nil }
             } else if let draft, draft.projectID == projectID {
                 ChatView(draft: draft, workspace: workspace, showsHeader: false, isInInspector: true, focusRequest: focusRequest,
-                         focusesComposer: viewState.inspectorShowsDraft, linkedItems: linked, onUnlink: unlink) { meta in
+                         focusesComposer: viewState.inspectorShowsDraft, linkedItems: linked, onUnlink: unlink,
+                         message: outgoing, onMessageSent: { outgoing = nil }) { meta in
                     createdChatID = meta.id.uuidString
                     window.updateViewState(of: projectID) {
                         $0.inspectorChatID = meta.id.uuidString
@@ -92,6 +95,17 @@ struct ProjectChatPanel: View {
         }
         .onChange(of: workspace.chats[createdChatID ?? ""] != nil) { _, arrived in
             if arrived { createdChatID = nil }
+        }
+        .onChange(of: window.inspectorMessage, initial: true) { _, message in
+            guard let message, message.projectID == projectID else { return }
+            window.inspectorMessage = nil
+            // The message goes to a project chat: a new one when the inspector shows an Auto
+            // Setup chat (docs/views.md › Create Preview).
+            if let shown = shownChatID, workspace.chats[shown]?.kind != .project, shown != createdChatID {
+                draft = DraftChat(projectID: projectID)
+                window.updateViewState(of: projectID) { $0.inspectorShowsDraft = true }
+            }
+            outgoing = message
         }
     }
 

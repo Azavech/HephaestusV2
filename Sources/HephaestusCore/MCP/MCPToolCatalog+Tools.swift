@@ -1559,6 +1559,58 @@ extension MCPToolCatalog {
             handling: .openInApp
         ),
         MCPToolDefinition(
+            name: "get_view_previews",
+            description: #"""
+            Build the #Preview blocks of a SwiftUI, AppKit or UIKit view of a project from its files on disk, when a Swift file changed since their last build, and return a PNG image of each preview, at 2 pixels per point: read the files at the paths of previews to see them. state is running when the images were drawn, buildFailed with the compiler's errors in messages when the build failed, stopped with the reason in messages when the previews stopped. Call it after each change of a view, and after writing a new view or a #Preview, to see the result. path is the project path of the view's file and name the view's name, with the names of the types it is declared in, for example SettingsView.Row. width and height are the size of each preview in points, 400 and 300 when omitted; appearance is light (default) or dark; typeSize is the Dynamic Type size, the dynamicTypeSize of the SwiftUI environment, large when omitted. The first build of a project can take minutes.
+            """#,
+            inputSchema: schema(#"""
+            {
+              "type": "object",
+              "properties": {
+                "projectID": {
+                  "type": "string",
+                  "description": "Project identifier: 2 to 8 letters, for example HEPH."
+                },
+                "path": {
+                  "type": "string",
+                  "description": "Project path of the Swift file that declares the view, for example Sources/App/CounterView.swift."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "The view's name, after the names of the types it is declared in, separated by '.'."
+                },
+                "width": {
+                  "type": "integer",
+                  "minimum": 50,
+                  "maximum": 2000,
+                  "description": "Width of each preview in points; 400 when omitted."
+                },
+                "height": {
+                  "type": "integer",
+                  "minimum": 50,
+                  "maximum": 2000,
+                  "description": "Height of each preview in points; 300 when omitted."
+                },
+                "appearance": {
+                  "type": "string",
+                  "enum": ["light", "dark"],
+                  "description": "Appearance of the previews; light when omitted."
+                },
+                "typeSize": {
+                  "type": "string",
+                  "enum": ["xSmall", "small", "medium", "large", "xLarge", "xxLarge", "xxxLarge", "accessibility1", "accessibility2", "accessibility3", "accessibility4", "accessibility5"],
+                  "description": "Dynamic Type size of the previews, the dynamicTypeSize of their SwiftUI environment; large when omitted."
+                }
+              },
+              "required": ["projectID", "path", "name"],
+              "additionalProperties": false
+            }
+            """#),
+            isDebug: false,
+            engineMethod: "previews.capture",
+            handling: .viewPreviews
+        ),
+        MCPToolDefinition(
             name: "vm_list_images",
             description: #"""
             List the macOS images of the virtual machines of this Mac, oldest first: id, macOS version and build, state (downloading, installing, needsSetup, ready or failed), isDefault for the default image, which vm_start uses when no image is named, diskGB, the size of its disk, and the userName and password of the guests' account when they are stored. Whenever a guest asks for the password of its account, for example for sudo or in a dialog of macOS, type the password of its image with vm_type. Only ready images start virtual machines. Only in chats started by HephaestusV2.

@@ -230,6 +230,7 @@ The first column lists every engine method; it is the list the docs conformance 
 | `previews.poll`                  | PreviewsPoll                  | sessionID, after                                           | PreviewStatus      | user         |
 | `previews.input`                 | PreviewsInput                 | sessionID, preview, event                                  | Empty              | user         |
 | `previews.stop`                  | PreviewsStop                  | sessionID                                                  | Empty              | user         |
+| `previews.capture`               | PreviewsCapture               | projectID, path, name, settings                            | PreviewCapture     | claude       |
 | `tickets.list`                   | TicketsList                   | projectID, includeSubprojects?                             | [Ticket]           | user, claude |
 | `tickets.get`                    | TicketsGet                    | ticketID                                                   | Ticket             | user, claude |
 | `tickets.create`                 | TicketsCreate                 | projectID, title?, description, attachments?               | Ticket             | user, claude |
@@ -919,12 +920,12 @@ Events: none.
 
 ## Views and previews
 
-The methods of the [Views](views.md) section, which the windows of every device call with the actor user: [views.list](#viewslist) lists the views that the Swift files of a project declare, and a preview session shows the `#Preview` blocks of one view, live: [previews.start](#previewsstart) starts it, [previews.poll](#previewspoll) gives its state and the images of its previews, [previews.input](#previewsinput) gives a preview the user's clicks, scrolls and keys, [previews.update](#previewsupdate) changes its settings and [previews.stop](#previewsstop) ends it. They run on the main device: the files are read there, and the builds and the preview hosts run there ([Builds](views.md#builds), [Preview host](views.md#preview-host)). They emit no events: their results go to the caller only.
+The methods of the [Views](views.md) section, which the windows of every device call with the actor user: [views.list](#viewslist) lists the views that the Swift files of a project declare, and a preview session shows the `#Preview` blocks of one view, live: [previews.start](#previewsstart) starts it, [previews.poll](#previewspoll) gives its state and the images of its previews, [previews.input](#previewsinput) gives a preview the user's clicks, scrolls and keys, [previews.update](#previewsupdate) changes its settings and [previews.stop](#previewsstop) ends it. [previews.capture](#previewscapture), which Claude calls with the actor claude through [get_view_previews](mcp.md#get_view_previews), gives the images of the previews of a view after their last build ([Previews for Claude](views.md#previews-for-claude)). They run on the main device: the files are read there, and the builds and the preview hosts run there ([Builds](views.md#builds), [Preview host](views.md#preview-host)). They emit no events: their results go to the caller only.
 
 - A session belongs to no window: the window that started it polls it and stops it. A session that no call of `previews.poll` has followed for 60 seconds stops, as with `previews.stop`, so that the sessions of a window that closed or of a remote device that disconnected end.
 - The engine builds the target of a session's view when it has no build or when a file of its package or Xcode project changed since its build ([Refresh](views.md#refresh)); the sessions of the same target share its build and its preview host.
 
-The methods, their user-only actor, the sessions and their 60 seconds are design-time choices. Default chosen at design time.
+The methods, their actors, the sessions and their 60 seconds are design-time choices. Default chosen at design time.
 
 ### views.list
 
@@ -1036,6 +1037,36 @@ Swift type `PreviewsStop` · actors: user · result: [Empty](#empty)
 | sessionID | UUID | yes      | The session. |
 
 Ends the session: its previews leave the host, which stops 60 seconds after its last session ended ([Preview host](views.md#preview-host)). A session that no longer runs is not an error.
+
+Events: none.
+
+### previews.capture
+
+Swift type `PreviewsCapture` · actors: claude · result: [PreviewCapture](#previewcapture)
+
+| Param     | Type                                | Required | Description                                                                    |
+| --------- | ----------------------------------- | -------- | ------------------------------------------------------------------------------ |
+| projectID | ProjectID                           | yes      | Project identifier.                                                            |
+| path      | String                              | yes      | Project path of the Swift file that declares the view.                         |
+| name      | String                              | yes      | The view's name, as [ProjectView](#projectview) `name` has it.                 |
+| settings  | [PreviewSettings](#previewsettings) | yes      | The width, the height, the appearance and the Dynamic Type size of the images. |
+
+Gives the images of the previews of a view after their last build, for [get_view_previews](mcp.md#get_view_previews) ([Previews for Claude](views.md#previews-for-claude)):
+
+1. The engine checks the params as [previews.start](#previewsstart) does.
+2. When a Swift file of the folder of the view's package or Xcode project, outside the skipped folders of [Swift files read](views.md#swift-files-read), was modified after the start of the last build of that package or project, the package or project is out of date at once, without waiting for the `files.changed` of the file, so that a file just saved is built.
+3. It starts a session of the view with the settings, as `previews.start` does, which no window shows and which no poll needs to keep; the target builds when it needs to, and the session shares the build and the preview host of the windows' sessions of the same target.
+4. It waits until the session's state is `buildFailed` or `stopped` with no build of the package or project still to run, or until the state is `running` and each preview has an image drawn by the preview host of the last build; then, while the images still change, until no image changed for 1 second, at most 5 seconds.
+5. It writes each image as a PNG file, `<data dir>/Runtime/screenshots/preview-<time>-<n>.png`, `<time>` being the UTC time of the capture as `yyyyMMdd'T'HHmmss.SSS'Z'` and `<n>` the rank of the preview from 1. The folder is created when missing and the app never deletes these files.
+6. It ends the session, as `previews.stop` does, and returns the state, the end of the build, the messages and the images.
+
+| Error             | When                                                                                                                                      |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| invalid, notFound | The errors of [previews.start](#previewsstart): the project, the path, the file, the view, a view without preview block and the settings. |
+| unavailable       | The session reached none of the states of step 4 within 15 minutes: `The previews of <name> did not show within 15 minutes.`              |
+| internal          | An image cannot be written: `<path> cannot be written: <reason>.`                                                                         |
+
+The waits, the 15 minutes, the folder of the images and their names are design-time choices. Default chosen at design time.
 
 Events: none.
 
@@ -4529,6 +4560,27 @@ String enum of the states of a preview session: `building`, a build of its targe
 | width     | Int    | yes      | The width of its image in pixels; 0 before its first image.                                    |
 | height    | Int    | yes      | The height of its image in pixels; 0 before its first image.                                   |
 
+### PreviewCapture
+
+The result of [previews.capture](#previewscapture).
+
+| Field    | Type                                    | Required | Description                                                                                                              |
+| -------- | --------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
+| state    | [PreviewState](#previewstate)           | yes      | `running` when the images were drawn, `buildFailed` when the last build failed, `stopped` when the preview host stopped. |
+| builtAt  | Date                                    | no       | The end of the build the preview host runs; absent before the first build that succeeded.                                |
+| messages | [String]                                | yes      | For `buildFailed` and `stopped`: the messages of [PreviewStatus](#previewstatus); empty for `running`.                   |
+| previews | [[PreviewImageFile](#previewimagefile)] | yes      | For `running`: the images of the view's previews, in the order of their blocks; empty otherwise.                         |
+
+### PreviewImageFile
+
+| Field  | Type   | Required | Description                                                |
+| ------ | ------ | -------- | ---------------------------------------------------------- |
+| index  | Int    | yes      | The rank of the preview among the view's previews, from 0. |
+| title  | String | yes      | The name of its block, or `Preview <index + 1>`.           |
+| path   | String | yes      | The absolute path of its PNG file on the main device.      |
+| width  | Int    | yes      | The width of the image in pixels, 2 per point.             |
+| height | Int    | yes      | The height of the image in pixels, 2 per point.            |
+
 ### PreviewInputEvent
 
 | Field                       | Type     | Required | Description                                                                                                             |
@@ -5824,3 +5876,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R210: `Edit…`, in the Virtual Machines popover and in Settings, changes the name, the cores, the memory and the disk size of a stopped virtual machine of the user; the disk cannot be smaller, a larger one is grown, and a running virtual machine cannot be edited.
 - R211: `Set Up…` of an image has a menu with `Manual Setup` and `Auto Setup`; Auto Setup starts a chat beside the setup view in which Claude goes through Setup Assistant in English (United States) with the image's stored account, asked for when missing, turns SIP off in Recovery, installs the agent and finishes the setup with the VM tools, through the screen before the agent connects; the user's controls stay, a running setup is taken over, the chat belongs to the window's project or, without a project, to the image, and stays open.
 - R212: A Swift application has a Views section, in a Swift Application category, that lists its SwiftUI, AppKit and UIKit views by folder, sub projects included, and shows a view's `#Preview` blocks side by side, live and interactive on the Mac, at the entered size, in Light or Dark and a Dynamic Type size, built in the background and refreshed on save, with compiler errors, for packages, Xcode projects and remote windows.
+- R215: In the Views section, the user designs views with Claude in the inspector's project chat: each message carries the shown view's name and file path, an MCP tool gives Claude the preview images after the last build, the previews refresh when Claude saves, `Create Preview` asks Claude for a `#Preview`, Claude creates the new views the user describes, and the changes stay uncommitted until the user asks.

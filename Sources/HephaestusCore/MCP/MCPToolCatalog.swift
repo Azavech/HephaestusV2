@@ -73,6 +73,9 @@ public enum MCPToolHandling: String, Sendable, Hashable, CaseIterable {
     case closeChat
     /// `open_in_app`: the target rules of docs/mcp.md › Target kinds.
     case openInApp
+    /// `get_view_previews`: `width`, `height`, `appearance` and `typeSize`, as `dynamicTypeSize`,
+    /// sent in `settings`, with their defaults when omitted (docs/mcp.md › get_view_previews).
+    case viewPreviews
     /// `k8s_status`, `k8s_events`, `k8s_port_forward`, `k8s_stop_port_forward`, `argocd_status`:
     /// chat tokens only, `chatID` from the token, the method's JSON as the result
     /// (docs/mcp.md › Rules of the Kubernetes tools, › Kubectl output).

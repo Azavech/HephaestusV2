@@ -23,7 +23,8 @@ struct SystemPromptSkillsTests {
     ]
 
     /// The text the common default gained since that release: the API tools (HEPH-128), then the
-    /// VM tools (HEPH-145) with the guest account (HEPH-157).
+    /// VM tools (HEPH-145) with the guest account (HEPH-157), then the design of views with
+    /// get_view_previews (HEPH-165).
     static let commonAdditions = [
         "- The API of a Go service project: api_operations (lists the operations of its OpenAPI contract openapi/contract.yaml), "
             + "api_call (calls one of them on an environment of the project, with the credentials and headers stored in the API Explorer).\n",
@@ -44,6 +45,16 @@ struct SystemPromptSkillsTests {
             + "of its account, for example for sudo in Terminal or in a dialog of macOS, type that password with vm_type, without asking. "
             + "Store the account of an image with vm_set_account when the user gives it to you, or when you create the account in Setup "
             + "Assistant of an image's setup.\n\n",
+        "- Views of a Swift application: get_view_previews (builds the #Preview blocks of a view and gives you their images).\n",
+        "- In a project chat, leave the changes you make to the views of a Swift application, for a message that carries a view, for a "
+            + "#Preview or for a new view, uncommitted in the working tree: commit them only when the user asks for it.\n",
+        "# Views\n\nWhen the project's type is Swift application, the user designs its views with you from the Views section of "
+            + "HephaestusV2, in the project chat of its inspector. A message sent while that section shows a view carries the line Open in "
+            + "the app: view <name> in <path>: the user's words are about that view, declared in the file at that project path. After each "
+            + "change of a view, and after you write a new view or a #Preview, call get_view_previews with the project, the file's path and "
+            + "the view's name, read its images, and change the view again until its previews show what the user asked; when the build "
+            + "fails, fix it. Write a new view in a Swift file of the project with a #Preview of it, so that it appears in the Views section "
+            + "with its previews. Leave these changes uncommitted, as Commits says.\n\n",
     ]
 
     /// The text of the common default that changed since that release, each as its current text and

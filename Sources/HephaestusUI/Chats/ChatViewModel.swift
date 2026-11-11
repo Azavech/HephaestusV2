@@ -376,17 +376,7 @@ final class ChatViewModel {
         composer = ComposerDraft(resources: sent.resources)
         Task {
             do {
-                if let chatID, let uuid = UUID(uuidString: chatID) {
-                    _ = try await workspace.call(ChatsSend.self, ChatsSend.Params(chatID: uuid, message: message))
-                } else if let draft {
-                    isCreating = true
-                    defer { isCreating = false }
-                    let meta = try await workspace.call(ChatsCreate.self, ChatsCreate.Params(
-                        projectID: draft.projectID, kind: draft.kind, ticketID: draft.ticketID, bundleID: draft.bundleID,
-                        settings: settings, message: message))
-                    keepResources(inChat: meta.id.uuidString)
-                    onCreated?(meta)
-                }
+                try await deliver(message)
             } catch {
                 // The message comes back when the text field and the attachment chips are still
                 // empty (docs/chats.md › Composer).
@@ -398,6 +388,38 @@ final class ChatViewModel {
                 }
                 alert(.failure("Send", error))
             }
+        }
+    }
+
+    /// Sends a message that a button composed, `Create Preview` (docs/views.md › Create Preview),
+    /// with the linked items and the added resources, as Send does; the composer keeps its text and
+    /// its attachments. It needs what Send needs besides the text.
+    func send(text: String) {
+        guard canResume, !isCreating else { return }
+        let linked = AddedResources.sent(linked: linkedItems, resources: composer.resources)
+        let message = ChatMessageInput(text: text, linkedItems: linked.isEmpty ? nil : linked)
+        Task {
+            do {
+                try await deliver(message)
+            } catch {
+                alert(.failure("Send", error))
+            }
+        }
+    }
+
+    /// `chats.send`, or `chats.create` for a draft, whose new chat gets the draft's added
+    /// resources and goes to `onCreated`.
+    private func deliver(_ message: ChatMessageInput) async throws {
+        if let chatID, let uuid = UUID(uuidString: chatID) {
+            _ = try await workspace.call(ChatsSend.self, ChatsSend.Params(chatID: uuid, message: message))
+        } else if let draft {
+            isCreating = true
+            defer { isCreating = false }
+            let meta = try await workspace.call(ChatsCreate.self, ChatsCreate.Params(
+                projectID: draft.projectID, kind: draft.kind, ticketID: draft.ticketID, bundleID: draft.bundleID,
+                settings: settings, message: message))
+            keepResources(inChat: meta.id.uuidString)
+            onCreated?(meta)
         }
     }
 

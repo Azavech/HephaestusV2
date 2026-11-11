@@ -1,6 +1,6 @@
 # MCP server
 
-HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server that the Claude CLI processes of the app's chats, and terminal Claude sessions holding the external token, call to read and change projects, tickets, bundles, chats, web tabs and skills, to ask the user labelled questions, an SF Symbol, a color or a sound, to show the user images in a chat, to navigate the app, to inspect and operate the Kubernetes deployments and Argo CD applications of the environments of Go services, to read and call the API of a Go service on those environments, and to start and drive macOS virtual machines. The server implements MCP's Streamable HTTP transport limited to JSON answers: JSON-RPC 2.0 messages are POSTed to `http://127.0.0.1:47820/mcp`, each one authenticated by a bearer token that identifies the calling chat. Every tool call runs an engine method with the actor `claude`, so it is validated like any other call and emits the same events, which every connected client, local or remote, receives live. This document specifies the transport, the authentication, the JSON-RPC handling, every tool with its exact description and input schema, the results and errors, the actor rules, external use and the debug tools.
+HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server that the Claude CLI processes of the app's chats, and terminal Claude sessions holding the external token, call to read and change projects, tickets, bundles, chats, web tabs and skills, to ask the user labelled questions, an SF Symbol, a color or a sound, to show the user images in a chat, to navigate the app, to see the previews of the views of a Swift application, to inspect and operate the Kubernetes deployments and Argo CD applications of the environments of Go services, to read and call the API of a Go service on those environments, and to start and drive macOS virtual machines. The server implements MCP's Streamable HTTP transport limited to JSON answers: JSON-RPC 2.0 messages are POSTed to `http://127.0.0.1:47820/mcp`, each one authenticated by a bearer token that identifies the calling chat. Every tool call runs an engine method with the actor `claude`, so it is validated like any other call and emits the same events, which every connected client, local or remote, receives live. This document specifies the transport, the authentication, the JSON-RPC handling, every tool with its exact description and input schema, the results and errors, the actor rules, external use and the debug tools.
 
 ## Overview
 
@@ -14,7 +14,7 @@ HephaestusV2 and Claude interact through MCP. Every engine runs an MCP server th
 | JSON-RPC methods  | `initialize`, `ping`, `tools/list`, `tools/call`; every notification is accepted and ignored                                                             |
 | Server name       | `hephaestus`, in `serverInfo` and as the server's key in Claude's MCP configuration, so Claude names the tools `mcp__hephaestus__<tool>`                 |
 | Authentication    | `Authorization: Bearer <token>` with a chat token, an answer token or the external token on `/mcp`, with a hook token on the hook paths                  |
-| Tools             | 64 [catalogue](#tool-catalogue), 9 [Kubernetes](#kubernetes-and-argo-cd-tools), 2 [API](#api-tools); 4 [debug](#debug-tools): `HEPHAESTUS_DEBUG_TOOLS=1` |
+| Tools             | 65 [catalogue](#tool-catalogue), 9 [Kubernetes](#kubernetes-and-argo-cd-tools), 2 [API](#api-tools); 4 [debug](#debug-tools): `HEPHAESTUS_DEBUG_TOOLS=1` |
 
 Every tool call runs an engine method ([Engine API](engine-api.md)) with the actor `claude`. The engine validates it exactly as it validates a call from the UI or from a remote device and emits the same events, so every client, local or remote, shows the change live.
 
@@ -488,6 +488,7 @@ The table lists the tools in the order of `tools/list`; the [Kubernetes and Argo
 | `delete_skill`      | `name`                                             | —                                           | skills.delete            | `{}`             |
 | `set_skill_enabled` | `projectID`, `name`, `enabled`                     | —                                           | skills.setEnabled        | ProjectDetail    |
 | `open_in_app`       | `target`                                           | —                                           | ui.open                  | `{}`             |
+| `get_view_previews` | `projectID`, `path`, `name`                        | `width`, `height`, `appearance`, `typeSize` | previews.capture         | PreviewCapture   |
 | `vm_list_images`    | —                                                  | —                                           | vmTools.images           | [VMToolImage]    |
 | `vm_set_account`    | `imageID`                                          | `userName`, `password`                      | vmTools.setAccount       | VMToolImage      |
 | `vm_list`           | —                                                  | —                                           | vmTools.list             | [VMToolMachine]  |
@@ -2666,6 +2667,68 @@ Input schema:
 
 A missing required property fails with `target.<property>: required for kind <kind>.`, checked in the table's order. A property that is neither required nor optional for the kind then fails with `target.<property>: not used by kind <kind>.`, checked in the schema's property order. Default chosen at design time.
 
+### get_view_previews
+
+- **Engine call:** previews.capture with `projectID`, `path`, `name` and `settings` made of `width`, `height`, `appearance` and, as `dynamicTypeSize`, `typeSize`, 400, 300, `light` and `large` when omitted ([Engine API](engine-api.md#previewscapture)). Every token may call it; a comment answer cannot ([Actor rules](#actor-rules)).
+- **Wait:** the call returns once the previews of the last build are drawn, the build failed or the previews stopped, building the view's target first when a Swift file of its package or Xcode project changed since its last build, the file Claude has just saved included ([Previews for Claude](views.md#previews-for-claude)).
+- **Result:** the [PreviewCapture](engine-api.md#previewcapture) `{state, builtAt, messages, previews}`, each preview with its `index`, `title`, the absolute `path` of its PNG in `<data dir>/Runtime/screenshots/`, and its `width` and `height` in pixels.
+- **Errors:** those of previews.start: unknown project, file or view (`notFound`), invalid path, a view without `#Preview` (`invalid`, `<name> has no #Preview.`); previews that do not show within 15 minutes (`unavailable`); an image that cannot be written (`internal`).
+- **Permission:** pre-approved: it runs without a permission prompt in every permission mode ([Chats](chats.md#command-line)).
+
+The tool, which gives Claude the images of the previews of a view after their last build, comes from the user ([R215](requirements.md#requirements)); its name, its inputs, its pre-approval and the layout of its result are design-time choices. Default chosen at design time.
+
+Description:
+
+```text
+Build the #Preview blocks of a SwiftUI, AppKit or UIKit view of a project from its files on disk, when a Swift file changed since their last build, and return a PNG image of each preview, at 2 pixels per point: read the files at the paths of previews to see them. state is running when the images were drawn, buildFailed with the compiler's errors in messages when the build failed, stopped with the reason in messages when the previews stopped. Call it after each change of a view, and after writing a new view or a #Preview, to see the result. path is the project path of the view's file and name the view's name, with the names of the types it is declared in, for example SettingsView.Row. width and height are the size of each preview in points, 400 and 300 when omitted; appearance is light (default) or dark; typeSize is the Dynamic Type size, the dynamicTypeSize of the SwiftUI environment, large when omitted. The first build of a project can take minutes.
+```
+
+Input schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "projectID": {
+      "type": "string",
+      "description": "Project identifier: 2 to 8 letters, for example HEPH."
+    },
+    "path": {
+      "type": "string",
+      "description": "Project path of the Swift file that declares the view, for example Sources/App/CounterView.swift."
+    },
+    "name": {
+      "type": "string",
+      "description": "The view's name, after the names of the types it is declared in, separated by '.'."
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 50,
+      "maximum": 2000,
+      "description": "Width of each preview in points; 400 when omitted."
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 50,
+      "maximum": 2000,
+      "description": "Height of each preview in points; 300 when omitted."
+    },
+    "appearance": {
+      "type": "string",
+      "enum": ["light", "dark"],
+      "description": "Appearance of the previews; light when omitted."
+    },
+    "typeSize": {
+      "type": "string",
+      "enum": ["xSmall", "small", "medium", "large", "xLarge", "xxLarge", "xxxLarge", "accessibility1", "accessibility2", "accessibility3", "accessibility4", "accessibility5"],
+      "description": "Dynamic Type size of the previews, the dynamicTypeSize of their SwiftUI environment; large when omitted."
+    }
+  },
+  "required": ["projectID", "path", "name"],
+  "additionalProperties": false
+}
+```
+
 ### Rules of the VM tools
 
 The seventeen tools from `vm_list_images` to `vm_setup_finish` let Claude start and drive the macOS virtual machines of this Mac, store the guest account of their images and drive the setup virtual machine of an image ([Claude's virtual machines](virtual-machines.md#claudes-virtual-machines), [The setup virtual machine](virtual-machines.md#the-setup-virtual-machine)). They follow these rules, in this order; the section of each tool adds its checks and its result.
@@ -4270,3 +4333,4 @@ Unauthorized: missing or invalid bearer token.
 - R208: Settings gives the default cores, memory and disk size of new virtual machines; an image has no such values, the user chooses them in the New VM sheet, and a virtual machine's disk is grown to the size chosen.
 - R209: Each image stores the user name and the password of its guests' account in clear in its `image.yml`; Settings edits them, `Type Password` in the setup view and in the detail of a virtual machine types the password into the guest through its screen, and Claude reads and stores them with the VM tools and types the password whenever the guest asks for it.
 - R211: `Set Up…` of an image has a menu with `Manual Setup` and `Auto Setup`; Auto Setup starts a chat beside the setup view in which Claude goes through Setup Assistant in English (United States) with the image's stored account, asked for when missing, turns SIP off in Recovery, installs the agent and finishes the setup with the VM tools, through the screen before the agent connects; the user's controls stay, a running setup is taken over, the chat belongs to the window's project or, without a project, to the image, and stays open.
+- R215: In the Views section, the user designs views with Claude in the inspector's project chat: each message carries the shown view's name and file path, an MCP tool gives Claude the preview images after the last build, the previews refresh when Claude saves, `Create Preview` asks Claude for a `#Preview`, Claude creates the new views the user describes, and the changes stay uncommitted until the user asks.

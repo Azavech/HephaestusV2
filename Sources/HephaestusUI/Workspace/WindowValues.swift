@@ -120,3 +120,12 @@ enum SectionCommand: Hashable {
     /// (docs/ui.md › Inspector).
     case focusInspectorComposer
 }
+
+/// A message that a button of the centre column sends from the composer of the inspector's chat,
+/// such as `Create Preview` (docs/views.md › Create Preview); the inspector of the project consumes
+/// it and sets `WindowState.inspectorMessage` back to nil.
+struct InspectorMessage: Hashable {
+    let id = UUID()
+    var projectID: String
+    var text: String
+}

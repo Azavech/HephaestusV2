@@ -9,12 +9,19 @@ struct LinkedItemRef: Hashable {
         case ticket, bundle, chat, code, doc, webTab, skill, virtualMachine
         /// The setup virtual machine of an image, by the image's id.
         case imageSetup
+        /// A view of the Views section, by `<path>:<name>`.
+        case view
     }
 
     var kind: Kind
-    /// The ticket id, bundle id, chat id, project path, web tab id, skill name, virtual machine id
-    /// or image id.
+    /// The ticket id, bundle id, chat id, project path, web tab id, skill name, virtual machine id,
+    /// image id, or the project path and the name of a view, `<path>:<name>`.
     var id: String
+
+    /// The open item of a view shown in the Views section.
+    static func view(path: String, name: String) -> LinkedItemRef {
+        LinkedItemRef(kind: .view, id: "\(path):\(name)")
+    }
 
     /// The `<kind>:<id>` key of `ProjectViewState.unlinkedItems`.
     var key: String {
@@ -32,6 +39,7 @@ struct LinkedItemRef: Hashable {
         case .webTab: return .webTab
         case .skill: return .skill
         case .virtualMachine, .imageSetup: return .virtualMachine
+        case .view: return .view
         }
     }
 }
@@ -50,6 +58,7 @@ extension ChatLinkedItemKind {
         case .webTab: return ProjectSection.web.symbol
         case .skill: return ProjectSection.skills.symbol
         case .virtualMachine: return SettingsTab.virtualMachines.symbol
+        case .view: return ProjectSection.views.symbol
         case .project: return "folder"
         }
     }
@@ -79,11 +88,13 @@ struct LinkedItem: Hashable, Identifiable {
 extension ProjectViewState {
     /// The items open in the centre column while `section` is shown (docs/ui.md › Inspector):
     /// every selected ticket in ticket number order, every selected chat (put in list order by
-    /// `LinkedItems.linked`), or the section's selected item; none without section, while the
-    /// Global Memories view or the Internal Skills view shows. While the window shows the detail
+    /// `LinkedItems.linked`), or the section's selected item, the view shown by the Views section
+    /// included; none without section, while the Global Memories view or the Internal Skills view
+    /// shows. While the window shows the detail
     /// of a virtual machine, `virtualMachineID`, that virtual machine only, and while it shows the
     /// setup view of an image, `imageSetupID`, the image's setup virtual machine only
     /// (docs/virtual-machines.md › Linked item).
+    @MainActor
     func openItems(in section: ProjectSection?, virtualMachineID: UUID? = nil, imageSetupID: UUID? = nil) -> [LinkedItemRef] {
         if let virtualMachineID {
             return [LinkedItemRef(kind: .virtualMachine, id: virtualMachineID.uuidString)]
@@ -109,13 +120,18 @@ extension ProjectViewState {
             return selectedWebTabID.map { [LinkedItemRef(kind: .webTab, id: $0)] } ?? []
         case .skills:
             return selectedSkillName.map { [LinkedItemRef(kind: .skill, id: $0)] } ?? []
-        case .dashboard, .builds, .memories, .costs, .apiExplorer, .graph, .views, .settings:
+        case .views:
+            // A view that the list no longer holds is no longer selected (docs/views.md › Live
+            // updates).
+            return viewsState?.selection.map { [LinkedItemRef.view(path: $0.path, name: $0.name)] } ?? []
+        case .dashboard, .builds, .memories, .costs, .apiExplorer, .graph, .settings:
             return []
         }
     }
 
     /// Drops from `unlinkedItems` the items that are no longer open, so that they are linked again
     /// the next time they are opened.
+    @MainActor
     mutating func forgetClosedUnlinkedItems(in section: ProjectSection?, virtualMachineID: UUID? = nil, imageSetupID: UUID? = nil) {
         let open = Set(openItems(in: section, virtualMachineID: virtualMachineID, imageSetupID: imageSetupID).map(\.key))
         if !unlinkedItems.isSubset(of: open) {
@@ -129,6 +145,7 @@ enum LinkedItems {
     /// resolved from the workspace's data; a ticket, bundle, chat, web tab, virtual machine or
     /// image setup it does not hold is left out. Chats come in the order of the Chats section's
     /// list. `setupVersions` gives the macOS version of each image whose setup runs.
+    @MainActor
     static func linked(state: ProjectViewState, section: ProjectSection?, tickets: [String: Ticket],
                        bundles: [String: TicketBundle], chats: [String: ChatMeta], webTabs: [WebTab],
                        virtualMachineID: UUID? = nil, virtualMachines: [VirtualMachine] = [],
@@ -177,6 +194,12 @@ enum LinkedItems {
             guard let imageID = UUID(uuidString: ref.id), let version = setupVersions[imageID] else { return nil }
             return LinkedItem(ref: ref, name: VMImagePresentation.setupTitle(version: version),
                               text: "setup virtual machine of the image “macOS \(version)” (\(ref.id))")
+        case .view:
+            // The name of a view never holds `:`; its path may.
+            guard let separator = ref.id.lastIndex(of: ":") else { return nil }
+            let path = String(ref.id[..<separator])
+            let name = String(ref.id[ref.id.index(after: separator)...])
+            return LinkedItem(ref: ref, name: name, text: "view \(name) in \(path)")
         }
     }
 

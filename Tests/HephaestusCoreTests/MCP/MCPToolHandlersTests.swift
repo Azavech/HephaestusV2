@@ -1066,3 +1066,50 @@ struct MCPToolHandlersTests {
         #expect(engine.calls.isEmpty)
     }
 }
+
+// MARK: get_view_previews (docs/mcp.md › get_view_previews)
+
+extension MCPToolHandlersTests {
+    @Test("get_view_previews: previews.capture with the settings of the arguments, 400, 300, light and large when omitted, for every token")
+    func viewPreviewsParams() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        let view = #""projectID":"DEMO","path":"Sources/App/CounterView.swift","name":"CounterView""#
+        let cases: [(arguments: String, settings: String, actor: Actor)] = [
+            ("{\(view)}", #"{"width":400,"height":300,"appearance":"light","dynamicTypeSize":"large"}"#, Self.chat),
+            (#"{\#(view),"width":320,"height":120.0,"appearance":"dark","typeSize":"accessibility2"}"#,
+             #"{"width":320,"height":120,"appearance":"dark","dynamicTypeSize":"accessibility2"}"#, Self.external),
+        ]
+        for (arguments, settings, actor) in cases {
+            #expect(try await Self.call(handlers, "get_view_previews", arguments, actor: actor) == .success("{}"), "\(arguments)")
+            let call = try #require(engine.calls.last)
+            #expect(call.method == "previews.capture")
+            #expect(call.params == (try jsonValue("{\(view),\"settings\":\(settings)}")), "\(arguments)")
+            #expect(call.actor == actor)
+        }
+    }
+
+    @Test("get_view_previews returns the capture's JSON, its errors as tool errors, and refuses settings out of the schema")
+    func viewPreviewsResults() async throws {
+        let engine = RecordedEngine()
+        let handlers = Self.handlers(engine)
+        let capture = #"{"messages":[],"previews":[{"height":600,"index":0,"path":"/tmp/preview-1.png","title":"Hello","width":800}],"state":"running"}"#
+        engine.answer("previews.capture", .success(capture))
+        let arguments = #"{"projectID":"DEMO","path":"Sources/App/CounterView.swift","name":"CounterView"}"#
+        #expect(try await Self.call(handlers, "get_view_previews", arguments) == .success(capture))
+        let failure = EngineError(.invalid, "CounterView has no #Preview.")
+        engine.answer("previews.capture", .failure(failure))
+        #expect(try await Self.call(handlers, "get_view_previews", arguments) == .failure(MCPToolError(code: .invalid, message: failure.message)))
+        let count = engine.calls.count
+        let invalid: [(String, String)] = [
+            (#"{"projectID":"DEMO","path":"A.swift","name":"A","width":20}"#, "width: must be at least 50."),
+            (#"{"projectID":"DEMO","path":"A.swift","name":"A","typeSize":"huge"}"#,
+             "typeSize: must be one of xSmall, small, medium, large, xLarge, xxLarge, xxxLarge, accessibility1, accessibility2, accessibility3, accessibility4, accessibility5."),
+            (#"{"projectID":"DEMO","path":"A.swift","name":"A","dynamicTypeSize":"large"}"#, "dynamicTypeSize: unknown argument."),
+        ]
+        for (arguments, message) in invalid {
+            #expect(try await Self.call(handlers, "get_view_previews", arguments) == .failure(MCPToolError(code: .invalid, message: message)))
+        }
+        #expect(engine.calls.count == count)
+    }
+}

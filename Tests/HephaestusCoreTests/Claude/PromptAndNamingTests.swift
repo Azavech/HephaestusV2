@@ -256,7 +256,7 @@ struct PromptAndNamingTests {
             + "deployment: the tools use the environment's kubeconfig file, namespace, deployment and Argo CD application."))
         #expect(!common.contains("kubectl context"))
         #expect(section.contains("Stop a port forward with k8s_stop_port_forward once you no longer need it."))
-        #expect(ClaudeCommandLine.preApprovedTools.contains(",mcp__hephaestus__get_chat,mcp__hephaestus__k8s_status,mcp__hephaestus__k8s_logs,"
+        #expect(ClaudeCommandLine.preApprovedTools.contains(",mcp__hephaestus__get_chat,mcp__hephaestus__get_view_previews,mcp__hephaestus__k8s_status,mcp__hephaestus__k8s_logs,"
             + "mcp__hephaestus__k8s_events,mcp__hephaestus__argocd_status,mcp__hephaestus__api_operations,"))
     }
 

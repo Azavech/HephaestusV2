@@ -252,6 +252,12 @@ final class ViewsSectionState {
         }
         syncDevices(available)
     }
+
+    /// The message that `Create Preview` sends from the inspector's chat (docs/views.md › Create
+    /// Preview).
+    static func createPreviewMessage(_ view: ProjectView) -> String {
+        "Write a #Preview of \(view.name) into \(view.path)."
+    }
 }
 
 // MARK: Menu commands

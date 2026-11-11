@@ -67,7 +67,7 @@ private struct ViewsSectionContent: View {
         SplitPanes(leadingWidth: $state.listWidth, leadingRange: 180...480, minimumTrailingWidth: 361) {
             ViewsList(state: state)
         } trailing: {
-            ViewsDetail(workspace: workspace, state: state, devices: devices)
+            ViewsDetail(window: window, workspace: workspace, state: state, devices: devices)
         }
         .onAppear {
             window.sectionCommands = state
@@ -225,6 +225,7 @@ private struct ViewsListRow: View {
 /// The editor of the view's file beside the previews, or the previews alone while the editor holds
 /// no file (docs/views.md › Layout).
 private struct ViewsDetail: View {
+    let window: WindowState
     let workspace: DeviceWorkspace
     @Bindable var state: ViewsSectionState
     let devices: PreviewDevicesModel?
@@ -234,10 +235,10 @@ private struct ViewsDetail: View {
             FractionSplitPanes(fraction: $state.editorFraction, minimumWidth: 180) {
                 ViewEditorPane(workspace: workspace, state: state, editor: editor)
             } trailing: {
-                PreviewsPane(state: state, devices: devices)
+                PreviewsPane(window: window, workspace: workspace, state: state, devices: devices)
             }
         } else {
-            PreviewsPane(state: state, devices: devices)
+            PreviewsPane(window: window, workspace: workspace, state: state, devices: devices)
         }
     }
 }
@@ -280,8 +281,17 @@ private struct ViewEditorPane: View {
 
 /// The pane header of the previews, the controls bar and the previews of the selected view.
 private struct PreviewsPane: View {
+    let window: WindowState
+    let workspace: DeviceWorkspace
     @Bindable var state: ViewsSectionState
     let devices: PreviewDevicesModel?
+
+    /// `Create Preview` needs what Send needs besides the text: the window's device connected and
+    /// its Claude CLI available (docs/views.md › Create Preview).
+    private var canAskClaude: Bool {
+        let status = workspace.claudeStatus
+        return workspace.isConnected && status?.available == true && status?.checking == false
+    }
 
     var body: some View {
         if let view = state.selectedView {
@@ -308,6 +318,11 @@ private struct PreviewsPane: View {
                             .font(.headline)
                         Text("\(view.name) has no #Preview.")
                             .foregroundStyle(.secondary)
+                        Button("Create Preview") {
+                            window.sendFromInspector(ViewsSectionState.createPreviewMessage(view))
+                        }
+                        .disabled(!canAskClaude)
+                        .padding(.top, 6)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let session = state.session {

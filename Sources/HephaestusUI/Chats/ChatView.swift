@@ -31,10 +31,15 @@ struct ChatView: View {
     /// The items of the window linked to the inspector chat (docs/chats.md › Linked items).
     var linkedItems: [LinkedItem] = []
     var onUnlink: ((LinkedItemRef) -> Void)?
+    /// A message for the inspector's chat to send, then hand back with `onMessageSent`
+    /// (docs/views.md › Create Preview).
+    var message: InspectorMessage?
+    var onMessageSent: () -> Void = {}
 
     /// An existing chat.
     init(chatID: String, workspace: DeviceWorkspace, showsHeader: Bool = true, isInChatWindow: Bool = false,
-         isInInspector: Bool = false, linkedItems: [LinkedItem] = [], onUnlink: ((LinkedItemRef) -> Void)? = nil) {
+         isInInspector: Bool = false, linkedItems: [LinkedItem] = [], onUnlink: ((LinkedItemRef) -> Void)? = nil,
+         message: InspectorMessage? = nil, onMessageSent: @escaping () -> Void = {}) {
         self.chatID = chatID
         self.draft = nil
         self.workspace = workspace
@@ -43,12 +48,15 @@ struct ChatView: View {
         self.isInInspector = isInInspector
         self.linkedItems = linkedItems
         self.onUnlink = onUnlink
+        self.message = message
+        self.onMessageSent = onMessageSent
     }
 
     /// A draft chat: its composer has the keyboard focus, and its first Send calls `chats.create`.
     init(draft: DraftChat, workspace: DeviceWorkspace, showsHeader: Bool = true, isInInspector: Bool = false,
          focusRequest: Int = 0, focusesComposer: Bool = true, linkedItems: [LinkedItem] = [],
-         onUnlink: ((LinkedItemRef) -> Void)? = nil, onCreated: @escaping (ChatMeta) -> Void) {
+         onUnlink: ((LinkedItemRef) -> Void)? = nil, message: InspectorMessage? = nil,
+         onMessageSent: @escaping () -> Void = {}, onCreated: @escaping (ChatMeta) -> Void) {
         self.chatID = nil
         self.draft = draft
         self.workspace = workspace
@@ -56,6 +64,8 @@ struct ChatView: View {
         self.isInInspector = isInInspector
         self.linkedItems = linkedItems
         self.onUnlink = onUnlink
+        self.message = message
+        self.onMessageSent = onMessageSent
         self.focusRequest = focusRequest
         self.focusesComposer = focusesComposer
         self.onCreated = onCreated
@@ -64,7 +74,8 @@ struct ChatView: View {
     var body: some View {
         ChatViewContent(chatID: chatID, draft: draft, workspace: workspace, showsHeader: showsHeader,
                         isInChatWindow: isInChatWindow, isInInspector: isInInspector, focusRequest: focusRequest,
-                        focusesComposer: focusesComposer, linkedItems: linkedItems, onUnlink: onUnlink, onCreated: onCreated)
+                        focusesComposer: focusesComposer, linkedItems: linkedItems, onUnlink: onUnlink, message: message,
+                        onMessageSent: onMessageSent, onCreated: onCreated)
             .id(chatID ?? draft?.id.uuidString ?? "")
     }
 }
@@ -111,6 +122,8 @@ private struct ChatViewContent: View {
     let focusesComposer: Bool
     let linkedItems: [LinkedItem]
     let onUnlink: ((LinkedItemRef) -> Void)?
+    let message: InspectorMessage?
+    let onMessageSent: () -> Void
     let onCreated: (ChatMeta) -> Void
     @State private var model: ChatViewModel
     @State private var cardsHeight: CGFloat = 0
@@ -118,7 +131,8 @@ private struct ChatViewContent: View {
 
     init(chatID: String?, draft: DraftChat?, workspace: DeviceWorkspace, showsHeader: Bool, isInChatWindow: Bool,
          isInInspector: Bool, focusRequest: Int, focusesComposer: Bool, linkedItems: [LinkedItem],
-         onUnlink: ((LinkedItemRef) -> Void)?, onCreated: @escaping (ChatMeta) -> Void) {
+         onUnlink: ((LinkedItemRef) -> Void)?, message: InspectorMessage?, onMessageSent: @escaping () -> Void,
+         onCreated: @escaping (ChatMeta) -> Void) {
         self.workspace = workspace
         self.showsHeader = showsHeader
         self.isInChatWindow = isInChatWindow
@@ -127,6 +141,8 @@ private struct ChatViewContent: View {
         self.focusesComposer = focusesComposer
         self.linkedItems = linkedItems
         self.onUnlink = onUnlink
+        self.message = message
+        self.onMessageSent = onMessageSent
         self.onCreated = onCreated
         _model = State(initialValue: ChatViewModel(workspace: workspace, chatID: chatID, draft: draft))
     }
@@ -171,6 +187,12 @@ private struct ChatViewContent: View {
         }
         .onChange(of: linkedItems, initial: true) {
             model.linkedItems = linkedItems
+        }
+        .onChange(of: message, initial: true) {
+            guard let message else { return }
+            model.linkedItems = linkedItems
+            model.send(text: message.text)
+            onMessageSent()
         }
         .task(id: workspace.connectionGeneration) {
             model.ensureLoaded()

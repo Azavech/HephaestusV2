@@ -10,7 +10,7 @@ enum ClaudeCommandLine {
         "ask_questions", "ask_symbol", "ask_color", "ask_sound", "ask_shortcut", "ask_font", "ask_animation", "show_image",
         "list_projects", "get_project", "list_tickets", "get_ticket", "create_ticket", "update_ticket", "set_ticket_status",
         "add_comment", "update_comment", "list_bundles", "get_bundle", "create_bundle", "update_bundle", "search", "list_docs",
-        "list_web_tabs", "list_skills", "get_skill", "list_chats", "get_chat",
+        "list_web_tabs", "list_skills", "get_skill", "list_chats", "get_chat", "get_view_previews",
         "k8s_status", "k8s_logs", "k8s_events", "argocd_status", "api_operations",
         "vm_list_images", "vm_set_account", "vm_list", "vm_start", "vm_stop", "vm_screenshot", "vm_click", "vm_drag", "vm_scroll", "vm_type", "vm_key",
         "vm_ui_tree", "vm_shell", "vm_copy_in", "vm_setup_recovery", "vm_setup_finish",

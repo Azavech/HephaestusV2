@@ -313,6 +313,18 @@ struct MCPToolHandlers: Sendable {
             params["chatID"] = .string(actor.chat?.uuidString.uppercased() ?? "")
             return try await engineText(tool, params: .object(params), actor: actor)
 
+        case .viewPreviews:
+            // docs/mcp.md › get_view_previews: the settings of the images, with their defaults.
+            let defaults = PreviewSettings()
+            var params = args.filter { ["projectID", "path", "name"].contains($0.key) }
+            params["settings"] = .object([
+                "width": args["width"] ?? .int(defaults.width),
+                "height": args["height"] ?? .int(defaults.height),
+                "appearance": args["appearance"] ?? .string(defaults.appearance.rawValue),
+                "dynamicTypeSize": args["typeSize"] ?? .string(defaults.dynamicTypeSize.rawValue),
+            ])
+            return try await engineText(tool, params: .object(params), actor: actor)
+
         case .debugUI:
             return try await debugTool(tool, args: args)
         }
