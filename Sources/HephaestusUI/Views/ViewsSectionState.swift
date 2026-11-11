@@ -32,6 +32,8 @@ final class ViewsSectionState {
     var editorFraction: Double = 0.5
     /// The Go to Line popover of the editor is shown.
     var goToLineShown = false
+    /// The row the list scrolls to once: the view the New View sheet created.
+    var scrollTarget: String?
 
     @ObservationIgnored private weak var workspace: DeviceWorkspace?
     @ObservationIgnored private weak var window: WindowState?
@@ -40,6 +42,8 @@ final class ViewsSectionState {
     @ObservationIgnored private var reloadRequested = false
     /// True once the first iPhone of the list was checked by default.
     @ObservationIgnored private var defaultDeviceChosen = false
+    /// The view the New View sheet created, selected as soon as a read of the list has it.
+    @ObservationIgnored private var pendingSelection: ViewSelection?
 
     init(appearance: PreviewAppearance) {
         settings = PreviewSettings(appearance: appearance)
@@ -58,6 +62,28 @@ final class ViewsSectionState {
 
     var tree: [ViewTreeNode] {
         ViewTree.build(views ?? [])
+    }
+
+    /// Every folder of the list, collapsed ones included, in the order of the list.
+    var folders: [String] {
+        ViewTree.rows(tree, collapsed: []).compactMap { row in
+            if case .folder(let path, _) = row.node.kind { return path }
+            return nil
+        }
+    }
+
+    /// The folder the New View sheet first holds: the folder of the view selected, else of the
+    /// first view of the list, else the root `""` (docs/views.md › New View sheet).
+    var newViewFolder: String {
+        if let view = selectedView {
+            return ProjectPaths.parent(of: view.path)
+        }
+        for row in ViewTree.rows(tree, collapsed: []) {
+            if case .view(let view) = row.node.kind {
+                return ProjectPaths.parent(of: view.path)
+            }
+        }
+        return ""
     }
 
     // MARK: Following the engine
@@ -137,6 +163,7 @@ final class ViewsSectionState {
     /// Selects a view and opens its file in the editor; a view of another file while the editor
     /// has unsaved changes asks first, and Cancel keeps the view selected (docs/views.md › Editor).
     func select(_ view: ProjectView) {
+        pendingSelection = nil
         guard let editor, editor.path != view.path, editor.hasUnsavedChanges else {
             show(view)
             return
@@ -174,6 +201,14 @@ final class ViewsSectionState {
         goToLineShown = false
     }
 
+    /// After the New View sheet wrote a view: expands the folders above its file, reads the list
+    /// again, and selects the view as soon as a read has it (docs/views.md › New View sheet).
+    func reveal(path: String, name: String) {
+        pendingSelection = ViewSelection(path: path, name: name)
+        collapsed.subtract(ProjectPaths.ancestors(of: path))
+        reload()
+    }
+
     func toggle(folder path: String) {
         if collapsed.contains(path) {
             collapsed.remove(path)
@@ -185,6 +220,11 @@ final class ViewsSectionState {
     /// After a read: a selected view that is gone is no longer selected; a view whose previews
     /// changed starts a new session.
     private func selectionChanged() {
+        // The new view is selected as a view the user selects: its file opens in the editor.
+        if let pending = pendingSelection, let view = views?.first(where: { ViewSelection($0) == pending }) {
+            scrollTarget = pending.id
+            select(view)
+        }
         if selection != nil, views != nil, selectedView == nil {
             selection = nil
         }

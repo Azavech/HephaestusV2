@@ -50,6 +50,9 @@ public enum WindowSheet: Codable, Hashable, Sendable, Identifiable {
     case newFile(projectID: String, folder: String, isFolder: Bool)
     /// Rename sheet of the file tree (docs/code-editor.md › Rename).
     case renameFile(projectID: String, path: String)
+    /// New View sheet of the Views section, with the folder it first holds (docs/views.md › New
+    /// View sheet).
+    case newView(projectID: String, folder: String)
     /// A JavaScript `alert`, `confirm` or `prompt` of a web tab (docs/web-tabs.md › Page permissions
     /// and dialogs).
     case webPageDialog(tabID: String)
@@ -110,6 +113,8 @@ struct WindowSheetView: View {
             NewFileSheet(window: window, workspace: workspace, projectID: projectID, folder: folder, isFolder: isFolder)
         case .renameFile(let projectID, let path):
             RenameFileSheet(window: window, workspace: workspace, projectID: projectID, path: path)
+        case .newView(let projectID, let folder):
+            NewViewSheet(window: window, workspace: workspace, projectID: projectID, folder: folder)
         case .webPageDialog(let tabID):
             WebPageDialogSheet(window: window, tabID: tabID)
         case .newVM:

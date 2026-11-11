@@ -65,7 +65,9 @@ private struct ViewsSectionContent: View {
     var body: some View {
         // The editor and the previews keep at least 180 pt each (docs/views.md › Layout).
         SplitPanes(leadingWidth: $state.listWidth, leadingRange: 180...480, minimumTrailingWidth: 361) {
-            ViewsList(state: state)
+            ViewsList(state: state) {
+                window.sheet = .newView(projectID: projectID, folder: state.newViewFolder)
+            }
         } trailing: {
             ViewsDetail(window: window, workspace: workspace, state: state, devices: devices)
         }
@@ -88,6 +90,8 @@ private struct ViewsSectionContent: View {
 
 private struct ViewsList: View {
     @Bindable var state: ViewsSectionState
+    /// Opens the New View sheet.
+    let newView: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -100,6 +104,13 @@ private struct ViewsList: View {
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
+                // docs/views.md › New View sheet.
+                Button(action: newView) {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.borderless)
+                .help("New View…")
+                .accessibilityLabel("New View…")
             }
             .padding(.horizontal, 12)
             .paneHeaderBar()
@@ -122,13 +133,23 @@ private struct ViewsList: View {
                 }
                 .padding()
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(ViewTree.rows(state.tree, collapsed: state.collapsed)) { row in
-                            ViewsListRow(row: row, state: state)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(ViewTree.rows(state.tree, collapsed: state.collapsed)) { row in
+                                ViewsListRow(row: row, state: state)
+                                    .id(row.id)
+                            }
                         }
+                        .padding(.vertical, 6)
                     }
-                    .padding(.vertical, 6)
+                    // The row of the view the New View sheet created (docs/views.md › New View sheet).
+                    .task(id: state.scrollTarget) {
+                        guard let target = state.scrollTarget else { return }
+                        await Task.yield()
+                        proxy.scrollTo(target)
+                        state.scrollTarget = nil
+                    }
                 }
             }
         } else if let error = state.listError {
