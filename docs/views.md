@@ -1,6 +1,6 @@
 # Views
 
-The Views section of a Swift application project lists the views that its Swift files declare, SwiftUI, AppKit and UIKit views alike, in a tree of the folders that hold them, and shows the `#Preview` blocks of the view selected side by side, live: on the Mac, and on the iPhone and iPad devices the user checks for a view whose target builds for iOS, each with the device's screen size and size classes, in portrait or landscape. The user clicks, scrolls and types in them inside the section, gives the Mac previews their width and height, and switches them between Light and Dark and between Dynamic Type sizes. The devices come from `devices.json` in the data directory of the Mac that shows the window, where the user adds custom sizes. The engine of the device that holds the project finds the views, builds the previews in the background from the project's code, without the user building anything, and runs them, the device previews in the iOS Simulator; each save of a file of the project builds them again, and a build that fails shows the compiler's errors in place of the previews. It works for Swift packages and Xcode projects, the HephaestusV2 project included, and in the windows of remote devices. This document specifies the section, the list of views, the previews, the device previews, their builds and their refresh. The code editor beside the previews, the design with Claude, the New View sheet and the visual inspector are not part of it.
+The Views section of a Swift application project lists the views that its Swift files declare, SwiftUI, AppKit and UIKit views alike, in a tree of the folders that hold them, and shows the `#Preview` blocks of the view selected side by side, live: on the Mac, and on the iPhone and iPad devices the user checks for a view whose target builds for iOS, each with the device's screen size and size classes, in portrait or landscape. The user clicks, scrolls and types in them inside the section, gives the Mac previews their width and height, and switches them between Light and Dark and between Dynamic Type sizes. The devices come from `devices.json` in the data directory of the Mac that shows the window, where the user adds custom sizes. Beside the previews, the view's Swift file opens in the code editor of the Code section, where the user changes the view's code by hand. The engine of the device that holds the project finds the views, builds the previews in the background from the project's code, without the user building anything, and runs them, the device previews in the iOS Simulator; each save of a file of the project builds them again, and a build that fails shows the compiler's errors in place of the previews. It works for Swift packages and Xcode projects, the HephaestusV2 project included, and in the windows of remote devices. This document specifies the section, the list of views, the editor of the view's file, the previews, the device previews, their builds and their refresh. The design with Claude, the New View sheet and the visual inspector are not part of it.
 
 ## Section
 
@@ -11,7 +11,7 @@ The Views section of a Swift application project lists the views that its Swift 
 | SF Symbol   | `rectangle.3.group`                                                                                                                                                |
 | Shortcut    | none; View ▸ Views ([Menus and keyboard shortcuts](ui.md#menus-and-keyboard-shortcuts))                                                                            |
 | Sidebar row | the only row of the Swift Application category, after the Project category and before Sub Projects, without badge, while the active project is a Swift application |
-| Shows       | the views of the active project and the previews of the view selected ([List of views](#list-of-views), [Previews](#previews))                                     |
+| Shows       | the views of the active project, the file and the previews of the view selected ([List of views](#list-of-views), [Editor](#editor), [Previews](#previews))        |
 
 The title, the symbol, the category with its place, the condition and the absence of a shortcut and of a badge come from the user. View ▸ Views is a design-time choice, as for the [Graph](graph.md#section). Default chosen at design time.
 
@@ -26,27 +26,29 @@ The leave to Dashboard is a design-time choice, as for the [Graph](graph.md#enab
 ## Layout
 
 ```
-┌───────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────┐
-│ Views                  12 │ CounterView  Sources/App/Counter.swift                              Built at 14:03:12 │ pane headers
-│ ▾ Sources                 │ Width [400] Height [300] [Light|Dark] Dynamic Type [Large⌄] [Portrait|Landscape] [▯▯] │ controls bar
-│   ▾ App                   ├───────────────────────────────────────────────────────────────────────────────────────┤
-│       CounterView         │  Mac · 400 × 300 pt                            iPhone 18 Pro · 402 × 874 pt · wC hR   │
-│       ProfileView         │  First                Preview 2                First        Preview 2                 │
-│   ▾ Kit                   │  ┌────────────────┐   ┌────────────────┐       ┌─────────┐  ┌─────────┐               │
-│       Canvas              │  │   live view    │   │   live view    │       │  live   │  │  live   │               │
-│ ▸ Packages                │  └────────────────┘   └────────────────┘       │  view   │  │  view   │               │
-│                           │                                                └─────────┘  └─────────┘               │
-└───────────────────────────┴───────────────────────────────────────────────────────────────────────────────────────┘
-  list of views, 260 pt                   previews of the view selected
+┌────────────────────┬──────────────────────────────────┬──────────────────────────────────────────────────────────────────┐
+│ Views           12 │ Sources/App/Counter.swift ●      │ CounterView                                    Built at 14:03:12 │ pane headers
+│ ▾ Sources          │ 1 │ import SwiftUI               │ Width [400] Height [300] [Light|Dark] Dynamic Type [Large⌄]      │ controls bar
+│   ▾ App            │ 2 │                              │ [Portrait|Landscape] [▯▯]                                        │
+│       CounterView  │ 3 │ struct CounterView: View {   ├──────────────────────────────────────────────────────────────────┤
+│       ProfileView  │ 4 │     @State var count = 0     │  Mac · 400 × 300 pt        iPhone 18 Pro · 402 × 874 pt · wC hR  │
+│   ▾ Kit            │ 5 │     var body: some View {    │  First       Preview 2     First        Preview 2                │
+│       Canvas       │ 6 │         Button("\(count)") { │  ┌────────┐  ┌────────┐    ┌────────┐   ┌────────┐               │
+│ ▸ Packages         │ 7 │             count += 1       │  │  live  │  │  live  │    │  live  │   │  live  │               │
+│                    │ 8 │         }                    │  │  view  │  │  view  │    │  view  │   │  view  │               │
+│                    │ 9 │     }                        │  └────────┘  └────────┘    └────────┘   └────────┘               │
+└────────────────────┴──────────────────────────────────┴──────────────────────────────────────────────────────────────────┘
+  list of views, 260 pt   editor of the view's file             previews of the view selected
 ```
 
-- The list of views is at the left, 260 points wide by default; the divider between it and the previews can be dragged between 180 and 480 points, as in the [Code section](code-editor.md#layout). Its pane header, 36 points high ([Pane headers](ui.md#pane-headers)), shows `Views` in the headline font and, at its trailing edge, the number of views of the list in the secondary colour.
-- The pane header of the previews shows the name of the view selected in the headline font, its project path in the secondary colour, and at its trailing edge the [status line](#status-line). Without a view selected, the previews area shows `No View Selected` and the line `Select a view in the list.`, without pane header or controls bar.
-- The controls bar under it holds, in this order, the `Width` and `Height` fields, the `Light` / `Dark` segmented control, the `Dynamic Type` pop-up, the `Portrait` / `Landscape` segmented control and the device button ([Preview settings](#preview-settings), [Devices popover](#devices-popover)).
+- The list of views is at the left, 260 points wide by default; the divider between it and the editor can be dragged between 180 and 480 points, as in the [Code section](code-editor.md#layout). Its pane header, 36 points high ([Pane headers](ui.md#pane-headers)), shows `Views` in the headline font and, at its trailing edge, the number of views of the list in the secondary colour.
+- The [editor](#editor) of the view's file is in the middle and the previews at the right. The divider between them can be dragged: the editor takes half of their width at first, each side keeps at least 180 points, and the editor's share is kept for the project while the window is open. The editor's pane header shows the project path of the file, then `●` while the editor has unsaved changes; the editor's banner, when it has one, is under it.
+- The pane header of the previews shows the name of the view selected in the headline font and, at its trailing edge, the [status line](#status-line). Without a view selected, the previews area shows `No View Selected` and the line `Select a view in the list.`, without pane header or controls bar; while the editor holds no file, that text takes the editor's place too.
+- The controls bar under the pane header of the previews holds, in this order, the `Width` and `Height` fields, the `Light` / `Dark` segmented control, the `Dynamic Type` pop-up, the `Portrait` / `Landscape` segmented control and the device button ([Preview settings](#preview-settings), [Devices popover](#devices-popover)).
 - The previews fill the rest, side by side in one row, in an area that scrolls in both directions when they do not fit, with 20 points of padding: the Mac's previews first, then those of each checked device in the order of the [devices popover](#devices-popover), each device's group 40 points from the next ([Devices side by side](#devices-side-by-side)). In a group, the previews are in the order of their `#Preview` blocks in the source, 20 points apart. Each preview shows its title above it in the subheadline font, its name, or `Preview <n>` for a block without a name, `<n>` its rank among the view's previews from 1, then the live view at its size, with a 1-point border in the separator colour. While the Mac's group is the only one, it has no heading, as before the device previews.
-- When the controls bar is too narrow for its controls on one line, the `Portrait` / `Landscape` control and the device button go to a second line.
+- When the controls bar is too narrow for its controls on one line, the `Portrait` / `Landscape` control and the device button go to a second line; when it is too narrow for its two lines, the bar scrolls horizontally.
 
-The widths, the texts, the order of the controls, the spacing, the titles and the border are design-time choices. Default chosen at design time.
+The editor beside the previews comes from the user. Its place between the list and the previews, its share of the width, its pane header, the widths, the texts, the order of the controls, the spacing, the titles and the border are design-time choices. Default chosen at design time.
 
 ## List of views
 
@@ -86,9 +88,23 @@ The tree of folders comes from the user. The order, the symbols, the help tag, t
 ### Live updates
 
 - The section reads the list again after each `files.changed` of the project ([Events](engine-api.md#event-list)) whose paths hold `""`, a path that ends with `.swift`, or a path whose last component has no `.`, a folder that may have changed, outside the skipped folders. It follows the Swift files on disk, whoever changed them: HephaestusV2, Claude or another app.
-- The selected view stays selected while the list still has a view of the same name in the same file. When it disappears, no view is selected and its previews stop.
+- The selected view stays selected while the list still has a view of the same name in the same file. When it disappears, no view is selected and its previews stop; the editor keeps its file ([Editor](#editor)).
 
 The reading on `files.changed` and the paths that cause it are design-time choices. Default chosen at design time.
+
+## Editor
+
+The Swift file of the view selected opens beside its previews in the code editor of the Code section ([Code editor](code-editor.md#editor)): the same editor, with its line numbers, its [editing behaviour](code-editor.md#editing-behaviour), its find bar and the [syntax highlighting](code-editor.md#swift) of Swift, the same [saving](code-editor.md#saving) and the same handling of [changes on disk](code-editor.md#changes-on-disk). The user changes the view's code there by hand.
+
+- Selecting a view opens its file in the editor, read with `files.read` ([Opening files](code-editor.md#opening-files)), and puts the line of the view's declaration in the vertical middle of the editor, the insertion point at the start of that line, without giving the editor the keyboard focus. Selecting another view of the same file keeps the editor's text, unsaved changes included, and moves to that view's line.
+- Selecting a view of another file while the editor has unsaved changes first shows the alert of [Unsaved changes](ui.md#unsaved-changes-and-quitting): `Save` saves the file, then opens the other one, and a save that fails keeps the view selected; `Don't Save` drops the changes; `Cancel` keeps the view selected.
+- File ▸ Save (⌘S) saves the file with `files.write`, formatted on save as in the Code section; Go to Line (⌘L), Toggle Comment (⌘/) and the find bar act in the editor while it has the focus ([Menus and keyboard shortcuts](ui.md#menus-and-keyboard-shortcuts)). Each save builds the previews again ([Refresh](#refresh)); what the user types does not, until it is saved.
+- The editor only writes the file: nothing is committed or pushed. The change stays uncommitted in the project's working tree, for the user or Claude to commit.
+- The editor follows the changes on disk as a Code section tab does: a clean editor takes the new text silently, an editor with unsaved changes shows the banner `This file changed on disk.` with `Reload` and `Keep Mine`, and a file deleted on disk removes a clean editor and shows the banner `This file was deleted on disk.` with `Save` and `Close` above an editor with unsaved changes ([Banners](code-editor.md#banners)). A file larger than 2 MB opens read-only, with the large-file banner ([Large and binary files](code-editor.md#large-and-binary-files)).
+- The editor belongs to the window and the project, as the Docs section's doc does: it is kept while the window is open, when the window shows another section or project, and when the view selected disappears from the list, a view renamed in the editor for example; then `No View Selected` shows beside it until a view is selected again. It is never persisted. Its unsaved changes count when the window closes, the project is removed or the app quits ([Unsaved changes and quitting](ui.md#unsaved-changes-and-quitting)).
+- The same file can be open in a Code section tab, in the Views section of another window or on another device: each editor follows the changes on disk on its own.
+
+The editor beside the previews, the code editor of the Code section with its editing behaviour, its highlighting, its saving and its handling of changes on disk, the refresh on save and not while typing, and the changes left uncommitted come from the user. The declaration line shown without the focus, the alert when a view of another file is selected and the editor kept when its view disappears are design-time choices. Default chosen at design time.
 
 ## Previews
 
@@ -276,7 +292,7 @@ The build folder in the data directory, the search up to the top-level project, 
 ### Refresh
 
 - When a file of the folder of a view's package or Xcode project changes on disk, outside the skipped folders of [Swift files read](#swift-files-read), whoever wrote it, HephaestusV2, Claude or another app, the engine builds its previews again, for each platform its sessions show, then restarts the preview hosts with the new builds. The previews show the new images; the state of the views, their scroll positions and the text typed in them included, starts again.
-- Unsaved edits are not on disk and do not refresh the previews.
+- Unsaved edits are not on disk and do not refresh the previews: the [editor](#editor) beside them refreshes them when it saves, with ⌘S, not while the user types.
 - While the build runs, the previews keep showing their last images, still interactive, and the status line shows the build's progress.
 - When the build fails, the previews area shows the compiler's errors in place of the previews, in SF Mono, selectable, the paths in the secondary colour; the next build that succeeds shows the previews again.
 
@@ -296,9 +312,10 @@ The windows out of every display, the 2 pixels per point, the host per target an
 
 ## Remote windows
 
-In a window that shows a remote device, the Views section works the same: the list is read with [views.list](engine-api.md#viewslist), and the builds and the preview hosts run on the device that holds the project, with its Xcode, the device previews in its iOS Simulator. The devices of the devices popover come from the `devices.json` of the Mac that shows the window, which sends the checked devices to the engine with the settings, and a custom size is saved into that file. The images of the previews come to the window with [previews.poll](engine-api.md#previewspoll), and the clicks, scrolls and keys go back with [previews.input](engine-api.md#previewsinput), so the previews stay live and interactive. The preview settings, the selection and the folders collapsed belong to the window and are never synced.
+In a window that shows a remote device, the Views section works the same: the list is read with [views.list](engine-api.md#viewslist), and the builds and the preview hosts run on the device that holds the project, with its Xcode, the device previews in its iOS Simulator. The devices of the devices popover come from the `devices.json` of the Mac that shows the window, which sends the checked devices to the engine with the settings, and a custom size is saved into that file. The images of the previews come to the window with [previews.poll](engine-api.md#previewspoll), and the clicks, scrolls and keys go back with [previews.input](engine-api.md#previewsinput), so the previews stay live and interactive. The [editor](#editor) reads and writes the view's file through the engine of that device, which formats it on save, as the Code section's editor does ([Remote windows](code-editor.md#remote-windows)), so its saves build the previews there. The preview settings, the selection, the folders collapsed and the editor belong to the window and are never synced.
 
 ## Requirements covered
 
 - R212: A Swift application has a Views section, in a Swift Application category, that lists its SwiftUI, AppKit and UIKit views by folder, sub projects included, and shows a view's `#Preview` blocks side by side, live and interactive on the Mac, at the entered size, in Light or Dark and a Dynamic Type size, built in the background and refreshed on save, with compiler errors, for packages, Xcode projects and remote windows.
 - R213: A view whose target builds for iOS shows its previews live and interactive in the Views section on the iPhone and iPad devices checked in a devices popover, beside its Mac previews, with each device's size and size classes, in portrait or landscape, run in the iOS Simulator; the devices come from `devices.json` of the Mac showing the window, written with built-in models and iPad windows when missing, plus custom sizes.
+- R214: In the Views section, the Swift file of the view selected opens beside its previews in the code editor of the Code section, with its editing behaviour, syntax highlighting, saving and handling of changes on disk; the previews refresh when the file is saved, not while the user types; the changes stay uncommitted in the working tree; it works the same in remote windows.

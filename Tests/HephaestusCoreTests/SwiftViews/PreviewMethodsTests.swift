@@ -11,8 +11,8 @@ extension Engine {
 }
 
 /// docs/engine-api.md › Views and previews: `views.list` on a project and its sub project, the
-/// checks of `previews.start`, and a Swift package whose previews build, run, follow the settings
-/// and show the compiler's errors.
+/// checks of `previews.start`, and a Swift package whose previews build, run, follow the settings,
+/// show the compiler's errors and build again after a save with `files.write`.
 @Suite("Views and previews methods")
 struct PreviewMethodsTests {
     /// The tests that build previews run with `PREVIEW_BUILD_TESTS=1` only (docs/development.md ›
@@ -134,8 +134,8 @@ struct PreviewMethodsTests {
         return try await connection.call(PreviewsPoll.self, .init(sessionID: session, after: 0))
     }
 
-    @Test("A Swift package's previews build in the background, run, follow the settings and show the compiler's errors",
-          .enabled(if: runsBuilds, "Set PREVIEW_BUILD_TESTS=1 to build previews"), .timeLimit(.minutes(10)))
+    @Test("A Swift package's previews build in the background, run, follow the settings, show the compiler's errors and build again after a save with files.write",
+          .enabled(if: runsBuilds, "Set PREVIEW_BUILD_TESTS=1 to build previews"), .timeLimit(.minutes(10)), .fsEvents)
     func swiftPackage() async throws {
         try await withTestEngine { engine, connection, folder in
             await engine.useLoginEnvironment(ProcessInfo.processInfo.environment)
@@ -162,9 +162,12 @@ struct PreviewMethodsTests {
             let failed = try await Self.poll(connection, session.sessionID, after: &after) { status, _ in status.state == .buildFailed }
             #expect(failed.messages.contains { $0.hasPrefix("Sources/Demo/Greeting.swift:") && $0.contains(": error: ") }, "\(failed.messages)")
 
-            // Fixed again: the previews run again.
-            try Self.view("Hello again").write(to: root.appendingPathComponent("Sources/Demo/Greeting.swift"), atomically: true, encoding: .utf8)
-            await engine.previewFilesChanged(rootPath: root.standardizedFileURL.path, paths: ["Sources/Demo/Greeting.swift"])
+            // Fixed again and saved with files.write, as the editor beside the previews saves: the
+            // file watcher reports the change and the previews build and run again
+            // (docs/views.md › Editor, › Refresh).
+            let broken = try await connection.call(FilesRead.self, .init(projectID: "DEMO", path: "Sources/Demo/Greeting.swift"))
+            _ = try await connection.call(FilesWrite.self, .init(projectID: "DEMO", path: "Sources/Demo/Greeting.swift",
+                                                                  text: Self.view("Hello again"), expectedModified: broken.modified))
             _ = try await Self.poll(connection, session.sessionID, after: &after) { status, _ in status.state == .running }
 
             _ = try await connection.call(PreviewsStop.self, .init(sessionID: session.sessionID))

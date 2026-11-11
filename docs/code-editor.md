@@ -155,6 +155,8 @@ Tabs restored with a window are read again from disk; a restored tab whose file 
 
 Token colors are in [Token kinds and colors](#token-kinds-and-colors). The editor colors are design-time choices. Default chosen at design time.
 
+The same editor, with these properties, its [editing behaviour](#editing-behaviour), its highlighting, its [saving](#saving) and its [changes on disk](#changes-on-disk), shows the doc of the Docs section in its Edit and Split modes ([Modes](documentation-viewer.md#modes)) and the Swift file of the view selected beside its previews in the Views section ([Editor](views.md#editor)).
+
 ## Editing behaviour
 
 ### Indentation unit
@@ -210,7 +212,7 @@ Default chosen at design time.
 
 ## Saving
 
-⌘S (File ▸ Save) saves the selected tab's buffer; it is disabled for read-only buffers and buffers without unsaved changes ([UI](ui.md#menus-and-keyboard-shortcuts)).
+⌘S (File ▸ Save) saves the selected tab's buffer, and in the Views section the buffer of the editor beside the previews, whose save builds them again ([Refresh](views.md#refresh)); it is disabled for read-only buffers and buffers without unsaved changes ([UI](ui.md#menus-and-keyboard-shortcuts)).
 
 1. The editor calls `files.write` with the buffer's text and `expectedModified` = the buffer's `diskModified` ([Engine API](engine-api.md#fileswrite)).
 2. The engine formats on save on the main device: a `.go` file with `gofmt` when `formatGoOnSave` is true, a `.swift` file with `swift-format` when `formatSwiftOnSave` is true, each only when the tool is found ([Settings](ui.md#editor), [Data model](data-model.md)). A formatter that fails leaves the text unformatted; nothing is reported to the editor.
@@ -234,7 +236,7 @@ Default chosen at design time.
 - The same check runs for every buffer when a window showing a remote device reconnects, because events may have been missed.
 - A read that fails with another error (for example while the device is disconnected) leaves the buffer as it is. Default chosen at design time.
 - A newer event while a banner is shown reads the file again and keeps the banner.
-- Two buffers of the same file (two windows, or a Code tab and the Docs section) follow these rules independently.
+- Two buffers of the same file (two windows, a Code tab and the Docs section, or a Code tab and the Views section) follow these rules independently.
 
 ### Banners
 
@@ -248,7 +250,7 @@ The banner is 32 pt high, with the system yellow at 18 % opacity behind the two 
 
 ## Editor buffers
 
-Each editor tab holds a buffer; the Docs section ([Documentation viewer](documentation-viewer.md#opening-a-doc)) and the skill editor ([Skills](skills.md)) use the same type. Buffers live in the window's state and are never persisted ([UI](ui.md#windowstate)).
+Each editor tab holds a buffer; the Docs section ([Documentation viewer](documentation-viewer.md#opening-a-doc)), the skill editor ([Skills](skills.md)) and the editor of the Views section ([Views](views.md#editor)) use the same type. Buffers live in the window's state and are never persisted ([UI](ui.md#windowstate)).
 
 ```swift
 public struct EditorTabState: Identifiable {
@@ -758,3 +760,4 @@ These tests are design-time additions to the conformance tests of [CI](ci.md). D
 - R14: A code editor for Go and Swift is included.
 - R142: In the Code section, an OpenAPI 3.0 or 3.1 contract opens on a read-only Contract view, with a switch to its source, that shows its info, its operations by tag and its schemas with their `$ref` pointers resolved across the project's files, and sends each operation's request from a form whose values are kept per project on the Mac that shows the window, credentials included.
 - R168: The header bars at the top of the panes of the main window's centre column, and the inspector's header, are all 36 points high, so that their bottom separators lie on one line.
+- R214: In the Views section, the Swift file of the view selected opens beside its previews in the code editor of the Code section, with its editing behaviour, syntax highlighting, saving and handling of changes on disk; the previews refresh when the file is saved, not while the user types; the changes stay uncommitted in the working tree; it works the same in remote windows.

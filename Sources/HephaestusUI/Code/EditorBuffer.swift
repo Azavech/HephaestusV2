@@ -1,6 +1,6 @@
-// OWNER: ui-code-docs — editor tabs and their buffers, shared by the Code section, the Docs section
-// and the skill editor (docs/code-editor.md › Editor buffers, › Opening files, › Large and binary
-// files, › Saving, › Changes on disk).
+// OWNER: ui-code-docs — editor tabs and their buffers, shared by the Code section, the Docs section,
+// the skill editor and the Views section (docs/code-editor.md › Editor buffers, › Opening files,
+// › Large and binary files, › Saving, › Changes on disk).
 import Foundation
 import HephaestusCore
 import HephaestusText
@@ -52,12 +52,14 @@ extension EditorTabState: @MainActor Codable {
 /// the app means `isDirty`.
 @MainActor @Observable
 final class EditorBuffer {
-    /// Where the buffer is shown: a Code section tab, the Docs section's doc, or the contract of the
-    /// API Explorer, which the user never edits (docs/openapi.md › Explorer view).
+    /// Where the buffer is shown: a Code section tab, the Docs section's doc, the contract of the
+    /// API Explorer, which the user never edits (docs/openapi.md › Explorer view), or the file of
+    /// the view selected in the Views section (docs/views.md › Editor).
     enum Role {
         case codeTab
         case doc
         case apiExplorer
+        case view
     }
 
     /// What a read of the file gave while a banner is shown: the values Reload and Keep Mine take.
@@ -496,7 +498,8 @@ final class EditorBuffer {
     }
 
     /// Removes the buffer from its window: its Code tab closes, the Docs section's doc is
-    /// discarded and its selection cleared, or the API Explorer's buffer is dropped.
+    /// discarded and its selection cleared, the API Explorer's buffer is dropped, or the Views
+    /// section's editor closes.
     func close() {
         detach()
         guard let window, let projectID else { return }
@@ -514,6 +517,8 @@ final class EditorBuffer {
                 if state.apiExplorerBuffer === buffer {
                     state.apiExplorerBuffer = nil
                 }
+            case .view:
+                state.viewsState?.closeEditor(buffer)
             }
         }
     }

@@ -3,8 +3,9 @@ import AppKit
 import HephaestusCore
 import SwiftUI
 
-/// The views of the active project in a tree of folders, and the previews of the selected view
-/// (docs/views.md › Layout).
+/// The views of the active project in a tree of folders, the editor of the selected view's file and
+/// its previews (docs/views.md › Layout). The section's state is the window's `sectionCommands`
+/// while it shows.
 struct ViewsSectionView: View {
     let window: WindowState
     let workspace: DeviceWorkspace
@@ -12,7 +13,7 @@ struct ViewsSectionView: View {
 
     var body: some View {
         if let state = window.viewsState(of: projectID) {
-            ViewsSectionContent(workspace: workspace, projectID: projectID, state: state, devices: window.app?.previewDevices)
+            ViewsSectionContent(window: window, workspace: workspace, projectID: projectID, state: state, devices: window.app?.previewDevices)
         } else {
             Color.clear
                 .onAppear { _ = window.ensureViewsState(of: projectID) }
@@ -54,6 +55,7 @@ extension WindowState {
 }
 
 private struct ViewsSectionContent: View {
+    let window: WindowState
     let workspace: DeviceWorkspace
     let projectID: String
     @Bindable var state: ViewsSectionState
@@ -61,16 +63,23 @@ private struct ViewsSectionContent: View {
     let devices: PreviewDevicesModel?
 
     var body: some View {
-        SplitPanes(leadingWidth: $state.listWidth, leadingRange: 180...480, minimumTrailingWidth: 300) {
+        // The editor and the previews keep at least 180 pt each (docs/views.md › Layout).
+        SplitPanes(leadingWidth: $state.listWidth, leadingRange: 180...480, minimumTrailingWidth: 361) {
             ViewsList(state: state)
         } trailing: {
-            ViewsDetail(state: state, devices: devices)
+            ViewsDetail(workspace: workspace, state: state, devices: devices)
         }
         .onAppear {
+            window.sectionCommands = state
             state.syncDevices(devices?.devices ?? [])
-            state.appear(workspace: workspace, projectID: projectID)
+            state.appear(workspace: workspace, projectID: projectID, window: window)
         }
-        .onDisappear { state.disappear() }
+        .onDisappear {
+            if window.sectionCommands === state {
+                window.sectionCommands = nil
+            }
+            state.disappear()
+        }
         .onChange(of: devices?.devices ?? []) { _, list in state.syncDevices(list) }
     }
 }
@@ -213,7 +222,64 @@ private struct ViewsListRow: View {
 
 // MARK: Detail
 
+/// The editor of the view's file beside the previews, or the previews alone while the editor holds
+/// no file (docs/views.md › Layout).
 private struct ViewsDetail: View {
+    let workspace: DeviceWorkspace
+    @Bindable var state: ViewsSectionState
+    let devices: PreviewDevicesModel?
+
+    var body: some View {
+        if let editor = state.editor {
+            FractionSplitPanes(fraction: $state.editorFraction, minimumWidth: 180) {
+                ViewEditorPane(workspace: workspace, state: state, editor: editor)
+            } trailing: {
+                PreviewsPane(state: state, devices: devices)
+            }
+        } else {
+            PreviewsPane(state: state, devices: devices)
+        }
+    }
+}
+
+/// The pane header with the file's project path and `●` while it has unsaved changes, then the
+/// code editor of the Code section with its banner (docs/views.md › Editor).
+private struct ViewEditorPane: View {
+    let workspace: DeviceWorkspace
+    @Bindable var state: ViewsSectionState
+    let editor: EditorBuffer
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Text(editor.path)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(editor.path)
+                if editor.isDirty {
+                    Text("●")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .paneHeaderBar()
+            .background(Color(nsColor: .windowBackgroundColor))
+            Divider()
+            CodeEditorView(buffer: editor, workspace: workspace)
+                .overlay(alignment: .top) {
+                    GoToLineAnchor(isPresented: $state.goToLineShown) {
+                        editor.loadedTextController
+                    }
+                }
+        }
+        .background(Color(nsColor: EditorTheme.background))
+    }
+}
+
+/// The pane header of the previews, the controls bar and the previews of the selected view.
+private struct PreviewsPane: View {
     @Bindable var state: ViewsSectionState
     let devices: PreviewDevicesModel?
 
@@ -224,10 +290,6 @@ private struct ViewsDetail: View {
                     Text(view.name)
                         .font(.headline)
                         .lineLimit(1)
-                    Text(view.path)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.head)
                     Spacer(minLength: 8)
                     if let session = state.session {
                         PreviewStatusLine(session: session)
@@ -310,23 +372,30 @@ private struct PreviewControls: View {
     @State private var showsDevices = false
 
     var body: some View {
-        // The orientation and the device button go to a second line when one is too narrow
-        // (docs/views.md › Layout).
+        // The orientation and the device button go to a second line when one is too narrow, and
+        // the two lines scroll when the pane is narrower still (docs/views.md › Layout).
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 16) {
                 macControls
                 deviceControls
                 Spacer(minLength: 0)
             }
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 16) {
-                    macControls
-                    Spacer(minLength: 0)
-                }
-                HStack(spacing: 16) {
-                    deviceControls
-                    Spacer(minLength: 0)
-                }
+            twoLines
+            ScrollView(.horizontal, showsIndicators: false) {
+                twoLines
+            }
+        }
+    }
+
+    private var twoLines: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 16) {
+                macControls
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 16) {
+                deviceControls
+                Spacer(minLength: 0)
             }
         }
     }

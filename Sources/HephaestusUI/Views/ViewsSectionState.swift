@@ -1,5 +1,6 @@
 // OWNER: ui-views — the state of the Views section: its list of views, the folders collapsed, the
-// view selected, the preview settings and the session of the previews shown (docs/views.md).
+// view selected, the editor of its file, the preview settings and the session of the previews shown
+// (docs/views.md).
 import AppKit
 import HephaestusCore
 import Observation
@@ -24,8 +25,16 @@ final class ViewsSectionState {
     var listWidth: Double = 260
     /// The session of the previews of the selected view.
     private(set) var session: PreviewSessionModel?
+    /// The buffer of the selected view's file, kept when the view disappears from the list
+    /// (docs/views.md › Editor).
+    private(set) var editor: EditorBuffer?
+    /// The editor's share of the width of the editor and the previews (docs/views.md › Layout).
+    var editorFraction: Double = 0.5
+    /// The Go to Line popover of the editor is shown.
+    var goToLineShown = false
 
     @ObservationIgnored private weak var workspace: DeviceWorkspace?
+    @ObservationIgnored private weak var window: WindowState?
     @ObservationIgnored private var projectID: String?
     @ObservationIgnored private var tasks: [Task<Void, Never>] = []
     @ObservationIgnored private var reloadRequested = false
@@ -53,11 +62,14 @@ final class ViewsSectionState {
 
     // MARK: Following the engine
 
-    /// Reads the list and follows `files.changed` and reconnections while the section shows.
-    func appear(workspace: DeviceWorkspace, projectID: String) {
+    /// Reads the list and follows `files.changed` and reconnections while the section shows; the
+    /// editor follows its file whether the section shows or not.
+    func appear(workspace: DeviceWorkspace, projectID: String, window: WindowState?) {
         disappear()
         self.workspace = workspace
         self.projectID = projectID
+        self.window = window
+        editor?.load(workspace: workspace, projectID: projectID, window: window)
         reload()
         let events = workspace.events()
         tasks.append(Task { @MainActor [weak self] in
@@ -122,9 +134,44 @@ final class ViewsSectionState {
 
     // MARK: Selection and previews
 
+    /// Selects a view and opens its file in the editor; a view of another file while the editor
+    /// has unsaved changes asks first, and Cancel keeps the view selected (docs/views.md › Editor).
     func select(_ view: ProjectView) {
+        guard let editor, editor.path != view.path, editor.hasUnsavedChanges else {
+            show(view)
+            return
+        }
+        Task { @MainActor [weak self] in
+            guard await UnsavedChangesPrompt.confirm([editor], in: self?.window) else { return }
+            self?.show(view)
+        }
+    }
+
+    private func show(_ view: ProjectView) {
         selection = ViewSelection(view)
+        openEditor(view)
         updateSession()
+    }
+
+    /// The editor takes the view's file, read with `files.read`, or keeps its buffer for a view of
+    /// the same file, and moves to the view's declaration without taking the focus.
+    private func openEditor(_ view: ProjectView) {
+        guard let workspace, let projectID else { return }
+        if editor?.path != view.path {
+            editor?.detach()
+            editor = EditorBuffer(path: view.path, role: .view)
+        }
+        editor?.pendingReveal = .lineStart(view.line)
+        editor?.load(workspace: workspace, projectID: projectID, window: window)
+    }
+
+    /// The editor's file was deleted on disk without unsaved changes, or Close of its banner
+    /// (docs/code-editor.md › Changes on disk).
+    func closeEditor(_ buffer: EditorBuffer) {
+        guard editor === buffer else { return }
+        buffer.detach()
+        editor = nil
+        goToLineShown = false
     }
 
     func toggle(folder path: String) {
@@ -204,6 +251,42 @@ final class ViewsSectionState {
             checkedDevices.remove(device.name)
         }
         syncDevices(available)
+    }
+}
+
+// MARK: Menu commands
+
+/// Save, Go to Line and Toggle Comment act on the editor of the view's file (docs/ui.md › Menus
+/// and keyboard shortcuts).
+extension ViewsSectionState: SectionCommandHandler {
+    /// The editor when it has the focus.
+    private var focusedEditor: EditorBuffer? {
+        guard let editor, editor.content == .text, editor.hasEditorFocus else { return nil }
+        return editor
+    }
+
+    var canSave: Bool { editor?.canSave ?? false }
+
+    func save() {
+        guard let editor, editor.canSave else { return }
+        Task { try? await editor.save() }
+    }
+
+    var canGoToLine: Bool { focusedEditor != nil }
+
+    func goToLine() {
+        guard focusedEditor != nil else { return }
+        goToLineShown = true
+    }
+
+    var canToggleComment: Bool {
+        guard let editor = focusedEditor, !editor.isReadOnly else { return false }
+        return EditorTextOps.commentPrefix(language: editor.language) != nil
+    }
+
+    func toggleComment() {
+        guard canToggleComment, let editor = focusedEditor else { return }
+        editor.textController.toggleComment()
     }
 }
 

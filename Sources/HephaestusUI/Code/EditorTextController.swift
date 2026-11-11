@@ -11,6 +11,9 @@ enum EditorReveal: Equatable {
     case start
     /// Line n selected (without its line break), in the vertical middle, editor focused.
     case line(Int)
+    /// The insertion point at the start of line n, in the vertical middle, the focus left where it
+    /// is (docs/views.md › Editor).
+    case lineStart(Int)
     /// The end of the text, editor focused.
     case end
 }
@@ -301,6 +304,10 @@ final class EditorTextController: NSObject, NSTextViewDelegate {
             textView.setSelectedRange(range)
             center(range)
             focus()
+        case .lineStart(let number):
+            let start = NSRange(location: EditorTextOps.rangeOfLine(number, in: nsText).location, length: 0)
+            textView.setSelectedRange(start)
+            center(start)
         case .end:
             let end = NSRange(location: nsText.length, length: 0)
             textView.setSelectedRange(end)

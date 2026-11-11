@@ -467,11 +467,13 @@ struct ProjectViewState {
     var memoryBodyMode: DocMode = .preview
 
     /// The editors of this project with unsaved changes: editor tabs in order, the doc buffer, the
-    /// skill form and its open extra file, then the memory or `MEMORY.md`.
+    /// editor of the Views section, the skill form and its open extra file, then the memory or
+    /// `MEMORY.md`.
     @MainActor
     var unsavedEditors: [any UnsavedEditor] {
         var editors: [any UnsavedEditor] = editorTabs.map { $0.buffer }.filter { $0.hasUnsavedChanges }
         if let docBuffer, docBuffer.hasUnsavedChanges { editors.append(docBuffer) }
+        if let editor = viewsState?.editor, editor.hasUnsavedChanges { editors.append(editor) }
         editors += skillEditor?.unsavedEditors ?? []
         editors += memoryEditor?.unsavedEditors ?? []
         return editors
