@@ -346,10 +346,19 @@ private struct PreviewsPane: View {
                         .padding(.top, 6)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let session = state.session {
-                    PreviewsArea(session: session, settings: state.settings, viewName: view.name)
                 } else {
-                    Color.clear
+                    HStack(spacing: 0) {
+                        if let session = state.session {
+                            PreviewsArea(session: session, settings: state.settings, viewName: view.name, selectMode: state.selectMode)
+                        } else {
+                            Color.clear
+                        }
+                        if state.selectMode {
+                            Divider()
+                            ElementInspector(session: state.session)
+                                .frame(width: ElementInspector.width)
+                        }
+                    }
                 }
             }
         } else {
@@ -408,13 +417,14 @@ private struct PreviewControls: View {
     @State private var showsDevices = false
 
     var body: some View {
-        // The orientation and the device button go to a second line when one is too narrow, and
+        // The orientation, the device button and Select go to a second line when one is too narrow, and
         // the two lines scroll when the pane is narrower still (docs/views.md › Layout).
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 16) {
                 macControls
                 deviceControls
                 Spacer(minLength: 0)
+                selectControl
             }
             twoLines
             ScrollView(.horizontal, showsIndicators: false) {
@@ -432,8 +442,18 @@ private struct PreviewControls: View {
             HStack(spacing: 16) {
                 deviceControls
                 Spacer(minLength: 0)
+                selectControl
             }
         }
+    }
+
+    /// The `Select` button of the visual inspector (docs/views.md › Select mode).
+    private var selectControl: some View {
+        Toggle(isOn: Binding(get: { state.selectMode }, set: { state.setSelectMode($0) })) {
+            Label("Select", systemImage: "cursorarrow.rays")
+        }
+        .toggleStyle(.button)
+        .fixedSize()
     }
 
     @ViewBuilder
@@ -541,6 +561,7 @@ private struct PreviewsArea: View {
     let session: PreviewSessionModel
     let settings: PreviewSettings
     let viewName: String
+    let selectMode: Bool
 
     /// The previews of one device, nil for the Mac.
     struct Group: Identifiable {
@@ -660,7 +681,9 @@ private struct PreviewsArea: View {
             Text(preview.title)
                 .font(.subheadline)
                 .lineLimit(1)
-            PreviewCanvas(image: preview.image) { event in
+            // The visual inspector selects in the Mac previews (docs/views.md › Select mode).
+            PreviewCanvas(image: preview.image, outlines: preview.outlines, selectMode: selectMode && preview.device == nil,
+                          onSelect: { x, y in session.select(preview: preview.index, x: x, y: y) }) { event in
                 session.send(preview: preview.index, device: preview.device, event)
             }
             .frame(width: size.width, height: size.height)

@@ -33,6 +33,8 @@ final class PreviewService {
         var targets: [String: Target] = [:]
         /// The targets whose copy the build folder of a package holds, by name.
         var mirrored: [String: PackageTarget] = [:]
+        /// What the reading of the elements knows of the project, from the last build or selection.
+        var elementContext = ViewElementContext()
         /// The tool that runs, set from the build's own tasks.
         let process = ProcessBox()
 
@@ -113,6 +115,13 @@ final class PreviewService {
         var builtAt: Date?
         var messages: [String] = []
         var frames: [FrameKey: Frame] = [:]
+        /// The element selected with `previews.select`: its number and type in the file, and the
+        /// id of its marks (docs/views.md › Select mode).
+        var selection: (index: Int, type: String, mark: String)?
+        /// The places of the selected element in each preview.
+        var outlines: [FrameKey: [PreviewRect]] = [:]
+        /// The selected element read from the file, kept until the file or the selection changes.
+        var elementCache: (modified: Date, size: Int, index: Int, element: ViewElement?)?
         var sequence = 1
         /// The sequence when the session's windows last opened in a preview host: the images of
         /// the hosts that run have a greater sequence.
@@ -151,6 +160,13 @@ final class PreviewService {
     var sweeper: Task<Void, Never>?
     /// The simulator device of each iOS host, by `<unit key>/<target>`.
     var simulatorLeases: [String: String] = [:]
+
+    /// The `select` requests waiting for their host's answer, by number.
+    var selectRequests: [Int: CheckedContinuation<[String]?, Never>] = [:]
+    var nextRequest = 1
+
+    /// The longest wait for the answer of a host to `select`.
+    static let selectWait: Duration = .seconds(2)
 
     /// A session that no poll followed for this long stops.
     static let sessionLifetime: TimeInterval = 60
@@ -240,6 +256,12 @@ extension Engine {
         }
         register(PreviewsInput.self, actors: [.user]) { [unowned self] params, _ in
             try await self.previewsInput(params)
+        }
+        register(PreviewsSelect.self, actors: [.user]) { [unowned self] params, _ in
+            try await self.previewsSelect(params)
+        }
+        register(PreviewsEdit.self, actors: [.user]) { [unowned self] params, _ in
+            try await self.previewsEdit(params)
         }
         register(PreviewsStop.self, actors: [.user]) { [unowned self] params, _ in
             await self.previewsStop(params)
@@ -518,6 +540,181 @@ extension Engine {
         return Empty()
     }
 
+    /// `previews.select` (docs/engine-api.md › previews.select).
+    func previewsSelect(_ params: PreviewsSelect.Params) async throws -> PreviewSelection {
+        let session = try previewSession(params.sessionID)
+        guard let preview = params.preview else {
+            clearPreviewSelection(session)
+            return PreviewSelection()
+        }
+        guard session.previews.indices.contains(preview) else {
+            throw EngineError.invalid("preview", "use 0 to \(session.previews.count - 1)")
+        }
+        guard let x = params.x else { throw EngineError.invalid("x", "required with preview") }
+        guard let y = params.y else { throw EngineError.invalid("y", "required with preview") }
+        guard let host = previewHost(of: session, .macOS) else {
+            throw EngineError(.unavailable, "The previews are not running.")
+        }
+        let request = previews.nextRequest
+        previews.nextRequest += 1
+        var command = PreviewHost.Command(type: "select", window: session.windowKey(preview))
+        command.x = x
+        command.y = y
+        command.request = request
+        host.send(command)
+        let ids = await withCheckedContinuation { (continuation: CheckedContinuation<[String]?, Never>) in
+            previews.selectRequests[request] = continuation
+            Task { [weak self] in
+                try? await Task.sleep(for: PreviewService.selectWait)
+                await self?.answerSelectRequest(request, nil)
+            }
+        }
+        guard previews.sessions[session.id] != nil else {
+            throw EngineError(.notFound, "Preview session \(session.id.uuidString) not found.")
+        }
+        guard let ids else { throw EngineError(.unavailable, "The previews did not answer.") }
+        let marks = ids.compactMap { id in ViewElementScanner.parseMarkID(id).map { (id: id, mark: $0) } }
+        guard let found = marks.first(where: { Self.samePreviewPath($0.mark.path, session.file) }) else {
+            clearPreviewSelection(session)
+            return PreviewSelection()
+        }
+        let context = await refreshViewElementContext(session)
+        guard let text = try? String(contentsOfFile: session.file, encoding: .utf8) else {
+            throw EngineError(.notFound, "File \(session.path) not found.")
+        }
+        let file = ViewElementScanner.read(text, context: context)
+        guard file.elements.indices.contains(found.mark.index), file.elements[found.mark.index].type == found.mark.type else {
+            throw EngineError(.conflict, "The previews are older than \(session.path): select again once they are built.")
+        }
+        session.selection = (found.mark.index, found.mark.type, found.id)
+        session.elementCache = nil
+        session.outlines = [:]
+        trackPreviewSelection(session)
+        notifyPreviewSession(session)
+        return PreviewSelection(element: ViewElementEditor.viewElement(file.elements[found.mark.index], in: file, path: session.path))
+    }
+
+    /// `previews.edit` (docs/engine-api.md › previews.edit).
+    func previewsEdit(_ params: PreviewsEdit.Params) async throws -> ViewElement {
+        let session = try previewSession(params.sessionID)
+        guard session.selection != nil else { throw EngineError(.invalid, "No element is selected.") }
+        let context = await refreshViewElementContext(session)
+        guard let selection = session.selection else { throw EngineError(.invalid, "No element is selected.") }
+        let text: String
+        do {
+            text = try String(contentsOfFile: session.file, encoding: .utf8)
+        } catch {
+            throw EngineError(.internal, "\(session.path) cannot be written: \(error.localizedDescription).")
+        }
+        let file = ViewElementScanner.read(text, context: context)
+        guard file.elements.indices.contains(selection.index), file.elements[selection.index].type == selection.type else {
+            clearPreviewSelection(session)
+            throw EngineError(.notFound, "The element is no longer in \(session.path): select it again.")
+        }
+        let edited = try ViewElementEditor.apply(params.edit, to: file.elements[selection.index], in: file)
+        if edited != text {
+            do {
+                try AtomicFile.write(Data(edited.utf8), to: URL(fileURLWithPath: session.file))
+            } catch {
+                let reason = (error as? StorageError).flatMap { error -> String? in
+                    if case .writeFailed(_, let reason) = error { return reason }
+                    return nil
+                } ?? error.localizedDescription
+                throw EngineError(.internal, "\(session.path) cannot be written: \(reason).")
+            }
+        }
+        let written = ViewElementScanner.read(edited, context: context)
+        session.elementCache = nil
+        notifyPreviewSession(session)
+        let element = written.elements.indices.contains(selection.index) ? written.elements[selection.index] : file.elements[selection.index]
+        return ViewElementEditor.viewElement(element, in: written.elements.indices.contains(selection.index) ? written : file,
+                                             path: session.path)
+    }
+
+    // MARK: Selection
+
+    /// Two absolute paths of the same file, `/private` before `/var` or `/tmp` or not.
+    static func samePreviewPath(_ a: String, _ b: String) -> Bool {
+        func normalized(_ path: String) -> String {
+            let standard = URL(fileURLWithPath: path).standardizedFileURL.path
+            return standard.hasPrefix("/private/") ? String(standard.dropFirst("/private".count)) : standard
+        }
+        return normalized(a) == normalized(b)
+    }
+
+    private func answerSelectRequest(_ request: Int, _ ids: [String]?) {
+        previews.selectRequests.removeValue(forKey: request)?.resume(returning: ids)
+    }
+
+    /// Clears the selection of a session and its outlines.
+    func clearPreviewSelection(_ session: PreviewService.Session) {
+        guard session.selection != nil || !session.outlines.isEmpty else { return }
+        session.selection = nil
+        session.elementCache = nil
+        session.outlines = [:]
+        trackPreviewSelection(session)
+        notifyPreviewSession(session)
+    }
+
+    /// Tells the Mac host which element to outline in the session's previews.
+    func trackPreviewSelection(_ session: PreviewService.Session) {
+        guard let host = previewHost(of: session, .macOS) else { return }
+        for index in session.previews.indices {
+            var command = PreviewHost.Command(type: "track", window: session.windowKey(index))
+            command.element = session.selection?.mark
+            host.send(command)
+        }
+    }
+
+    /// What the reading of the elements knows of the session's package or Xcode project, read
+    /// again from its files.
+    func refreshViewElementContext(_ session: PreviewService.Session) async -> ViewElementContext {
+        guard let key = session.unitKey else { return ViewElementContext() }
+        let context = await viewElementContext(folder: key)
+        previews.units[key]?.elementContext = context
+        return context
+    }
+
+    /// The context of the Swift files under a folder.
+    func viewElementContext(folder: String) async -> ViewElementContext {
+        _ = await projectViews(rootPath: folder)
+        let prefix = folder.hasSuffix("/") ? folder : folder + "/"
+        let files = previews.scans.filter { $0.key.hasPrefix(prefix) }.sorted { $0.key < $1.key }.map { key, cached in
+            ScannedSwiftFile(path: String(key.dropFirst(prefix.count)), url: URL(fileURLWithPath: key), scan: cached.scan)
+        }
+        return ViewElementContext.of(files)
+    }
+
+    /// The selected element as the file has it now; a selection whose element is gone clears.
+    func selectedElement(of session: PreviewService.Session) -> ViewElement? {
+        guard let selection = session.selection else { return nil }
+        guard let item = FileItem.at(session.file) else {
+            clearSelectionQuietly(session)
+            return nil
+        }
+        if let cache = session.elementCache, cache.modified == item.modified, cache.size == item.size, cache.index == selection.index {
+            return cache.element
+        }
+        let context = session.unitKey.flatMap { previews.units[$0]?.elementContext } ?? ViewElementContext()
+        guard let text = try? String(contentsOfFile: session.file, encoding: .utf8) else { return nil }
+        let file = ViewElementScanner.read(text, context: context)
+        guard file.elements.indices.contains(selection.index), file.elements[selection.index].type == selection.type else {
+            clearSelectionQuietly(session)
+            return nil
+        }
+        let element = ViewElementEditor.viewElement(file.elements[selection.index], in: file, path: session.path)
+        session.elementCache = (item.modified, item.size, selection.index, element)
+        return element
+    }
+
+    /// Clears a selection while a status is made: the status carries the change.
+    private func clearSelectionQuietly(_ session: PreviewService.Session) {
+        session.selection = nil
+        session.elementCache = nil
+        session.outlines = [:]
+        trackPreviewSelection(session)
+    }
+
     // MARK: Views
 
     /// The views of the Swift files under a root, the scans of unchanged files taken from the cache.
@@ -594,6 +791,7 @@ extension Engine {
     /// The status of a session: the Mac's previews in the order of their blocks, then each
     /// device's, for the platforms it shows whose last build did not fail.
     func status(of session: PreviewService.Session, after: Int) -> PreviewStatus {
+        let element = selectedElement(of: session)
         var shown = previews.shownPlatforms(session) ?? []
         if let key = session.unitKey, let name = session.targetName, let target = previews.units[key]?.targets[name] {
             shown = shown.filter { target.builds[$0]?.failure == nil }
@@ -609,14 +807,16 @@ extension Engine {
         }
         let frames = keys.map { key -> PreviewFrame in
             let title = session.previews[key.index].title
+            let outlines = session.selection == nil ? [] : session.outlines[key] ?? []
             guard let frame = session.frames[key] else {
-                return PreviewFrame(index: key.index, title: title, device: key.device)
+                return PreviewFrame(index: key.index, title: title, device: key.device, outlines: outlines)
             }
             return PreviewFrame(index: key.index, title: title, device: key.device, sequence: frame.sequence,
-                                pngBase64: frame.sequence > after ? frame.png : nil, width: frame.width, height: frame.height)
+                                pngBase64: frame.sequence > after ? frame.png : nil, width: frame.width, height: frame.height,
+                                outlines: outlines)
         }
         return PreviewStatus(sequence: session.sequence, state: session.state, progress: session.state == .building ? session.progress : nil,
-                             builtAt: session.builtAt, messages: session.messages, previews: frames)
+                             builtAt: session.builtAt, messages: session.messages, previews: frames, element: element)
     }
 
     /// A change of the session: its sequence grows and its polls return.
@@ -810,6 +1010,12 @@ extension Engine {
         for (index, preview) in session.previews.enumerated() {
             if platform == .macOS {
                 host.send(.open(window: session.windowKey(index), preview: preview.key, settings: session.settings))
+                // The element selected is outlined in the Mac previews (docs/views.md › Select mode).
+                if let mark = session.selection?.mark {
+                    var command = PreviewHost.Command(type: "track", window: session.windowKey(index))
+                    command.element = mark
+                    host.send(command)
+                }
             } else {
                 for device in session.settings.devices {
                     host.send(.open(window: session.windowKey(index, device: device.name), preview: preview.key,
@@ -1102,16 +1308,34 @@ extension Engine {
 
     private func previewHostMessage(_ key: String, _ name: String, _ platform: PreviewPlatform, _ hostID: UUID,
                                     _ message: PreviewHost.Message) {
-        guard previews.units[key]?.targets[name]?.builds[platform]?.hostID == hostID, message.type == "frame", let window = message.window,
-              let png = message.png else { return }
+        guard previews.units[key]?.targets[name]?.builds[platform]?.hostID == hostID else { return }
+        if message.type == "selected" {
+            if let request = message.request { answerSelectRequest(request, message.elements ?? []) }
+            return
+        }
+        guard let window = message.window else { return }
         let parts = window.split(separator: "/", maxSplits: 2, omittingEmptySubsequences: false)
         guard parts.count >= 2, let id = UUID(uuidString: String(parts[0])), let index = Int(parts[1]),
               let session = previews.sessions[id] else { return }
         let device = parts.count == 3 ? String(parts[2]) : nil
         if let device, !session.settings.devices.contains(where: { $0.name == device }) { return }
-        session.frames[PreviewService.FrameKey(index: index, device: device)] = PreviewService.Frame(
-            sequence: session.sequence + 1, png: png, width: message.width ?? 0, height: message.height ?? 0)
-        notifyPreviewSession(session)
+        let frameKey = PreviewService.FrameKey(index: index, device: device)
+        switch message.type {
+        case "frame":
+            guard let png = message.png else { return }
+            session.frames[frameKey] = PreviewService.Frame(sequence: session.sequence + 1, png: png, width: message.width ?? 0,
+                                                            height: message.height ?? 0)
+            notifyPreviewSession(session)
+        case "outlines":
+            let outlines = (message.outlines ?? []).compactMap { values -> PreviewRect? in
+                values.count == 4 ? PreviewRect(x: values[0], y: values[1], width: values[2], height: values[3]) : nil
+            }
+            guard session.outlines[frameKey] ?? [] != outlines else { return }
+            session.outlines[frameKey] = outlines
+            if session.selection != nil { notifyPreviewSession(session) }
+        default:
+            break
+        }
     }
 
     private func previewHostEnded(_ key: String, _ name: String, _ platform: PreviewPlatform, _ hostID: UUID, _ reason: String,
@@ -1153,6 +1377,8 @@ extension Engine {
         let folder = unit.unit.folder
         let folderPath = folder.standardizedFileURL.path
         let files = Set(requests.keys)
+        let context = await viewElementContext(folder: key)
+        unit.elementContext = context
         func failAll(_ messages: [String]) {
             for file in files { result.fileFailures[file] = .messages(messages) }
         }
@@ -1208,7 +1434,8 @@ extension Engine {
             var maps: [String: [String: PreviewSourceMap]] = [:]
             for target in wanted.values.sorted(by: { $0.name < $1.name }) {
                 do {
-                    maps[target.name] = try SwiftPackagePreviewBuild.mirror(target: target, package: folder, buildFolder: unit.buildFolder)
+                    maps[target.name] = try SwiftPackagePreviewBuild.mirror(target: target, package: folder, buildFolder: unit.buildFolder,
+                                                                            context: context)
                     unit.mirrored[target.name] = target
                 } catch {
                     let failure = PreviewUnitBuild.Outcome.failure(["The build folder cannot be written: \(error.localizedDescription)"])
@@ -1284,6 +1511,14 @@ extension Engine {
                                                                   environment: environment, output: schemeOutput, track: track) else {
                     let messages = schemeOutput.lastLines.isEmpty ? ["No scheme of \(unit.unit.displayName) builds \(target.name)."] : schemeOutput.lastLines
                     for platform in toBuild { result.outcomes[target.name, default: [:]][platform] = .failure(messages) }
+                    continue
+                }
+                do {
+                    try XcodePreviewBuild.writeMarks(target: target, buildFolder: unit.buildFolder, context: context)
+                } catch {
+                    for platform in toBuild {
+                        result.outcomes[target.name, default: [:]][platform] = .failure(["The build folder cannot be written: \(error.localizedDescription)"])
+                    }
                     continue
                 }
                 for platform in toBuild {
@@ -1373,6 +1608,9 @@ extension Engine {
             session.waiters.removeAll()
             waiters.forEach { $0.resume() }
         }
+        let requests = previews.selectRequests.values
+        previews.selectRequests.removeAll()
+        requests.forEach { $0.resume(returning: nil) }
         let deadline = ContinuousClock.now + .seconds(3)
         for process in processes {
             while !process.hasExited, ContinuousClock.now < deadline {

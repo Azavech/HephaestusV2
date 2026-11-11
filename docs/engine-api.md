@@ -229,6 +229,8 @@ The first column lists every engine method; it is the list the docs conformance 
 | `previews.update`                | PreviewsUpdate                | sessionID, settings                                        | Empty              | user         |
 | `previews.poll`                  | PreviewsPoll                  | sessionID, after                                           | PreviewStatus      | user         |
 | `previews.input`                 | PreviewsInput                 | sessionID, preview, event                                  | Empty              | user         |
+| `previews.select`                | PreviewsSelect                | sessionID, preview?, x?, y?                                | PreviewSelection   | user         |
+| `previews.edit`                  | PreviewsEdit                  | sessionID, edit                                            | ViewElement        | user         |
 | `previews.stop`                  | PreviewsStop                  | sessionID                                                  | Empty              | user         |
 | `previews.capture`               | PreviewsCapture               | projectID, path, name, settings                            | PreviewCapture     | claude       |
 | `tickets.list`                   | TicketsList                   | projectID, includeSubprojects?                             | [Ticket]           | user, claude |
@@ -920,7 +922,7 @@ Events: none.
 
 ## Views and previews
 
-The methods of the [Views](views.md) section, which the windows of every device call with the actor user: [views.list](#viewslist) lists the views that the Swift files of a project declare, and a preview session shows the `#Preview` blocks of one view, live: [previews.start](#previewsstart) starts it, [previews.poll](#previewspoll) gives its state and the images of its previews, [previews.input](#previewsinput) gives a preview the user's clicks, scrolls and keys, [previews.update](#previewsupdate) changes its settings and [previews.stop](#previewsstop) ends it. [previews.capture](#previewscapture), which Claude calls with the actor claude through [get_view_previews](mcp.md#get_view_previews), gives the images of the previews of a view after their last build ([Previews for Claude](views.md#previews-for-claude)). They run on the main device: the files are read there, and the builds and the preview hosts run there ([Builds](views.md#builds), [Preview host](views.md#preview-host)). They emit no events: their results go to the caller only.
+The methods of the [Views](views.md) section, which the windows of every device call with the actor user: [views.list](#viewslist) lists the views that the Swift files of a project declare, and a preview session shows the `#Preview` blocks of one view, live: [previews.start](#previewsstart) starts it, [previews.poll](#previewspoll) gives its state and the images of its previews, [previews.input](#previewsinput) gives a preview the user's clicks, scrolls and keys, [previews.update](#previewsupdate) changes its settings and [previews.stop](#previewsstop) ends it. [previews.capture](#previewscapture), which Claude calls with the actor claude through [get_view_previews](mcp.md#get_view_previews), gives the images of the previews of a view after their last build ([Previews for Claude](views.md#previews-for-claude)). The visual inspector selects an element of a preview with [previews.select](#previewsselect) and rewrites its code with [previews.edit](#previewsedit) ([Visual inspector](views.md#visual-inspector)). They run on the main device: the files are read there, and the builds and the preview hosts run there ([Builds](views.md#builds), [Preview host](views.md#preview-host)). They emit no events: their results go to the caller only.
 
 - A session belongs to no window: the window that started it polls it and stops it. A session that no call of `previews.poll` has followed for 60 seconds stops, as with `previews.stop`, so that the sessions of a window that closed or of a remote device that disconnected end.
 - The engine builds the target of a session's view when it has no build or when a file of its package or Xcode project changed since its build ([Refresh](views.md#refresh)); the sessions of the same target share its build and its preview host.
@@ -998,7 +1000,7 @@ Swift type `PreviewsPoll` · actors: user · result: [PreviewStatus](#previewsta
 | sessionID | UUID | yes      | The session.                                                                 |
 | after     | Int  | yes      | The `sequence` of the last status the caller received, 0 for its first call. |
 
-Returns the session's status as soon as its `sequence` is greater than `after`: at once when it already is, otherwise when the state, the progress of the build or the image of a preview changes, or after 20 seconds without a change, with the same `sequence`. The status carries the image of each preview that changed after `after`, so that a caller polling again at once receives each image once.
+Returns the session's status as soon as its `sequence` is greater than `after`: at once when it already is, otherwise when the state, the progress of the build, the selection or the image or the outlines of a preview change, or after 20 seconds without a change, with the same `sequence`. The status carries the image of each preview that changed after `after`, so that a caller polling again at once receives each image once.
 
 | Error    | When                                                                     |
 | -------- | ------------------------------------------------------------------------ |
@@ -1027,6 +1029,54 @@ Gives the event to the preview's view in the host, at its place in the view's co
 | invalid  | No device of this name: `device: <name> is not a device of the session.` |
 
 Events: none.
+
+### previews.select
+
+Swift type `PreviewsSelect` · actors: user · result: [PreviewSelection](#previewselection)
+
+| Param     | Type   | Required | Description                                                                                   |
+| --------- | ------ | -------- | --------------------------------------------------------------------------------------------- |
+| sessionID | UUID   | yes      | The session.                                                                                  |
+| preview   | Int    | no       | The `index` of the preview clicked, as [PreviewFrame](#previewframe) has it; absent to clear. |
+| x         | Double | no       | Required with `preview`: the place clicked, in points from the preview's left edge.           |
+| y         | Double | no       | Required with `preview`: the place clicked, in points from the preview's top edge.            |
+
+Selects the element of the view's file at the place, for the visual inspector ([Select mode](views.md#select-mode)): the preview host gives the elements whose frame holds the place, and the engine reads the view's file to give the element with its properties. The session keeps the selection: each [PreviewStatus](#previewstatus) of [previews.poll](#previewspoll) carries the element read again from the file and the outlines of its places in each preview, and [previews.edit](#previewsedit) changes it. A place without an element of the file, or a call without `preview`, clears the selection and returns no element.
+
+| Error       | When                                                                                                                                                                                                                                   |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| notFound    | No running session has this id: `Preview session <sessionID> not found.`                                                                                                                                                               |
+| invalid     | The session has no preview with this index: `preview: use 0 to <n − 1>.`                                                                                                                                                               |
+| invalid     | `x` or `y` is absent with `preview`: `x: required with preview.`, `y: required with preview.`                                                                                                                                          |
+| unavailable | No preview host runs the session's previews, during the first build or after a failure: `The previews are not running.`                                                                                                                |
+| unavailable | The preview host does not answer within 2 seconds: `The previews did not answer.`                                                                                                                                                      |
+| conflict    | The previews run a build older than the file, and the element of that number in the file has another type ([Rewriting the code](views.md#rewriting-the-code)): `The previews are older than <path>: select again once they are built.` |
+
+Events: none.
+
+### previews.edit
+
+Swift type `PreviewsEdit` · actors: user · result: [ViewElement](#viewelement)
+
+| Param     | Type                                | Required | Description                     |
+| --------- | ----------------------------------- | -------- | ------------------------------- |
+| sessionID | UUID                                | yes      | The session.                    |
+| edit      | [ViewElementEdit](#viewelementedit) | yes      | The property and its new value. |
+
+Rewrites the code of the session's selected element so that it gets the value, and writes the view's file ([Rewriting the code](views.md#rewriting-the-code)); returns the element read again from the written file. The write is a change of the file on disk: `files.changed` follows from file watching, and the previews build again ([Refresh](views.md#refresh)). Nothing is staged or committed.
+
+| Error    | When                                                                                                                                          |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| notFound | No running session has this id: `Preview session <sessionID> not found.`                                                                      |
+| invalid  | The session has no selected element: `No element is selected.`                                                                                |
+| notFound | The file no longer has the element, by its number and its type: `The element is no longer in <path>: select it again.`; the selection clears. |
+| invalid  | The element has no such property ([Properties](views.md#properties)): `<type> has no <property>.`, for example `Text has no spacing.`         |
+| invalid  | The value breaks the rules of [ViewElementEdit](#viewelementedit), with its message, for example `edit.points: use 0 to 1000.`                |
+| invalid  | The text is not a string literal: `The text of <type> is not a string literal.`; the text has no default: `edit.text: required for text.`     |
+| invalid  | The property is not set and the code has no place to add it: `<variable or type> has no statement to add <property> after.`                   |
+| internal | The file cannot be read or written: `<path> cannot be written: <reason>.`                                                                     |
+
+Events: files.changed (from file watching).
 
 ### previews.stop
 
@@ -4537,12 +4587,13 @@ The result of [previews.start](#previewsstart): `sessionID`, UUID, the session's
 
 | Field    | Type                            | Required | Description                                                                                                                                                                                                       |
 | -------- | ------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| sequence | Int                             | yes      | Greater at each change of the session: its state, its progress, its messages or the image of one of its previews.                                                                                                 |
+| sequence | Int                             | yes      | Greater at each change of the session: its state, its progress, its messages, its selection or the image or outlines of one of its previews.                                                                      |
 | state    | [PreviewState](#previewstate)   | yes      | `building`, `running`, `buildFailed` or `stopped`.                                                                                                                                                                |
 | progress | String                          | no       | While `building`: the last progress of the build tool's output, `<n>/<m>`; absent before the first one.                                                                                                           |
 | builtAt  | Date                            | no       | The end of the build the preview host runs; absent before the first build that succeeded.                                                                                                                         |
 | messages | [String]                        | yes      | For `buildFailed`, and `running` with a failed platform: its errors ([Build rules](views.md#build-rules)); for `stopped`: `The previews stopped: <reason>.` and the host's last standard error lines; else empty. |
 | previews | [[PreviewFrame](#previewframe)] | yes      | Mac's in block order, then each device's; none before platforms are known, none of a failed platform.                                                                                                             |
+| element  | [ViewElement](#viewelement)     | no       | The element selected with [previews.select](#previewsselect), read again from the view's file for this status; absent without a selection.                                                                        |
 
 ### PreviewState
 
@@ -4550,15 +4601,16 @@ String enum of the states of a preview session: `building`, a build of its targe
 
 ### PreviewFrame
 
-| Field     | Type   | Required | Description                                                                                    |
-| --------- | ------ | -------- | ---------------------------------------------------------------------------------------------- |
-| index     | Int    | yes      | The rank of the preview among the view's previews, from 0.                                     |
-| device    | String | no       | The `name` of its device in the settings; absent for a Mac preview.                            |
-| title     | String | yes      | The name of its block, or `Preview <index + 1>`.                                               |
-| sequence  | Int    | yes      | The `sequence` of the status that brought its image; 0 before its first image.                 |
-| pngBase64 | String | no       | Its image, a PNG at 2 pixels per point, present when it changed after the `after` of the poll. |
-| width     | Int    | yes      | The width of its image in pixels; 0 before its first image.                                    |
-| height    | Int    | yes      | The height of its image in pixels; 0 before its first image.                                   |
+| Field     | Type                          | Required | Description                                                                                                                          |
+| --------- | ----------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| index     | Int                           | yes      | The rank of the preview among the view's previews, from 0.                                                                           |
+| device    | String                        | no       | The `name` of its device in the settings; absent for a Mac preview.                                                                  |
+| title     | String                        | yes      | The name of its block, or `Preview <index + 1>`.                                                                                     |
+| sequence  | Int                           | yes      | The `sequence` of the status that brought its image; 0 before its first image.                                                       |
+| pngBase64 | String                        | no       | Its image, a PNG at 2 pixels per point, present when it changed after the `after` of the poll.                                       |
+| width     | Int                           | yes      | The width of its image in pixels; 0 before its first image.                                                                          |
+| height    | Int                           | yes      | The height of its image in pixels; 0 before its first image.                                                                         |
+| outlines  | [[PreviewRect](#previewrect)] | yes      | The places of the selected element in the preview, one per instance; empty without a selection or when the preview does not show it. |
 
 ### PreviewCapture
 
@@ -4596,6 +4648,81 @@ The result of [previews.capture](#previewscapture).
 | charactersIgnoringModifiers | String   | no       | For the keys: as AppKit's `charactersIgnoringModifiers`.                                                                |
 | keyCode                     | Int      | no       | For the keys: the virtual key code.                                                                                     |
 | modifiers                   | [String] | no       | The modifier keys held: `shift`, `control`, `option`, `command`, `capsLock` and `function`; none when absent.           |
+
+### PreviewSelection
+
+The result of [previews.select](#previewsselect): `element`, [ViewElement](#viewelement), optional, the element selected, absent when the place holds none or the call cleared the selection.
+
+### ViewElement
+
+An element of a view's file that the visual inspector shows ([Elements](views.md#elements), [Properties](views.md#properties)). A property is absent when the element's type does not have it, and for AppKit and UIKit when the code neither sets it nor has a place to add it.
+
+| Field    | Type                                    | Required | Description                                                                            |
+| -------- | --------------------------------------- | -------- | -------------------------------------------------------------------------------------- |
+| index    | Int                                     | yes      | Its number among the elements of its file, from 0, in the order of the file.           |
+| type     | String                                  | yes      | The type its call creates, as written without module: `Text`, `NSTextField`.           |
+| kind     | [ViewKind](#viewkind)                   | yes      | `swiftUI`, `appKit` or `uiKit`.                                                        |
+| path     | String                                  | yes      | Project path of its file.                                                              |
+| line     | Int                                     | yes      | The line of its call, from 1.                                                          |
+| variable | String                                  | no       | For AppKit and UIKit: the constant or variable its call initializes or is assigned to. |
+| text     | [ViewElementText](#viewelementtext)     | no       | Its text.                                                                              |
+| color    | [ViewElementColor](#viewelementcolor)   | no       | Its colour.                                                                            |
+| font     | [ViewElementFont](#viewelementfont)     | no       | Its font.                                                                              |
+| padding  | [ViewElementLength](#viewelementlength) | no       | For SwiftUI: its padding.                                                              |
+| spacing  | [ViewElementLength](#viewelementlength) | no       | For stacks: their spacing.                                                             |
+
+### ViewElementText
+
+`code`, String, optional, the code of the text as written, absent when the code does not set it; `value`, String, optional, the text, present when the code is a string literal that the inspector can change.
+
+### ViewElementColor
+
+| Field   | Type   | Required | Description                                                                                     |
+| ------- | ------ | -------- | ----------------------------------------------------------------------------------------------- |
+| code    | String | no       | The code of the colour as written; absent when the code does not set it.                        |
+| name    | String | no       | For a colour of `Color`, `NSColor` or `UIColor` by name: the name, `red`, `systemRed`, `label`. |
+| red     | Double | no       | For a colour by components: the red component, 0 to 1, with `green`, `blue` and `opacity`.      |
+| green   | Double | no       | The green component, 0 to 1.                                                                    |
+| blue    | Double | no       | The blue component, 0 to 1.                                                                     |
+| opacity | Double | no       | The opacity or alpha, 0 to 1.                                                                   |
+
+### ViewElementFont
+
+`code`, String, optional, the code of the font as written, absent when the code does not set it; `style`, [FontTextStyle](#fonttextstyle), optional, for a text style; `size`, Double, optional, and `weight`, [FontWeight](#fontweight), optional, for a system font of a size.
+
+### ViewElementLength
+
+`code`, String, optional, the code of the padding modifier, the `spacing:` argument or the statement, absent when the code does not set it; `points`, Double, optional, the length when the code gives a number; `edges`, String, optional, the edges of a padding modifier as written, `.horizontal`.
+
+### FontTextStyle
+
+String enum of the Dynamic Type text styles of the [font notation](chats.md#font-notation), in the inspector's `Font` pop-up: `largeTitle`, `title`, `title2`, `title3`, `headline`, `subheadline`, `body`, `callout`, `footnote`, `caption` and `caption2`, written `.title1` and `.caption1` for `title` and `caption` in AppKit and UIKit.
+
+### FontWeight
+
+String enum of the font weights: `ultraLight`, `thin`, `light`, `regular`, `medium`, `semibold`, `bold`, `heavy` and `black`.
+
+### ViewElementEdit
+
+| Field    | Type                                            | Required | Description                                                                                                     |
+| -------- | ----------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------- |
+| property | String                                          | yes      | `text`, `color`, `font`, `padding` or `spacing`.                                                                |
+| text     | String                                          | no       | For `text`: the new text; required.                                                                             |
+| color    | [ViewElementColorValue](#viewelementcolorvalue) | no       | For `color`: the new colour; absent for the default.                                                            |
+| font     | [ViewElementFontValue](#viewelementfontvalue)   | no       | For `font`: the new font; absent for the default.                                                               |
+| points   | Double                                          | no       | For `padding` and `spacing`: the new length, 0 to 1000 (`edit.points: use 0 to 1000.`); absent for the default. |
+
+### ViewElementColorValue
+
+`red`, `green`, `blue` and `opacity`, Double, required, the sRGB components and the opacity, each from 0 to 1 (`edit.color.red: use 0 to 1.`).
+
+### ViewElementFontValue
+
+`style`, [FontTextStyle](#fonttextstyle), optional, a text style; or `size`, Double, optional, from 1 to 1000 (`edit.font.size: use 1 to 1000.`), with `weight`, [FontWeight](#fontweight), optional, Regular when absent, for a system font. Exactly one of `style` and `size` is given: `edit.font: give a style or a size.`
+
+### PreviewRect
+
+A rectangle of a preview: `x`, `y`, `width` and `height`, Double, in points from the preview's top left corner.
 
 ### APIContract
 
@@ -5877,3 +6004,4 @@ The docs conformance test ([CI](ci.md)) collects every table row of this documen
 - R211: `Set Up…` of an image has a menu with `Manual Setup` and `Auto Setup`; Auto Setup starts a chat beside the setup view in which Claude goes through Setup Assistant in English (United States) with the image's stored account, asked for when missing, turns SIP off in Recovery, installs the agent and finishes the setup with the VM tools, through the screen before the agent connects; the user's controls stay, a running setup is taken over, the chat belongs to the window's project or, without a project, to the image, and stays open.
 - R212: A Swift application has a Views section, in a Swift Application category, that lists its SwiftUI, AppKit and UIKit views by folder, sub projects included, and shows a view's `#Preview` blocks side by side, live and interactive on the Mac, at the entered size, in Light or Dark and a Dynamic Type size, built in the background and refreshed on save, with compiler errors, for packages, Xcode projects and remote windows.
 - R215: In the Views section, the user designs views with Claude in the inspector's project chat: each message carries the shown view's name and file path, an MCP tool gives Claude the preview images after the last build, the previews refresh when Claude saves, `Create Preview` asks Claude for a `#Preview`, Claude creates the new views the user describes, and the changes stay uncommitted until the user asks.
+- R217: In the Views section, the user selects an element of a view in its preview; a visual inspector shows its text, colour, font and spacing with controls, and a change rewrites the view's Swift code and saves it, the previews refresh, for SwiftUI, AppKit and UIKit views and in remote windows; nothing is committed.

@@ -14,6 +14,7 @@ public enum PreviewHostSource {
     static let support = #"""
 import AppKit
 import Foundation
+import ObjectiveC
 import SwiftUI
 
 /// What a `#Preview` block gives: a SwiftUI view, an AppKit view or view controller, or nothing on
@@ -75,6 +76,9 @@ fileprivate struct __HephaestusPreviewSettings {
     var controller: NSViewController?
     var lastPixels: Data?
     var lastActivity = Date()
+    /// The id of the element whose places are outlined, and the outlines last sent.
+    var tracked: String?
+    var lastOutlines: [[Double]] = []
 
     init(key: String, window: __HephaestusPreviewWindow, settings: __HephaestusPreviewSettings) {
         self.key = key
@@ -178,6 +182,14 @@ fileprivate struct __HephaestusPreviewSettings {
             if let entry = entries[key] { scroll(entry, command) }
         case "key":
             if let entry = entries[key] { keyboard(entry, command) }
+        case "select":
+            if let entry = entries[key] { select(entry, command) }
+        case "track":
+            if let entry = entries[key] {
+                entry.tracked = command["element"] as? String
+                entry.lastOutlines = [[-1]]
+                entry.lastActivity = Date()
+            }
         default:
             break
         }
@@ -272,10 +284,71 @@ fileprivate struct __HephaestusPreviewSettings {
         view.cacheDisplay(in: bounds, to: bitmap)
         guard let pixels = bitmap.bitmapData else { return }
         let data = Data(bytes: pixels, count: bitmap.bytesPerRow * height)
-        if data == entry.lastPixels { return }
-        entry.lastPixels = data
-        guard let png = bitmap.representation(using: .png, properties: [:]) else { return }
-        send(["type": "frame", "window": entry.key, "width": width, "height": height, "png": png.base64EncodedString()])
+        if data != entry.lastPixels, let png = bitmap.representation(using: .png, properties: [:]) {
+            entry.lastPixels = data
+            send(["type": "frame", "window": entry.key, "width": width, "height": height, "png": png.base64EncodedString()])
+        }
+        sendOutlines(entry)
+    }
+
+    // MARK: Elements
+
+    /// The key of the id that marks the view of an element (docs/views.md › Elements).
+    static let elementKey = unsafeBitCast(sel_registerName("__hephaestusPreviewElement"), to: UnsafeRawPointer.self)
+
+    /// The marked views of a preview: the id of their element and their frame in points from the
+    /// preview's top left, clipped by the scroll views around them.
+    func marks(_ entry: __HephaestusPreviewEntry) -> [(id: String, rect: NSRect)] {
+        guard let content = entry.window.contentView else { return [] }
+        let root = content.superview ?? content
+        let height = entry.window.frame.height
+        var result: [(id: String, rect: NSRect)] = []
+        func walk(_ view: NSView, clip: NSRect) {
+            if view.isHidden { return }
+            var clip = clip
+            if view is NSClipView { clip = clip.intersection(view.convert(view.bounds, to: nil)) }
+            if let id = objc_getAssociatedObject(view, Self.elementKey) as? String {
+                let frame = view.convert(view.bounds, to: nil).intersection(clip)
+                if frame.width > 0, frame.height > 0 {
+                    result.append((id, NSRect(x: frame.minX, y: height - frame.maxY, width: frame.width, height: frame.height)))
+                }
+            }
+            for subview in view.subviews { walk(subview, clip: clip) }
+        }
+        walk(root, clip: root.convert(root.bounds, to: nil))
+        return result
+    }
+
+    /// The number of an element in its id, `<path>#<number>#<type>`.
+    static func elementNumber(_ id: String) -> Int {
+        let parts = id.split(separator: "#")
+        return parts.count >= 3 ? Int(parts[parts.count - 2]) ?? 0 : 0
+    }
+
+    /// The ids of the elements whose frame holds the place: the smallest frame first, the last
+    /// element of the file first among equal frames.
+    func select(_ entry: __HephaestusPreviewEntry, _ command: [String: Any]) {
+        let point = NSPoint(x: command["x"] as? Double ?? 0, y: command["y"] as? Double ?? 0)
+        let hits = marks(entry).filter { $0.rect.contains(point) }.sorted { a, b in
+            let areaA = a.rect.width * a.rect.height, areaB = b.rect.width * b.rect.height
+            return areaA != areaB ? areaA < areaB : Self.elementNumber(a.id) > Self.elementNumber(b.id)
+        }
+        var ids: [String] = []
+        for hit in hits where !ids.contains(hit.id) { ids.append(hit.id) }
+        send(["type": "selected", "request": command["request"] as? Int ?? 0, "elements": ids])
+    }
+
+    /// The places of the tracked element, sent when they change.
+    func sendOutlines(_ entry: __HephaestusPreviewEntry) {
+        var outlines: [[Double]] = []
+        if let tracked = entry.tracked {
+            outlines = marks(entry).filter { $0.id == tracked }.map {
+                [Double($0.rect.minX), Double($0.rect.minY), Double($0.rect.width), Double($0.rect.height)]
+            }
+        }
+        if outlines == entry.lastOutlines { return }
+        entry.lastOutlines = outlines
+        send(["type": "outlines", "window": entry.key, "outlines": outlines])
     }
 
     // MARK: Events

@@ -96,11 +96,13 @@ enum SwiftPackagePreviewBuild {
     }
 
     /// Writes the copy of a target in the build folder: its files, each Swift source with its
-    /// `@main` left out and the functions of its preview blocks after it, `main.swift` left out,
-    /// and the host's file. Files that did not change keep their dates, so that the next build
-    /// compiles what changed. Returns the map of each copied Swift source to its file.
+    /// `@main` left out, its elements marked (docs/views.md › Elements) and the functions of its
+    /// preview blocks after it, `main.swift` left out, and the host's file. Files that did not
+    /// change keep their dates, so that the next build compiles what changed. Returns the map of
+    /// each copied Swift source to its file.
     @discardableResult
-    static func mirror(target: PackageTarget, package: URL, buildFolder: URL) throws -> [String: PreviewSourceMap] {
+    static func mirror(target: PackageTarget, package: URL, buildFolder: URL,
+                       context: ViewElementContext = ViewElementContext()) throws -> [String: PreviewSourceMap] {
         let manager = FileManager.default
         let source = target.path.isEmpty ? package : package.appendingPathComponent(target.path)
         let destination = buildFolder.appendingPathComponent(hostsFolder).appendingPathComponent(target.name)
@@ -134,8 +136,12 @@ enum SwiftPackagePreviewBuild {
                     PreviewHostSource.blank(&bytes, range: range)
                 }
                 var copy = String(decoding: bytes, as: UTF8.self)
-                let lines = bytes.reduce(1) { $1 == 0x0A ? $0 + 1 : $0 }
-                var segments = [PreviewSourceMap.Segment(line: 1, original: 1, count: lines)]
+                var segments = [PreviewSourceMap.Segment(line: 1, original: 1, count: bytes.reduce(1) { $1 == 0x0A ? $0 + 1 : $0 })]
+                // The marks keep the lines; the code they use follows the file's last line.
+                if let marked = ViewElementScanner.marked(copy, path: file.url.path, context: context) {
+                    copy = marked
+                }
+                let lines = copy.utf8.reduce(1) { $1 == 0x0A ? $0 + 1 : $0 }
                 if !scan.previews.isEmpty {
                     let functions = PreviewHostSource.previewFunctions(file: fileNumber, scan: scan, text: text, path: file.url.path)
                     fileNumber += 1

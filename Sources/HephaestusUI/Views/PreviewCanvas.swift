@@ -1,5 +1,6 @@
-// OWNER: ui-views — a live preview: its last image, and the clicks, moves, scrolls and keys it
-// passes on to the view (docs/views.md › Showing a view).
+// OWNER: ui-views — a live preview: its last image, the clicks, moves, scrolls and keys it
+// passes on to the view (docs/views.md › Showing a view), and in select mode the clicks that
+// select an element and the outlines of the selected one (docs/views.md › Select mode).
 import AppKit
 import HephaestusCore
 import SwiftUI
@@ -11,6 +12,14 @@ final class PreviewCanvasView: NSView {
         didSet { needsDisplay = true }
     }
     var onInput: ((PreviewInputEvent) -> Void)?
+    /// In select mode a click selects the element under it, at its place in points from the top
+    /// left, and only the scrolls go to the view.
+    var selectMode = false
+    var onSelect: ((Double, Double) -> Void)?
+    /// The places of the selected element, outlined in the accent colour.
+    var outlines: [PreviewRect] = [] {
+        didSet { if outlines != oldValue { needsDisplay = true } }
+    }
     private var tracking: NSTrackingArea?
 
     override var isFlipped: Bool { true }
@@ -30,6 +39,13 @@ final class PreviewCanvasView: NSView {
         NSColor.windowBackgroundColor.setFill()
         bounds.fill()
         image?.draw(in: bounds, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        guard !outlines.isEmpty else { return }
+        NSColor.controlAccentColor.setStroke()
+        for outline in outlines {
+            let path = NSBezierPath(rect: NSRect(x: outline.x, y: outline.y, width: outline.width, height: outline.height))
+            path.lineWidth = 2
+            path.stroke()
+        }
     }
 
     // MARK: Focus
@@ -62,6 +78,10 @@ final class PreviewCanvasView: NSView {
 
     private func send(_ kind: PreviewInputEvent.Kind, _ event: NSEvent, button: String? = nil, clickCount: Int? = nil) {
         let point = convert(event.locationInWindow, from: nil)
+        if selectMode {
+            if kind == .mouseDown, button == nil { onSelect?(Double(point.x), Double(point.y)) }
+            return
+        }
         onInput?(PreviewInputEvent(kind: kind, x: Double(point.x), y: Double(point.y), button: button, clickCount: clickCount,
                                    modifiers: Self.modifiers(event.modifierFlags)))
     }
@@ -116,12 +136,14 @@ final class PreviewCanvasView: NSView {
     }
 
     private func sendKey(_ kind: PreviewInputEvent.Kind, _ event: NSEvent) {
+        if selectMode { return }
         onInput?(PreviewInputEvent(kind: kind, characters: event.characters, charactersIgnoringModifiers: event.charactersIgnoringModifiers,
                                    keyCode: Int(event.keyCode), modifiers: Self.modifiers(event.modifierFlags)))
     }
 
     /// The Edit menu's items act in the view: their shortcuts go to it.
     private func sendShortcut(_ character: String, shift: Bool = false, keyCode: Int) {
+        if selectMode { return }
         let modifiers = shift ? ["shift", "command"] : ["command"]
         for kind in [PreviewInputEvent.Kind.keyDown, .keyUp] {
             onInput?(PreviewInputEvent(kind: kind, characters: character, charactersIgnoringModifiers: character, keyCode: keyCode,
@@ -161,12 +183,15 @@ extension PreviewCanvasView: NSMenuItemValidation, NSUserInterfaceValidations {
 /// A preview in SwiftUI.
 struct PreviewCanvas: NSViewRepresentable {
     let image: NSImage?
+    var outlines: [PreviewRect] = []
+    var selectMode = false
+    var onSelect: (Double, Double) -> Void = { _, _ in }
     let onInput: (PreviewInputEvent) -> Void
 
     func makeNSView(context: Context) -> PreviewCanvasView {
         let view = PreviewCanvasView(frame: .zero)
         view.image = image
-        view.onInput = onInput
+        updateNSView(view, context: context)
         return view
     }
 
@@ -175,5 +200,8 @@ struct PreviewCanvas: NSViewRepresentable {
             view.image = image
         }
         view.onInput = onInput
+        view.onSelect = onSelect
+        view.selectMode = selectMode
+        view.outlines = outlines
     }
 }

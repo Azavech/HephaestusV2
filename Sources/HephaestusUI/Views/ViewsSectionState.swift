@@ -23,6 +23,8 @@ final class ViewsSectionState {
     private(set) var checkedDevices: Set<String> = []
     /// The width of the list, which its divider changes (docs/views.md › Layout).
     var listWidth: Double = 260
+    /// The select mode of the visual inspector (docs/views.md › Select mode).
+    private(set) var selectMode = false
     /// The session of the previews of the selected view.
     private(set) var session: PreviewSessionModel?
     /// The buffer of the selected view's file, kept when the view disappears from the list
@@ -298,6 +300,12 @@ final class ViewsSectionState {
     static func createPreviewMessage(_ view: ProjectView) -> String {
         "Write a #Preview of \(view.name) into \(view.path)."
     }
+
+    /// The `Select` button: turning the mode off clears the selection.
+    func setSelectMode(_ on: Bool) {
+        selectMode = on
+        if !on { session?.clearSelection() }
+    }
 }
 
 // MARK: Menu commands
@@ -336,12 +344,14 @@ extension ViewsSectionState: SectionCommandHandler {
     }
 }
 
-/// One preview shown: its title, its device, nil for the Mac, and its last image.
+/// One preview shown: its title, its device, nil for the Mac, its last image and the places of the
+/// selected element.
 struct PreviewImage: Identifiable {
     var index: Int
     var title: String
     var device: String?
     var image: NSImage?
+    var outlines: [PreviewRect] = []
     var id: String { "\(index)/\(device ?? "")" }
 }
 
@@ -359,6 +369,10 @@ final class PreviewSessionModel {
     /// The failure of `previews.start`.
     private(set) var startError: String?
     private(set) var previews: [PreviewImage]
+    /// The element selected for the visual inspector, as the file has it.
+    private(set) var element: ViewElement?
+    /// The message of the last change or selection that failed (docs/views.md › Inspector pane).
+    private(set) var inspectorError: String?
 
     @ObservationIgnored private weak var workspace: DeviceWorkspace?
     @ObservationIgnored private let projectID: String
@@ -368,6 +382,8 @@ final class PreviewSessionModel {
     @ObservationIgnored private var pending: [(preview: Int, device: String?, event: PreviewInputEvent)] = []
     @ObservationIgnored private var sending = false
     @ObservationIgnored private var stopped = false
+    /// The selections and changes, sent one after the other.
+    @ObservationIgnored private var inspectorTask: Task<Void, Never>?
 
     init(workspace: DeviceWorkspace, projectID: String, view: ProjectView, settings: PreviewSettings) {
         self.workspace = workspace
@@ -428,6 +444,7 @@ final class PreviewSessionModel {
         progress = status.progress
         builtAt = status.builtAt
         messages = status.messages
+        if element != status.element { element = status.element }
         var known: [String: NSImage] = [:]
         for preview in previews {
             if let image = preview.image { known[preview.id] = image }
@@ -435,6 +452,7 @@ final class PreviewSessionModel {
         previews = status.previews.map { frame in
             var preview = PreviewImage(index: frame.index, title: frame.title, device: frame.device)
             preview.image = known[preview.id]
+            preview.outlines = frame.outlines
             if let base64 = frame.pngBase64, let data = Data(base64Encoded: base64), let image = NSImage(data: data) {
                 image.size = NSSize(width: CGFloat(frame.width) / 2, height: CGFloat(frame.height) / 2)
                 preview.image = image
@@ -457,6 +475,51 @@ final class PreviewSessionModel {
         self.settings = settings
         guard let sessionID, let workspace else { return }
         Task { try? await workspace.call(PreviewsUpdate.self, PreviewsUpdate.Params(sessionID: sessionID, settings: settings)) }
+    }
+
+    // MARK: Visual inspector
+
+    /// Selects the element at a place of a preview (docs/views.md › Select mode).
+    func select(preview: Int, x: Double, y: Double) {
+        inspector { workspace, sessionID in
+            let selection = try await workspace.call(PreviewsSelect.self, PreviewsSelect.Params(sessionID: sessionID, preview: preview, x: x, y: y))
+            return selection.element
+        }
+    }
+
+    /// Clears the selection.
+    func clearSelection() {
+        element = nil
+        inspectorError = nil
+        guard sessionID != nil else { return }
+        inspector { workspace, sessionID in
+            _ = try await workspace.call(PreviewsSelect.self, PreviewsSelect.Params(sessionID: sessionID))
+            return nil
+        }
+    }
+
+    /// Rewrites the code of the selected element (docs/views.md › Rewriting the code).
+    func edit(_ edit: ViewElementEdit) {
+        inspector { workspace, sessionID in
+            try await workspace.call(PreviewsEdit.self, PreviewsEdit.Params(sessionID: sessionID, edit: edit))
+        }
+    }
+
+    /// Runs a call of the inspector after the ones before it; its element replaces the shown one,
+    /// its failure shows its message.
+    private func inspector(_ call: @escaping @MainActor (DeviceWorkspace, UUID) async throws -> ViewElement?) {
+        let previous = inspectorTask
+        inspectorTask = Task { @MainActor [weak self] in
+            await previous?.value
+            guard let self, let workspace = self.workspace, let sessionID = self.sessionID, !self.stopped else { return }
+            do {
+                let element = try await call(workspace, sessionID)
+                self.element = element
+                self.inspectorError = nil
+            } catch {
+                self.inspectorError = errorMessage(error)
+            }
+        }
     }
 
     /// Sends an input after those before it; moves and scrolls that wait are merged.

@@ -89,6 +89,44 @@ public enum PreviewsInput: EngineMethod {
     public typealias Result = Empty
 }
 
+/// `previews.select`: selects the element of the view's file at a place of a preview, or clears
+/// the selection. Actors: user.
+public enum PreviewsSelect: EngineMethod {
+    public static let name = "previews.select"
+    public struct Params: Codable, Sendable, Hashable {
+        public var sessionID: UUID
+        /// The preview's `index`; nil to clear the selection.
+        public var preview: Int?
+        /// Points from the preview's left edge; required with `preview`.
+        public var x: Double?
+        /// Points from the preview's top edge; required with `preview`.
+        public var y: Double?
+
+        public init(sessionID: UUID, preview: Int? = nil, x: Double? = nil, y: Double? = nil) {
+            self.sessionID = sessionID
+            self.preview = preview
+            self.x = x
+            self.y = y
+        }
+    }
+    public typealias Result = PreviewSelection
+}
+
+/// `previews.edit`: rewrites the code of the session's selected element. Actors: user.
+public enum PreviewsEdit: EngineMethod {
+    public static let name = "previews.edit"
+    public struct Params: Codable, Sendable, Hashable {
+        public var sessionID: UUID
+        public var edit: ViewElementEdit
+
+        public init(sessionID: UUID, edit: ViewElementEdit) {
+            self.sessionID = sessionID
+            self.edit = edit
+        }
+    }
+    public typealias Result = ViewElement
+}
+
 /// `previews.stop`: ends a session. Actors: user.
 public enum PreviewsStop: EngineMethod {
     public static let name = "previews.stop"
@@ -291,15 +329,18 @@ public struct PreviewStatus: Codable, Sendable, Hashable {
     /// The errors of a failed build, or why the host stopped.
     public var messages: [String]
     public var previews: [PreviewFrame]
+    /// The selected element, read again from the file for this status.
+    public var element: ViewElement?
 
     public init(sequence: Int, state: PreviewState, progress: String? = nil, builtAt: Date? = nil, messages: [String] = [],
-                previews: [PreviewFrame] = []) {
+                previews: [PreviewFrame] = [], element: ViewElement? = nil) {
         self.sequence = sequence
         self.state = state
         self.progress = progress
         self.builtAt = builtAt
         self.messages = messages
         self.previews = previews
+        self.element = element
     }
 }
 
@@ -318,9 +359,11 @@ public struct PreviewFrame: Codable, Sendable, Hashable {
     /// Pixels; 0 before the first image.
     public var width: Int
     public var height: Int
+    /// The places of the selected element in the preview.
+    public var outlines: [PreviewRect]
 
     public init(index: Int, title: String, device: String? = nil, sequence: Int = 0, pngBase64: String? = nil, width: Int = 0,
-                height: Int = 0) {
+                height: Int = 0, outlines: [PreviewRect] = []) {
         self.index = index
         self.title = title
         self.device = device
@@ -328,6 +371,264 @@ public struct PreviewFrame: Codable, Sendable, Hashable {
         self.pngBase64 = pngBase64
         self.width = width
         self.height = height
+        self.outlines = outlines
+    }
+}
+
+/// A rectangle of a preview, in points from its top left corner (docs/engine-api.md › PreviewRect).
+public struct PreviewRect: Codable, Sendable, Hashable {
+    public var x: Double
+    public var y: Double
+    public var width: Double
+    public var height: Double
+
+    public init(x: Double, y: Double, width: Double, height: Double) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
+}
+
+/// The result of `previews.select` (docs/engine-api.md › PreviewSelection).
+public struct PreviewSelection: Codable, Sendable, Hashable {
+    /// Nil when the place holds no element or the selection was cleared.
+    public var element: ViewElement?
+
+    public init(element: ViewElement? = nil) {
+        self.element = element
+    }
+}
+
+/// An element of a view's file for the visual inspector (docs/engine-api.md › ViewElement).
+public struct ViewElement: Codable, Sendable, Hashable {
+    /// Its number among the elements of its file, from 0.
+    public var index: Int
+    /// The type its call creates.
+    public var type: String
+    public var kind: ViewKind
+    /// Project path of its file.
+    public var path: String
+    /// The line of its call, from 1.
+    public var line: Int
+    /// AppKit and UIKit: the constant or variable of its call.
+    public var variable: String?
+    public var text: ViewElementText?
+    public var color: ViewElementColor?
+    public var font: ViewElementFont?
+    public var padding: ViewElementLength?
+    public var spacing: ViewElementLength?
+
+    public init(index: Int, type: String, kind: ViewKind, path: String, line: Int, variable: String? = nil,
+                text: ViewElementText? = nil, color: ViewElementColor? = nil, font: ViewElementFont? = nil,
+                padding: ViewElementLength? = nil, spacing: ViewElementLength? = nil) {
+        self.index = index
+        self.type = type
+        self.kind = kind
+        self.path = path
+        self.line = line
+        self.variable = variable
+        self.text = text
+        self.color = color
+        self.font = font
+        self.padding = padding
+        self.spacing = spacing
+    }
+}
+
+/// The text of an element (docs/engine-api.md › ViewElementText).
+public struct ViewElementText: Codable, Sendable, Hashable {
+    /// The code as written; nil when the code does not set it.
+    public var code: String?
+    /// The text, when the code is a string literal that the inspector can change.
+    public var value: String?
+
+    public init(code: String? = nil, value: String? = nil) {
+        self.code = code
+        self.value = value
+    }
+}
+
+/// The colour of an element (docs/engine-api.md › ViewElementColor).
+public struct ViewElementColor: Codable, Sendable, Hashable {
+    public var code: String?
+    /// A colour of `Color`, `NSColor` or `UIColor` by name.
+    public var name: String?
+    public var red: Double?
+    public var green: Double?
+    public var blue: Double?
+    public var opacity: Double?
+
+    public init(code: String? = nil, name: String? = nil, red: Double? = nil, green: Double? = nil, blue: Double? = nil,
+                opacity: Double? = nil) {
+        self.code = code
+        self.name = name
+        self.red = red
+        self.green = green
+        self.blue = blue
+        self.opacity = opacity
+    }
+}
+
+/// The font of an element (docs/engine-api.md › ViewElementFont).
+public struct ViewElementFont: Codable, Sendable, Hashable {
+    public var code: String?
+    public var style: FontTextStyle?
+    public var size: Double?
+    public var weight: FontWeight?
+
+    public init(code: String? = nil, style: FontTextStyle? = nil, size: Double? = nil, weight: FontWeight? = nil) {
+        self.code = code
+        self.style = style
+        self.size = size
+        self.weight = weight
+    }
+}
+
+/// A padding or a spacing (docs/engine-api.md › ViewElementLength).
+public struct ViewElementLength: Codable, Sendable, Hashable {
+    public var code: String?
+    public var points: Double?
+    /// The edges of a padding modifier, as written.
+    public var edges: String?
+
+    public init(code: String? = nil, points: Double? = nil, edges: String? = nil) {
+        self.code = code
+        self.points = points
+        self.edges = edges
+    }
+}
+
+/// The text styles of the inspector's `Font` pop-up (docs/engine-api.md › FontTextStyle): the
+/// styles of the font notation, encoded by name.
+extension FontTextStyle: Codable {
+    public init(from decoder: Decoder) throws {
+        self = try APIEnumCoding.decode(decoder)
+    }
+
+    /// The item of the `Font` pop-up (docs/views.md › Inspector pane).
+    public var title: String {
+        switch self {
+        case .largeTitle: return "Large Title"
+        case .title: return "Title"
+        case .title2: return "Title 2"
+        case .title3: return "Title 3"
+        case .headline: return "Headline"
+        case .subheadline: return "Subheadline"
+        case .body: return "Body"
+        case .callout: return "Callout"
+        case .footnote: return "Footnote"
+        case .caption: return "Caption"
+        case .caption2: return "Caption 2"
+        }
+    }
+
+    /// The name of the style in AppKit and UIKit.
+    public var frameworkName: String {
+        switch self {
+        case .title: return "title1"
+        case .caption: return "caption1"
+        default: return rawValue
+        }
+    }
+}
+
+/// The font weights (docs/engine-api.md › FontWeight).
+public enum FontWeight: String, Codable, Sendable, Hashable, CaseIterable {
+    case ultraLight
+    case thin
+    case light
+    case regular
+    case medium
+    case semibold
+    case bold
+    case heavy
+    case black
+
+    public init(from decoder: Decoder) throws {
+        self = try APIEnumCoding.decode(decoder)
+    }
+
+    /// The item of the `Weight` pop-up (docs/views.md › Inspector pane).
+    public var title: String {
+        switch self {
+        case .ultraLight: return "Ultra Light"
+        case .thin: return "Thin"
+        case .light: return "Light"
+        case .regular: return "Regular"
+        case .medium: return "Medium"
+        case .semibold: return "Semibold"
+        case .bold: return "Bold"
+        case .heavy: return "Heavy"
+        case .black: return "Black"
+        }
+    }
+}
+
+/// The properties the visual inspector changes (docs/engine-api.md › ViewElementEdit).
+public enum ViewElementProperty: String, Codable, Sendable, Hashable, CaseIterable {
+    case text
+    case color
+    case font
+    case padding
+    case spacing
+
+    public init(from decoder: Decoder) throws {
+        self = try APIEnumCoding.decode(decoder)
+    }
+}
+
+/// A change of a property of the selected element (docs/engine-api.md › ViewElementEdit).
+public struct ViewElementEdit: Codable, Sendable, Hashable {
+    public var property: ViewElementProperty
+    /// For `text`: required.
+    public var text: String?
+    /// For `color`: nil for the default.
+    public var color: ViewElementColorValue?
+    /// For `font`: nil for the default.
+    public var font: ViewElementFontValue?
+    /// For `padding` and `spacing`: 0 to 1000; nil for the default.
+    public var points: Double?
+
+    public init(property: ViewElementProperty, text: String? = nil, color: ViewElementColorValue? = nil,
+                font: ViewElementFontValue? = nil, points: Double? = nil) {
+        self.property = property
+        self.text = text
+        self.color = color
+        self.font = font
+        self.points = points
+    }
+}
+
+/// An sRGB colour with its opacity, each component from 0 to 1 (docs/engine-api.md ›
+/// ViewElementColorValue).
+public struct ViewElementColorValue: Codable, Sendable, Hashable {
+    public var red: Double
+    public var green: Double
+    public var blue: Double
+    public var opacity: Double
+
+    public init(red: Double, green: Double, blue: Double, opacity: Double = 1) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+        self.opacity = opacity
+    }
+}
+
+/// A text style, or a system font of a size and a weight (docs/engine-api.md ›
+/// ViewElementFontValue).
+public struct ViewElementFontValue: Codable, Sendable, Hashable {
+    public var style: FontTextStyle?
+    /// 1 to 1000 points.
+    public var size: Double?
+    /// Regular when nil.
+    public var weight: FontWeight?
+
+    public init(style: FontTextStyle? = nil, size: Double? = nil, weight: FontWeight? = nil) {
+        self.style = style
+        self.size = size
+        self.weight = weight
     }
 }
 

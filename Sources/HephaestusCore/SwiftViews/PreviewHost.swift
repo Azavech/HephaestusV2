@@ -31,6 +31,10 @@ final class PreviewHost: @unchecked Sendable {
         var verticalSizeClass: String?
         var idiom: String?
         var scale: Int?
+        /// `select`: the number of the request, which the answer repeats.
+        var request: Int?
+        /// `track`: the id of the element to outline; nil for none.
+        var element: String?
 
         static func open(window: String, preview: String, settings: PreviewSettings, device: PreviewDevice? = nil) -> Command {
             var command = Command(type: "open", window: window, preview: preview)
@@ -85,6 +89,11 @@ final class PreviewHost: @unchecked Sendable {
         var png: String?
         /// A line of the standard error of the iOS host.
         var line: String?
+        /// `selected`: the request answered and the ids of the elements at the place.
+        var request: Int?
+        var elements: [String]?
+        /// `outlines`: the places of the tracked element, `[x, y, width, height]` each.
+        var outlines: [[Double]]?
     }
 
     let process: ChildProcess

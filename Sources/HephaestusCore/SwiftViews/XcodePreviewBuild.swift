@@ -18,6 +18,16 @@ enum XcodePreviewBuild {
         return schemes.contains(target) ? target : schemes[0]
     }
 
+    /// The folder of the marked copies and of the overlay, in the build folder.
+    static let marksFolder = "Marks"
+    /// The overlay's file; its version changes with the form of the marks, so that the flags
+    /// change and the target compiles again.
+    static let overlayName = "overlay-1.json"
+
+    static func overlay(_ buildFolder: URL) -> URL {
+        buildFolder.appendingPathComponent(marksFolder).appendingPathComponent(overlayName)
+    }
+
     /// The arguments shared by the build and the read of its settings: for macOS on this Mac's
     /// architecture, or for the iOS Simulator on this Mac's architecture only.
     static func arguments(project: URL, scheme: String, buildFolder: URL, platform: PreviewPlatform = .macOS) -> [String] {
@@ -32,7 +42,32 @@ enum XcodePreviewBuild {
         return arguments + ["-derivedDataPath", buildFolder.appendingPathComponent("DerivedData").path,
                             "-clonedSourcePackagesDirPath", buildFolder.appendingPathComponent("SourcePackages").path,
                             "ENABLE_TESTABILITY=YES", "ENABLE_DEBUG_DYLIB=YES", "CODE_SIGNING_ALLOWED=NO",
-                            "OTHER_SWIFT_FLAGS=$(inherited) -Xfrontend -enable-private-imports"]
+                            "OTHER_SWIFT_FLAGS=$(inherited) -Xfrontend -enable-private-imports -vfsoverlay \"\(overlay(buildFolder).path)\""]
+    }
+
+    /// Writes a copy of each Swift file of the target that has elements, with its elements marked,
+    /// and the VFS overlay that gives the compiler the copies in place of the files
+    /// (docs/views.md › Xcode project). Copies that are no longer used are removed.
+    static func writeMarks(target: XcodeProject.Target, buildFolder: URL, context: ViewElementContext) throws {
+        let folder = buildFolder.appendingPathComponent(marksFolder)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var roots: [[String: String]] = []
+        var written: Set<String> = [overlayName]
+        for file in sourceFiles(of: target) {
+            guard let text = try? String(contentsOf: file, encoding: .utf8),
+                  let marked = ViewElementScanner.marked(text, path: file.standardizedFileURL.path, context: context) else { continue }
+            let name = "\(roots.count)-\(file.lastPathComponent)"
+            let copy = folder.appendingPathComponent(name)
+            try SwiftPackagePreviewBuild.writeIfChanged(marked, to: copy)
+            written.insert(name)
+            roots.append(["type": "file", "name": file.path, "external-contents": copy.path])
+        }
+        let overlay: [String: Any] = ["version": 0, "case-sensitive": "false", "roots": roots]
+        let data = try JSONSerialization.data(withJSONObject: overlay, options: [.prettyPrinted, .sortedKeys])
+        try SwiftPackagePreviewBuild.writeIfChanged(String(decoding: data, as: UTF8.self), to: folder.appendingPathComponent(overlayName))
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [] where !written.contains(name) {
+            try? FileManager.default.removeItem(at: folder.appendingPathComponent(name))
+        }
     }
 
     /// `xcodebuild build`.
